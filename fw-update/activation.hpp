@@ -108,7 +108,11 @@ class Activation : public ActivationIntf
         if (value == Activations::Activating)
         {
             deleteImpl.reset();
-            updateManager->activatePackage();
+            if (!updateManager->activatePackage())
+            {
+                std::cerr << "Activation failed setting activation to fail ";
+                value = Activations::Failed;
+            }
         }
         else if (value == Activations::Active || value == Activations::Failed)
         {

@@ -5,8 +5,6 @@
 #include "libpldm/pdr.h"
 #include "libpldm/pldm_types.h"
 
-#include <xyz/openbmc_project/Common/error.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -18,14 +16,14 @@
 #include <string>
 #include <vector>
 
+#include <xyz/openbmc_project/Logging/Entry/server.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Software/ExtendedVersion/server.hpp>
+
 namespace pldm
 {
 namespace utils
 {
-
-constexpr auto mapperBusName = "xyz.openbmc_project.ObjectMapper";
-constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
-constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
 
 std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t /*tid*/,
                                                        uint16_t entityID,
@@ -222,7 +220,7 @@ std::string DBusHandler::getService(const char* path,
     std::map<std::string, std::vector<std::string>> mapperResponse;
     auto& bus = DBusHandler::getBus();
 
-    auto mapper = bus.new_method_call(mapperBusName, mapperPath,
+    auto mapper = bus.new_method_call(mapperService, mapperPath,
                                       mapperInterface, "GetObject");
     mapper.append(path, DbusInterfaceList({interface}));
 
@@ -237,7 +235,7 @@ GetSubTreeResponse
 {
 
     auto& bus = pldm::utils::DBusHandler::getBus();
-    auto method = bus.new_method_call(mapperBusName, mapperPath,
+    auto method = bus.new_method_call(mapperService, mapperPath,
                                       mapperInterface, "GetSubTree");
     method.append(searchPath, depth, ifaceList);
     auto reply = bus.call(method);

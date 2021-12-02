@@ -13,7 +13,6 @@
 
 #include <nlohmann/json.hpp>
 #include <sdbusplus/server.hpp>
-#include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <exception>
 #include <filesystem>
@@ -127,6 +126,8 @@ T decimalToBcd(T decimal)
 
 constexpr auto dbusProperties = "org.freedesktop.DBus.Properties";
 constexpr auto mapperService = "xyz.openbmc_project.ObjectMapper";
+constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
+constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
 
 struct DBusMapping
 {

@@ -6,7 +6,8 @@ fw_update_test_src = declare_dependency(
             '../update_manager.cpp',
             '../../common/utils.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp'])
+            '../../pldmd/instance_id.cpp',
+            '../other_device_update_manager.cpp'])
 
 tests = [
   'inventory_manager_test',

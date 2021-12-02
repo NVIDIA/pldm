@@ -52,6 +52,9 @@ if get_option('oem-ibm').enabled()
   add_project_arguments('-DOEM_IBM', language : 'c')
   add_project_arguments('-DOEM_IBM', language : 'cpp')
 endif
+if get_option('non-pldm').enabled()
+  add_project_arguments('-DNON_PLDM', language : ['c','cpp'])
+endif
 conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
 conf_data.set('NUMBER_OF_REQUEST_RETRIES', get_option('number-of-request-retries'))
 conf_data.set('INSTANCE_ID_EXPIRATION_INTERVAL',get_option('instance-id-expiration-interval'))
@@ -200,6 +203,7 @@ executable(
   'fw-update/device_updater.cpp',
   'fw-update/watch.cpp',
   'fw-update/update_manager.cpp',
+  'fw-update/other_device_update_manager.cpp',
   'requester/mctp_endpoint_discovery.cpp',
   implicit_include_directories: false,
   dependencies: deps,

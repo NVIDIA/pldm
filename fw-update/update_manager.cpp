@@ -21,13 +21,6 @@ namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
 int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 {
-    // If no devices discovered, take no action on the package.
-    if (!descriptorMap.size())
-    {
-        return 0;
-    }
-
-    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
     // If a firmware activation of a package is in progress, don't proceed with
     // package processing
     if (activation)
@@ -47,6 +40,20 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             clearActivationInfo();
         }
     }
+
+    //create the device updater
+    otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
+        pldm::utils::DBusHandler::getBus(),
+        this);
+
+    // If no devices discovered, take no action on the package.
+    if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
+    {
+        otherDeviceUpdateManager = nullptr;
+        return 0;
+    }
+
+    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
     package.open(packageFilePath,
                  std::ios::binary | std::ios::in | std::ios::ate);
@@ -124,7 +131,12 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     auto deviceUpdaterInfos =
         associatePkgToDevices(parser->getFwDeviceIDRecords(), descriptorMap,
                               totalNumComponentUpdates);
-    if (!deviceUpdaterInfos.size())
+    // get non-pldm components, add to total component count
+    size_t otherDevicesImageCount = otherDeviceUpdateManager->extractOtherDevicePkgs(
+        parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(), package);
+    totalNumComponentUpdates += otherDevicesImageCount;
+
+    if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)
     {
         std::cerr
             << "No matching devices found with the PLDM firmware update package"
@@ -153,12 +165,10 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
 
     fwPackageFilePath = packageFilePath;
-    activation = std::make_unique<Activation>(
-        pldm::utils::DBusHandler::getBus(), objPath,
-        software::Activation::Activations::Ready, this);
-    activationProgress = std::make_unique<ActivationProgress>(
-        pldm::utils::DBusHandler::getBus(), objPath);
-
+    //delay activation object creation if there are non-pldm updates
+    if (otherDevicesImageCount == 0) {
+        createActivationObject();
+    }
     return 0;
 }
 
@@ -190,27 +200,10 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
 
 void UpdateManager::updateDeviceCompletion(mctp_eid_t eid, bool status)
 {
+    /* update completion map */
     deviceUpdateCompletionMap.emplace(eid, status);
-    if (deviceUpdateCompletionMap.size() == deviceUpdaterMap.size())
-    {
-        for (const auto& [eid, status] : deviceUpdateCompletionMap)
-        {
-            if (!status)
-            {
-                activation->activation(
-                    software::Activation::Activations::Failed);
-                return;
-            }
-        }
-
-        auto endTime = std::chrono::steady_clock::now();
-        std::cerr << "Firmware update time: "
-                  << std::chrono::duration<double, std::milli>(endTime -
-                                                               startTime)
-                         .count()
-                  << " ms\n";
-        activation->activation(software::Activation::Activations::Active);
-    }
+    /* update activation progress */
+    updateActivationProgress();
     return;
 }
 
@@ -258,13 +251,19 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     return response;
 }
 
-void UpdateManager::activatePackage()
+bool UpdateManager::activatePackage()
 {
     startTime = std::chrono::steady_clock::now();
     for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
     {
         deviceUpdaterPtr->startFwUpdateFlow();
     }
+    // Initiate the activate of non-pldm
+    if (!otherDeviceUpdateManager->activate())
+    {
+        return false;
+    }
+    return true;
 }
 
 void UpdateManager::clearActivationInfo()
@@ -280,6 +279,37 @@ void UpdateManager::clearActivationInfo()
     std::filesystem::remove(fwPackageFilePath);
     totalNumComponentUpdates = 0;
     compUpdateCompletedCount = 0;
+    otherDeviceUpdateManager.reset();
+    otherDeviceComponents.clear();
+    otherDeviceCompleted.clear();
+}
+
+bool UpdateManager::createActivationObject()
+{
+    if (deviceUpdaterMap.size()
+        || otherDeviceUpdateManager->getNumberOfProcessedImages())
+    {
+        try
+        {
+            namespace software =
+                sdbusplus::xyz::openbmc_project::Software::server;
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Ready, this);
+            activationProgress = std::make_unique<ActivationProgress>(
+                pldm::utils::DBusHandler::getBus(), objPath);
+        }
+        catch (const sdbusplus::exception::SdBusError& e)
+        {
+            return false;
+        }
+    }
+    else
+    {
+        clearActivationInfo();
+        //  Client will time out and Redfish End will report error
+    }
+    return true;
 }
 
 void UpdateManager::updateActivationProgress()
@@ -288,8 +318,55 @@ void UpdateManager::updateActivationProgress()
     auto progressPercent = static_cast<uint8_t>(std::floor(
         (100 * compUpdateCompletedCount) / totalNumComponentUpdates));
     activationProgress->progress(progressPercent);
+
+    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+    auto pldm_state = checkUpdateCompletionMap(deviceUpdaterMap.size(), deviceUpdateCompletionMap);
+    auto other_state = checkUpdateCompletionMap(otherDeviceComponents.size(), otherDeviceCompleted);
+
+    if ((pldm_state != software::Activation::Activations::Activating)
+            &&(other_state != software::Activation::Activations::Activating)) {
+        if (pldm_state != software::Activation::Activations::Active) {
+            /* if pldm is in failure, report that */
+            activation->activation(pldm_state);
+        }
+        else {
+            activation->activation(other_state);
+        }
+
+        auto endTime = std::chrono::steady_clock::now();
+        std::cerr << "Firmware update time: "
+                  << std::chrono::duration<double, std::milli>(endTime -
+                                                               startTime)
+                         .count()
+                  << " ms\n";
+    }
+}
+
+void UpdateManager::updateOtherDeviceComponents(std::unordered_map<std::string, bool> &otherDeviceMap) {
+    /* run through the map, if any failed we need to trigger a failure,
+       otherwise create the activation object */
+    for (const auto & [uuid, success] : otherDeviceMap) {
+        if (!success) {
+            std::cerr << "Other device manager failed to get "
+                     << uuid << " ready\n";
+            /* report the error, but continue on */
+        }
+    }
+    /* as long as there is an other device, create the activation object
+       otherwise it will have already been done */
+    if (otherDeviceMap.size() > 0) {
+        otherDeviceComponents = otherDeviceMap;
+        createActivationObject();
+    }
+}
+
+void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status) {
+    /* update completion status map */
+    otherDeviceCompleted.emplace(uuid, status);
+
+    /* check if we are done with all device updates */
+    updateActivationProgress();
 }
 
 } // namespace fw_update
-
 } // namespace pldm

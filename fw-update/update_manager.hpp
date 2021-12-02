@@ -16,6 +16,8 @@
 #include <tuple>
 #include <unordered_map>
 
+#include "other_device_update_manager.hpp"
+
 namespace pldm
 {
 
@@ -74,13 +76,18 @@ class UpdateManager
 
     void updateDeviceCompletion(mctp_eid_t eid, bool status);
 
+    /**
+     * @brief Increments completed updates and refreshes the reported progress
+     *
+     */
     void updateActivationProgress();
 
     /** @brief Callback function that will be invoked when the
      *         RequestedActivation will be set to active in the Activation
      *         interface
+     * @return returns true if package activation starts, false otherwise
      */
-    void activatePackage();
+    bool activatePackage();
 
     void clearActivationInfo();
 
@@ -97,6 +104,58 @@ class UpdateManager
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
     Requester& requester; //!< reference to Requester object
+
+    /**
+     * @brief Create a Activation Object object
+     *
+     * @return bool true if successfully created
+     */
+    bool createActivationObject();
+
+    /**
+     * @brief Callback to be called by other device manager to signal that all
+     *        other devices are ready for the activation object to be created
+     *
+     * @param otherDeviceMap Map of UUID to boolean indicating if update
+     *                       initialization was successful.
+     */
+    void updateOtherDeviceComponents(std::unordered_map<std::string, bool> &otherDeviceMap);
+
+    /**
+     * @brief Callback to indicate that an other device has completed updating
+     *
+     * @param uuid UUID of the other device
+     * @param status true if successful, false if failed
+     */
+    void updateOtherDeviceCompletion(std::string uuid, bool status);
+
+    /**
+     * @brief Checks that the completion map is full and if there were any
+     *        failures.
+     *
+     * @tparam T type for completion map ID
+     * @param nDevices number of expected devices
+     * @param completionMap map of devices to completion status (false = failure)
+     * @return auto Active if all updates successful, Activating if map not full, Failed if one failed.
+     */
+    template<class T>
+    auto checkUpdateCompletionMap(size_t nDevices,
+            std::unordered_map<T, bool> &completionMap) {
+        namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+        if (nDevices == completionMap.size()) {
+            /* verify nothing failed */
+            for (const auto& [id, status] : completionMap)
+            {
+                if (!status)
+                {
+                    return software::Activation::Activations::Failed;
+                    break;
+                }
+            }
+            return software::Activation::Activations::Active;
+        }
+        return software::Activation::Activations::Activating;
+    }
 
   private:
     /** @brief Device identifiers of the managed FDs */
@@ -117,11 +176,16 @@ class UpdateManager
         deviceUpdaterMap;
     std::unordered_map<mctp_eid_t, bool> deviceUpdateCompletionMap;
 
+    /* for other devices associated UUID maps to if it has prepared the activation
+       interface */
+    std::unordered_map<std::string, bool> otherDeviceComponents;
+    /* UUID -> update completed successfully map for other devices */
+    std::unordered_map<std::string, bool> otherDeviceCompleted;
+
     /** @brief Total number of component updates to calculate the progress of
      *         the Firmware activation
      */
     size_t totalNumComponentUpdates;
-
     /** @brief FW update package can contain updates for multiple firmware
      *         devices and each device can have multiple components. Once
      *         each component is updated (Transfer completed, Verified and
@@ -129,6 +193,8 @@ class UpdateManager
      */
     size_t compUpdateCompletedCount;
     decltype(std::chrono::steady_clock::now()) startTime;
+
+    std::unique_ptr<OtherDeviceUpdateManager> otherDeviceUpdateManager;
 };
 
 } // namespace fw_update
