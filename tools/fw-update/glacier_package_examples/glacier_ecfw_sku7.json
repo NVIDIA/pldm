@@ -1,0 +1,43 @@
+{
+    "PackageHeaderInformation": {
+        "PackageHeaderIdentifier": "F018878CCB7D49439800A02F059ACA02",
+        "PackageHeaderFormatVersion": 1,
+        "PackageReleaseDateTime": "25/12/2021 00:00:00",
+        "PackageVersionString": "GlacierPkgEcfw-00.01.0070.0000"
+    },
+    "FirmwareDeviceIdentificationArea": [
+        {
+            "DeviceUpdateOptionFlags": [],
+            "ComponentImageSetVersionString": "GlacierEcfw-00.01.0070.0000",
+            "ApplicableComponents": [
+                65280
+            ],
+            "Descriptors": [
+                {
+                    "DescriptorType": 1,
+                    "DescriptorData": "47160000"
+                },
+                {
+                    "DescriptorType": 2,
+                    "DescriptorData": "162023C93EC5411595F448701D49D675"
+                },
+                {
+                    "DescriptorType": 65535,
+                    "VendorDefinedDescriptorTitleString": "GLACIERDSD",
+                    "VendorDefinedDescriptorData": "10"
+                }
+            ]
+        }
+    ],
+    "ComponentImageInformationArea": [
+        {
+            "ComponentClassification": 10,
+            "ComponentIdentifier": 65280,
+            "ComponentOptions": [
+                1
+            ],
+            "RequestedComponentActivationMethod": [],
+            "ComponentVersionString": "GlacierEcfw-00.01.0070.0000"
+        }
+    ]
+}
