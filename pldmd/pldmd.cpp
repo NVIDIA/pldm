@@ -210,6 +210,8 @@ int main(int argc, char** argv)
         bus, "/xyz/openbmc_project/software");
     dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");
 
+    event.set_watchdog(true);
+    
     Invoker invoker{};
     requester::Handler<requester::Request> reqHandler(
         sockfd, event, dbusImplReq, currentSendbuffSize, verbose);
