@@ -191,6 +191,7 @@ executable(
   'fw-update/update_manager.cpp',
   'fw-update/other_device_update_manager.cpp',
   'fw-update/config.cpp',
+  'fw-update/device_inventory.cpp',
   'requester/mctp_endpoint_discovery.cpp',
   implicit_include_directories: false,
   dependencies: deps,
