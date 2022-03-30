@@ -18,6 +18,7 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const DeviceInventoryInfo& deviceInventoryInfo) :
     bus(bus),
+    objectManager(bus, "/xyz/openbmc_project/inventory"),
     deviceInventoryInfo(deviceInventoryInfo)
 {}
 

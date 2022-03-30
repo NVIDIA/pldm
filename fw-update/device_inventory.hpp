@@ -85,6 +85,8 @@ class Manager
   private:
     sdbusplus::bus::bus& bus;
 
+    sdbusplus::server::manager::manager objectManager;
+
     /** @brief Config info for device inventory */
     const DeviceInventoryInfo& deviceInventoryInfo;
 
