@@ -380,7 +380,7 @@ void OtherDeviceUpdateManager::updateValidTargets(void) {
     std::vector<std::string> paths;
     getValidPaths(paths);
     auto dbusHandler = pldm::utils::DBusHandler();
-    size_t validTargetCount = 0;
+    validTargetCount = 0;
     for (auto& obj : paths)
     {
         auto uuid= dbusHandler.getDbusProperty<std::string>(
