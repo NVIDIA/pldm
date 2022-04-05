@@ -18,3 +18,7 @@ if get_option('oem-ibm').enabled()
     install_data('../oem/ibm/configurations/host_eid', install_dir: package_datadir)
 endif
 
+if get_option('oem-nvidia').enabled()
+    install_data('../oem/nvidia/configurations/fw_update_config.json', install_dir: package_datadir)
+endif
+
