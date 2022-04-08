@@ -27,11 +27,11 @@ UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     Requester& requester, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
-    ComponentNameMap& componentNameMap, const ComponentSkipList& compSkipList) :
+    ComponentNameMap& componentNameMap, const ComponentSkipList& compSkipList, bool fwDebug) :
     event(event),
-    handler(handler), requester(requester), descriptorMap(descriptorMap),
-    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
-    compSkipList(compSkipList),
+    handler(handler), requester(requester), fwDebug(fwDebug),
+    descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
+    componentNameMap(componentNameMap), compSkipList(compSkipList),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
 {
     updatePolicy = std::make_unique<UpdatePolicy>(

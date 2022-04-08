@@ -24,7 +24,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList)
+                      componentInfoMap, componentNameMap, compSkipList, false)
     {}
 
     sdeventplus::Event event;
@@ -249,7 +249,7 @@ class PackageAssociationTargetFiltering : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList)
+                      componentInfoMap, componentNameMap, compSkipList, false)
     {}
 
     sdeventplus::Event event;
@@ -384,7 +384,7 @@ class PkgAssocTargetFilterSkipList : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList)
+                      componentInfoMap, componentNameMap, compSkipList, true)
     {}
 
     sdeventplus::Event event;
@@ -483,7 +483,7 @@ class TestUpdateMgrTargetFilteringSkipList : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList)
+                      componentInfoMap, componentNameMap, compSkipList, true)
     {}
 
     sdeventplus::Event event;

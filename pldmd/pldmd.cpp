@@ -149,37 +149,45 @@ void optionUsage(void)
     std::cerr << "Options:\n";
     std::cerr
         << "  --verbose=<0/1>  0 - Disable verbosity, 1 - Enable verbosity\n";
+    std::cerr
+        << "  --fw-debug Optional flag to enable firmware update logs\n";
     std::cerr << "Defaulted settings:  --verbose=0 \n";
 }
 
 int main(int argc, char** argv)
 {
-
     bool verbose = false;
+    bool fwDebug = false;
+    int argflag;
     static struct option long_options[] = {
-        {"verbose", required_argument, 0, 'v'}, {0, 0, 0, 0}};
+        {"verbose", required_argument, 0, 'v'},
+        {"fw-debug", no_argument, 0, 'd'},
+        {0, 0, 0, 0}};
 
-    auto argflag = getopt_long(argc, argv, "v:", long_options, nullptr);
-    switch (argflag)
+    while ((argflag = getopt_long(argc, argv, "v:d", long_options, nullptr)) >=0)
     {
-        case 'v':
-            switch (std::stoi(optarg))
-            {
-                case 0:
-                    verbose = false;
-                    break;
-                case 1:
-                    verbose = true;
-                    break;
-                default:
-                    optionUsage();
-                    exit(EXIT_FAILURE);
-            }
-            break;
-        case -1:
-            break;
-        default:
-            exit(EXIT_FAILURE);
+        switch (argflag)
+        {
+            case 'v':
+                switch (std::stoi(optarg))
+                {
+                    case 0:
+                        verbose = false;
+                        break;
+                    case 1:
+                        verbose = true;
+                        break;
+                    default:
+                        optionUsage();
+                        exit(EXIT_FAILURE);
+                }
+                break;
+            case 'd':
+                fwDebug = true;
+                break;
+            default:
+                exit(EXIT_FAILURE);
+        }
     }
 
     /* Create local socket. */
@@ -211,7 +219,7 @@ int main(int argc, char** argv)
     dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");
 
     event.set_watchdog(true);
-    
+
     Invoker invoker{};
     requester::Handler<requester::Request> reqHandler(
         sockfd, event, dbusImplReq, currentSendbuffSize, verbose);
@@ -325,7 +333,7 @@ int main(int argc, char** argv)
 
     std::unique_ptr<fw_update::Manager> fwManager =
         std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
-                                             FW_UPDATE_CONFIG_JSON);
+                                             FW_UPDATE_CONFIG_JSON, fwDebug);
     std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
         std::make_unique<MctpDiscovery>(bus, fwManager.get());
 

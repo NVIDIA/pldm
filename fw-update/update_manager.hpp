@@ -53,7 +53,8 @@ class UpdateManager
         Requester& requester, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap,
-        const ComponentSkipList& compSkipList);
+        const ComponentSkipList& compSkipList,
+        bool fwDebug);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -279,6 +280,8 @@ class UpdateManager
     const std::string activateFailed{"Update.1.0.ActivateFailed"};
     const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 
+    bool fwDebug;
+
   private:
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;
@@ -289,7 +292,6 @@ class UpdateManager
     /** @brief Component skip list */
     const ComponentSkipList& compSkipList;
     Watch watch;
-
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;
     std::unique_ptr<UpdatePolicy> updatePolicy;

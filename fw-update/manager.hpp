@@ -51,12 +51,13 @@ class Manager
     explicit Manager(Event& event,
                      requester::Handler<requester::Request>& handler,
                      Requester& requester,
-                     const std::filesystem::path& fwUpdateConfigFile) :
+                     const std::filesystem::path& fwUpdateConfigFile,
+                     bool fwDebug) :
         inventoryMgr(handler, requester,
                      std::bind_front(&Manager::createInventory, this),
                      descriptorMap, componentInfoMap),
         updateManager(event, handler, requester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList),
+                      componentInfoMap, componentNameMap, compSkipList, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
