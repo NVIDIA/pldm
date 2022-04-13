@@ -205,6 +205,14 @@ class UpdateManager
         return software::Activation::Activations::Activating;
     }
 
+    /** @brief PLDM package can consist of PLDM devices and non-pldm devices and
+     *         this function checks the completion status of both set of devices
+     *         and updates the Software.Activation interface accordingly. If all
+     *         the devices are updated successfully Activation is set to
+     *         Activations.Active, otherwise Activations.Failed
+     */
+    void updatePackageCompletion();
+
     const std::string transferFailed{"Update.1.0.TransferFailed"};
     const std::string transferringToComponent{
         "Update.1.0.TransferringToComponent"};

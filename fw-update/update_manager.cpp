@@ -350,8 +350,9 @@ void UpdateManager::updateDeviceCompletion(mctp_eid_t eid, bool status)
 {
     /* update completion map */
     deviceUpdateCompletionMap.emplace(eid, status);
-    /* update activation progress */
-    updateActivationProgress();
+
+    /* Update package completion */
+    updatePackageCompletion();
     return;
 }
 
@@ -471,32 +472,26 @@ bool UpdateManager::createActivationObject()
     return true;
 }
 
-void UpdateManager::updateActivationProgress()
+void UpdateManager::updatePackageCompletion()
 {
-    compUpdateCompletedCount++;
-    auto progressPercent = static_cast<uint8_t>(std::floor(
-        (100 * compUpdateCompletedCount) / totalNumComponentUpdates));
-    activationProgress->progress(progressPercent);
-
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-    auto pldm_state = checkUpdateCompletionMap(deviceUpdaterMap.size(),
-                                               deviceUpdateCompletionMap);
-    auto other_state = checkUpdateCompletionMap(otherDeviceComponents.size(),
-                                                otherDeviceCompleted);
+    auto pldmState = checkUpdateCompletionMap(deviceUpdaterMap.size(),
+                                              deviceUpdateCompletionMap);
+    auto otherState = checkUpdateCompletionMap(otherDeviceComponents.size(),
+                                               otherDeviceCompleted);
 
-    if ((pldm_state != software::Activation::Activations::Activating) &&
-        (other_state != software::Activation::Activations::Activating))
+    if ((pldmState != software::Activation::Activations::Activating) &&
+        (otherState != software::Activation::Activations::Activating))
     {
-        if (pldm_state != software::Activation::Activations::Active)
+        if ((pldmState == software::Activation::Activations::Failed) ||
+            (otherState == software::Activation::Activations::Failed))
         {
-            /* if pldm is in failure, report that */
-            activation->activation(pldm_state);
+            activation->activation(software::Activation::Activations::Failed);
         }
         else
         {
-            activation->activation(other_state);
+            activation->activation(software::Activation::Activations::Active);
         }
-
         auto endTime = std::chrono::steady_clock::now();
         std::cerr << "Firmware update time: "
                   << std::chrono::duration<double, std::milli>(endTime -
@@ -504,6 +499,14 @@ void UpdateManager::updateActivationProgress()
                          .count()
                   << " ms\n";
     }
+}
+
+void UpdateManager::updateActivationProgress()
+{
+    compUpdateCompletedCount++;
+    auto progressPercent = static_cast<uint8_t>(std::floor(
+        (100 * compUpdateCompletedCount) / totalNumComponentUpdates));
+    activationProgress->progress(progressPercent);
 }
 
 void UpdateManager::updateOtherDeviceComponents(
@@ -534,8 +537,8 @@ void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status)
     /* update completion status map */
     otherDeviceCompleted.emplace(uuid, status);
 
-    /* check if we are done with all device updates */
     updateActivationProgress();
+    updatePackageCompletion();
 }
 
 } // namespace fw_update
