@@ -198,6 +198,10 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
+    // Populate object path with the hash of the package file path
+    size_t versionHash = std::hash<std::string>{}(packageFilePath);
+    objPath = swRootPath + std::to_string(versionHash);
+
     package.open(packageFilePath,
                  std::ios::binary | std::ios::in | std::ios::ate);
     if (!package.good())
@@ -205,6 +209,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         std::cerr << "Opening the PLDM FW update package failed, ERR="
                   << unsigned(errno) << ", PACKAGEFILE=" << packageFilePath
                   << "\n";
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Invalid, this);
         package.close();
         std::filesystem::remove(packageFilePath);
         return -1;
@@ -216,6 +223,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         std::cerr << "PLDM FW update package length less than the length of "
                      "the package header information, PACKAGESIZE="
                   << packageSize << "\n";
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Invalid, this);
         package.close();
         std::filesystem::remove(packageFilePath);
         return -1;
@@ -242,14 +252,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     {
         std::cerr << "Invalid PLDM package header information"
                   << "\n";
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Invalid, this);
         package.close();
         std::filesystem::remove(packageFilePath);
         return -1;
     }
-
-    // Populate object path with the hash of the package version
-    size_t versionHash = std::hash<std::string>{}(parser->pkgVersion);
-    objPath = swRootPath + std::to_string(versionHash);
 
     package.seekg(0);
     packageHeader.resize(parser->pkgHeaderSize);

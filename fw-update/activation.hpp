@@ -138,6 +138,10 @@ class Activation : public ActivationIntf
             {
                 activation(Activations::Activating);
             }
+            else if ((ActivationIntf::activation() == Activations::Invalid))
+            {
+                activation(Activations::Failed);
+            }
         }
         return ActivationIntf::requestedActivation(value);
     }
