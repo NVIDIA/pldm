@@ -297,7 +297,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             << "\n";
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+            software::Activation::Activations::Ready, this);
         package.close();
         parser.reset();
         return 0;
@@ -410,29 +410,6 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     }
 
     return response;
-}
-
-bool UpdateManager::activatePackage()
-{
-    startTime = std::chrono::steady_clock::now();
-    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
-    {
-        const auto& applicableComponents =
-            std::get<ApplicableComponents>(deviceUpdaterPtr->fwDeviceIDRecord);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
-        {
-            createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
-                                  compIndex, targetDetermined);
-        }
-        deviceUpdaterPtr->startFwUpdateFlow();
-    }
-    // Initiate the activate of non-pldm
-    if (!otherDeviceUpdateManager->activate())
-    {
-        return false;
-    }
-    return true;
 }
 
 void UpdateManager::clearActivationInfo()

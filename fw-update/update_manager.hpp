@@ -90,9 +90,43 @@ class UpdateManager
     /** @brief Callback function that will be invoked when the
      *         RequestedActivation will be set to active in the Activation
      *         interface
-     * @return returns true if package activation starts, false otherwise
+     *         Handles activation for PLDM and non PLDM devices , in case
+     *         of No device detections we will set default to Active state
+     * @return returns Activations state
      */
-    bool activatePackage();
+    inline auto activatePackage()
+    {
+        namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+        // In case no device found set activation stage to active to complete
+        // task.
+        if ((deviceUpdaterMap.size() == 0) &&
+            (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
+        {
+            std::cout
+                << "Nothing to activate, Setting Activations state to Active!\n";
+            return software::Activation::Activations::Active;
+        }
+
+        startTime = std::chrono::steady_clock::now();
+        for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
+        {
+            const auto& applicableComponents = std::get<ApplicableComponents>(
+                deviceUpdaterPtr->fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
+                                      compIndex, targetDetermined);
+            }
+            deviceUpdaterPtr->startFwUpdateFlow();
+        }
+        // Initiate the activate of non-pldm
+        if (!otherDeviceUpdateManager->activate())
+        {
+            return software::Activation::Activations::Failed;
+        }
+        return software::Activation::Activations::Activating;
+    }
 
     void clearActivationInfo();
 

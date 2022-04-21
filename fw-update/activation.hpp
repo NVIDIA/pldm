@@ -108,10 +108,13 @@ class Activation : public ActivationIntf
         if (value == Activations::Activating)
         {
             deleteImpl.reset();
-            if (!updateManager->activatePackage())
+            namespace software =
+                sdbusplus::xyz::openbmc_project::Software::server;
+            auto state = updateManager->activatePackage();
+            value = state;
+            if (state == Activations::Failed)
             {
                 std::cerr << "Activation failed setting activation to fail ";
-                value = Activations::Failed;
             }
         }
         else if (value == Activations::Active || value == Activations::Failed)
