@@ -10,7 +10,8 @@ fw_update_test_src = declare_dependency(
             '../../common/utils.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',
-            '../other_device_update_manager.cpp'])
+            '../other_device_update_manager.cpp',
+            '../watch.cpp'])
 
 tests = [
   'inventory_manager_test',
@@ -18,7 +19,8 @@ tests = [
   'device_updater_test',
   'config_test',
   'device_inventory_test',
-  'firmware_inventory_test'
+  'firmware_inventory_test',
+  'update_manager_pkg_association_test'
 ]
 
 foreach t : tests

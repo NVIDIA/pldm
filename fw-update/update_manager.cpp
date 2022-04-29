@@ -11,6 +11,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <string>
 
 namespace pldm
@@ -21,6 +22,22 @@ namespace fw_update
 
 namespace fs = std::filesystem;
 namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+
+UpdateManager::UpdateManager(
+    Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
+    Requester& requester, const DescriptorMap& descriptorMap,
+    const ComponentInfoMap& componentInfoMap,
+    ComponentNameMap& componentNameMap) :
+    event(event),
+    handler(handler), requester(requester), descriptorMap(descriptorMap),
+    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
+{
+    updatePolicy = std::make_unique<UpdatePolicy>(
+        pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
+}
+
+UpdateManager::~UpdateManager() = default;
 
 std::string
     UpdateManager::getActivationMethod(bitfield16_t compActivationModification)
@@ -280,9 +297,31 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return -1;
     }
 
-    auto deviceUpdaterInfos =
-        associatePkgToDevices(parser->getFwDeviceIDRecords(), descriptorMap,
-                              totalNumComponentUpdates);
+    const auto& compImageInfos = parser->getComponentImageInfos();
+    auto targets = updatePolicy->targets();
+    auto deviceUpdaterInfos = associatePkgToDevices(
+        parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
+        componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+
+    std::cout << "Total Components: " << totalNumComponentUpdates << "\n";
+
+    for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
+    {
+        std::cerr << "EID = " << unsigned(deviceUpdaterInfo.first)
+                  << ", RecordOffset = " << unsigned(deviceUpdaterInfo.second)
+                  << " ComponentIdentifiers = ";
+        auto& applicableComponents = std::get<ApplicableComponents>(
+            fwDeviceIDRecords[deviceUpdaterInfo.second]);
+        for (const auto& index : applicableComponents)
+        {
+            const auto& compImageInfo = compImageInfos[index];
+            CompIdentifier compIdentifier = std::get<static_cast<size_t>(
+                ComponentImageInfoPos::CompIdentifierPos)>(compImageInfo);
+            std::cout << unsigned(compIdentifier) << " ";
+        }
+        std::cerr << "\n";
+    }
+
     // get non-pldm components, add to total component count
     size_t otherDevicesImageCount =
         otherDeviceUpdateManager->extractOtherDevicePkgs(
@@ -303,8 +342,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return 0;
     }
 
-    const auto& fwDeviceIDRecords = parser->getFwDeviceIDRecords();
-    const auto& compImageInfos = parser->getComponentImageInfos();
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
     {
         const auto& fwDeviceIDRecord =
@@ -329,26 +366,112 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 }
 
 DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
-    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
     const DescriptorMap& descriptorMap,
+    const ComponentImageInfos& compImageInfos,
+    const ComponentNameMap& componentNameMap,
+    const std::vector<sdbusplus::message::object_path>& objectPaths,
+    FirmwareDeviceIDRecords& outFwDeviceIDRecords,
     TotalComponentUpdates& totalNumComponentUpdates)
 {
-    DeviceUpdaterInfos deviceUpdaterInfos;
+    using ComponentTargetList =
+        std::unordered_map<EID, std::vector<CompIdentifier>>;
+    ComponentTargetList compTargetList{};
 
-    for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
+    // Process target filtering
+    if (!objectPaths.empty())
+    {
+        auto targets =
+            objectPaths | std::views::filter([](std::string path) {
+                return path.starts_with("/xyz/openbmc_project/software/");
+            }) |
+            std::views::transform([](std::string path) {
+                return path.substr(path.find_last_of('/') + 1);
+            });
+
+        for (const auto& target : targets)
+        {
+            std::cerr << "Target=" << target;
+        }
+
+        for (const auto& [eid, componentIdNameMap] : componentNameMap)
+        {
+            for (const auto& [compIdentifier, compName] : componentIdNameMap)
+            {
+                if (std::find(targets.begin(), targets.end(), compName) !=
+                    targets.end())
+                {
+                    if (compTargetList.contains(eid))
+                    {
+                        auto compIdentifiers = compTargetList[eid];
+                        compIdentifiers.emplace_back(compIdentifier);
+                        compTargetList[eid] = compIdentifiers;
+                    }
+                    else
+                    {
+                        compTargetList[eid] = {compIdentifier};
+                    }
+                }
+            }
+        }
+    }
+
+    DeviceUpdaterInfos deviceUpdaterInfos;
+    for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
     {
         const auto& deviceIDDescriptors =
-            std::get<Descriptors>(fwDeviceIDRecords[index]);
+            std::get<Descriptors>(inFwDeviceIDRecords[index]);
         for (const auto& [eid, descriptors] : descriptorMap)
         {
             if (std::includes(descriptors.begin(), descriptors.end(),
                               deviceIDDescriptors.begin(),
                               deviceIDDescriptors.end()))
             {
-                deviceUpdaterInfos.emplace_back(std::make_pair(eid, index));
-                const auto& applicableComponents =
-                    std::get<ApplicableComponents>(fwDeviceIDRecords[index]);
-                totalNumComponentUpdates += applicableComponents.size();
+                if (compTargetList.empty())
+                {
+                    outFwDeviceIDRecords.emplace_back(
+                        inFwDeviceIDRecords[index]);
+                    auto& applicableComponents = std::get<ApplicableComponents>(
+                        outFwDeviceIDRecords.back());
+                    deviceUpdaterInfos.emplace_back(
+                        std::make_pair(eid, outFwDeviceIDRecords.size() - 1));
+                    totalNumComponentUpdates += applicableComponents.size();
+                }
+                else
+                {
+                    if (compTargetList.contains(eid))
+                    {
+                        auto compList = compTargetList[eid];
+                        auto applicableComponents =
+                            std::get<ApplicableComponents>(
+                                inFwDeviceIDRecords[index]);
+                        for (const auto& index : applicableComponents)
+                        {
+                            const auto& compImageInfo = compImageInfos[index];
+                            CompIdentifier compIdentifier =
+                                std::get<static_cast<size_t>(
+                                    ComponentImageInfoPos::CompIdentifierPos)>(
+                                    compImageInfo);
+                            if ((std::find(compList.begin(), compList.end(),
+                                           compIdentifier) == compList.end()))
+                            {
+                                std::erase(applicableComponents, index);
+                            }
+                        }
+                        if (applicableComponents.size())
+                        {
+                            outFwDeviceIDRecords.emplace_back(
+                                inFwDeviceIDRecords[index]);
+                            std::get<ApplicableComponents>(
+                                outFwDeviceIDRecords.back()) =
+                                applicableComponents;
+                            deviceUpdaterInfos.emplace_back(std::make_pair(
+                                eid, outFwDeviceIDRecords.size() - 1));
+                            totalNumComponentUpdates +=
+                                applicableComponents.size();
+                        }
+                    }
+                }
             }
         }
     }
@@ -417,6 +540,7 @@ void UpdateManager::clearActivationInfo()
     activation.reset();
     activationProgress.reset();
     objPath.clear();
+    fwDeviceIDRecords.clear();
 
     deviceUpdaterMap.clear();
     deviceUpdateCompletionMap.clear();

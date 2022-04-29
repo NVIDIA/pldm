@@ -35,6 +35,7 @@ using TotalComponentUpdates = size_t;
 
 class Activation;
 class ActivationProgress;
+class UpdatePolicy;
 
 class UpdateManager
 {
@@ -44,20 +45,14 @@ class UpdateManager
     UpdateManager(UpdateManager&&) = delete;
     UpdateManager& operator=(const UpdateManager&) = delete;
     UpdateManager& operator=(UpdateManager&&) = delete;
-    ~UpdateManager() = default;
+    ~UpdateManager();
 
     explicit UpdateManager(
         Event& event,
         pldm::requester::Handler<pldm::requester::Request>& handler,
         Requester& requester, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
-        ComponentNameMap& componentNameMap) :
-        event(event),
-        handler(handler), requester(requester), descriptorMap(descriptorMap),
-        componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
-        watch(event.get(),
-              std::bind_front(&UpdateManager::processPackage, this))
-    {}
+        ComponentNameMap& componentNameMap);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -130,13 +125,37 @@ class UpdateManager
 
     void clearActivationInfo();
 
-    /** @brief
+    /** @brief Associate firmware update package to devices and components that
+     *         will be updated. The package to firmware device association is
+     *         as per DSP0267. The target filtering can be used to override the
+     *         devices intended to be updated by the package. It calculates the
+     *         total number of components to be updated.
      *
+     *  @param[in] inFwDeviceIDRecords - Firmware device descriptors from the
+     *                                 package
+     *  @param[in] descriptorMap - Descriptor information of all the discovered
+     *                             MCTP endpoints
+     *  @param[in] compImageInfos - Component image information in the package
+     *  @param[in] componentNameMap - Match components on a device to component
+     *                                name and will be used for target filtering
+     *  @param[in] objectPaths - Software object paths used for target filtering
+     *  @param[out] outFwDeviceIDRecords - Firmware device descriptors derived
+     *                                     from the package after applying
+     *                                     target filtering
+     *  @param[out] totalNumComponentUpdates - Total number of component updates
+     *
+     *  @return If there are devices to be updated with the package, return
+     *          all the EIDs to be updated and the matching firmware device
+     *          descriptors in outFwDeviceIDRecords
      */
-    DeviceUpdaterInfos
-        associatePkgToDevices(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-                              const DescriptorMap& descriptorMap,
-                              TotalComponentUpdates& totalNumComponentUpdates);
+    DeviceUpdaterInfos associatePkgToDevices(
+        const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
+        const DescriptorMap& descriptorMap,
+        const ComponentImageInfos& compImageInfos,
+        const ComponentNameMap& componentNameMap,
+        const std::vector<sdbusplus::message::object_path>& objectPaths,
+        FirmwareDeviceIDRecords& outFwDeviceIDRecords,
+        TotalComponentUpdates& totalNumComponentUpdates);
 
     /** @brief Translate the RequestedComponentActivationMethod in PLDM spec to
      *         a human readable string. Multiple activation methods can be
@@ -268,6 +287,7 @@ class UpdateManager
 
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;
+    std::unique_ptr<UpdatePolicy> updatePolicy;
     std::string objPath;
 
     std::filesystem::path fwPackageFilePath;
@@ -283,6 +303,7 @@ class UpdateManager
     std::unordered_map<std::string, bool> otherDeviceComponents;
     /* UUID -> update completed successfully map for other devices */
     std::unordered_map<std::string, bool> otherDeviceCompleted;
+    FirmwareDeviceIDRecords fwDeviceIDRecords;
 
     /** @brief Total number of component updates to calculate the progress of
      *         the Firmware activation
