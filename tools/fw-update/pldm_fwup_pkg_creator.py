@@ -11,9 +11,9 @@ import struct
 import sys
 
 import math
+import enum
 from bitarray import bitarray
 from bitarray.util import ba2int
-import enum
 
 string_types = dict([
     ("Unknown", 0),
@@ -47,8 +47,8 @@ class ComponentOptions(enum.IntEnum):
     '''
     Enum to represent ComponentOptions
     '''
-    ForceUpdate = 0
-    UseComponentCompStamp = 1
+    FORCEUPDATE = 0
+    USECOMPONENTCOMPSTAMP = 1
 
 def check_string_length(string):
     """Check if the length of the string is not greater than 255."""
@@ -199,9 +199,11 @@ def get_applicable_components(device, components, component_bitmap_bit_length):
     applicable_components = bitarray(component_bitmap_bit_length,
                                      endian='little')
     applicable_components.setall(0)
-    for component in components:
-        if component["ComponentIdentifier"] in applicable_components_list:
-            applicable_components[components.index(component)] = 1
+    for component_index in applicable_components_list:
+        if 0 <= component_index < len(components):
+            applicable_components[component_index] = 1
+        else:
+            sys.exit("ERROR: Applicable Component index not found.")
     return applicable_components
 
 
@@ -380,7 +382,7 @@ def get_component_comparison_stamp(component):
         component_comparison_stamp: Component Comparison stamp
     '''
     component_comparison_stamp = 0xFFFFFFFF
-    if int(ComponentOptions.UseComponentCompStamp) in component["ComponentOptions"]:
+    if int(ComponentOptions.USECOMPONENTCOMPSTAMP) in component["ComponentOptions"]:
         #Use FD vendor selected value from metadata file
         if "ComponentComparisonStamp" not in component.keys():
             sys.exit("ERROR: ComponentComparisonStamp is required"\

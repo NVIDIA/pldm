@@ -12,8 +12,8 @@
             ],
             "ComponentImageSetVersionString": "VersionString2",
             "ApplicableComponents": [
-                100,
-                200
+                0,
+                1
             ],
             "Descriptors": [
                 {
@@ -36,9 +36,9 @@
             ],
             "ComponentImageSetVersionString": "VersionString3",
             "ApplicableComponents": [
-                100,
-                200,
-                300
+                0,
+                1,
+                2
             ],
             "Descriptors": [
                 {
@@ -52,7 +52,7 @@
             ],
             "ComponentImageSetVersionString": "VersionString4",
             "ApplicableComponents": [
-                100
+                0
             ],
             "Descriptors": [
                 {
