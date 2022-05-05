@@ -128,6 +128,8 @@ enum class ComponentImageInfoPos : size_t
     CompVersionPos = 7,
 };
 
+using ComponentSkipList = std::set<std::pair<EID, CompIdentifier>>;
+
 } // namespace fw_update
 
 namespace pdr

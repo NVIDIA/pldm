@@ -24,7 +24,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap)
+                      componentInfoMap, componentNameMap, compSkipList)
     {}
 
     sdeventplus::Event event;
@@ -34,6 +34,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
+    ComponentSkipList compSkipList;
     UpdateManager updateManager;
 
     // Package to firmware device associations, the FD identifer records via
@@ -111,7 +112,7 @@ TEST_F(PackageAssociationEmptyTargetFiltering, MatchingDescriptors)
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
         inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
-        targets, outFwDeviceIDRecords, totalNumComponentUpdates);
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};
     const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
@@ -188,7 +189,7 @@ TEST_F(PackageAssociationEmptyTargetFiltering,
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
         inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
-        targets, outFwDeviceIDRecords, totalNumComponentUpdates);
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{
         {eid2, 0}, {eid1, 1}, {eid3, 2}};
@@ -248,7 +249,7 @@ class PackageAssociationTargetFiltering : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
-                      componentInfoMap, componentNameMap)
+                      componentInfoMap, componentNameMap, compSkipList)
     {}
 
     sdeventplus::Event event;
@@ -256,6 +257,7 @@ class PackageAssociationTargetFiltering : public testing::Test
     int fd = -1;
     requester::Handler<requester::Request> reqHandler;
     const ComponentInfoMap componentInfoMap;
+    const ComponentSkipList compSkipList;
     UpdateManager updateManager;
 
     // Device1 - ApplicableComponents{compIdentifer1, compIdentifer2}
@@ -320,7 +322,7 @@ TEST_F(PackageAssociationTargetFiltering, MatchingTwoComponents)
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
         inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
-        targets, outFwDeviceIDRecords, totalNumComponentUpdates);
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
         {1,
@@ -354,7 +356,7 @@ TEST_F(PackageAssociationTargetFiltering, MatchingOneComponent)
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
         inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
-        targets, outFwDeviceIDRecords, totalNumComponentUpdates);
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
         {1,
@@ -366,6 +368,207 @@ TEST_F(PackageAssociationTargetFiltering, MatchingOneComponent)
     };
     DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid2, 0}};
     constexpr TotalComponentUpdates expectTotalComponents = 1;
+
+    EXPECT_EQ(totalNumComponentUpdates, expectTotalComponents);
+    EXPECT_EQ(outFwDeviceIDRecords, expectFwDeviceIDRecords);
+    EXPECT_EQ(deviceUpdaterInfos, expectDeviceUpdaterInfos);
+}
+
+class PkgAssocTargetFilterSkipList : public testing::Test
+{
+  protected:
+    PkgAssocTargetFilterSkipList() :
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
+                          "/xyz/openbmc_project/pldm"),
+        reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
+                   milliseconds(100)),
+        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+                      componentInfoMap, componentNameMap, compSkipList)
+    {}
+
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    int fd = -1;
+    requester::Handler<requester::Request> reqHandler;
+    const ComponentInfoMap componentInfoMap;
+    UpdateManager updateManager;
+
+    // Device1 - ApplicableComponents{compIdentifer1, compIdentifer2}
+    // Device2 - ApplicableComponents{compIdentifer1, compIdentifer3}
+    FirmwareDeviceIDRecords inFwDeviceIDRecords{
+        {1,
+         {0, 1},
+         "VersionString1",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}},
+         {}},
+        {1,
+         {0, 2},
+         "VersionString2",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}},
+         {}},
+    };
+
+    // Discovered two endpoints that match with the Device 1 & Device2
+    // descriptors.
+    const EID eid1 = 1;
+    const EID eid2 = 2;
+    DescriptorMap descriptorMap{
+        {eid1,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}},
+        {eid2,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}}}};
+
+    const CompIdentifier compIdentifer1 = 65280;
+    const CompIdentifier compIdentifer2 = 80;
+    const CompIdentifier compIdentifer3 = 16;
+
+    // ComponentImageInformationArea from the package, what matter for the
+    // test is the component identifers and order of the components.
+    ComponentImageInfos compImageInfos{
+        {10, compIdentifer1, 0xFFFFFFFF, 0, 0, 326, 27, "VersionString3"},
+        {10, compIdentifer2, 0xFFFFFFFF, 1, 12, 380, 27, "VersionString4"},
+        {10, compIdentifer3, 0xFFFFFFFF, 0, 1, 353, 27, "VersionString5"},
+    };
+
+    ComponentNameMap componentNameMap;
+    std::vector<sdbusplus::message::object_path> targets;
+    // Skip compIdentifer1 in both devices
+    ComponentSkipList compSkipList{{eid1, compIdentifer1},
+                                   {eid2, compIdentifer1}};
+};
+
+TEST_F(PkgAssocTargetFilterSkipList, ScenarioOne)
+{
+    FirmwareDeviceIDRecords outFwDeviceIDRecords{};
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
+
+    constexpr TotalComponentUpdates expectTotalComponents = 2;
+    const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
+        {1,
+         {1},
+         "VersionString1",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}},
+         {}},
+        {1,
+         {2},
+         "VersionString2",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}},
+         {}},
+    };
+    DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};
+
+    EXPECT_EQ(totalNumComponentUpdates, expectTotalComponents);
+    EXPECT_EQ(outFwDeviceIDRecords, expectFwDeviceIDRecords);
+    EXPECT_EQ(deviceUpdaterInfos, expectDeviceUpdaterInfos);
+}
+
+class TestUpdateMgrTargetFilteringSkipList : public testing::Test
+{
+  protected:
+    TestUpdateMgrTargetFilteringSkipList() :
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
+                          "/xyz/openbmc_project/pldm"),
+        reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
+                   milliseconds(100)),
+        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+                      componentInfoMap, componentNameMap, compSkipList)
+    {}
+
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    int fd = -1;
+    requester::Handler<requester::Request> reqHandler;
+    const ComponentInfoMap componentInfoMap;
+    UpdateManager updateManager;
+
+    // Device1 - ApplicableComponents{compIdentifer1, compIdentifer2}
+    // Device2 - ApplicableComponents{compIdentifer1, compIdentifer3}
+    FirmwareDeviceIDRecords inFwDeviceIDRecords{
+        {1,
+         {0, 1},
+         "VersionString1",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}},
+         {}},
+        {1,
+         {0, 2},
+         "VersionString2",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}},
+         {}},
+    };
+
+    // Discovered two endpoints that match with the Device 1 & Device2
+    // descriptors.
+    const EID eid1 = 1;
+    const EID eid2 = 2;
+    DescriptorMap descriptorMap{
+        {eid1,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}},
+        {eid2,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}}}};
+
+    const CompIdentifier compIdentifer1 = 65280;
+    const CompIdentifier compIdentifer2 = 80;
+    const CompIdentifier compIdentifer3 = 16;
+
+    // ComponentImageInformationArea from the package, what matter for the
+    // test is the component identifers and order of the components.
+    ComponentImageInfos compImageInfos{
+        {10, compIdentifer1, 0xFFFFFFFF, 0, 0, 326, 27, "VersionString3"},
+        {10, compIdentifer2, 0xFFFFFFFF, 1, 12, 380, 27, "VersionString4"},
+        {10, compIdentifer3, 0xFFFFFFFF, 0, 1, 353, 27, "VersionString5"},
+    };
+
+    // ComponentNameMap is needed for target filtering feature and maps the
+    // firmware targets to the right PLDM device and components.
+    ComponentNameMap componentNameMap{
+        {eid1, {{65280, "ERoT_FPGA_Firmware"}, {80, "FPGAFirmware"}}},
+        {eid2, {{65280, "ERoT_HMC_Firmware"}, {16, "HMCFirmware"}}}};
+
+    // Skip compIdentifer1 in eid1
+    ComponentSkipList compSkipList{{eid1, compIdentifer1}};
+};
+
+TEST_F(TestUpdateMgrTargetFilteringSkipList, ScenarioOne)
+{
+    const std::string erotFPGAFirmware =
+        "/xyz/openbmc_project/software/ERoT_FPGA_Firmware";
+    const std::string erotHMCFirmware =
+        "/xyz/openbmc_project/software/ERoT_HMC_Firmware";
+    std::vector<sdbusplus::message::object_path> targets{erotFPGAFirmware,
+                                                         erotHMCFirmware};
+    FirmwareDeviceIDRecords outFwDeviceIDRecords{};
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        targets, compSkipList, outFwDeviceIDRecords, totalNumComponentUpdates);
+
+    constexpr TotalComponentUpdates expectTotalComponents = 1;
+    const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionString2",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x01}}},
+         {}},
+    };
+    DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid2, 0}};
 
     EXPECT_EQ(totalNumComponentUpdates, expectTotalComponents);
     EXPECT_EQ(outFwDeviceIDRecords, expectFwDeviceIDRecords);

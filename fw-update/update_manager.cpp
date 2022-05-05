@@ -27,10 +27,11 @@ UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     Requester& requester, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
-    ComponentNameMap& componentNameMap) :
+    ComponentNameMap& componentNameMap, const ComponentSkipList& compSkipList) :
     event(event),
     handler(handler), requester(requester), descriptorMap(descriptorMap),
     componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    compSkipList(compSkipList),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
 {
     updatePolicy = std::make_unique<UpdatePolicy>(
@@ -301,7 +302,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     auto targets = updatePolicy->targets();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
-        componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+        componentNameMap, targets, compSkipList, fwDeviceIDRecords,
+        totalNumComponentUpdates);
 
     std::cout << "Total Components: " << totalNumComponentUpdates << "\n";
 
@@ -371,6 +373,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     const ComponentImageInfos& compImageInfos,
     const ComponentNameMap& componentNameMap,
     const std::vector<sdbusplus::message::object_path>& objectPaths,
+    const ComponentSkipList& compSkipList,
     FirmwareDeviceIDRecords& outFwDeviceIDRecords,
     TotalComponentUpdates& totalNumComponentUpdates)
 {
@@ -429,13 +432,32 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
             {
                 if (compTargetList.empty())
                 {
-                    outFwDeviceIDRecords.emplace_back(
+                    auto applicableComponents = std::get<ApplicableComponents>(
                         inFwDeviceIDRecords[index]);
-                    auto& applicableComponents = std::get<ApplicableComponents>(
-                        outFwDeviceIDRecords.back());
-                    deviceUpdaterInfos.emplace_back(
-                        std::make_pair(eid, outFwDeviceIDRecords.size() - 1));
-                    totalNumComponentUpdates += applicableComponents.size();
+                    for (const auto& compIndex : applicableComponents)
+                    {
+                        const auto& compImageInfo = compImageInfos[compIndex];
+                        CompIdentifier compIdentifier =
+                            std::get<static_cast<size_t>(
+                                ComponentImageInfoPos::CompIdentifierPos)>(
+                                compImageInfo);
+                        if (compSkipList.contains(
+                                std::make_pair(eid, compIdentifier)))
+                        {
+                            std::erase(applicableComponents, compIndex);
+                        }
+                    }
+
+                    if (applicableComponents.size())
+                    {
+                        outFwDeviceIDRecords.emplace_back(
+                            inFwDeviceIDRecords[index]);
+                        std::get<ApplicableComponents>(
+                            outFwDeviceIDRecords.back()) = applicableComponents;
+                        deviceUpdaterInfos.emplace_back(std::make_pair(
+                            eid, outFwDeviceIDRecords.size() - 1));
+                        totalNumComponentUpdates += applicableComponents.size();
+                    }
                 }
                 else
                 {
@@ -445,17 +467,20 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
                         auto applicableComponents =
                             std::get<ApplicableComponents>(
                                 inFwDeviceIDRecords[index]);
-                        for (const auto& index : applicableComponents)
+                        for (const auto& compIndex : applicableComponents)
                         {
-                            const auto& compImageInfo = compImageInfos[index];
+                            const auto& compImageInfo =
+                                compImageInfos[compIndex];
                             CompIdentifier compIdentifier =
                                 std::get<static_cast<size_t>(
                                     ComponentImageInfoPos::CompIdentifierPos)>(
                                     compImageInfo);
                             if ((std::find(compList.begin(), compList.end(),
-                                           compIdentifier) == compList.end()))
+                                           compIdentifier) == compList.end()) ||
+                                compSkipList.contains(
+                                    std::make_pair(eid, compIdentifier)))
                             {
-                                std::erase(applicableComponents, index);
+                                std::erase(applicableComponents, compIndex);
                             }
                         }
                         if (applicableComponents.size())
