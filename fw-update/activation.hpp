@@ -91,7 +91,7 @@ class Activation : public ActivationIntf
      */
     Activation(sdbusplus::bus::bus& bus, std::string objPath,
                Activations activationStatus, UpdateManager* updateManager) :
-        ActivationIntf(bus, objPath.c_str(), true),
+        ActivationIntf(bus, objPath.c_str()),
         bus(bus), objPath(objPath), updateManager(updateManager)
     {
         activation(activationStatus);
