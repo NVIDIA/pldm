@@ -208,10 +208,12 @@ void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
 
     if (calcPkgSize != pkgSize)
     {
+#ifndef SKIP_PACKAGE_SIZE_CHECK
         std::cerr
             << "Package size does not match calculated package size, PKG_SIZE="
             << pkgSize << " ,CALC_PKG_SIZE=" << calcPkgSize << "\n";
         throw InternalFailure();
+#endif
     }
 }
 
@@ -220,9 +222,11 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
 {
     if (pkgHeaderSize != pkgHdr.size())
     {
+#ifndef SKIP_PACKAGE_SIZE_CHECK
         std::cerr << "Package header size is invalid, PKG_HDR_SIZE="
                   << pkgHeaderSize << "\n";
         throw InternalFailure();
+#endif
     }
 
     size_t offset = sizeof(pldm_package_header_information) + pkgVersion.size();

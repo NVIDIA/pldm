@@ -33,4 +33,5 @@ option('flightrecorder-max-entries', type:'integer',min:0, max:30, description: 
 
 option('non-pldm', type: 'feature', description: 'Support for non pldm devices', value: 'enabled')
 option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')
+option('fw-update-skip-package-size-check', type: 'feature', description: 'Skip PLDM package size check')
 

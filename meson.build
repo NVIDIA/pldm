@@ -55,6 +55,9 @@ endif
 if get_option('non-pldm').enabled()
   add_project_arguments('-DNON_PLDM', language : ['c','cpp'])
 endif
+if get_option('fw-update-skip-package-size-check').enabled()
+    add_project_arguments('-DSKIP_PACKAGE_SIZE_CHECK', language : ['c','cpp'])
+endif
 conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
 conf_data.set('NUMBER_OF_REQUEST_RETRIES', get_option('number-of-request-retries'))
 conf_data.set('INSTANCE_ID_EXPIRATION_INTERVAL',get_option('instance-id-expiration-interval'))
