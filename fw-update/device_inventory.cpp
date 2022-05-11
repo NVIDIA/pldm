@@ -12,6 +12,8 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
     Ifaces::type(ChassisType::Component, true);
     Ifaces::uuid(mctpUUID, true);
     Ifaces::associations(assocs, true);
+    Ifaces::manufacturer("NVIDIA", true);
+    Ifaces::locationType(LocationTypes::Embedded, true);
     Ifaces::emit_object_added();
 }
 

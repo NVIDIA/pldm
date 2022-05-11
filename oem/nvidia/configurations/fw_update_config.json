@@ -9,6 +9,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/FPGA"
                     }
                 ]
             },
@@ -29,6 +34,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU0"
                     }
                 ]
             },
@@ -49,6 +59,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU1"
                     }
                 ]
             },
@@ -69,6 +84,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU2"
                     }
                 ]
             },
@@ -89,6 +109,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU3"
                     }
                 ]
             },
@@ -109,6 +134,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU4"
                     }
                 ]
             },
@@ -129,6 +159,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU5"
                     }
                 ]
             },
@@ -149,6 +184,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU6"
                     }
                 ]
             },
@@ -169,6 +209,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU7"
                     }
                 ]
             },
@@ -209,6 +254,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch0"
                     }
                 ]
             },
@@ -228,6 +278,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch1"
                     }
                 ]
             },
@@ -247,6 +302,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch2"
                     }
                 ]
             },
@@ -266,6 +326,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch3"
                     }
                 ]
             },

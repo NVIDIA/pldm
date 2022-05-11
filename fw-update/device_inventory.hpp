@@ -7,7 +7,10 @@
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Location/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Chassis/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/SPDMResponder/server.hpp>
 
 namespace pldm::fw_update::device_inventory
 {
@@ -17,9 +20,17 @@ using ChassisIntf =
 using UUIDIntf = sdbusplus::xyz::openbmc_project::Common::server::UUID;
 using AssociationIntf =
     sdbusplus::xyz::openbmc_project::Association::server::Definitions;
+using SPDMResponderIntf =
+    sdbusplus::xyz::openbmc_project::Inventory::Item::server::SPDMResponder;
+using DecoratorAssetIntf =
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset;
+using LocationCodeIntf =
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Location;
 
 using Ifaces =
-    sdbusplus::server::object::object<ChassisIntf, UUIDIntf, AssociationIntf>;
+    sdbusplus::server::object::object<ChassisIntf, UUIDIntf, AssociationIntf,
+                                      SPDMResponderIntf, DecoratorAssetIntf,
+                                      LocationCodeIntf>;
 
 /** @class Entry
  *
@@ -29,6 +40,9 @@ using Ifaces =
  *  a) xyz.openbmc_project.Inventory.Item.Chassis
  *  b) xyz.openbmc_project.Common.UUID
  *  c) xyz.openbmc_project.Association.Definitions
+ *  d) xyz.openbmc_project.Inventory.Item.SPDMResponder
+ *  e) xyz.openbmc_project.Inventory.Decorator.Asset
+ *  f) xyz.openbmc_project.Inventory.Decorator.LocationCode
  */
 class Entry : public Ifaces
 {
