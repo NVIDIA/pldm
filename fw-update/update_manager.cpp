@@ -36,6 +36,13 @@ UpdateManager::UpdateManager(
 {
     updatePolicy = std::make_unique<UpdatePolicy>(
         pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
+
+    if (std::filesystem::exists("/tmp/images"))
+    {
+        for (const auto& entry :
+             std::filesystem::directory_iterator("/tmp/images"))
+            std::filesystem::remove_all(entry.path());
+    }
 }
 
 UpdateManager::~UpdateManager() = default;
