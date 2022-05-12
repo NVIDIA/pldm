@@ -293,7 +293,10 @@ void DeviceUpdater::sendUpdateComponentRequest(size_t offset)
 
     // UpdateOptionFlags
     bitfield32_t updateOptionFlags;
-    updateOptionFlags.bits.bit0 = std::get<3>(comp)[0];
+    // TODO: Revert to reading the UpdateOptionFlags from package header instead
+    // of hardcoding.
+    // updateOptionFlags.bits.bit0 = std::get<3>(comp)[0];
+    updateOptionFlags.bits.bit0 = 1;
     // ComponentVersion
     const auto& compVersion = std::get<7>(comp);
     variable_field compVerStrInfo{};
