@@ -8,6 +8,7 @@
 #include "dbus_impl_requester.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
+#include "platform-mc/manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "requester/request.hpp"
@@ -89,6 +90,7 @@ void optionUsage(void)
 
 int main(int argc, char** argv)
 {
+
     bool verbose = false;
     bool fwDebug = false;
     int argflag;
@@ -222,11 +224,127 @@ int main(int argc, char** argv)
     std::unique_ptr<fw_update::Manager> fwManager =
         std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
                                              FW_UPDATE_CONFIG_JSON, fwDebug);
+    std::unique_ptr<platform_mc::Manager> platformManager =
+        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
     pldm::mctp_socket::Handler sockHandler(
         event, reqHandler, invoker, *(fwManager.get()), sockManager, verbose);
 
     std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
-        std::make_unique<MctpDiscovery>(bus, sockHandler, fwManager.get());
+        std::make_unique<MctpDiscovery>(
+            bus,
+            sockHandler,
+            std::initializer_list<MctpDiscoveryHandlerIntf*>{fwManager.get()});
+
+    auto callback = [verbose, &invoker, &reqHandler, currentSendbuffSize,
+                     &fwManager](IO& io, int fd, uint32_t revents) mutable {
+        if (!(revents & EPOLLIN))
+        {
+            return;
+        }
+
+        // Outgoing message.
+        struct iovec iov[2]{};
+
+        // This structure contains the parameter information for the response
+        // message.
+        struct msghdr msg
+        {};
+
+        int returnCode = 0;
+        ssize_t peekedLength = recv(fd, nullptr, 0, MSG_PEEK | MSG_TRUNC);
+        if (0 == peekedLength)
+        {
+            // MCTP daemon has closed the socket this daemon is connected to.
+            // This may or may not be an error scenario, in either case the
+            // recovery mechanism for this daemon is to restart, and hence exit
+            // the event loop, that will cause this daemon to exit with a
+            // failure code.
+            io.get_event().exit(0);
+        }
+        else if (peekedLength <= -1)
+        {
+            returnCode = -errno;
+            std::cerr << "recv system call failed, RC= " << returnCode << "\n";
+        }
+        else
+        {
+            std::vector<uint8_t> requestMsg(peekedLength);
+            auto recvDataLength = recv(
+                fd, static_cast<void*>(requestMsg.data()), peekedLength, 0);
+            if (recvDataLength == peekedLength)
+            {
+                FlightRecorder::GetInstance().saveRecord(requestMsg, false);
+                if (verbose)
+                {
+                    printBuffer(Rx, requestMsg);
+                }
+
+                if (MCTP_MSG_TYPE_PLDM != requestMsg[1])
+                {
+                    // Skip this message and continue.
+                }
+                else
+                {
+                    // process message and send response
+                    auto response = processRxMsg(requestMsg, invoker,
+                                                 reqHandler, fwManager.get());
+                    if (response.has_value())
+                    {
+                        FlightRecorder::GetInstance().saveRecord(*response,
+                                                                 true);
+                        if (verbose)
+                        {
+                            printBuffer(Tx, *response);
+                        }
+
+                        iov[0].iov_base = &requestMsg[0];
+                        iov[0].iov_len =
+                            sizeof(requestMsg[0]) + sizeof(requestMsg[1]);
+                        iov[1].iov_base = (*response).data();
+                        iov[1].iov_len = (*response).size();
+
+                        msg.msg_iov = iov;
+                        msg.msg_iovlen = sizeof(iov) / sizeof(iov[0]);
+                        if (currentSendbuffSize >= 0 &&
+                            (size_t)currentSendbuffSize < (*response).size())
+                        {
+                            int oldBuffSize = currentSendbuffSize;
+                            currentSendbuffSize = (*response).size();
+                            int res = setsockopt(fd, SOL_SOCKET, SO_SNDBUF,
+                                                 &currentSendbuffSize,
+                                                 sizeof(currentSendbuffSize));
+                            if (res == -1)
+                            {
+                                std::cerr
+                                    << "Responder : Failed to set the new send buffer size [bytes] : "
+                                    << currentSendbuffSize
+                                    << " from current size [bytes] : "
+                                    << oldBuffSize
+                                    << ", Error : " << strerror(errno)
+                                    << std::endl;
+                                return;
+                            }
+                        }
+
+                        int result = sendmsg(fd, &msg, 0);
+                        if (-1 == result)
+                        {
+                            returnCode = -errno;
+                            std::cerr << "sendto system call failed, RC= "
+                                      << returnCode << "\n";
+                        }
+                    }
+                }
+            }
+            else
+            {
+                std::cerr
+                    << "Failure to read peeked length packet. peekedLength= "
+                    << peekedLength << " recvDataLength=" << recvDataLength
+                    << "\n";
+            }
+        }
+    };
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
     bus.request_name("xyz.openbmc_project.PLDM");

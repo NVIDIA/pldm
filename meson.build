@@ -71,7 +71,8 @@ if get_option('libpldm-only').disabled()
 endif
 conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
 conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
-
+conf_data.set_quoted('STATIC_EID_TABLE_PATH', join_paths(package_datadir, 'static_eid_table.json'))
+conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 configure_file(output: 'config.h',
   configuration: conf_data
 )
@@ -200,6 +201,10 @@ executable(
   'fw-update/config.cpp',
   'fw-update/device_inventory.cpp',
   'fw-update/firmware_inventory.cpp',
+  'platform-mc/terminus_manager.cpp',
+  'platform-mc/terminus.cpp',
+  'platform-mc/sensor_manager.cpp',
+  'platform-mc/numeric_sensor.cpp',
   'requester/mctp_endpoint_discovery.cpp',
   implicit_include_directories: false,
   dependencies: deps,
@@ -247,6 +252,7 @@ if get_option('tests').enabled()
   subdir('fw-update/test')
   subdir('host-bmc/test')
   subdir('requester/test')
+  subdir('platform-mc/test')
   subdir('test')
 endif
 

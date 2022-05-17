@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "mctp_endpoint_discovery.hpp"
 
 #include "libpldm/requester/pldm.h"
@@ -5,7 +7,11 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <string_view>
@@ -13,18 +19,30 @@
 
 namespace pldm
 {
+const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 
-MctpDiscovery::MctpDiscovery(sdbusplus::bus::bus& bus,
-                             mctp_socket::Handler& handler,
-                             fw_update::Manager* fwManager) :
+MctpDiscovery::MctpDiscovery(
+    sdbusplus::bus::bus& bus,
+    mctp_socket::Handler& handler,
+    std::initializer_list<MctpDiscoveryHandlerIntf*> list,
+    const std::filesystem::path& staticEidTablePath) :
     bus(bus),
-    handler(handler), fwManager(fwManager),
-    mctpEndpointSignal(bus,
-                       sdbusplus::bus::match::rules::interfacesAdded(
-                           "/xyz/openbmc_project/mctp"),
-                       std::bind_front(&MctpDiscovery::discoverEndpoints, this))
+    handler(handler),
+    mctpEndpointAddedSignal(
+        bus,
+        sdbusplus::bus::match::rules::interfacesAdded(
+            "/xyz/openbmc_project/mctp"),
+        std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
+    mctpEndpointRemovedSignal(
+        bus,
+        sdbusplus::bus::match::rules::interfacesRemoved(
+            "/xyz/openbmc_project/mctp"),
+        std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
+    handlers(list), staticEidTablePath(staticEidTablePath)
 {
+    dbus::ObjectValueTree objects;
     std::set<dbus::Service> mctpCtrlServices;
+    MctpInfos mctpInfos;
 
     try
     {
@@ -41,6 +59,8 @@ MctpDiscovery::MctpDiscovery(sdbusplus::bus::bus& bus,
     }
     catch (const std::exception& e)
     {
+        loadStaticEndpoints(mctpInfos);
+        handleMCTPEndpoints(mctpInfos);
         return;
     }
 
@@ -66,10 +86,8 @@ MctpDiscovery::MctpDiscovery(sdbusplus::bus::bus& bus,
         }
     }
 
-    if (mctpInfos.size() && fwManager)
-    {
-        fwManager->handleMCTPEndpoints(mctpInfos);
-    }
+    loadStaticEndpoints(mctpInfos);
+    handleMCTPEndpoints(mctpInfos);
 }
 
 void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
@@ -133,6 +151,8 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
 
 void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
 {
+    constexpr std::string_view mctpEndpointIntfName{
+        "xyz.openbmc_project.MCTP.Endpoint"};
     MctpInfos mctpInfos;
 
     sdbusplus::message::object_path objPath;
@@ -140,9 +160,54 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
     msg.read(objPath, interfaces);
 
     populateMctpInfo(interfaces, mctpInfos);
-    if (mctpInfos.size() && fwManager)
+
+    loadStaticEndpoints(mctpInfos);
+    handleMCTPEndpoints(mctpInfos);
+}
+
+void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
+{
+    if (!std::filesystem::exists(staticEidTablePath))
     {
-        fwManager->handleMCTPEndpoints(mctpInfos);
+        std::cerr << "Static EIDs json file does not exist, PATH="
+                  << staticEidTablePath << "\n";
+        return;
+    }
+
+    std::ifstream jsonFile(staticEidTablePath);
+    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
+    if (data.is_discarded())
+    {
+        std::cerr << "Parsing json file failed, FILE=" << staticEidTablePath
+                  << "\n";
+        return;
+    }
+
+    const std::vector<nlohmann::json> emptyJsonArray{};
+    auto endpoints = data.value("Endpoints", emptyJsonArray);
+    for (const auto& endpoint : endpoints)
+    {
+        const std::vector<uint8_t> emptyUnit8Array;
+        auto eid = endpoint.value("EID", 0xFF);
+        auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
+        if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
+        {
+            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID));
+        }
+    }
+}
+
+void MctpDiscovery::handleMCTPEndpoints(const MctpInfos& mctpInfos)
+{
+    if (mctpInfos.size() && handlers.size())
+    {
+        for (MctpDiscoveryHandlerIntf* handler : handlers)
+        {
+            if (handler)
+            {
+                handler->handleMCTPEndpoints(mctpInfos);
+            }
+        }
     }
 }
 
