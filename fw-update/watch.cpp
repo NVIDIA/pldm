@@ -102,6 +102,10 @@ int Watch::callback(sd_event_source* /* s */, int fd, uint32_t revents,
         }
 
         offset += offsetof(inotify_event, name) + event->len;
+        if (0 >= offset) // check to ensure tainted input from buffer
+        {
+            break;
+        }
     }
 
     return 0;
