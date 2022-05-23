@@ -437,10 +437,13 @@ Response DeviceUpdater::requestFwData(const pldm_msg* request,
     const auto& comp = compImageInfos[applicableComponents[componentIndex]];
     auto compOffset = std::get<5>(comp);
     auto compSize = std::get<6>(comp);
-    std::cerr << "EID = " << unsigned(eid)
-              << ", ComponentIndex = " << unsigned(componentIndex)
-              << ", offset = " << unsigned(offset)
-              << ", length = " << unsigned(length) << "\n";
+    if (updateManager->fwDebug)
+    {
+        std::cerr << "EID = " << unsigned(eid)
+                << ", ComponentIndex = " << unsigned(componentIndex)
+                << ", offset = " << unsigned(offset)
+                << ", length = " << unsigned(length) << "\n";
+    }
 
     if (length < PLDM_FWUP_BASELINE_TRANSFER_SIZE || length > maxTransferSize)
     {

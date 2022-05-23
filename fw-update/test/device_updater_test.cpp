@@ -2,9 +2,11 @@
 
 #include "common/utils.hpp"
 #include "fw-update/device_updater.hpp"
+#include "fw-update/update_manager.hpp"
 #include "fw-update/package_parser.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
+#include <sdeventplus/test/sdevent.hpp>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -16,7 +18,15 @@ class DeviceUpdaterTest : public testing::Test
 {
   protected:
     DeviceUpdaterTest() :
-        package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate)
+        package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
+            "/xyz/openbmc_project/pldm"),
+        reqHandler(fd, event, dbusImplRequester, false, 90000,
+            std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
+        updateManager(event, reqHandler, dbusImplRequester,
+            descriptorMap, componentInfoMap, componentNameMap, compSkipList,
+        true)
     {
         fwDeviceIDRecord = {
             1,
@@ -43,6 +53,14 @@ class DeviceUpdaterTest : public testing::Test
     ComponentImageInfos compImageInfos;
     ComponentInfo compInfo;
     ComponentIdNameMap compIdNameInfo;
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    requester::Handler<requester::Request> reqHandler;
+    DescriptorMap descriptorMap;
+    ComponentInfoMap componentInfoMap;
+    ComponentNameMap componentNameMap;
+    ComponentSkipList compSkipList;
+    UpdateManager updateManager;
 };
 
 TEST_F(DeviceUpdaterTest, validatePackage)
@@ -88,7 +106,7 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 TEST_F(DeviceUpdaterTest, ReadPackage512B)
 {
     DeviceUpdater deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, nullptr);
+                                compInfo, compIdNameInfo, 512, &updateManager);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
