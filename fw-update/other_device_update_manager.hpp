@@ -34,6 +34,16 @@ struct OtherDeviceUpdateActivation
     Server::Activation::RequestedActivations requestedActivation;
 };
 
+/**
+ * @brief ComponentMap contains version and component name. This information
+ *        will be used in non pldm message registry mapping.
+ */
+struct ComponentMap
+{
+    std::string version;
+    std::string componentName;
+};
+
 class UpdateManager;
 
 /**
@@ -162,10 +172,10 @@ class OtherDeviceUpdateManager
      * @brief Get file path based on UUID
      *
      * @param UUID UUID to find file path for
-     * @return string that represents file path, returns "" on no match
+     * @return pair with filepath and object path, returns {} on no match
      *
      */
-    std::string getFilePath(const std::string& uuid);
+    std::pair<std::string, std::string> getFilePath(const std::string& uuid);
 
     /**
      * @brief Get the Valid Paths that may contain UUIDs
@@ -235,6 +245,11 @@ class OtherDeviceUpdateManager
         Server::Activation::Activations::Active,
         Server::Activation::Activations::Failed
       };
+    /**
+     * @brief map to match uuid to version string and component name
+     * 
+     */
+    std::unordered_map<std::string, ComponentMap> uuidMappings;
 };
 
 } // namespace fw_update

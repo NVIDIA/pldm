@@ -73,6 +73,10 @@ bool OtherDeviceUpdateManager::activate()
                 << "Failed to set resource RequestedActivation :"
                 << path << " " << std::string(e.what())
                 << "\n";
+            std::string resolution;
+            updateManager->createLogEntry(updateManager->transferFailed,
+                uuidMappings[x.second->uuid].componentName,
+                uuidMappings[x.second->uuid].version, resolution);
             return false;
         }
     }
@@ -169,6 +173,7 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                         otherDevices.emplace(
                             path, std::make_unique<
                                         OtherDeviceUpdateActivation>());
+                        otherDevices[path]->uuid = uuid;
                         activationMatches.emplace_back(
                             bus,
                             MatchRules::propertiesChanged(
@@ -186,6 +191,23 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                                             onActivationChangedMsg,
                                         this, std::placeholders::_1));
                         isImageFileProcessed[uuid] = true;
+                        // set the version info so that item updater can update
+                        // message registry and pass this to concurrent update
+                        pldm::utils::DBusMapping dbusMapping{path,
+                        "xyz.openbmc_project.Software.ExtendedVersion",
+                            "ExtendedVersion", "string"};
+                        try
+                        {
+                            pldm::utils::DBusHandler().setDbusProperty(
+                                dbusMapping, uuidMappings[uuid].version);
+                        }
+                        catch (const sdbusplus::exception::SdBusError& e)
+                        {
+                            std::cerr
+                                << "Failed to set extended version :"
+                                << std::string(e.what())
+                                << "\n";
+                        }
                     }
                 }
             }
@@ -244,9 +266,11 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                     componentImageInfos[applicableCompVec[0]];
                 const auto& version = std::get<7>(componentImageInfo);
                 std::string fileName = "";
+                std::string objPath;
                 try
                 {
-                    fileName = getFilePath(uuid); // get File PATH
+                    // get File PATH and object path
+                    std::tie(fileName, objPath) = getFilePath(uuid);
                 }
                 catch (const sdbusplus::exception::SdBusError& e)
                 {
@@ -283,6 +307,8 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 outfile.close();
                 totalNumImages++;
                 isImageFileProcessed[uuid] = false;
+                uuidMappings[uuid] = {version,
+                    std::filesystem::path(objPath).filename()};
             }
         }
     }
@@ -304,6 +330,11 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
                     std::cerr
                         << x.first << " not processed at timeout"
                         << "\n";
+                    // update message registry
+                    std::string resolution;
+                    updateManager->createLogEntry(updateManager->transferFailed,
+                        uuidMappings[x.first].componentName,
+                        uuidMappings[x.first].version, resolution);
                 }
             }
             std::cerr
@@ -339,7 +370,9 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-std::string OtherDeviceUpdateManager::getFilePath(const std::string& uuid) {
+std::pair<std::string, std::string> OtherDeviceUpdateManager::getFilePath(
+    const std::string& uuid)
+{
     std::vector<std::string> paths;
     getValidPaths(paths);
     auto dbusHandler = pldm::utils::DBusHandler();
@@ -361,12 +394,12 @@ std::string OtherDeviceUpdateManager::getFilePath(const std::string& uuid) {
                 std::cerr << "Got Path: \"" << p << "\"\n";
                 if (p != "")
                 {
-                    return std::filesystem::path(p).parent_path();
+                    return {std::filesystem::path(p).parent_path(), obj};
                 }
             }
         }
     }
-    return "";
+    return {};
 }
 
 size_t OtherDeviceUpdateManager::getValidTargets(void) {
