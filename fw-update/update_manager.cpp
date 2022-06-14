@@ -27,7 +27,8 @@ UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     Requester& requester, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
-    ComponentNameMap& componentNameMap, const ComponentSkipList& compSkipList, bool fwDebug) :
+    ComponentNameMap& componentNameMap, const ComponentSkipList& compSkipList,
+    bool fwDebug) :
     event(event),
     handler(handler), requester(requester), fwDebug(fwDebug),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
@@ -190,24 +191,16 @@ void UpdateManager::createMessageRegistry(
 
 int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 {
-    // If a firmware activation of a package is in progress, don't proceed with
-    // package processing
     if (activation)
     {
-
         if (activation->activation() ==
             software::Activation::Activations::Activating)
         {
-            std::cerr
-                << "Activation of PLDM FW update package already in progress"
-                << ", PACKAGE_VERSION=" << parser->pkgVersion << "\n";
-            std::filesystem::remove(packageFilePath);
-            return -1;
+            std::cerr << "Activation of package already in progress"
+                      << ", PACKAGE_VERSION=" << parser->pkgVersion
+                      << ", clearing the current activation \n";
         }
-        else
-        {
-            clearActivationInfo();
-        }
+        clearActivationInfo();
     }
 
     // create the device updater
