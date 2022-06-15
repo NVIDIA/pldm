@@ -1,24 +1,25 @@
 
-#include "common/types.hpp"
-#include "common/utils.hpp"
 #include "other_device_update_manager.hpp"
-#include "watch.hpp"
 
 #include "libpldm/firmware_update.h"
-#include "update_manager.hpp"
-#include "activation.hpp"
 
+#include "activation.hpp"
+#include "common/types.hpp"
+#include "common/utils.hpp"
+#include "update_manager.hpp"
+#include "watch.hpp"
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
-#include <xyz/openbmc_project/Common/FilePath/server.hpp>
 
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <tuple>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
 
 #define SW_PATH_OTHER "/xyz/openbmc_project/software/other"
 
@@ -30,8 +31,11 @@ namespace fw_update
 
 namespace MatchRules = sdbusplus::bus::match::rules;
 
-Server::Activation::Activations OtherDeviceUpdateManager::getOverAllActivationState() {
-    Server::Activation::Activations state = Server::Activation::Activations::Active;
+Server::Activation::Activations
+    OtherDeviceUpdateManager::getOverAllActivationState()
+{
+    Server::Activation::Activations state =
+        Server::Activation::Activations::Active;
     for (auto& x : otherDevices)
     {
         if ((x.second)->activationState ==
@@ -55,26 +59,23 @@ bool OtherDeviceUpdateManager::activate()
     {
         auto& path = x.first;
 
-        pldm::utils::DBusMapping dbusMapping{
-            path, Server::Activation::interface, "RequestedActivation", "string"};
-        std::cerr
-                << "Activating : OBJPATH ="
-                << path
-                << "\n";
+        pldm::utils::DBusMapping dbusMapping{path,
+                                             Server::Activation::interface,
+                                             "RequestedActivation", "string"};
+        std::cerr << "Activating : OBJPATH =" << path << "\n";
         try
         {
             pldm::utils::DBusHandler().setDbusProperty(
                 dbusMapping, std::string(Server::Activation::interface) +
-                                    ".RequestedActivations.Active");
+                                 ".RequestedActivations.Active");
         }
         catch (const std::exception& e)
         {
-            std::cerr
-                << "Failed to set resource RequestedActivation :"
-                << path << " " << std::string(e.what())
-                << "\n";
+            std::cerr << "Failed to set resource RequestedActivation :" << path
+                      << " " << std::string(e.what()) << "\n";
             std::string resolution;
-            updateManager->createLogEntry(updateManager->transferFailed,
+            updateManager->createLogEntry(
+                updateManager->transferFailed,
                 uuidMappings[x.second->uuid].componentName,
                 uuidMappings[x.second->uuid].version, resolution);
             return false;
@@ -83,7 +84,8 @@ bool OtherDeviceUpdateManager::activate()
     return true;
 }
 
-void OtherDeviceUpdateManager::onActivationChangedMsg(sdbusplus::message::message& msg)
+void OtherDeviceUpdateManager::onActivationChangedMsg(
+    sdbusplus::message::message& msg)
 {
     using Interface = std::string;
     Interface interface;
@@ -93,18 +95,25 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(sdbusplus::message::messag
     msg.read(interface, properties);
     onActivationChanged(objPath, properties);
 
-    if (otherDevices.find(objPath) != otherDevices.end()) {
-        if (otherDevices[objPath]->activationState == Server::Activation::Activations::Active) {
-            updateManager->updateOtherDeviceCompletion(otherDevices[objPath]->uuid, true);
+    if (otherDevices.find(objPath) != otherDevices.end())
+    {
+        if (otherDevices[objPath]->activationState ==
+            Server::Activation::Activations::Active)
+        {
+            updateManager->updateOtherDeviceCompletion(
+                otherDevices[objPath]->uuid, true);
         }
-        else if (otherDevices[objPath]->activationState == Server::Activation::Activations::Failed) {
-            updateManager->updateOtherDeviceCompletion(otherDevices[objPath]->uuid, false);
+        else if (otherDevices[objPath]->activationState ==
+                 Server::Activation::Activations::Failed)
+        {
+            updateManager->updateOtherDeviceCompletion(
+                otherDevices[objPath]->uuid, false);
         }
     }
 }
 
-void OtherDeviceUpdateManager::onActivationChanged(const std::string& objPath,
-                             const pldm::dbus::PropertyMap& properties)
+void OtherDeviceUpdateManager::onActivationChanged(
+    const std::string& objPath, const pldm::dbus::PropertyMap& properties)
 {
 
     std::optional<std::string> activationString;
@@ -125,7 +134,8 @@ void OtherDeviceUpdateManager::onActivationChanged(const std::string& objPath,
         if (activationString.has_value())
         {
             otherDevices[objPath]->activationState =
-                Server::Activation::convertActivationsFromString(*activationString);
+                Server::Activation::convertActivationsFromString(
+                    *activationString);
         }
         if (reqActivation.has_value())
         {
@@ -149,52 +159,47 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
     for (const auto& intf : interfaces)
     {
-        std::cerr
-        << "New Interface Added. OBJPATH="
-        << path
-        << ", INTF="
-        << intf.first
-        << "\n";
-        if (intf.first == sdbusplus::xyz::openbmc_project::Common::server::
-                                UUID::interface)
+        std::cerr << "New Interface Added. OBJPATH=" << path
+                  << ", INTF=" << intf.first << "\n";
+        if (intf.first ==
+            sdbusplus::xyz::openbmc_project::Common::server::UUID::interface)
         {
             for (const auto& property : intf.second)
             {
                 if (property.first == "UUID")
                 {
-                    std::string uuid =
-                        std::get<std::string>(property.second);
+                    std::string uuid = std::get<std::string>(property.second);
                     using namespace std;
                     transform(uuid.begin(), uuid.end(), uuid.begin(),
-                                ::toupper);
+                              ::toupper);
 
                     if (otherDevices.find(path) == otherDevices.end())
                     {
                         otherDevices.emplace(
-                            path, std::make_unique<
-                                        OtherDeviceUpdateActivation>());
+                            path,
+                            std::make_unique<OtherDeviceUpdateActivation>());
                         otherDevices[path]->uuid = uuid;
                         activationMatches.emplace_back(
                             bus,
                             MatchRules::propertiesChanged(
                                 path, Server::Activation::interface),
                             std::bind(&OtherDeviceUpdateManager::
-                                            onActivationChangedMsg,
-                                        this, std::placeholders::_1));
+                                          onActivationChangedMsg,
+                                      this, std::placeholders::_1));
 
                         activationMatches.emplace_back(
                             bus,
                             MatchRules::propertiesChanged(
-                                path,
-                                Server::ActivationProgress::interface),
+                                path, Server::ActivationProgress::interface),
                             std::bind(&OtherDeviceUpdateManager::
-                                            onActivationChangedMsg,
-                                        this, std::placeholders::_1));
+                                          onActivationChangedMsg,
+                                      this, std::placeholders::_1));
                         isImageFileProcessed[uuid] = true;
                         // set the version info so that item updater can update
                         // message registry and pass this to concurrent update
-                        pldm::utils::DBusMapping dbusMapping{path,
-                        "xyz.openbmc_project.Software.ExtendedVersion",
+                        pldm::utils::DBusMapping dbusMapping{
+                            path,
+                            "xyz.openbmc_project.Software.ExtendedVersion",
                             "ExtendedVersion", "string"};
                         try
                         {
@@ -203,10 +208,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                         }
                         catch (const sdbusplus::exception::SdBusError& e)
                         {
-                            std::cerr
-                                << "Failed to set extended version :"
-                                << std::string(e.what())
-                                << "\n";
+                            std::cerr << "Failed to set extended version :"
+                                      << std::string(e.what()) << "\n";
                         }
                     }
                 }
@@ -230,9 +233,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
 }
 
 size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
-                            const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-                            const ComponentImageInfos& componentImageInfos,
-                            std::istream& package)
+    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    const ComponentImageInfos& componentImageInfos, std::istream& package)
 {
 #ifndef NON_PLDM
     return 0;
@@ -251,14 +253,13 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 std::ostringstream tempStream;
                 for (int byte : std::get<0>(it.second))
                 {
-                    tempStream << std::setfill('0') << std::setw(2)
-                                << std::hex << byte;
+                    tempStream << std::setfill('0') << std::setw(2) << std::hex
+                               << byte;
                 }
 
                 std::string uuid = tempStream.str(); // Extract UUID
                 using namespace std;
-                transform(uuid.begin(), uuid.end(), uuid.begin(),
-                            ::toupper);
+                transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
 
                 const auto& applicableCompVec =
                     std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -275,8 +276,7 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 catch (const sdbusplus::exception::SdBusError& e)
                 {
                     std::cerr
-                        << "failed to get filename :"
-                        << std::string(e.what())
+                        << "failed to get filename :" << std::string(e.what())
                         << "\n";
                     continue;
                 }
@@ -285,30 +285,27 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 {
                     continue;
                 }
-                package.seekg(std::get<5>(
-                    componentImageInfo)); // SEEK to image offset
-                std::vector<uint8_t> buffer(
-                    std::get<6>(componentImageInfo));
+                package.seekg(
+                    std::get<5>(componentImageInfo)); // SEEK to image offset
+                std::vector<uint8_t> buffer(std::get<6>(componentImageInfo));
                 package.read(reinterpret_cast<char*>(buffer.data()),
-                                buffer.size());
+                             buffer.size());
 
-                fileName += "/" + boost::uuids::to_string(boost::uuids::random_generator()()).substr(0, 8);
-                std::cerr
-                    << "Extracting "
-                    << version
-                    << " to fileName : "
-                    << fileName
-                    << "\n";
+                fileName += "/" + boost::uuids::to_string(
+                                      boost::uuids::random_generator()())
+                                      .substr(0, 8);
+                std::cerr << "Extracting " << version
+                          << " to fileName : " << fileName << "\n";
 
                 std::ofstream outfile(fileName, std::ofstream::binary);
                 outfile.write(reinterpret_cast<const char*>(&buffer[0]),
-                                buffer.size() *
-                                    sizeof(uint8_t)); // Write to image offset
+                              buffer.size() *
+                                  sizeof(uint8_t)); // Write to image offset
                 outfile.close();
                 totalNumImages++;
                 isImageFileProcessed[uuid] = false;
-                uuidMappings[uuid] = {version,
-                    std::filesystem::path(objPath).filename()};
+                uuidMappings[uuid] = {
+                    version, std::filesystem::path(objPath).filename()};
             }
         }
     }
@@ -327,38 +324,35 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
             {
                 if (x.second == false)
                 {
-                    std::cerr
-                        << x.first << " not processed at timeout"
-                        << "\n";
+                    std::cerr << x.first << " not processed at timeout"
+                              << "\n";
                     // update message registry
                     std::string resolution;
-                    updateManager->createLogEntry(updateManager->transferFailed,
+                    updateManager->createLogEntry(
+                        updateManager->transferFailed,
                         uuidMappings[x.first].componentName,
                         uuidMappings[x.first].version, resolution);
                 }
             }
-            std::cerr
-                << "Activation Timer expired"
-                << "\n";
+            std::cerr << "Activation Timer expired"
+                      << "\n";
             //  send update information to update manager
-            updateManager->updateOtherDeviceComponents(this->isImageFileProcessed);
+            updateManager->updateOtherDeviceComponents(
+                this->isImageFileProcessed);
         }
     });
-    std::cerr
-        << "Starting Timer to allow item updaters to process images"
-        << "\n";
+    std::cerr << "Starting Timer to allow item updaters to process images"
+              << "\n";
     // Give time to add all activations
-    timer->start(std::chrono::seconds(timerExpiryTime),
-                    false);
+    timer->start(std::chrono::seconds(timerExpiryTime), false);
 }
 
 void OtherDeviceUpdateManager::startWatchingInterfaceAddition()
 {
     interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
-        bus,
-        MatchRules::interfacesAdded(SW_PATH_OTHER),
-        std::bind(std::mem_fn(&OtherDeviceUpdateManager::interfaceAdded),
-                    this, std::placeholders::_1));
+        bus, MatchRules::interfacesAdded(SW_PATH_OTHER),
+        std::bind(std::mem_fn(&OtherDeviceUpdateManager::interfaceAdded), this,
+                  std::placeholders::_1));
 }
 
 int OtherDeviceUpdateManager::getNumberOfProcessedImages()
@@ -370,8 +364,8 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-std::pair<std::string, std::string> OtherDeviceUpdateManager::getFilePath(
-    const std::string& uuid)
+std::pair<std::string, std::string>
+    OtherDeviceUpdateManager::getFilePath(const std::string& uuid)
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
@@ -389,8 +383,8 @@ std::pair<std::string, std::string> OtherDeviceUpdateManager::getFilePath(
             {
                 auto p = dbusHandler.getDbusProperty<std::string>(
                     obj.c_str(), "Path",
-                    sdbusplus::xyz::openbmc_project::Common::
-                            server::FilePath::interface);
+                    sdbusplus::xyz::openbmc_project::Common::server::FilePath::
+                        interface);
                 std::cerr << "Got Path: \"" << p << "\"\n";
                 if (p != "")
                 {
@@ -402,21 +396,23 @@ std::pair<std::string, std::string> OtherDeviceUpdateManager::getFilePath(
     return {};
 }
 
-size_t OtherDeviceUpdateManager::getValidTargets(void) {
-    #ifndef NON_PLDM
+size_t OtherDeviceUpdateManager::getValidTargets(void)
+{
+#ifndef NON_PLDM
     return 0;
-    #endif
+#endif
     return validTargetCount;
 }
 
-void OtherDeviceUpdateManager::updateValidTargets(void) {
+void OtherDeviceUpdateManager::updateValidTargets(void)
+{
     std::vector<std::string> paths;
     getValidPaths(paths);
     auto dbusHandler = pldm::utils::DBusHandler();
     validTargetCount = 0;
     for (auto& obj : paths)
     {
-        auto uuid= dbusHandler.getDbusProperty<std::string>(
+        auto uuid = dbusHandler.getDbusProperty<std::string>(
             obj.c_str(), "UUID",
             sdbusplus::xyz::openbmc_project::Common::server::UUID::interface);
         if (uuid != "")
@@ -426,15 +422,17 @@ void OtherDeviceUpdateManager::updateValidTargets(void) {
     }
 }
 
-void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string> &paths) {
+void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string>& paths)
+{
 #ifndef NON_PLDM
-    (void)paths; //suppress unused warning
+    (void)paths; // suppress unused warning
     return;
 #endif
     auto& bus = pldm::utils::DBusHandler::getBus();
 
-    auto method = bus.new_method_call(pldm::utils::mapperService, pldm::utils::mapperPath,
-                                    pldm::utils::mapperInterface, "GetSubTreePaths");
+    auto method =
+        bus.new_method_call(pldm::utils::mapperService, pldm::utils::mapperPath,
+                            pldm::utils::mapperInterface, "GetSubTreePaths");
     method.append("/xyz/openbmc_project/software");
     method.append(0); // Depth 0 to search all
     method.append(std::vector<std::string>(
@@ -443,6 +441,5 @@ void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string> &paths) {
     reply.read(paths);
 }
 
-
-}
-}
+} // namespace fw_update
+} // namespace pldm
