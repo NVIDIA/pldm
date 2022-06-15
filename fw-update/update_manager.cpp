@@ -203,6 +203,12 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         clearActivationInfo();
     }
 
+    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+    // Populate object path with the hash of the package file path
+    size_t versionHash = std::hash<std::string>{}(packageFilePath);
+    objPath = swRootPath + std::to_string(versionHash);
+    fwPackageFilePath = packageFilePath;
+
     // create the device updater
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this);
@@ -210,15 +216,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
     {
-        otherDeviceUpdateManager = nullptr;
+        std::cerr << "No devices found for firmware update"
+                  << "\n";
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Ready, this);
         return 0;
     }
-
-    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-
-    // Populate object path with the hash of the package file path
-    size_t versionHash = std::hash<std::string>{}(packageFilePath);
-    objPath = swRootPath + std::to_string(versionHash);
 
     package.open(packageFilePath,
                  std::ios::binary | std::ios::in | std::ios::ate);
@@ -230,8 +234,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -244,8 +246,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -273,8 +273,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -293,8 +291,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
-        package.close();
-        parser.reset();
         return -1;
     }
 
@@ -339,8 +335,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Ready, this);
-        package.close();
-        parser.reset();
         return 0;
     }
 
@@ -358,7 +352,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 compImageInfos, search->second, compIdNameInfoSearch->second,
                 MAXIMUM_TRANSFER_SIZE, this));
     }
-    fwPackageFilePath = packageFilePath;
+
     // delay activation object creation if there are non-pldm updates
     if (otherDevicesImageCount == 0)
     {
