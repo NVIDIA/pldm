@@ -412,12 +412,22 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
     validTargetCount = 0;
     for (auto& obj : paths)
     {
-        auto uuid = dbusHandler.getDbusProperty<std::string>(
-            obj.c_str(), "UUID",
-            sdbusplus::xyz::openbmc_project::Common::server::UUID::interface);
-        if (uuid != "")
+        try
         {
-            validTargetCount++;
+            auto uuid = dbusHandler.getDbusProperty<std::string>(
+                obj.c_str(), "UUID",
+                sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                    interface);
+            if (uuid != "")
+            {
+                validTargetCount++;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr
+                << "Failed to read UUID property from software D-Bus objects, "
+                << "ERROR=" << e.what() << "\n";
         }
     }
 }
@@ -428,17 +438,28 @@ void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string>& paths)
     (void)paths; // suppress unused warning
     return;
 #endif
-    auto& bus = pldm::utils::DBusHandler::getBus();
 
-    auto method =
-        bus.new_method_call(pldm::utils::mapperService, pldm::utils::mapperPath,
-                            pldm::utils::mapperInterface, "GetSubTreePaths");
-    method.append("/xyz/openbmc_project/software");
-    method.append(0); // Depth 0 to search all
-    method.append(std::vector<std::string>(
-        {sdbusplus::xyz::openbmc_project::Common::server::UUID::interface}));
-    auto reply = bus.call(method);
-    reply.read(paths);
+    try
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+
+        auto method = bus.new_method_call(
+            pldm::utils::mapperService, pldm::utils::mapperPath,
+            pldm::utils::mapperInterface, "GetSubTreePaths");
+        method.append("/xyz/openbmc_project/software");
+        method.append(0); // Depth 0 to search all
+        method.append(
+            std::vector<std::string>({sdbusplus::xyz::openbmc_project::Common::
+                                          server::UUID::interface}));
+        auto reply = bus.call(method);
+        reply.read(paths);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr
+            << "Failed to get software D-Bus objects implementing UUID interface, "
+            << "ERROR=" << e.what() << "\n";
+    }
 }
 
 } // namespace fw_update
