@@ -137,9 +137,9 @@ struct DBusMapping
     std::string propertyType; //!< D-Bus property type
 };
 
-using PropertyValue =
-    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
-                 uint64_t, double, std::string>;
+using PropertyValue = std::variant < bool, uint8_t, int16_t, uint16_t, int32_t,
+      uint32_t, int64_t, uint64_t, double, std::string,
+      std::vector<sdbusplus::message::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<

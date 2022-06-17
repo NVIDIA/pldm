@@ -213,7 +213,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     // create the device updater
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
-        pldm::utils::DBusHandler::getBus(), this);
+        pldm::utils::DBusHandler::getBus(), this, updatePolicy->targets());
 
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
@@ -426,7 +426,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
                               deviceIDDescriptors.begin(),
                               deviceIDDescriptors.end()))
             {
-                if (compTargetList.empty())
+                if (compTargetList.empty() && objectPaths.empty())
                 {
                     auto applicableComponents = std::get<ApplicableComponents>(
                         inFwDeviceIDRecords[index]);

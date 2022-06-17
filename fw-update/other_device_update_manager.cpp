@@ -146,6 +146,25 @@ void OtherDeviceUpdateManager::onActivationChanged(
     }
 }
 
+bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
+{
+    pldm::utils::DBusMapping dbusMapping{
+        path, "xyz.openbmc_project.Software.UpdatePolicy", "Targets",
+        "array[object_path]"};
+    try
+    {
+        pldm::utils::DBusHandler().setDbusProperty(dbusMapping, targets);
+        return true;
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        std::cerr << "Failed to set targets :" << std::string(e.what()) << "\n";
+        // when target filter is specified only selected devices should update
+        // return error so that user can retry the update on failed devices
+        return false;
+    }
+}
+
 void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
 {
     sdbusplus::message::object_path objPath;
@@ -210,6 +229,12 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                         {
                             std::cerr << "Failed to set extended version :"
                                       << std::string(e.what()) << "\n";
+                        }
+                        if (!setUpdatePolicy(path))
+                        {
+                            // if update policy D-Bus call fails, mark as image
+                            // not processed to log transfer failed at timeout
+                            isImageFileProcessed[uuid] = false;
                         }
                     }
                 }

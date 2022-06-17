@@ -336,6 +336,12 @@ void DBusHandler::setDbusProperty(const DBusMapping& dBusMap,
         std::variant<std::string> v = std::get<std::string>(value);
         setDbusValue(v);
     }
+    else if (dBusMap.propertyType == "array[object_path]")
+    {
+        std::variant<std::vector<sdbusplus::message::object_path>> v =
+            std::get<std::vector<sdbusplus::message::object_path>>(value);
+        setDbusValue(v);
+    }
     else
     {
         throw std::invalid_argument("UnSpported Dbus Type");

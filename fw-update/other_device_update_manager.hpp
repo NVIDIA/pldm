@@ -77,14 +77,14 @@ class OtherDeviceUpdateManager
      * @param createActivationObjectCallback call back to create the object
      */
     explicit OtherDeviceUpdateManager(
-        sdbusplus::bus::bus& bus,
-        UpdateManager *upMan) :
+        sdbusplus::bus::bus& bus, UpdateManager* upMan,
+        std::vector<sdbusplus::message::object_path> targets) :
         updateManager(upMan),
-        bus(bus),
-        timer(nullptr) {
-          /* cache number of valid targets */
-          updateValidTargets();
-        }
+        bus(bus), timer(nullptr), targets(targets)
+    {
+        /* cache number of valid targets */
+        updateValidTargets();
+    }
 
     /**
      * @brief Activates all other devices
@@ -110,6 +110,13 @@ class OtherDeviceUpdateManager
     void onActivationChanged(const std::string& objPath,
                              const pldm::dbus::PropertyMap& properties);
 
+    /**
+     * @brief Set the Update Policy object
+     *
+     * @param path - other software object path
+     * @return true if setting update policy is success else false
+     */
+    bool setUpdatePolicy(const std::string& path);
     /**
      * @brief method to add the dbus activation object paths to dbus watch
      *
@@ -250,6 +257,7 @@ class OtherDeviceUpdateManager
      * 
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
+    std::vector<sdbusplus::message::object_path> targets;
 };
 
 } // namespace fw_update
