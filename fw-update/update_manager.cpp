@@ -146,6 +146,8 @@ void UpdateManager::createLogEntry(const std::string& messageID,
         addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
     }
 
+    // use separate container for fwupdate message registry
+    addData["namespace"] = "FWUpdate";
     createLog(addData, level);
     return;
 }
