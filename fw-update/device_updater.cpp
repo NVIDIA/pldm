@@ -830,7 +830,8 @@ void DeviceUpdater::printBuffer(bool isTx, const pldm_msg* buffer,
     {
         std::cout << message << "\n";
         auto ptr = reinterpret_cast<const uint8_t*>(buffer);
-        auto outBuffer = std::vector<uint8_t>(ptr, ptr + bufferLen);
+        auto outBuffer =
+            std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
         pldm::utils::printBuffer(isTx, outBuffer);
     }
 }
