@@ -399,7 +399,7 @@ int decode_get_tid_resp(const struct pldm_msg *msg, size_t payload_length,
 	return PLDM_SUCCESS;
 }
 
-int encode_set_tid_req(uint8_t instance_id, struct pldm_msg *msg, uint8_t tid)
+int encode_set_tid_req(uint8_t instance_id, uint8_t tid, struct pldm_msg *msg)
 {
 	if (msg == NULL) {
 		return PLDM_ERROR_INVALID_DATA;

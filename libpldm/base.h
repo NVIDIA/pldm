@@ -492,7 +492,7 @@ int encode_get_tid_resp(uint8_t instance_id, uint8_t completion_code,
  *  @note  Caller is responsible for memory alloc and dealloc of param
  *         'msg.payload'
  */
-int encode_set_tid_req(uint8_t instance_id, struct pldm_msg *msg, uint8_t tid);
+int encode_set_tid_req(uint8_t instance_id, uint8_t tid, struct pldm_msg *msg);
 
 /** @brief Create a PLDM response message containing only cc
  *

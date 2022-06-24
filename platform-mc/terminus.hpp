@@ -42,7 +42,6 @@ class Terminus
 
     /** @brief Parse the PDRs stored in the member variable, pdrs. */
     void parsePDRs();
-    void pollForPlatformEventMessage();
 
     /** @brief The getter to return EID */
     mctp_eid_t eid()
@@ -60,7 +59,6 @@ class Terminus
     std::vector<std::vector<uint8_t>> pdrs{};
     std::vector<std::shared_ptr<NumericSensor>> numericSensors{};
 
-  private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
         parseNumericPDR(std::vector<uint8_t>& pdrData);
 
@@ -70,6 +68,7 @@ class Terminus
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
 
+  private:
     mctp_eid_t _eid;
     uint8_t _tid;
     uint64_t supportedTypes;

@@ -9,7 +9,7 @@ namespace platform_mc
 
 std::optional<uint8_t> TerminusManager::toEID(uint8_t tid)
 {
-    if (tid != 0 && tidPool.at(tid))
+    if (tid != 0 && tid != tidPoolSize && tidPool.at(tid))
     {
         return tidPool.at(tid);
     }
@@ -30,6 +30,17 @@ std::optional<uint8_t> TerminusManager::toTID(uint8_t eid)
 
 std::optional<uint8_t> TerminusManager::mapToTID(uint8_t eid)
 {
+    if (eid == 0 || eid == 0xff)
+    {
+        return std::nullopt;
+    }
+
+    auto mappedTid = toTID(eid);
+    if (mappedTid)
+    {
+        return mappedTid.value();
+    }
+
     for (size_t i = 1; i < tidPool.size(); i++)
     {
         // find a free slot
@@ -50,8 +61,6 @@ void TerminusManager::unmapTID(uint8_t tid)
 requester::Coroutine
     TerminusManager::discoverTerminusTask(const MctpInfos& mctpInfos)
 {
-    manager->stopSensorPolling();
-
     // remove absent terminus
     for (auto it = termini.begin(); it != termini.end();)
     {
@@ -82,11 +91,6 @@ requester::Coroutine
             continue;
         }
         co_await initTerminus(mctpInfo);
-    }
-
-    if (termini.size())
-    {
-        manager->startSensorPolling();
     }
 }
 
@@ -155,8 +159,6 @@ requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
     }
 
     auto terminus = std::make_shared<Terminus>(eid, tid, supportedTypes);
-    termini[eid] = terminus;
-
     if (terminus->doesSupport(PLDM_PLATFORM))
     {
         rc = co_await getPDRs(terminus);
@@ -165,6 +167,7 @@ requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
             terminus->parsePDRs();
         }
     }
+    termini[eid] = terminus;
 
     co_return PLDM_SUCCESS;
 }
@@ -251,7 +254,7 @@ requester::Coroutine TerminusManager::setTID(mctp_eid_t eid, uint8_t tid)
     auto instanceId = requester.getInstanceId(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto rc = encode_set_tid_req(instanceId, request, tid);
+    auto rc = encode_set_tid_req(instanceId, tid, request);
     if (rc)
     {
         requester.markFree(eid, instanceId);

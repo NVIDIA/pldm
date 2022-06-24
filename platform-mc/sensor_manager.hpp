@@ -29,7 +29,7 @@ class SensorManager
     SensorManager(SensorManager&&) = delete;
     SensorManager& operator=(const SensorManager&) = delete;
     SensorManager& operator=(SensorManager&&) = delete;
-    ~SensorManager() = default;
+    virtual ~SensorManager() = default;
 
     explicit SensorManager(
         sdeventplus::Event& event,
@@ -48,16 +48,26 @@ class SensorManager
      */
     void stopPolling();
 
-  private:
+  protected:
     /** @brief polling all sensors in each terminus
      */
     void doSensorPolling();
 
-    /** @brief Sending getNumericSensorReading command for the sensor
+    /** @brief Sending getSensorReading command for the sensor
      *
      *  @param[in] sensor - the sensor to be updated
      */
-    void sendGetNumericSensorReading(std::shared_ptr<NumericSensor> sensor);
+    virtual void sendGetSensorReading(std::shared_ptr<NumericSensor> sensor);
+
+    /** @brief Handler for GetSensorReading command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    void handleRespGetSensorReading(uint16_t sensorId, mctp_eid_t eid,
+                                    const pldm_msg* response,
+                                    size_t respMsgLen);
 
     sdeventplus::Event& event;
     pldm::requester::Handler<pldm::requester::Request>& handler;

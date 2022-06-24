@@ -13,7 +13,6 @@ namespace pldm
 {
 namespace platform_mc
 {
-class Manager;
 constexpr size_t tidPoolSize = 255;
 
 /**
@@ -36,11 +35,10 @@ class TerminusManager
         sdeventplus::Event& event,
         requester::Handler<requester::Request>& handler,
         dbus_api::Requester& requester,
-        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
-        Manager* manager) :
+        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
         event(event),
         handler(handler), requester(requester), termini(termini),
-        tidPool(tidPoolSize, 0), manager(manager)
+        tidPool(tidPoolSize, 0)
     {}
 
     /** @brief start a coroutine to discover terminus
@@ -154,9 +152,6 @@ class TerminusManager
 
     /** @brief A table for mantaining the assigned TID */
     std::vector<uint8_t> tidPool;
-
-    /** @brief For accessing parent manager's functions */
-    Manager* manager;
 };
 } // namespace platform_mc
 } // namespace pldm

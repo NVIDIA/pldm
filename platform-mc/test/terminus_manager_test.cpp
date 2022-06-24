@@ -1,8 +1,10 @@
 #include "libpldm/base.h"
 
-#include "platform-mc/manager.hpp"
+#include "platform-mc/terminus_manager.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
+#include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
+#include "requester/request.hpp"
 
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
@@ -27,7 +29,7 @@ class TerminusManagerTest : public testing::Test
         dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
         reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
                    milliseconds(100)),
-        terminusManager(event, reqHandler, dbusImplRequester, termini, nullptr)
+        terminusManager(event, reqHandler, dbusImplRequester, termini)
     {}
 
     int fd = -1;
@@ -55,7 +57,37 @@ TEST_F(TerminusManagerTest, mapTIDTest)
     mappedTid = terminusManager.toTID(eid);
     EXPECT_EQ(mappedTid.value(), tid.value());
 
+    tid = terminusManager.mapToTID(eid);
+    EXPECT_EQ(mappedTid.value(), tid.value());
+
     terminusManager.unmapTID(tid.value());
     mappedTid = terminusManager.toTID(eid);
     EXPECT_EQ(mappedTid, std::nullopt);
+}
+
+TEST_F(TerminusManagerTest, negativeMapTIDTest)
+{
+    // map null EID(0) to TID
+    auto mappedTid = terminusManager.mapToTID(0);
+    EXPECT_EQ(mappedTid, std::nullopt);
+
+    // map broadcast EID(0xff) to TID
+    mappedTid = terminusManager.mapToTID(0xff);
+    EXPECT_EQ(mappedTid, std::nullopt);
+
+    // convert a unmapped EID to TID
+    mappedTid = terminusManager.toTID(1);
+    EXPECT_EQ(mappedTid, std::nullopt);
+
+    // convert reserved TID(0) to EID
+    auto mappedEid = terminusManager.toEID(0);
+    EXPECT_EQ(mappedEid, std::nullopt);
+
+    // convert reserved TID(0xff) to EID
+    mappedEid = terminusManager.toEID(0xff);
+    EXPECT_EQ(mappedEid, std::nullopt);
+
+    // convert unmapped TID to EID
+    mappedEid = terminusManager.toEID(1);
+    EXPECT_EQ(mappedEid, std::nullopt);
 }

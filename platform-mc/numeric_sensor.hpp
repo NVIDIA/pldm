@@ -58,22 +58,16 @@ class NumericSensor
     /** @brief  The time of sensor update interval in second */
     uint32_t updateTime;
 
-    /** @brief The function called by Sensor Manager to handle the response of
-     * getSensorReading
-     */
-    void handleRespGetSensorReading(mctp_eid_t eid, const pldm_msg* response,
-                                    size_t respMsgLen);
-
     /** @brief The function called by Sensor Manager to set sensor to
      * error status.
      */
     void handleErrGetSensorReading();
 
-  private:
     /** @brief Updating the sensor status to D-Bus interface
      */
     void updateReading(bool available, bool functional, double value = 0);
 
+  private:
     std::shared_ptr<ValueIntf> valueIntf = nullptr;
     std::shared_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::shared_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
