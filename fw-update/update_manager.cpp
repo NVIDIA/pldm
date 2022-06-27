@@ -595,11 +595,6 @@ bool UpdateManager::createActivationObject()
             return false;
         }
     }
-    else
-    {
-        clearActivationInfo();
-        //  Client will time out and Redfish End will report error
-    }
     return true;
 }
 

@@ -345,6 +345,9 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
         if (this->interfaceAddedMatch != nullptr)
         {
             this->interfaceAddedMatch = nullptr;
+            //  send update information to update manager
+            updateManager->updateOtherDeviceComponents(
+                this->isImageFileProcessed);
             for (auto& x : isImageFileProcessed)
             {
                 if (x.second == false)
@@ -357,13 +360,12 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
                         updateManager->transferFailed,
                         uuidMappings[x.first].componentName,
                         uuidMappings[x.first].version, resolution);
+                    updateManager->updateOtherDeviceCompletion(x.first,
+                                                               x.second);
                 }
             }
             std::cerr << "Activation Timer expired"
                       << "\n";
-            //  send update information to update manager
-            updateManager->updateOtherDeviceComponents(
-                this->isImageFileProcessed);
         }
     });
     std::cerr << "Starting Timer to allow item updaters to process images"
@@ -385,7 +387,7 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #ifndef NON_PLDM
     return 0;
 #else
-    return otherDevices.size();
+    return isImageFileProcessed.size();
 #endif
 }
 
