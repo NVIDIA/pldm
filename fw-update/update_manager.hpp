@@ -27,6 +27,7 @@ using namespace sdeventplus;
 using namespace sdeventplus::source;
 using namespace pldm::dbus_api;
 using namespace pldm;
+namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
 using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
@@ -91,39 +92,7 @@ class UpdateManager
      *         of No device detections we will set default to Active state
      * @return returns Activations state
      */
-    inline auto activatePackage()
-    {
-        namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-        // In case no device found set activation stage to active to complete
-        // task.
-        if ((deviceUpdaterMap.size() == 0) &&
-            (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
-        {
-            std::cout
-                << "Nothing to activate, Setting Activations state to Active!\n";
-            return software::Activation::Activations::Active;
-        }
-
-        startTime = std::chrono::steady_clock::now();
-        for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
-        {
-            const auto& applicableComponents = std::get<ApplicableComponents>(
-                deviceUpdaterPtr->fwDeviceIDRecord);
-            for (size_t compIndex = 0; compIndex < applicableComponents.size();
-                 compIndex++)
-            {
-                createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
-                                      compIndex, targetDetermined);
-            }
-            deviceUpdaterPtr->startFwUpdateFlow();
-        }
-        // Initiate the activate of non-pldm
-        if (!otherDeviceUpdateManager->activate())
-        {
-            return software::Activation::Activations::Failed;
-        }
-        return software::Activation::Activations::Activating;
-    }
+    software::Activation::Activations activatePackage();
 
     void clearActivationInfo();
 

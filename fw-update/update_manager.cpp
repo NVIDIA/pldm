@@ -21,7 +21,6 @@ namespace fw_update
 {
 
 namespace fs = std::filesystem;
-namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
 UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
@@ -193,6 +192,7 @@ void UpdateManager::createMessageRegistry(
 
 int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 {
+    startTime = std::chrono::steady_clock::now();
     if (activation)
     {
         if (activation->activation() ==
@@ -504,6 +504,7 @@ void UpdateManager::updateDeviceCompletion(mctp_eid_t eid, bool status)
     /* update completion map */
     deviceUpdateCompletionMap.emplace(eid, status);
 
+    updateActivationProgress();
     /* Update package completion */
     updatePackageCompletion();
     return;
@@ -554,6 +555,45 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     }
 
     return response;
+}
+
+software::Activation::Activations UpdateManager::activatePackage()
+{
+    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+    // In case no device found set activation stage to active to complete
+    // task.
+    if ((deviceUpdaterMap.size() == 0) &&
+        (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
+    {
+        std::cout
+            << "Nothing to activate, Setting Activations state to Active!\n";
+        activationProgress = std::make_unique<ActivationProgress>(
+            pldm::utils::DBusHandler::getBus(), objPath);
+        activationProgress->progress(100);
+        return software::Activation::Activations::Active;
+    }
+
+    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
+    {
+        const auto& applicableComponents = std::get<ApplicableComponents>(
+            deviceUpdaterPtr->fwDeviceIDRecord);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                compIndex++)
+        {
+            createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
+                                    compIndex, targetDetermined);
+        }
+        deviceUpdaterPtr->startFwUpdateFlow();
+    }
+    // Initiate the activate of non-pldm
+    if (!otherDeviceUpdateManager->activate())
+    {
+        if(deviceUpdaterMap.size() == 0)
+        {
+            return software::Activation::Activations::Failed;
+        }
+    }
+    return software::Activation::Activations::Activating;
 }
 
 void UpdateManager::clearActivationInfo()

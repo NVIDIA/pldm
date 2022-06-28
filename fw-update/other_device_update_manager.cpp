@@ -55,6 +55,7 @@ Server::Activation::Activations
 
 bool OtherDeviceUpdateManager::activate()
 {
+    bool activationStatus = true;
     for (auto& x : otherDevices)
     {
         auto& path = x.first;
@@ -78,10 +79,11 @@ bool OtherDeviceUpdateManager::activate()
                 updateManager->transferFailed,
                 uuidMappings[x.second->uuid].componentName,
                 uuidMappings[x.second->uuid].version, resolution);
-            return false;
+            updateManager->updateOtherDeviceCompletion(x.second->uuid, false);
+            activationStatus = false;
         }
     }
-    return true;
+    return activationStatus;
 }
 
 void OtherDeviceUpdateManager::onActivationChangedMsg(

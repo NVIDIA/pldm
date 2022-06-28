@@ -686,7 +686,6 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
             std::cout << "Component apply complete, EID=" << unsigned(eid)
                     << ", COMPONENT_VERSION=" << compVersion << "\n";
         }
-        updateManager->updateActivationProgress();
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex,
             updateManager->awaitToActivate,
@@ -771,6 +770,7 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
         // Handle error scenario
         std::cerr << "No response received for ActivateFirmware, EID="
                   << unsigned(eid) << "\n";
+        updateManager->updateDeviceCompletion(eid, false);
         return;
     }
 
