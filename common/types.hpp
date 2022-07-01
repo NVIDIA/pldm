@@ -53,9 +53,9 @@ using VendorDefinedDescriptorTitle = std::string;
 using VendorDefinedDescriptorData = std::vector<uint8_t>;
 using VendorDefinedDescriptorInfo =
     std::tuple<VendorDefinedDescriptorTitle, VendorDefinedDescriptorData>;
-using Descriptors =
-    std::map<DescriptorType,
-             std::variant<DescriptorData, VendorDefinedDescriptorInfo>>;
+using DescriptorValue =
+    std::variant<DescriptorData, VendorDefinedDescriptorInfo>;
+using Descriptors = std::multiset<std::pair<DescriptorType, DescriptorValue>>;
 
 using DescriptorMap = std::unordered_map<EID, Descriptors>;
 

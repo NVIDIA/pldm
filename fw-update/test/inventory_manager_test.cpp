@@ -186,3 +186,101 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponseErrorCC)
     inventoryManager.getFirmwareParameters(1, responseMsg, respPayloadLength);
     EXPECT_EQ(outComponentInfoMap.size(), 0);
 }
+
+TEST_F(InventoryManagerTest, MultipleIdSameTypeIdentifiers)
+{
+    constexpr size_t respPayloadLength1 = 68;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength1>
+        queryDeviceIdentifiersResp1{
+            0x00, 0x00, 0x00, 0x00, 0x3E, 0x00, 0x00, 0x00, 0x05, 0x01, 0x00,
+            0x04, 0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x01, 0x00, 0x04, 0x00, 0x0a,
+            0x0b, 0x0c, 0x0e, 0x02, 0x00, 0x10, 0x00, 0x12, 0x44, 0xd2, 0x64,
+            0x8d, 0x7d, 0x47, 0x18, 0xa0, 0x30, 0xfc, 0x8a, 0x56, 0x58, 0x7d,
+            0x5b, 0xFF, 0xFF, 0x0B, 0x00, 0x01, 0x07, 0x4f, 0x70, 0x65, 0x6e,
+            0x42, 0x4d, 0x43, 0x01, 0x02, 0xFF, 0xFF, 0x07, 0x00, 0x01, 0x03,
+            0x53, 0x4B, 0x55, 0x01, 0x03};
+    auto responseMsg1 =
+        reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp1.data());
+    inventoryManager.queryDeviceIdentifiers(1, responseMsg1,
+                                            respPayloadLength1);
+
+    DescriptorMap descriptorMap1{
+        {0x01,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0x0d}},
+          {PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0x0e}},
+          {PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x12, 0x44, 0xd2, 0x64, 0x8d, 0x7d, 0x47, 0x18,
+                                0xa0, 0x30, 0xfc, 0x8a, 0x56, 0x58, 0x7d,
+                                0x5b}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("SKU", std::vector<uint8_t>{0x01, 0x03})}}}};
+
+    EXPECT_EQ(outDescriptorMap.size(), descriptorMap1.size());
+    EXPECT_EQ(outDescriptorMap, descriptorMap1);
+}
+
+TEST_F(InventoryManagerTest, MultipleIdSameTypeInvalidIdentifiers)
+{
+    constexpr size_t respPayloadLength1 = 49;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength1>
+        queryDeviceIdentifiersResp1{
+            0x00, 0x00, 0x00, 0x00, 0x2b, 0x00, 0x00, 0x00, 0x03, 0x01, 0x00,
+            0x04, 0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x02, 0x00, 0x10, 0x00, 0x12,
+            0x44, 0xd2, 0x64, 0x8d, 0x7d, 0x47, 0x18, 0xa0, 0x30, 0xfc, 0x8a,
+            0x56, 0x58, 0x7d, 0x5b, 0xFF, 0xFF, 0x0B, 0x00, 0x01, 0x07, 0x4f,
+            0x70, 0x65, 0x6e, 0x42, 0x4d, 0x43, 0x01, 0x02};
+    auto responseMsg1 =
+        reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp1.data());
+    inventoryManager.queryDeviceIdentifiers(1, responseMsg1,
+                                            respPayloadLength1);
+
+    DescriptorMap descriptorMap1{
+        {0x01,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
+          {PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x12, 0x44, 0xd2, 0x64, 0x8d, 0x7d, 0x47, 0x18,
+                                0xa0, 0x30, 0xfc, 0x8a, 0x56, 0x58, 0x7d,
+                                0x5b}},
+          {PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x12, 0x44, 0xd2, 0x64, 0x8d, 0x7d}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
+
+    EXPECT_EQ(outDescriptorMap.size(), descriptorMap1.size());
+    EXPECT_NE(outDescriptorMap, descriptorMap1);
+
+    constexpr size_t respPayloadLength2 = 26;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength2>
+        queryDeviceIdentifiersResp2{
+            0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x01, 0x02,
+            0x00, 0x10, 0x00, 0xF0, 0x18, 0x87, 0x8C, 0xCB, 0x7D, 0x49,
+            0x43, 0x98, 0x00, 0xA0, 0x2F, 0x59, 0x9A, 0xCA, 0x02};
+    auto responseMsg2 =
+        reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp2.data());
+    inventoryManager.queryDeviceIdentifiers(2, responseMsg2,
+                                            respPayloadLength2);
+    DescriptorMap descriptorMap2{
+        {0x01,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
+          {PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x12, 0x44, 0xd2, 0x64, 0x8d, 0x7d, 0x47, 0x18,
+                                0xa0, 0x30, 0xfc, 0x8a, 0x56, 0x58, 0x7d,
+                                0x5b}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x56})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}},
+        {0x02,
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0xF0, 0x18, 0x87, 0x8C, 0xCB, 0x7D, 0x49, 0x43,
+                                0x98, 0x00, 0xA0, 0x2F, 0x59, 0x9A, 0xCA,
+                                0x02}}}}};
+    EXPECT_EQ(outDescriptorMap.size(), descriptorMap2.size());
+    EXPECT_NE(outDescriptorMap, descriptorMap2);
+}

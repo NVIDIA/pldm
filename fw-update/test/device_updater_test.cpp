@@ -6,6 +6,7 @@
 #include "fw-update/package_parser.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
+
 #include <sdeventplus/test/sdevent.hpp>
 
 #include <gmock/gmock.h>
@@ -21,12 +22,11 @@ class DeviceUpdaterTest : public testing::Test
         package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(pldm::utils::DBusHandler::getBus(),
-            "/xyz/openbmc_project/pldm"),
+                          "/xyz/openbmc_project/pldm"),
         reqHandler(fd, event, dbusImplRequester, false, 90000,
-            std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
-        updateManager(event, reqHandler, dbusImplRequester,
-            descriptorMap, componentInfoMap, componentNameMap,
-        true)
+                   std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
+        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+                      componentInfoMap, componentNameMap, true)
     {
         fwDeviceIDRecord = {
             1,
