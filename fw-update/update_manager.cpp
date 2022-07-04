@@ -701,10 +701,12 @@ void UpdateManager::updateOtherDeviceComponents(
 void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status)
 {
     /* update completion status map */
-    otherDeviceCompleted.emplace(uuid, status);
-
-    updateActivationProgress();
-    updatePackageCompletion();
+    if (otherDeviceCompleted.find(uuid) == otherDeviceCompleted.end())
+    {
+        otherDeviceCompleted.emplace(uuid, status);
+        updateActivationProgress();
+        updatePackageCompletion();
+    }
 }
 
 } // namespace fw_update
