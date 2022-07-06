@@ -4,6 +4,7 @@
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 
+#include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
@@ -59,7 +60,8 @@ class DeviceUpdater
         fwDeviceIDRecord(fwDeviceIDRecord),
         eid(eid), package(package), compImageInfos(compImageInfos),
         compInfo(compInfo), compIdNameInfo(compIdNameInfo),
-        maxTransferSize(maxTransferSize), updateManager(updateManager)
+        maxTransferSize(maxTransferSize), updateManager(updateManager),
+        reqFwDataTimer(nullptr)
     {}
 
     /** @brief Start the firmware update flow for the FD
@@ -240,6 +242,45 @@ class DeviceUpdater
      */
     void printBuffer(bool isTx, const pldm_msg* buffer,
                     size_t bufferLen, const std::string& message);
+
+    /**
+     * @brief Timeout in seconds for the UA to cancel the component update if no
+     * command is received from the FD during component image transfer stage
+     *
+     */
+    auto static constexpr updateTimeoutSeconds = 60;
+    /**
+     * @brief map to hold component update status. true - success, false -
+     * cancelled
+     *
+     */
+    std::map<size_t, bool> componentUpdateStatus;
+    /**
+     * @brief timer to handle RequestFirmwareData timeout(UA_T2)
+     *
+     */
+    std::unique_ptr<phosphor::Timer> reqFwDataTimer;
+
+    /**
+     * @brief timeout handler for requestFirmwareData timeout (UA_T2)
+     *
+     */
+    void createRequestFwDataTimer();
+
+    /**
+     * @brief send cancel update component request
+     *
+     */
+    void sendcancelUpdateComponentRequest();
+    /**
+     * @brief cancel update component response handler
+     *
+     * @param[in] eid - mctp endpoint id
+     * @param[in] response - cancel update response
+     * @param[in] respMsgLen - response length
+     */
+    void cancelUpdateComponent(mctp_eid_t eid, const pldm_msg* response,
+                               size_t respMsgLen);
 };
 
 } // namespace fw_update
