@@ -720,6 +720,7 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
     }
     else
     {
+        updateManager->updateActivationProgress(); // for previous component
         componentIndex++;
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
