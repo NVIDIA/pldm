@@ -572,23 +572,24 @@ software::Activation::Activations UpdateManager::activatePackage()
         activationProgress->progress(100);
         return software::Activation::Activations::Active;
     }
-
+    activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
+        pldm::utils::DBusHandler::getBus(), objPath, this);
     for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
     {
-        const auto& applicableComponents = std::get<ApplicableComponents>(
-            deviceUpdaterPtr->fwDeviceIDRecord);
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(deviceUpdaterPtr->fwDeviceIDRecord);
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
-                compIndex++)
+             compIndex++)
         {
             createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
-                                    compIndex, targetDetermined);
+                                  compIndex, targetDetermined);
         }
         deviceUpdaterPtr->startFwUpdateFlow();
     }
     // Initiate the activate of non-pldm
     if (!otherDeviceUpdateManager->activate())
     {
-        if(deviceUpdaterMap.size() == 0)
+        if (deviceUpdaterMap.size() == 0)
         {
             return software::Activation::Activations::Failed;
         }
@@ -600,6 +601,7 @@ void UpdateManager::clearActivationInfo()
 {
     activation.reset();
     activationProgress.reset();
+    activationBlocksTransition.reset();
     objPath.clear();
     fwDeviceIDRecords.clear();
 
@@ -664,6 +666,7 @@ void UpdateManager::updatePackageCompletion()
                                                                startTime)
                          .count()
                   << " ms\n";
+        activationBlocksTransition.reset();
     }
 }
 
@@ -707,6 +710,11 @@ void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status)
         updateActivationProgress();
         updatePackageCompletion();
     }
+}
+
+void UpdateManager::resetActivationBlocksTransition()
+{
+    activationBlocksTransition.reset();
 }
 
 } // namespace fw_update

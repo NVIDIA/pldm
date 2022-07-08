@@ -37,6 +37,7 @@ using TotalComponentUpdates = size_t;
 class Activation;
 class ActivationProgress;
 class UpdatePolicy;
+class ActivationBlocksTransition;
 
 class UpdateManager
 {
@@ -239,6 +240,12 @@ class UpdateManager
      */
     void updatePackageCompletion();
 
+    /**
+     * @brief reset activation block transition to disable bmc reboot guard
+     *
+     */
+    void resetActivationBlocksTransition();
+
     const std::string transferFailed{"Update.1.0.TransferFailed"};
     const std::string transferringToComponent{
         "Update.1.0.TransferringToComponent"};
@@ -263,6 +270,7 @@ class UpdateManager
     Watch watch;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;
+    std::unique_ptr<ActivationBlocksTransition> activationBlocksTransition;
     std::unique_ptr<UpdatePolicy> updatePolicy;
     std::string objPath;
 

@@ -5,10 +5,14 @@
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
+#include <xyz/openbmc_project/Software/ActivationBlocksTransition/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
 #include <xyz/openbmc_project/Software/UpdatePolicy/server.hpp>
 
 #include <string>
+constexpr auto systemdBusname = "org.freedesktop.systemd1";
+constexpr auto systemdInterface = "org.freedesktop.systemd1.Manager";
+constexpr auto systemdPath = "/org/freedesktop/systemd1";
 
 namespace pldm
 {
@@ -24,6 +28,9 @@ using DeleteIntf = sdbusplus::server::object::object<
     sdbusplus::xyz::openbmc_project::Object::server::Delete>;
 using UpdatePolicyIntf = sdbusplus::server::object::object<
     sdbusplus::xyz::openbmc_project::Software::server::UpdatePolicy>;
+using ActivationBlocksTransitionInherit = sdbusplus::server::object::object<
+    sdbusplus::xyz::openbmc_project::Software::server::
+        ActivationBlocksTransition>;
 
 /** @class ActivationProgress
  *
@@ -118,6 +125,7 @@ class Activation : public ActivationIntf
             if (state == Activations::Failed)
             {
                 std::cerr << "Activation failed setting activation to fail ";
+                updateManager->resetActivationBlocksTransition();
             }
         }
         else if (value == Activations::Active || value == Activations::Failed)
@@ -177,6 +185,96 @@ class UpdatePolicy : public UpdatePolicyIntf
         UpdatePolicyIntf(bus, objPath.c_str(), action::emit_interface_added)
 
     {}
+};
+
+/**
+ * @brief activation block transition implementation
+ *
+ */
+class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
+{
+  public:
+    /**
+     * @brief Construct a new Activation Blocks Transition object
+     *
+     * @param bus
+     * @param path
+     * @param updateManager
+     */
+    ActivationBlocksTransition(sdbusplus::bus::bus& bus,
+                               const std::string& path,
+                               UpdateManager* updateManager) :
+        ActivationBlocksTransitionInherit(bus, path.c_str(),
+                                          action::emit_interface_added),
+        bus(bus), updateManager(updateManager)
+    {
+        enableRebootGuard();
+    }
+
+    /**
+     * @brief Destroy the Activation Blocks Transition object
+     *
+     */
+    ~ActivationBlocksTransition()
+    {
+        disableRebootGuard();
+    }
+
+  private:
+    sdbusplus::bus::bus& bus;
+    UpdateManager* updateManager;
+
+    /**
+     * @brief Enable rebootguard
+     *
+     */
+    void enableRebootGuard()
+    {
+        if (updateManager->fwDebug)
+        {
+            std::cout
+                << "Activating PLDM firmware update package - BMC reboots are disabled."
+                << "\n";
+        }
+        try
+        {
+            auto method = bus.new_method_call(systemdBusname, systemdPath,
+                                              systemdInterface, "StartUnit");
+            method.append("reboot-guard-enable.service", "replace");
+            bus.call_noreply_noerror(method);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error starting service,"
+                      << "ERROR=" << e.what() << "\n";
+        }
+    }
+
+    /**
+     * @brief disable reboot guard
+     *
+     */
+    void disableRebootGuard()
+    {
+        if (updateManager->fwDebug)
+        {
+            std::cout
+                << "Activating PLDM firmware update package - BMC reboots are re-enabled."
+                << "\n";
+        }
+        try
+        {
+            auto method = bus.new_method_call(systemdBusname, systemdPath,
+                                              systemdInterface, "StartUnit");
+            method.append("reboot-guard-disable.service", "replace");
+            bus.call_noreply_noerror(method);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error starting service,"
+                      << "ERROR=" << e.what() << "\n";
+        }
+    }
 };
 
 } // namespace fw_update
