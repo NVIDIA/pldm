@@ -290,6 +290,12 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 
                 const auto& applicableCompVec =
                     std::get<ApplicableComponents>(fwDeviceIDRecord);
+                if (applicableCompVec.size() == 0)
+                {
+                    std::cerr << "Invalid applicable components"
+                              << "\n";
+                    continue;
+                }
                 const auto& componentImageInfo =
                     componentImageInfos[applicableCompVec[0]];
                 const auto& version = std::get<7>(componentImageInfo);
