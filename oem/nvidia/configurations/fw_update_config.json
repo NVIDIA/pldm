@@ -3,371 +3,371 @@
         {
             "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_FPGA",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_FPGA_0",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/FPGA"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/FPGA_0"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_FPGA_Firmware": 65280
+                "HGX_FW_ERoT_FPGA_0": 65280
             },
             "component_info": {
-                "ERoT_FPGA_Firmware": 65280,
-                "FPGAFirmware": 80
+                "HGX_FW_ERoT_FPGA_0": 65280,
+                "HGX_FW_FPGA_0": 80
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8361-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU0",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_0",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_0"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU0_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_0": 65280
             },
             "component_info": {
-                "ERoT_GPU0_Firmware": 65280,
-                "GPU0Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_0": 65280,
+                "HGX_FW_GPU_SXM_0": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8362-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU1",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_1",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU1"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_1"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU1_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_1": 65280
             },
             "component_info": {
-                "ERoT_GPU1_Firmware": 65280,
-                "GPU1Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_1": 65280,
+                "HGX_FW_GPU_SXM_1": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8363-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU2",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_2",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU2"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_2"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU2_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_2": 65280
             },
             "component_info": {
-                "ERoT_GPU2_Firmware": 65280,
-                "GPU2Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_2": 65280,
+                "HGX_FW_GPU_SXM_2": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8364-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU3",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_3",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU3"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_3"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU3_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_3": 65280
             },
             "component_info": {
-                "ERoT_GPU3_Firmware": 65280,
-                "GPU3Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_3": 65280,
+                "HGX_FW_GPU_SXM_3": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8365-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU4",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_4",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU4"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_4"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU4_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_4": 65280
             },
             "component_info": {
-                "ERoT_GPU4_Firmware": 65280,
-                "GPU4Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_4": 65280,
+                "HGX_FW_GPU_SXM_4": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8366-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU5",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_5",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU5"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_5"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU5_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_5": 65280
             },
             "component_info": {
-                "ERoT_GPU5_Firmware": 65280,
-                "GPU5Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_5": 65280,
+                "HGX_FW_GPU_SXM_5": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8367-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU6",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_6",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU6"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_6"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU6_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_6": 65280
             },
             "component_info": {
-                "ERoT_GPU6_Firmware": 65280,
-                "GPU6Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_6": 65280,
+                "HGX_FW_GPU_SXM_6": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8368-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_GPU7",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_7",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU7"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_7"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_GPU7_Firmware": 65280
+                "HGX_FW_ERoT_GPU_SXM_7": 65280
             },
             "component_info": {
-                "ERoT_GPU7_Firmware": 65280,
-                "GPU7Firmware": 32
+                "HGX_FW_ERoT_GPU_SXM_7": 65280,
+                "HGX_FW_GPU_SXM_7": 32
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c836b-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_HMC",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_HMC_0",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_HMC_Firmware": 65280
+                "HGX_FW_ERoT_HMC_0": 65280
             },
             "component_info": {
-                "ERoT_HMC_Firmware": 65280,
-                "HMC_Firmware": 16
+                "HGX_FW_ERoT_HMC_0": 65280,
+                "HGX_FW_HMC_0": 16
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c836c-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_NVSwitch0",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_0",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_0"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_NVSwitch0_Firmware": 65280
+                "HGX_FW_ERoT_NVSwitch_0": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch0_Firmware": 65280,
-                "NVSwitch0Firmware": 112
+                "HGX_FW_ERoT_NVSwitch_0": 65280,
+                "HGX_FW_NVSwitch_0": 112
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c836d-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_NVSwitch1",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_1",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch1"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_1/Switches/NVSwitch_1"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_NVSwitch1_Firmware": 65280
+                "HGX_FW_ERoT_NVSwitch_1": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch1_Firmware": 65280,
-                "NVSwitch1Firmware": 112
+                "HGX_FW_ERoT_NVSwitch_1": 65280,
+                "HGX_FW_NVSwitch_1": 112
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c836e-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_NVSwitch2",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_2",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch2"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_2/Switches/NVSwitch_2"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_NVSwitch2_Firmware": 65280
+                "HGX_FW_ERoT_NVSwitch_2": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch2_Firmware": 65280,
-                "NVSwitch2Firmware": 112
+                "HGX_FW_ERoT_NVSwitch_2": 65280,
+                "HGX_FW_NVSwitch_2": 112
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c836f-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_NVSwitch3",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_3",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/NVLinkFabric/Switches/NVSwitch3"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_3/Switches/NVSwitch_3"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_NVSwitch3_Firmware": 65280
+                "HGX_FW_ERoT_NVSwitch_3": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch3_Firmware": 65280,
-                "NVSwitch3Firmware": 112
+                "HGX_FW_ERoT_NVSwitch_3": 65280,
+                "HGX_FW_NVSwitch_3": 112
             }
         },
         {
             "mctp_endpoint_uuid": "ad4c8370-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT_PCIeSwitch",
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_PCIeSwitch_0",
                 "associations": [
                     {
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
                     },
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/PCIeSwitchTopology/Switches/PCIeSwitch0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_PCIeSwitchTopology_0/Switches/PCIeSwitch_0"
                     }
                 ]
             },
             "firmware_inventory": {
-                "ERoT_PCIeSwitch_Firmware": 65280
+                "HGX_FW_ERoT_PCIeSwitch_0": 65280
             },
             "component_info": {
-                "ERoT_PCIeSwitch_Firmware": 65280,
-                "PCIeSwitch0Firmware": 64
+                "HGX_FW_ERoT_PCIeSwitch_0": 65280,
+                "HGX_FW_PCIeSwitch_0": 64
             }
         }
     ]
