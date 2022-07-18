@@ -266,7 +266,8 @@
                 "ERoT_NVSwitch0_Firmware": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch0_Firmware": 65280
+                "ERoT_NVSwitch0_Firmware": 65280,
+                "NVSwitch0Firmware": 112
             }
         },
         {
@@ -290,7 +291,8 @@
                 "ERoT_NVSwitch1_Firmware": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch1_Firmware": 65280
+                "ERoT_NVSwitch1_Firmware": 65280,
+                "NVSwitch1Firmware": 112
             }
         },
         {
@@ -314,7 +316,8 @@
                 "ERoT_NVSwitch2_Firmware": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch2_Firmware": 65280
+                "ERoT_NVSwitch2_Firmware": 65280,
+                "NVSwitch2Firmware": 112
             }
         },
         {
@@ -338,7 +341,8 @@
                 "ERoT_NVSwitch3_Firmware": 65280
             },
             "component_info": {
-                "ERoT_NVSwitch3_Firmware": 65280
+                "ERoT_NVSwitch3_Firmware": 65280,
+                "NVSwitch3Firmware": 112
             }
         },
         {
@@ -350,6 +354,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/Baseboard"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/PCIeSwitchTopology/Switches/PCIeSwitch0"
                     }
                 ]
             },
@@ -357,7 +366,8 @@
                 "ERoT_PCIeSwitch_Firmware": 65280
             },
             "component_info": {
-                "ERoT_PCIeSwitch_Firmware": 65280
+                "ERoT_PCIeSwitch_Firmware": 65280,
+                "PCIeSwitch0Firmware": 64
             }
         }
     ]

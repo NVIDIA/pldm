@@ -55,7 +55,6 @@ class UpdateManager
         Requester& requester, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap,
-        const ComponentSkipList& compSkipList,
         bool fwDebug);
 
     /** @brief Handle PLDM request for the commands in the FW update
@@ -111,7 +110,6 @@ class UpdateManager
      *  @param[in] componentNameMap - Match components on a device to component
      *                                name and will be used for target filtering
      *  @param[in] objectPaths - Software object paths used for target filtering
-     *  @param[in] componentSkipList - List of components to skip
      *  @param[out] outFwDeviceIDRecords - Firmware device descriptors derived
      *                                     from the package after applying
      *                                     target filtering
@@ -127,7 +125,6 @@ class UpdateManager
         const ComponentImageInfos& compImageInfos,
         const ComponentNameMap& componentNameMap,
         const std::vector<sdbusplus::message::object_path>& objectPaths,
-        const ComponentSkipList& compSkipList,
         FirmwareDeviceIDRecords& outFwDeviceIDRecords,
         TotalComponentUpdates& totalNumComponentUpdates);
 
@@ -265,8 +262,6 @@ class UpdateManager
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
-    /** @brief Component skip list */
-    const ComponentSkipList& compSkipList;
     Watch watch;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;

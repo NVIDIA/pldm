@@ -57,7 +57,7 @@ class Manager
                      std::bind_front(&Manager::createInventory, this),
                      descriptorMap, componentInfoMap),
         updateManager(event, handler, requester, descriptorMap,
-                      componentInfoMap, componentNameMap, compSkipList, fwDebug),
+                      componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
@@ -88,12 +88,6 @@ class Manager
             if (componentNameMapInfo.contains(uuid))
             {
                 componentNameMap[eid] = componentNameMapInfo[uuid];
-            }
-
-            if (mctpUUIDSkipList.contains(uuid))
-            {
-                compSkipList.emplace(
-                    std::make_pair(eid, skipComponentIdentifier));
             }
         }
     }
@@ -153,19 +147,6 @@ class Manager
 
     /** @brief Component information to create message registries */
     ComponentNameMap componentNameMap;
-
-    const std::string LS10ERoT0 = "ad4c836c-c54c-11eb-8529-0242ac130003";
-    const std::string LS10ERoT1 = "ad4c836d-c54c-11eb-8529-0242ac130003";
-    const std::string LS10ERoT2 = "ad4c836e-c54c-11eb-8529-0242ac130003";
-    const std::string LS10ERoT3 = "ad4c836f-c54c-11eb-8529-0242ac130003";
-    const std::string PEXSwERoT = "ad4c8370-c54c-11eb-8529-0242ac130003";
-    const CompIdentifier skipComponentIdentifier = 32;
-
-    const std::set<std::string> mctpUUIDSkipList{
-        LS10ERoT0, LS10ERoT1, LS10ERoT2, LS10ERoT3, PEXSwERoT};
-
-    /** @brief Component skip list */
-    ComponentSkipList compSkipList;
 
     /** @brief Device inventory D-Bus object manager */
     device_inventory::Manager deviceInventoryManager;

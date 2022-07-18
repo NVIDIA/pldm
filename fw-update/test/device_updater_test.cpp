@@ -25,7 +25,7 @@ class DeviceUpdaterTest : public testing::Test
         reqHandler(fd, event, dbusImplRequester, false, 90000,
             std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester,
-            descriptorMap, componentInfoMap, componentNameMap, compSkipList,
+            descriptorMap, componentInfoMap, componentNameMap,
         true)
     {
         fwDeviceIDRecord = {
@@ -59,7 +59,6 @@ class DeviceUpdaterTest : public testing::Test
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    ComponentSkipList compSkipList;
     UpdateManager updateManager;
 };
 
