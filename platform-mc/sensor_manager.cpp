@@ -133,6 +133,14 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
         sensor->handleErrGetSensorReading();
         return;
     }
+    if (completionCode != PLDM_SUCCESS)
+    {
+        std::cerr << "Failed to decode response of GetSensorReading, EID="
+                  << unsigned(eid) << ", CC=" << unsigned(completionCode)
+                  << "\n";
+        sensor->handleErrGetSensorReading();
+        return;
+    }
 
     switch (sensorOperationalState)
     {
