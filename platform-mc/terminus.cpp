@@ -381,9 +381,17 @@ void Terminus::addNumericSensor(
         }
     }
 
-    auto sensor = std::make_shared<NumericSensor>(_eid, _tid, true, pdr,
-                                                  sensorName, inventoryPath);
-    numericSensors.emplace_back(sensor);
+    try
+    {
+        auto sensor = std::make_shared<NumericSensor>(
+            _eid, _tid, true, pdr, sensorName, inventoryPath);
+        numericSensors.emplace_back(sensor);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << " Failed to create NumericSensor. ERROR =" << e.what()
+                  << " sensorName=" << sensorName << std::endl;
+    }
 }
 
 } // namespace platform_mc
