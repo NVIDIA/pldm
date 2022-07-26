@@ -58,40 +58,60 @@ void TerminusManager::unmapTID(uint8_t tid)
     tidPool.at(tid) = PLDM_EID_NULL;
 }
 
-requester::Coroutine
-    TerminusManager::discoverTerminusTask(const MctpInfos mctpInfos)
+requester::Coroutine TerminusManager::discoverTerminusTask()
 {
-    // remove absent terminus
-    for (auto it = termini.begin(); it != termini.end();)
+    sensorManager.stopPolling();
+
+    while (!queuedMctpInfos.empty())
     {
-        bool found = false;
-        for (auto& mctpInfo : mctpInfos)
+        const MctpInfos& mctpInfos = queuedMctpInfos.front();
+        // remove absent terminus
+        for (auto it = termini.begin(); it != termini.end();)
         {
-            if (std::get<0>(mctpInfo) == it->first)
+            bool found = false;
+            for (auto& mctpInfo : mctpInfos)
             {
-                found = true;
-                break;
+                if (std::get<0>(mctpInfo) == it->first)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                termini.erase(it++);
+            }
+            else
+            {
+                it++;
             }
         }
-        if (!found)
+
+        for (auto& mctpInfo : mctpInfos)
         {
-            termini.erase(it++);
+            auto it = termini.find(std::get<0>(mctpInfo));
+            if (it != termini.end())
+            {
+                continue;
+            }
+            co_await initTerminus(mctpInfo);
         }
-        else
+
+        for (auto& [eid, terminus] : termini)
         {
-            it++;
+            if (terminus->doesSupport(PLDM_PLATFORM))
+            {
+                auto rc = co_await getPDRs(terminus);
+                if (!rc)
+                {
+                    terminus->parsePDRs();
+                }
+            }
         }
+        queuedMctpInfos.pop();
     }
 
-    for (auto& mctpInfo : mctpInfos)
-    {
-        auto it = termini.find(std::get<0>(mctpInfo));
-        if (it != termini.end())
-        {
-            continue;
-        }
-        co_await initTerminus(mctpInfo);
-    }
+    sensorManager.startPolling();
 }
 
 requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
@@ -158,16 +178,7 @@ requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
         }
     }
 
-    auto terminus = std::make_shared<Terminus>(eid, tid, supportedTypes);
-    if (terminus->doesSupport(PLDM_PLATFORM))
-    {
-        rc = co_await getPDRs(terminus);
-        if (!rc)
-        {
-            terminus->parsePDRs();
-        }
-    }
-    termini[eid] = terminus;
+    termini[eid] = std::make_shared<Terminus>(eid, tid, supportedTypes);
 
     co_return PLDM_SUCCESS;
 }

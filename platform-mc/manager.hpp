@@ -35,8 +35,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
                      Requester& requester) :
-        terminusManager(event, handler, requester, termini),
-        sensorManager(event, handler, requester, termini)
+        sensorManager(event, handler, requester, termini),
+        terminusManager(event, handler, requester, termini, sensorManager)
     {}
 
     void handleMCTPEndpoints(const MctpInfos& mctpInfos)
@@ -64,8 +64,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief List of discovered termini */
     std::map<mctp_eid_t, std::shared_ptr<Terminus>> termini{};
 
-    TerminusManager terminusManager;
     SensorManager sensorManager;
+    TerminusManager terminusManager;
 };
 } // namespace platform_mc
 } // namespace pldm

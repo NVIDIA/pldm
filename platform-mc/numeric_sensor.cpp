@@ -84,7 +84,7 @@ NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
     }
 
     elapsedTime = 0;
-    updateTime = ceil(pdr->update_interval);
+    updateTime = pdr->update_interval * 10000000;
 
     valueIntf = std::make_shared<ValueIntf>(bus, path.c_str());
     valueIntf->maxValue(maxValue);

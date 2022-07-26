@@ -51,25 +51,9 @@ class SensorManagerTest : public testing::Test
 
 TEST_F(SensorManagerTest, sensorPollingTest)
 {
-    // pdr1 set its update_interval to 2 seconds. So sendGetSensorReading()
-    // should be called for polling pdr1 sensor total 5 times in 10 seconds.
-
-    mctp_eid_t eid = 1;
-    uint64_t supportedTypes = PLDM_BASE | PLDM_PLATFORM;
-    auto terminus =
-        std::make_shared<pldm::platform_mc::Terminus>(eid, 1, supportedTypes);
-
-    auto pdr1 = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    pdr1->base_unit = PLDM_SENSOR_UNIT_DEGRESS_C;
-    pdr1->sensor_data_size = PLDM_SENSOR_DATA_SIZE_UINT8;
-    pdr1->update_interval = 2;
-
-    terminus->addNumericSensor(pdr1);
-    termini[eid] = terminus;
-
-    EXPECT_CALL(sensorManager, sendGetSensorReading(_))
-        .Times(Between(4, 6))
+    EXPECT_CALL(sensorManager, doSensorPolling())
+        .Times(Between(9, 11))
         .WillRepeatedly(Return());
     sensorManager.startPolling();
-    runEventLoopForSeconds(10);
+    runEventLoopForSeconds(11);
 }

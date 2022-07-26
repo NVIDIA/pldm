@@ -53,10 +53,13 @@ class NumericSensor
     uint16_t sensorId;
 
     /** @brief  The time since last getSensorReading command */
-    uint32_t elapsedTime;
+    uint64_t elapsedTime;
 
     /** @brief  The time of sensor update interval in second */
-    uint32_t updateTime;
+    uint64_t updateTime;
+
+    /** @brief  numeric sensor PDR */
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr;
 
     /** @brief The function called by Sensor Manager to set sensor to
      * error status.
@@ -76,7 +79,6 @@ class NumericSensor
 
     double maxValue;
     double minValue;
-    std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr;
 };
 } // namespace platform_mc
 } // namespace pldm

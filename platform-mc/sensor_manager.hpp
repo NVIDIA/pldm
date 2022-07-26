@@ -38,7 +38,7 @@ class SensorManager
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
         event(event),
         handler(handler), requester(requester), termini(termini),
-        pollingTime(SENSOR_POLLING_TIME){};
+        pollingTime(SENSOR_POLLING_TIME), inSensorPolling(false){};
 
     /** @brief starting sensor polling task
      */
@@ -49,15 +49,26 @@ class SensorManager
     void stopPolling();
 
   protected:
+    /** @brief start a coroutine for polling all sensors.
+     */
+    virtual void doSensorPolling()
+    {
+        if (!inSensorPolling)
+        {
+            doSensorPollingTask();
+        }
+    }
+
     /** @brief polling all sensors in each terminus
      */
-    void doSensorPolling();
+    requester::Coroutine doSensorPollingTask();
 
     /** @brief Sending getSensorReading command for the sensor
      *
      *  @param[in] sensor - the sensor to be updated
      */
-    virtual void sendGetSensorReading(std::shared_ptr<NumericSensor> sensor);
+    requester::Coroutine
+        getSensorReading(std::shared_ptr<NumericSensor> sensor);
 
     /** @brief Handler for GetSensorReading command response
      *
@@ -76,6 +87,7 @@ class SensorManager
 
     uint32_t pollingTime;
     std::unique_ptr<phosphor::Timer> sensorPollTimer;
+    bool inSensorPolling;
 };
 } // namespace platform_mc
 } // namespace pldm

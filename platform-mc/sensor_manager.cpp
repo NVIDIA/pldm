@@ -1,5 +1,7 @@
 #include "sensor_manager.hpp"
 
+#include "terminus_manager.hpp"
+
 namespace pldm
 {
 namespace platform_mc
@@ -31,23 +33,34 @@ void SensorManager::stopPolling()
     }
 }
 
-void SensorManager::doSensorPolling()
+requester::Coroutine SensorManager::doSensorPollingTask()
 {
+    uint64_t t0 = 0;
+    uint64_t t1 = 0;
+    uint64_t elapsed = 0;
+    uint64_t pollingTimeInUsec = pollingTime * 1000000;
+
+    inSensorPolling = true;
+    sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
     for (auto& terminus : termini)
     {
         for (auto sensor : terminus.second->numericSensors)
         {
-            sensor->elapsedTime += pollingTime;
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            elapsed = t1 - t0;
+            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
             if (sensor->elapsedTime >= sensor->updateTime)
             {
-                sendGetSensorReading(sensor);
+                co_await getSensorReading(sensor);
                 sensor->elapsedTime = 0;
             }
         }
     }
+    inSensorPolling = false;
 }
 
-void SensorManager::sendGetSensorReading(std::shared_ptr<NumericSensor> sensor)
+requester::Coroutine
+    SensorManager::getSensorReading(std::shared_ptr<NumericSensor> sensor)
 {
     auto eid = sensor->eid;
     auto sensorId = sensor->sensorId;
@@ -63,21 +76,23 @@ void SensorManager::sendGetSensorReading(std::shared_ptr<NumericSensor> sensor)
         requester.markFree(eid, instanceId);
         std::cerr << "encode_get_sensor_reading_req failed, EID="
                   << unsigned(eid) << ", RC=" << rc << std::endl;
-        return;
+        co_return rc;
     }
 
-    rc = handler.registerRequest(
-        eid, instanceId, PLDM_PLATFORM, PLDM_GET_SENSOR_READING,
-        std::move(requestMsg),
-        std::move(std::bind_front(&SensorManager::handleRespGetSensorReading,
-                                  this, sensorId)));
+    Response responseMsg{};
+    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
+                                             responseMsg);
     if (rc)
     {
-        std::cerr << "Failed to send GetSensorReading request, EID="
-                  << unsigned(eid) << " SensorID=" << unsigned(sensorId)
-                  << ", RC=" << rc << "\n ";
-        sensor->handleErrGetSensorReading();
+        std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
+                  << "\n";
+        co_return rc;
     }
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+    auto length = responseMsg.size() - sizeof(struct pldm_msg_hdr);
+    handleRespGetSensorReading(sensorId, eid, response, length);
+    co_return rc;
 }
 
 void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
@@ -114,7 +129,7 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
     }
 
     uint8_t completionCode = PLDM_SUCCESS;
-    uint8_t sensorDataSize = 0;
+    uint8_t sensorDataSize = sensor->pdr->sensor_data_size;
     uint8_t sensorOperationalState = 0;
     uint8_t sensorEventMessageEnable = 0;
     uint8_t presentState = 0;
