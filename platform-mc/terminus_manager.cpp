@@ -59,7 +59,7 @@ void TerminusManager::unmapTID(uint8_t tid)
 }
 
 requester::Coroutine
-    TerminusManager::discoverTerminusTask(const MctpInfos& mctpInfos)
+    TerminusManager::discoverTerminusTask(const MctpInfos mctpInfos)
 {
     // remove absent terminus
     for (auto it = termini.begin(); it != termini.end();)

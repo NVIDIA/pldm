@@ -83,7 +83,7 @@ class TerminusManager
      *
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine discoverTerminusTask(const MctpInfos& mctpInfos);
+    requester::Coroutine discoverTerminusTask(const MctpInfos mctpInfos);
 
     /** @brief Send getTID PLDM command to destination EID and then return the
      *         value of tid in reference paramter.
