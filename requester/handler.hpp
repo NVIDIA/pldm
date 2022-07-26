@@ -178,32 +178,66 @@ class Handler
         auto timer = std::make_unique<phosphor::Timer>(
             event.get(), instanceIdExpiryCallBack);
 
-        auto rc = request->start();
-        if (rc)
-        {
-            requester.markFree(eid, instanceId);
-            std::cerr << "Failure to send the PLDM request message"
-                      << "\n";
-            return rc;
-        }
-
-        try
-        {
-            timer->start(duration_cast<std::chrono::microseconds>(
-                instanceIdExpiryInterval));
-        }
-        catch (const std::runtime_error& e)
-        {
-            requester.markFree(eid, instanceId);
-            std::cerr << "Failed to start the instance ID expiry timer. RC = "
-                      << e.what() << "\n";
-            return PLDM_ERROR;
-        }
-
         handlers.emplace(key, std::make_tuple(std::move(request),
                                               std::move(responseHandler),
                                               std::move(timer)));
-        return rc;
+        return runRegisteredRequest(eid);
+    }
+
+    int runRegisteredRequest(mctp_eid_t eid)
+    {
+        RequestValue* toRun = nullptr;
+        uint8_t instanceId = 0;
+        for (auto& handler : handlers)
+        {
+            auto& key = handler.first;
+            auto& [request, responseHandler, timerInstance] = handler.second;
+            if (key.eid != eid)
+            {
+                continue;
+            }
+
+            if (timerInstance->isRunning())
+            {
+                // A PLDM request for the EID is running
+                return PLDM_SUCCESS;
+            }
+
+            if (toRun == nullptr)
+            {
+                // First request of the EID
+                toRun = &handler.second;
+                instanceId = key.instanceId;
+            }
+        }
+
+        if (toRun != nullptr)
+        {
+            auto& [request, responseHandler, timerInstance] = *toRun;
+            auto rc = request->start();
+            if (rc)
+            {
+                requester.markFree(eid, instanceId);
+                std::cerr << "Failure to send the PLDM request message"
+                          << "\n";
+                return rc;
+            }
+
+            try
+            {
+                timerInstance->start(duration_cast<std::chrono::microseconds>(
+                    instanceIdExpiryInterval));
+            }
+            catch (const std::runtime_error& e)
+            {
+                requester.markFree(eid, instanceId);
+                std::cerr
+                    << "Failed to start the instance ID expiry timer. RC = "
+                    << e.what() << "\n";
+                return PLDM_ERROR;
+            }
+        }
+        return PLDM_SUCCESS;
     }
 
     /** @brief Handle PLDM response message
@@ -243,6 +277,7 @@ class Handler
             // openpower-occ-control and softoff
             requester.markFree(key.eid, key.instanceId);
         }
+        runRegisteredRequest(eid);
     }
 
   private:
@@ -289,6 +324,7 @@ class Handler
             handlers.erase(key);
             removeRequestContainer.erase(key);
         }
+        runRegisteredRequest(key.eid);
     }
 };
 
