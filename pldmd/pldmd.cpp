@@ -128,8 +128,7 @@ int main(int argc, char** argv)
 
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
-    sdbusplus::server::manager::manager swObjManager(
-        bus, "/xyz/openbmc_project/software");
+    sdbusplus::server::manager::manager swObjManager(bus, "/");
     dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");
 
     event.set_watchdog(true);
