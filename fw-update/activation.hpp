@@ -126,6 +126,11 @@ class Activation : public ActivationIntf
             {
                 std::cerr << "Activation failed setting activation to fail ";
                 updateManager->resetActivationBlocksTransition();
+                updateManager->clearFirmwareUpdatePackage();
+            }
+            else if (state == Activations::Active)
+            {
+                updateManager->clearFirmwareUpdatePackage();
             }
         }
         else if (value == Activations::Active || value == Activations::Failed)

@@ -584,7 +584,7 @@ void UpdateManager::clearActivationInfo()
     deviceUpdateCompletionMap.clear();
     parser.reset();
     package.close();
-    std::filesystem::remove(fwPackageFilePath);
+    clearFirmwareUpdatePackage();
     totalNumComponentUpdates = 0;
     compUpdateCompletedCount = 0;
     otherDeviceUpdateManager.reset();
@@ -642,6 +642,7 @@ void UpdateManager::updatePackageCompletion()
                          .count()
                   << " ms\n";
         activationBlocksTransition.reset();
+        clearFirmwareUpdatePackage();
     }
 }
 
@@ -690,6 +691,11 @@ void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status)
 void UpdateManager::resetActivationBlocksTransition()
 {
     activationBlocksTransition.reset();
+}
+
+void UpdateManager::clearFirmwareUpdatePackage()
+{
+    std::filesystem::remove(fwPackageFilePath);
 }
 
 } // namespace fw_update

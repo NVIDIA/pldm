@@ -243,6 +243,11 @@ class UpdateManager
      */
     void resetActivationBlocksTransition();
 
+    /**
+     * @brief Remove firmware update package from update directory
+     *
+     */
+    void clearFirmwareUpdatePackage();
     const std::string transferFailed{"Update.1.0.TransferFailed"};
     const std::string transferringToComponent{
         "Update.1.0.TransferringToComponent"};
