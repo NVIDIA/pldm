@@ -21,7 +21,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(pldm::utils::DBusHandler::getBus(),
                           "/xyz/openbmc_project/pldm"),
-        reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
                       componentInfoMap, componentNameMap, false)
@@ -29,7 +29,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
 
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
-    int fd = -1;
+    pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
@@ -245,7 +245,7 @@ class PackageAssociationTargetFiltering : public testing::Test
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(pldm::utils::DBusHandler::getBus(),
                           "/xyz/openbmc_project/pldm"),
-        reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
                       componentInfoMap, componentNameMap, false)
@@ -253,7 +253,7 @@ class PackageAssociationTargetFiltering : public testing::Test
 
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
-    int fd = -1;
+    pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     const ComponentInfoMap componentInfoMap;
     UpdateManager updateManager;
@@ -379,7 +379,7 @@ class PackageAssociationMultipleDescSameType : public testing::Test
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(pldm::utils::DBusHandler::getBus(),
                           "/xyz/openbmc_project/pldm"),
-        reqHandler(fd, event, dbusImplRequester, false, 90000, seconds(1), 2,
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
                       componentInfoMap, componentNameMap, false)
@@ -387,7 +387,7 @@ class PackageAssociationMultipleDescSameType : public testing::Test
 
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
-    int fd = -1;
+    pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;

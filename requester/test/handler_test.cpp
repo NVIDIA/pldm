@@ -25,12 +25,14 @@ class HandlerTest : public testing::Test
         event(sdeventplus::Event::get_default()),
         dbusImplReq(pldm::utils::DBusHandler::getBus(),
                     "/xyz/openbmc_project/pldm")
-    {}
+    {
+        sockManager.registerEndpoint(0, 0, 4096);
+    }
 
-    int fd = 0;
     mctp_eid_t eid = 0;
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplReq;
+    pldm::mctp_socket::Manager sockManager;
 
     /** @brief This function runs the sd_event_run in a loop till all the events
      *         in the testcase are dispatched and exits when there are no events
@@ -74,8 +76,10 @@ class HandlerTest : public testing::Test
 
 TEST_F(HandlerTest, singleRequestResponseScenario)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(
-        fd, event, dbusImplReq, false, 90000, seconds(1), 2, milliseconds(100));
+
+    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
+                                              false, seconds(1), 2,
+                                              milliseconds(100));
     pldm::Request request{};
     auto instanceId = dbusImplReq.getInstanceId(eid);
     auto rc = reqHandler.registerRequest(
@@ -96,8 +100,9 @@ TEST_F(HandlerTest, singleRequestResponseScenario)
 
 TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(
-        fd, event, dbusImplReq, false, 90000, seconds(1), 2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
+                                              false, seconds(1), 2,
+                                              milliseconds(100));
     pldm::Request request{};
     auto instanceId = dbusImplReq.getInstanceId(eid);
     auto rc = reqHandler.registerRequest(
@@ -116,8 +121,9 @@ TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
 
 TEST_F(HandlerTest, multipleRequestResponseScenario)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(
-        fd, event, dbusImplReq, false, 90000, seconds(2), 2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
+                                              false, seconds(2), 2,
+                                              milliseconds(100));
     pldm::Request request{};
     auto instanceId = dbusImplReq.getInstanceId(eid);
     auto rc = reqHandler.registerRequest(
