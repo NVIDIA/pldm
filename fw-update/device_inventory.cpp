@@ -7,7 +7,7 @@ namespace pldm::fw_update::device_inventory
 
 Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
              const pldm::UUID& mctpUUID, const Associations& assocs) :
-    Ifaces(bus, objPath.c_str())
+    Ifaces(bus, objPath.c_str(), action::defer_emit)
 {
     Ifaces::type(ChassisType::Component, true);
     Ifaces::uuid(mctpUUID, true);

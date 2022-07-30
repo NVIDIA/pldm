@@ -7,7 +7,7 @@ namespace pldm::fw_update::fw_inventory
 
 Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
              const std::string& versionStr) :
-    Ifaces(bus, objPath.c_str())
+    Ifaces(bus, objPath.c_str(), action::defer_emit)
 {
     Ifaces::version(versionStr, true);
     Ifaces::purpose(VersionPurpose::Other, true);
