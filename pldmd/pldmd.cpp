@@ -226,7 +226,7 @@ int main(int argc, char** argv)
         event, reqHandler, invoker, *(fwManager.get()), sockManager, verbose);
 
     std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
-        std::make_unique<MctpDiscovery>(bus, fwManager.get());
+        std::make_unique<MctpDiscovery>(bus, sockHandler, fwManager.get());
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
     bus.request_name("xyz.openbmc_project.PLDM");

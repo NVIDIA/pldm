@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fw-update/manager.hpp"
+#include "pldmd/socket_handler.hpp"
 
 #include <sdbusplus/bus/match.hpp>
 
@@ -24,11 +25,13 @@ class MctpDiscovery
      *  @param[in] fwManager - pointer to the firmware manager
      */
     explicit MctpDiscovery(sdbusplus::bus::bus& bus,
+                           mctp_socket::Handler& handler,
                            fw_update::Manager* fwManager);
 
   private:
     /** @brief reference to the systemd bus */
     sdbusplus::bus::bus& bus;
+    mctp_socket::Handler& handler;
 
     fw_update::Manager* fwManager;
 
@@ -37,13 +40,27 @@ class MctpDiscovery
 
     void discoverEndpoints(sdbusplus::message::message& msg);
 
+    /** @brief Process the D-Bus MCTP endpoint info and prepare data to be used
+     *         for PLDM discovery.
+     *
+     *  @param[in] interfaces - MCTP D-Bus information
+     *  @param[out] mctpInfos - MCTP info for PLDM discovery
+     */
+    void populateMctpInfo(const dbus::InterfaceMap& interfaces,
+                          MctpInfos& mctpInfos);
+
     static constexpr uint8_t mctpTypePLDM = 1;
 
-    static constexpr std::string_view mctpEndpointIntfName{
-        "xyz.openbmc_project.MCTP.Endpoint"};
+    /** @brief MCTP endpoint interface name */
+    const std::string mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
 
+    /** @brief UUID interface name */
     static constexpr std::string_view uuidEndpointIntfName{
         "xyz.openbmc_project.Common.UUID"};
+
+    /** @brief Unix Socket interface name */
+    static constexpr std::string_view unixSocketIntfName{
+        "xyz.openbmc_project.Common.UnixSocket"};
 };
 
 } // namespace pldm
