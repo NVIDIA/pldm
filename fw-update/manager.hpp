@@ -83,7 +83,7 @@ class Manager
     void handleMCTPEndpoints(const MctpInfos& mctpInfos)
     {
         inventoryMgr.discoverFDs(mctpInfos);
-        for (const auto& [eid, uuid] : mctpInfos)
+        for (const auto& [eid, uuid, mediumType] : mctpInfos)
         {
             if (componentNameMapInfo.contains(uuid))
             {

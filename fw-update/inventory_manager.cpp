@@ -15,9 +15,21 @@ namespace fw_update
 
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
 {
-    for (const auto& [eid, uuid] : mctpInfos)
+    for (const auto& [eid, uuid, mediumType] : mctpInfos)
     {
+        if (mctpInfoMap.contains(uuid))
+        {
+            auto search = mctpInfoMap.find(uuid);
+            search->second.push({eid, mediumType});
+        }
+        else
+        {
+            std::priority_queue<MctpEidInfo> mctpEidInfo;
+            mctpEidInfo.push({eid, mediumType});
+            mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
+        }
         mctpEidMap[eid] = uuid;
+
         auto instanceId = requester.getInstanceId(eid);
         Request requestMsg(sizeof(pldm_msg_hdr) +
                            PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
@@ -240,6 +252,30 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
                              activeCompVerStr.length + pendingCompVerStr.length;
     }
     componentInfoMap.emplace(eid, std::move(componentInfo));
+
+    // If there are multiple endpoints associated with the same device, then
+    // based on a policy one MCTP endpoint is picked for firmware update, the
+    // remaining endpoints are cleared from DescriptorMap and ComponentInfoMap
+    // The default policy is to pick the MCTP endpoint where the outgoing
+    // physical medium is the fastest.
+    if (mctpInfoMap.contains(mctpEidMap[eid]))
+    {
+        auto search = mctpInfoMap.find(mctpEidMap[eid]);
+        if (search->second.size() > 1)
+        {
+            const auto& top = search->second.top();
+            for (const auto& [eidKey, uuid] : mctpEidMap)
+            {
+                if ((uuid == mctpEidMap[eid]) && (eidKey != top.eid) &&
+                    (eid != eidKey))
+                {
+                    descriptorMap.erase(eidKey);
+                    componentInfoMap.erase(eidKey);
+                    return;
+                }
+            }
+        }
+    }
 
     if (createInventoryCallBack)
     {

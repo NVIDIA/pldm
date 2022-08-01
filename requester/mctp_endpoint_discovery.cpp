@@ -119,7 +119,8 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                               mctpTypePLDM) != mctpTypes.end())
                 {
                     handler.registerMctpEndpoint(eid, type, protocol, address);
-                    mctpInfos.emplace_back(std::make_pair(eid, uuid));
+                    mctpInfos.emplace_back(
+                        std::make_tuple(eid, uuid, mediumType));
                 }
             }
         }

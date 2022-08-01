@@ -21,7 +21,8 @@ using Request = std::vector<uint8_t>;
 using Response = std::vector<uint8_t>;
 using Command = uint8_t;
 
-using MctpInfo = std::pair<EID, UUID>;
+using MctpMedium = std::string;
+using MctpInfo = std::tuple<EID, UUID, MctpMedium>;
 using MctpInfos = std::vector<MctpInfo>;
 
 namespace dbus

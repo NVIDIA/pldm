@@ -6,6 +6,8 @@
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 
+#include <queue>
+
 namespace pldm
 {
 
@@ -15,13 +17,33 @@ namespace fw_update
 using CreateInventoryCallBack = std::function<void(EID, UUID)>;
 using MctpEidMap = std::unordered_map<EID, UUID>;
 
+using Priority = int;
+static std::unordered_map<MctpMedium, Priority> mediumPriority{
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SPI", 1},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 2},
+};
+
+struct MctpEidInfo
+{
+    EID eid;
+    MctpMedium medium;
+
+    friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
+    {
+        return mediumPriority.at(lhs.medium) > mediumPriority.at(rhs.medium);
+    }
+};
+
+using MctpInfoMap = std::unordered_map<UUID, std::priority_queue<MctpEidInfo>>;
+
 /** @class InventoryManager
  *
- *  InventoryManager class manages the software inventory of firmware devices
- *  managed by the BMC. It discovers the firmware identifiers and the component
- *  details of the FD. Firmware identifiers, component details and update
- *  capabilities of FD are populated by the InventoryManager and is used for the
- *  firmware update of the FDs.
+ *  InventoryManager class manages the software inventory of firmware
+ * devices managed by the BMC. It discovers the firmware identifiers and the
+ * component details of the FD. Firmware identifiers, component details and
+ * update capabilities of FD are populated by the InventoryManager and is
+ * used for the firmware update of the FDs.
  */
 class InventoryManager
 {
@@ -113,6 +135,8 @@ class InventoryManager
 
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
+
+    MctpInfoMap mctpInfoMap;
 };
 
 } // namespace fw_update
