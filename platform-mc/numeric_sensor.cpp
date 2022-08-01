@@ -39,6 +39,15 @@ NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
         case PLDM_SENSOR_UNIT_WATTS:
             path = "/xyz/openbmc_project/sensors/power/";
             break;
+        case PLDM_SENSOR_UNIT_JOULES:
+            path = "/xyz/openbmc_project/sensors/energy/";
+            break;
+        case PLDM_SENSOR_UNIT_HERTZ:
+            path = "/xyz/openbmc_project/sensors/frequency/";
+            break;
+        case PLDM_SENSOR_UNIT_PERCENTAGE:
+            path = "/xyz/openbmc_project/sensors/utilization/";
+            break;
         default:
             throw std::runtime_error("baseUnit(" +
                                      std::to_string(pdr->base_unit) +
