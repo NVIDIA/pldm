@@ -22,31 +22,40 @@ NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
     tid(tid), sensorId(pdr->sensor_id), pdr(pdr)
 {
     std::string path;
+    SensorUnit sensorUnit = SensorUnit::DegreesC;
     switch (pdr->base_unit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
             path = "/xyz/openbmc_project/sensors/temperature/";
+            sensorUnit = SensorUnit::DegreesC;
             break;
         case PLDM_SENSOR_UNIT_VOLTS:
             path = "/xyz/openbmc_project/sensors/voltage/";
+            sensorUnit = SensorUnit::Volts;
             break;
         case PLDM_SENSOR_UNIT_AMPS:
             path = "/xyz/openbmc_project/sensors/current/";
+            sensorUnit = SensorUnit::Amperes;
             break;
         case PLDM_SENSOR_UNIT_RPM:
             path = "/xyz/openbmc_project/sensors/fan_pwm/";
+            sensorUnit = SensorUnit::RPMS;
             break;
         case PLDM_SENSOR_UNIT_WATTS:
             path = "/xyz/openbmc_project/sensors/power/";
+            sensorUnit = SensorUnit::Watts;
             break;
         case PLDM_SENSOR_UNIT_JOULES:
             path = "/xyz/openbmc_project/sensors/energy/";
+            sensorUnit = SensorUnit::Joules;
             break;
         case PLDM_SENSOR_UNIT_HERTZ:
             path = "/xyz/openbmc_project/sensors/frequency/";
+            sensorUnit = SensorUnit::Hertz;
             break;
         case PLDM_SENSOR_UNIT_PERCENTAGE:
             path = "/xyz/openbmc_project/sensors/utilization/";
+            sensorUnit = SensorUnit::Percent;
             break;
         default:
             throw std::runtime_error("baseUnit(" +
@@ -98,6 +107,7 @@ NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
     valueIntf = std::make_shared<ValueIntf>(bus, path.c_str());
     valueIntf->maxValue(maxValue);
     valueIntf->minValue(minValue);
+    valueIntf->unit(sensorUnit);
 
     availabilityIntf = std::make_shared<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
