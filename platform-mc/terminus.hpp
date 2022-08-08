@@ -7,7 +7,7 @@
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
-#include <xyz/openbmc_project/Inventory/Item/Board/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Chassis/server.hpp>
 
 using namespace pldm::pdr;
 
@@ -19,8 +19,8 @@ using SensorId = uint16_t;
 using SensorAuxiliaryNames =
     std::tuple<SensorId, uint8_t,
                std::vector<std::pair<std::string, std::string>>>;
-using InventoryItemBoardIntf = sdbusplus::server::object::object<
-    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Board>;
+using InventoryItemChassisIntf = sdbusplus::server::object::object<
+    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Chassis>;
 class TerminusManager;
 
 /**
@@ -76,7 +76,8 @@ class Terminus
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
 
-    std::shared_ptr<InventoryItemBoardIntf> inventoryItemBoardInft = nullptr;
+    std::shared_ptr<InventoryItemChassisIntf> inventoryItemChassisInft =
+        nullptr;
     std::string inventoryPath;
 };
 } // namespace platform_mc
