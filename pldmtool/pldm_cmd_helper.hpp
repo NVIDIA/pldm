@@ -112,6 +112,18 @@ class CommandInterface
     }
 
   private:
+    /** @brief Get MCTP demux daemon socket address
+     *
+     *  getMctpSockAddr does a D-Bus lookup for MCTP remote endpoint and return
+     *  the unix socket info to be used for Tx/Rx
+     *
+     *  @param[in]  eid - Request MCTP endpoint
+     *
+     *  @return On success return the type, protocol and unit socket address, on
+     *          failure the address will be empty
+     */
+    std::tuple<int, int, std::vector<uint8_t>>
+        getMctpSockInfo(uint8_t remoteEID);
     const std::string pldmType;
     const std::string commandName;
     uint8_t mctp_eid;

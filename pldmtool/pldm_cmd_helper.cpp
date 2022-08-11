@@ -176,6 +176,78 @@ void CommandInterface::exec()
     parseResponseMsg(responsePtr, responseMsg.size() - sizeof(pldm_msg_hdr));
 }
 
+std::tuple<int, int, std::vector<uint8_t>>
+    CommandInterface::getMctpSockInfo(uint8_t remoteEID)
+{
+    using namespace pldm;
+    std::set<dbus::Service> mctpCtrlServices;
+    int type;
+    int protocol;
+    std::vector<uint8_t> address{};
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    const auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
+    const auto unixSocketIntfName{"xyz.openbmc_project.Common.UnixSocket"};
+
+    try
+    {
+        const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/mctp", 0, ifaceList);
+        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+        {
+            for (const auto& [serviceName, interfaces] : mapperServiceMap)
+            {
+                dbus::ObjectValueTree objects{};
+
+                auto method = bus.new_method_call(
+                    serviceName.c_str(), "/xyz/openbmc_project/mctp",
+                    "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+                auto reply = bus.call(method);
+                reply.read(objects);
+                for (const auto& [objectPath, interfaces] : objects)
+                {
+                    if (interfaces.contains(mctpEndpointIntfName))
+                    {
+                        const auto& mctpProperties =
+                            interfaces.at(mctpEndpointIntfName);
+                        auto eid = std::get<size_t>(mctpProperties.at("EID"));
+                        if (remoteEID == eid)
+                        {
+                            if (interfaces.contains(unixSocketIntfName))
+                            {
+                                const auto& properties =
+                                    interfaces.at(unixSocketIntfName);
+                                type = std::get<size_t>(properties.at("Type"));
+                                protocol =
+                                    std::get<size_t>(properties.at("Protocol"));
+                                address = std::get<std::vector<uint8_t>>(
+                                    properties.at("Address"));
+                                if (address.empty() || !type)
+                                {
+                                    address.clear();
+                                    return {0, 0, address};
+                                }
+                                else
+                                {
+                                    return {type, protocol, address};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << "\n";
+        address.clear();
+        return {0, 0, address};
+    }
+
+    return {type, protocol, address};
+}
+
 int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
                                    std::vector<uint8_t>& responseMsg)
 {
@@ -201,16 +273,59 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
     if (mctp_eid != PLDM_ENTITY_ID)
     {
-        int fd = pldm_open();
-        if (-1 == fd)
+        auto [type, protocol, sockAddress] = getMctpSockInfo(mctp_eid);
+        if (sockAddress.empty())
         {
-            std::cerr << "failed to init mctp "
+            std::cerr << "pldmtool: Remote MCTP endpoint not found"
                       << "\n";
             return -1;
         }
+
+        int rc = 0;
+        int sockFd = socket(AF_UNIX, type, protocol);
+        if (-1 == sockFd)
+        {
+            rc = -errno;
+            std::cerr << "Failed to create the socket : RC = " << sockFd
+                      << "\n";
+            return rc;
+        }
+        Logger(pldmVerbose, "Success in creating the socket : RC = ", sockFd);
+
+        CustomFD socketFd(sockFd);
+
+        struct sockaddr_un addr
+        {};
+        addr.sun_family = AF_UNIX;
+        memcpy(addr.sun_path, sockAddress.data(), sockAddress.size());
+        rc = connect(sockFd, reinterpret_cast<struct sockaddr*>(&addr),
+                     sockAddress.size() + sizeof(addr.sun_family));
+        if (-1 == rc)
+        {
+            rc = -errno;
+            std::cerr << "Failed to connect to socket : RC = " << rc << "\n";
+            return rc;
+        }
+        Logger(pldmVerbose, "Success in connecting to socket : RC = ", rc);
+
+        auto pldmType = MCTP_MSG_TYPE_PLDM;
+        rc = write(socketFd(), &pldmType, sizeof(pldmType));
+        if (-1 == rc)
+        {
+            rc = -errno;
+            std::cerr
+                << "Failed to send message type as pldm to mctp demux daemon: RC = "
+                << rc << "\n";
+            return rc;
+        }
+        Logger(
+            pldmVerbose,
+            "Success in sending message type as pldm to mctp demux daemon : RC = ",
+            rc);
+
         uint8_t* responseMessage = nullptr;
         size_t responseMessageSize{};
-        pldm_send_recv(mctp_eid, fd, requestMsg.data() + 2,
+        pldm_send_recv(mctp_eid, sockFd, requestMsg.data() + 2,
                        requestMsg.size() - 2, &responseMessage,
                        &responseMessageSize);
 
