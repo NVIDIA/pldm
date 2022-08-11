@@ -464,6 +464,14 @@ struct Coroutine
         return true;
     }
 
+    ~Coroutine()
+    {
+        if (handle && handle.done())
+        {
+            handle.destroy();
+        }
+    }
+
     mutable std::coroutine_handle<promise_type> handle;
 };
 

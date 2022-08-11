@@ -54,7 +54,12 @@ class TerminusManager
         if (queuedMctpInfos.empty())
         {
             queuedMctpInfos.emplace(mctpInfos);
-            discoverTerminusTask();
+            if (discoverTerminusTaskHandle && discoverTerminusTaskHandle.done())
+            {
+                discoverTerminusTaskHandle.destroy();
+            }
+            auto co = discoverTerminusTask();
+            discoverTerminusTaskHandle = co.handle;
         }
         else
         {
@@ -170,6 +175,9 @@ class TerminusManager
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};
+
+    /** @brief coroutine handle of discoverTerminusTask */
+    std::coroutine_handle<> discoverTerminusTaskHandle;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -55,7 +55,12 @@ class SensorManager
     {
         if (!inSensorPolling)
         {
-            doSensorPollingTask();
+            if (doSensorPollingTaskHandle && doSensorPollingTaskHandle.done())
+            {
+                doSensorPollingTaskHandle.destroy();
+            }
+            auto co = doSensorPollingTask();
+            doSensorPollingTaskHandle = co.handle;
         }
     }
 
@@ -88,6 +93,9 @@ class SensorManager
     uint32_t pollingTime;
     std::unique_ptr<phosphor::Timer> sensorPollTimer;
     bool inSensorPolling;
+
+    /** @brief coroutine handle of doSensorPollingTask */
+    std::coroutine_handle<> doSensorPollingTaskHandle;
 };
 } // namespace platform_mc
 } // namespace pldm
