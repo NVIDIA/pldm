@@ -40,11 +40,10 @@ requester::Coroutine SensorManager::doSensorPollingTask()
     uint64_t elapsed = 0;
     uint64_t pollingTimeInUsec = pollingTime * 1000000;
 
-    inSensorPolling = true;
     sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
     for (auto& terminus : termini)
     {
-        for (auto sensor : terminus.second->numericSensors)
+        for (auto& sensor : terminus.second->numericSensors)
         {
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             elapsed = t1 - t0;
@@ -52,11 +51,14 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             if (sensor->elapsedTime >= sensor->updateTime)
             {
                 co_await getSensorReading(sensor);
+                if (!sensorPollTimer->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
                 sensor->elapsedTime = 0;
             }
         }
     }
-    inSensorPolling = false;
 }
 
 requester::Coroutine
@@ -87,6 +89,11 @@ requester::Coroutine
         std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
                   << "\n";
         co_return rc;
+    }
+
+    if (!sensorPollTimer->isRunning())
+    {
+        co_return PLDM_ERROR;
     }
 
     auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
@@ -129,7 +136,7 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
     }
 
     uint8_t completionCode = PLDM_SUCCESS;
-    uint8_t sensorDataSize = sensor->pdr->sensor_data_size;
+    uint8_t sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT32;
     uint8_t sensorOperationalState = 0;
     uint8_t sensorEventMessageEnable = 0;
     uint8_t presentState = 0;
@@ -193,7 +200,7 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
             value = static_cast<float>(le32toh(presentReading.value_s32));
             break;
         default:
-            value = 0;
+            value = std::numeric_limits<double>::quiet_NaN();
             break;
     }
 

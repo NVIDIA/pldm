@@ -17,7 +17,7 @@ namespace platform_mc
 /**
  * @brief SensorManager
  *
- * This class manages the sensors found in terminus and provids
+ * This class manages the sensors found in terminus and provides
  * function calls for other classes to start/stop sensor monitoring.
  *
  */
@@ -38,7 +38,7 @@ class SensorManager
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
         event(event),
         handler(handler), requester(requester), termini(termini),
-        pollingTime(SENSOR_POLLING_TIME), inSensorPolling(false){};
+        pollingTime(SENSOR_POLLING_TIME){};
 
     /** @brief starting sensor polling task
      */
@@ -53,12 +53,17 @@ class SensorManager
      */
     virtual void doSensorPolling()
     {
-        if (!inSensorPolling)
+        if (doSensorPollingTaskHandle)
         {
-            if (doSensorPollingTaskHandle && doSensorPollingTaskHandle.done())
+            if (doSensorPollingTaskHandle.done())
             {
                 doSensorPollingTaskHandle.destroy();
+                auto co = doSensorPollingTask();
+                doSensorPollingTaskHandle = co.handle;
             }
+        }
+        else
+        {
             auto co = doSensorPollingTask();
             doSensorPollingTaskHandle = co.handle;
         }
@@ -88,11 +93,15 @@ class SensorManager
     sdeventplus::Event& event;
     pldm::requester::Handler<pldm::requester::Request>& handler;
     pldm::dbus_api::Requester& requester;
+
+    /** @brief List of discovered termini */
     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini;
 
+    /** @brief sensor polling interval in sec. */
     uint32_t pollingTime;
+
+    /** @brief sensor polling timer */
     std::unique_ptr<phosphor::Timer> sensorPollTimer;
-    bool inSensorPolling;
 
     /** @brief coroutine handle of doSensorPollingTask */
     std::coroutine_handle<> doSensorPollingTaskHandle;

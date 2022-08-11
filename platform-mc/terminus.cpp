@@ -12,7 +12,7 @@ Terminus::Terminus(mctp_eid_t _eid, uint8_t _tid, uint64_t supportedTypes) :
 {
     inventoryPath = "/xyz/openbmc_project/inventory/Item/Board/PLDM_Device_" +
                     std::to_string(_tid);
-    inventoryItemChassisInft = std::make_shared<InventoryItemChassisIntf>(
+    inventoryItemChassisInft = std::make_unique<InventoryItemChassisIntf>(
         utils::DBusHandler::getBus(), inventoryPath.c_str());
 }
 

@@ -19,7 +19,7 @@ using SensorId = uint16_t;
 using SensorAuxiliaryNames =
     std::tuple<SensorId, uint8_t,
                std::vector<std::pair<std::string, std::string>>>;
-using InventoryItemChassisIntf = sdbusplus::server::object::object<
+using InventoryItemChassisIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Inventory::Item::server::Chassis>;
 class TerminusManager;
 
@@ -76,7 +76,7 @@ class Terminus
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
 
-    std::shared_ptr<InventoryItemChassisIntf> inventoryItemChassisInft =
+    std::unique_ptr<InventoryItemChassisIntf> inventoryItemChassisInft =
         nullptr;
     std::string inventoryPath;
 };
