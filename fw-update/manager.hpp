@@ -26,6 +26,8 @@ namespace fw_update
 
 using namespace pldm::dbus_api;
 
+class MctpDiscoveryHandlerIntf;
+
 /** @class Manager
  *
  * This class handles all the aspects of the PLDM FW update specification for
@@ -86,7 +88,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         std::vector<mctp_eid_t> eids;
         for (auto& mctpInfo : mctpInfos)
         {
-            eids.emplace_back(mctpInfo.first);
+            eids.emplace_back(std::get<0>(mctpInfo));
         }
 
         inventoryMgr.discoverFDs(mctpInfos);

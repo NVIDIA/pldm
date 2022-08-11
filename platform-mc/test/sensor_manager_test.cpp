@@ -17,7 +17,7 @@ class SensorManagerTest : public testing::Test
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
-        reqHandler(fd, event, dbusImplRequester, 1000, false),
+        reqHandler(event, dbusImplRequester, sockManager, false),
         sensorManager(event, reqHandler, dbusImplRequester, termini)
     {}
 
@@ -43,6 +43,7 @@ class SensorManagerTest : public testing::Test
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
+    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     std::map<mctp_eid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
     pldm::platform_mc::MockSensorManager sensorManager;

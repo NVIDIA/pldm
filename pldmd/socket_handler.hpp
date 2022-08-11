@@ -2,7 +2,6 @@
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
-#include "fw-update/manager.hpp"
 #include "invoker.hpp"
 #include "requester/handler.hpp"
 #include "socket_manager.hpp"
@@ -13,6 +12,11 @@
 #include <map>
 #include <optional>
 #include <unordered_map>
+
+namespace pldm::fw_update
+{
+class Manager;
+}
 
 namespace pldm::mctp_socket
 {

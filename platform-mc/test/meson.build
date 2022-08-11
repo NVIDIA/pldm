@@ -6,7 +6,13 @@ test_src = declare_dependency(
             '../numeric_sensor.cpp',
             '../../requester/mctp_endpoint_discovery.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp'],
+            '../../pldmd/instance_id.cpp',
+            '../../pldmd/socket_handler.cpp',
+            '../../fw-update/update_manager.cpp',
+            '../../fw-update/watch.cpp',
+            '../../fw-update/other_device_update_manager.cpp',
+            '../../fw-update/package_parser.cpp',
+            '../../fw-update/device_updater.cpp'],
             include_directories: '../../requester')
 
 tests = [

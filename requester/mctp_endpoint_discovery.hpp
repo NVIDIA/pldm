@@ -1,10 +1,10 @@
 #pragma once
 
-#include "fw-update/manager.hpp"
-#include "pldmd/socket_handler.hpp"
 #include "config.h"
 
 #include "libpldm/requester/pldm.h"
+
+#include "pldmd/socket_handler.hpp"
 
 #include <sdbusplus/bus/match.hpp>
 
@@ -17,8 +17,6 @@ namespace pldm
 
 using EID = uint8_t;
 using UUID = std::string;
-using MctpInfo = std::pair<EID, UUID>;
-using MctpInfos = std::vector<MctpInfo>;
 
 /** @class MctpDiscoveryHandlerIntf
  *
@@ -51,8 +49,7 @@ class MctpDiscovery
      *  @param[in] list - initializer list to the MctpDiscoveryHandlerIntf
      */
     explicit MctpDiscovery(
-        sdbusplus::bus::bus& bus,
-         mctp_socket::Handler& handler,
+        sdbusplus::bus::bus& bus, mctp_socket::Handler& handler,
         std::initializer_list<MctpDiscoveryHandlerIntf*> list,
         const std::filesystem::path& staticEidTablePath =
             STATIC_EID_TABLE_PATH);

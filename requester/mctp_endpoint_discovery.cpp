@@ -22,8 +22,7 @@ namespace pldm
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 
 MctpDiscovery::MctpDiscovery(
-    sdbusplus::bus::bus& bus,
-    mctp_socket::Handler& handler,
+    sdbusplus::bus::bus& bus, mctp_socket::Handler& handler,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
     bus(bus),
@@ -64,7 +63,6 @@ MctpDiscovery::MctpDiscovery(
         return;
     }
 
-    MctpInfos mctpInfos;
     for (const auto& service : mctpCtrlServices)
     {
         dbus::ObjectValueTree objects{};
@@ -188,11 +186,13 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
     for (const auto& endpoint : endpoints)
     {
         const std::vector<uint8_t> emptyUnit8Array;
+        const std::string emptyString;
         auto eid = endpoint.value("EID", 0xFF);
         auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
+        auto mediumType = endpoint.value("MediumType", emptyString);
         if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
-            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID));
+            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, mediumType));
         }
     }
 }

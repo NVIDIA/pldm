@@ -1,6 +1,7 @@
 #include "socket_handler.hpp"
 
 #include "common/flight_recorder.hpp"
+#include "fw-update/manager.hpp"
 #include "socket_manager.hpp"
 
 #include <sys/socket.h>

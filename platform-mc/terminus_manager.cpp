@@ -67,7 +67,7 @@ requester::Coroutine
         bool found = false;
         for (auto& mctpInfo : mctpInfos)
         {
-            if (mctpInfo.first == it->first)
+            if (std::get<0>(mctpInfo) == it->first)
             {
                 found = true;
                 break;
@@ -85,7 +85,7 @@ requester::Coroutine
 
     for (auto& mctpInfo : mctpInfos)
     {
-        auto it = termini.find(mctpInfo.first);
+        auto it = termini.find(std::get<0>(mctpInfo));
         if (it != termini.end())
         {
             continue;
@@ -96,7 +96,7 @@ requester::Coroutine
 
 requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
 {
-    uint8_t eid = mctpInfo.first;
+    uint8_t eid = std::get<0>(mctpInfo);
     uint64_t supportedTypes = 0;
     auto rc = co_await getPLDMTypes(eid, supportedTypes);
     if (rc)
