@@ -223,8 +223,10 @@ int main(int argc, char** argv)
     std::unique_ptr<fw_update::Manager> fwManager =
         std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
                                              FW_UPDATE_CONFIG_JSON, fwDebug);
+#ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
+#endif
     pldm::mctp_socket::Handler sockHandler(
         event, reqHandler, invoker, *(fwManager.get()), sockManager, verbose);
 
@@ -232,7 +234,10 @@ int main(int argc, char** argv)
         std::make_unique<MctpDiscovery>(
             bus, sockHandler,
             std::initializer_list<MctpDiscoveryHandlerIntf*>{
-                fwManager.get(), platformManager.get()});
+#ifdef PLDM_TYPE2
+                platformManager.get(),
+#endif
+                fwManager.get()});
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
     bus.request_name("xyz.openbmc_project.PLDM");
