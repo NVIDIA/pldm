@@ -17,18 +17,7 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
 {
     for (const auto& [eid, uuid, mediumType] : mctpInfos)
     {
-        if (mctpInfoMap.contains(uuid))
-        {
-            auto search = mctpInfoMap.find(uuid);
-            search->second.push({eid, mediumType});
-        }
-        else
-        {
-            std::priority_queue<MctpEidInfo> mctpEidInfo;
-            mctpEidInfo.push({eid, mediumType});
-            mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
-        }
-        mctpEidMap[eid] = uuid;
+        mctpEidMap[eid] = std::make_tuple(uuid, mediumType);
 
         auto instanceId = requester.getInstanceId(eid);
         Request requestMsg(sizeof(pldm_msg_hdr) +
@@ -65,6 +54,7 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
     {
         std::cerr << "No response received for QueryDeviceIdentifiers, EID="
                   << unsigned(eid) << "\n";
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -194,6 +184,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         std::cerr << "No response received for GetFirmwareParameters, EID="
                   << unsigned(eid) << "\n";
         descriptorMap.erase(eid);
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -257,29 +248,40 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
     // based on a policy one MCTP endpoint is picked for firmware update, the
     // remaining endpoints are cleared from DescriptorMap and ComponentInfoMap
     // The default policy is to pick the MCTP endpoint where the outgoing
-    // physical medium is the fastest.
-    if (mctpInfoMap.contains(mctpEidMap[eid]))
+    // physical medium is the fastest. Skip firmware/device inventory for the
+    // next endpoints after discovering the first endpoint associated with the
+    // UUID.
+    if (mctpEidMap.contains(eid))
     {
-        auto search = mctpInfoMap.find(mctpEidMap[eid]);
-        if (search->second.size() > 1)
+        const auto& [uuid, mediumType] = mctpEidMap[eid];
+        if (mctpInfoMap.contains(uuid))
         {
+            auto search = mctpInfoMap.find(uuid);
+            const auto& prevTop = search->second.top();
+            auto prevTopEid = prevTop.eid;
+            search->second.push({eid, mediumType});
             const auto& top = search->second.top();
-            for (const auto& [eidKey, uuid] : mctpEidMap)
+            if (prevTopEid == top.eid)
             {
-                if ((uuid == mctpEidMap[eid]) && (eidKey != top.eid) &&
-                    (eid != eidKey))
-                {
-                    descriptorMap.erase(eidKey);
-                    componentInfoMap.erase(eidKey);
-                    return;
-                }
+                descriptorMap.erase(eid);
+                componentInfoMap.erase(eid);
+            }
+            else if (eid == top.eid)
+            {
+                descriptorMap.erase(prevTopEid);
+                componentInfoMap.erase(prevTopEid);
             }
         }
-    }
-
-    if (createInventoryCallBack)
-    {
-        createInventoryCallBack(eid, mctpEidMap[eid]);
+        else
+        {
+            std::priority_queue<MctpEidInfo> mctpEidInfo;
+            mctpEidInfo.push({eid, mediumType});
+            mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
+            if (createInventoryCallBack)
+            {
+                createInventoryCallBack(eid, uuid);
+            }
+        }
     }
 }
 

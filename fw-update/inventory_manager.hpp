@@ -15,7 +15,7 @@ namespace fw_update
 {
 
 using CreateInventoryCallBack = std::function<void(EID, UUID)>;
-using MctpEidMap = std::unordered_map<EID, UUID>;
+using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium>>;
 
 using Priority = int;
 static std::unordered_map<MctpMedium, Priority> mediumPriority{
