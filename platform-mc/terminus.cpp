@@ -7,22 +7,24 @@ namespace pldm
 namespace platform_mc
 {
 
-Terminus::Terminus(mctp_eid_t _eid, uint8_t _tid, uint64_t supportedTypes) :
-    _eid(_eid), _tid(_tid), supportedTypes(supportedTypes)
+Terminus::Terminus(tid_t tid, uint64_t supportedTypes) :
+    tid(tid), supportedTypes(supportedTypes)
 {
     inventoryPath = "/xyz/openbmc_project/inventory/Item/Board/PLDM_Device_" +
-                    std::to_string(_tid);
+                    std::to_string(tid);
     inventoryItemChassisInft = std::make_unique<InventoryItemChassisIntf>(
         utils::DBusHandler::getBus(), inventoryPath.c_str());
+    maxBufferSize = 256;
 }
 
 bool Terminus::doesSupport(uint8_t type)
 {
-    return (supportedTypes & (1 << type));
+    return supportedTypes.test(type);
 }
 
-void Terminus::parsePDRs()
+bool Terminus::parsePDRs()
 {
+    bool rc = true;
     for (auto& pdr : pdrs)
     {
         auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
@@ -32,33 +34,56 @@ void Terminus::parsePDRs()
             sensorAuxiliaryNamesTbl.emplace_back(
                 std::move(sensorAuxiliaryNames));
         }
-    }
-
-    for (auto& pdr : pdrs)
-    {
-        auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
-        if (pdrHdr->type == PLDM_NUMERIC_SENSOR_PDR)
+        else if (pdrHdr->type == PLDM_NUMERIC_SENSOR_PDR)
         {
-            auto parsedPdr = parseNumericPDR(pdr);
-            addNumericSensor(parsedPdr);
+            auto parsedPdr = parseNumericSensorPDR(pdr);
+            numericSensorPdrs.emplace_back(std::move(parsedPdr));
+        }
+        else
+        {
+            rc = false;
         }
     }
+
+    for (auto pdr : numericSensorPdrs)
+    {
+        addNumericSensor(pdr);
+    }
+
+    return rc;
+}
+
+std::shared_ptr<SensorAuxiliaryNames>
+    Terminus::getSensorAuxiliaryNames(SensorId id)
+{
+    for (auto sensorAuxiliaryNames : sensorAuxiliaryNamesTbl)
+    {
+        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
+        if (sensorId == id)
+        {
+            return sensorAuxiliaryNames;
+        }
+    }
+    return nullptr;
 }
 
 std::shared_ptr<SensorAuxiliaryNames>
     Terminus::parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData)
 {
+    constexpr uint8_t NullTerminator = 0;
     auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
         pdrData.data());
     const uint8_t* ptr = pdr->name_strings;
-    std::vector<std::pair<std::string, std::string>> nameStrings{};
+    std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
     for (int i = 0; i < pdr->name_string_count; i++)
     {
-        std::string nameLanguageTag(reinterpret_cast<const char*>(ptr), 0, 65);
-        ptr += nameLanguageTag.size() + 1;
+        std::string nameLanguageTag(reinterpret_cast<const char*>(ptr), 0,
+                                    PLDM_STR_UTF_8_MAX_LEN);
+        ptr += nameLanguageTag.size() + sizeof(NullTerminator);
         std::u16string u16NameString(reinterpret_cast<const char16_t*>(ptr), 0,
-                                     65);
-        ptr += u16NameString.size() * 2 + 2;
+                                     PLDM_STR_UTF_16_MAX_LEN);
+        ptr +=
+            (u16NameString.size() + sizeof(NullTerminator)) * sizeof(uint16_t);
         std::transform(u16NameString.cbegin(), u16NameString.cend(),
                        u16NameString.begin(),
                        [](uint16_t utf16) { return be16toh(utf16); });
@@ -73,7 +98,7 @@ std::shared_ptr<SensorAuxiliaryNames>
 }
 
 std::shared_ptr<pldm_numeric_sensor_value_pdr>
-    Terminus::parseNumericPDR(std::vector<uint8_t>& pdr)
+    Terminus::parseNumericSensorPDR(const std::vector<uint8_t>& pdr)
 {
     const uint8_t* ptr = pdr.data();
     auto parsedPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
@@ -369,28 +394,30 @@ void Terminus::addNumericSensor(
     const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr)
 {
     std::string sensorName = "PLDM_Device_" + std::to_string(pdr->sensor_id) +
-                             "_" + std::to_string(_tid);
+                             "_" + std::to_string(tid);
 
-    for (auto sensorAuxiliaryNames : sensorAuxiliaryNamesTbl)
+    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
+    if (sensorAuxiliaryNames)
     {
         const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
-        if (sensorId == pdr->sensor_id && sensorCnt == 1)
+        if (sensorCnt == 1)
         {
-            sensorName = sensorNames[0].second + "_" + std::to_string(_tid);
-            break;
+            sensorName = sensorNames[0].second + "_" +
+                         std::to_string(pdr->sensor_id) + "_" +
+                         std::to_string(tid);
         }
     }
 
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            _eid, _tid, true, pdr, sensorName, inventoryPath);
+            tid, true, pdr, sensorName, inventoryPath);
         numericSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
     {
-        std::cerr << " Failed to create NumericSensor. ERROR =" << e.what()
-                  << " sensorName=" << sensorName << std::endl;
+        std::cerr << "Failed to create NumericSensor. ERROR=" << e.what()
+                  << "sensorName=" << sensorName << "\n";
     }
 }
 

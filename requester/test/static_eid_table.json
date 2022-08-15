@@ -1,13 +1,13 @@
 {
     "Endpoints":[
         {
-            "NetworkId" : 66,
+            "NetworkId" : 0,
             "EID": 1,
             "SupportedMessageTypes": [0],
             "MediumType": "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus"
         },
         {
-            "NetworkId" : 66,
+            "NetworkId" : 0,
             "EID": 2,
             "SupportedMessageTypes": [0, 1],
             "MediumType": "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe"

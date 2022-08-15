@@ -34,6 +34,8 @@ option('flightrecorder-max-entries', type:'integer',min:0, max:30, description: 
 
 # Platform-mc configuration parameters
 option('sensor-polling-time', type: 'integer', min: 1, max: 4294967295, description: 'The interval time of sensor polling in seconds', value: 1)
+option('local-eid-over-i2c', type: 'integer', min: 1, max: 255, description: 'The local MCTP EID over I2C', value: 8)
+option('local-eid-over-pcie', type: 'integer', min: 1, max: 255, description: 'The local MCTP EID over PCIe', value: 10)
 
 option('non-pldm', type: 'feature', description: 'Support for non pldm devices', value: 'enabled')
 option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')

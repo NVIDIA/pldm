@@ -18,7 +18,9 @@ class SensorManagerTest : public testing::Test
         event(sdeventplus::Event::get_default()),
         dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
         reqHandler(event, dbusImplRequester, sockManager, false),
-        sensorManager(event, reqHandler, dbusImplRequester, termini)
+        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
+                        nullptr),
+        sensorManager(event, terminusManager, termini)
     {}
 
     void runEventLoopForSeconds(uint64_t sec)
@@ -39,14 +41,14 @@ class SensorManagerTest : public testing::Test
         } while (elapsed < usec);
     }
 
-    int fd = -1;
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    std::map<mctp_eid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+    pldm::platform_mc::TerminusManager terminusManager;
     pldm::platform_mc::MockSensorManager sensorManager;
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
 };
 
 TEST_F(SensorManagerTest, sensorPollingTest)

@@ -3,6 +3,7 @@
 #include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
+#include "platform_manager.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -20,7 +21,7 @@ using namespace pldm::pdr;
  * @brief Manager
  *
  * This class handles all the aspect of the PLDM Platform Monitoring and Control
- * sepcification for the MCTP devices
+ * specification for the MCTP devices
  */
 class Manager : public pldm::MctpDiscoveryHandlerIntf
 {
@@ -35,19 +36,26 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
                      Requester& requester) :
-        sensorManager(event, handler, requester, termini),
-        terminusManager(event, handler, requester, termini, sensorManager)
+        terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
+                        this),
+        platformManager(terminusManager, termini),
+        sensorManager(event, terminusManager, termini)
     {}
 
-    void handleMCTPEndpoints(const MctpInfos& mctpInfos)
+    requester::Coroutine beforeDiscoverTerminus()
     {
-        terminusManager.discoverTerminus(mctpInfos);
+        co_return PLDM_SUCCESS;
     }
 
-    Response handleRequest(mctp_eid_t eid, Command command,
-                           const pldm_msg* request, size_t reqMsgLen)
+    requester::Coroutine afterDiscoverTerminus()
     {
-        return terminusManager.handleRequest(eid, command, request, reqMsgLen);
+        auto rc = co_await platformManager.initTerminus();
+        co_return rc;
+    }
+
+    void handleMctpEndpoints(const MctpInfos& mctpInfos)
+    {
+        terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
     void startSensorPolling()
@@ -62,10 +70,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
   private:
     /** @brief List of discovered termini */
-    std::map<mctp_eid_t, std::shared_ptr<Terminus>> termini{};
+    std::map<tid_t, std::shared_ptr<Terminus>> termini{};
 
-    SensorManager sensorManager;
     TerminusManager terminusManager;
+    PlatformManager platformManager;
+    SensorManager sensorManager;
 };
 } // namespace platform_mc
 } // namespace pldm

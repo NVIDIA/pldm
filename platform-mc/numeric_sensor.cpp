@@ -4,8 +4,6 @@
 
 #include "common/utils.hpp"
 
-#include <math.h>
-
 #include <limits>
 #include <regex>
 
@@ -14,16 +12,16 @@ namespace pldm
 namespace platform_mc
 {
 
-NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
-                             const bool sensorDisabled,
+NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
                              std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
                              std::string& sensorName,
                              std::string& associationPath) :
-    eid(eid),
-    tid(tid), sensorId(pdr->sensor_id)
+    tid(tid),
+    sensorId(pdr->sensor_id)
 {
     std::string path;
     SensorUnit sensorUnit = SensorUnit::DegreesC;
+
     switch (pdr->base_unit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -66,7 +64,7 @@ NumericSensor::NumericSensor(const uint8_t eid, const uint8_t tid,
     }
 
     path += sensorName;
-    std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
+    path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     auto& bus = pldm::utils::DBusHandler::getBus();
     associationDefinitionsIntf =

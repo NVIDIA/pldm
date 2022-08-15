@@ -7,63 +7,101 @@ namespace pldm
 namespace platform_mc
 {
 
-std::optional<uint8_t> TerminusManager::toEID(uint8_t tid)
+std::optional<MctpInfo> TerminusManager::toMctpInfo(const tid_t& tid)
 {
-    if (tid != 0 && tid != tidPoolSize && tidPool.at(tid))
-    {
-        return tidPool.at(tid);
-    }
-    return std::nullopt;
-}
-
-std::optional<uint8_t> TerminusManager::toTID(uint8_t eid)
-{
-    for (size_t i = 1; i < tidPool.size(); i++)
-    {
-        if (tidPool.at(i) == eid)
-        {
-            return i;
-        }
-    }
-    return std::nullopt;
-}
-
-std::optional<uint8_t> TerminusManager::mapToTID(uint8_t eid)
-{
-    if (eid == 0 || eid == 0xff)
+    if (transportLayerTable[tid] != SupportedTransportLayer::MCTP)
     {
         return std::nullopt;
     }
 
-    auto mappedTid = toTID(eid);
-    if (mappedTid)
+    auto it = mctpInfoTable.find(tid);
+    if (it == mctpInfoTable.end())
     {
-        return mappedTid.value();
+        return std::nullopt;
     }
 
-    for (size_t i = 1; i < tidPool.size(); i++)
+    return it->second;
+}
+
+std::optional<tid_t> TerminusManager::toTid(const MctpInfo& mctpInfo)
+{
+    auto mctpInfoTableIterator = std::find_if(
+        mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
+            return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
+                   (std::get<3>(v.second) == std::get<3>(mctpInfo));
+        });
+    if (mctpInfoTableIterator == mctpInfoTable.end())
     {
-        // find a free slot
-        if (tidPool.at(i) == PLDM_EID_NULL)
-        {
-            tidPool.at(i) = eid;
-            return i;
-        }
+        return std::nullopt;
     }
-    return std::nullopt;
+    return mctpInfoTableIterator->first;
 }
 
-void TerminusManager::unmapTID(uint8_t tid)
+std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo,
+                                             tid_t tid)
 {
-    tidPool.at(tid) = PLDM_EID_NULL;
+    if (tidPool[tid])
+    {
+        return std::nullopt;
+    }
+
+    tidPool[tid] = true;
+    transportLayerTable[tid] = SupportedTransportLayer::MCTP;
+    mctpInfoTable[tid] = mctpInfo;
+
+    return tid;
 }
 
-requester::Coroutine TerminusManager::discoverTerminusTask()
+std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
 {
-    sensorManager.stopPolling();
+    if (std::get<0>(mctpInfo) == 0 || std::get<0>(mctpInfo) == 0xff)
+    {
+        return std::nullopt;
+    }
+
+    auto mctpInfoTableIterator = std::find_if(
+        mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
+            return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
+                   (std::get<3>(v.second) == std::get<3>(mctpInfo));
+        });
+    if (mctpInfoTableIterator != mctpInfoTable.end())
+    {
+        return mctpInfoTableIterator->first;
+    }
+
+    auto tidPoolIterator = std::find(tidPool.begin(), tidPool.end(), false);
+    if (tidPoolIterator == tidPool.end())
+    {
+        return std::nullopt;
+    }
+
+    tid_t tid = std::distance(tidPool.begin(), tidPoolIterator);
+    return mapTid(mctpInfo, tid);
+}
+
+void TerminusManager::unmapTid(const tid_t& tid)
+{
+    if (tid == 0 || tid == PLDM_TID_RESERVED)
+    {
+        return;
+    }
+    tidPool[tid] = false;
+
+    auto transportLayerTableIterator = transportLayerTable.find(tid);
+    transportLayerTable.erase(transportLayerTableIterator);
+
+    auto mctpInfoTableIterator = mctpInfoTable.find(tid);
+    mctpInfoTable.erase(mctpInfoTableIterator);
+}
+
+requester::Coroutine TerminusManager::discoverMctpTerminusTask()
+{
+    manager->stopSensorPolling();
 
     while (!queuedMctpInfos.empty())
     {
+        co_await manager->beforeDiscoverTerminus();
+
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
         // remove absent terminus
         for (auto it = termini.begin(); it != termini.end();)
@@ -71,14 +109,21 @@ requester::Coroutine TerminusManager::discoverTerminusTask()
             bool found = false;
             for (auto& mctpInfo : mctpInfos)
             {
-                if (std::get<0>(mctpInfo) == it->first)
+                auto terminusMctpInfo = toMctpInfo(it->first);
+                if (terminusMctpInfo &&
+                    (std::get<0>(terminusMctpInfo.value()) ==
+                     std::get<0>(mctpInfo)) &&
+                    (std::get<1>(terminusMctpInfo.value()) ==
+                     std::get<1>(mctpInfo)))
                 {
                     found = true;
                     break;
                 }
             }
+
             if (!found)
             {
+                unmapTid(it->first);
                 termini.erase(it++);
             }
             else
@@ -89,43 +134,26 @@ requester::Coroutine TerminusManager::discoverTerminusTask()
 
         for (auto& mctpInfo : mctpInfos)
         {
-            auto it = termini.find(std::get<0>(mctpInfo));
-            if (it != termini.end())
+            auto tid = toTid(mctpInfo);
+            if (tid)
             {
                 continue;
             }
-            co_await initTerminus(mctpInfo);
+            co_await initMctpTerminus(mctpInfo);
         }
 
-        for (auto& [eid, terminus] : termini)
-        {
-            if (terminus->doesSupport(PLDM_PLATFORM))
-            {
-                auto rc = co_await getPDRs(terminus);
-                if (!rc)
-                {
-                    terminus->parsePDRs();
-                }
-            }
-        }
+        co_await manager->afterDiscoverTerminus();
         queuedMctpInfos.pop();
     }
 
-    sensorManager.startPolling();
+    manager->startSensorPolling();
 }
 
-requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
+requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
-    uint8_t eid = std::get<0>(mctpInfo);
-    uint64_t supportedTypes = 0;
-    auto rc = co_await getPLDMTypes(eid, supportedTypes);
-    if (rc)
-    {
-        co_return PLDM_ERROR;
-    }
-
-    uint8_t tid = 0;
-    rc = co_await getTID(eid, tid);
+    mctp_eid_t eid = std::get<0>(mctpInfo);
+    tid_t tid = 0;
+    auto rc = co_await getTidOverMctp(eid, tid);
     if (rc || tid == PLDM_TID_RESERVED)
     {
         co_return PLDM_ERROR;
@@ -133,62 +161,78 @@ requester::Coroutine TerminusManager::initTerminus(const MctpInfo& mctpInfo)
 
     if (tid == 0)
     {
-        // unassigned TID
-        auto mappedTID = mapToTID(eid);
-        if (!mappedTID)
+        // unassigned tid
+        auto mappedTid = mapTid(mctpInfo);
+        if (!mappedTid)
         {
             co_return PLDM_ERROR;
         }
-
-        rc = co_await setTID(eid, mappedTID.value());
+        tid = mappedTid.value();
+        rc = co_await setTidOverMctp(eid, tid);
         if (rc)
         {
-            unmapTID(tid);
+            unmapTid(tid);
             co_return rc;
         }
     }
     else
     {
         // check if terminus supports setTID
-        rc = co_await setTID(eid, tid);
+        rc = co_await setTidOverMctp(eid, tid);
         if (!rc)
         {
             // re-assign TID if it is not matched to the mapped value.
-            auto mappedEID = toEID(tid);
-            if (!mappedEID || eid != mappedEID.value())
+            auto mappedMctpInfo = toMctpInfo(tid);
+            if (!mappedMctpInfo)
             {
-                auto mappedTID = mapToTID(eid);
-                if (!mappedTID)
+                auto mappedTid = mapTid(mctpInfo);
+                if (!mappedTid)
                 {
                     co_return PLDM_ERROR;
                 }
 
-                rc = co_await setTID(eid, mappedTID.value());
+                tid = mappedTid.value();
+                rc = co_await setTidOverMctp(eid, tid);
                 if (rc)
                 {
-                    unmapTID(tid);
+                    unmapTid(tid);
                     co_return rc;
                 }
-                tid = mappedTID.value();
             }
         }
-        else if (rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+        else if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+        {
+            auto mappedTid = mapTid(mctpInfo, tid);
+            if (!mappedTid)
+            {
+                co_return PLDM_ERROR;
+            }
+        }
+        else
         {
             co_return rc;
         }
     }
 
-    termini[eid] = std::make_shared<Terminus>(eid, tid, supportedTypes);
+    uint64_t supportedTypes = 0;
+    rc = co_await getPLDMTypes(tid, supportedTypes);
+    if (rc)
+    {
+        std::printf("failed to get PLDM Types\n");
+        co_return PLDM_ERROR;
+    }
+
+    termini[tid] = std::make_shared<Terminus>(tid, supportedTypes);
 
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine TerminusManager::getTID(mctp_eid_t eid, uint8_t& tid)
+requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 {
     auto instanceId = requester.getInstanceId(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr));
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto rc = encode_get_tid_req(instanceId, request);
+    Request request(sizeof(pldm_msg_hdr));
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_get_tid_req(instanceId, requestMsg);
     if (rc)
     {
         requester.markFree(eid, instanceId);
@@ -197,9 +241,10 @@ requester::Coroutine TerminusManager::getTID(mctp_eid_t eid, uint8_t& tid)
         co_return rc;
     }
 
-    Response responseMsg{};
-    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
-                                             responseMsg);
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+    rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
+        handler, eid, request, &responseMsg, &responseLen);
     if (rc)
     {
         std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
@@ -208,9 +253,7 @@ requester::Coroutine TerminusManager::getTID(mctp_eid_t eid, uint8_t& tid)
     }
 
     uint8_t completionCode = 0;
-    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
-    auto length = responseMsg.size() - sizeof(struct pldm_msg_hdr);
-    rc = decode_get_tid_resp(response, length, &completionCode, &tid);
+    rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode, &tid);
     if (rc)
     {
         std::cerr << "decode_get_tid_resp failed. rc="
@@ -221,36 +264,61 @@ requester::Coroutine TerminusManager::getTID(mctp_eid_t eid, uint8_t& tid)
     co_return completionCode;
 }
 
-requester::Coroutine TerminusManager::getPLDMTypes(mctp_eid_t eid,
-                                                   uint64_t& supportedTypes)
+requester::Coroutine TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 {
     auto instanceId = requester.getInstanceId(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr));
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto rc = encode_get_types_req(instanceId, request);
+    Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_set_tid_req(instanceId, tid, requestMsg);
     if (rc)
     {
         requester.markFree(eid, instanceId);
+        co_return rc;
+    }
+
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+    rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
+        handler, eid, request, &responseMsg, &responseLen);
+    if (rc)
+    {
+        co_return rc;
+    }
+
+    if (responseMsg == NULL || responseLen != PLDM_SET_TID_RESP_BYTES)
+    {
+        co_return PLDM_ERROR_INVALID_LENGTH;
+    }
+
+    co_return responseMsg->payload[0];
+}
+
+requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
+                                                   uint64_t& supportedTypes)
+{
+    Request request(sizeof(pldm_msg_hdr));
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_get_types_req(0, requestMsg);
+    if (rc)
+    {
         std::cerr << "encode_get_types_req failed. rc="
                   << static_cast<unsigned>(rc) << "\n";
         co_return rc;
     }
 
-    Response responseMsg{};
-    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
-                                             responseMsg);
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+
+    rc = co_await SendRecvPldmMsg(tid, request, &responseMsg, &responseLen);
     if (rc)
     {
-        std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
-                  << "\n";
         co_return rc;
     }
 
     uint8_t completionCode = 0;
-    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
-    auto length = responseMsg.size() - sizeof(struct pldm_msg_hdr);
     bitfield8_t* types = reinterpret_cast<bitfield8_t*>(&supportedTypes);
-    rc = decode_get_types_resp(response, length, &completionCode, types);
+    rc =
+        decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
     if (rc)
     {
         std::cerr << "decode_get_types_resp failed. rc="
@@ -260,136 +328,38 @@ requester::Coroutine TerminusManager::getPLDMTypes(mctp_eid_t eid,
     co_return completionCode;
 }
 
-requester::Coroutine TerminusManager::setTID(mctp_eid_t eid, uint8_t tid)
-{
-    auto instanceId = requester.getInstanceId(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto rc = encode_set_tid_req(instanceId, tid, request);
-    if (rc)
-    {
-        requester.markFree(eid, instanceId);
-        co_return rc;
-    }
-
-    Response responseMsg{};
-    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
-                                             responseMsg);
-    if (rc)
-    {
-        co_return rc;
-    }
-
-    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
-    co_return response->payload[0];
-}
-
 requester::Coroutine
-    TerminusManager::getPDRs(std::shared_ptr<Terminus> terminus)
+    TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
+                                     const pldm_msg** responseMsg,
+                                     size_t* responseLen)
 {
-    mctp_eid_t eid = terminus->eid();
-    constexpr uint16_t requestCnt = 1024;
-    uint32_t recordHndl = 0;
-
-    uint32_t nextRecordHndl = 0;
-    uint32_t nextDataTransferHndl = 0;
-    uint8_t transferFlag = 0;
-    uint16_t responseCnt = 0;
-    std::vector<uint8_t> recordData(requestCnt);
-    uint8_t transferCrc = 0;
-
-    do
+    if (tidPool[tid] &&
+        transportLayerTable[tid] == SupportedTransportLayer::MCTP)
     {
-        auto rc =
-            co_await getPDR(eid, recordHndl, 0, PLDM_GET_FIRSTPART, requestCnt,
-                            0, nextRecordHndl, nextDataTransferHndl,
-                            transferFlag, responseCnt, recordData, transferCrc);
+        auto mctpInfo = toMctpInfo(tid);
+        if (!mctpInfo)
+        {
+            std::printf("SendRecvPldmMsg: tid:%d => eid not found\n", tid);
+            co_return PLDM_ERROR;
+        }
 
+        auto eid = std::get<0>(mctpInfo.value());
+        auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+        requestMsg->hdr.instance_id = requester.getInstanceId(eid);
+        auto rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
+            handler, eid, request, responseMsg, responseLen);
         if (rc)
         {
-            co_return rc;
+            std::cerr << "SendRecvPldmMsg failed. rc="
+                      << static_cast<unsigned>(rc) << "\n";
         }
-
-        if (transferFlag == PLDM_START || transferFlag == PLDM_START_AND_END)
-        {
-            // single-part transfer
-            terminus->pdrs.emplace_back(std::vector<uint8_t>(
-                recordData.begin(), recordData.begin() + responseCnt));
-            recordHndl = nextRecordHndl;
-        }
-        else
-        {
-            // multipart transfer
-            auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(recordData.data());
-            uint16_t recordChgNum = pdrHdr->record_change_num;
-            std::vector<uint8_t> receivedPdr(recordData.begin(),
-                                             recordData.begin() + responseCnt);
-            do
-            {
-                rc = co_await getPDR(eid, recordHndl, nextDataTransferHndl,
-                                     PLDM_GET_NEXTPART, requestCnt,
-                                     recordChgNum, nextRecordHndl,
-                                     nextDataTransferHndl, transferFlag,
-                                     responseCnt, recordData, transferCrc);
-                if (rc)
-                {
-                    co_return rc;
-                }
-
-                receivedPdr.insert(receivedPdr.end(), recordData.begin(),
-                                   recordData.begin() + responseCnt);
-
-                if (transferFlag == PLDM_END)
-                {
-                    terminus->pdrs.emplace_back(receivedPdr);
-                    recordHndl = nextRecordHndl;
-                }
-            } while (nextDataTransferHndl != 0);
-        }
-    } while (nextRecordHndl != 0);
-
-    co_return PLDM_SUCCESS;
-}
-
-requester::Coroutine TerminusManager::getPDR(
-    mctp_eid_t eid, uint32_t recordHndl, uint32_t dataTransferHndl,
-    uint8_t transferOpFlag, uint16_t requestCnt, uint16_t recordChgNum,
-    uint32_t& nextRecordHndl, uint32_t& nextDataTransferHndl,
-    uint8_t& transferFlag, uint16_t& responseCnt,
-    std::vector<uint8_t>& recordData, uint8_t& transferCrc)
-{
-    auto instanceId = requester.getInstanceId(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr) + PLDM_GET_PDR_REQ_BYTES);
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto rc = encode_get_pdr_req(instanceId, recordHndl, dataTransferHndl,
-                                 transferOpFlag, requestCnt, recordChgNum,
-                                 request, PLDM_GET_PDR_REQ_BYTES);
-    if (rc)
-    {
-        requester.markFree(eid, instanceId);
         co_return rc;
     }
-
-    Response responseMsg{};
-    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
-                                             responseMsg);
-    if (rc)
+    else
     {
-        co_return rc;
+        std::printf("SendRecvPldmMsg: tid:%d not found\n", tid);
+        co_return PLDM_ERROR;
     }
-
-    auto msg = reinterpret_cast<pldm_msg*>(responseMsg.data());
-    size_t payloadLength = responseMsg.size() - sizeof(struct pldm_msg_hdr);
-    uint8_t completionCode;
-    rc = decode_get_pdr_resp(msg, payloadLength, &completionCode,
-                             &nextRecordHndl, &nextDataTransferHndl,
-                             &transferFlag, &responseCnt, recordData.data(),
-                             recordData.size(), &transferCrc);
-    if (rc)
-    {
-        co_return rc;
-    }
-    co_return completionCode;
 }
 
 } // namespace platform_mc

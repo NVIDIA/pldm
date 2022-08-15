@@ -87,7 +87,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      */
-    void handleMCTPEndpoints(const MctpInfos& mctpInfos)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos)
     {
         std::vector<mctp_eid_t> eids;
         for (auto& mctpInfo : mctpInfos)
@@ -96,7 +96,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
 
         inventoryMgr.discoverFDs(mctpInfos);
-        for (const auto& [eid, uuid, mediumType] : mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId] : mctpInfos)
         {
             if (componentNameMapInfo.contains(uuid))
             {

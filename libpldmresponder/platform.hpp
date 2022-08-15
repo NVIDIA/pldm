@@ -271,6 +271,33 @@ class Handler : public CmdHandler
                                   uint8_t formatVersion, uint8_t tid,
                                   size_t eventDataOffset);
 
+    /** @brief Handler for pldmMessagePollEvent
+     *
+     *  @param[in] request - Request message
+     *  @param[in] payloadLength - Request payload length
+     *  @param[in] formatVersion - Version of the event format
+     *  @param[in] tid - Terminus ID of the event's originator
+     *  @param[in] eventDataOffset - Offset of the event data in the request
+     *                               message
+     *  @return PLDM completion code
+     */
+    int pldmMessagePollEvent(const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset);
+
+    /** @brief Handler for cperEvent
+     *
+     *  @param[in] request - Request message
+     *  @param[in] payloadLength - Request payload length
+     *  @param[in] formatVersion - Version of the event format
+     *  @param[in] tid - Terminus ID of the event's originator
+     *  @param[in] eventDataOffset - Offset of the event data in the request
+     *                               message
+     *  @return PLDM completion code
+     */
+    int cperEvent(const pldm_msg* request, size_t payloadLength,
+                  uint8_t formatVersion, uint8_t tid, size_t eventDataOffset);
+
     /** @brief Handler for extracting the PDR handles from changeEntries
      *
      *  @param[in] changeEntryData - ChangeEntry data from changeRecord
@@ -445,6 +472,8 @@ class Handler : public CmdHandler
      *  @param[in] source - sdeventplus event source
      */
     void _processPostGetPDRActions(sdeventplus::source::EventBase& source);
+
+    void _processPostPldmMessagePollEvent(uint8_t tid);
 
   private:
     pdr_utils::Repo pdrRepo;

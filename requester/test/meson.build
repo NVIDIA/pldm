@@ -3,6 +3,8 @@ test_src = declare_dependency(
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',
             '../mctp_endpoint_discovery.cpp',
+            '../../pldmd/socket_handler.cpp',
+            '../../common/utils.cpp',
             '../../fw-update/inventory_manager.cpp',
             '../../fw-update/package_parser.cpp',
             '../../fw-update/device_updater.cpp',
@@ -10,10 +12,6 @@ test_src = declare_dependency(
             '../../fw-update/config.cpp',
             '../../fw-update/device_inventory.cpp',
             '../../fw-update/firmware_inventory.cpp',
-            '../../common/utils.cpp',
-            '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp',
-            '../../pldmd/socket_handler.cpp',
             '../../fw-update/other_device_update_manager.cpp',
             '../../fw-update/watch.cpp'])
 

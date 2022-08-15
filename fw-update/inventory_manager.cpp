@@ -15,7 +15,7 @@ namespace fw_update
 
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
 {
-    for (const auto& [eid, uuid, mediumType] : mctpInfos)
+    for (const auto& [eid, uuid, mediumType, networkId] : mctpInfos)
     {
         mctpEidMap[eid] = std::make_tuple(uuid, mediumType);
 

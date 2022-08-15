@@ -22,8 +22,10 @@ using Response = std::vector<uint8_t>;
 using Command = uint8_t;
 
 using MctpMedium = std::string;
-using MctpInfo = std::tuple<EID, UUID, MctpMedium>;
+using NetworkId = uint8_t;
+using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId>;
 using MctpInfos = std::vector<MctpInfo>;
+using tid_t = uint8_t;
 
 namespace dbus
 {

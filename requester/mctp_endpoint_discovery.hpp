@@ -3,7 +3,7 @@
 #include "config.h"
 
 #include "libpldm/requester/pldm.h"
-
+#include "common/types.hpp"
 #include "pldmd/socket_handler.hpp"
 
 #include <sdbusplus/bus/match.hpp>
@@ -15,9 +15,6 @@
 namespace pldm
 {
 
-using EID = uint8_t;
-using UUID = std::string;
-
 /** @class MctpDiscoveryHandlerIntf
  *
  * This abstract class defines the APIs for MctpDiscovery class has common
@@ -26,7 +23,7 @@ using UUID = std::string;
 class MctpDiscoveryHandlerIntf
 {
   public:
-    virtual void handleMCTPEndpoints(const MctpInfos& mctpInfos) = 0;
+    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos) = 0;
     virtual ~MctpDiscoveryHandlerIntf()
     {}
 };
@@ -45,7 +42,6 @@ class MctpDiscovery
      *         MCTP enabled devices
      *
      *  @param[in] bus - reference to systemd bus
-     *  @param[in] fwManager - pointer to the firmware manager
      *  @param[in] list - initializer list to the MctpDiscoveryHandlerIntf
      */
     explicit MctpDiscovery(
@@ -91,10 +87,19 @@ class MctpDiscovery
 
     std::vector<MctpDiscoveryHandlerIntf*> handlers;
 
+    /** @brief Path of static EID table config file */
     std::filesystem::path staticEidTablePath;
 
-    void handleMCTPEndpoints(const MctpInfos& mctpInfos);
+    /** @brief Helper function to invoke registered handlers
+     *
+     *  @param[in] mctpInfos - information of discovered MCTP endpoints
+     */
+    void handleMctpEndpoints(const MctpInfos& mctpInfos);
 
+    /** @brief Loading the static MCTP endpoints to mctpInfos.
+     *
+     *  @param[in] mctpInfos - information of discovered MCTP endpoints
+     */
     void loadStaticEndpoints(MctpInfos& mctpInfos);
 };
 

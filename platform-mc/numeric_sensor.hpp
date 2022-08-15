@@ -43,8 +43,7 @@ using AssociationDefinitionsInft = sdbusplus::server::object_t<
 class NumericSensor
 {
   public:
-    NumericSensor(const uint8_t eid, const uint8_t tid,
-                  const bool sensorDisabled,
+    NumericSensor(const tid_t tid, const bool sensorDisabled,
                   std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
                   std::string& sensorName, std::string& associationPath);
     ~NumericSensor(){};
@@ -78,19 +77,16 @@ class NumericSensor
     bool checkThreshold(bool alarm, bool direction, double value,
                         double threshold, double hyst);
 
-    /** @brief Endpoint ID of the PLDM Terminus which the sensor belongs to */
-    mctp_eid_t eid;
-
-    /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */
-    uint8_t tid;
+    /** @brief Terminus ID which the sensor belongs to */
+    tid_t tid;
 
     /** @brief Sensor ID */
     uint16_t sensorId;
 
-    /** @brief  The time since last getSensorReading command */
+    /** @brief  The time since last getSensorReading command in usec */
     uint64_t elapsedTime;
 
-    /** @brief  The time of sensor update interval in second */
+    /** @brief  The time of sensor update interval in usec */
     uint64_t updateTime;
 
   private:

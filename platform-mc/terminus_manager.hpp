@@ -7,22 +7,29 @@
 
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
-#include "sensor_manager.hpp"
 #include "terminus.hpp"
 
 #include <queue>
 
 namespace pldm
 {
+
+enum SupportedTransportLayer
+{
+    MCTP
+};
+
 namespace platform_mc
 {
-constexpr size_t tidPoolSize = 255;
+constexpr size_t tidPoolSize = std::numeric_limits<tid_t>::max() + 1;
+using RequesterHandler = requester::Handler<requester::Request>;
 
+class Manager;
 /**
  * @brief TerminusManager
  *
- * TerminusManager class manages PLDM Platform Monitoring and Control devices.
- * It discovers and initializes the PLDM terminus.
+ * TerminusManager class handle the task to discover and initialize PLDM
+ * terminus.
  */
 class TerminusManager
 {
@@ -38,87 +45,89 @@ class TerminusManager
         sdeventplus::Event& event,
         requester::Handler<requester::Request>& handler,
         dbus_api::Requester& requester,
-        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
-        SensorManager& sensorManager) :
+        std::map<tid_t, std::shared_ptr<Terminus>>& termini,
+        mctp_eid_t localEid, Manager* manager) :
         event(event),
         handler(handler), requester(requester), termini(termini),
-        tidPool(tidPoolSize, 0), sensorManager(sensorManager)
-    {}
+        localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
+    {
+        // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
+        tidPool[0] = true;
+        tidPool[PLDM_TID_RESERVED] = true;
+    }
 
     /** @brief start a coroutine to discover terminus
      *
-     *  @param[in] mctpInfos - list of EID/UUID to be checked
+     *  @param[in] mctpInfos - list of mctpInfo to be checked
      */
-    void discoverTerminus(const MctpInfos& mctpInfos)
+    void discoverMctpTerminus(const MctpInfos& mctpInfos)
     {
-        if (queuedMctpInfos.empty())
+        queuedMctpInfos.emplace(mctpInfos);
+        if (discoverMctpTerminusTaskHandle)
         {
-            queuedMctpInfos.emplace(mctpInfos);
-            if (discoverTerminusTaskHandle && discoverTerminusTaskHandle.done())
+            if (discoverMctpTerminusTaskHandle.done())
             {
-                discoverTerminusTaskHandle.destroy();
+                discoverMctpTerminusTaskHandle.destroy();
+
+                auto co = discoverMctpTerminusTask();
+                discoverMctpTerminusTaskHandle = co.handle;
             }
-            auto co = discoverTerminusTask();
-            discoverTerminusTaskHandle = co.handle;
         }
         else
         {
-            queuedMctpInfos.emplace(mctpInfos);
+            auto co = discoverMctpTerminusTask();
+            discoverMctpTerminusTaskHandle = co.handle;
         }
     }
 
-    Response handleRequest(mctp_eid_t eid, uint8_t command,
-                           const pldm_msg* request, size_t reqMsgLen);
-
-    /** @brief member functions to map/unmap TID to/from EID
-     */
-    std::optional<uint8_t> toEID(uint8_t tid);
-    std::optional<uint8_t> toTID(uint8_t eid);
-    std::optional<uint8_t> mapToTID(uint8_t eid);
-    void unmapTID(uint8_t tid);
-
-  private:
-    /** @brief Initialize terminus and then instantiate terminus object to keeps
-     *         the date fetched from terminus
-     *
-     *  @param[in] mctpInfo - EID and UUID
-     */
-    requester::Coroutine initTerminus(const MctpInfo& mctpInfo);
-
-    /** @brief Send request PLDM message to destination EID. The function will
+    /** @brief Send request PLDM message to tid. The function will
      *         return when received the response message from terminus.
      *
-     *  @param[in] eid - destination EID
-     *  @param[in] requestMsg - request PLDM message
+     *  @param[in] tid - tid
+     *  @param[in] request - request PLDM message
      *  @param[out] responseMsg - response PLDM message
+     *  @param[out] responseLen - length of response PLDM message
      *  @return coroutine return_value - PLDM completion code
      */
-    int sendPldmMsg(mctp_eid_t eid, std::shared_ptr<Request> requestMsg,
-                    std::shared_ptr<Response> responseMsg);
+    requester::Coroutine SendRecvPldmMsg(tid_t tid, Request& request,
+                                         const pldm_msg** responseMsg,
+                                         size_t* responseLen);
 
-    /** @brief The corotine task execute by discoverTerminus()
+    /** @brief member functions to map/unmap tid
+     */
+    std::optional<MctpInfo> toMctpInfo(const tid_t& tid);
+    std::optional<tid_t> toTid(const MctpInfo& mctpInfo);
+    std::optional<tid_t> mapTid(const MctpInfo& mctpInfo);
+    std::optional<tid_t> mapTid(const MctpInfo& mctpInfo, tid_t tid);
+    void unmapTid(const tid_t& tid);
+
+    mctp_eid_t getLocalEid()
+    {
+        return localEid;
+    }
+
+  private:
+    /** @brief The coroutine task execute by discoverMctpTerminus()
      *
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine discoverTerminusTask();
+    requester::Coroutine discoverMctpTerminusTask();
+
+    /** @brief Initialize terminus and then instantiate terminus object to keeps
+     *         the data fetched from terminus
+     *
+     *  @param[in] mctpInfo - NetworkId, EID and UUID
+     */
+    requester::Coroutine initMctpTerminus(const MctpInfo& mctpInfo);
 
     /** @brief Send getTID PLDM command to destination EID and then return the
-     *         value of tid in reference paramter.
+     *         value of tid in reference parameter.
      *
      *  @param[in] eid - Destination EID
      *  @param[out] tid - TID returned from terminus
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getTID(mctp_eid_t eid, uint8_t& tid);
-
-    /** @brief Send getPLDMTypes command to destination EID and then return the
-     *         value of supportedTypes in reference paramter.
-     *
-     *  @param[in] eid - Destination EID
-     *  @param[out] supportedTypes - Supported Types returned from terminus
-     *  @return coroutine return_value - PLDM completion code
-     */
-    requester::Coroutine getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
+    requester::Coroutine getTidOverMctp(mctp_eid_t eid, tid_t& tid);
 
     /** @brief Send setTID command to destination EID.
      *
@@ -126,58 +135,40 @@ class TerminusManager
      *  @param[in] tid - Terminus ID
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine setTID(mctp_eid_t eid, uint8_t tid);
+    requester::Coroutine setTidOverMctp(mctp_eid_t eid, tid_t tid);
 
-    /** @brief Fetch all PDRs from terminus.
+    /** @brief Send getPLDMTypes command to destination EID and then return the
+     *         value of supportedTypes in reference parameter.
      *
-     *  @param[in] terminus - The terminus object to store fetched PDRs
+     *  @param[in] tid - Destination TID
+     *  @param[out] supportedTypes - Supported Types returned from terminus
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPDRs(std::shared_ptr<Terminus> terminus);
-
-    /** @brief Fetch PDR from terminus
-     *
-     *  @param[in] eid - Destination EID
-     *  @param[in] recordHndl - Record handle
-     *  @param[in] dataTransferHndl - Data transfer handle
-     *  @param[in] transferOpFlag - Transfer Operation Flag
-     *  @param[in] requstCnt - Request Count of data
-     *  @param[in] recordChgNum - Record change number
-     *  @param[out] nextRecordHndl - Next record handle
-     *  @param[out] nextDataTransferHndl - Next data transfer handle
-     *  @param[out] transferFlag - Transfer flag
-     *  @param[out] responseCnt - Response count of record data
-     *  @param[out] recordData - Returned record data
-     *  @param[out] transferCrc - CRC value when record data is last part of PDR
-     *  @return coroutine return_value - PLDM completion code
-     */
-    requester::Coroutine getPDR(mctp_eid_t eid, uint32_t recordHndl,
-                                uint32_t dataTransferHndl,
-                                uint8_t transferOpFlag, uint16_t requestCnt,
-                                uint16_t recordChgNum, uint32_t& nextRecordHndl,
-                                uint32_t& nextDataTransferHndl,
-                                uint8_t& transferFlag, uint16_t& responseCnt,
-                                std::vector<uint8_t>& recordData,
-                                uint8_t& transferCrc);
+    requester::Coroutine getPLDMTypes(tid_t tid, uint64_t& supportedTypes);
 
     sdeventplus::Event& event;
-    requester::Handler<requester::Request>& handler;
+    RequesterHandler& handler;
     dbus_api::Requester& requester;
 
     /** @brief Managed termini list */
-    std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini;
+    std::map<tid_t, std::shared_ptr<Terminus>>& termini;
 
-    /** @brief A table for mantaining the assigned TID */
-    std::vector<uint8_t> tidPool;
+    /** @brief local EID */
+    mctp_eid_t localEid;
 
-    /** @brief A reference to SensorManager **/
-    SensorManager& sensorManager;
+    /** @brief tables for maintaining assigned TID */
+    std::vector<bool> tidPool;
+    std::map<tid_t, SupportedTransportLayer> transportLayerTable;
+    std::map<tid_t, MctpInfo> mctpInfoTable;
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};
 
     /** @brief coroutine handle of discoverTerminusTask */
-    std::coroutine_handle<> discoverTerminusTaskHandle;
+    std::coroutine_handle<> discoverMctpTerminusTaskHandle;
+
+    /** @brief A Manager interface for calling the hook functions **/
+    Manager* manager;
 };
 } // namespace platform_mc
 } // namespace pldm

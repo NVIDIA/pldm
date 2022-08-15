@@ -76,6 +76,8 @@ conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
 conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
 conf_data.set_quoted('STATIC_EID_TABLE_PATH', join_paths(package_datadir, 'static_eid_table.json'))
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
+conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
+conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
 configure_file(output: 'config.h',
   configuration: conf_data
 )
@@ -222,6 +224,7 @@ executable(
   'fw-update/firmware_inventory.cpp',
   'platform-mc/terminus_manager.cpp',
   'platform-mc/terminus.cpp',
+  'platform-mc/platform_manager.cpp',
   'platform-mc/sensor_manager.cpp',
   'platform-mc/numeric_sensor.cpp',
   'requester/mctp_endpoint_discovery.cpp',

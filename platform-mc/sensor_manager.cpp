@@ -64,75 +64,30 @@ requester::Coroutine SensorManager::doSensorPollingTask()
 requester::Coroutine
     SensorManager::getSensorReading(std::shared_ptr<NumericSensor> sensor)
 {
-    auto eid = sensor->eid;
+    auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
-    auto instanceId = requester.getInstanceId(eid);
-
-    Request requestMsg(sizeof(pldm_msg_hdr) +
-                       PLDM_GET_SENSOR_READING_REQ_BYTES);
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-
-    auto rc = encode_get_sensor_reading_req(instanceId, sensorId, 0x0, request);
+    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_get_sensor_reading_req(0, sensorId, 0x0, requestMsg);
     if (rc)
     {
-        requester.markFree(eid, instanceId);
-        std::cerr << "encode_get_sensor_reading_req failed, EID="
-                  << unsigned(eid) << ", RC=" << rc << std::endl;
+        std::cerr << "encode_get_sensor_reading_req failed, TID="
+                  << unsigned(tid) << ", RC=" << rc << std::endl;
         co_return rc;
     }
 
-    Response responseMsg{};
-    rc = co_await requester::sendRecvPldmMsg(handler, eid, requestMsg,
-                                             responseMsg);
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+    rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
+                                                  &responseLen);
     if (rc)
     {
-        std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
-                  << "\n";
         co_return rc;
     }
 
     if (!sensorPollTimer->isRunning())
     {
         co_return PLDM_ERROR;
-    }
-
-    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
-    auto length = responseMsg.size() - sizeof(struct pldm_msg_hdr);
-    handleRespGetSensorReading(sensorId, eid, response, length);
-    co_return rc;
-}
-
-void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
-                                               mctp_eid_t eid,
-                                               const pldm_msg* response,
-                                               size_t respMsgLen)
-{
-    // find out the sensor instance
-    std::shared_ptr<NumericSensor> sensor = nullptr;
-    for (auto& terminus : termini)
-    {
-        for (auto numericSensor : terminus.second->numericSensors)
-        {
-            if (numericSensor->eid == eid &&
-                numericSensor->sensorId == sensorId)
-            {
-                sensor = numericSensor;
-                break;
-            }
-        }
-    }
-
-    if (sensor == nullptr)
-    {
-        return;
-    }
-
-    if (response == nullptr || !respMsgLen)
-    {
-        std::cerr << "No response received for GetSensorReading, EID="
-                  << unsigned(eid) << "\n";
-        sensor->handleErrGetSensorReading();
-        return;
     }
 
     uint8_t completionCode = PLDM_SUCCESS;
@@ -143,39 +98,38 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
     uint8_t previousState = 0;
     uint8_t eventState = 0;
     union_sensor_data_size presentReading;
-    auto rc = decode_get_sensor_reading_resp(
-        response, respMsgLen, &completionCode, &sensorDataSize,
+    rc = decode_get_sensor_reading_resp(
+        responseMsg, responseLen, &completionCode, &sensorDataSize,
         &sensorOperationalState, &sensorEventMessageEnable, &presentState,
         &previousState, &eventState,
         reinterpret_cast<uint8_t*>(&presentReading));
     if (rc)
     {
-        std::cerr << "Failed to decode response of GetSensorReading, EID="
-                  << unsigned(eid) << ", RC=" << rc << "\n";
+        std::cerr << "Failed to decode response of GetSensorReading, TID="
+                  << unsigned(tid) << ", RC=" << rc << "\n";
         sensor->handleErrGetSensorReading();
-        return;
+        co_return rc;
     }
+
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of GetSensorReading, EID="
-                  << unsigned(eid) << ", CC=" << unsigned(completionCode)
+        std::cerr << "Failed to decode response of GetSensorReading, TID="
+                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
                   << "\n";
-        sensor->handleErrGetSensorReading();
-        return;
+        co_return completionCode;
     }
 
     switch (sensorOperationalState)
     {
-        case PLDM_SENSOR_DISABLED:
-            sensor->updateReading(true, false);
-            return;
-        case PLDM_SENSOR_UNAVAILABLE:
-            sensor->updateReading(false, false);
-            return;
         case PLDM_SENSOR_ENABLED:
             break;
+        case PLDM_SENSOR_DISABLED:
+            sensor->updateReading(true, false);
+            co_return completionCode;
+        case PLDM_SENSOR_UNAVAILABLE:
         default:
-            return;
+            sensor->updateReading(false, false);
+            co_return completionCode;
     }
 
     double value;
@@ -205,7 +159,7 @@ void SensorManager::handleRespGetSensorReading(uint16_t sensorId,
     }
 
     sensor->updateReading(true, true, value);
+    co_return completionCode;
 }
-
 } // namespace platform_mc
 } // namespace pldm

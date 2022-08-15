@@ -59,7 +59,7 @@ MctpDiscovery::MctpDiscovery(
     catch (const std::exception& e)
     {
         loadStaticEndpoints(mctpInfos);
-        handleMCTPEndpoints(mctpInfos);
+        handleMctpEndpoints(mctpInfos);
         return;
     }
 
@@ -85,7 +85,7 @@ MctpDiscovery::MctpDiscovery(
     }
 
     loadStaticEndpoints(mctpInfos);
-    handleMCTPEndpoints(mctpInfos);
+    handleMctpEndpoints(mctpInfos);
 }
 
 void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
@@ -131,12 +131,14 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                     properties.at("SupportedMessageTypes"));
                 auto mediumType =
                     std::get<std::string>(properties.at("MediumType"));
+                auto networkId =
+                    std::get<size_t>(properties.at("NetworkId"));
                 if (std::find(mctpTypes.begin(), mctpTypes.end(),
                               mctpTypePLDM) != mctpTypes.end())
                 {
                     handler.registerMctpEndpoint(eid, type, protocol, address);
                     mctpInfos.emplace_back(
-                        std::make_tuple(eid, uuid, mediumType));
+                        std::make_tuple(eid, uuid, mediumType, networkId));
                 }
             }
         }
@@ -160,7 +162,7 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
     populateMctpInfo(interfaces, mctpInfos);
 
     loadStaticEndpoints(mctpInfos);
-    handleMCTPEndpoints(mctpInfos);
+    handleMctpEndpoints(mctpInfos);
 }
 
 void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
@@ -188,14 +190,16 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
         auto eid = endpoint.value("EID", 0xFF);
         auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
         auto mediumType = endpoint.value("MediumType", emptyString);
+        auto networkId = endpoint.value("NetworkId", 0xFF);
         if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
-            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, mediumType));
+            mctpInfos.emplace_back(
+                MctpInfo(eid, emptyUUID, mediumType, networkId));
         }
     }
 }
 
-void MctpDiscovery::handleMCTPEndpoints(const MctpInfos& mctpInfos)
+void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
 {
     if (mctpInfos.size() && handlers.size())
     {
@@ -203,7 +207,7 @@ void MctpDiscovery::handleMCTPEndpoints(const MctpInfos& mctpInfos)
         {
             if (handler)
             {
-                handler->handleMCTPEndpoints(mctpInfos);
+                handler->handleMctpEndpoints(mctpInfos);
             }
         }
     }

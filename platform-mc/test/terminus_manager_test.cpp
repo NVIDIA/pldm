@@ -29,9 +29,8 @@ class TerminusManagerTest : public testing::Test
         dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
         reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        sensorManager(event, reqHandler, dbusImplRequester, termini),
-        terminusManager(event, reqHandler, dbusImplRequester, termini,
-                        sensorManager)
+        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
+                        nullptr)
     {}
 
     int fd = -1;
@@ -40,58 +39,68 @@ class TerminusManagerTest : public testing::Test
     pldm::dbus_api::Requester dbusImplRequester;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    pldm::platform_mc::SensorManager sensorManager;
     pldm::platform_mc::TerminusManager terminusManager;
-    std::map<mctp_eid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
 };
 
-TEST_F(TerminusManagerTest, mapTIDTest)
+TEST_F(TerminusManagerTest, mapTidTest)
 {
-    uint8_t eid = 1;
+    pldm::MctpInfo mctpInfo1(1, "", "", 0);
 
-    auto mappedTid = terminusManager.toTID(eid);
-    EXPECT_EQ(mappedTid, std::nullopt);
+    auto tid1 = terminusManager.toTid(mctpInfo1);
+    EXPECT_EQ(tid1, std::nullopt);
 
-    auto tid = terminusManager.mapToTID(eid);
-    EXPECT_NE(tid, std::nullopt);
+    tid1 = terminusManager.mapTid(mctpInfo1);
+    EXPECT_NE(tid1, std::nullopt);
 
-    auto mappedEid = terminusManager.toEID(tid.value());
-    EXPECT_EQ(mappedEid.value(), eid);
+    auto mctpInfo2 = terminusManager.toMctpInfo(tid1.value());
+    EXPECT_EQ(mctpInfo1, mctpInfo2.value());
 
-    mappedTid = terminusManager.toTID(eid);
-    EXPECT_EQ(mappedTid.value(), tid.value());
+    terminusManager.unmapTid(tid1.value());
 
-    tid = terminusManager.mapToTID(eid);
-    EXPECT_EQ(mappedTid.value(), tid.value());
-
-    terminusManager.unmapTID(tid.value());
-    mappedTid = terminusManager.toTID(eid);
-    EXPECT_EQ(mappedTid, std::nullopt);
+    tid1 = terminusManager.toTid(mctpInfo1);
+    EXPECT_EQ(tid1, std::nullopt);
 }
 
-TEST_F(TerminusManagerTest, negativeMapTIDTest)
+TEST_F(TerminusManagerTest, negativeMapTidTest)
 {
     // map null EID(0) to TID
-    auto mappedTid = terminusManager.mapToTID(0);
+    pldm::MctpInfo m0(0, "", "", 0);
+    auto mappedTid = terminusManager.mapTid(m0);
     EXPECT_EQ(mappedTid, std::nullopt);
 
     // map broadcast EID(0xff) to TID
-    mappedTid = terminusManager.mapToTID(0xff);
+    pldm::MctpInfo m1(0xff, "", "", 0);
+    mappedTid = terminusManager.mapTid(m1);
     EXPECT_EQ(mappedTid, std::nullopt);
 
-    // convert a unmapped EID to TID
-    mappedTid = terminusManager.toTID(1);
+    // look up an unmapped MctpInfo to TID
+    pldm::MctpInfo m2(1, "", "", 0);
+    mappedTid = terminusManager.toTid(m2);
     EXPECT_EQ(mappedTid, std::nullopt);
 
-    // convert reserved TID(0) to EID
-    auto mappedEid = terminusManager.toEID(0);
+    // look up reserved TID(0)
+    auto mappedEid = terminusManager.toMctpInfo(0);
     EXPECT_EQ(mappedEid, std::nullopt);
 
-    // convert reserved TID(0xff) to EID
-    mappedEid = terminusManager.toEID(0xff);
+    // look up reserved TID(0xff)
+    mappedEid = terminusManager.toMctpInfo(0xff);
     EXPECT_EQ(mappedEid, std::nullopt);
 
-    // convert unmapped TID to EID
-    mappedEid = terminusManager.toEID(1);
+    // look up an unmapped TID
+    mappedEid = terminusManager.toMctpInfo(1);
     EXPECT_EQ(mappedEid, std::nullopt);
+
+    // map two mctpInfo with same EID but different network Id
+    pldm::MctpInfo m3(12, "", "", 1);
+    pldm::MctpInfo m4(12, "", "", 2);
+    auto mappedTid3 = terminusManager.mapTid(m3);
+    auto mappedTid4 = terminusManager.mapTid(m4);
+    EXPECT_NE(mappedTid3.value(), mappedTid4.value());
+
+    // map same mctpInfo twice
+    pldm::MctpInfo m5(12, "", "", 3);
+    auto mappedTid5 = terminusManager.mapTid(m5);
+    auto mappedTid6 = terminusManager.mapTid(m5);
+    EXPECT_EQ(mappedTid5.value(), mappedTid6.value());
 }
