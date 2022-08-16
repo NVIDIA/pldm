@@ -208,9 +208,7 @@ deps += [
   libpldmresponder
 ]
 endif
-
-executable(
-  'pldmd',
+source_files = [
   'pldmd/pldmd.cpp',
   'pldmd/dbus_impl_requester.cpp',
   'pldmd/instance_id.cpp',
@@ -233,6 +231,17 @@ executable(
   'platform-mc/state_sensor.cpp',
   'platform-mc/event_manager.cpp',
   'requester/mctp_endpoint_discovery.cpp',
+]
+
+if get_option('oem-nvidia').enabled()
+  source_files += [
+    'fw-update/oem-nvidia/debug_token.cpp'
+  ]
+endif
+
+executable(
+  'pldmd',
+  sources: source_files,
   implicit_include_directories: false,
   dependencies: deps,
   install: true,

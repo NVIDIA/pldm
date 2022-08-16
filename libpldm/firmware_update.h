@@ -24,6 +24,7 @@ extern "C" {
 #define PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES 0
 #define PLDM_CANCEL_UPDATE_REQ_BYTES 0
 
+
 /** @brief PLDM Firmware update commands
  */
 enum pldm_firmware_update_commands {

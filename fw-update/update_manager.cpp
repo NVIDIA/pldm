@@ -565,6 +565,43 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
 software::Activation::Activations UpdateManager::activatePackage()
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+    activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
+        pldm::utils::DBusHandler::getBus(), objPath, this);
+#ifdef OEM_NVIDIA
+    debugToken =
+        std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);
+    debugToken->updateDebugToken(parser->getFwDeviceIDRecords(),
+                                 parser->getComponentImageInfos(), package);
+    return software::Activation::Activations::Activating;
+#endif
+    startPLDMUpdate();
+    auto nonPLDMState = startNonPLDMUpdate();
+    if (nonPLDMState == software::Activation::Activations::Failed ||
+        nonPLDMState == software::Activation::Activations::Active)
+    {
+        return nonPLDMState;
+    }
+    return software::Activation::Activations::Activating;
+}
+
+void UpdateManager::startPLDMUpdate()
+{
+    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
+    {
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(deviceUpdaterPtr->fwDeviceIDRecord);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
+                                  compIndex, targetDetermined);
+        }
+        deviceUpdaterPtr->startFwUpdateFlow();
+    }
+}
+
+software::Activation::Activations UpdateManager::startNonPLDMUpdate()
+{
     // In case no device found set activation stage to active to complete
     // task.
     if ((deviceUpdaterMap.size() == 0) &&
@@ -583,23 +620,10 @@ software::Activation::Activations UpdateManager::activatePackage()
             " device inventory.";
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
+        activationBlocksTransition.reset();
+        clearFirmwareUpdatePackage();
         return software::Activation::Activations::Active;
     }
-    activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
-        pldm::utils::DBusHandler::getBus(), objPath, this);
-    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
-    {
-        const auto& applicableComponents =
-            std::get<ApplicableComponents>(deviceUpdaterPtr->fwDeviceIDRecord);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
-        {
-            createMessageRegistry(eid, deviceUpdaterPtr->fwDeviceIDRecord,
-                                  compIndex, targetDetermined);
-        }
-        deviceUpdaterPtr->startFwUpdateFlow();
-    }
-    // Initiate the activate of non-pldm
     if (!otherDeviceUpdateManager->activate())
     {
         if (deviceUpdaterMap.size() == 0)
@@ -735,6 +759,12 @@ void UpdateManager::clearFirmwareUpdatePackage()
 {
     package.close();
     std::filesystem::remove(fwPackageFilePath);
+}
+
+void UpdateManager::setActivationStatus(
+    const software::Activation::Activations& state)
+{
+    activation->activation(state);
 }
 
 } // namespace fw_update

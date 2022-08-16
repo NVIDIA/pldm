@@ -298,6 +298,12 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 }
                 const auto& componentImageInfo =
                     componentImageInfos[applicableCompVec[0]];
+                if (std::get<static_cast<size_t>(
+                        ComponentImageInfoPos::CompIdentifierPos)>(
+                        componentImageInfo) == deadComponent)
+                {
+                    continue;
+                }
                 const auto& version = std::get<7>(componentImageInfo);
                 std::string fileName = "";
                 std::string objPath;

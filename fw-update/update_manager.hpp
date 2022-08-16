@@ -17,6 +17,10 @@
 #include <tuple>
 #include <unordered_map>
 
+#ifdef OEM_NVIDIA
+#include "oem-nvidia/debug_token.hpp"
+#endif
+
 namespace pldm
 {
 
@@ -54,8 +58,7 @@ class UpdateManager
         pldm::requester::Handler<pldm::requester::Request>& handler,
         Requester& requester, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
-        ComponentNameMap& componentNameMap,
-        bool fwDebug);
+        ComponentNameMap& componentNameMap, bool fwDebug);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -278,6 +281,23 @@ class UpdateManager
         "ResourceEvent.1.1.0.ResourceErrorsDetected"};
 
     bool fwDebug;
+    /**
+     * @brief start pldm firmware update
+     *
+     */
+    void startPLDMUpdate();
+    /**
+     * @brief start non-pldm firmware update
+     *
+     * @return software::Activation::Activations
+     */
+    software::Activation::Activations startNonPLDMUpdate();
+    /**
+     * @brief Set activation status
+     *
+     * @param[in] state - activation state
+     */
+    void setActivationStatus(const software::Activation::Activations& state);
 
   private:
     /** @brief Device identifiers of the managed FDs */
@@ -321,6 +341,9 @@ class UpdateManager
     decltype(std::chrono::steady_clock::now()) startTime;
 
     std::unique_ptr<OtherDeviceUpdateManager> otherDeviceUpdateManager;
+#ifdef OEM_NVIDIA
+    std::unique_ptr<DebugToken> debugToken;
+#endif
 };
 
 } // namespace fw_update

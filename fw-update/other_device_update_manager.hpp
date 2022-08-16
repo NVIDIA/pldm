@@ -21,6 +21,9 @@ namespace MatchRules = sdbusplus::bus::match::rules;
 
 namespace Server = sdbusplus::xyz::openbmc_project::Software::server;
 
+/* dead component identifier*/
+const uint16_t deadComponent = 0xDEAD;
+
 /**
  * @brief Other device activation information used for storing the activation
  *        state of each of the non-pldm updates currently occuring. Mirrors
@@ -189,7 +192,7 @@ class OtherDeviceUpdateManager
      *
      * @param paths object to store the paths into
      */
-    void getValidPaths(std::vector<std::string> &paths);
+    void getValidPaths(std::vector<std::string>& paths);
 
     /**
      * @brief updates the valid target count
@@ -197,7 +200,7 @@ class OtherDeviceUpdateManager
      */
     void updateValidTargets(void);
 
-    UpdateManager *updateManager;
+    UpdateManager* updateManager;
 
     /**
      * @brief Cache of the valid targets for non-pldm updates
@@ -247,14 +250,13 @@ class OtherDeviceUpdateManager
      *        considered done.
      *
      */
-    static constexpr std::array<Server::Activation::Activations, 2> validTerminalActivationStates =
-      {
-        Server::Activation::Activations::Active,
-        Server::Activation::Activations::Failed
-      };
+    static constexpr std::array<Server::Activation::Activations, 2>
+        validTerminalActivationStates = {
+            Server::Activation::Activations::Active,
+            Server::Activation::Activations::Failed};
     /**
      * @brief map to match uuid to version string and component name
-     * 
+     *
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
     std::vector<sdbusplus::message::object_path> targets;
