@@ -167,8 +167,6 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
 {
     if (!std::filesystem::exists(staticEidTablePath))
     {
-        std::cerr << "Static EIDs json file does not exist, PATH="
-                  << staticEidTablePath << "\n";
         return;
     }
 
