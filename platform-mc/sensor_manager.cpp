@@ -58,6 +58,22 @@ requester::Coroutine SensorManager::doSensorPollingTask()
                 sensor->elapsedTime = 0;
             }
         }
+
+        for (auto sensor : terminus.second->stateSensors)
+        {
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            elapsed = t1 - t0;
+            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
+            if (sensor->elapsedTime >= sensor->updateTime)
+            {
+                co_await getStateSensorReadings(sensor);
+                if (!sensorPollTimer->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }                
+                sensor->elapsedTime = 0;
+            }
+        }        
     }
 }
 
@@ -161,5 +177,73 @@ requester::Coroutine
     sensor->updateReading(true, true, value);
     co_return completionCode;
 }
+
+requester::Coroutine
+    SensorManager::getStateSensorReadings(std::shared_ptr<StateSensor> sensor)
+{
+    auto tid = sensor->tid;
+    auto sensorId = sensor->sensorId;
+
+    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+
+    auto rc = encode_get_state_sensor_readings_req(0, sensorId, (bitfield8_t)0,
+                                                   0x0, requestMsg);
+    if (rc)
+    {
+        std::cerr << "encode_get_state_sensor_readings_req failed, SID="
+                  << unsigned(sensorId) << " TID=" << unsigned(tid)
+                  << ", RC=" << rc << std::endl;
+        co_return rc;
+    }
+
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+    rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
+                                                  &responseLen);
+
+    if (rc)
+    {
+        std::cerr << "SendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
+                  << "\n";
+        co_return rc;
+    }
+
+    if (!sensorPollTimer->isRunning())
+    {
+        co_return PLDM_ERROR;
+    }
+
+    uint8_t completionCode = PLDM_SUCCESS;
+    uint8_t comp_sensor_count = 0;
+    std::array<get_sensor_state_field, 8> stateField{};
+    rc = decode_get_state_sensor_readings_resp(
+        responseMsg, responseLen, &completionCode, &comp_sensor_count,
+        stateField.data());
+    if (rc)
+    {
+        std::cerr << "Failed to decode response of GetStateSensorReadings, SID="
+                  << unsigned(sensorId) << " TID=" << unsigned(tid)
+                  << ", RC=" << rc << "\n";
+        sensor->handleErrGetSensorReading();
+        co_return rc;
+    }
+    if (completionCode != PLDM_SUCCESS)
+    {
+        std::cerr << "Failed to decode response of GetStateSensorReadings, SID="
+                  << unsigned(sensorId) << " TID=" << unsigned(tid)
+                  << ", CC=" << unsigned(completionCode) << "\n";
+        sensor->handleErrGetSensorReading();
+        co_return rc;
+    }
+
+    for (size_t i = 0; i < comp_sensor_count; i++)
+    {
+        sensor->updateReading(true, true, i, stateField[i].present_state);
+    }
+
+    co_return completionCode;
+}
+
 } // namespace platform_mc
 } // namespace pldm

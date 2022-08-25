@@ -44,6 +44,13 @@ using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
 using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
 
+typedef struct _pathAssociation
+{
+    std::string forward;
+    std::string reverse;
+    std::string path;
+} PathAssociation;
+
 } // namespace dbus
 
 namespace fw_update
@@ -161,7 +168,8 @@ using PossibleStates = std::set<uint8_t>;
 using CompositeSensorStates = std::vector<PossibleStates>;
 using EntityInfo = std::tuple<ContainerID, EntityType, EntityInstance>;
 using SensorInfo = std::tuple<EntityInfo, CompositeSensorStates>;
-
+using StateSetSensor = std::tuple<StateSetId, PossibleStates>;
+using StateSetSensorInfo = std::tuple<EntityInfo, std::vector<StateSetSensor>>;
 } // namespace pdr
 
 } // namespace pldm

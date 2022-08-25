@@ -79,6 +79,13 @@ class SensorManager
     requester::Coroutine
         getSensorReading(std::shared_ptr<NumericSensor> sensor);
 
+    /** @brief Sending getStateSensorReadings command for the sensor
+     *
+     *  @param[in] sensor - the sensor to be updated
+     */
+    requester::Coroutine
+        getStateSensorReadings(std::shared_ptr<StateSensor> sensor);
+
     sdeventplus::Event& event;
 
     /** @brief reference of terminusManager */

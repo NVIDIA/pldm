@@ -4,6 +4,7 @@
 
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
+#include "state_sensor.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
@@ -63,9 +64,16 @@ class Terminus
     /** @brief A list of numericSensors */
     std::vector<std::shared_ptr<NumericSensor>> numericSensors{};
 
+        /** @brief A list of state Sensors */
+    std::vector<std::shared_ptr<StateSensor>> stateSensors{};
+
     /** @brief A list of parsed numeric sensor PDRs */
     std::vector<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
         numericSensorPdrs{};
+
+    /** @brief A list of parsed state sensor PDRs */
+    std::vector<std::tuple<SensorID, StateSetSensorInfo>>
+        stateSensorPdrs{};
 
     /** @brief Get Sensor Auxiliary Names by sensorID
      *
@@ -76,6 +84,8 @@ class Terminus
 
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
+
+    void addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo);
 
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
@@ -89,6 +99,9 @@ class Terminus
 
     std::shared_ptr<SensorAuxiliaryNames>
         parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData);
+
+    std::tuple<SensorID, StateSetSensorInfo>
+        parseStateSensorPDR(std::vector<uint8_t>& pdr);
 
     tid_t tid;
     std::bitset<64> supportedTypes;

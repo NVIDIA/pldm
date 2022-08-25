@@ -10,7 +10,7 @@ namespace platform_mc
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes) :
     tid(tid), supportedTypes(supportedTypes)
 {
-    inventoryPath = "/xyz/openbmc_project/inventory/Item/Board/PLDM_Device_" +
+    inventoryPath = "/xyz/openbmc_project/inventory/system/chassis/PLDM_Device_" +
                     std::to_string(tid);
     inventoryItemChassisInft = std::make_unique<InventoryItemChassisIntf>(
         utils::DBusHandler::getBus(), inventoryPath.c_str());
@@ -39,6 +39,11 @@ bool Terminus::parsePDRs()
             auto parsedPdr = parseNumericSensorPDR(pdr);
             numericSensorPdrs.emplace_back(std::move(parsedPdr));
         }
+        else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
+        {
+            auto parsedPdr = parseStateSensorPDR(pdr);
+            stateSensorPdrs.emplace_back(std::move(parsedPdr));
+        }
         else
         {
             rc = false;
@@ -48,6 +53,12 @@ bool Terminus::parsePDRs()
     for (auto pdr : numericSensorPdrs)
     {
         addNumericSensor(pdr);
+    }
+
+    for (auto pdr : stateSensorPdrs)
+    {
+        auto [sensorID, stateSetSensorInfo] = pdr;
+        addStateSensor(sensorID, std::move(stateSetSensorInfo));
     }
 
     return rc;
@@ -390,6 +401,53 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
+std::tuple<SensorID, StateSetSensorInfo>
+    Terminus::parseStateSensorPDR(std::vector<uint8_t>& stateSensorPdr)
+{
+    auto pdr =
+        reinterpret_cast<const pldm_state_sensor_pdr*>(stateSensorPdr.data());
+    std::vector<StateSetSensor> sensors{};
+    auto statesPtr = pdr->possible_states;
+    auto compositeSensorCount = pdr->composite_sensor_count;
+
+    while (compositeSensorCount--)
+    {
+        auto state =
+            reinterpret_cast<const state_sensor_possible_states*>(statesPtr);
+        auto stateSedId = state->state_set_id;
+        PossibleStates possibleStates{};
+        uint8_t possibleStatesPos{};
+        auto updateStates = [&possibleStates,
+                             &possibleStatesPos](const bitfield8_t& val) {
+            for (int i = 0; i < CHAR_BIT; i++)
+            {
+                if (val.byte & (1 << i))
+                {
+                    possibleStates.insert(possibleStatesPos * CHAR_BIT + i);
+                }
+            }
+            possibleStatesPos++;
+        };
+        std::for_each(&state->states[0],
+                      &state->states[state->possible_states_size],
+                      updateStates);
+        sensors.emplace_back(std::make_tuple(stateSedId, std::move(possibleStates)));
+        if (compositeSensorCount)
+        {
+            statesPtr += sizeof(state_sensor_possible_states) +
+                         state->possible_states_size - 1;
+        }
+    }
+
+    auto entityInfo =
+        std::make_tuple(static_cast<ContainerID>(pdr->container_id),
+                        static_cast<EntityType>(pdr->entity_type),
+                        static_cast<EntityInstance>(pdr->entity_instance));
+    auto sensorInfo =
+        std::make_tuple(std::move(entityInfo), std::move(sensors));
+    return std::make_tuple(pdr->sensor_id, std::move(sensorInfo));
+}
+
 void Terminus::addNumericSensor(
     const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr)
 {
@@ -420,6 +478,37 @@ void Terminus::addNumericSensor(
                   << "sensorName=" << sensorName << "\n";
     }
 }
+
+void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
+{
+    std::string sensorName = "PLDM_Device_" + std::to_string(sId) +
+                             "_" + std::to_string(tid);
+
+    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
+    if (sensorAuxiliaryNames)
+    {
+        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
+        if (sensorCnt == 1)
+        {
+            sensorName = sensorNames[0].second + "_" +
+                         std::to_string(sId) + "_" +
+                         std::to_string(tid);
+        }
+    }
+
+    try
+    {
+        auto sensor = std::make_shared<StateSensor>(
+            tid, true, sId, std::move(sensorInfo), sensorName, inventoryPath);
+        stateSensors.emplace_back(sensor);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << " Failed to create StateSensor. ERROR =" << e.what()
+                  << " sensorName=" << sensorName << std::endl;
+    }
+}
+
 
 } // namespace platform_mc
 } // namespace pldm

@@ -5,6 +5,7 @@ test_src = declare_dependency(
             '../platform_manager.cpp',
             '../sensor_manager.cpp',
             '../numeric_sensor.cpp',
+            '../state_sensor.cpp',
             '../../requester/mctp_endpoint_discovery.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',

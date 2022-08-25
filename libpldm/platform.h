@@ -406,6 +406,24 @@ enum pldm_repository_data_transfer_handler_timeout {
 	PLDM_DEFALUT_MINIMUM_TIMEOUT
 };
 
+/** @brief PLDM state set IDs */
+enum pldm_state_set_id {
+	PLDM_STATESET_ID_PERFORMANCE = 14,
+	PLDM_STATESET_ID_POWERSUPPLY = 256
+};
+
+/** @brief PLDM state set ID 14 Performance values  */
+enum pldm_stateset_performance_values {
+	PLDM_STATESET_PERFORMANCE_NORMAL = 1,
+	PLDM_STATESET_PERFORMANCE_THROTTLED = 2
+};
+
+/** @brief PLDM state set ID 256 Power Supply values  */
+enum pldm_stateset_powersupply_values {
+	PLDM_STATESET_POWERSUPPLY_NORMAL = 1,
+	PLDM_STATESET_POWERSUPPLY_OUTOFRANGE = 8
+};
+
 /** @struct pldm_pdr_hdr
  *
  *  Structure representing PLDM common PDR header

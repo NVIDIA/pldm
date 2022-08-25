@@ -227,6 +227,7 @@ executable(
   'platform-mc/platform_manager.cpp',
   'platform-mc/sensor_manager.cpp',
   'platform-mc/numeric_sensor.cpp',
+  'platform-mc/state_sensor.cpp',
   'requester/mctp_endpoint_discovery.cpp',
   implicit_include_directories: false,
   dependencies: deps,
