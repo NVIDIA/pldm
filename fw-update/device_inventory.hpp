@@ -60,10 +60,12 @@ class Entry : public Ifaces
      *  @param[in] objPath - D-Bus object path
      *  @param[in] uuid - MCTP UUID
      *  @param[in] assocs - D-Bus associations
+     *  @param[in] sku - SKU
      */
     explicit Entry(sdbusplus::bus::bus& bus,
                    const pldm::dbus::ObjectPath& objPath,
-                   const pldm::UUID& uuid, const Associations& assocs);
+                   const pldm::UUID& uuid, const Associations& assocs,
+                   const std::string& sku);
 };
 
 /** @class Manager
@@ -84,17 +86,21 @@ class Manager
      *
      *  @param[in] bus  - Bus to attach to
      *  @param[in] deviceInventoryInfo - Config info for device inventory
+     *  @param[in] descriptorMap - Descriptor info of MCTP endpoints
      */
     explicit Manager(sdbusplus::bus::bus& bus,
-                     const DeviceInventoryInfo& deviceInventoryInfo);
+                     const DeviceInventoryInfo& deviceInventoryInfo,
+                     const DescriptorMap& descriptorMap);
 
     /** @brief Create device inventory object
      *
+     *  @param[in] eid - MCTP endpointID
      *  @param[in] uuid - MCTP UUID of the device
      *
      *  @return Object path of the device inventory object
      */
-    sdbusplus::message::object_path createEntry(const pldm::UUID& uuid);
+    sdbusplus::message::object_path createEntry(pldm::EID eid,
+                                                const pldm::UUID& uuid);
 
   private:
     sdbusplus::bus::bus& bus;
@@ -103,6 +109,9 @@ class Manager
 
     /** @brief Config info for device inventory */
     const DeviceInventoryInfo& deviceInventoryInfo;
+
+    /** @brief Descriptor info of MCTP endpoints */
+    const DescriptorMap& descriptorMap;
 
     /** @brief Map to store device inventory objects */
     std::map<pldm::UUID, std::unique_ptr<Entry>> deviceEntryMap;

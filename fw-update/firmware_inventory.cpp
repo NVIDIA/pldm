@@ -1,16 +1,19 @@
 #include "firmware_inventory.hpp"
 
+#include <fmt/format.h>
+
 #include <iostream>
 
 namespace pldm::fw_update::fw_inventory
 {
 
 Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
-             const std::string& versionStr) :
+             const std::string& versionStr, const std::string& swId) :
     Ifaces(bus, objPath.c_str(), action::defer_emit)
 {
     Ifaces::version(versionStr, true);
     Ifaces::purpose(VersionPurpose::Other, true);
+    Ifaces::softwareId(swId, true);
     Ifaces::emit_object_added();
 }
 
@@ -52,8 +55,9 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
             {
                 auto componentName = fwInfoSearch->second.find(compKey.second);
                 std::string objPath = swBasePath + "/" + componentName->second;
-                auto entry = std::make_unique<Entry>(bus, objPath,
-                                                     std::get<1>(compInfo));
+                auto swId = fmt::format("0x{:04X}", compKey.second);
+                auto entry = std::make_unique<Entry>(
+                    bus, objPath, std::get<1>(compInfo), swId);
                 entry->createUpdateableAssociation(swBasePath);
                 if (objectPath != "")
                 {

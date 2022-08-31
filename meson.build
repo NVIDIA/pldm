@@ -109,6 +109,21 @@ if get_option('libpldm-only').disabled()
       ]
     )
   endif
+
+  fmt_dep = dependency('fmt', required: false)
+  if not fmt_dep.found()
+    fmt_opts = import('cmake').subproject_options()
+    fmt_opts.add_cmake_defines({
+      'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
+      'MASTER_PROJECT': 'OFF',
+    })
+    fmt_proj = import('cmake').subproject(
+      'fmt',
+      options: fmt_opts,
+      required: false)
+    assert(fmt_proj.found(), 'fmtlib is required')
+    fmt_dep = fmt_proj.dependency('fmt')
+  endif
 endif
 
 if get_option('oe-sdk').enabled()
@@ -172,6 +187,7 @@ libpldmutils = declare_dependency(
   link_with: libpldmutils)
 
 deps = [
+  fmt_dep,
   function2_dep,
   libpldm_dep,
   libpldmutils,

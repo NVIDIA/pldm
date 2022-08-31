@@ -23,11 +23,12 @@ TEST(Entry, Basic)
     const std::string objPath{"/xyz/openbmc_project/software/bmc"};
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string version{"MAJOR.MINOR.PATCH"};
+    const std::string swId{"0x0001"};
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
 
-    Entry entry(busMock, objPath, version);
+    Entry entry(busMock, objPath, version, swId);
 }
 
 TEST(Entry, BasicEntryCreateAssociation)
@@ -38,6 +39,7 @@ TEST(Entry, BasicEntryCreateAssociation)
     const std::string objPath{"/xyz/openbmc_project/software/bmc"};
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string version{"MAJOR.MINOR.PATCH"};
+    const std::string swId{"0x0001"};
     const std::string devObjectPath{
         "/xyz/openbmc_project/inventory/system/bmc"};
 
@@ -56,7 +58,7 @@ TEST(Entry, BasicEntryCreateAssociation)
                 return 0;
             }));
 
-    Entry entry(busMock, objPath, version);
+    Entry entry(busMock, objPath, version, swId);
     entry.createInventoryAssociation(devObjectPath);
     entry.createUpdateableAssociation("/xyz/openbmc_project/software");
 }

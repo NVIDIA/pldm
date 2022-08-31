@@ -62,7 +62,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         updateManager(event, handler, requester, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
-                               deviceInventoryInfo),
+                               deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap)
     {
@@ -109,7 +109,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     void createInventory(EID eid, UUID uuid)
     {
-        auto objectPath = deviceInventoryManager.createEntry(uuid);
+        auto objectPath = deviceInventoryManager.createEntry(eid, uuid);
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.createEntry(eid, uuid, objectPath);

@@ -45,9 +45,10 @@ class Entry : public Ifaces
      *  @param[in] bus  - Bus to attach to
      *  @param[in] objPath - D-Bus object path
      *  @param[in] version - Version string
+     *  @param[in] swId - Software ID
      */
     explicit Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
-                   const std::string& versionStr);
+                   const std::string& versionStr, const std::string& swId);
 
     /** @brief Create association {"inventory", "activation"} between software
      *         object and the device inventory object
