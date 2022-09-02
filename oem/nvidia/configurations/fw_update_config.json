@@ -13,7 +13,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/FPGA_0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_FPGA_0"
                     }
                 ]
             },
@@ -28,31 +28,6 @@
         {
             "mctp_endpoint_uuid": "ad4c8361-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_0",
-                "associations": [
-                    {
-                        "forward": "parent_chassis",
-                        "reverse": "all_chassis",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
-                    },
-                    {
-                        "forward": "inventory",
-                        "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_0"
-                    }
-                ]
-            },
-            "firmware_inventory": {
-                "HGX_FW_ERoT_GPU_SXM_0": 65280
-            },
-            "component_info": {
-                "HGX_FW_ERoT_GPU_SXM_0": 65280,
-                "HGX_FW_GPU_SXM_0": 32
-            }
-        },
-        {
-            "mctp_endpoint_uuid": "ad4c8362-c54c-11eb-8529-0242ac130003",
-            "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_1",
                 "associations": [
                     {
@@ -63,7 +38,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_1"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_1"
                     }
                 ]
             },
@@ -76,7 +51,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8363-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8362-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_2",
                 "associations": [
@@ -88,7 +63,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_2"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_2"
                     }
                 ]
             },
@@ -101,7 +76,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8364-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8363-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_3",
                 "associations": [
@@ -113,7 +88,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_3"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_3"
                     }
                 ]
             },
@@ -126,7 +101,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8365-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8364-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_4",
                 "associations": [
@@ -138,7 +113,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_4"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_4"
                     }
                 ]
             },
@@ -151,7 +126,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8366-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8365-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_5",
                 "associations": [
@@ -163,7 +138,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_5"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_5"
                     }
                 ]
             },
@@ -176,7 +151,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8367-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8366-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_6",
                 "associations": [
@@ -188,7 +163,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_6"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_6"
                     }
                 ]
             },
@@ -201,7 +176,7 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8368-c54c-11eb-8529-0242ac130003",
+            "mctp_endpoint_uuid": "ad4c8367-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_7",
                 "associations": [
@@ -213,7 +188,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_7"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_7"
                     }
                 ]
             },
@@ -226,6 +201,31 @@
             }
         },
         {
+            "mctp_endpoint_uuid": "ad4c8368-c54c-11eb-8529-0242ac130003",
+            "device_inventory": {
+                "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_8",
+                "associations": [
+                    {
+                        "forward": "parent_chassis",
+                        "reverse": "all_chassis",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_8"
+                    }
+                ]
+            },
+            "firmware_inventory": {
+                "HGX_FW_ERoT_GPU_SXM_8": 65280
+            },
+            "component_info": {
+                "HGX_FW_ERoT_GPU_SXM_8": 65280,
+                "HGX_FW_GPU_SXM_8": 32
+            }
+        },
+        {
             "mctp_endpoint_uuid": "ad4c836b-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_HMC_0",
@@ -234,6 +234,11 @@
                         "forward": "parent_chassis",
                         "reverse": "all_chassis",
                         "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_Baseboard_0"
+                    },
+                    {
+                        "forward": "inventory",
+                        "reverse": "associated_ROT",
+                        "endpoint": "/xyz/openbmc_project/inventory/system/bmc/HGX_HMC_0"
                     }
                 ]
             },
@@ -258,7 +263,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_0"
                     }
                 ]
             },
@@ -283,7 +288,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_1/Switches/NVSwitch_1"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_1"
                     }
                 ]
             },
@@ -308,7 +313,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_2/Switches/NVSwitch_2"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_2"
                     }
                 ]
             },
@@ -333,7 +338,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_3/Switches/NVSwitch_3"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_3"
                     }
                 ]
             },
@@ -358,7 +363,7 @@
                     {
                         "forward": "inventory",
                         "reverse": "associated_ROT",
-                        "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_PCIeSwitchTopology_0/Switches/PCIeSwitch_0"
+                        "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_PCIeSwitch_0"
                     }
                 ]
             },
