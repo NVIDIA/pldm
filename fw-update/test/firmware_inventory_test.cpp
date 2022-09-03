@@ -87,7 +87,7 @@ TEST(Manager, SingleMatch)
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string compName1{"CompName1"};
     FirmwareInventoryInfo fwInventoryInfo{
-        {uuid, {{compIdentifier1, compName1}}}};
+        {uuid, {{{compIdentifier1, compName1}}, {}}}};
     const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
@@ -147,8 +147,9 @@ TEST(Manager, MulipleMatch)
     const std::string compName2{"CompName2"};
     const std::string compName3{"CompName3"};
     FirmwareInventoryInfo fwInventoryInfo{
-        {uuid1, {{compIdentifier1, compName1}, {compIdentifier2, compName2}}},
-        {uuid2, {{compIdentifier3, compName3}}}};
+        {uuid1,
+         {{{compIdentifier1, compName1}, {compIdentifier2, compName2}}, {}}},
+        {uuid2, {{{compIdentifier3, compName3}}, {}}}};
     const std::string objPath1 = "/xyz/openbmc_project/software/" + compName1;
     const std::string objPath2 = "/xyz/openbmc_project/software/" + compName2;
     const std::string objPath3 = "/xyz/openbmc_project/software/" + compName3;

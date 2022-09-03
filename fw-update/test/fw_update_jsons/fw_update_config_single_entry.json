@@ -3,17 +3,27 @@
         {
             "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName",
-                "associations": [
-                    {
-                        "forward": "parent",
-                        "reverse": "child",
-                        "endpoint": "/xyz/openbmc_project/inventory/chassis"
-                    }
-                ]
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName1",
+                    "associations": [
+                        {
+                            "forward": "parent",
+                            "reverse": "child",
+                            "endpoint": "/xyz/openbmc_project/inventory/chassis"
+                        }
+                    ]
+                },
+                "update": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName2"
+                }
             },
             "firmware_inventory": {
-                "ComponentName1": 1
+                "create": {
+                    "ComponentName1": 1
+                },
+                "update": {
+                    "ComponentName2": 2
+                }
             },
             "component_info": {
                 "ComponentName1": 1,

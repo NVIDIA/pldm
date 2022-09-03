@@ -105,13 +105,18 @@ using ComponentImageInfos = std::vector<ComponentImageInfo>;
 using DeviceObjPath = std::string;
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
-using DeviceInfo = std::tuple<DeviceObjPath, Associations>;
+using CreateDeviceInfo = std::tuple<DeviceObjPath, Associations>;
+using UpdateDeviceInfo = DeviceObjPath;
+using DeviceInfo = std::tuple<CreateDeviceInfo, UpdateDeviceInfo>;
 using DeviceInventoryInfo = std::unordered_map<UUID, DeviceInfo>;
 
 // FirmwareInventory
 using ComponentName = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
-using FirmwareInventoryInfo = std::unordered_map<UUID, ComponentIdNameMap>;
+using CreateComponentIdNameMap = ComponentIdNameMap;
+using UpdateComponentIdNameMap = ComponentIdNameMap;
+using FirmwareInventoryInfo = std::unordered_map<
+    UUID, std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>>;
 
 // ComponentInformation
 using ComponentNameMapInfo = std::unordered_map<UUID, ComponentIdNameMap>;

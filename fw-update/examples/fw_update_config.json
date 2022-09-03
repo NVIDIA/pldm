@@ -11,36 +11,46 @@
 // processing PLDM for FRU (Type 4) from the devices. PLDM for FRU is not
 // available on certain FD implementations and we are leveraging PLDM for
 // firmware update specification(Type 5) to create device inventory. This
-// implementation is currently limited to implementing
-// xyz.openbmc_project.Inventory.Item.Chassis interface and default ChassisType
-// to Component. The device section can be expanded if different inventory
-// items are to be supported in future. It will implement the
-// xyz.openbmc_project.Common.UUID D-Bus interface and populate UUID property
-// with the MCTP UUID for the endpoint. Optionally D-Bus associations can be
-// created by providing the forward, reverse type of the association and the
-// association endpoint. "device_inventory" is optional, but if the field is
-// present, then "object_path" is mandatory and "associations" is optional.
+// implementation creates the ERoT inventory D-Bus object with the object_path
+// if the "create" section is present in "device_inventory" section. It
+// implements xyz.openbmc_project.Inventory.Item.Chassis interface and default
+// ChassisType D-Bus property to "Component". It implements
+// xyz.openbmc_project.Inventory.Decorator.LocationCode interface and default
+// LocationTypes D-Bus property to "Embedded". It implements the
+// xyz.openbmc_project.Inventory.Item.SPDMResponder interface. It implements
+// the xyz.openbmc_project.Inventory.Decorator.Asset interface and defaults
+// Manufacturer property to "NVIDIA" and SKU property to the value of vendor
+// defined descriptor named "ECSKU" from the FD that matches to the MCTP UUID.
+// It will implement the xyz.openbmc_project.Common.UUID D-Bus interface and
+// populate UUID property with the MCTP UUID for the endpoint. Optionally D-Bus
+// associations can be created by providing the forward, reverse type of the
+// association and the association endpoint. If the "update" section is present
+// in the "device_inventory" section then, SKU property of the AP's device
+// inventory object is updated with the value of the vendor defined descriptor
+// named "APSKU" from the FD that matches to the MCTP UUID. "device_inventory"
+// and the sections are optional.
 //
 // 2) Firmware Inventory - The firmware version for the components on the FD is
-// populated on the D-Bus if "firmware_inventory" entry is present. This entry
-// is optional. The key is the component name and value is the
-// ComponentIdentifier as defined in DSP0267. The firmware inventory D-Bus
-// object path will be "ComponentName" appended to
-// "/xyz/openbmc_project/software".
+// populated on the D-Bus if "create" entry is present in "firmware_inventory"
+// section. The key is the component name and value is the ComponentIdentifier
+// as defined in DSP0267. The firmware inventory D-Bus object path will be
+// "ComponentName" appended to "/xyz/openbmc_project/software".
 // "/xyz/openbmc_project/software/ComponentName" D-Bus object will implement
 // xyz.openbmc_project.Software.Version interface and default Purpose to
 // xyz.openbmc_project.Software.Version.VersionPurpose.Other and the Version
 // property with "ActiveComponentVersionString" from GetFirmwareParameters
-// response. If device inventory is created for the FD, then
-// xyz.openbmc_project.Association.Definitions interface is implemented with
-// forward association type - "inventory", reverse association type
-// - "activation" and association endpoint -
+// response and SoftwareId with the ComponentIdentifier. If device inventory is
+// created for the FD, then xyz.openbmc_project.Association.Definitions
+// interface is implemented with forward association type - "inventory",
+// reverse association type - "activation" and association endpoint -
 // "/xyz/openbmc_project/inventory/chassis/DeviceName". Additionally will create
 // the association, forward association type - "software_version", reverse
 // association type - "updateable" and association endpoint -
 // "/xyz/openbmc_project/software". This entry gives the flexibility to
 // create D-Bus firmware inventory for selected components in the
-// ComponentParameterTable.
+// ComponentParameterTable. If the "update" entry is present in
+// "firmware_inventory" section then pldmd updates the SoftwareId property of
+// the "/xyz/openbmc_project/software/ComponentName" D-Bus object.
 //
 // 3) Message Registries - PLDM UA firmware update code will log message
 // registry entries based on
@@ -56,17 +66,27 @@
         {
             "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
-                "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName",
-                "associations": [
-                    {
-                        "forward": "parent",
-                        "reverse": "child",
-                        "endpoint": "/xyz/openbmc_project/inventory/chassis"
-                    }
-                ]
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName1",
+                    "associations": [
+                        {
+                            "forward": "parent",
+                            "reverse": "child",
+                            "endpoint": "/xyz/openbmc_project/inventory/chassis"
+                        }
+                    ]
+                },
+                "update": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName2"
+                }
             },
             "firmware_inventory": {
-                "ComponentName": 1
+                "create": {
+                    "ComponentName1": 1
+                },
+                "update": {
+                    "ComponentName2": 1
+                }
             },
             "component_info": {
                 "ComponentName1": 1,

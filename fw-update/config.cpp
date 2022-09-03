@@ -41,40 +41,66 @@ void parseConfig(const fs::path& jsonPath,
 
         if (entry.value().contains("device_inventory"))
         {
-            auto objPath = entry.value()["device_inventory"]["object_path"]
-                               .get<std::string>();
-
+            DeviceObjPath createObjPath{};
+            DeviceObjPath updateObjPath{};
             Associations assocs{};
-            if (entry.value()["device_inventory"].contains("associations"))
+            if (entry.value()["device_inventory"].contains("update"))
             {
-                auto associations =
-                    entry.value()["device_inventory"]["associations"];
-                for (const auto& assocEntry : associations.items())
+                updateObjPath =
+                    entry.value()["device_inventory"]["update"]["object_path"]
+                        .get<std::string>();
+            }
+            if (entry.value()["device_inventory"].contains("create"))
+            {
+                createObjPath =
+                    entry.value()["device_inventory"]["create"]["object_path"]
+                        .get<std::string>();
+
+                if (entry.value()["device_inventory"]["create"].contains(
+                        "associations"))
                 {
-                    auto forward = assocEntry.value()["forward"];
-                    auto reverse = assocEntry.value()["reverse"];
-                    auto endpoint = assocEntry.value()["endpoint"];
-                    assocs.emplace_back(
-                        std::make_tuple(forward, reverse, endpoint));
+                    auto associations = entry.value()["device_inventory"]
+                                                     ["create"]["associations"];
+                    for (const auto& assocEntry : associations.items())
+                    {
+                        auto forward = assocEntry.value()["forward"];
+                        auto reverse = assocEntry.value()["reverse"];
+                        auto endpoint = assocEntry.value()["endpoint"];
+                        assocs.emplace_back(
+                            std::make_tuple(forward, reverse, endpoint));
+                    }
                 }
             }
 
-            deviceInventoryInfo[mctp_endpoint_uuid] =
-                std::make_tuple(std::move(objPath), std::move(assocs));
+            deviceInventoryInfo[mctp_endpoint_uuid] = std::make_tuple(
+                std::make_tuple(std::move(createObjPath), std::move(assocs)),
+                std::move(updateObjPath));
         }
 
         if (entry.value().contains("firmware_inventory"))
         {
-            ComponentIdNameMap componentIdNameMap{};
-            for (auto& [componentName, componentID] :
-                 entry.value()["firmware_inventory"].items())
+            CreateComponentIdNameMap createcomponentIdNameMap{};
+            UpdateComponentIdNameMap updatecomponentIdNameMap{};
+            if (entry.value()["firmware_inventory"].contains("create"))
             {
-                componentIdNameMap[componentID] = componentName;
+                for (auto& [componentName, componentID] :
+                     entry.value()["firmware_inventory"]["create"].items())
+                {
+                    createcomponentIdNameMap[componentID] = componentName;
+                }
             }
-            if (componentIdNameMap.size())
+            if (entry.value()["firmware_inventory"].contains("update"))
             {
-                fwInventoryInfo[mctp_endpoint_uuid] = componentIdNameMap;
+                for (auto& [componentName, componentID] :
+                     entry.value()["firmware_inventory"]["update"].items())
+                {
+                    updatecomponentIdNameMap[componentID] = componentName;
+                }
             }
+
+            fwInventoryInfo[mctp_endpoint_uuid] =
+                std::make_tuple(std::move(createcomponentIdNameMap),
+                                std::move(updatecomponentIdNameMap));
         }
 
         if (entry.value().contains("component_info"))

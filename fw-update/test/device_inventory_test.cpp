@@ -40,8 +40,9 @@ TEST(Manager, SingleMatch)
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
     DeviceInventoryInfo deviceInventoryInfo{
         {uuid,
-         {objPath,
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}}}};
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}};
     const EID eid = 1;
     const DescriptorMap descriptorMap{
         {eid,
@@ -68,11 +69,13 @@ TEST(Manager, MultipleMatch)
     const std::string objPath2{"/xyz/openbmc_project/inventory/chassis/bmc2"};
     DeviceInventoryInfo deviceInventoryInfo{
         {uuid1,
-         {objPath1,
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}}},
+         {{objPath1,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}},
         {uuid2,
-         {objPath2,
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}}}};
+         {{objPath2,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}};
     const EID eid1 = 1;
     const EID eid2 = 1;
     const DescriptorMap descriptorMap{
@@ -101,8 +104,9 @@ TEST(Manager, NoMatch)
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
     DeviceInventoryInfo deviceInventoryInfo{
         {uuid1,
-         {objPath,
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}}}};
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}};
     const EID eid1 = 1;
     const DescriptorMap descriptorMap{
         {eid1,

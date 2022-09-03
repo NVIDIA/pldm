@@ -51,9 +51,10 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
 
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
-            if (fwInfoSearch->second.contains(compKey.second))
+            if ((std::get<0>(fwInfoSearch->second)).contains(compKey.second))
             {
-                auto componentName = fwInfoSearch->second.find(compKey.second);
+                auto componentName =
+                    (std::get<0>(fwInfoSearch->second)).find(compKey.second);
                 std::string objPath = swBasePath + "/" + componentName->second;
                 auto swId = fmt::format("0x{:04X}", compKey.second);
                 auto entry = std::make_unique<Entry>(

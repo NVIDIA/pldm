@@ -11,11 +11,13 @@ TEST(ParseConfig, SingleEntry)
 
     DeviceInventoryInfo deviceInventoryInfo{
         {"ad4c8360-c54c-11eb-8529-0242ac130003",
-         {"/xyz/openbmc_project/inventory/chassis/DeviceName",
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}}}};
+         {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}};
 
     FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003", {{1, "ComponentName1"}}}};
+        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+         {{{1, "ComponentName1"}}, {{2, "ComponentName2"}}}}};
 
     ComponentNameMapInfo componentNameMapInfo{
         {"ad4c8360-c54c-11eb-8529-0242ac130003",
@@ -39,16 +41,17 @@ TEST(ParseConfig, MultipleEntry)
 
     DeviceInventoryInfo deviceInventoryInfo{
         {"ad4c8360-c54c-11eb-8529-0242ac130003",
-         {"/xyz/openbmc_project/inventory/chassis/DeviceName1",
-          {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"},
-           {"right", "left", "/xyz/openbmc_project/inventory/direction"}}}},
+         {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"},
+            {"right", "left", "/xyz/openbmc_project/inventory/direction"}}},
+          {}}},
         {"ad4c8360-c54c-11eb-8529-0242ac130004",
-         {"/xyz/openbmc_project/inventory/chassis/DeviceName2", {}}}};
+         {{"", {}}, "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}};
 
     FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003", {{1, "ComponentName1"}}},
+        {"ad4c8360-c54c-11eb-8529-0242ac130003", {{}, {{1, "ComponentName1"}}}},
         {"ad4c8360-c54c-11eb-8529-0242ac130004",
-         {{3, "ComponentName3"}, {4, "ComponentName4"}}}};
+         {{{3, "ComponentName3"}, {4, "ComponentName4"}}, {}}}};
 
     ComponentNameMapInfo componentNameMapInfo{
         {"ad4c8360-c54c-11eb-8529-0242ac130003",
@@ -74,7 +77,8 @@ TEST(ParseConfig, LimitedEntry)
     DeviceInventoryInfo deviceInventoryInfo{};
 
     FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003", {{1, "ComponentName1"}}}};
+        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+         {{{1, "ComponentName1"}}, {}}}};
 
     ComponentNameMapInfo componentNameMapInfo{
         {"ad4c8360-c54c-11eb-8529-0242ac130003",

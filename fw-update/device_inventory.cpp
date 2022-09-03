@@ -36,8 +36,10 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
     if (deviceInventoryInfo.contains(uuid) && descriptorMap.contains(eid))
     {
         auto search = deviceInventoryInfo.find(uuid);
-        const auto& objPath = std::get<DeviceObjPath>(search->second);
-        const auto& assocs = std::get<Associations>(search->second);
+        const auto& objPath =
+            std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(search->second));
+        const auto& assocs =
+            std::get<Associations>(std::get<CreateDeviceInfo>(search->second));
         auto descSearch = descriptorMap.find(eid);
         std::string ecsku{};
         for (const auto& [descType, descValue] : descSearch->second)
