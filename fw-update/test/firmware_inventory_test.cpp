@@ -1,3 +1,4 @@
+#include "common/test/mocked_utils.hpp"
 #include "fw-update/firmware_inventory.hpp"
 
 #include <sdbusplus/bus.hpp>
@@ -106,7 +107,8 @@ TEST(Manager, SingleMatch)
 
     sdbusplus::message::object_path deviceObjPath{
         "/xyz/openbmc_project/inventory/chassis/bmc"};
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
     manager.createEntry(eid, uuid, deviceObjPath);
 }
 
@@ -196,7 +198,8 @@ TEST(Manager, MulipleMatch)
 
     sdbusplus::message::object_path deviceObjPath{
         "/xyz/openbmc_project/inventory/chassis/bmc"};
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
     manager.createEntry(eid1, uuid1, deviceObjPath);
     manager.createEntry(eid2, uuid2, deviceObjPath);
 }

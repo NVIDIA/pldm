@@ -50,11 +50,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] handler - PLDM request handler
      *  @param[in] requester - Managing instance ID for PLDM requests
      *  @param[in] fwUpdateConfigFile - Config file for firmware update
+     *  @param[in] dBusHandlerIntf - Interface to make D-Bus client calls
+     *  @param[in] fwDebug - Verbosity flag to enable debug traces for fw update
      */
     explicit Manager(Event& event,
                      requester::Handler<requester::Request>& handler,
                      Requester& requester,
                      const std::filesystem::path& fwUpdateConfigFile,
+                     utils::DBusHandlerInterface* dBusHandlerIntf,
                      bool fwDebug) :
         inventoryMgr(handler, requester,
                      std::bind_front(&Manager::createInventory, this),
@@ -64,7 +67,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
-                           componentInfoMap)
+                           componentInfoMap, dBusHandlerIntf)
     {
         try
         {

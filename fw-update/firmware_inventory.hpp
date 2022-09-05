@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/types.hpp"
+#include "common/utils.hpp"
 
 #include <sdbusplus/server.hpp>
 #include <sdbusplus/server/object.hpp>
@@ -87,7 +88,8 @@ class Manager
      */
     explicit Manager(sdbusplus::bus::bus& bus,
                      const FirmwareInventoryInfo& firmwareInventoryInfo,
-                     const ComponentInfoMap& componentInfoMap);
+                     const ComponentInfoMap& componentInfoMap,
+                     utils::DBusHandlerInterface* dBusHandlerIntf);
 
     /** @brief Create firmware inventory object
      *
@@ -112,6 +114,31 @@ class Manager
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<EID, CompIdentifier>, std::unique_ptr<Entry>>
         firmwareInventoryMap;
+
+    /** @brief Interface to make D-Bus client calls */
+    utils::DBusHandlerInterface* dBusHandlerIntf;
+
+    /** @brief D-Bus signal match for objects to be updated with SoftwareID*/
+    std::vector<sdbusplus::bus::match_t> updateFwMatch;
+
+    /** @brief Lookup table to find the SoftwareID for the input D-Bus object
+     */
+    std::unordered_map<dbus::ObjectPath, std::string> compIdentifierLookup;
+
+    /** @brief Update SoftwareID on the D-Bus object and register for
+     *         InterfaceAdded signal to update if the D-Bus object is created
+     *         again.
+     *
+     *  @param[in] objPath - D-Bus object path
+     *  @param[in] compId - Component Identifier
+     */
+    void updateSwId(const dbus::ObjectPath& objPath, const std::string& compId);
+
+    /** @brief Update SoftwareID on the D-Bus object
+     *
+     *  @param[in] msg - D-Bus message
+     */
+    void updateSwIdOnSignal(sdbusplus::message::message& msg);
 };
 
 } // namespace pldm::fw_update::fw_inventory

@@ -2,6 +2,7 @@
 
 #include "libpldm/firmware_update.h"
 
+#include "common/test/mocked_utils.hpp"
 #include "common/utils.hpp"
 #include "fw-update/manager.hpp"
 #include "pldmd/invoker.hpp"
@@ -24,7 +25,7 @@ class MctpEndpointDiscoveryTest : public testing::Test
         reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
         fwManager(event, reqHandler, dbusImplRequester, FW_UPDATE_CONFIG_JSON,
-                  false),
+                  &dbusHandler, false),
         sockHandler(event, reqHandler, invoker, fwManager, sockManager, false),
         inventoryManager(reqHandler, dbusImplRequester, nullptr,
                          outDescriptorMap, outComponentInfoMap)
@@ -32,6 +33,7 @@ class MctpEndpointDiscoveryTest : public testing::Test
 
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
+    MockdBusHandler dbusHandler;
     pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     fw_update::Manager fwManager;

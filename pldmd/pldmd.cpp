@@ -137,6 +137,7 @@ int main(int argc, char** argv)
     mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler(event, dbusImplReq,
                                                       sockManager, verbose);
+    DBusHandler dbusHandler;
 
 #ifdef LIBPLDMRESPONDER
     using namespace pldm::state_sensor;
@@ -156,7 +157,6 @@ int main(int argc, char** argv)
     std::unique_ptr<pldm::host_effecters::HostEffecterParser>
         hostEffecterParser;
     std::unique_ptr<DbusToPLDMEvent> dbusToPLDMEventHandler;
-    DBusHandler dbusHandler;
     auto hostEID = pldm::utils::readHostEID();
     if (hostEID)
     {
@@ -222,7 +222,8 @@ int main(int argc, char** argv)
 
     std::unique_ptr<fw_update::Manager> fwManager =
         std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
-                                             FW_UPDATE_CONFIG_JSON, fwDebug);
+                                             FW_UPDATE_CONFIG_JSON,
+                                             &dbusHandler, fwDebug);
 #ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
