@@ -23,10 +23,11 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
 
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const DeviceInventoryInfo& deviceInventoryInfo,
-                 const DescriptorMap& descriptorMap) :
+                 const DescriptorMap& descriptorMap,
+                 utils::DBusHandlerInterface* dBusHandlerIntf) :
     bus(bus),
     objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
-    descriptorMap(descriptorMap)
+    descriptorMap(descriptorMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 
 sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
@@ -42,6 +43,7 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
             std::get<Associations>(std::get<CreateDeviceInfo>(search->second));
         auto descSearch = descriptorMap.find(eid);
         std::string ecsku{};
+        std::string apsku{};
         for (const auto& [descType, descValue] : descSearch->second)
         {
             if (descType == PLDM_FWUP_VENDOR_DEFINED)
@@ -55,12 +57,25 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                 }
+                if (vendorDescTitle == "APSKU" && vendorDescInfo.size() == 4)
+                {
+                    apsku = fmt::format("{:02X}{:02X}{:02X}{:02X}",
+                                        vendorDescInfo[0], vendorDescInfo[1],
+                                        vendorDescInfo[2], vendorDescInfo[3]);
+                }
             }
         }
 
         deviceEntryMap.emplace(
             uuid, std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
         deviceObjPath = objPath;
+
+        const auto& updateObjPath = std::get<UpdateDeviceInfo>(search->second);
+
+        if (!apsku.empty() && !updateObjPath.empty())
+        {
+            updateSKU(updateObjPath, apsku);
+        }
     }
     else
     {
@@ -69,6 +84,65 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
     }
 
     return deviceObjPath;
+}
+
+void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
+{
+    if (objPath.empty())
+    {
+        return;
+    }
+
+    try
+    {
+        utils::PropertyValue value{sku};
+        utils::DBusMapping dbusMapping{
+            objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+            "string"};
+        dBusHandlerIntf->setDbusProperty(dbusMapping, value);
+    }
+    catch (const std::exception& e)
+    {
+        // If the D-Bus object is not present, skip updating SKU
+        // and update later by registering for D-Bus signal.
+    }
+
+    skuLookup.emplace(objPath, sku);
+    updateSKUMatch.emplace_back(
+        bus,
+        sdbusplus::bus::match::rules::interfacesAdded() +
+            sdbusplus::bus::match::rules::argNpath(0, objPath),
+        std::bind_front(&Manager::updateSKUOnMatch, this));
+}
+
+void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
+{
+    sdbusplus::message::object_path objPath;
+    dbus::InterfaceMap interfaces;
+    msg.read(objPath, interfaces);
+
+    if (!interfaces.contains("xyz.openbmc_project.Inventory.Decorator.Asset"))
+    {
+        return;
+    }
+
+    if (skuLookup.contains(objPath))
+    {
+        try
+        {
+            auto search = skuLookup.find(objPath);
+
+            utils::PropertyValue value{search->second};
+            utils::DBusMapping dbusMapping{
+                objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+                "string"};
+            dBusHandlerIntf->setDbusProperty(dbusMapping, value);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+    }
 }
 
 } // namespace pldm::fw_update::device_inventory

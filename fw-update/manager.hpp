@@ -65,7 +65,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         updateManager(event, handler, requester, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
-                               deviceInventoryInfo, descriptorMap),
+                               deviceInventoryInfo, descriptorMap,
+                               dBusHandlerIntf),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap, dBusHandlerIntf)
     {

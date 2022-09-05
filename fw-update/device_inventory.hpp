@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/types.hpp"
+#include "common/utils.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/message.hpp>
@@ -90,7 +91,8 @@ class Manager
      */
     explicit Manager(sdbusplus::bus::bus& bus,
                      const DeviceInventoryInfo& deviceInventoryInfo,
-                     const DescriptorMap& descriptorMap);
+                     const DescriptorMap& descriptorMap,
+                     utils::DBusHandlerInterface* dBusHandlerIntf);
 
     /** @brief Create device inventory object
      *
@@ -115,6 +117,30 @@ class Manager
 
     /** @brief Map to store device inventory objects */
     std::map<pldm::UUID, std::unique_ptr<Entry>> deviceEntryMap;
+
+    /** @brief Interface to make D-Bus client calls */
+    utils::DBusHandlerInterface* dBusHandlerIntf;
+
+    /** @brief D-Bus signal match for objects to be updated with SKU*/
+    std::vector<sdbusplus::bus::match_t> updateSKUMatch;
+
+    /** @brief Lookup table to find the SKU for the input D-Bus object
+     */
+    std::unordered_map<dbus::ObjectPath, std::string> skuLookup;
+
+    /** @brief Update SKU on the D-Bus object and register for InterfaceAdded
+     *         signal to update if the D-Bus object is created again.
+     *
+     *  @param[in] objPath - D-Bus object path
+     *  @param[in] sku - SKU
+     */
+    void updateSKU(const dbus::ObjectPath& objPath, const std::string& sku);
+
+    /** @brief Update SKU on the D-Bus object
+     *
+     *  @param[in] msg - D-Bus message
+     */
+    void updateSKUOnMatch(sdbusplus::message::message& msg);
 };
 
 } // namespace pldm::fw_update::device_inventory

@@ -1,5 +1,6 @@
 #include "libpldm/firmware_update.h"
 
+#include "common/test/mocked_utils.hpp"
 #include "common/types.hpp"
 #include "fw-update/device_inventory.hpp"
 
@@ -54,8 +55,8 @@ TEST(Manager, SingleMatch)
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
     EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
 }
 
@@ -91,7 +92,8 @@ TEST(Manager, MultipleMatch)
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath2)))
         .Times(1);
 
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
     EXPECT_EQ(manager.createEntry(eid1, uuid1), objPath1);
     EXPECT_EQ(manager.createEntry(eid2, uuid2), objPath2);
 }
@@ -116,7 +118,8 @@ TEST(Manager, NoMatch)
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(0);
 
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
     // Non-matching MCTP UUID, not present in the config entry
     const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
     const std::string emptyString{};
