@@ -121,8 +121,8 @@ class Terminus
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
 
-    /** @brief handles of started pollForPlatformMessageEventTaskHandle */
-    std::coroutine_handle<> pollForPlatformMessageEventTaskHandle;
+    /** @brief Handle of started pollForPlatformEventTask coroutine */
+    std::coroutine_handle<> pollForPlatformEventTaskHandle;
 
     void interfaceAdded(sdbusplus::message::message& m);
 

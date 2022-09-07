@@ -48,6 +48,7 @@ enum pldm_completion_codes {
 enum transfer_op_flag {
 	PLDM_GET_NEXTPART = 0,
 	PLDM_GET_FIRSTPART = 1,
+	PLDM_ACKNOWLEDGEMENT_ONLY = 2,
 };
 
 enum transfer_resp_flag {

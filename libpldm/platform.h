@@ -17,6 +17,10 @@ extern "C" {
 #define PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES 2
 #define PLDM_GET_SENSOR_READING_REQ_BYTES 3
 #define PLDM_SET_EVENT_RECEIVER_REQ_BYTES 5
+#define PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_REQ_BYTES 8
+#define PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES 1
+#define PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES 2
+
 /* Response lengths are inclusive of completion code */
 #define PLDM_SET_STATE_EFFECTER_STATES_RESP_BYTES 1
 
@@ -26,12 +30,16 @@ extern "C" {
 #define PLDM_GET_PDR_REQ_BYTES 13
 
 #define PLDM_SET_EVENT_RECEIVER_RESP_BYTES 1
+#define PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES 4
+#define PLDM_EVENT_MESSAGE_BUFFER_SIZE_RESP_BYTES 3
+
 /* Minimum response length */
 #define PLDM_GET_PDR_MIN_RESP_BYTES 12
 #define PLDM_GET_NUMERIC_EFFECTER_VALUE_MIN_RESP_BYTES 5
 #define PLDM_GET_SENSOR_READING_MIN_RESP_BYTES 8
 #define PLDM_GET_STATE_SENSOR_READINGS_MIN_RESP_BYTES 2
 #define PLDM_GET_PDR_REPOSITORY_INFO_RESP_BYTES 41
+#define PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_MIN_RESP_BYTES 14
 
 /* Minimum length for PLDM PlatformEventMessage request */
 #define PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES 3
@@ -52,6 +60,12 @@ extern "C" {
 /* Minimum length of data for pldmPDRRepositoryChgEvent */
 #define PLDM_PDR_REPOSITORY_CHG_EVENT_MIN_LENGTH 2
 #define PLDM_PDR_REPOSITORY_CHANGE_RECORD_MIN_LENGTH 2
+
+/* Length of pldm message poll event data */
+#define PLDM_MESSAGE_POLL_EVENT_DATA_LENGTH 7
+
+/* Minumum length of pldm cper event data */
+#define PLDM_CPER_EVENT_DATA_MIN_LENGTH 4
 
 #define PLDM_INVALID_EFFECTER_ID 0xFFFF
 #define PLDM_TID_RESERVED 0xFF
@@ -120,6 +134,9 @@ enum pldm_effecter_oper_state {
 
 enum pldm_platform_commands {
 	PLDM_SET_EVENT_RECEIVER = 0x04,
+	PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE = 0x0B,
+	PLDM_EVENT_MESSAGE_SUPPORTED = 0x0C,
+	PLDM_EVENT_MESSAGE_BUFFER_SIZE = 0x0D,
 	PLDM_GET_SENSOR_READING = 0x11,
 	PLDM_GET_STATE_SENSOR_READINGS = 0x21,
 	PLDM_SET_NUMERIC_EFFECTER_VALUE = 0x31,
@@ -186,6 +203,9 @@ enum pldm_platform_completion_codes {
 	PLDM_PLATFORM_INVALID_PROTOCOL_TYPE = 0x80,
 	PLDM_PLATFORM_ENABLE_METHOD_NOT_SUPPORTED = 0x81,
 	PLDM_PLATFORM_HEARTBEAT_FREQUENCY_TOO_HIGH = 0x82,
+
+	PLDM_PLATFORM_UNSUPPORTED_EVENT_FORMAT_VERSION = 0x81,
+	PLDM_PLATFORM_EVENT_ID_NOT_VALID = 0x82,
 };
 
 /** @brief PLDM Event types
@@ -197,7 +217,15 @@ enum pldm_event_types {
 	PLDM_REDFISH_MESSAGE_EVENT = 0x03,
 	PLDM_PDR_REPOSITORY_CHG_EVENT = 0x04,
 	PLDM_MESSAGE_POLL_EVENT = 0x05,
-	PLDM_HEARTBEAT_TIMER_ELAPSED_EVENT = 0x06
+	PLDM_HEARTBEAT_TIMER_ELAPSED_EVENT = 0x06,
+	PLDM_OEM_EVENT_CLASS_0xFA = 0xFA,
+};
+
+/** @brief PLDM cperEventClass formatType
+ */
+enum cper_event_class_format_type {
+	PLDM_FORMAT_TYPE_CPER = 0x0,
+	PLDM_FORMAT_TYPE_CPER_SECTION = 0x1
 };
 
 /** @brief PLDM sensorEventClass states
@@ -866,6 +894,27 @@ struct pldm_sensor_event_data {
 	uint8_t event_class[1];
 } __attribute__((packed));
 
+/** @struct pldm_message_poll_event
+ *
+ *  structure representing pldmMessagePollEvent
+ */
+struct pldm_message_poll_event_data {
+	uint8_t format_version;
+	uint16_t event_id;
+	uint32_t data_transfer_handle;
+} __attribute__((packed));
+
+/** @struct pldm_cper_event
+ *
+ *  structure representing CPEREvent
+ */
+struct pldm_cper_event_data {
+	uint8_t format_version;
+	uint8_t format_type;
+	uint16_t event_data_length;
+	uint8_t event_data[1];
+} __attribute__((packed));
+
 /** @struct pldm_state_sensor_state
  *
  *  structure representing sensorEventClass for stateSensorState
@@ -978,6 +1027,69 @@ struct pldm_get_sensor_reading_resp {
 	uint8_t previous_state;
 	uint8_t event_state;
 	uint8_t present_reading[1];
+} __attribute__((packed));
+
+/** @struct pldm_event_message_supported_req
+ *
+ *  Structure representing PLDM eventMessageSupported request
+ */
+struct pldm_event_message_supported_req {
+	uint8_t format_version;
+} __attribute__((packed));
+
+/** @struct pldm_event_message_supported_resp
+ *
+ *  Structure representing PLDM eventMessageSupported response
+ */
+struct pldm_event_message_supported_resp {
+	uint8_t completion_code;
+	uint8_t synchrony_configuration;
+	uint8_t synchrony_configuration_supported;
+	uint8_t numer_event_class_returned;
+	uint8_t event_class[1];
+} __attribute__((packed));
+
+/** @struct pldm_event_message_buffer_size_req
+ *
+ *  Structure representing PLDM eventMessageBufferSize request
+ */
+struct pldm_event_message_buffer_size_req {
+	uint16_t event_receiver_max_buffer_size;
+} __attribute__((packed));
+
+/** @struct pldm_event_message_buffer_size_resp
+ *
+ *  Structure representing PLDM eventMessageBufferSize response
+ */
+struct pldm_event_message_buffer_size_resp {
+	uint8_t completion_code;
+	uint16_t terminus_max_buffer_size;
+} __attribute__((packed));
+
+/** @struct pldm_poll_for_platform_event_message_req
+ *
+ *  Structure representing PLDM PollForPlatformEventMessage request
+ */
+struct pldm_poll_for_platform_event_message_req {
+	uint8_t format_version;
+	uint8_t transfer_operation_flag;
+	uint32_t data_transfer_handle;
+	uint16_t event_id_to_acknowledge;
+} __attribute__((packed));
+
+/** @struct pldm_poll_for_platform_event_message_resp
+ *
+ *  Structure representing PLDM PollForPlatformEventMessage response
+ */
+struct pldm_poll_for_platform_event_message_resp {
+	uint8_t completion_code;
+	uint8_t tid;
+	uint16_t event_id;
+	uint32_t next_data_transfer_handle;
+	uint8_t transfer_flag;
+	uint8_t event_class;
+	uint32_t event_data_size;
+	uint8_t event_data[1];
 } __attribute__((packed));
 
 /* Responder */
@@ -1554,6 +1666,45 @@ int decode_sensor_op_data(const uint8_t *sensor_data, size_t sensor_data_length,
 			  uint8_t *present_op_state,
 			  uint8_t *previous_op_state);
 
+/** @brief Decode pldmMessagePollEventData response data
+ *
+ *  @param[in] event_data - event data from the response message
+ *  @param[in] event_data_length - length of the event data
+ *  @param[out] format_version - version of the event format
+ *  @param[out] event_id - identifier for the event that requires multipart
+ * transfer
+ *  @param[out] data_transfer_handle - a handle that is used to identify the
+ * event data to be received via the PollForPlatformEventMessage command
+ *  @return pldm_completion_codes
+ *  @note  Caller is responsible for memory alloc and dealloc of param
+ *         'event_data'
+ */
+int decode_pldm_message_poll_event_data(const uint8_t *event_data,
+					size_t event_data_length,
+					uint8_t *format_version,
+					uint16_t *event_id,
+					uint32_t *data_transfer_handle);
+
+/** @brief Decode cperEvent response data
+ *
+ *  @param[in] event_data - event data from the response message
+ *  @param[in] event_data_length - length of the event data
+ *  @param[out] format_version - version of the event format
+ *  @param[out] format_type - 0x00=CPER(full record), 0x01=CPER Section(signal
+ * CPER section)
+ *  @param[out] cper_event_data_length - length in bytes of cper_event_data
+ *  @param[out] cper_event_data - the pointer to where cper data is in
+ * event_data array
+ *  @return pldm_completion_codes
+ *  @note  Caller is responsible for memory alloc and dealloc of param
+ *         'event_data'
+ */
+int decode_pldm_cper_event_data(const uint8_t *event_data,
+				size_t event_data_length,
+				uint8_t *format_version, uint8_t *format_type,
+				uint16_t *cper_event_data_length,
+				uint8_t **cper_event_data);
+
 /** @brief Decode stateSensorState response data
  *
  *  @param[in] sensor_data - sensor_data for sensorEventClass =
@@ -1849,6 +2000,107 @@ int decode_set_event_receiver_req(const struct pldm_msg *msg,
  */
 int encode_set_event_receiver_resp(uint8_t instance_id, uint8_t completion_code,
 				   struct pldm_msg *msg);
+
+/** @brief Encode the EventMessageBufferSize request message
+ *
+ *  @param[in] event_receiver_max_buffer_size - maximum buffer to hold an event
+ * message transferred from the terminus
+ */
+int encode_event_message_buffer_size_req(
+    uint8_t instance_id, uint16_t event_receiver_max_buffer_size,
+    struct pldm_msg *msg);
+
+/** @brief Decode the EventMessageBufferSize response message
+ *
+ * @param[in] msg - Request message
+ * @param[in] payload_length - Length of response message payload
+ * @param[out] completion_code - PLDM completion code
+ * @param[out] terminus_max_buffer_size - maximum size of an event message sent
+ * from the terminus
+ * @return pldm_completion_codes
+ */
+int decode_event_message_buffer_size_resp(const struct pldm_msg *msg,
+					  size_t payload_length,
+					  uint8_t *completion_code,
+					  uint16_t *terminus_max_buffer_size);
+
+/** @brief Encode the PollForPlatformEventMessage request message
+ *
+ * @param[in] instance_id - Message's instance id
+ * @param[in] format_version - Version of the event format.
+ * @param[in] transfer_operation_flag - The operation flag that indicates
+ * whether this is the start of the transfer.
+ * @param[in] data_transfer_handle - A handle that is used to identify a package
+ * data transfer.
+ * @param[in] event_id_to_acknowledge - An event previously received that should
+ * be acknowledged.
+ * @param[out] msg - Argument to capture the Message
+ * @return pldm_completion_codes
+ */
+int encode_poll_for_platform_event_message_req(uint8_t instance_id,
+					       uint16_t format_version,
+					       uint8_t transfer_operation_flag,
+					       uint32_t data_transfer_handle,
+					       uint16_t event_id_to_acknowledge,
+					       struct pldm_msg *msg);
+
+/** @brief Decode the PollForPlatformEventMessage response message
+ *
+ *  @param[in] msg - Response message.
+ *  @param[in] payload_length - Length of response message payload.
+ *  @param[out] completion_code - PLDM completion code.
+ *  @param[out] tid - Terminus ID for the terminus from which event messages are
+ * being supplied.
+ *  @param[out] event_id - The event ID for the returned event.
+ *  @param[out] next_data_transfer_handle - A handle that is used to identify
+ * the next portion of the transfer.
+ *  @param[out] transfer_flag - The transfer flag that indicates what part of
+ * the transfer this response represents.
+ *  @param[out] event_class - The type of event being return.
+ *  @param[in,out] event_data_size - in: The size of array for receiving event
+ * data. out: The size in bytes of event data.
+ *  @param[out] event_data - The address of array where event data copied to
+ *  @param[out] eventDataIntegrityChecksum - 32-bit CRC for the entirety of
+ * event data(all parts concatenated together, excluding this checksum).
+ *  @return pldm_completion_codes
+ */
+int decode_poll_for_platform_event_message_resp(
+    const struct pldm_msg *msg, size_t payload_length, uint8_t *completion_code,
+    uint8_t *tid, uint16_t *event_id, uint32_t *next_data_transfer_handle,
+    uint8_t *transfer_flag, uint8_t *event_class, uint32_t *event_data_size,
+    uint8_t *event_data, uint32_t *eventDataIntegrityChecksum);
+
+/** @brief Encode the EventMessageSupported request message
+ *
+ * @param[in] instance_id - Message's instance id.
+ * @param[in] format_version - Version of the event format.
+ * @param[out] msg - Argument to capture the Message.
+ * @return pldm_completion_codes
+ */
+int encode_event_message_supported_req(uint8_t instance_id,
+				       uint16_t format_version,
+				       struct pldm_msg *msg);
+
+/** @brief Decode the EventMessageSupported response message
+ *
+ *  @param[in] msg - Response message.
+ *  @param[in] payload_length - Length of response message payload.
+ *  @param[out] completion_code - PLDM completion code.
+ *  @param[out] synchrony_configuration - The value indicates the messaging
+ * style most recently configured via  the SetEventReceiver command.
+ *  @param[out] synchrony_configuration_supported - The value indicates the
+ * event messaging styles supported by the terminus.
+ *  @param[out] number_event_class_returned - The count of eventClass enumerated
+ * bytes returned.
+ *  @param[out] eventClass - The address of first eventClass message the device
+ * can generate.
+ *  @return pldm_completion_codes.
+ */
+int decode_event_message_supported_resp(
+    const struct pldm_msg *msg, size_t payload_length, uint8_t *completion_code,
+    uint8_t *synchrony_configuration,
+    uint8_t *synchrony_configuration_supported,
+    uint8_t *number_event_class_returned, uint8_t **eventClass);
 
 #ifdef __cplusplus
 }

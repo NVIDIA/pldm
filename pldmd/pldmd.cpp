@@ -139,6 +139,11 @@ int main(int argc, char** argv)
                                                       sockManager, verbose);
     DBusHandler dbusHandler;
 
+#ifdef PLDM_TYPE2
+    std::unique_ptr<platform_mc::Manager> platformManager =
+        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
+#endif
+
 #ifdef LIBPLDMRESPONDER
     using namespace pldm::state_sensor;
     int sockfd = 0;
@@ -197,10 +202,47 @@ int main(int argc, char** argv)
     // FRU table is built lazily when a FRU command or Get PDR command is
     // handled. To enable building FRU table, the FRU handler is passed to the
     // Platform handler.
+
+#ifdef PLDM_TYPE2
+    pldm::responder::platform::EventMap addOnEventHandlers{
+        {PLDM_OEM_EVENT_CLASS_0xFA,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handleCperEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
+        {PLDM_MESSAGE_POLL_EVENT,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handlePldmMessagePollEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
+        {PLDM_SENSOR_EVENT,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handleSensorEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}}};
+#endif
+
     auto platformHandler = std::make_unique<platform::Handler>(
         &dbusHandler, PDR_JSONS_DIR, pdrRepo.get(), hostPDRHandler.get(),
         dbusToPLDMEventHandler.get(), fruHandler.get(),
-        oemPlatformHandler.get(), event, true);
+        oemPlatformHandler.get(), event, true
+#ifdef PLDM_TYPE2
+        ,
+        addOnEventHandlers
+#endif
+    );
 #ifdef OEM_IBM
     pldm::responder::oem_ibm_platform::Handler* oemIbmPlatformHandler =
         dynamic_cast<pldm::responder::oem_ibm_platform::Handler*>(
@@ -224,10 +266,7 @@ int main(int argc, char** argv)
         std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
                                              FW_UPDATE_CONFIG_JSON,
                                              &dbusHandler, fwDebug);
-#ifdef PLDM_TYPE2
-    std::unique_ptr<platform_mc::Manager> platformManager =
-        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
-#endif
+
     pldm::mctp_socket::Handler sockHandler(
         event, reqHandler, invoker, *(fwManager.get()), sockManager, verbose);
 

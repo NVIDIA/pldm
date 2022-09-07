@@ -3,6 +3,7 @@
 #include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
+#include "event_manager.hpp"
 #include "platform_manager.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
@@ -39,7 +40,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
                         this),
         platformManager(terminusManager, termini),
-        sensorManager(event, terminusManager, termini)
+        sensorManager(event, terminusManager, termini),
+        eventManager(event, terminusManager, termini)
     {}
 
     requester::Coroutine beforeDiscoverTerminus()
@@ -68,6 +70,62 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         sensorManager.stopPolling();
     }
 
+    int handleCperEvent(const pldm_msg* request, size_t payloadLength,
+                        uint8_t /* formatVersion */, uint8_t tid,
+                        size_t eventDataOffset, uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFA,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    int handlePldmMessagePollEvent(const pldm_msg* request,
+                                   size_t payloadLength,
+                                   uint8_t /* formatVersion */, uint8_t tid,
+                                   size_t eventDataOffset,
+                                   uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        uint8_t eventDataFormatVersion;
+        uint16_t eventId;
+        uint32_t dataTransferHandle;
+        auto rc = decode_pldm_message_poll_event_data(
+            eventData, eventDataSize, &eventDataFormatVersion, &eventId,
+            &dataTransferHandle);
+        if (rc != PLDM_SUCCESS)
+        {
+            return PLDM_ERROR;
+        }
+
+        if (eventDataFormatVersion != 0x01)
+        {
+            return PLDM_ERROR_INVALID_DATA;
+        }
+
+        eventManager.handlePlatformEvent(tid, PLDM_MESSAGE_POLL_EVENT,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    int handleSensorEvent(const pldm_msg* request, size_t payloadLength,
+                          uint8_t /* formatVersion */, uint8_t tid,
+                          size_t eventDataOffset, uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_SENSOR_EVENT, eventData,
+                                         eventDataSize, platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
   private:
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>> termini{};
@@ -75,6 +133,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     TerminusManager terminusManager;
     PlatformManager platformManager;
     SensorManager sensorManager;
+    EventManager eventManager;
 };
 } // namespace platform_mc
 } // namespace pldm
