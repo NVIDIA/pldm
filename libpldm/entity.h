@@ -142,6 +142,9 @@ enum pldm_entity_id_codes {
 	PLDM_OEM_ENTITY_TYPE_END = 32767,
 };
 
+#define PLDM_ENTITY_PHYSCIAL 0
+#define PLDM_ENTITY_LOGICAL 0x8000
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,14 +1,16 @@
 #pragma once
 
+#include "libpldm/entity.h"
 #include "libpldm/platform.h"
 
 #include "common/types.hpp"
+#include "entity.hpp"
 #include "numeric_sensor.hpp"
 #include "state_sensor.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
-#include <xyz/openbmc_project/Inventory/Item/Chassis/server.hpp>
+#include <xyz/openbmc_project/Association/Definitions/server.hpp>
 
 #include <coroutine>
 
@@ -25,9 +27,23 @@ using SensorName = std::string;
 using SensorAuxiliaryNames =
     std::tuple<SensorId, SensorCnt,
                std::vector<std::pair<NameLanguageTag, SensorName>>>;
-using InventoryItemChassisIntf = sdbusplus::server::object_t<
-    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Chassis>;
+using EnitityAssociations =
+    std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
+using AssociationDefinitionsIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 class TerminusManager;
+
+constexpr auto instanceInterface =
+    "xyz.openbmc_project.Inventory.Decorator.Instance";
+constexpr auto instanceProperty = "InstanceNumber";
+constexpr auto overallSystemInterface =
+    "xyz.openbmc_project.Inventory.Item.System";
+constexpr ContainerID overallSystemCotainerId = 0;
+static const std::map<EntityType, std::string_view> entityInterfaces = {
+    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
+     "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
+    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC,
+     "xyz.openbmc_project.Inventory.Item.Cpu"}};
 
 /**
  * @brief Terminus
@@ -58,13 +74,21 @@ class Terminus
         return tid;
     }
 
+    /** @brief Look for the inventory which this entity should associate
+     * with */
+    std::string findInventory(EntityInfo entityInfo, bool findClosest = true);
+
+    /** @brief Find the EntityInfo from the Container ID, and pass it to
+     * findInventory(EntityInfo) */
+    std::string findInventory(ContainerID contianerId, bool findClosest = true);
+
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
 
     /** @brief A list of numericSensors */
     std::vector<std::shared_ptr<NumericSensor>> numericSensors{};
 
-        /** @brief A list of state Sensors */
+    /** @brief A list of state Sensors */
     std::vector<std::shared_ptr<StateSensor>> stateSensors{};
 
     /** @brief A list of parsed numeric sensor PDRs */
@@ -72,8 +96,10 @@ class Terminus
         numericSensorPdrs{};
 
     /** @brief A list of parsed state sensor PDRs */
-    std::vector<std::tuple<SensorID, StateSetSensorInfo>>
-        stateSensorPdrs{};
+    std::vector<std::tuple<SensorID, StateSetSensorInfo>> stateSensorPdrs{};
+
+    /** @brief A map of EntityInfo to Entity informaiton */
+    std::map<EntityInfo, Entity> entities;
 
     /** @brief Get Sensor Auxiliary Names by sensorID
      *
@@ -81,6 +107,11 @@ class Terminus
      *  @return sensor auxiliary names
      */
     std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorId id);
+
+    void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
+
+    void scanInventories();
+    void updateAssociations();
 
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
@@ -92,6 +123,8 @@ class Terminus
 
     /** @brief handles of started pollForPlatformMessageEventTaskHandle */
     std::coroutine_handle<> pollForPlatformMessageEventTaskHandle;
+
+    void interfaceAdded(sdbusplus::message::message& m);
 
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
@@ -109,9 +142,11 @@ class Terminus
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
 
-    std::unique_ptr<InventoryItemChassisIntf> inventoryItemChassisInft =
-        nullptr;
-    std::string inventoryPath;
+    std::string systemInventoryPath;
+    std::vector<std::tuple<dbus::ObjectPath, EntityType, EntityInstance>>
+        inventories;
+    std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
+    EnitityAssociations entityAssociations;
 };
 } // namespace platform_mc
 } // namespace pldm

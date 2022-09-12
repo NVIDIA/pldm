@@ -10,11 +10,55 @@ namespace platform_mc
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes) :
     tid(tid), supportedTypes(supportedTypes)
 {
-    inventoryPath = "/xyz/openbmc_project/inventory/system/chassis/PLDM_Device_" +
-                    std::to_string(tid);
-    inventoryItemChassisInft = std::make_unique<InventoryItemChassisIntf>(
-        utils::DBusHandler::getBus(), inventoryPath.c_str());
     maxBufferSize = 256;
+
+    if (doesSupport(PLDM_PLATFORM))
+    {
+        interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
+            utils::DBusHandler().getBus(),
+            sdbusplus::bus::match::rules::interfacesAdded(
+                "/xyz/openbmc_project/inventory"),
+            std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
+                      std::placeholders::_1));
+
+        scanInventories();
+    }
+}
+
+void Terminus::interfaceAdded(sdbusplus::message::message& m)
+{
+    sdbusplus::message::object_path objPath;
+    pldm::dbus::InterfaceMap interfaces;
+    m.read(objPath, interfaces);
+
+    // if any interested interface added, refresh the associations
+    bool needRefresh = false;
+    for (const auto& [intf, properties] : interfaces)
+    {
+        for (const auto& [entitytype, entityIface] : entityInterfaces)
+        {
+            if (intf == entityIface)
+            {
+                needRefresh = true;
+                break;
+            }
+        }
+        if (intf == overallSystemInterface)
+        {
+            needRefresh = true;
+        }
+
+        if (needRefresh)
+        {
+            break;
+        }
+    }
+
+    if (needRefresh)
+    {
+        scanInventories();
+        updateAssociations();
+    }
 }
 
 bool Terminus::doesSupport(uint8_t type)
@@ -44,6 +88,10 @@ bool Terminus::parsePDRs()
             auto parsedPdr = parseStateSensorPDR(pdr);
             stateSensorPdrs.emplace_back(std::move(parsedPdr));
         }
+        else if (pdrHdr->type == PLDM_PDR_ENTITY_ASSOCIATION)
+        {
+            parseEntityAssociationPDR(pdr);
+        }
         else
         {
             rc = false;
@@ -60,6 +108,8 @@ bool Terminus::parsePDRs()
         auto [sensorID, stateSetSensorInfo] = pdr;
         addStateSensor(sensorID, std::move(stateSetSensorInfo));
     }
+
+    updateAssociations();
 
     return rc;
 }
@@ -106,6 +156,40 @@ std::shared_ptr<SensorAuxiliaryNames>
 
     return std::make_shared<SensorAuxiliaryNames>(
         pdr->sensor_id, pdr->sensor_count, nameStrings);
+}
+
+void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
+{
+    auto pdr = reinterpret_cast<const struct pldm_pdr_entity_association*>(
+        pdrData.data() + sizeof(struct pldm_pdr_hdr));
+    ContainerID containerId{pdr->container_id};
+    EntityInfo container{pdr->container.entity_container_id,
+                         pdr->container.entity_type,
+                         pdr->container.entity_instance_num};
+    if (entityAssociations.contains(containerId))
+    {
+        if (entityAssociations[containerId].first != container)
+        {
+            std::cerr << "ERROR: TID:" << unsigned(tid)
+                      << " ContainerId:" << containerId
+                      << " has different entity." << '\n';
+            return;
+        }
+    }
+    else
+    {
+        entityAssociations.emplace(
+            containerId, std::make_pair(container, std::set<EntityInfo>{}));
+    }
+
+    auto& containedEntities{entityAssociations[containerId].second};
+    for (int i = 0; i < pdr->num_children; ++i)
+    {
+        EntityInfo entityInfo{pdr->children[i].entity_container_id,
+                              pdr->children[i].entity_type,
+                              pdr->children[i].entity_instance_num};
+        containedEntities.emplace(std::move(entityInfo));
+    }
 }
 
 std::shared_ptr<pldm_numeric_sensor_value_pdr>
@@ -431,7 +515,8 @@ std::tuple<SensorID, StateSetSensorInfo>
         std::for_each(&state->states[0],
                       &state->states[state->possible_states_size],
                       updateStates);
-        sensors.emplace_back(std::make_tuple(stateSedId, std::move(possibleStates)));
+        sensors.emplace_back(
+            std::make_tuple(stateSedId, std::move(possibleStates)));
         if (compositeSensorCount)
         {
             statesPtr += sizeof(state_sensor_possible_states) +
@@ -446,6 +531,192 @@ std::tuple<SensorID, StateSetSensorInfo>
     auto sensorInfo =
         std::make_tuple(std::move(entityInfo), std::move(sensors));
     return std::make_tuple(pdr->sensor_id, std::move(sensorInfo));
+}
+
+void Terminus::scanInventories()
+{
+    std::vector<std::string> interestedInterfaces;
+    interestedInterfaces.emplace_back(overallSystemInterface);
+    for (const auto& [entitytype, entityIface] : entityInterfaces)
+    {
+        interestedInterfaces.emplace_back(entityIface);
+    }
+
+    try
+    {
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/inventory", 0, interestedInterfaces);
+        inventories.clear();
+        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+        {
+            EntityType type = 0;
+            EntityInstance instanceNumber = 0xFFFF;
+            for (const auto& [serviceName, interfaces] : mapperServiceMap)
+            {
+                for (const auto& interface : interfaces)
+                {
+                    if (interface == overallSystemInterface)
+                    {
+                        systemInventoryPath = objPath;
+                        continue;
+                    }
+                    if (interface == instanceInterface)
+                    {
+                        instanceNumber =
+                            utils::DBusHandler().getDbusProperty<uint64_t>(
+                                objPath.c_str(), instanceProperty,
+                                instanceInterface);
+                        continue;
+                    }
+                    for (const auto& [entitytype, entityIface] :
+                         entityInterfaces)
+                    {
+                        if (interface == entityIface)
+                        {
+                            type = entitytype;
+                            break;
+                        }
+                    }
+                }
+            }
+            inventories.emplace_back(objPath, type, instanceNumber);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Failed to scan inventories" << '\n';
+        return;
+    }
+}
+
+void Terminus::updateAssociations()
+{
+    entities.clear();
+
+    // Create entities
+    auto createEntity = [&](const EntityInfo& entityInfo) {
+        if (entities.find(entityInfo) == entities.end())
+        {
+            // find the inventory once to create entity
+            findInventory(entityInfo, false);
+        }
+    };
+    for (const auto& [containerId, entityAssociation] : entityAssociations)
+    {
+        const auto& [containerEntity, containedEntities] = entityAssociation;
+        createEntity(containerEntity);
+        for (const auto& containedEntity : containedEntities)
+        {
+            createEntity(containedEntity);
+        }
+    }
+
+    for (const auto& ptr : numericSensors)
+    {
+        auto entityInfo = ptr->getEntityInfo();
+        auto inventoryPath = findInventory(entityInfo);
+        ptr->setInventoryPath(inventoryPath);
+    }
+
+    for (const auto& ptr : stateSensors)
+    {
+        auto entityInfo = ptr->getEntityInfo();
+        auto inventoryPath = findInventory(entityInfo);
+        ptr->setInventoryPath(inventoryPath);
+    }
+}
+
+std::string Terminus::findInventory(const EntityInfo entityInfo,
+                                    const bool findClosest)
+{
+    // Search from stored result first
+    auto itr = entities.find(entityInfo);
+    if (itr != entities.end())
+    {
+        auto& entity = itr->second;
+        if (findClosest)
+        {
+            return entity.getClosestInventory();
+        }
+        else
+        {
+            return entity.getInventory();
+        }
+    }
+
+    const auto& [containerId, entityType, entityInstance] = entityInfo;
+    auto ContainerInventoryPath = findInventory(containerId);
+
+    // Search for possible inventory paths
+    std::vector<std::string> candidates;
+    for (const auto& [candidatePath, candidateType, candidateInstance] :
+         inventories)
+    {
+        if ((entityType == candidateType) &&
+            (entityInstance == candidateInstance))
+        {
+            candidates.push_back(candidatePath);
+        }
+    }
+
+    std::string inventoryPath;
+    if (candidates.empty())
+    {
+        inventoryPath.clear();
+    }
+    else if (candidates.size() == 1)
+    {
+        inventoryPath = candidates[0];
+    }
+    else
+    {
+        // default path if no one under parent path
+        inventoryPath = candidates[0];
+
+        // multiple inventories matched, find the one under parent path
+        for (const auto& candidate : candidates)
+        {
+            if (candidate.starts_with(ContainerInventoryPath))
+            {
+                inventoryPath = candidate;
+                break;
+            }
+        }
+    }
+
+    // Store the result, and also create parent_chassis/all_chassis association
+    entities.emplace(entityInfo, Entity{inventoryPath, ContainerInventoryPath});
+
+    if (inventoryPath.size())
+    {
+        return inventoryPath;
+    }
+    else if (findClosest)
+    {
+        return ContainerInventoryPath;
+    }
+    else // empty inventoryPath
+    {
+        return inventoryPath;
+    }
+}
+
+std::string Terminus::findInventory(const ContainerID contianerId,
+                                    const bool findClosest)
+{
+    if (contianerId == overallSystemCotainerId)
+    {
+        return systemInventoryPath;
+    }
+
+    auto itr = entityAssociations.find(contianerId);
+    if (itr == entityAssociations.end())
+    {
+        std::cerr << "cannot find contianerId:" << contianerId << '\n';
+        return systemInventoryPath;
+    }
+    const auto& [containerEntity, containedEntities] = itr->second;
+    return findInventory(containerEntity, findClosest);
 }
 
 void Terminus::addNumericSensor(
@@ -469,7 +740,7 @@ void Terminus::addNumericSensor(
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            tid, true, pdr, sensorName, inventoryPath);
+            tid, true, pdr, sensorName, systemInventoryPath);
         numericSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
@@ -481,8 +752,8 @@ void Terminus::addNumericSensor(
 
 void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
 {
-    std::string sensorName = "PLDM_Device_" + std::to_string(sId) +
-                             "_" + std::to_string(tid);
+    std::string sensorName =
+        "PLDM_Device_" + std::to_string(sId) + "_" + std::to_string(tid);
 
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
     if (sensorAuxiliaryNames)
@@ -490,16 +761,16 @@ void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
         const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
         if (sensorCnt == 1)
         {
-            sensorName = sensorNames[0].second + "_" +
-                         std::to_string(sId) + "_" +
-                         std::to_string(tid);
+            sensorName = sensorNames[0].second + "_" + std::to_string(sId) +
+                         "_" + std::to_string(tid);
         }
     }
 
     try
     {
-        auto sensor = std::make_shared<StateSensor>(
-            tid, true, sId, std::move(sensorInfo), sensorName, inventoryPath);
+        auto sensor =
+            std::make_shared<StateSensor>(tid, true, sId, std::move(sensorInfo),
+                                          sensorName, systemInventoryPath);
         stateSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
@@ -508,7 +779,6 @@ void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
                   << " sensorName=" << sensorName << std::endl;
     }
 }
-
 
 } // namespace platform_mc
 } // namespace pldm

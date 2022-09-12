@@ -25,7 +25,6 @@ using PowerSupplyInputStatus = sdbusplus::xyz::openbmc_project::State::
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 
-
 class StateSet
 {
   protected:
@@ -39,6 +38,19 @@ class StateSet
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) const = 0;
     virtual void setDefaultValue() const = 0;
+
+    virtual void setAssociation(dbus::PathAssociation& stateAssociation)
+    {
+        if (!associationDefinitionsIntf)
+        {
+            return;
+        }
+
+        associationDefinitionsIntf->associations(
+            {{stateAssociation.forward.c_str(),
+              stateAssociation.reverse.c_str(),
+              stateAssociation.path.c_str()}});
+    }
 };
 
 class StateSetPerformance : public StateSet

@@ -19,6 +19,7 @@ namespace platform_mc
 {
 
 using namespace std::chrono;
+using namespace pldm::pdr;
 using SensorUnit = sdbusplus::xyz::openbmc_project::Sensor::server::Value::Unit;
 using ValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::server::Value>;
@@ -77,11 +78,36 @@ class NumericSensor
     bool checkThreshold(bool alarm, bool direction, double value,
                         double threshold, double hyst);
 
+    /** @brief Get the ContainerID, EntityType, EntityInstance of the PLDM
+     * Entity which the sensor belongs to
+     *  @return EntityInfo - Entity ID
+     */
+    inline auto getEntityInfo()
+    {
+        return entityInfo;
+    }
+
+    /** @brief Updating the association to D-Bus interface
+     *  @param[in] inventoryPath - inventory path of the entity
+     */
+    inline void setInventoryPath(const std::string& inventoryPath)
+    {
+        if (associationDefinitionsIntf)
+        {
+            associationDefinitionsIntf->associations(
+                {{"chassis", "all_sensors", inventoryPath.c_str()}});
+        }
+    }
+
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
 
     /** @brief Sensor ID */
     uint16_t sensorId;
+
+    /** @brief ContainerID, EntityType, EntityInstance of the PLDM Entity which
+     * the sensor belongs to */
+    EntityInfo entityInfo;
 
     /** @brief  The time since last getSensorReading command in usec */
     uint64_t elapsedTime;

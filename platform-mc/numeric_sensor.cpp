@@ -17,7 +17,9 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
                              std::string& sensorName,
                              std::string& associationPath) :
     tid(tid),
-    sensorId(pdr->sensor_id)
+    sensorId(pdr->sensor_id),
+    entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
+               EntityInstance(pdr->entity_instance_num))
 {
     std::string path;
     SensorUnit sensorUnit = SensorUnit::DegreesC;
