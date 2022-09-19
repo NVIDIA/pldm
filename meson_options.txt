@@ -40,5 +40,5 @@ option('local-eid-over-pcie', type: 'integer', min: 1, max: 255, description: 'T
 option('non-pldm', type: 'feature', description: 'Support for non pldm devices', value: 'enabled')
 option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')
 option('fw-update-skip-package-size-check', type: 'feature', description: 'Skip PLDM package size check')
-option('pldm-type2', type: 'feature', description: 'Support for PLDM Type-2', value: 'enabled')
+option('pldm-type2', type: 'feature', description: 'Support for PLDM Type-2', value: 'disabled')
 
