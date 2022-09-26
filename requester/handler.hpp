@@ -275,6 +275,11 @@ class Handler
             // request handler, so freeing up the instance ID, this can be other
             // OpenBMC applications relying on PLDM D-Bus apis like
             // openpower-occ-control and softoff
+            std::cerr
+                << "Response received after timeout or for not registered request EID="
+                << unsigned(eid) << ",InstanceID=" << unsigned(instanceId)
+                << ",Type=" << unsigned(type)
+                << ",Command=" << unsigned(command) << "\n";
             requester.markFree(key.eid, key.instanceId);
         }
         runRegisteredRequest(eid);
