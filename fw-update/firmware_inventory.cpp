@@ -74,7 +74,7 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
                 auto componentName =
                     (std::get<1>(fwInfoSearch->second)).find(compKey.second);
                 std::string objPath = swBasePath + "/" + componentName->second;
-                auto swId = fmt::format("{:04X}", compKey.second);
+                auto swId = fmt::format("0x{:04X}", compKey.second);
                 updateSwId(objPath, swId);
             }
         }

@@ -59,7 +59,7 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
                 }
                 if (vendorDescTitle == "APSKU" && vendorDescInfo.size() == 4)
                 {
-                    apsku = fmt::format("{:02X}{:02X}{:02X}{:02X}",
+                    apsku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                 }
