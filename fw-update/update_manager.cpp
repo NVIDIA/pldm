@@ -695,6 +695,7 @@ void UpdateManager::resetActivationBlocksTransition()
 
 void UpdateManager::clearFirmwareUpdatePackage()
 {
+    package.close();
     std::filesystem::remove(fwPackageFilePath);
 }
 
