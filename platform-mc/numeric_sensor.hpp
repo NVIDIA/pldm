@@ -105,6 +105,55 @@ class NumericSensor
                 {{"chassis", "all_sensors", inventoryPath.c_str()}});
         }
     }
+    /** @brief Get Upper Critical threshold
+     *
+     *  @return double - Upper Critical threshold
+     */
+    double getThresholdUpperCritical()
+    {
+        if (thresholdCriticalIntf)
+        {
+            return thresholdCriticalIntf->criticalHigh();
+        }
+        else
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    };
+
+    /** @brief Get Lower Critical threshold
+     *
+     *  @return double - Lower Critical threshold
+     */
+    double getThresholdLowerCritical()
+    {
+        if (thresholdCriticalIntf)
+        {
+            return thresholdCriticalIntf->criticalLow();
+        }
+        else
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    };
+
+    /** @brief Get Upper Warning threshold
+     *
+     *  @return double - Upper Warning threshold
+     */
+    double getThresholdUpperWarning()
+    {
+        return thresholdWarningIntf->warningHigh();
+    };
+
+    /** @brief Get Lower Warning threshold
+     *
+     *  @return double - Lower Warning threshold
+     */
+    double getThresholdLowerWarning()
+    {
+        return thresholdWarningIntf->warningLow();
+    };
 
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
@@ -121,6 +170,9 @@ class NumericSensor
 
     /** @brief  The time of sensor update interval in usec */
     uint64_t updateTime;
+
+    /** @brief  sensorName */
+    std::string sensorName;
 
   private:
     /**

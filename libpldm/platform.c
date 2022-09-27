@@ -1137,8 +1137,8 @@ int decode_numeric_sensor_data(const uint8_t *sensor_data,
 		    PLDM_SENSOR_EVENT_NUMERIC_SENSOR_STATE_16BIT_DATA_LENGTH) {
 			return PLDM_ERROR_INVALID_LENGTH;
 		}
-		*present_reading = le16toh(present_reading_ptr[1] |
-					   (present_reading_ptr[0] << 8));
+		*present_reading =
+		    (present_reading_ptr[0] | (present_reading_ptr[1] << 8));
 		break;
 	case PLDM_SENSOR_DATA_SIZE_UINT32:
 	case PLDM_SENSOR_DATA_SIZE_SINT32:
@@ -1146,10 +1146,10 @@ int decode_numeric_sensor_data(const uint8_t *sensor_data,
 		    PLDM_SENSOR_EVENT_NUMERIC_SENSOR_STATE_32BIT_DATA_LENGTH) {
 			return PLDM_ERROR_INVALID_LENGTH;
 		}
-		*present_reading = le32toh(present_reading_ptr[3] |
-					   (present_reading_ptr[2] << 8) |
-					   (present_reading_ptr[1] << 16) |
-					   (present_reading_ptr[0] << 24));
+		*present_reading =
+		    (present_reading_ptr[0] | (present_reading_ptr[1] << 8) |
+		     (present_reading_ptr[2] << 16) |
+		     (present_reading_ptr[3] << 24));
 		break;
 	default:
 		return PLDM_ERROR_INVALID_DATA;

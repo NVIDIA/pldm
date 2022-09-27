@@ -14,6 +14,23 @@ namespace pldm
 namespace platform_mc
 {
 
+const std::string SensorThresholdCriticalHighGoingHigh{
+    "OpenBMC.0.2.SensorThresholdCriticalHighGoingHigh"};
+const std::string SensorThresholdCriticalHighGoingLow{
+    "OpenBMC.0.2.SensorThresholdCriticalHighGoingLow"};
+const std::string SensorThresholdCriticalLowGoingHigh{
+    "OpenBMC.0.2.SensorThresholdCriticalLowGoingHigh"};
+const std::string SensorThresholdCriticalLowGoingLow{
+    "OpenBMC.0.2.SensorThresholdCriticalLowGoingLow"};
+const std::string SensorThresholdWarningHighGoingHigh{
+    "OpenBMC.0.2.SensorThresholdWarningHighGoingHigh"};
+const std::string SensorThresholdWarningHighGoingLow{
+    "OpenBMC.0.2.SensorThresholdWarningHighGoingLow"};
+const std::string SensorThresholdWarningLowGoingHigh{
+    "OpenBMC.0.2.SensorThresholdWarningLowGoingHigh"};
+const std::string SensorThresholdWarningLowGoingLow{
+    "OpenBMC.0.2.SensorThresholdWarningLowGoingLow"};
+
 /**
  * @brief EventManager
  *
@@ -51,7 +68,10 @@ class EventManager
                             const uint8_t* eventData, size_t eventDataSize,
                             uint8_t& platformEventStatus);
 
-  private:
+    std::string getSensorThresholdMessageId(uint8_t previousEventState,
+                                            uint8_t eventState);
+
+  protected:
     /** @brief Start a coroutine for polling all events from terminus
      *
      *  @param[in] tid - the tid of terminus to be polled
@@ -94,6 +114,15 @@ class EventManager
                              const std::string& dataPath);
 
     void processDeferredPldmMessagePollEvent(uint8_t tid);
+
+    void processNumericSensorEvent(tid_t tid, uint16_t sensorId,
+                                   const uint8_t* sensorData,
+                                   size_t sensorDataLength);
+
+    virtual void createSensorThresholdLogEntry(const std::string& messageID,
+                                               const std::string& sensorName,
+                                               const double reading,
+                                               const double threshold);
 
     sdeventplus::Event& event;
 

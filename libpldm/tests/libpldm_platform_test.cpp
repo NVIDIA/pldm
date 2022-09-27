@@ -1216,14 +1216,14 @@ TEST(PlatformEventMessage, testGoodNumericSensorEventDataDecodeRequest)
     sensorData->event_state = eventState;
     sensorData->previous_event_state = previousEventState;
     sensorData->sensor_data_size = sensorDataSize;
-    sensorData->present_reading[3] =
-        static_cast<uint8_t>(htole32(presentReading) & (0x000000ff));
-    sensorData->present_reading[2] =
-        static_cast<uint8_t>((htole32(presentReading) & (0x0000ff00)) >> 8);
-    sensorData->present_reading[1] =
-        static_cast<uint8_t>((htole32(presentReading) & (0x00ff0000)) >> 16);
     sensorData->present_reading[0] =
-        static_cast<uint8_t>((htole32(presentReading) & (0xff000000)) >> 24);
+        static_cast<uint8_t>((presentReading) & (0x000000ff));
+    sensorData->present_reading[1] =
+        static_cast<uint8_t>(((presentReading) & (0x0000ff00)) >> 8);
+    sensorData->present_reading[2] =
+        static_cast<uint8_t>(((presentReading) & (0x00ff0000)) >> 16);
+    sensorData->present_reading[3] =
+        static_cast<uint8_t>(((presentReading) & (0xff000000)) >> 24);
 
     uint8_t retEventState;
     uint8_t retPreviousEventState;
@@ -1241,10 +1241,10 @@ TEST(PlatformEventMessage, testGoodNumericSensorEventDataDecodeRequest)
     EXPECT_EQ(retPresentReading, presentReading);
 
     int16_t presentReadingNew = -31432;
-    sensorData->present_reading[1] =
-        static_cast<uint8_t>(htole16(presentReadingNew) & (0x000000ff));
     sensorData->present_reading[0] =
-        static_cast<uint8_t>((htole16(presentReadingNew) & (0x0000ff00)) >> 8);
+        static_cast<uint8_t>((presentReadingNew) & (0x00ff));
+    sensorData->present_reading[1] =
+        static_cast<uint8_t>(((presentReadingNew) & (0xff00)) >> 8);
     sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT16;
     sensorData->sensor_data_size = sensorDataSize;
     sensorDataLength = PLDM_SENSOR_EVENT_NUMERIC_SENSOR_STATE_16BIT_DATA_LENGTH;
