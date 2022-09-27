@@ -14,7 +14,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_FPGA_0"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/FPGA_0"
                         }
                     ]
                 },
@@ -49,7 +49,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_1"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_1"
                         }
                     ]
                 },
@@ -84,7 +84,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_2"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_2"
                         }
                     ]
                 },
@@ -119,7 +119,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_3"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_3"
                         }
                     ]
                 },
@@ -154,7 +154,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_4"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_4"
                         }
                     ]
                 },
@@ -189,7 +189,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_5"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_5"
                         }
                     ]
                 },
@@ -224,7 +224,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_6"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_6"
                         }
                     ]
                 },
@@ -259,7 +259,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_7"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_7"
                         }
                     ]
                 },
@@ -294,7 +294,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_SXM_8"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/processors/GPU_SXM_8"
                         }
                     ]
                 },
@@ -364,7 +364,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_0"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_0"
                         }
                     ]
                 },
@@ -399,7 +399,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_1"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_1"
                         }
                     ]
                 },
@@ -434,7 +434,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_2"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_2"
                         }
                     ]
                 },
@@ -469,7 +469,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_NVSwitch_3"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_NVLinkFabric_0/Switches/NVSwitch_3"
                         }
                     ]
                 },
@@ -504,7 +504,7 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_PCIeSwitch_0"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/fabrics/HGX_PCIeSwitchTopology_0/Switches/PCIeSwitch_0"
                         }
                     ]
                 },
