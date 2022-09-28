@@ -46,7 +46,6 @@ class StateSet
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) const = 0;
     virtual void setDefaultValue() const = 0;
-
     virtual void setAssociation(dbus::PathAssociation& stateAssociation)
     {
         if (!associationDefinitionsIntf)
@@ -69,6 +68,8 @@ class StateSet
     {
         return id;
     }
+    virtual std::string getStringStateType() const = 0;
+    virtual std::tuple<std::string, std::string> getEventData() const = 0;
 };
 
 class StateSetPerformance : public StateSet
@@ -116,6 +117,24 @@ class StateSetPerformance : public StateSet
     {
         ValueIntf->value(PerformanceStates::Unknown);
     }
+    std::tuple<std::string, std::string> getEventData() const override
+    {
+        if (ValueIntf->value() == PerformanceStates::Normal)
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Normal")};
+        }
+        else
+        {
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Throttled")};
+        }
+    }
+    std::string getStringStateType() const override
+    {
+        return std::string("Performance");
+    }
 };
 
 class StateSetPowerSupplyInput : public StateSet
@@ -162,6 +181,24 @@ class StateSetPowerSupplyInput : public StateSet
     void setDefaultValue() const override
     {
         ValueIntf->status(PowerSupplyInputStatus::Unknown);
+    }
+    std::tuple<std::string, std::string> getEventData() const override
+    {
+        if (ValueIntf->status() == PowerSupplyInputStatus::Good)
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Normal")};
+        }
+        else
+        {
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Current Input out of Range")};
+        }
+    }
+    std::string getStringStateType() const override
+    {
+        return std::string("EDP VIolation State");
     }
 };
 
@@ -253,6 +290,23 @@ class StateSetRemoteDebug : public StateSet
     uint8_t getValue()
     {
         return ValueIntf->enabled();
+    }
+    std::tuple<std::string, std::string> getEventData() const override
+    {
+        if (ValueIntf->enabled())
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Enabled")};
+        }
+        else
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Disabled")};
+        }
+    }
+    std::string getStringStateType() const override
+    {
+        return std::string("RemoteDebug");
     }
 };
 

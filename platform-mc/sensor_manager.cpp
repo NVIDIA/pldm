@@ -92,17 +92,14 @@ requester::Coroutine SensorManager::doSensorPollingTask()
 
         for (auto sensor : terminus.second->stateSensors)
         {
-            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-            elapsed = t1 - t0;
-            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
-            if (sensor->elapsedTime >= sensor->updateTime)
+            if (sensor->needUpdate)
             {
                 co_await getStateSensorReadings(sensor);
                 if (sensorPollTimer && !sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
-                sensor->elapsedTime = 0;
+                sensor->needUpdate = false;
             }
         }
 

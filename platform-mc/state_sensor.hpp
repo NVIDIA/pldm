@@ -73,25 +73,33 @@ class StateSensor
         }
     }
 
-    /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */
+    void handleSensorEvent(uint8_t sensorOffset, uint8_t eventState);
+    void createLogEntry(std::string& messageID, std::string& arg1,
+                        std::string& arg2, std::string& resolution);
+
+    /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to
+     */
     uint8_t tid;
 
     /** @brief Sensor ID */
     uint16_t sensorId;
 
-    /** @brief  The time since last getStateSensorReadings command */
-    uint64_t elapsedTime;
-
-    /** @brief  The time of sensor update interval in second */
-    uint64_t updateTime;
-
     /** @brief  State Sensor Info */
     StateSetInfo sensorInfo;
+
+    /** @brief flag to update the value once */
+    bool needUpdate;
+
+    std::string getAssociationEntityId()
+    {
+        return associationEntityId;
+    }
 
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     StateSets stateSets;
+    std::string associationEntityId;
 };
 } // namespace platform_mc
 } // namespace pldm

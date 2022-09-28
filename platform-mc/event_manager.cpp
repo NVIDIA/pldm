@@ -1,5 +1,5 @@
 #include "event_manager.hpp"
-
+#include "platform.h"
 #include "libpldm/utils.h"
 
 #include "terminus_manager.hpp"
@@ -45,6 +45,39 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
                 break;
             }
             case PLDM_STATE_SENSOR_STATE:
+            {
+                uint8_t sensorOffset;
+                uint8_t eventState;
+                uint8_t previousEventState;
+                rc = decode_state_sensor_data(
+                    eventData + eventClassDataOffset,
+                    eventDataSize - eventClassDataOffset, &sensorOffset,
+                    &eventState, &previousEventState);
+                if (rc == PLDM_SUCCESS)
+                {
+                    auto it = termini.find(tid);
+                    if (it != termini.end())
+                    {
+                        auto terminus = get<1>(*it);
+                        terminus->handleStateSensorEvent(sensorId, sensorOffset,
+                                                         eventState);
+                    }
+                    else
+                    {
+                        std::cout
+                            << "handlePlatformEvent failed to look for tid ="
+                            << unsigned(tid)
+                            << " of sid =" << unsigned(sensorId) << "\n";
+                    }
+                }
+                else
+                {
+                    std::cout
+                        << "decode_state_sensor_data failed for sensor id ="
+                        << unsigned(sensorId) << "\n";
+                }
+                break;
+            }
             case PLDM_SENSOR_OP_STATE:
             default:
                 std::cout << "unhandled sensor event, class type="

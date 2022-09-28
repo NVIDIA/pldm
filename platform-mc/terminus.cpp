@@ -1057,5 +1057,21 @@ void Terminus::addStateEffecter(EffecterId eId, StateSetInfo effecterInfo)
     }
 }
 
+void Terminus::handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
+                                      uint8_t eventState)
+{
+    for (auto& sensor : stateSensors)
+    {
+        if (sensor->sensorId == sensorId)
+        {
+            sensor->handleSensorEvent(sensorOffset, eventState);
+            return;
+        }
+    }
+    // no match for sensor ID
+    std::cerr << "handleStateSensorEvent sensor id not found SID="
+              << unsigned(sensorId) << std::endl;
+}
+
 } // namespace platform_mc
 } // namespace pldm

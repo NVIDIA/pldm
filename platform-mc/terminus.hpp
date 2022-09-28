@@ -169,6 +169,15 @@ class Terminus
     void interfaceAdded(sdbusplus::message::message& m);
 
     bool initalized;
+    
+    /** @brief Handler to invoke when state sensor event is received
+     *
+     *  @param[in] id - sensor ID
+     *  @param[in] id - sensor offset
+     *  @param[in] id - event state
+     */
+    void handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
+                                uint8_t eventState);
 
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
