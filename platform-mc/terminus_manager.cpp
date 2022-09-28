@@ -147,6 +147,7 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
     }
 
     manager->startSensorPolling();
+    co_return PLDM_SUCCESS;
 }
 
 requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)

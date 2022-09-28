@@ -70,11 +70,13 @@ requester::Coroutine SensorManager::doSensorPollingTask()
                 if (!sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
-                }                
+                }
                 sensor->elapsedTime = 0;
             }
-        }        
+        }
     }
+
+    co_return PLDM_SUCCESS;
 }
 
 requester::Coroutine
@@ -184,7 +186,8 @@ requester::Coroutine
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
 
-    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
+    Request request(sizeof(pldm_msg_hdr) +
+                    PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
     auto rc = encode_get_state_sensor_readings_req(0, sensorId, (bitfield8_t)0,

@@ -59,12 +59,20 @@ class SensorManager
                 doSensorPollingTaskHandle.destroy();
                 auto co = doSensorPollingTask();
                 doSensorPollingTaskHandle = co.handle;
+                if (doSensorPollingTaskHandle.done())
+                {
+                    doSensorPollingTaskHandle = nullptr;
+                }
             }
         }
         else
         {
             auto co = doSensorPollingTask();
             doSensorPollingTaskHandle = co.handle;
+            if (doSensorPollingTaskHandle.done())
+            {
+                doSensorPollingTaskHandle = nullptr;
+            }
         }
     }
 

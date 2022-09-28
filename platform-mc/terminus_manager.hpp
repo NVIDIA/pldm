@@ -71,12 +71,20 @@ class TerminusManager
 
                 auto co = discoverMctpTerminusTask();
                 discoverMctpTerminusTaskHandle = co.handle;
+                if (discoverMctpTerminusTaskHandle.done())
+                {
+                    discoverMctpTerminusTaskHandle = nullptr;
+                }
             }
         }
         else
         {
             auto co = discoverMctpTerminusTask();
             discoverMctpTerminusTaskHandle = co.handle;
+            if (discoverMctpTerminusTaskHandle.done())
+            {
+                discoverMctpTerminusTaskHandle = nullptr;
+            }
         }
     }
 

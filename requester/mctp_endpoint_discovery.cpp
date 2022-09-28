@@ -131,8 +131,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                     properties.at("SupportedMessageTypes"));
                 auto mediumType =
                     std::get<std::string>(properties.at("MediumType"));
-                auto networkId =
-                    std::get<size_t>(properties.at("NetworkId"));
+                auto networkId = std::get<size_t>(properties.at("NetworkId"));
                 if (std::find(mctpTypes.begin(), mctpTypes.end(),
                               mctpTypePLDM) != mctpTypes.end())
                 {
@@ -201,14 +200,11 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
 
 void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
 {
-    if (mctpInfos.size() && handlers.size())
+    for (MctpDiscoveryHandlerIntf* handler : handlers)
     {
-        for (MctpDiscoveryHandlerIntf* handler : handlers)
+        if (handler)
         {
-            if (handler)
-            {
-                handler->handleMctpEndpoints(mctpInfos);
-            }
+            handler->handleMctpEndpoints(mctpInfos);
         }
     }
 }
