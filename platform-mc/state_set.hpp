@@ -5,6 +5,7 @@
 #include "common/utils.hpp"
 
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Control/Processor/RemoteDebug/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/PowerSystemInputs/server.hpp>
 #include <xyz/openbmc_project/State/ProcessorPerformance/server.hpp>
 
@@ -18,6 +19,8 @@ using PerformanceValueIntf = sdbusplus::server::object_t<
 using PowerSupplyValueIntf =
     sdbusplus::server::object_t<sdbusplus::xyz::openbmc_project::State::
                                     Decorator::server::PowerSystemInputs>;
+using RemoteDebugValueIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Control::Processor::server::RemoteDebug>;
 using PerformanceStates = sdbusplus::xyz::openbmc_project::State::server::
     ProcessorPerformance::PerformanceStates;
 using PowerSupplyInputStatus = sdbusplus::xyz::openbmc_project::State::
@@ -138,6 +141,46 @@ class StateSetPowerSupplyInput : public StateSet
     void setDefaultValue() const override
     {
         ValueIntf->status(PowerSupplyInputStatus::Unknown);
+    }
+};
+
+class StateSetRemoteDebug : public StateSet
+{
+  private:
+    std::unique_ptr<RemoteDebugValueIntf> ValueIntf = nullptr;
+
+  public:
+    StateSetRemoteDebug(uint16_t stateSetId, std::string& objectPath,
+                        dbus::PathAssociation& stateAssociation) :
+        StateSet(stateSetId)
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        associationDefinitionsIntf =
+            std::make_unique<AssociationDefinitionsInft>(bus,
+                                                         objectPath.c_str());
+        associationDefinitionsIntf->associations(
+            {{stateAssociation.forward.c_str(),
+              stateAssociation.reverse.c_str(),
+              stateAssociation.path.c_str()}});
+        ValueIntf =
+            std::make_unique<RemoteDebugValueIntf>(bus, objectPath.c_str());
+        setDefaultValue();
+    }
+    ~StateSetRemoteDebug() = default;
+    void setValue(uint8_t value) const override
+    {
+        if (value == PLDM_STATESET_LINK_STATE_CONNECTED)
+        {
+            ValueIntf->enabled(true);
+        }
+        else
+        {
+            ValueIntf->enabled(false);
+        }
+    }
+    void setDefaultValue() const override
+    {
+        ValueIntf->enabled(false);
     }
 };
 

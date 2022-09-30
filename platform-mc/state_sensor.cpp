@@ -17,7 +17,7 @@ namespace platform_mc
 StateSensor::StateSensor(const uint8_t tid,
                              const bool sensorDisabled,
                              const uint16_t sensorId,
-                             StateSetSensorInfo sensorInfo,
+                             StateSetInfo sensorInfo,
                              std::string& sensorName,
                              std::string& associationPath) :
     tid(tid), sensorId(sensorId), sensorInfo(sensorInfo)

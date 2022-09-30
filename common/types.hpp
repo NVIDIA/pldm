@@ -152,6 +152,7 @@ using EID = uint8_t;
 using TerminusHandle = uint16_t;
 using TerminusID = uint8_t;
 using SensorID = uint16_t;
+using EffecterID = uint16_t;
 using EntityType = uint16_t;
 using EntityInstance = uint16_t;
 using ContainerID = uint16_t;
@@ -164,12 +165,12 @@ using TerminusValidity = uint8_t;
 //!< Subset of the State Set that is supported by a effecter/sensor
 using PossibleStates = std::set<uint8_t>;
 //!< Subset of the State Set that is supported by each effecter/sensor in a
-//!< composite efffecter/sensor
+//!< composite effecter/sensor
 using CompositeSensorStates = std::vector<PossibleStates>;
 using EntityInfo = std::tuple<ContainerID, EntityType, EntityInstance>;
 using SensorInfo = std::tuple<EntityInfo, CompositeSensorStates>;
-using StateSetSensor = std::tuple<StateSetId, PossibleStates>;
-using StateSetSensorInfo = std::tuple<EntityInfo, std::vector<StateSetSensor>>;
+using StateSetData = std::tuple<StateSetId, PossibleStates>;
+using StateSetInfo = std::tuple<EntityInfo, std::vector<StateSetData>>;
 } // namespace pdr
 
 } // namespace pldm

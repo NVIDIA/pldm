@@ -444,19 +444,27 @@ enum pldm_repository_data_transfer_handler_timeout {
 /** @brief PLDM state set IDs */
 enum pldm_state_set_id {
 	PLDM_STATESET_ID_PERFORMANCE = 14,
+	PLDM_STATESET_ID_LINKSTATE = 33,
 	PLDM_STATESET_ID_POWERSUPPLY = 256
 };
 
 /** @brief PLDM state set ID 14 Performance values  */
 enum pldm_stateset_performance_values {
 	PLDM_STATESET_PERFORMANCE_NORMAL = 1,
-	PLDM_STATESET_PERFORMANCE_THROTTLED = 2
+	PLDM_STATESET_PERFORMANCE_THROTTLED = 2,
+	PLDM_STATESET_PERFORMANCE_DEGRADED = 3
 };
 
 /** @brief PLDM state set ID 256 Power Supply values  */
 enum pldm_stateset_powersupply_values {
 	PLDM_STATESET_POWERSUPPLY_NORMAL = 1,
 	PLDM_STATESET_POWERSUPPLY_OUTOFRANGE = 8
+};
+
+/** @brief PLDM state set ID 33 Remote Debug values  */
+enum pldm_stateset_remotedebug_values {
+	PLDM_STATESET_LINK_STATE_CONNECTED = 1,
+	PLDM_STATESET_LINK_STATE_DISCONNECTED = 2
 };
 
 /** @struct pldm_pdr_hdr

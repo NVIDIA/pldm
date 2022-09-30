@@ -1,19 +1,15 @@
 #pragma once
 
+#include <vector>
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
-
-#include "common/types.hpp"
 #include "state_set.hpp"
+#include "common/types.hpp"
 
 #include <sdbusplus/server/object.hpp>
-#include <xyz/openbmc_project/Sensor/Threshold/Critical/server.hpp>
-#include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
-#include <xyz/openbmc_project/Sensor/Value/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/Availability/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>
 
-#include <vector>
 
 namespace pldm
 {
@@ -24,32 +20,26 @@ using namespace pldm::pdr;
 using namespace std::chrono;
 using OperationalStatusIntf =
     sdbusplus::server::object_t<sdbusplus::xyz::openbmc_project::State::
-                                    Decorator::server::OperationalStatus>;
+                                          Decorator::server::OperationalStatus>;
 using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
 using StateSets = std::vector<std::unique_ptr<StateSet>>;
 
 /**
- * @brief StateSensor
+ * @brief StateEffecter
  *
- * This class handles sensor reading updated by sensor manager and export
+ * This class handles pldm state effecter and export
  * status to D-Bus interface.
  */
-class StateSensor
+class StateEffecter
 {
   public:
-    StateSensor(const uint8_t tid, const bool sensorDisabled,
-                const uint16_t sensorId, StateSetInfo sensorInfo,
-                std::string& sensorName, std::string& associationPath);
-    ~StateSensor(){};
-
-    /** @brief The function called by Sensor Manager to set sensor to
-     * error status.
-     */
-    void handleErrGetSensorReading();
-
-    void updateReading(bool available, bool functional, uint8_t compSensorIndex,
-                       uint8_t value);
+    StateEffecter(const uint8_t tid,
+                  const bool effecterDisabled,
+                  const uint16_t effecterId,
+                  StateSetInfo effecterInfo,
+                  std::string& effecterName, std::string& associationPath);
+    ~StateEffecter(){};
 
     /** @brief Get the ContainerID, EntityType, EntityInstance of the PLDM
      * Entity which the sensor belongs to
@@ -57,7 +47,7 @@ class StateSensor
      */
     inline auto getEntityInfo()
     {
-        return std::get<0>(sensorInfo);
+        return std::get<0>(effecterInfo);
     }
 
     /** @brief Updating the association to D-Bus interface
@@ -67,7 +57,7 @@ class StateSensor
     {
         for (auto& stateSet : stateSets)
         {
-            dbus::PathAssociation association = {"chassis", "all_states",
+            dbus::PathAssociation association = {"chassis", "all_controls",
                                                  inventoryPath.c_str()};
             stateSet->setAssociation(association);
         }
@@ -76,17 +66,12 @@ class StateSensor
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */
     uint8_t tid;
 
-    /** @brief Sensor ID */
-    uint16_t sensorId;
+   /** @brief effecter ID */
+    uint16_t effecterId;
 
-    /** @brief  The time since last getStateSensorReadings command */
-    uint64_t elapsedTime;
+    /** @brief  State Set Info */
+    StateSetInfo effecterInfo;
 
-    /** @brief  The time of sensor update interval in second */
-    uint64_t updateTime;
-
-    /** @brief  State Sensor Info */
-    StateSetInfo sensorInfo;
 
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;

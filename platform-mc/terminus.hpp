@@ -7,7 +7,7 @@
 #include "entity.hpp"
 #include "numeric_sensor.hpp"
 #include "state_sensor.hpp"
-
+#include "state_effecter.hpp"
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
@@ -93,15 +93,22 @@ class Terminus
     /** @brief A list of state Sensors */
     std::vector<std::shared_ptr<StateSensor>> stateSensors{};
 
+    /** @brief A list of state Effecters */
+    std::vector<std::shared_ptr<StateEffecter>> stateEffecters{};
+
     /** @brief A list of parsed numeric sensor PDRs */
     std::vector<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
         numericSensorPdrs{};
 
     /** @brief A list of parsed state sensor PDRs */
-    std::vector<std::tuple<SensorID, StateSetSensorInfo>> stateSensorPdrs{};
+    std::vector<std::tuple<SensorID, StateSetInfo>> stateSensorPdrs{};
 
     /** @brief A map of EntityInfo to Entity informaiton */
     std::map<EntityInfo, Entity> entities;
+
+    /** @brief A list of parsed state effecter PDRs */
+    std::vector<std::tuple<EffecterID, StateSetInfo>>
+        stateEffecterPdrs{};
 
     /** @brief Get Sensor Auxiliary Names by sensorID
      *
@@ -118,7 +125,9 @@ class Terminus
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
 
-    void addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo);
+    void addStateSensor(SensorID sId, StateSetInfo sensorInfo);
+
+    void addStateEffecter(EffecterID eId, StateSetInfo effecterInfo);
 
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
@@ -137,8 +146,14 @@ class Terminus
     std::shared_ptr<SensorAuxiliaryNames>
         parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData);
 
-    std::tuple<SensorID, StateSetSensorInfo>
+    std::tuple<SensorID, StateSetInfo>
         parseStateSensorPDR(std::vector<uint8_t>& pdr);
+
+    void parseStateSetInfo(const unsigned char* statesPtr,
+                           uint8_t compositeSensorCount,
+                           std::vector<StateSetData>& stateSets);
+    std::tuple<EffecterID, StateSetInfo>
+        parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
 
     tid_t tid;
     std::bitset<64> supportedTypes;

@@ -95,6 +95,11 @@ bool Terminus::parsePDRs()
         {
             parseEntityAssociationPDR(pdr);
         }
+        else if (pdrHdr->type == PLDM_STATE_EFFECTER_PDR)
+        {
+            auto parsedPdr = parseStateEffecterPDR(pdr);
+            stateEffecterPdrs.emplace_back(std::move(parsedPdr));
+        }
         else
         {
             rc = false;
@@ -106,14 +111,19 @@ bool Terminus::parsePDRs()
         addNumericSensor(pdr);
     }
 
-    for (auto pdr : stateSensorPdrs)
+    for (auto& pdr : stateSensorPdrs)
     {
         auto [sensorID, stateSetSensorInfo] = pdr;
         addStateSensor(sensorID, std::move(stateSetSensorInfo));
     }
 
-    updateAssociations();
+    for (auto& pdr : stateEffecterPdrs)
+    {
+        auto [effecterID, stateSetEffecterInfo] = pdr;
+        addStateEffecter(effecterID, std::move(stateSetEffecterInfo));
+    }
 
+    updateAssociations();
     return rc;
 }
 
@@ -415,15 +425,50 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
-std::tuple<SensorID, StateSetSensorInfo>
+std::tuple<SensorID, StateSetInfo>
     Terminus::parseStateSensorPDR(std::vector<uint8_t>& stateSensorPdr)
 {
     auto pdr =
         reinterpret_cast<const pldm_state_sensor_pdr*>(stateSensorPdr.data());
-    std::vector<StateSetSensor> sensors{};
+    std::vector<StateSetData> stateSets{};
     auto statesPtr = pdr->possible_states;
     auto compositeSensorCount = pdr->composite_sensor_count;
 
+    parseStateSetInfo(statesPtr, compositeSensorCount, stateSets);
+
+    auto entityInfo =
+        std::make_tuple(static_cast<ContainerID>(pdr->container_id),
+                        static_cast<EntityType>(pdr->entity_type),
+                        static_cast<EntityInstance>(pdr->entity_instance));
+    auto stateSetInfo =
+        std::make_tuple(std::move(entityInfo), std::move(stateSets));
+    return std::make_tuple(pdr->sensor_id, std::move(stateSetInfo));
+}
+
+std::tuple<EffecterID, StateSetInfo>
+    Terminus::parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr)
+{
+    auto pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(
+        stateEffecterPdr.data());
+    std::vector<StateSetData> stateSets{};
+    auto statesPtr = pdr->possible_states;
+    auto compositeSensorCount = pdr->composite_effecter_count;
+
+    parseStateSetInfo(statesPtr, compositeSensorCount, stateSets);
+
+    auto entityInfo =
+        std::make_tuple(static_cast<ContainerID>(pdr->container_id),
+                        static_cast<EntityType>(pdr->entity_type),
+                        static_cast<EntityInstance>(pdr->entity_instance));
+    auto stateSetInfo =
+        std::make_tuple(std::move(entityInfo), std::move(stateSets));
+    return std::make_tuple(pdr->effecter_id, std::move(stateSetInfo));
+}
+
+void Terminus::parseStateSetInfo(const unsigned char* statesPtr,
+                                 uint8_t compositeSensorCount,
+                                 std::vector<StateSetData>& stateSets)
+{
     while (compositeSensorCount--)
     {
         auto state =
@@ -445,7 +490,7 @@ std::tuple<SensorID, StateSetSensorInfo>
         std::for_each(&state->states[0],
                       &state->states[state->possible_states_size],
                       updateStates);
-        sensors.emplace_back(
+        stateSets.emplace_back(
             std::make_tuple(stateSedId, std::move(possibleStates)));
         if (compositeSensorCount)
         {
@@ -453,14 +498,6 @@ std::tuple<SensorID, StateSetSensorInfo>
                          state->possible_states_size - 1;
         }
     }
-
-    auto entityInfo =
-        std::make_tuple(static_cast<ContainerID>(pdr->container_id),
-                        static_cast<EntityType>(pdr->entity_type),
-                        static_cast<EntityInstance>(pdr->entity_instance));
-    auto sensorInfo =
-        std::make_tuple(std::move(entityInfo), std::move(sensors));
-    return std::make_tuple(pdr->sensor_id, std::move(sensorInfo));
 }
 
 void Terminus::scanInventories()
@@ -549,6 +586,13 @@ void Terminus::updateAssociations()
     }
 
     for (const auto& ptr : stateSensors)
+    {
+        auto entityInfo = ptr->getEntityInfo();
+        auto inventoryPath = findInventory(entityInfo);
+        ptr->setInventoryPath(inventoryPath);
+    }
+
+    for (const auto& ptr : stateEffecters)
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
@@ -690,7 +734,7 @@ void Terminus::addNumericSensor(
     }
 }
 
-void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
+void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
 {
     std::string sensorName =
         "PLDM_Sensor_" + std::to_string(sId) + "_" + std::to_string(tid);
@@ -723,6 +767,43 @@ void Terminus::addStateSensor(SensorID sId, StateSetSensorInfo sensorInfo)
     {
         std::cerr << " Failed to create StateSensor. ERROR =" << e.what()
                   << " sensorName=" << sensorName << std::endl;
+    }
+}
+
+void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
+{
+    std::string effecterName =
+        "PLDM_Effecter_" + std::to_string(eId) + "_" + std::to_string(tid);
+
+    auto effecterAuxiliaryNames = getSensorAuxiliaryNames(eId);
+    if (effecterAuxiliaryNames)
+    {
+        const auto& [effecterId, effecterCnt, effecterNames] =
+            *effecterAuxiliaryNames;
+        if (effecterCnt == 1 && effecterNames.size() > 0)
+        {
+            for (const auto& [languageTag, name] : effecterNames[0])
+            {
+                if (languageTag == "en")
+                {
+                    effecterName = name + "_" + std::to_string(eId) + "_" +
+                                   std::to_string(tid);
+                }
+            }
+        }
+    }
+
+    try
+    {
+        auto effecter = std::make_shared<StateEffecter>(
+            tid, true, eId, std::move(effecterInfo), effecterName,
+            systemInventoryPath);
+        stateEffecters.emplace_back(effecter);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << " Failed to create StateEffecter. ERROR =" << e.what()
+                  << " sensorName=" << effecterName << std::endl;
     }
 }
 

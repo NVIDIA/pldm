@@ -8,6 +8,7 @@ test_src = declare_dependency(
             '../state_sensor.cpp',
             '../state_set.cpp',
             '../event_manager.cpp',            
+            '../state_effecter.cpp',
             '../../requester/mctp_endpoint_discovery.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',
