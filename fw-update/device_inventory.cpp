@@ -1,8 +1,9 @@
 #include "device_inventory.hpp"
-
+#include "dbusutil.hpp"
 #include "libpldm/firmware_update.h"
 
 #include <fmt/format.h>
+#include <thread>
 
 namespace pldm::fw_update::device_inventory
 {
@@ -93,19 +94,23 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
         return;
     }
 
-    try
-    {
-        utils::PropertyValue value{sku};
-        utils::DBusMapping dbusMapping{
-            objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
-            "string"};
-        dBusHandlerIntf->setDbusProperty(dbusMapping, value);
-    }
-    catch (const std::exception& e)
-    {
-        // If the D-Bus object is not present, skip updating SKU
-        // and update later by registering for D-Bus signal.
-    }
+    utils::PropertyValue value{sku};
+    utils::DBusMapping dbusMapping{
+        objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+        "string"};
+    std::thread propertySet([dbusMapping, value] {
+        try
+        {
+            std::string tmpVal = std::get<std::string>(value);
+            setDBusProperty(dbusMapping, tmpVal);
+        }
+        catch (const std::exception& e)
+        {
+            // If the D-Bus object is not present, skip updating SKU
+            // and update later by registering for D-Bus signal.
+        }
+    });
+    propertySet.detach();
 
     skuLookup.emplace(objPath, sku);
     updateSKUMatch.emplace_back(
@@ -128,20 +133,24 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
 
     if (skuLookup.contains(objPath))
     {
-        try
-        {
-            auto search = skuLookup.find(objPath);
+        auto search = skuLookup.find(objPath);
 
-            utils::PropertyValue value{search->second};
-            utils::DBusMapping dbusMapping{
-                objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
-                "string"};
-            dBusHandlerIntf->setDbusProperty(dbusMapping, value);
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr << e.what() << '\n';
-        }
+        utils::PropertyValue value{search->second};
+        utils::DBusMapping dbusMapping{
+            objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+            "string"};
+        std::thread propertySet([dbusMapping, value] {
+            try
+            {
+                std::string tmpVal = std::get<std::string>(value);
+                setDBusProperty(dbusMapping, tmpVal);
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+            }
+        });
+        propertySet.detach();
     }
 }
 

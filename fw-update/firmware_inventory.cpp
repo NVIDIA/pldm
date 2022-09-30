@@ -1,8 +1,10 @@
 #include "firmware_inventory.hpp"
+#include "dbusutil.hpp"
 
 #include <fmt/format.h>
 
 #include <iostream>
+#include <thread>
 
 namespace pldm::fw_update::fw_inventory
 {
@@ -94,19 +96,23 @@ void Manager::updateSwId(const dbus::ObjectPath& objPath,
         return;
     }
 
-    try
-    {
-        utils::PropertyValue value{compId};
-        utils::DBusMapping dbusMapping{objPath,
-                                       "xyz.openbmc_project.Software.Version",
-                                       "SoftwareId", "string"};
-        dBusHandlerIntf->setDbusProperty(dbusMapping, value);
-    }
-    catch (const std::exception& e)
-    {
-        // If the D-Bus object is not present, skip updating SoftwareID
-        // and update later by registering for D-Bus signal.
-    }
+    utils::PropertyValue value{compId};
+    utils::DBusMapping dbusMapping{objPath,
+                                   "xyz.openbmc_project.Software.Version",
+                                   "SoftwareId", "string"};
+    std::thread propertySet([dbusMapping, value] {
+        try
+        {
+            std::string tmpVal = std::get<std::string>(value);
+            setDBusProperty(dbusMapping, tmpVal);
+        }
+        catch (const std::exception& e)
+        {
+            // If the D-Bus object is not present, skip updating SoftwareID
+            // and update later by registering for D-Bus signal.
+        }
+    });
+    propertySet.detach();
 
     compIdentifierLookup.emplace(objPath, compId);
     updateFwMatch.emplace_back(
@@ -129,20 +135,24 @@ void Manager::updateSwIdOnSignal(sdbusplus::message::message& msg)
 
     if (compIdentifierLookup.contains(objPath))
     {
-        try
-        {
-            auto search = compIdentifierLookup.find(objPath);
+        auto search = compIdentifierLookup.find(objPath);
 
-            utils::PropertyValue value{search->second};
-            utils::DBusMapping dbusMapping{
-                objPath, "xyz.openbmc_project.Software.Version", "SoftwareId",
-                "string"};
-            dBusHandlerIntf->setDbusProperty(dbusMapping, value);
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr << e.what() << '\n';
-        }
+        utils::PropertyValue value{search->second};
+        utils::DBusMapping dbusMapping{objPath,
+                                       "xyz.openbmc_project.Software.Version",
+                                       "SoftwareId", "string"};
+        std::thread propertySet([dbusMapping, value] {
+            try
+            {
+                std::string tmpVal = std::get<std::string>(value);
+                setDBusProperty(dbusMapping, tmpVal);
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+            }
+        });
+        propertySet.detach();
     }
 }
 
