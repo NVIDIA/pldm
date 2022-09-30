@@ -181,8 +181,8 @@ std::tuple<int, int, std::vector<uint8_t>>
 {
     using namespace pldm;
     std::set<dbus::Service> mctpCtrlServices;
-    int type;
-    int protocol;
+    int type = 0;
+    int protocol = 0;
     std::vector<uint8_t> address{};
     auto& bus = pldm::utils::DBusHandler::getBus();
     const auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};

@@ -16,6 +16,8 @@ extern "C" {
 #define PLDM_SET_STATE_EFFECTER_STATES_REQ_BYTES 19
 #define PLDM_SET_STATE_EFFECTER_ENABLES_REQ_BYTES 19
 #define PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES 4
+#define PLDM_SET_NUMERIC_EFFECTER_ENABLE_REQ_BYTES 3
+#define PLDM_SET_NUMERIC_EFFECTER_VALUE_MAX_REQ_BYTES 7
 #define PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES 2
 #define PLDM_GET_SENSOR_READING_REQ_BYTES 3
 #define PLDM_SET_EVENT_RECEIVER_REQ_BYTES 5
@@ -28,7 +30,6 @@ extern "C" {
 #define PLDM_SET_STATE_EFFECTER_ENABLES_RESP_BYTES 1
 
 #define PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES 1
-#define PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES 4
 
 #define PLDM_GET_PDR_REQ_BYTES 13
 
@@ -50,6 +51,9 @@ extern "C" {
 #define PLDM_PLATFORM_EVENT_MESSAGE_STATE_SENSOR_STATE_REQ_BYTES 6
 #define PLDM_PLATFORM_EVENT_MESSAGE_RESP_BYTES 2
 #define PLDM_PLATFORM_EVENT_MESSAGE_FORMAT_VERSION 1
+
+/* Minimum length for PLDM SetNumericEffecterValue request */
+#define PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES 4
 
 /* Minumum length of senson event data */
 #define PLDM_SENSOR_EVENT_DATA_MIN_LENGTH 5
@@ -160,6 +164,7 @@ enum pldm_platform_commands {
 	PLDM_EVENT_MESSAGE_BUFFER_SIZE = 0x0D,
 	PLDM_GET_SENSOR_READING = 0x11,
 	PLDM_GET_STATE_SENSOR_READINGS = 0x21,
+	PLDM_SET_NUMERIC_EFFECTER_ENABLE = 0x30,
 	PLDM_SET_NUMERIC_EFFECTER_VALUE = 0x31,
 	PLDM_GET_NUMERIC_EFFECTER_VALUE = 0x32,
 	PLDM_SET_STATE_EFFECTER_ENABLES = 0x38,
@@ -531,7 +536,7 @@ struct pldm_effecter_auxiliary_names_pdr {
 	uint16_t terminus_handle;
 	uint16_t effecter_id;
 	uint8_t effecter_count;
-	uint8_t effecter_names[1];
+	uint8_t names[1];
 } __attribute__((packed));
 
 /** @struct pldm_terminus_locator_type_mctp_eid
@@ -833,6 +838,19 @@ int decode_get_state_effecter_states_resp(const struct pldm_msg *msg,
 					  uint8_t *comp_effecter_count,
 					  get_effecter_state_field *field);
 
+/** @struct pldm_oem_pdr
+ *
+ *  Structure representing PLDM Numeric Sensor PDR
+ *  Refer to: DSP0248_1.2.0: 28.24 Table 101
+ */
+struct pldm_oem_pdr {
+	struct pldm_pdr_hdr hdr;
+	uint32_t vendor_iana;
+	uint16_t ome_record_id;
+	uint16_t data_length;
+	uint8_t vendor_specific_data[1];
+} __attribute__((packed));
+
 /** @struct state_effecter_possible_states
  *
  *  Structure representing state enums for state effecter
@@ -974,6 +992,15 @@ struct pldm_set_event_receiver_req {
 	uint8_t transport_protocol_type;
 	uint8_t event_receiver_address_info;
 	uint16_t heartbeat_timer;
+} __attribute__((packed));
+
+/** @struct pldm_set_numeric_effecter_enable_req
+ *
+ *  structure representing SetNumericEffecterEnable request packet
+ */
+struct pldm_set_numeric_effecter_enable_req {
+	uint16_t effecter_id;
+	uint8_t effecter_operational_state;
 } __attribute__((packed));
 
 /** @struct pldm_set_numeric_effecter_value_req
@@ -1634,16 +1661,31 @@ int decode_set_state_effecter_states_resp(const struct pldm_msg *msg,
  *         to allocate the memory prior to calling this command. The user has
  *         to allocate the field parameter as sizeof(set_effecter_op_field) *
  *         comp_effecter_count
+ */
+ int encode_set_state_effecter_enables_req(uint8_t instance_id,
+					  uint16_t effecter_id,
+					  uint8_t comp_effecter_count,
+					  set_effecter_op_field *field,
+					  struct pldm_msg *msg);
+
+/* SetNumericEffecterEnable */
+
+/** @brief Create a PLDM request message for SetNumericEffecterEnable
+ *
+ *  @param[in] instance_id - Message's instance id
+ *  @param[in] effecter_id - used to identify and access the effecter
+ *  @param[in] effecter_operational_state - The state of numeric effecter being
+ * 				requested.
  *  @param[out] msg - Message will be written to this
  *  @return pldm_completion_codes
  *  @note  Caller is responsible for memory alloc and dealloc of param
  *         'msg.payload'
  */
-int encode_set_state_effecter_enables_req(uint8_t instance_id,
-					  uint16_t effecter_id,
-					  uint8_t comp_effecter_count,
-					  set_effecter_op_field *field,
-					  struct pldm_msg *msg);
+
+int encode_set_numeric_effecter_enable_req(uint8_t instance_id,
+					   uint16_t effecter_id,
+					   uint8_t effecter_operational_state,
+					   struct pldm_msg *msg);
 
 /* SetNumericEffecterValue */
 

@@ -445,6 +445,22 @@ int encode_cc_only_resp(uint8_t instance_id, uint8_t type, uint8_t command,
 	return PLDM_SUCCESS;
 }
 
+int decode_cc_only_resp(const struct pldm_msg *msg, size_t payload_length,
+			uint8_t *completion_code)
+{
+	if (msg == NULL || completion_code == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (payload_length != PLDM_CC_ONLY_RESP_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	*completion_code = msg->payload[0];
+
+	return PLDM_SUCCESS;
+}
+
 int encode_pldm_header_only(uint8_t msg_type, uint8_t instance_id,
 			    uint8_t pldm_type, uint8_t command,
 			    struct pldm_msg *msg)

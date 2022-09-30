@@ -1,5 +1,8 @@
 #include "terminus.hpp"
 
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/platform-mc/oem_nvidia.hpp"
+#endif
 #include "terminus_manager.hpp"
 
 namespace pldm
@@ -94,6 +97,11 @@ bool Terminus::parsePDRs()
                 numericSensorPdrs.emplace_back(std::move(parsedPdr));
             }
         }
+        else if (pdrHdr->type == PLDM_NUMERIC_EFFECTER_PDR)
+        {
+            auto parsedPdr = parseNumericEffecterPDR(pdr);
+            numericEffecterPdrs.emplace_back(std::move(parsedPdr));
+        }
         else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
         {
             auto parsedPdr = parseStateSensorPDR(pdr);
@@ -108,6 +116,11 @@ bool Terminus::parsePDRs()
             auto parsedPdr = parseStateEffecterPDR(pdr);
             stateEffecterPdrs.emplace_back(std::move(parsedPdr));
         }
+        else if (pdrHdr->type == PLDM_OEM_PDR)
+        {
+            auto parsedPdr = parseOemPDR(pdr);
+            oemPdrs.emplace_back(std::move(parsedPdr));
+        }
         else
         {
             rc = false;
@@ -119,7 +132,12 @@ bool Terminus::parsePDRs()
         addNumericSensor(pdr);
     }
 
-    for (auto& pdr : stateSensorPdrs)
+    for (auto pdr : numericEffecterPdrs)
+    {
+        addNumericEffecter(pdr);
+    }
+
+    for (auto pdr : stateSensorPdrs)
     {
         auto [sensorID, stateSetSensorInfo] = pdr;
         addStateSensor(sensorID, std::move(stateSetSensorInfo));
@@ -132,6 +150,10 @@ bool Terminus::parsePDRs()
     }
 
     updateAssociations();
+#ifdef OEM_NVIDIA
+    nvidia::nvidiaInitTerminus(*this);
+#endif
+
     return rc;
 }
 
@@ -221,39 +243,43 @@ std::shared_ptr<EffecterAuxiliaryNames>
     auto pdr =
         reinterpret_cast<const struct pldm_effecter_auxiliary_names_pdr*>(
             pdrData.data());
-    const uint8_t* ptr = pdr->effecter_names;
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
+    const uint8_t* ptr = pdr->names;
+    std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
         effecterAuxNames{};
-
-    const uint8_t effecter_count = pdr->effecter_count;
-    for (int cnt = 0; cnt < effecter_count; cnt++)
+    try
     {
-        // Get name string count
-        uint8_t name_string_count = static_cast<uint8_t>(*ptr);
-        ptr += sizeof(uint8_t);
-
-        // Parse name language tag and effecter name
-        std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
-        for (int i = 0; i < name_string_count; i++)
+        for (int i = 0; i < pdr->effecter_count; i++)
         {
-            std::string nameLanguageTag(reinterpret_cast<const char*>(ptr), 0,
-                                        PLDM_STR_UTF_8_MAX_LEN);
-            ptr += nameLanguageTag.size() + sizeof(NullTerminator);
-            std::u16string u16NameString(reinterpret_cast<const char16_t*>(ptr),
-                                         0, PLDM_STR_UTF_16_MAX_LEN);
-            ptr += (u16NameString.size() + sizeof(NullTerminator)) *
-                   sizeof(uint16_t);
-            std::transform(u16NameString.cbegin(), u16NameString.cend(),
-                           u16NameString.begin(),
-                           [](uint16_t utf16) { return be16toh(utf16); });
-            std::string nameString =
-                std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,
-                                     char16_t>{}
-                    .to_bytes(u16NameString);
-            nameStrings.emplace_back(
-                std::make_pair(nameLanguageTag, nameString));
+            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
+            ptr += sizeof(uint8_t);
+            std::vector<std::pair<NameLanguageTag, EffecterName>> nameStrings{};
+            for (int j = 0; j < nameStringCount; j++)
+            {
+                std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
+                                            0, PLDM_STR_UTF_8_MAX_LEN);
+                ptr += nameLanguageTag.size() + sizeof(NullTerminator);
+                std::u16string u16NameString(
+                    reinterpret_cast<const char16_t*>(ptr), 0,
+                    PLDM_STR_UTF_16_MAX_LEN);
+                ptr += (u16NameString.size() + sizeof(NullTerminator)) *
+                       sizeof(uint16_t);
+                std::transform(u16NameString.cbegin(), u16NameString.cend(),
+                               u16NameString.begin(),
+                               [](uint16_t utf16) { return be16toh(utf16); });
+                std::string nameString =
+                    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,
+                                         char16_t>{}
+                        .to_bytes(u16NameString);
+                nameStrings.emplace_back(
+                    std::make_pair(nameLanguageTag, nameString));
+            }
+            effecterAuxNames.emplace_back(nameStrings);
         }
-        effecterAuxNames.emplace_back(nameStrings);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Failed to parse effecterAuxiliaryNamesPDR record handle:"
+                  << unsigned(pdr->hdr.record_handle) << '\n';
     }
 
     return std::make_shared<EffecterAuxiliaryNames>(
@@ -495,6 +521,96 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
+std::shared_ptr<pldm_numeric_effecter_value_pdr>
+    Terminus::parseNumericEffecterPDR(const std::vector<uint8_t>& pdr)
+{
+    const uint8_t* ptr = pdr.data();
+    auto parsedPdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
+    size_t count = (uint8_t*)(&parsedPdr->max_set_table.value_u8) -
+                   (uint8_t*)(&parsedPdr->hdr);
+    memcpy(&parsedPdr->hdr, ptr, count);
+    ptr += count;
+
+    switch (parsedPdr->effecter_data_size)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            parsedPdr->max_set_table.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->max_set_table.value_u8);
+            parsedPdr->min_set_table.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->min_set_table.value_u8);
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            parsedPdr->max_set_table.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->max_set_table.value_u16);
+            parsedPdr->min_set_table.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->min_set_table.value_u16);
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            parsedPdr->max_set_table.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->max_set_table.value_u32);
+            parsedPdr->min_set_table.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->min_set_table.value_u32);
+            break;
+        default:
+            break;
+    }
+
+    count = (uint8_t*)&parsedPdr->nominal_value.value_u8 -
+            (uint8_t*)&parsedPdr->range_field_format;
+    memcpy(&parsedPdr->range_field_format, ptr, count);
+    ptr += count;
+
+    switch (parsedPdr->range_field_format)
+    {
+        case PLDM_RANGE_FIELD_FORMAT_UINT8:
+        case PLDM_RANGE_FIELD_FORMAT_SINT8:
+            parsedPdr->nominal_value.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->nominal_value.value_u8);
+            parsedPdr->normal_max.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->normal_max.value_u8);
+            parsedPdr->normal_min.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->normal_min.value_u8);
+            parsedPdr->rated_max.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->rated_max.value_u8);
+            parsedPdr->rated_min.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->rated_min.value_u8);
+            break;
+        case PLDM_RANGE_FIELD_FORMAT_UINT16:
+        case PLDM_RANGE_FIELD_FORMAT_SINT16:
+            parsedPdr->nominal_value.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->nominal_value.value_u16);
+            parsedPdr->normal_max.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->normal_max.value_u16);
+            parsedPdr->normal_min.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->normal_min.value_u16);
+            parsedPdr->rated_max.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->rated_max.value_u16);
+            parsedPdr->rated_min.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->rated_min.value_u16);
+            break;
+        case PLDM_RANGE_FIELD_FORMAT_UINT32:
+        case PLDM_RANGE_FIELD_FORMAT_SINT32:
+        case PLDM_RANGE_FIELD_FORMAT_REAL32:
+            parsedPdr->nominal_value.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->nominal_value.value_u32);
+            parsedPdr->normal_max.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->normal_max.value_u32);
+            parsedPdr->normal_min.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->normal_min.value_u32);
+            parsedPdr->rated_max.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->rated_max.value_u32);
+            parsedPdr->rated_min.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->rated_min.value_u32);
+            break;
+        default:
+            break;
+    }
+    return parsedPdr;
+}
+
 std::tuple<SensorID, StateSetInfo>
     Terminus::parseStateSensorPDR(std::vector<uint8_t>& stateSensorPdr)
 {
@@ -568,6 +684,19 @@ void Terminus::parseStateSetInfo(const unsigned char* statesPtr,
                          state->possible_states_size - 1;
         }
     }
+}
+
+OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
+{
+    auto pdr = reinterpret_cast<const pldm_oem_pdr*>(oemPdr.data());
+    std::vector<uint8_t> data;
+
+    // vendor-specific data bytes starting from 0; 0 = 1 byte, 1 = 2 bytes, and
+    // so on.
+    data.resize(pdr->data_length + 1);
+    memcpy(data.data(), pdr->vendor_specific_data, data.size());
+    return std::make_tuple(pdr->vendor_iana, pdr->ome_record_id,
+                           std::move(data));
 }
 
 void Terminus::scanInventories()
@@ -649,6 +778,13 @@ void Terminus::updateAssociations()
     }
 
     for (const auto& ptr : numericSensors)
+    {
+        auto entityInfo = ptr->getEntityInfo();
+        auto inventoryPath = findInventory(entityInfo);
+        ptr->setInventoryPath(inventoryPath);
+    }
+
+    for (const auto& ptr : numericEffecters)
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
@@ -801,6 +937,50 @@ void Terminus::addNumericSensor(
     {
         std::cerr << "Failed to create NumericSensor. ERROR=" << e.what()
                   << "sensorName=" << sensorName << "\n";
+    }
+}
+
+void Terminus::addNumericEffecter(
+    const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr)
+{
+    std::string effecterName = "PLDM_Effecter_" +
+                               std::to_string(pdr->effecter_id) + "_" +
+                               std::to_string(tid);
+
+    if (pdr->effecter_auxiliary_names)
+    {
+        auto effecterAuxiliaryNames =
+            getEffecterAuxiliaryNames(pdr->effecter_id);
+        if (effecterAuxiliaryNames)
+        {
+            const auto& [effecterId, effecterCnt, effecterNames] =
+                *effecterAuxiliaryNames;
+            if (effecterCnt == 1 && effecterNames.size() > 0)
+            {
+                for (const auto& [languageTag, pdrEffecterName] :
+                     effecterNames[0])
+                {
+                    if (languageTag == "en")
+                    {
+                        effecterName = pdrEffecterName + "_" +
+                                       std::to_string(pdr->effecter_id) + "_" +
+                                       std::to_string(tid);
+                    }
+                }
+            }
+        }
+    }
+
+    try
+    {
+        auto effecter = std::make_shared<NumericEffecter>(
+            tid, true, pdr, effecterName, systemInventoryPath, terminusManager);
+        numericEffecters.emplace_back(effecter);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Failed to create NumericEffecter. ERROR=" << e.what()
+                  << " effecterName=" << effecterName << "\n";
     }
 }
 

@@ -52,6 +52,11 @@ if get_option('oem-ibm').enabled()
   add_project_arguments('-DOEM_IBM', language : 'c')
   add_project_arguments('-DOEM_IBM', language : 'cpp')
 endif
+if get_option('oem-nvidia').enabled()
+  add_project_arguments('-DOEM_NVIDIA', language : 'c')
+  add_project_arguments('-DOEM_NVIDIA', language : 'cpp')
+endif
+
 if get_option('non-pldm').enabled()
   add_project_arguments('-DNON_PLDM', language : ['c','cpp'])
 endif
@@ -230,6 +235,7 @@ source_files = [
   'platform-mc/platform_manager.cpp',
   'platform-mc/sensor_manager.cpp',
   'platform-mc/numeric_sensor.cpp',
+  'platform-mc/numeric_effecter.cpp',
   'platform-mc/state_sensor.cpp',
   'platform-mc/event_manager.cpp',
   'platform-mc/state_set.cpp',
@@ -240,7 +246,8 @@ source_files = [
 
 if get_option('oem-nvidia').enabled()
   source_files += [
-    'fw-update/oem-nvidia/debug_token.cpp'
+    'fw-update/oem-nvidia/debug_token.cpp',
+    'oem/nvidia/platform-mc/oem_nvidia.cpp'
   ]
 endif
 

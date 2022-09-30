@@ -50,7 +50,7 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
     }
 
     // TODO : Polling must be based on event support
-    updateTime = 10000000;
+    updateTime = 1000000;
 }
 
 void StateSensor::handleErrGetSensorReading()

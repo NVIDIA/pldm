@@ -633,6 +633,41 @@ TEST(GetPDRRepositoryInfo, testBadEncodeResponse)
     EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
 }
 
+TEST(SetNumericEffecterEnable, testGoodEncodeRequest)
+{
+    uint16_t effecter_id = 0;
+    uint8_t effecter_operational_state = EFFECTER_OPER_STATE_DISABLED;
+
+    std::vector<uint8_t> requestMsg(hdrSize +
+                                    PLDM_SET_NUMERIC_EFFECTER_ENABLE_REQ_BYTES);
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    auto rc = encode_set_numeric_effecter_enable_req(
+        0, effecter_id, effecter_operational_state, request);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    struct pldm_set_numeric_effecter_enable_req* req =
+        reinterpret_cast<struct pldm_set_numeric_effecter_enable_req*>(
+            request->payload);
+    EXPECT_EQ(effecter_id, req->effecter_id);
+    EXPECT_EQ(effecter_operational_state, req->effecter_operational_state);
+}
+
+TEST(SetNumericEffecterEnable, testBadEncodeRequest)
+{
+    std::vector<uint8_t> requestMsg(hdrSize +
+                                    PLDM_SET_NUMERIC_EFFECTER_ENABLE_REQ_BYTES);
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    auto rc = encode_set_numeric_effecter_enable_req(
+        0, 0, EFFECTER_OPER_STATE_DISABLED, NULL);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_set_numeric_effecter_enable_req(
+        0, 0, EFFECTER_OPER_STATE_FAILED, request);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
 TEST(SetNumericEffecterValue, testGoodDecodeRequest)
 {
     std::array<uint8_t,

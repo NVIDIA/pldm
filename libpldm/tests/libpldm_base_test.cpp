@@ -544,6 +544,46 @@ TEST(CcOnlyResponse, testEncode)
     EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
 }
 
+TEST(CcOnlyResponse, testGoodDecodeResponse)
+{
+    std::array<uint8_t, hdrSize + PLDM_CC_ONLY_RESP_BYTES> responseMsg{};
+
+    uint8_t completion_code;
+    responseMsg[hdrSize] = PLDM_SUCCESS;
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+
+    auto rc = decode_cc_only_resp(response, responseMsg.size() - hdrSize,
+                                  &completion_code);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(completion_code, PLDM_SUCCESS);
+}
+
+TEST(CcOnlyResponse, testBadDecodeResponse)
+{
+    std::array<uint8_t, hdrSize + PLDM_CC_ONLY_RESP_BYTES> responseMsg{};
+
+    uint8_t completion_code;
+    responseMsg[hdrSize] = PLDM_SUCCESS;
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+
+    auto rc = decode_cc_only_resp(response, responseMsg.size() - hdrSize, NULL);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = decode_cc_only_resp(NULL, responseMsg.size() - hdrSize,
+                             &completion_code);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = decode_cc_only_resp(response, responseMsg.size() - hdrSize - 1,
+                             &completion_code);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}
+
 TEST(SetTID, testGoodEncodeRequest)
 {
     uint8_t tid = 0x01;

@@ -104,7 +104,7 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
     EXPECT_EQ("TEMP1", names[0][0].second);
 }
 
-TEST_F(TerminusTest, parseNumericSensorPDRTest)
+TEST_F(TerminusTest, addNumericSensorTest)
 {
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{

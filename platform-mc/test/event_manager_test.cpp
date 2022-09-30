@@ -5,7 +5,6 @@
 #include "common/types.hpp"
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 
 #include <gtest/gtest.h>
 
@@ -14,7 +13,7 @@ using ::testing::Return;
 
 using namespace pldm::platform_mc;
 
-const uint8_t mockTerminusManagerLocalEid = 0x08;
+constexpr uint8_t mockTerminusManagerLocalEid = 0x08;
 
 class EventManagerTest : public testing::Test
 {

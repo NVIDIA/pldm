@@ -242,7 +242,6 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, *this);
-
     co_return PLDM_SUCCESS;
 }
 

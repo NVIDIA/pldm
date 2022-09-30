@@ -64,6 +64,32 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             }
         }
 
+        for (auto& effecter : terminus.second->numericEffecters)
+        {
+            // GetNumericEffecterValue
+            if (effecter->state() == StateType::Deferring)
+            {
+                if (effecter->updateTime ==
+                    std::numeric_limits<uint64_t>::max())
+                {
+                    continue;
+                }
+
+                sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+                elapsed = t1 - t0;
+                effecter->elapsedTime += (pollingTimeInUsec + elapsed);
+                if (effecter->elapsedTime >= effecter->updateTime)
+                {
+                    co_await effecter->getNumericEffecterValue();
+                    if (sensorPollTimer && !sensorPollTimer->isRunning())
+                    {
+                        co_return PLDM_ERROR;
+                    }
+                    effecter->elapsedTime = 0;
+                }
+            }
+        }
+
         for (auto sensor : terminus.second->stateSensors)
         {
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);

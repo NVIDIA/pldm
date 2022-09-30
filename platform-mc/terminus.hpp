@@ -5,6 +5,7 @@
 
 #include "common/types.hpp"
 #include "entity.hpp"
+#include "numeric_effecter.hpp"
 #include "numeric_sensor.hpp"
 #include "state_effecter.hpp"
 #include "state_sensor.hpp"
@@ -22,6 +23,7 @@ namespace pldm
 namespace platform_mc
 {
 using SensorId = uint16_t;
+using EffecterId = SensorId;
 using SensorCnt = uint8_t;
 using EffecterId = SensorId;
 using EffecterCnt = SensorCnt;
@@ -34,6 +36,10 @@ using SensorAuxiliaryNames = std::tuple<
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
     std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
+using VendorIANA = uint32_t;
+using OemRecordId = uint16_t;
+using VendorSpecificData = std::vector<uint8_t>;
+using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
 using AssociationDefinitionsIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 class TerminusManager;
@@ -96,6 +102,9 @@ class Terminus
     /** @brief A list of numericSensors */
     std::vector<std::shared_ptr<NumericSensor>> numericSensors{};
 
+    /** @brief A list of numericEffecters */
+    std::vector<std::shared_ptr<NumericEffecter>> numericEffecters{};
+
     /** @brief A list of state Sensors */
     std::vector<std::shared_ptr<StateSensor>> stateSensors{};
 
@@ -106,8 +115,15 @@ class Terminus
     std::vector<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
         numericSensorPdrs{};
 
+    /** @brief A list of parsed numeric effecter PDRs */
+    std::vector<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
+        numericEffecterPdrs{};
+
     /** @brief A list of parsed state sensor PDRs */
     std::vector<std::tuple<SensorID, StateSetInfo>> stateSensorPdrs{};
+
+    /** @brief A list of parsed OEM PDRs */
+    std::vector<OemPdr> oemPdrs{};
 
     /** @brief A map of EntityInfo to Entity informaiton */
     std::map<EntityInfo, Entity> entities;
@@ -122,7 +138,7 @@ class Terminus
      */
     std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorId id);
 
-    /** @brief Get Effecter Auxiliary Names by effecterId
+    /** @brief Get Effecter Auxiliary Names by effecterID
      *
      *  @param[in] id - effecter ID
      *  @return effecter auxiliary names
@@ -140,6 +156,8 @@ class Terminus
 
     void addStateSensor(SensorID sId, StateSetInfo sensorInfo);
 
+    void addNumericEffecter(
+        const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr);
     void addStateEffecter(EffecterId eId, StateSetInfo effecterInfo);
 
     /** @brief maximum buffer size the terminus can send and receive */
@@ -156,6 +174,9 @@ class Terminus
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
         parseNumericSensorPDR(const std::vector<uint8_t>& pdrData);
 
+    std::shared_ptr<pldm_numeric_effecter_value_pdr>
+        parseNumericEffecterPDR(const std::vector<uint8_t>& pdrData);
+
     std::shared_ptr<SensorAuxiliaryNames>
         parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData);
 
@@ -170,6 +191,8 @@ class Terminus
                            std::vector<StateSetData>& stateSets);
     std::tuple<EffecterId, StateSetInfo>
         parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
+
+    OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);
 
     tid_t tid;
     std::bitset<64> supportedTypes;
