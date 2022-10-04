@@ -58,13 +58,20 @@ class NumericSensor
      */
     void updateReading(bool available, bool functional, double value = 0);
 
-    /** @brief ConversionFormula is used to convert raw value to normalized
-     * units
+    /** @brief ConversionFormula is used to convert raw value to the unit
+     * specified in PDR
      *
      *  @param[in] value - raw value
      *  @return double - converted value
      */
     double conversionFormula(double value);
+
+    /** @brief UnitModifier is used to apply the unit modifier specified in PDR
+     *
+     *  @param[in] value - raw value
+     *  @return double - converted value
+     */
+    double unitModifier(double value);
 
     /** @brief Check if value is over threshold.
      *
@@ -141,7 +148,7 @@ class NumericSensor
     double offset;
 
     /** @brief A power-of-10 multiplier for baseUnit */
-    int8_t unitModifier;
+    int8_t baseUnitModifier;
 };
 } // namespace platform_mc
 } // namespace pldm

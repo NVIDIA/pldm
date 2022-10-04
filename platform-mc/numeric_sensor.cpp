@@ -209,14 +209,15 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 
     resolution = pdr->resolution;
     offset = pdr->offset;
-    unitModifier = pdr->unit_modifier;
+    baseUnitModifier = pdr->unit_modifier;
 
     elapsedTime = 0;
-    updateTime = pdr->update_interval * 10000000;
+    updateTime = pdr->update_interval * 1000000;
 
     valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
-    valueIntf->maxValue(conversionFormula(maxValue));
-    valueIntf->minValue(conversionFormula(minValue));
+    valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
+    valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+    hysteresis = unitModifier(conversionFormula(hysteresis));
     valueIntf->unit(sensorUnit);
 
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
@@ -228,15 +229,15 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 
     thresholdWarningIntf =
         std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
-    thresholdWarningIntf->warningHigh(warningHigh);
-    thresholdWarningIntf->warningLow(warningLow);
+    thresholdWarningIntf->warningHigh(unitModifier(warningHigh));
+    thresholdWarningIntf->warningLow(unitModifier(warningLow));
 
     if (hasCriticalThresholds)
     {
         thresholdCriticalIntf =
             std::make_unique<ThresholdCriticalIntf>(bus, path.c_str());
-        thresholdCriticalIntf->criticalHigh(criticalHigh);
-        thresholdCriticalIntf->criticalLow(criticalLow);
+        thresholdCriticalIntf->criticalHigh(unitModifier(criticalHigh));
+        thresholdCriticalIntf->criticalLow(unitModifier(criticalLow));
     }
 }
 
@@ -245,9 +246,12 @@ double NumericSensor::conversionFormula(double value)
     double convertedValue = value;
     convertedValue *= resolution;
     convertedValue += offset;
-    convertedValue *= std::pow(10, unitModifier);
-
     return convertedValue;
+}
+
+double NumericSensor::unitModifier(double value)
+{
+    return value * std::pow(10, baseUnitModifier);
 }
 
 void NumericSensor::updateReading(bool available, bool functional, double value)
@@ -256,7 +260,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     operationalStatusIntf->functional(functional);
     if (functional && available)
     {
-        valueIntf->value(conversionFormula(value));
+        valueIntf->value(unitModifier(conversionFormula(value)));
         updateThresholds();
     }
     else
