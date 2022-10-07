@@ -319,7 +319,7 @@
             "mctp_endpoint_uuid": "ad4c836b-c54c-11eb-8529-0242ac130003",
             "device_inventory": {
                 "create": {
-                    "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_HMC_0",
+                    "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_BMC_0",
                     "associations": [
                         {
                             "forward": "parent_chassis",
@@ -329,25 +329,25 @@
                         {
                             "forward": "inventory",
                             "reverse": "associated_ROT",
-                            "endpoint": "/xyz/openbmc_project/inventory/system/bmc/HGX_HMC_0"
+                            "endpoint": "/xyz/openbmc_project/inventory/system/bmc/HGX_BMC_0"
                         }
                     ]
                 },
                 "update": {
-                    "object_path": "/xyz/openbmc_project/inventory/system/bmc/HGX_HMC_0"
+                    "object_path": "/xyz/openbmc_project/inventory/system/bmc/HGX_BMC_0"
                 }
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_HMC_0": 65280
+                    "HGX_FW_ERoT_BMC_0": 65280
                 },
                 "update": {
-                    "HGX_FW_HMC_0": 16
+                    "HGX_FW_BMC_0": 16
                 }
             },
             "component_info": {
-                "HGX_FW_ERoT_HMC_0": 65280,
-                "HGX_FW_HMC_0": 16
+                "HGX_FW_ERoT_BMC_0": 65280,
+                "HGX_FW_BMC_0": 16
             }
         },
         {
