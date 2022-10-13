@@ -20,6 +20,8 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <boost/asio.hpp>
+#include <sdbusplus/asio/connection.hpp>
 
 namespace pldm
 {
@@ -191,6 +193,14 @@ class DBusHandler : public DBusHandlerInterface
     {
         static auto bus = sdbusplus::bus::new_default();
         return bus;
+    }
+
+    /** @brief Get the asio connection. */
+    static auto& getAsioConnection()
+    {
+        static boost::asio::io_context io;
+        static auto conn = std::make_shared<sdbusplus::asio::connection>(io);
+        return conn;
     }
 
     /**

@@ -87,32 +87,6 @@ void UpdateManager::createLogEntry(const std::string& messageID,
     using Level =
         sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 
-    auto createLog = [&messageID](std::map<std::string, std::string>& addData,
-                                  Level& level) {
-        static constexpr auto logObjPath = "/xyz/openbmc_project/logging";
-        static constexpr auto logInterface =
-            "xyz.openbmc_project.Logging.Create";
-        auto& bus = pldm::utils::DBusHandler::getBus();
-
-        try
-        {
-            auto service =
-                pldm::utils::DBusHandler().getService(logObjPath, logInterface);
-            auto severity = sdbusplus::xyz::openbmc_project::Logging::server::
-                convertForMessage(level);
-            auto method = bus.new_method_call(service.c_str(), logObjPath,
-                                              logInterface, "Create");
-            method.append(messageID, severity, addData);
-            bus.call_noreply(method);
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr
-                << "Failed to create D-Bus log entry for message registry, ERROR="
-                << e.what() << "\n";
-        }
-    };
-
     std::map<std::string, std::string> addData;
     addData["REDFISH_MESSAGE_ID"] = messageID;
     Level level = Level::Informational;
@@ -146,7 +120,22 @@ void UpdateManager::createLogEntry(const std::string& messageID,
 
     // use separate container for fwupdate message registry
     addData["namespace"] = "FWUpdate";
-    createLog(addData, level);
+    auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+    auto severity =
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            level);
+    asioConnection->async_method_call(
+        [](boost::system::error_code ec) {
+            if (ec)
+            {
+                std::cerr << "error while logging message registry: "
+                          << ec.message() << "\n";
+                return;
+            }
+        },
+        "xyz.openbmc_project.Logging", "/xyz/openbmc_project/logging",
+        "xyz.openbmc_project.Logging.Create", "Create", messageID, severity,
+        addData);
     return;
 }
 
