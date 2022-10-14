@@ -51,8 +51,7 @@ void DeviceUpdater::startFwUpdateFlow()
     }
 
     printBuffer(pldm::utils::Tx, request,
-        ("Send RequestUpdate for EID=" + std::to_string(eid))
-    );
+                ("Send RequestUpdate for EID=" + std::to_string(eid)));
 
     rc = updateManager->handler.registerRequest(
         eid, instanceId, PLDM_FWUP, PLDM_REQUEST_UPDATE, std::move(request),
@@ -85,9 +84,9 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
         return;
     }
 
-    printBuffer(pldm::utils::Rx, response, respMsgLen,
-        ("Received requestUpdate Response from EID=" + std::to_string(eid))
-    );
+    printBuffer(
+        pldm::utils::Rx, response, respMsgLen,
+        ("Received requestUpdate Response from EID=" + std::to_string(eid)));
 
     uint8_t completionCode = 0;
     uint16_t fdMetaDataLen = 0;
@@ -201,9 +200,8 @@ void DeviceUpdater::sendPassCompTableRequest(size_t offset)
     }
 
     printBuffer(pldm::utils::Tx, request,
-        ("Send PassCompTable for EID=" + std::to_string(eid)
-        + " ,ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Send PassCompTable for EID=" + std::to_string(eid) +
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     rc = updateManager->handler.registerRequest(
         eid, instanceId, PLDM_FWUP, PLDM_PASS_COMPONENT_TABLE,
@@ -231,10 +229,10 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
         return;
     }
 
-    printBuffer(pldm::utils::Rx, response, respMsgLen,
-        ("Received Response for PassCompTable from EID=" + std::to_string(eid)
-        + " ,ComponentIndex=" + std::to_string(componentIndex))
-    );
+    printBuffer(
+        pldm::utils::Rx, response, respMsgLen,
+        ("Received Response for PassCompTable from EID=" + std::to_string(eid) +
+         " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t completionCode = 0;
     uint8_t compResponse = 0;
@@ -343,9 +341,8 @@ void DeviceUpdater::sendUpdateComponentRequest(size_t offset)
     }
 
     printBuffer(pldm::utils::Tx, request,
-        ("Send UpdateComponent for EID=" + std::to_string(eid)
-        + " ,ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Send UpdateComponent for EID=" + std::to_string(eid) +
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     rc = updateManager->handler.registerRequest(
         eid, instanceId, PLDM_FWUP, PLDM_UPDATE_COMPONENT, std::move(request),
@@ -373,9 +370,9 @@ void DeviceUpdater::updateComponent(mctp_eid_t eid, const pldm_msg* response,
     }
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
-        ("Received Response for UpdateComponent from EID=" + std::to_string(eid)
-        + " ,ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Received Response for UpdateComponent from EID=" +
+                 std::to_string(eid) +
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t completionCode = 0;
     uint8_t compCompatibilityResp = 0;
@@ -440,9 +437,9 @@ Response DeviceUpdater::requestFwData(const pldm_msg* request,
     if (updateManager->fwDebug)
     {
         std::cerr << "EID = " << unsigned(eid)
-                << ", ComponentIndex = " << unsigned(componentIndex)
-                << ", offset = " << unsigned(offset)
-                << ", length = " << unsigned(length) << "\n";
+                  << ", ComponentIndex = " << unsigned(componentIndex)
+                  << ", offset = " << unsigned(offset)
+                  << ", length = " << unsigned(length) << "\n";
     }
 
     if (length < PLDM_FWUP_BASELINE_TRANSFER_SIZE || length > maxTransferSize)
@@ -518,9 +515,8 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
     auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
-        ("Received transferComplete from EID=" + std::to_string(eid)
-        + ", ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Received transferComplete from EID=" + std::to_string(eid) +
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     reqFwDataTimer->stop();
     reqFwDataTimer.reset();
@@ -552,7 +548,7 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
         if (updateManager->fwDebug)
         {
             std::cout << "Component Transfer complete, EID=" << unsigned(eid)
-                    << ", COMPONENT_VERSION=" << compVersion << "\n";
+                      << ", COMPONENT_VERSION=" << compVersion << "\n";
         }
     }
     else
@@ -587,9 +583,8 @@ Response DeviceUpdater::verifyComplete(const pldm_msg* request,
     auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
-        ("Received verifyComplete from EID=" + std::to_string(eid)
-        + ", ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Received verifyComplete from EID=" + std::to_string(eid) +
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t verifyResult = 0;
     auto rc = decode_verify_complete_req(request, payloadLength, &verifyResult);
@@ -617,8 +612,9 @@ Response DeviceUpdater::verifyComplete(const pldm_msg* request,
     {
         if (updateManager->fwDebug)
         {
-            std::cout << "Component verification complete, EID=" << unsigned(eid)
-                    << ", COMPONENT_VERSION=" << compVersion << "\n";
+            std::cout << "Component verification complete, EID="
+                      << unsigned(eid) << ", COMPONENT_VERSION=" << compVersion
+                      << "\n";
         }
     }
     else
@@ -653,9 +649,8 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
     auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
-        ("Received applyComplete from EID=" + std::to_string(eid)
-        + ", ComponentIndex=" + std::to_string(componentIndex))
-    );
+                ("Received applyComplete from EID=" + std::to_string(eid) +
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t applyResult = 0;
     bitfield16_t compActivationModification{};
@@ -691,7 +686,7 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
         if (updateManager->fwDebug)
         {
             std::cout << "Component apply complete, EID=" << unsigned(eid)
-                    << ", COMPONENT_VERSION=" << compVersion << "\n";
+                      << ", COMPONENT_VERSION=" << compVersion << "\n";
         }
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex,
@@ -760,8 +755,7 @@ void DeviceUpdater::sendActivateFirmwareRequest()
     }
 
     printBuffer(pldm::utils::Tx, request,
-        ("Send ActivateFirmware for EID=" + std::to_string(eid))
-    );
+                ("Send ActivateFirmware for EID=" + std::to_string(eid)));
 
     rc = updateManager->handler.registerRequest(
         eid, instanceId, PLDM_FWUP, PLDM_ACTIVATE_FIRMWARE, std::move(request),
@@ -785,9 +779,9 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
         return;
     }
 
-    printBuffer(pldm::utils::Rx, response, respMsgLen,
-        ("Received ActivateFirmware Response from EID=" + std::to_string(eid))
-    );
+    printBuffer(
+        pldm::utils::Rx, response, respMsgLen,
+        ("Received ActivateFirmware Response from EID=" + std::to_string(eid)));
 
     uint8_t completionCode = 0;
     uint16_t estimatedTimeForActivation = 0;
@@ -834,8 +828,7 @@ void DeviceUpdater::printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
 }
 
 void DeviceUpdater::printBuffer(bool isTx, const pldm_msg* buffer,
-                                size_t bufferLen,
-                                const std::string& message)
+                                size_t bufferLen, const std::string& message)
 {
     if (updateManager->fwDebug)
     {

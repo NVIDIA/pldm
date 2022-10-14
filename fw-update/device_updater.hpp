@@ -219,29 +219,30 @@ class DeviceUpdater
     std::unique_ptr<sdeventplus::source::Defer> pldmRequest;
 
     /**
-     * @brief Print debug logs for firmware update when firmware debug option is enabled
+     * @brief Print debug logs for firmware update when firmware debug option is
+     enabled
      *        This variant of printBuffer takes integer vector as an input
      *
-     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false if
-                       the buffer is an incoming PLDM message
+     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
+     if the buffer is an incoming PLDM message
      * @param[in] buffer - integer vector buffer to log
      * @param[in] message - Message string for logging
      */
     void printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
-                    const std::string& message);
-    
+                     const std::string& message);
+
     /**
-     * @brief Print debug logs for firmware update when firmware debug option is enabled.
-     *        This variant of printBuffer takes pldm_msg* buffer as an input.
+     * @brief Print debug logs for firmware update when firmware debug option is
+     * enabled. This variant of printBuffer takes pldm_msg* buffer as an input.
      *
-     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false if
-     *                  the buffer is an incoming PLDM message
+     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
+     * if the buffer is an incoming PLDM message
      * @param[in] buffer - pldm message buffer to log
      * @param[in] bufferLen - pldm message buffer length
      * @param[in] message - Message string for logging
      */
-    void printBuffer(bool isTx, const pldm_msg* buffer,
-                    size_t bufferLen, const std::string& message);
+    void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen,
+                     const std::string& message);
 
     /**
      * @brief Timeout in seconds for the UA to cancel the component update if no
