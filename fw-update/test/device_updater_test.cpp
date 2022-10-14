@@ -105,7 +105,8 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 TEST_F(DeviceUpdaterTest, ReadPackage512B)
 {
     DeviceUpdater deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager);
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -115,6 +116,7 @@ TEST_F(DeviceUpdaterTest, ReadPackage512B)
     constexpr uint8_t completionCode = PLDM_SUCCESS;
     constexpr uint32_t length = 512;
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+    deviceUpdater.uaState.set(UASequence::RequestFirmwareData);
     auto response = deviceUpdater.requestFwData(
         requestMsg, sizeof(pldm_request_firmware_data_req));
 

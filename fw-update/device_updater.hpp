@@ -18,10 +18,174 @@ namespace fw_update
 
 class UpdateManager;
 
+/** @enum Enumeration to represent the PLDM UA sequence in the firmware update
+ *        flow
+ */
+enum class UASequence
+{
+    RequestUpdate,
+    PassComponentTable,
+    UpdateComponent,
+    RequestFirmwareData,
+    TransferComplete,
+    VerifyComplete,
+    ApplyComplete,
+    ActivateFirmware,
+    CancelUpdateComponent,
+    Invalid,
+};
+
+/** @class UAState
+ *
+ *  To manage the sequence of the PLDM UA as part of the firmware update flow.
+ */
+struct UAState
+{
+    UAState(bool fwDebug = false) :
+        current(UASequence::RequestUpdate), fwDebug(fwDebug)
+    {}
+
+    /** @brief To get next action of the PLDM sequence as per the flow
+     *
+     *  @param[in] command - the current sequence in the PLDM UA flow
+     *  @param[in] compIndex - current component index, this is applicable only
+     *                         when the current action is PassComponentTable and
+     *                         ApplyComplete
+     *  @param[in] numComps - The number of components applicable for the FD
+     *
+     */
+    UASequence nextState(UASequence command, size_t compIndex, size_t numComps)
+    {
+        auto prevSeq = current;
+        switch (command)
+        {
+            case UASequence::RequestUpdate:
+            {
+                current = UASequence::PassComponentTable;
+                break;
+            }
+            case UASequence::PassComponentTable:
+            {
+                if (compIndex < numComps)
+                {
+                    current = UASequence::PassComponentTable;
+                }
+                else
+                {
+                    current = UASequence::UpdateComponent;
+                }
+                break;
+            }
+            case UASequence::UpdateComponent:
+            {
+                current = UASequence::RequestFirmwareData;
+                break;
+            }
+            case UASequence::RequestFirmwareData:
+            {
+                current = UASequence::TransferComplete;
+                break;
+            }
+            case UASequence::TransferComplete:
+            {
+                current = UASequence::VerifyComplete;
+                break;
+            }
+            case UASequence::VerifyComplete:
+            {
+                current = UASequence::ApplyComplete;
+                break;
+            }
+            case UASequence::ApplyComplete:
+            {
+                if (compIndex < numComps)
+                {
+                    current = UASequence::UpdateComponent;
+                }
+                else
+                {
+                    current = UASequence::ActivateFirmware;
+                }
+                break;
+            }
+            case UASequence::ActivateFirmware:
+            {
+                current = UASequence::Invalid;
+                break;
+            }
+            default:
+            {
+                current = UASequence::Invalid;
+                break;
+            }
+        };
+
+        if (fwDebug)
+        {
+            std::cout << "prevSeq = " << unsigned(static_cast<size_t>(prevSeq))
+                      << ", command = "
+                      << unsigned(static_cast<size_t>(command))
+                      << ", currentSeq = "
+                      << unsigned(static_cast<size_t>(current))
+                      << ", compIndex = " << unsigned(compIndex)
+                      << ", numpComps = " << unsigned(numComps) << "\n";
+        }
+
+        return current;
+    }
+
+    /** @brief To validate if the command handled by the DeviceUpdater is as per
+     *         the expected PLDM UA flow.
+     *
+     *  @param[in] command - Validate the current sequence of the UA against the
+     *                     command received
+     *
+     *  @return bool - true if the command received is as expected, false if
+     *          the command received is unexpected and return
+     *          COMMAND_NOT_EXPECTED by the command handler
+     */
+    bool expectedState(UASequence command)
+    {
+        if ((current == UASequence::RequestFirmwareData) &&
+            (command == UASequence::TransferComplete))
+        {
+            current = UASequence::TransferComplete;
+            return true;
+        }
+        else
+        {
+            if (command != current)
+            {
+                std::cerr << "Unexpected command: inCmd = "
+                          << unsigned(static_cast<size_t>(command))
+                          << ", currentSeq = "
+                          << unsigned(static_cast<size_t>(current)) << "\n";
+            }
+            return (command == current);
+        }
+    }
+
+    /** @brief To set the state of the PLDM UA, it will be used for handling
+     *         exceptions in the firmware update flow and for tests
+     *
+     *  @param[in] state - The state to be set
+     *
+     *  @return UASequence - the current state of the PLDM UA
+     */
+    UASequence set(UASequence state)
+    {
+        current = state;
+        return current;
+    }
+
+    UASequence current;
+    bool fwDebug;
+};
+
 /** @class DeviceUpdater
  *
- *  DeviceUpdater orchestrates the firmware update of the firmware device and
- *  updates the UpdateManager about the status once it is complete.
+ *  DeviceUpdater orchestrates the firmware update of the firmware device
+ * and updates the UpdateManager about the status once it is complete.
  */
 class DeviceUpdater
 {
@@ -56,12 +220,12 @@ class DeviceUpdater
                            const ComponentInfo& compInfo,
                            const ComponentIdNameMap& compIdNameInfo,
                            uint32_t maxTransferSize,
-                           UpdateManager* updateManager) :
+                           UpdateManager* updateManager, bool fwDebug) :
         fwDeviceIDRecord(fwDeviceIDRecord),
-        eid(eid), package(package), compImageInfos(compImageInfos),
-        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
-        maxTransferSize(maxTransferSize), updateManager(updateManager),
-        reqFwDataTimer(nullptr)
+        uaState(fwDebug), eid(eid), package(package),
+        compImageInfos(compImageInfos), compInfo(compInfo),
+        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
+        updateManager(updateManager), reqFwDataTimer(nullptr)
     {}
 
     /** @brief Start the firmware update flow for the FD
@@ -164,6 +328,10 @@ class DeviceUpdater
      */
     const FirmwareDeviceIDRecord& fwDeviceIDRecord;
 
+    /** @brief PLDM UA state machine
+     */
+    struct UAState uaState;
+
   private:
     /** @brief Send PassComponentTable command request
      *
@@ -214,6 +382,8 @@ class DeviceUpdater
      *         PassComponentTable
      */
     size_t componentIndex = 0;
+
+    size_t numComponents = 0;
 
     /** @brief To send a PLDM request after the current command handling */
     std::unique_ptr<sdeventplus::source::Defer> pldmRequest;
@@ -282,6 +452,15 @@ class DeviceUpdater
      */
     void cancelUpdateComponent(mctp_eid_t eid, const pldm_msg* response,
                                size_t respMsgLen);
+
+    /** @brief Send COMMAND_NOT_EXPECTED response sent by UA when it receives
+     *         a command from the FD out of sequence from when it is expected.
+     *
+     *  @param[in] request - PLDM request message
+     *  @param[in] requestLen - PLDM request message length
+     */
+    Response sendCommandNotExpectedResponse(const pldm_msg* request,
+                                            size_t requestLen);
 };
 
 } // namespace fw_update
