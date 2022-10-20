@@ -14,18 +14,17 @@ namespace pldm
 namespace platform_mc
 {
 
-StateSensor::StateSensor(const uint8_t tid,
-                             const bool sensorDisabled,
-                             const uint16_t sensorId,
-                             StateSetInfo sensorInfo,
-                             std::string& sensorName,
-                             std::string& associationPath) :
-    tid(tid), sensorId(sensorId), sensorInfo(sensorInfo)
+StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
+                         const uint16_t sensorId, StateSetInfo sensorInfo,
+                         std::string& sensorName,
+                         std::string& associationPath) :
+    tid(tid),
+    sensorId(sensorId), sensorInfo(sensorInfo)
 {
     std::string path = "/xyz/openbmc_project/state/" + sensorName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
-    auto& bus = pldm::utils::DBusHandler::getBus();    
+    auto& bus = pldm::utils::DBusHandler::getBus();
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
 
@@ -34,21 +33,23 @@ StateSensor::StateSensor(const uint8_t tid,
     operationalStatusIntf->functional(!sensorDisabled);
 
     auto stateSensors = std::get<1>(sensorInfo);
+    uint8_t idx = 0;
     for (auto& sensor : stateSensors)
     {
         auto stateSetId = std::get<0>(sensor);
-        dbus::PathAssociation association = {
-            "chassis", "all_states",
-            associationPath};
-        std::string stateSetPath = path + "/Id_" + std::to_string(stateSets.size());
-        auto stateSet = StateSetCreator::create(stateSetId, stateSetPath, association);
+        dbus::PathAssociation association = {"chassis", "all_states",
+                                             associationPath};
+        std::string stateSetPath =
+            path + "/Id_" + std::to_string(stateSets.size());
+        auto stateSet = StateSetCreator::createSensor(
+            stateSetId, idx++, stateSetPath, association);
         if (stateSet != nullptr)
         {
             stateSets.emplace_back(std::move(stateSet));
         }
     }
 
-    //TODO : Polling must be based on event support 
+    // TODO : Polling must be based on event support
     updateTime = 10000000;
 }
 

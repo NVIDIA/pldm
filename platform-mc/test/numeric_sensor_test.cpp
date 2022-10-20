@@ -3,14 +3,37 @@
 
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/terminus.hpp"
+#include "platform-mc/terminus_manager.hpp"
 
 #include <gtest/gtest.h>
 
 using namespace pldm::platform_mc;
 
-TEST(NumericSensor, conversionFormula)
+class NumericSensorTest : public testing::Test
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+  protected:
+    NumericSensorTest() :
+        bus(pldm::utils::DBusHandler::getBus()),
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+                   milliseconds(100)),
+        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
+                        nullptr)
+    {}
+
+    sdbusplus::bus::bus& bus;
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    pldm::mctp_socket::Manager sockManager;
+    pldm::requester::Handler<pldm::requester::Request> reqHandler;
+    pldm::platform_mc::TerminusManager terminusManager;
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+};
+
+TEST_F(NumericSensorTest, conversionFormula)
+{
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -99,9 +122,9 @@ TEST(NumericSensor, conversionFormula)
     EXPECT_EQ(61, convertedValue);
 }
 
-TEST(NumericSensor, checkThreshold)
+TEST_F(NumericSensorTest, checkThreshold)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,

@@ -1,15 +1,38 @@
 #include "libpldm/entity.h"
 
 #include "platform-mc/terminus.hpp"
+#include "platform-mc/terminus_manager.hpp"
 
 #include <gtest/gtest.h>
 
 using namespace pldm::platform_mc;
 
-TEST(TerminusTest, supportedTypeTest)
+class TerminusTest : public testing::Test
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE);
-    auto t2 = Terminus(2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+  protected:
+    TerminusTest() :
+        bus(pldm::utils::DBusHandler::getBus()),
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+                   milliseconds(100)),
+        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
+                        nullptr)
+    {}
+
+    sdbusplus::bus::bus& bus;
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    pldm::mctp_socket::Manager sockManager;
+    pldm::requester::Handler<pldm::requester::Request> reqHandler;
+    pldm::platform_mc::TerminusManager terminusManager;
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+};
+
+TEST_F(TerminusTest, supportedTypeTest)
+{
+    auto t1 = Terminus(1, 1 << PLDM_BASE, terminusManager);
+    auto t2 = Terminus(2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
 
     EXPECT_EQ(true, t1.doesSupport(PLDM_BASE));
     EXPECT_EQ(false, t1.doesSupport(PLDM_PLATFORM));
@@ -17,17 +40,17 @@ TEST(TerminusTest, supportedTypeTest)
     EXPECT_EQ(true, t2.doesSupport(PLDM_PLATFORM));
 }
 
-TEST(TerminusTest, getTidTest)
+TEST_F(TerminusTest, getTidTest)
 {
     const pldm::tid_t tid = 1;
-    auto t1 = Terminus(tid, 1 << PLDM_BASE);
+    auto t1 = Terminus(tid, 1 << PLDM_BASE, terminusManager);
 
     EXPECT_EQ(tid, t1.getTid());
 }
 
-TEST(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -81,9 +104,9 @@ TEST(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
     EXPECT_EQ("TEMP1", names[0][0].second);
 }
 
-TEST(TerminusTest, addNumericSensorTest)
+TEST_F(TerminusTest, parseNumericSensorPDRTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -198,9 +221,9 @@ TEST(TerminusTest, addNumericSensorTest)
     EXPECT_EQ(1, t1.numericSensors.size());
 }
 
-TEST(TerminusTest, parseNumericSensorPdrTest)
+TEST_F(TerminusTest, parseNumericSensorPdrTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -302,9 +325,9 @@ TEST(TerminusTest, parseNumericSensorPdrTest)
     EXPECT_EQ(10, numericSensorPdrs->fatal_low.value_u8);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrSint8Test)
+TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -406,9 +429,9 @@ TEST(TerminusTest, parseNumericSensorPdrSint8Test)
     EXPECT_EQ(-30, numericSensorPdrs->fatal_low.value_s8);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrUint16Test)
+TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -523,9 +546,9 @@ TEST(TerminusTest, parseNumericSensorPdrUint16Test)
     EXPECT_EQ(1000, numericSensorPdrs->fatal_low.value_u16);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrSint16Test)
+TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -640,9 +663,9 @@ TEST(TerminusTest, parseNumericSensorPdrSint16Test)
     EXPECT_EQ(-3000, numericSensorPdrs->fatal_low.value_s16);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrUint32Test)
+TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -781,9 +804,9 @@ TEST(TerminusTest, parseNumericSensorPdrUint32Test)
     EXPECT_EQ(1000000, numericSensorPdrs->fatal_low.value_u32);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrSint32Test)
+TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -922,9 +945,9 @@ TEST(TerminusTest, parseNumericSensorPdrSint32Test)
     EXPECT_EQ(-3000000, numericSensorPdrs->fatal_low.value_s32);
 }
 
-TEST(TerminusTest, parseNumericSensorPdrReal32Test)
+TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -1063,9 +1086,9 @@ TEST(TerminusTest, parseNumericSensorPdrReal32Test)
     EXPECT_FLOAT_EQ(-300.003f, numericSensorPdrs->fatal_low.value_f32);
 }
 
-TEST(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
+TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     // A corrupted PDR. The data after plusTolerance missed.
     std::vector<uint8_t> pdr1{
         0x0,

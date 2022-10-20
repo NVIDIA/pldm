@@ -9,6 +9,205 @@
 
 constexpr auto hdrSize = sizeof(pldm_msg_hdr);
 
+TEST(GetStateEffecterStates, testGoodEncodeRequest)
+{
+    std::vector<uint8_t> requestMsg(hdrSize +
+                                    PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
+
+    uint16_t effecter_id = 0xAB01;
+
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    auto rc = encode_get_state_effecter_states_req(0, effecter_id, request);
+
+    struct pldm_get_state_effecter_states_req* req =
+        reinterpret_cast<struct pldm_get_state_effecter_states_req*>(
+            request->payload);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(effecter_id, le16toh(req->effecter_id));
+}
+
+TEST(GetStateEffecterStates, testBadEncodeRequest)
+{
+    std::vector<uint8_t> requestMsg(hdrSize +
+                                    PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
+
+    auto rc = encode_get_state_effecter_states_req(0, 0, nullptr);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
+TEST(GetStateEffecterStates, testGoodDecodeResponse)
+{
+    std::array<uint8_t,
+               hdrSize + PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES + 24>
+        responseMsg{};
+
+    uint8_t completionCode = 0;
+    uint8_t compEffecterCount = 1;
+    get_effecter_state_field stateField = {
+        .effecter_op_state = EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+        .pending_state = 0,
+        .present_state = PLDM_STATESET_LINK_STATE_CONNECTED,
+    };
+
+    uint8_t ret_completionCode;
+    uint8_t ret_compEffecterCount;
+    std::array<get_effecter_state_field, 8> ret_stateField{};
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+    struct pldm_get_state_effecter_states_resp* resp =
+        reinterpret_cast<struct pldm_get_state_effecter_states_resp*>(
+            response->payload);
+
+    resp->completion_code = completionCode;
+    resp->comp_effecter_count = compEffecterCount;
+    memcpy(resp->field, &stateField,
+           sizeof(get_effecter_state_field) * compEffecterCount);
+
+    auto rc = decode_get_state_effecter_states_resp(
+        response, responseMsg.size() - hdrSize, &ret_completionCode,
+        &ret_compEffecterCount, ret_stateField.data());
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(completionCode, ret_completionCode);
+    EXPECT_EQ(compEffecterCount, ret_compEffecterCount);
+    EXPECT_EQ(stateField.effecter_op_state,
+              ret_stateField[0].effecter_op_state);
+    EXPECT_EQ(stateField.pending_state, ret_stateField[0].pending_state);
+    EXPECT_EQ(stateField.present_state, ret_stateField[0].present_state);
+}
+
+TEST(GetStateEffecterStates, testBadDecodeResponse)
+{
+    std::array<uint8_t, hdrSize + PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES>
+        responseMsg{};
+
+    auto rc = decode_get_state_effecter_states_resp(
+        nullptr, responseMsg.size() - hdrSize, nullptr, nullptr, nullptr);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    uint8_t completionCode = 0;
+    uint8_t compEffecterCount = 0;
+
+    uint8_t ret_completionCode;
+    uint8_t ret_compEffecterCount;
+    std::array<get_effecter_state_field, 8> ret_stateField{};
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+    struct pldm_get_state_effecter_states_resp* resp =
+        reinterpret_cast<struct pldm_get_state_effecter_states_resp*>(
+            response->payload);
+
+    resp->completion_code = completionCode;
+    resp->comp_effecter_count = compEffecterCount;
+
+    rc = decode_get_state_effecter_states_resp(
+        response, responseMsg.size() - hdrSize, &ret_completionCode,
+        &ret_compEffecterCount, ret_stateField.data());
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
+TEST(GetStateEffecterStates, testInvalidDataLengthDecodeResponse)
+{
+    const uint8_t state_fields_size = (sizeof(get_effecter_state_field) *
+                                       (PLDM_COMPOSITE_EFFECTER_MAX_COUNT + 2));
+    std::array<uint8_t, hdrSize +
+                            PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES +
+                            state_fields_size>
+        responseMsg{};
+
+    uint8_t completionCode = 0;
+    uint8_t compEffecterCount = 1;
+
+    uint8_t ret_completionCode;
+    uint8_t ret_compEffecterCount;
+    std::array<get_effecter_state_field, 8> ret_stateField{};
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+    struct pldm_get_state_effecter_states_resp* resp =
+        reinterpret_cast<struct pldm_get_state_effecter_states_resp*>(
+            response->payload);
+
+    resp->completion_code = completionCode;
+    resp->comp_effecter_count = compEffecterCount;
+
+    auto rc = decode_get_state_effecter_states_resp(
+        response, responseMsg.size() - hdrSize, &ret_completionCode,
+        &ret_compEffecterCount, ret_stateField.data());
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}
+
+TEST(SetStateEffecterEnables, testEncodeRequest)
+{
+    std::array<uint8_t,
+               sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_ENABLES_REQ_BYTES>
+        requestMsg{};
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    uint16_t effecterId = 0x0A;
+    uint8_t compEffecterCnt = 0x2;
+    std::array<set_effecter_op_field, 8> opField{};
+    opField[0] = {EFFECTER_OPER_STATE_DISABLED, EFFECTER_EVENT_DISABLE};
+    opField[1] = {EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+                  EFFECTER_EVENT_ENABLE};
+
+    auto rc = encode_set_state_effecter_enables_req(
+        0, effecterId, compEffecterCnt, opField.data(), request);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(effecterId, request->payload[0]);
+    EXPECT_EQ(compEffecterCnt, request->payload[sizeof(effecterId)]);
+    EXPECT_EQ(opField[0].effecter_op_state,
+              request->payload[sizeof(effecterId) + sizeof(compEffecterCnt)]);
+    EXPECT_EQ(opField[0].event_msg_enable,
+              request->payload[sizeof(effecterId) + sizeof(compEffecterCnt) +
+                               sizeof(opField[0].effecter_op_state)]);
+    EXPECT_EQ(opField[1].effecter_op_state,
+              request->payload[sizeof(effecterId) + sizeof(compEffecterCnt) +
+                               sizeof(opField[0])]);
+    EXPECT_EQ(opField[1].event_msg_enable,
+              request->payload[sizeof(effecterId) + sizeof(compEffecterCnt) +
+                               sizeof(opField[0]) +
+                               sizeof(opField[1].effecter_op_state)]);
+}
+
+TEST(SetStateEffecterEnables, testBadEncodeRequest)
+{
+    std::array<uint8_t,
+               sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_ENABLES_REQ_BYTES>
+        requestMsg{};
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    uint16_t effecterId = 0x0A;
+    uint8_t compEffecterCnt = 0x2;
+    std::array<set_effecter_op_field, 8> opField{};
+    opField[0] = {EFFECTER_OPER_STATE_DISABLED, EFFECTER_EVENT_DISABLE};
+    opField[1] = {EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+                  EFFECTER_EVENT_ENABLE};
+
+    auto rc = encode_set_state_effecter_enables_req(
+        0, effecterId, compEffecterCnt, opField.data(), nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_set_state_effecter_enables_req(0, effecterId, compEffecterCnt,
+                                               nullptr, request);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_set_state_effecter_enables_req(
+        0, effecterId, PLDM_COMPOSITE_EFFECTER_MAX_COUNT + 2, opField.data(),
+        request);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_set_state_effecter_enables_req(0, effecterId, 0, opField.data(),
+                                               request);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
 TEST(SetStateEffecterStates, testEncodeResponse)
 {
     std::array<uint8_t,

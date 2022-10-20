@@ -79,8 +79,27 @@ requester::Coroutine SensorManager::doSensorPollingTask()
                 sensor->elapsedTime = 0;
             }
         }
-    }
 
+        for (auto effecter : terminus.second->stateEffecters)
+        {
+            // Get StateEffecter states if we haven't sync.
+            if (effecter->getOperationalStatus() == StateType::Deferring)
+            {
+                sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+                elapsed = t1 - t0;
+                effecter->elapsedTime += (pollingTimeInUsec + elapsed);
+                if (effecter->elapsedTime >= effecter->updateTime)
+                {
+                    co_await effecter->getStateEffecterStates();
+                    if (!sensorPollTimer->isRunning())
+                    {
+                        co_return PLDM_ERROR;
+                    }
+                    effecter->elapsedTime = 0;
+                }
+            }
+        }
+    }
     co_return PLDM_SUCCESS;
 }
 
@@ -252,6 +271,5 @@ requester::Coroutine
 
     co_return completionCode;
 }
-
 } // namespace platform_mc
 } // namespace pldm

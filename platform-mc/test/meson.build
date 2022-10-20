@@ -1,24 +1,33 @@
-test_src = declare_dependency(
-          sources: [
-            '../terminus_manager.cpp',
-            '../terminus.cpp',
-            '../platform_manager.cpp',
-            '../sensor_manager.cpp',
-            '../numeric_sensor.cpp',
-            '../state_sensor.cpp',
-            '../state_set.cpp',
-            '../event_manager.cpp',            
-            '../state_effecter.cpp',
-            '../../requester/mctp_endpoint_discovery.cpp',
-            '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp',
-            '../../pldmd/socket_handler.cpp',
-            '../../fw-update/update_manager.cpp',
-            '../../fw-update/watch.cpp',
-            '../../fw-update/other_device_update_manager.cpp',
-            '../../fw-update/package_parser.cpp',
-            '../../fw-update/device_updater.cpp'],
-            include_directories: '../../requester')
+dep_src_files = [
+  '../terminus_manager.cpp',
+  '../terminus.cpp',
+  '../platform_manager.cpp',
+  '../sensor_manager.cpp',
+  '../numeric_sensor.cpp',
+  '../state_sensor.cpp',
+  '../state_effecter.cpp',
+  '../state_set.cpp',
+  '../event_manager.cpp',
+  '../state_effecter.cpp',  
+  '../../requester/mctp_endpoint_discovery.cpp',
+  '../../pldmd/dbus_impl_requester.cpp',
+  '../../pldmd/instance_id.cpp',
+  '../../pldmd/socket_handler.cpp',
+  '../../fw-update/update_manager.cpp',
+  '../../fw-update/watch.cpp',
+  '../../fw-update/other_device_update_manager.cpp',
+  '../../fw-update/package_parser.cpp',
+  '../../fw-update/device_updater.cpp',
+]
+
+if get_option('oem-nvidia').enabled()
+dep_src_files += [
+    '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
+  ]
+endif
+
+test_src = declare_dependency(sources: dep_src_files,
+                              include_directories: '../../requester')
 
 tests = [
   'terminus_manager_test',
@@ -26,6 +35,7 @@ tests = [
   'sensor_manager_test',
   'numeric_sensor_test',
   'event_manager_test',
+  'state_effecter_test',
 ]
 
 foreach t : tests

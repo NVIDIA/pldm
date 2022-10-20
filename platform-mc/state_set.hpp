@@ -14,6 +14,9 @@ namespace pldm
 namespace platform_mc
 {
 
+class StateEffecter;
+
+using namespace sdbusplus;
 using PerformanceValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::server::ProcessorPerformance>;
 using PowerSupplyValueIntf =
@@ -21,6 +24,8 @@ using PowerSupplyValueIntf =
                                     Decorator::server::PowerSystemInputs>;
 using RemoteDebugValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Control::Processor::server::RemoteDebug>;
+using RemoteDebugInterfaceIntf =
+    sdbusplus::xyz::openbmc_project::Control::Processor::server::RemoteDebug;
 using PerformanceStates = sdbusplus::xyz::openbmc_project::State::server::
     ProcessorPerformance::PerformanceStates;
 using PowerSupplyInputStatus = sdbusplus::xyz::openbmc_project::State::
@@ -54,17 +59,30 @@ class StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
     }
+
+    virtual uint8_t getValue()
+    {
+        return 0;
+    }
+
+    uint16_t getStateSetId()
+    {
+        return id;
+    }
 };
 
 class StateSetPerformance : public StateSet
 {
   private:
     std::unique_ptr<PerformanceValueIntf> ValueIntf = nullptr;
+    uint8_t compId = 0;
 
   public:
-    StateSetPerformance(uint16_t stateSetId, std::string& objectPath,
+    StateSetPerformance(uint16_t stateSetId, uint8_t compId,
+                        std::string& objectPath,
                         dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId)
+        StateSet(stateSetId),
+        compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -104,11 +122,14 @@ class StateSetPowerSupplyInput : public StateSet
 {
   private:
     std::unique_ptr<PowerSupplyValueIntf> ValueIntf = nullptr;
+    uint8_t compId = 0;
 
   public:
-    StateSetPowerSupplyInput(uint16_t stateSetId, std::string& objectPath,
+    StateSetPowerSupplyInput(uint16_t stateSetId, uint8_t compId,
+                             std::string& objectPath,
                              dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId)
+        StateSet(stateSetId),
+        compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -144,15 +165,53 @@ class StateSetPowerSupplyInput : public StateSet
     }
 };
 
+class RemoteDebugStateIntf : public RemoteDebugValueIntf
+{
+  public:
+    RemoteDebugStateIntf(bus::bus& bus, const char* path, uint8_t compId) :
+        RemoteDebugValueIntf(bus, path), compId(compId)
+    {}
+
+    using RemoteDebugInterfaceIntf::enabled;
+    virtual void update(bool value)
+    {
+        RemoteDebugInterfaceIntf::enabled(value);
+    }
+
+  protected:
+    uint8_t compId = 0;
+};
+
+class RemoteDebugEffecterIntf : public RemoteDebugStateIntf
+{
+  public:
+    RemoteDebugEffecterIntf(bus::bus& bus, const char* path, uint8_t compId,
+                            StateEffecter& effecter) :
+        RemoteDebugStateIntf(bus, path, compId),
+        effecter(effecter)
+    {}
+
+    using RemoteDebugInterfaceIntf::enabled;
+    void update(bool value);
+    bool enabled(bool value) override;
+
+  private:
+    StateEffecter& effecter;
+};
+
 class StateSetRemoteDebug : public StateSet
 {
   private:
-    std::unique_ptr<RemoteDebugValueIntf> ValueIntf = nullptr;
+    std::unique_ptr<RemoteDebugStateIntf> ValueIntf = nullptr;
+    uint8_t compId = 0;
 
   public:
-    StateSetRemoteDebug(uint16_t stateSetId, std::string& objectPath,
-                        dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId)
+    StateSetRemoteDebug(uint16_t stateSetId, uint8_t compId,
+                        std::string& objectPath,
+                        dbus::PathAssociation& stateAssociation,
+                        StateEffecter* effecter) :
+        StateSet(stateSetId),
+        compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -162,8 +221,17 @@ class StateSetRemoteDebug : public StateSet
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
-        ValueIntf =
-            std::make_unique<RemoteDebugValueIntf>(bus, objectPath.c_str());
+
+        if (effecter != nullptr)
+        {
+            ValueIntf = std::make_unique<RemoteDebugEffecterIntf>(
+                bus, objectPath.c_str(), compId, *effecter);
+        }
+        else
+        {
+            ValueIntf = std::make_unique<RemoteDebugStateIntf>(
+                bus, objectPath.c_str(), compId);
+        }
         setDefaultValue();
     }
     ~StateSetRemoteDebug() = default;
@@ -171,16 +239,20 @@ class StateSetRemoteDebug : public StateSet
     {
         if (value == PLDM_STATESET_LINK_STATE_CONNECTED)
         {
-            ValueIntf->enabled(true);
+            ValueIntf->update(true);
         }
         else
         {
-            ValueIntf->enabled(false);
+            ValueIntf->update(false);
         }
     }
     void setDefaultValue() const override
     {
-        ValueIntf->enabled(false);
+        ValueIntf->update(false);
+    }
+    uint8_t getValue()
+    {
+        return ValueIntf->enabled();
     }
 };
 
@@ -188,8 +260,13 @@ class StateSetCreator
 {
   public:
     static std::unique_ptr<StateSet>
-        create(uint16_t stateSetId, std::string& path,
-               dbus::PathAssociation& stateAssociation);
+        createSensor(uint16_t stateSetId, uint8_t compId, std::string& path,
+                     dbus::PathAssociation& stateAssociation);
+
+    static std::unique_ptr<StateSet>
+        createEffecter(uint16_t stateSetId, uint8_t compId, std::string& path,
+                       dbus::PathAssociation& stateAssociation,
+                       StateEffecter* effecter);
 };
 
 } // namespace platform_mc

@@ -475,6 +475,8 @@ struct Coroutine
          */
         uint8_t data;
 
+        bool detached = false;
+
         /** @brief Get the return object object
          */
         Coroutine get_return_object()
@@ -516,6 +518,10 @@ struct Coroutine
                     std::coroutine_handle<promise_type> h) noexcept
                 {
                     auto parent_handle = h.promise().parent_handle;
+                    if (h.promise().detached)
+                    {
+                        h.destroy();
+                    }
                     if (parent_handle)
                     {
                         return parent_handle;
@@ -572,6 +578,24 @@ struct Coroutine
         {
             handle.destroy();
         }
+    }
+
+    void detach()
+    {
+        if (!handle)
+        {
+            return;
+        }
+
+        if (handle.done())
+        {
+            handle.destroy();
+        }
+        else
+        {
+            handle.promise().detached = true;
+        }
+        handle = nullptr;
     }
 
     /** @brief Assigned by promise_type::get_return_object to keep coroutine

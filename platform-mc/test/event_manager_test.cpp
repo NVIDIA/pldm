@@ -4,6 +4,8 @@
 
 #include "common/types.hpp"
 #include "mock_event_manager.hpp"
+#include "platform-mc/terminus_manager.hpp"
+#include "pldmd/dbus_impl_requester.hpp"
 
 #include <gtest/gtest.h>
 
@@ -12,14 +14,29 @@ using ::testing::Return;
 
 using namespace pldm::platform_mc;
 
+const uint8_t mockTerminusManagerLocalEid = 0x08;
+
 class EventManagerTest : public testing::Test
 {
   protected:
     EventManagerTest() :
+        bus(pldm::utils::DBusHandler::getBus()),
+        event(sdeventplus::Event::get_default()),
+        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
+        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+                   milliseconds(100)),
+        terminusManager(event, reqHandler, dbusImplRequester, termini,
+                        mockTerminusManagerLocalEid, nullptr),
         eventManager(*(static_cast<sdeventplus::Event*>(nullptr)),
                      *(static_cast<TerminusManager*>(nullptr)), termini)
     {}
 
+    sdbusplus::bus::bus& bus;
+    sdeventplus::Event event;
+    pldm::dbus_api::Requester dbusImplRequester;
+    pldm::mctp_socket::Manager sockManager;
+    pldm::requester::Handler<pldm::requester::Request> reqHandler;
+    pldm::platform_mc::TerminusManager terminusManager;
     MockEventManager eventManager;
     std::map<pldm::tid_t, std::shared_ptr<Terminus>> termini{};
 };
@@ -27,8 +44,8 @@ class EventManagerTest : public testing::Test
 TEST_F(EventManagerTest, processNumericSensorEventTest)
 {
     pldm::tid_t tid = 1;
-    termini[tid] =
-        std::make_shared<Terminus>(tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM);
+    termini[tid] = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
