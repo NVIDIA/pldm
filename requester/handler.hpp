@@ -265,9 +265,12 @@ class Handler
                     << "Failed to stop the instance ID expiry timer. RC = "
                     << rc << "\n";
             }
-            responseHandler(eid, response, respMsgLen);
+            // Call responseHandler after erase it from the handlers to avoid
+            // starting it again in runRegisteredRequest()
+            auto unique_handler = std::move(responseHandler);
             requester.markFree(key.eid, key.instanceId);
             handlers.erase(key);
+            unique_handler(eid, response, respMsgLen);
         }
         else
         {
