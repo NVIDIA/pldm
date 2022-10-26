@@ -166,6 +166,23 @@ class UpdateManager
                                size_t compIndex, const std::string& messageID,
                                const std::string& resolution = {});
 
+    /**
+     * @brief Create a Message Registry for Resource Errors
+     *
+     * @param[in] eid - Remote MCTP Endpoint ID
+     * @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
+     *                                package that matches the firmware device
+     * @param[in] compIndex - component index
+     * @param[in] messageID - messageID string
+     * @param[in] messageError - error indicating exact reason for failure. Ex:
+     * background copy
+     * @param resolution - resolution field for the message registry[Optional]
+     */
+    void createMessageRegistryResourceErrors(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex, const std::string& messageID,
+        const std::string& messageError, const std::string& resolution);
+
     const std::string swRootPath{"/xyz/openbmc_project/software/"};
     Event& event; //!< reference to PLDM daemon's main event loop
     /** @brief PLDM request handler */
@@ -257,6 +274,8 @@ class UpdateManager
     const std::string applyFailed{"Update.1.0.ApplyFailed"};
     const std::string activateFailed{"Update.1.0.ActivateFailed"};
     const std::string targetDetermined{"Update.1.0.TargetDetermined"};
+    const std::string resourceErrorDetected{
+        "ResourceEvent.1.1.0.ResourceErrorsDetected"};
 
     bool fwDebug;
 

@@ -159,6 +159,13 @@ class Activation : public ActivationIntf
             }
             else if ((ActivationIntf::activation() == Activations::Invalid))
             {
+                std::string compName = "Firmware Update";
+                std::string messageError = "Invalid PLDM Package";
+                std::string resolution =
+                    "Retry firmware update operation with valid update package.";
+                updateManager->createLogEntry(
+                    updateManager->resourceErrorDetected, compName,
+                    messageError, resolution);
                 activation(Activations::Failed);
             }
         }

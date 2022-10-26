@@ -106,6 +106,11 @@ void UpdateManager::createLogEntry(const std::string& messageID,
     {
         addData["REDFISH_MESSAGE_ARGS"] = (compVersion + "," + compName);
     }
+    else if (messageID == resourceErrorDetected)
+    {
+        addData["REDFISH_MESSAGE_ARGS"] = (compName + "," + compVersion);
+        level = Level::Critical;
+    }
     else
     {
         std::cerr << "Message Registry messageID is not recognised, "
@@ -176,6 +181,42 @@ void UpdateManager::createMessageRegistry(
     }
 
     createLogEntry(messageID, compName, compVersion, resolution);
+}
+
+void UpdateManager::createMessageRegistryResourceErrors(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex, const std::string& messageID,
+    const std::string& messageError, const std::string& resolution)
+{
+    const auto& compImageInfos = parser->getComponentImageInfos();
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    const auto& comp = compImageInfos[applicableComponents[compIndex]];
+    CompIdentifier compIdentifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            comp);
+
+    std::string compName;
+    if (componentNameMap.contains(eid))
+    {
+        auto eidSearch = componentNameMap.find(eid);
+        const auto& compIdNameInfo = eidSearch->second;
+        if (compIdNameInfo.contains(compIdentifier))
+        {
+            auto compIdSearch = compIdNameInfo.find(compIdentifier);
+            compName = compIdSearch->second;
+        }
+        else
+        {
+            compName = std::to_string(compIdentifier);
+        }
+    }
+    else
+    {
+        compName = std::to_string(compIdentifier);
+    }
+
+    createLogEntry(messageID, compName, messageError, resolution);
 }
 
 int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
@@ -534,6 +575,14 @@ software::Activation::Activations UpdateManager::activatePackage()
         activationProgress = std::make_unique<ActivationProgress>(
             pldm::utils::DBusHandler::getBus(), objPath);
         activationProgress->progress(100);
+        std::string compName = "Firmware Update";
+        std::string messageError = "No Matching Devices";
+        std::string resolution =
+            "Verify firmware inventory is listing all the devices and retry"
+            " the firmware update operation with the package matching the"
+            " device inventory.";
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
         return software::Activation::Activations::Active;
     }
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(

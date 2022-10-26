@@ -115,6 +115,23 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
             updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
                                                  compIndex,
                                                  updateManager->transferFailed);
+#ifdef OEM_NVIDIA
+            if (completionCode ==
+                static_cast<uint8_t>(
+                    oemErrorCodes::RequestFwData::backgroundCopyInProgress))
+            {
+                std::cerr << "Background copy in progress for EID="
+                          << unsigned(eid) << "\n";
+                std::string resolution =
+                    "Wait for background copy operation to complete. Once the"
+                    " operation is complete retry the firmware update operation.";
+                std::string messageError = "Background copy in progress";
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, compIndex,
+                    updateManager->resourceErrorDetected, messageError,
+                    resolution);
+            }
+#endif
         }
         std::cerr << "RequestUpdate response failed with error "
                      "completion code, EID="
@@ -593,6 +610,35 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
         std::cerr << "Transfer of the component failed, EID=" << unsigned(eid)
                   << ", COMPONENT_VERSION=" << compVersion
                   << ", TRANSFER_RESULT=" << unsigned(transferResult) << "\n";
+#ifdef OEM_NVIDIA
+        if (transferResult ==
+            static_cast<uint8_t>(
+                oemErrorCodes::TransferComplete::reqGrantError))
+        {
+            std::cerr << "Req/Grant Error for EID=" << unsigned(eid) << "\n";
+            std::string resolution =
+                "Make sure device AP flash is not accessed by other"
+                " application and retry the firmware update operation.";
+            std::string messageError = "Req Grant Error";
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex,
+                updateManager->resourceErrorDetected, messageError, resolution);
+        }
+        else if (transferResult ==
+                 static_cast<uint8_t>(
+                     oemErrorCodes::TransferComplete::writeProtectEnabled))
+        {
+            std::cerr << "Write protect Error for EID=" << unsigned(eid)
+                      << "\n";
+            std::string resolution =
+                "Disable write protect on the device and retry the"
+                " firmware update operation.";
+            std::string messageError = "Write Protect Enabled";
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex,
+                updateManager->resourceErrorDetected, messageError, resolution);
+        }
+#endif
         updateManager->updateDeviceCompletion(eid, false);
         uaState.set(UASequence::Invalid);
     }

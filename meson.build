@@ -61,6 +61,9 @@ endif
 if get_option('pldm-type2').enabled()
   add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
 endif
+if get_option('oem-nvidia').enabled()
+    add_project_arguments('-DOEM_NVIDIA', language : ['c','cpp'])
+endif
 conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
 if get_option('fw-debug').enabled()
   conf_data.set('FWDEBUG', '--fw-debug')
