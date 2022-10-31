@@ -1978,7 +1978,7 @@ int decode_poll_for_platform_event_message_resp(
 	*event_class = response->event_class;
 	*event_data_size = response->event_data_size;
 
-	if (*event_data_size > 0 && response->event_data != NULL) {
+	if (*event_data_size > 0) {
 		memcpy(event_data, response->event_data,
 		       response->event_data_size);
 	}
