@@ -42,6 +42,7 @@ UpdateManager::UpdateManager(
              std::filesystem::directory_iterator("/tmp/images"))
             std::filesystem::remove_all(entry.path());
     }
+    progressTimer = nullptr;
 }
 
 UpdateManager::~UpdateManager() = default;
@@ -565,6 +566,8 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
 software::Activation::Activations UpdateManager::activatePackage()
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+    createProgressUpdateTimer();
+    progressTimer->start(std::chrono::minutes(PROGRESS_UPDATE_INTERVAL), true);
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
         pldm::utils::DBusHandler::getBus(), objPath, this);
 #ifdef OEM_NVIDIA
@@ -611,6 +614,8 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
             << "Nothing to activate, Setting Activations state to Active!\n";
         activationProgress = std::make_unique<ActivationProgress>(
             pldm::utils::DBusHandler::getBus(), objPath);
+        progressTimer->stop();
+        progressTimer.reset();
         activationProgress->progress(100);
         std::string compName = "Firmware Update";
         std::string messageError = "No Matching Devices";
@@ -652,6 +657,11 @@ void UpdateManager::clearActivationInfo()
     otherDeviceUpdateManager.reset();
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
+    if(progressTimer)
+    {
+        progressTimer->stop();
+    }
+    progressTimer.reset();
 }
 
 bool UpdateManager::createActivationObject()
@@ -711,9 +721,12 @@ void UpdateManager::updatePackageCompletion()
 void UpdateManager::updateActivationProgress()
 {
     compUpdateCompletedCount++;
-    auto progressPercent = static_cast<uint8_t>(std::floor(
-        (100 * compUpdateCompletedCount) / totalNumComponentUpdates));
-    activationProgress->progress(progressPercent);
+    if(compUpdateCompletedCount == totalNumComponentUpdates)
+    {
+        progressTimer->stop();
+        progressTimer.reset();
+        activationProgress->progress(100);
+    }
 }
 
 void UpdateManager::updateOtherDeviceComponents(
@@ -765,6 +778,34 @@ void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
     activation->activation(state);
+}
+
+void UpdateManager::createProgressUpdateTimer()
+{
+    updateInterval = 0;
+    progressTimer = std::make_unique<phosphor::Timer>([this]() {
+        updateInterval += 1;
+        auto progressPercent = static_cast<uint8_t>(
+            std::floor((100 * updateInterval) / totalInterval));
+        if (fwDebug)
+        {
+            std::cerr << "Progress Percent: " << unsigned(progressPercent)
+                      << "\n";
+        }
+        activationProgress->progress(progressPercent);
+        // percent update should always be less than 100 when task is
+        // aborted/cancelled. Setting to 100 percent will cause redfish task
+        // service to show running and 100 percent
+        if (updateInterval == totalInterval - 1)
+        {
+            if (fwDebug)
+            {
+                std::cerr << "Firmware update timeout \n";
+            }
+            progressTimer->stop();
+        }
+        return;
+    });
 }
 
 } // namespace fw_update

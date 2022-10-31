@@ -344,6 +344,32 @@ class UpdateManager
 #ifdef OEM_NVIDIA
     std::unique_ptr<DebugToken> debugToken;
 #endif
+
+    /**
+     * @brief timer to update progress percent
+     *
+     */
+    std::unique_ptr<phosphor::Timer> progressTimer;
+    /**
+     * @brief Counter to keep track of update progress interval
+     *
+     */
+    uint8_t updateInterval;
+
+    /**
+     * @brief Total intervals to update progress percent
+     *
+     */
+    uint8_t totalInterval = static_cast<uint8_t>(
+        std::floor((FIRMWARE_UPDATE_TIME / PROGRESS_UPDATE_INTERVAL)));
+
+    /**
+     * @brief Create a Progress Update Timer. This timer updates progress
+     * percent at regular interval based on firmware-update-time and
+     * progress-percent-updater-interval options.
+     *
+     */
+    void createProgressUpdateTimer();
 };
 
 } // namespace fw_update
