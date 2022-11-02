@@ -42,6 +42,13 @@ if get_option('oem-ibm').enabled()
   libpldm_headers += ['../oem/ibm']
 endif
 
+if get_option('oem-nvidia').enabled()
+  headers += [
+    '../oem/nvidia/libpldm/state_set_oem_nvidia.h'
+  ]
+  libpldm_headers += ['../oem/nvidia']
+endif
+
 if get_option('requester-api').enabled()
   headers += [
     'requester/pldm.h'

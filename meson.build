@@ -232,6 +232,7 @@ source_files = [
   'platform-mc/numeric_sensor.cpp',
   'platform-mc/state_sensor.cpp',
   'platform-mc/event_manager.cpp',
+  'platform-mc/state_set.cpp',
   'requester/mctp_endpoint_discovery.cpp',
 ]
 

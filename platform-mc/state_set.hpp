@@ -146,25 +146,7 @@ class StateSetCreator
   public:
     static std::unique_ptr<StateSet>
         create(uint16_t stateSetId, std::string& path,
-               dbus::PathAssociation& stateAssociation)
-    {
-        if (stateSetId == PLDM_STATESET_ID_PERFORMANCE)
-        {
-            return std::make_unique<StateSetPerformance>(stateSetId, path,
-                                                         stateAssociation);
-        }
-        else if (stateSetId == PLDM_STATESET_ID_POWERSUPPLY)
-        {
-            return std::make_unique<StateSetPowerSupplyInput>(stateSetId, path,
-                                                              stateAssociation);
-        }
-        else
-        {
-            std::cout << "State Sensor PDR Info, Set ID is unknonw"
-                      << std::endl;
-            return nullptr;
-        }
-    }
+               dbus::PathAssociation& stateAssociation);
 };
 
 } // namespace platform_mc
