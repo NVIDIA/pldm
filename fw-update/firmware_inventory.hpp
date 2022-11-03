@@ -6,6 +6,7 @@
 #include <sdbusplus/server.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
 
 namespace pldm::fw_update::fw_inventory
@@ -14,8 +15,11 @@ namespace pldm::fw_update::fw_inventory
 using VersionIntf = sdbusplus::xyz::openbmc_project::Software::server::Version;
 using AssociationIntf =
     sdbusplus::xyz::openbmc_project::Association::server::Definitions;
+using DecoratorAssetIntf =
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset;
 
-using Ifaces = sdbusplus::server::object::object<VersionIntf, AssociationIntf>;
+using Ifaces = sdbusplus::server::object::object<VersionIntf, AssociationIntf,
+                                                 DecoratorAssetIntf>;
 
 /** @class Entry
  *
@@ -24,6 +28,7 @@ using Ifaces = sdbusplus::server::object::object<VersionIntf, AssociationIntf>;
  *
  *  a) xyz.openbmc_project.Software.Version
  *  b) xyz.openbmc_project.Association.Definitions
+ *  c) xyz.openbmc_project.Inventory.Decorator.Asset
  */
 class Entry : public Ifaces
 {

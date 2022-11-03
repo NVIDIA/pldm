@@ -1,4 +1,5 @@
 #include "firmware_inventory.hpp"
+
 #include "dbusutil.hpp"
 
 #include <fmt/format.h>
@@ -16,6 +17,7 @@ Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
     Ifaces::version(versionStr, true);
     Ifaces::purpose(VersionPurpose::Other, true);
     Ifaces::softwareId(swId, true);
+    Ifaces::manufacturer("NVIDIA", true);
     Ifaces::emit_object_added();
 }
 
