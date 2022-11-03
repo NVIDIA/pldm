@@ -25,7 +25,7 @@ StateEffecter::StateEffecter(const uint8_t tid, const bool effecterDisabled,
     effecterId(effecterId), effecterInfo(effecterInfo),
     terminusManager(terminusManager)
 {
-    std::string path = "/xyz/openbmc_project/control/" + effecterName;
+    path = "/xyz/openbmc_project/control/" + effecterName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     auto& bus = pldm::utils::DBusHandler::getBus();

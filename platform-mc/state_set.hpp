@@ -5,8 +5,10 @@
 #include "common/utils.hpp"
 
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Control/Boot/ClearNonVolatileVariables/server.hpp>
 #include <xyz/openbmc_project/Control/Processor/RemoteDebug/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/PowerSystemInputs/server.hpp>
+#include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
 #include <xyz/openbmc_project/State/ProcessorPerformance/server.hpp>
 
 namespace pldm
@@ -24,12 +26,20 @@ using PowerSupplyValueIntf =
                                     Decorator::server::PowerSystemInputs>;
 using RemoteDebugValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Control::Processor::server::RemoteDebug>;
+using SecureStateValueIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::State::Decorator::server::SecureState>;
+using ClearNonVolatileVariablesValueIntf =
+    sdbusplus::server::object_t<sdbusplus::xyz::openbmc_project::Control::Boot::
+                                    server::ClearNonVolatileVariables>;
+
 using RemoteDebugInterfaceIntf =
     sdbusplus::xyz::openbmc_project::Control::Processor::server::RemoteDebug;
 using PerformanceStates = sdbusplus::xyz::openbmc_project::State::server::
     ProcessorPerformance::PerformanceStates;
 using PowerSupplyInputStatus = sdbusplus::xyz::openbmc_project::State::
     Decorator::server::PowerSystemInputs::Status;
+using ClearNonVolatileVariablesIntf = sdbusplus::xyz::openbmc_project::Control::
+    Boot::server::ClearNonVolatileVariables;
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 
@@ -307,6 +317,130 @@ class StateSetRemoteDebug : public StateSet
     std::string getStringStateType() const override
     {
         return std::string("RemoteDebug");
+    }
+};
+
+class ClearNonVolatileVariablesStateIntf :
+    public ClearNonVolatileVariablesValueIntf
+{
+  public:
+    ClearNonVolatileVariablesStateIntf(bus::bus& bus, const char* path,
+                                       uint8_t compId) :
+        ClearNonVolatileVariablesValueIntf(bus, path),
+        compId(compId)
+    {}
+
+    using ClearNonVolatileVariablesIntf::clear;
+    virtual void update(bool value)
+    {
+        ClearNonVolatileVariablesIntf::clear(value);
+    }
+
+  protected:
+    uint8_t compId = 0;
+};
+
+class ClearNonVolatileVariablesEffecterIntf :
+    public ClearNonVolatileVariablesStateIntf
+{
+  public:
+    ClearNonVolatileVariablesEffecterIntf(bus::bus& bus, const char* path,
+                                          uint8_t compId,
+                                          StateEffecter& effecter) :
+        ClearNonVolatileVariablesStateIntf(bus, path, compId),
+        effecter(effecter)
+    {}
+
+    using ClearNonVolatileVariablesIntf::clear;
+    void update(bool value);
+    bool clear(bool value) override;
+
+  private:
+    StateEffecter& effecter;
+};
+
+class StateSetClearNonvolatileVariable : public StateSet
+{
+  private:
+    std::unique_ptr<ClearNonVolatileVariablesStateIntf> ValueIntf = nullptr;
+    uint8_t compId = 0;
+
+  public:
+    StateSetClearNonvolatileVariable(uint16_t stateSetId, uint8_t compId,
+                                     std::string& objectPath,
+                                     dbus::PathAssociation& stateAssociation,
+                                     StateEffecter* effecter) :
+        StateSet(stateSetId),
+        compId(compId)
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        associationDefinitionsIntf =
+            std::make_unique<AssociationDefinitionsInft>(bus,
+                                                         objectPath.c_str());
+        associationDefinitionsIntf->associations(
+            {{stateAssociation.forward.c_str(),
+              stateAssociation.reverse.c_str(),
+              stateAssociation.path.c_str()}});
+
+        if (effecter != nullptr)
+        {
+            ValueIntf = std::make_unique<ClearNonVolatileVariablesEffecterIntf>(
+                bus, objectPath.c_str(), compId, *effecter);
+        }
+        else
+        {
+            ValueIntf = std::make_unique<ClearNonVolatileVariablesStateIntf>(
+                bus, objectPath.c_str(), compId);
+        }
+        setDefaultValue();
+    }
+    ~StateSetClearNonvolatileVariable() = default;
+    void setValue(uint8_t value) const override
+    {
+        switch (value)
+        {
+            case PLDM_STATESET_BOOT_REQUEST_REQUESTED:
+                ValueIntf->update(true);
+                break;
+            default:
+            case PLDM_STATESET_BOOT_REQUEST_NORMAL:
+                ValueIntf->update(false);
+                break;
+        }
+    }
+    void setDefaultValue() const override
+    {
+        ValueIntf->update(false);
+    }
+    uint8_t getValue()
+    {
+        uint8_t state = 0;
+        if (ValueIntf->clear())
+        {
+            state = PLDM_STATESET_BOOT_REQUEST_REQUESTED;
+        }
+        else
+        {
+            state = PLDM_STATESET_BOOT_REQUEST_NORMAL;
+        }
+        return state;
+    }
+    std::tuple<std::string, std::string> getEventData() const override
+    {
+        if (ValueIntf->clear())
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("True")};
+        }
+        else
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("False")};
+        }
+    }
+    std::string getStringStateType() const override
+    {
+        return std::string("ClearNonvolatileVariable");
     }
 };
 

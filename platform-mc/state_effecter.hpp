@@ -5,6 +5,7 @@
 
 #include "common/types.hpp"
 #include "requester/handler.hpp"
+#include "platform-mc/oem_base.hpp"
 #include "state_set.hpp"
 
 #include <sdbusplus/server/object.hpp>
@@ -118,6 +119,13 @@ class StateEffecter
     /** @brief  The time of sensor update interval in second
      */
     uint64_t updateTime;
+
+    /** @brief  The DBus path of effecter */
+    std::string path;
+
+    /** @brief  A container to store OemIntf, it allows us to add additional OEM
+     * sdbusplus object as extra attribute */
+    std::vector<std::unique_ptr<platform_mc::OemIntf>> oemIntfs;
 
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;

@@ -466,6 +466,7 @@ enum pldm_repository_data_transfer_handler_timeout {
 enum pldm_state_set_id {
 	PLDM_STATESET_ID_PERFORMANCE = 14,
 	PLDM_STATESET_ID_LINKSTATE = 33,
+	PLDM_STATESET_ID_BOOT_REQUEST = 193,
 	PLDM_STATESET_ID_POWERSUPPLY = 256
 };
 
@@ -486,6 +487,12 @@ enum pldm_stateset_powersupply_values {
 enum pldm_stateset_remotedebug_values {
 	PLDM_STATESET_LINK_STATE_CONNECTED = 1,
 	PLDM_STATESET_LINK_STATE_DISCONNECTED = 2
+};
+
+/** @brief PLDM state set ID 193 Boot Request values  */
+enum pldm_stateset_boot_request_values {
+	PLDM_STATESET_BOOT_REQUEST_NORMAL = 1,
+	PLDM_STATESET_BOOT_REQUEST_REQUESTED = 2
 };
 
 /** @struct pldm_pdr_hdr

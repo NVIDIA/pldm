@@ -32,6 +32,11 @@ std::unique_ptr<StateSet>
         return std::make_unique<StateSetRemoteDebug>(stateSetId, compId, path,
                                                      stateAssociation, nullptr);
     }
+    else if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
+    {
+        return std::make_unique<StateSetClearNonvolatileVariable>(
+            stateSetId, compId, path, stateAssociation, nullptr);
+    }
 #ifdef OEM_NVIDIA
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK)
     {
@@ -63,6 +68,11 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
         return std::make_unique<StateSetRemoteDebug>(
             stateSetId, compId, path, stateAssociation, effecter);
     }
+    else if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
+    {
+        return std::make_unique<StateSetClearNonvolatileVariable>(
+            stateSetId, compId, path, stateAssociation, effecter);
+    }
     else
     {
         std::cerr << "State Effecter PDR Info, Set ID is unknown Id: "
@@ -86,6 +96,27 @@ bool RemoteDebugEffecterIntf::enabled(bool value)
     else
     {
         requestState = PLDM_STATESET_LINK_STATE_DISCONNECTED;
+    }
+
+    effecter.setStateEffecterStates(compId, requestState).detach();
+    return value;
+}
+
+void ClearNonVolatileVariablesEffecterIntf::update(bool value)
+{
+    ClearNonVolatileVariablesIntf::clear(value);
+}
+
+bool ClearNonVolatileVariablesEffecterIntf::clear(bool value)
+{
+    uint8_t requestState = 0;
+    if (value)
+    {
+        requestState = PLDM_STATESET_BOOT_REQUEST_REQUESTED;
+    }
+    else
+    {
+        requestState = PLDM_STATESET_BOOT_REQUEST_NORMAL;
     }
 
     effecter.setStateEffecterStates(compId, requestState).detach();
