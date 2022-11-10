@@ -126,6 +126,8 @@ class Terminus
 
     void interfaceAdded(sdbusplus::message::message& m);
 
+    bool initalized;
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
         parseNumericSensorPDR(const std::vector<uint8_t>& pdrData);

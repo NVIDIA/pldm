@@ -39,54 +39,20 @@ class TerminusManager
     TerminusManager(TerminusManager&&) = delete;
     TerminusManager& operator=(const TerminusManager&) = delete;
     TerminusManager& operator=(TerminusManager&&) = delete;
-    ~TerminusManager() = default;
+    virtual ~TerminusManager() = default;
 
     explicit TerminusManager(
         sdeventplus::Event& event,
         requester::Handler<requester::Request>& handler,
         dbus_api::Requester& requester,
         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
-        mctp_eid_t localEid, Manager* manager) :
-        event(event),
-        handler(handler), requester(requester), termini(termini),
-        localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
-    {
-        // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
-        tidPool[0] = true;
-        tidPool[PLDM_TID_RESERVED] = true;
-    }
+        mctp_eid_t localEid, Manager* manager);
 
     /** @brief start a coroutine to discover terminus
      *
      *  @param[in] mctpInfos - list of mctpInfo to be checked
      */
-    void discoverMctpTerminus(const MctpInfos& mctpInfos)
-    {
-        queuedMctpInfos.emplace(mctpInfos);
-        if (discoverMctpTerminusTaskHandle)
-        {
-            if (discoverMctpTerminusTaskHandle.done())
-            {
-                discoverMctpTerminusTaskHandle.destroy();
-
-                auto co = discoverMctpTerminusTask();
-                discoverMctpTerminusTaskHandle = co.handle;
-                if (discoverMctpTerminusTaskHandle.done())
-                {
-                    discoverMctpTerminusTaskHandle = nullptr;
-                }
-            }
-        }
-        else
-        {
-            auto co = discoverMctpTerminusTask();
-            discoverMctpTerminusTaskHandle = co.handle;
-            if (discoverMctpTerminusTaskHandle.done())
-            {
-                discoverMctpTerminusTaskHandle = nullptr;
-            }
-        }
-    }
+    void discoverMctpTerminus(const MctpInfos& mctpInfos);
 
     /** @brief Send request PLDM message to tid. The function will
      *         return when received the response message from terminus.
@@ -100,6 +66,20 @@ class TerminusManager
     requester::Coroutine SendRecvPldmMsg(tid_t tid, Request& request,
                                          const pldm_msg** responseMsg,
                                          size_t* responseLen);
+
+    /** @brief Send request PLDM message to eid. The function will
+     *         return when received the response message from terminus.
+     *
+     *  @param[in] eid - eid
+     *  @param[in] request - request PLDM message
+     *  @param[out] responseMsg - response PLDM message
+     *  @param[out] responseLen - length of response PLDM message
+     *  @return coroutine return_value - PLDM completion code
+     */
+    virtual requester::Coroutine
+        SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                const pldm_msg** responseMsg,
+                                size_t* responseLen);
 
     /** @brief member functions to map/unmap tid
      */

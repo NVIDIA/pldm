@@ -7,6 +7,20 @@ namespace pldm
 namespace platform_mc
 {
 
+TerminusManager::TerminusManager(
+    sdeventplus::Event& event, requester::Handler<requester::Request>& handler,
+    dbus_api::Requester& requester,
+    std::map<tid_t, std::shared_ptr<Terminus>>& termini, mctp_eid_t localEid,
+    Manager* manager) :
+    event(event),
+    handler(handler), requester(requester), termini(termini),
+    localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
+{
+    // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
+    tidPool[0] = true;
+    tidPool[PLDM_TID_RESERVED] = true;
+}
+
 std::optional<MctpInfo> TerminusManager::toMctpInfo(const tid_t& tid)
 {
     if (transportLayerTable[tid] != SupportedTransportLayer::MCTP)
@@ -94,13 +108,47 @@ void TerminusManager::unmapTid(const tid_t& tid)
     mctpInfoTable.erase(mctpInfoTableIterator);
 }
 
+void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
+{
+    queuedMctpInfos.emplace(mctpInfos);
+    if (discoverMctpTerminusTaskHandle)
+    {
+        if (discoverMctpTerminusTaskHandle.done())
+        {
+            discoverMctpTerminusTaskHandle.destroy();
+
+            auto co = discoverMctpTerminusTask();
+            discoverMctpTerminusTaskHandle = co.handle;
+            if (discoverMctpTerminusTaskHandle.done())
+            {
+                discoverMctpTerminusTaskHandle = nullptr;
+            }
+        }
+    }
+    else
+    {
+        auto co = discoverMctpTerminusTask();
+        discoverMctpTerminusTaskHandle = co.handle;
+        if (discoverMctpTerminusTaskHandle.done())
+        {
+            discoverMctpTerminusTaskHandle = nullptr;
+        }
+    }
+}
+
 requester::Coroutine TerminusManager::discoverMctpTerminusTask()
 {
-    manager->stopSensorPolling();
+    if (manager)
+    {
+        manager->stopSensorPolling();
+    }
 
     while (!queuedMctpInfos.empty())
     {
-        co_await manager->beforeDiscoverTerminus();
+        if (manager)
+        {
+            co_await manager->beforeDiscoverTerminus();
+        }
 
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
         // remove absent terminus
@@ -131,22 +179,24 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
                 it++;
             }
         }
-
         for (auto& mctpInfo : mctpInfos)
         {
-            auto tid = toTid(mctpInfo);
-            if (tid)
-            {
-                continue;
-            }
             co_await initMctpTerminus(mctpInfo);
         }
 
-        co_await manager->afterDiscoverTerminus();
+        if (manager)
+        {
+            co_await manager->afterDiscoverTerminus();
+        }
+
         queuedMctpInfos.pop();
     }
 
-    manager->startSensorPolling();
+    if (manager)
+    {
+        manager->startSensorPolling();
+    }
+
     co_return PLDM_SUCCESS;
 }
 
@@ -160,72 +210,54 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         co_return PLDM_ERROR;
     }
 
-    if (tid == 0)
+    // Assigning a tid. If it has been mapped, mapTid() returns the tid assigned
+    // before.
+    auto mappedTid = mapTid(mctpInfo);
+    if (!mappedTid)
     {
-        // unassigned tid
-        auto mappedTid = mapTid(mctpInfo);
-        if (!mappedTid)
-        {
-            co_return PLDM_ERROR;
-        }
-        tid = mappedTid.value();
-        rc = co_await setTidOverMctp(eid, tid);
-        if (rc)
-        {
-            unmapTid(tid);
-            co_return rc;
-        }
+        co_return PLDM_ERROR;
     }
-    else
-    {
-        // check if terminus supports setTID
-        rc = co_await setTidOverMctp(eid, tid);
-        if (!rc)
-        {
-            // re-assign TID if it is not matched to the mapped value.
-            auto mappedMctpInfo = toMctpInfo(tid);
-            if (!mappedMctpInfo)
-            {
-                auto mappedTid = mapTid(mctpInfo);
-                if (!mappedTid)
-                {
-                    co_return PLDM_ERROR;
-                }
 
-                tid = mappedTid.value();
-                rc = co_await setTidOverMctp(eid, tid);
-                if (rc)
-                {
-                    unmapTid(tid);
-                    co_return rc;
-                }
-            }
-        }
-        else if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
-        {
-            auto mappedTid = mapTid(mctpInfo, tid);
-            if (!mappedTid)
-            {
-                co_return PLDM_ERROR;
-            }
-        }
-        else
-        {
-            co_return rc;
-        }
+    tid = mappedTid.value();
+    rc = co_await setTidOverMctp(eid, tid);
+    if (rc != PLDM_SUCCESS && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+    {
+        unmapTid(tid);
+        co_return rc;
+    }
+
+    auto it = termini.find(tid);
+    if (it != termini.end())
+    {
+        // the terminus has been discovered before
+        co_return PLDM_SUCCESS;
     }
 
     uint64_t supportedTypes = 0;
     rc = co_await getPLDMTypes(tid, supportedTypes);
     if (rc)
     {
-        std::printf("failed to get PLDM Types\n");
+        std::cerr << "failed to get PLDM Types\n";
         co_return PLDM_ERROR;
     }
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes);
-
     co_return PLDM_SUCCESS;
+}
+
+requester::Coroutine
+    TerminusManager::SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                             const pldm_msg** responseMsg,
+                                             size_t* responseLen)
+{
+    auto rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
+        handler, eid, request, responseMsg, responseLen);
+    if (rc)
+    {
+        std::cerr << "sendRecvPldmMsgOverMctp failed. rc="
+                  << static_cast<unsigned>(rc) << "\n";
+    }
+    co_return rc;
 }
 
 requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
@@ -244,12 +276,10 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
-    rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
-        handler, eid, request, &responseMsg, &responseLen);
+    rc = co_await SendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+                                          &responseLen);
     if (rc)
     {
-        std::cerr << "sendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
-                  << "\n";
         co_return rc;
     }
 
@@ -279,8 +309,8 @@ requester::Coroutine TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
-    rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
-        handler, eid, request, &responseMsg, &responseLen);
+    rc = co_await SendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+                                          &responseLen);
     if (rc)
     {
         co_return rc;
@@ -347,13 +377,8 @@ requester::Coroutine
         auto eid = std::get<0>(mctpInfo.value());
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
         requestMsg->hdr.instance_id = requester.getInstanceId(eid);
-        auto rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
-            handler, eid, request, responseMsg, responseLen);
-        if (rc)
-        {
-            std::cerr << "SendRecvPldmMsg failed. rc="
-                      << static_cast<unsigned>(rc) << "\n";
-        }
+        auto rc = co_await SendRecvPldmMsgOverMctp(eid, request, responseMsg,
+                                                   responseLen);
         co_return rc;
     }
     else

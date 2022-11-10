@@ -11,6 +11,11 @@ requester::Coroutine PlatformManager::initTerminus()
 {
     for (auto& [tid, terminus] : termini)
     {
+        if (terminus->initalized)
+        {
+            continue;
+        }
+
         if (terminus->doesSupport(PLDM_PLATFORM))
         {
             auto rc = co_await getPDRs(terminus);
@@ -53,6 +58,7 @@ requester::Coroutine PlatformManager::initTerminus()
                 }
             }
         }
+        terminus->initalized = true;
     }
     co_return PLDM_SUCCESS;
 }

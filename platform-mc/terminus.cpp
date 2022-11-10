@@ -8,7 +8,7 @@ namespace platform_mc
 {
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes) :
-    tid(tid), supportedTypes(supportedTypes)
+    initalized(false), tid(tid), supportedTypes(supportedTypes)
 {
     maxBufferSize = 256;
 
