@@ -615,11 +615,11 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
             static_cast<uint8_t>(
                 oemErrorCodes::TransferComplete::reqGrantError))
         {
-            std::cerr << "Req/Grant Error for EID=" << unsigned(eid) << "\n";
+            std::cerr << "SPI Access Error for EID=" << unsigned(eid) << "\n";
             std::string resolution =
                 "Make sure device AP flash is not accessed by other"
                 " application and retry the firmware update operation.";
-            std::string messageError = "Req Grant Error";
+            std::string messageError = "SPI Access Error";
             updateManager->createMessageRegistryResourceErrors(
                 eid, fwDeviceIDRecord, componentIndex,
                 updateManager->resourceErrorDetected, messageError, resolution);

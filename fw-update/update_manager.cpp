@@ -617,12 +617,11 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         progressTimer->stop();
         progressTimer.reset();
         activationProgress->progress(100);
-        std::string compName = "Firmware Update";
+        std::string compName = "Firmware Update Service";
         std::string messageError = "No Matching Devices";
         std::string resolution =
-            "Verify firmware inventory is listing all the devices and retry"
-            " the firmware update operation with the package matching the"
-            " device inventory.";
+            "Verify the FW package has devices that are listed in the"
+            " Redfish FW Inventory";
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
         activationBlocksTransition.reset();
