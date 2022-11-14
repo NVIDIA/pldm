@@ -5,6 +5,7 @@
 
 #include "../activation.hpp"
 #include "../update_manager.hpp"
+#include "../dbusutil.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
@@ -45,10 +46,9 @@ bool DebugToken::activate()
         std::cerr << "Failed to set resource RequestedActivation :" << tokenPath
                   << " " << std::string(e.what()) << "\n";
         std::string resolution;
-        updateManager->createLogEntry(
-            updateManager->transferFailed,
-            std::filesystem::path(tokenPath).filename(), tokenVersion,
-            resolution);
+        createLogEntry(transferFailed,
+                       std::filesystem::path(tokenPath).filename(),
+                       tokenVersion, resolution);
         activationStatus = false;
     }
     return activationStatus;
@@ -187,9 +187,8 @@ void DebugToken::updateDebugToken(
             std::cerr << "failed to get filepath :" << std::string(e.what())
                       << "\n";
             std::string resolution;
-            updateManager->createLogEntry(updateManager->transferFailed,
-                                          "HGX_FW_Debug_Token_Erase", "0.0",
-                                          resolution);
+            createLogEntry(transferFailed, "HGX_FW_Debug_Token_Erase", "0.0",
+                           resolution);
             startUpdate();
             return;
         }
@@ -279,10 +278,9 @@ void DebugToken::startTimer(auto timerExpiryTime)
         if (!tokenStatus)
         {
             std::string resolution;
-            updateManager->createLogEntry(
-                updateManager->transferFailed,
-                std::filesystem::path(tokenPath).filename(), tokenVersion,
-                resolution);
+            createLogEntry(transferFailed,
+                           std::filesystem::path(tokenPath).filename(),
+                           tokenVersion, resolution);
             std::cerr << "Activation Timer expired for install debug token"
                       << "\n";
             startUpdate();

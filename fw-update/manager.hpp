@@ -61,7 +61,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      bool fwDebug) :
         inventoryMgr(handler, requester,
                      std::bind_front(&Manager::createInventory, this),
-                     descriptorMap, componentInfoMap),
+                     descriptorMap, componentInfoMap, deviceInventoryInfo),
         updateManager(event, handler, requester, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),

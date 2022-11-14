@@ -10,6 +10,7 @@
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
+#include "error_handling.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -142,18 +143,6 @@ class UpdateManager
      */
     std::string getActivationMethod(bitfield16_t compActivationModification);
 
-    /** @brief Create the D-Bus log entry for message registry
-     *
-     *  @param[in] messageID - Message ID
-     *  @param[in] compName - Component name
-     *  @param[in] compVersion - Component version
-     *  @param[in] resolution - Resolution field
-     */
-    void createLogEntry(const std::string& messageID,
-                        const std::string& compName,
-                        const std::string& compVersion,
-                        const std::string& resolution);
-
     /** @brief Create message registry for firmware update
      *
      *  @param[in] eid - Remote MCTP Endpoint ID
@@ -163,11 +152,18 @@ class UpdateManager
      *  @param[in] messageID - messageID string
      *  @param[in] resolution - resolution field for the message registry
      *                          (optional)
+     *  @param[in] commandType - pldm command type (optional). Default is 0 - no
+     * oem messages will be logged.
+     *  @param[in] errorCode - error code (optional)
      */
-    void createMessageRegistry(mctp_eid_t eid,
-                               const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                               size_t compIndex, const std::string& messageID,
-                               const std::string& resolution = {});
+    void
+        createMessageRegistry(mctp_eid_t eid,
+                              const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+                              size_t compIndex, const std::string& messageID,
+                              const std::string& resolution = {},
+                              const pldm_firmware_update_commands commandType =
+                                  static_cast<pldm_firmware_update_commands>(0),
+                              const uint8_t errorCode = 0);
 
     /**
      * @brief Create a Message Registry for Resource Errors
@@ -268,17 +264,6 @@ class UpdateManager
      *
      */
     void clearFirmwareUpdatePackage();
-    const std::string transferFailed{"Update.1.0.TransferFailed"};
-    const std::string transferringToComponent{
-        "Update.1.0.TransferringToComponent"};
-    const std::string verificationFailed{"Update.1.0.VerificationFailed"};
-    const std::string updateSuccessful{"Update.1.0.UpdateSuccessful"};
-    const std::string awaitToActivate{"Update.1.0.AwaitToActivate"};
-    const std::string applyFailed{"Update.1.0.ApplyFailed"};
-    const std::string activateFailed{"Update.1.0.ActivateFailed"};
-    const std::string targetDetermined{"Update.1.0.TargetDetermined"};
-    const std::string resourceErrorDetected{
-        "ResourceEvent.1.1.0.ResourceErrorsDetected"};
 
     bool fwDebug;
     /**

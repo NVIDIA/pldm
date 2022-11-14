@@ -1,4 +1,5 @@
 #include "inventory_manager.hpp"
+#include "dbusutil.hpp"
 
 #include "libpldm/firmware_update.h"
 
@@ -54,6 +55,10 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
     {
         std::cerr << "No response received for QueryDeviceIdentifiers, EID="
                   << unsigned(eid) << "\n";
+        std::string messageError = "Discovery Timed Out";
+        std::string resolution =
+            "Reset the baseboard and retry the operation.";
+        logDiscoveryFailedMessage(eid, messageError, resolution);
         mctpEidMap.erase(eid);
         return;
     }
@@ -79,6 +84,10 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
                      "completion code, EID="
                   << unsigned(eid) << ", CC=" << unsigned(completionCode)
                   << "\n";
+        std::string messageError = "Failed to discover";
+        std::string resolution =
+            "Reset the baseboard and retry the operation.";
+        logDiscoveryFailedMessage(eid, messageError, resolution);
         return;
     }
 
@@ -183,6 +192,10 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
     {
         std::cerr << "No response received for GetFirmwareParameters, EID="
                   << unsigned(eid) << "\n";
+        std::string messageError = "Discovery Timed Out";
+        std::string resolution =
+            "Reset the baseboard and retry the operation.";
+        logDiscoveryFailedMessage(eid, messageError, resolution);
         descriptorMap.erase(eid);
         mctpEidMap.erase(eid);
         return;
@@ -209,6 +222,10 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
                      "completion code, EID="
                   << unsigned(eid)
                   << ", CC=" << unsigned(fwParams.completion_code) << "\n";
+        std::string messageError = "Failed to discover";
+        std::string resolution =
+            "Reset the baseboard and retry the operation.";
+        logDiscoveryFailedMessage(eid, messageError, resolution);
         return;
     }
 
@@ -281,6 +298,26 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
             {
                 createInventoryCallBack(eid, uuid);
             }
+        }
+    }
+}
+
+void InventoryManager::logDiscoveryFailedMessage(
+    const mctp_eid_t& eid, const std::string& messageError,
+    const std::string& resolution)
+{
+    if (mctpEidMap.contains(eid))
+    {
+        const auto& [uuid, mediumType] = mctpEidMap[eid];
+        if (deviceInventoryInfo.contains(uuid))
+        {
+            auto search = deviceInventoryInfo.find(uuid);
+            const auto& deviceObjPath = std::get<DeviceObjPath>(
+                std::get<CreateDeviceInfo>(search->second));
+            std::string compName =
+                std::filesystem::path(deviceObjPath).filename();
+            createLogEntry(resourceErrorDetected, compName, messageError,
+                           resolution);
         }
     }
 }

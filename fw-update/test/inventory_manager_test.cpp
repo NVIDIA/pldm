@@ -20,7 +20,8 @@ class InventoryManagerTest : public testing::Test
         reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
         inventoryManager(reqHandler, dbusImplRequester, nullptr,
-                         outDescriptorMap, outComponentInfoMap)
+                         outDescriptorMap, outComponentInfoMap,
+                         deviceInventoryInfo)
     {}
 
     sdeventplus::Event event;
@@ -30,6 +31,7 @@ class InventoryManagerTest : public testing::Test
     InventoryManager inventoryManager;
     DescriptorMap outDescriptorMap{};
     ComponentInfoMap outComponentInfoMap{};
+    DeviceInventoryInfo deviceInventoryInfo{};
 };
 
 TEST_F(InventoryManagerTest, handleQueryDeviceIdentifiersResponse)

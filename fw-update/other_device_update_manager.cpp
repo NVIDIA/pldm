@@ -74,11 +74,13 @@ bool OtherDeviceUpdateManager::activate()
         {
             std::cerr << "Failed to set resource RequestedActivation :" << path
                       << " " << std::string(e.what()) << "\n";
-            std::string resolution;
-            updateManager->createLogEntry(
-                updateManager->transferFailed,
-                uuidMappings[x.second->uuid].componentName,
-                uuidMappings[x.second->uuid].version, resolution);
+            std::string resolution = "Retry firmware update operation";
+            std::string messageArg0 = "Firmware Update Service";
+            std::string messageArg1 =
+                uuidMappings[x.second->uuid].componentName +
+                " firmware update timed out";
+            createLogEntry(resourceErrorDetected, messageArg0, messageArg1,
+                           resolution);
             updateManager->updateOtherDeviceCompletion(x.second->uuid, false);
             activationStatus = false;
         }
@@ -369,11 +371,13 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
                     std::cerr << x.first << " not processed at timeout"
                               << "\n";
                     // update message registry
-                    std::string resolution;
-                    updateManager->createLogEntry(
-                        updateManager->transferFailed,
-                        uuidMappings[x.first].componentName,
-                        uuidMappings[x.first].version, resolution);
+                    std::string resolution = "Retry firmware update operation";
+                    std::string messageArg0 = "Firmware Update Service";
+                    std::string messageArg1 =
+                        uuidMappings[x.first].componentName +
+                        " firmware update timed out";
+                    createLogEntry(resourceErrorDetected, messageArg0,
+                                   messageArg1, resolution);
                     updateManager->updateOtherDeviceCompletion(x.first,
                                                                x.second);
                 }

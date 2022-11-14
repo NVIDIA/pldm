@@ -4,8 +4,6 @@
 #include "common/utils.hpp"
 #include "package_parser.hpp"
 
-#include <xyz/openbmc_project/Logging/Entry/server.hpp>
-
 #include <bitset>
 #include <cassert>
 #include <cmath>
@@ -79,76 +77,11 @@ std::string
     return compActivationMethods;
 }
 
-void UpdateManager::createLogEntry(const std::string& messageID,
-                                   const std::string& compName,
-                                   const std::string& compVersion,
-                                   const std::string& resolution)
-{
-    using namespace sdbusplus::xyz::openbmc_project::Logging::server;
-    using Level =
-        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-
-    std::map<std::string, std::string> addData;
-    addData["REDFISH_MESSAGE_ID"] = messageID;
-    Level level = Level::Informational;
-
-    if (messageID == targetDetermined || messageID == updateSuccessful)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (compName + "," + compVersion);
-    }
-    else if (messageID == transferFailed || messageID == verificationFailed ||
-             messageID == applyFailed || messageID == activateFailed)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (compVersion + "," + compName);
-        level = Level::Critical;
-    }
-    else if (messageID == transferringToComponent ||
-             messageID == awaitToActivate)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (compVersion + "," + compName);
-    }
-    else if (messageID == resourceErrorDetected)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (compName + "," + compVersion);
-        level = Level::Critical;
-    }
-    else
-    {
-        std::cerr << "Message Registry messageID is not recognised, "
-                  << messageID << "\n";
-        return;
-    }
-
-    if (!resolution.empty())
-    {
-        addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
-    }
-
-    // use separate container for fwupdate message registry
-    addData["namespace"] = "FWUpdate";
-    auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
-    auto severity =
-        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
-            level);
-    asioConnection->async_method_call(
-        [](boost::system::error_code ec) {
-            if (ec)
-            {
-                std::cerr << "error while logging message registry: "
-                          << ec.message() << "\n";
-                return;
-            }
-        },
-        "xyz.openbmc_project.Logging", "/xyz/openbmc_project/logging",
-        "xyz.openbmc_project.Logging.Create", "Create", messageID, severity,
-        addData);
-    return;
-}
-
 void UpdateManager::createMessageRegistry(
     mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     size_t compIndex, const std::string& messageID,
-    const std::string& resolution)
+    const std::string& resolution,
+    const pldm_firmware_update_commands commandType, const uint8_t errorCode)
 {
     const auto& compImageInfos = parser->getComponentImageInfos();
     const auto& applicableComponents =
@@ -182,6 +115,17 @@ void UpdateManager::createMessageRegistry(
     }
 
     createLogEntry(messageID, compName, compVersion, resolution);
+    if(commandType != 0)
+    {
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(commandType, errorCode);
+        if (messageStatus)
+        {
+            createMessageRegistryResourceErrors(eid, fwDeviceIDRecord,
+                                                compIndex, oemMessageId,
+                                                oemMessageError, oemResolution);
+        }
+    }
 }
 
 void UpdateManager::createMessageRegistryResourceErrors(

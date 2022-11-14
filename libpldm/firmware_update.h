@@ -24,6 +24,15 @@ extern "C" {
 #define PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES 0
 #define PLDM_CANCEL_UPDATE_REQ_BYTES 0
 
+/* Firmware update command timeout error code for TransferComplete,
+ * VerifyComplete, ActivateComplete. */
+const uint8_t COMMAND_TIMEOUT = 0x9;
+
+/* Firmware update no matching version error code for TransferComplete */
+const uint8_t NO_MATCHING_VERSION = 0x2;
+
+/* Firmware update version mismatch error code for VerifyComplete */
+const uint8_t VERSION_MISMATCH = 0x2;
 
 /** @brief PLDM Firmware update commands
  */

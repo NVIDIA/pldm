@@ -16,32 +16,6 @@ namespace pldm
 namespace fw_update
 {
 
-#ifdef OEM_NVIDIA
-namespace oemErrorCodes
-{
-/**
- * @brief Error codes returned from FD for RequestFwData to map to message
- * registry
- *
- */
-enum class RequestFwData
-{
-    backgroundCopyInProgress = 0x8A
-};
-
-/**
- * @brief Error codes returned from FD for TransferComplete to map to message
- * registry
- *
- */
-enum class TransferComplete
-{
-    reqGrantError = 0x70,
-    writeProtectEnabled = 0x71
-};
-} // namespace oemErrorCodes
-#endif
-
 class UpdateManager;
 
 /** @enum Enumeration to represent the PLDM UA sequence in the firmware update

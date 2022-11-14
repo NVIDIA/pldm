@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fw-update/update_manager.hpp"
+#include "dbusutil.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
@@ -163,9 +164,8 @@ class Activation : public ActivationIntf
                 std::string messageError = "Invalid FW Package";
                 std::string resolution =
                     "Retry firmware update operation with valid FW package.";
-                updateManager->createLogEntry(
-                    updateManager->resourceErrorDetected, compName,
-                    messageError, resolution);
+                createLogEntry(resourceErrorDetected, compName, messageError,
+                               resolution);
                 activation(Activations::Failed);
             }
         }

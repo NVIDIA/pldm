@@ -66,15 +66,19 @@ class InventoryManager
      *                              FDs managed by the BMC.
      *  @param[out] componentInfoMap - Populate the component info for the FDs
      *                                 managed by the BMC.
+     *  @param[in] deviceInventoryInfo - device inventory info for message
+     * registry
      */
     explicit InventoryManager(
         pldm::requester::Handler<pldm::requester::Request>& handler,
         pldm::dbus_api::Requester& requester,
         CreateInventoryCallBack createInventoryCallBack,
-        DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap) :
+        DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap,
+        DeviceInventoryInfo& deviceInventoryInfo) :
         handler(handler),
         requester(requester), createInventoryCallBack(createInventoryCallBack),
-        descriptorMap(descriptorMap), componentInfoMap(componentInfoMap)
+        descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
+        deviceInventoryInfo(deviceInventoryInfo)
     {}
 
     /** @brief Discover the firmware identifiers and component details of FDs
@@ -134,10 +138,24 @@ class InventoryManager
     /** @brief Component information needed for the update of the managed FDs */
     ComponentInfoMap& componentInfoMap;
 
+    /** @brief device information to create message registries */
+    DeviceInventoryInfo& deviceInventoryInfo;
+
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
 
     MctpInfoMap mctpInfoMap;
+
+    /**
+     * @brief log devicediscovery failed messages
+     *
+     * @param[in] eid - mctp end point
+     * @param[in] messageError - message error
+     * @param[in] resolution - recommended resolution
+     */
+    void logDiscoveryFailedMessage(const mctp_eid_t& eid,
+                                   const std::string& messageError,
+                                   const std::string& resolution);
 };
 
 } // namespace fw_update

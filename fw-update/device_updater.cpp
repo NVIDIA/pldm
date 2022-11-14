@@ -77,9 +77,14 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
              compIndex++)
         {
-            updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                 compIndex,
-                                                 updateManager->transferFailed);
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
         }
         std::cerr << "No response received for RequestUpdate, EID="
                   << unsigned(eid) << "\n";
@@ -112,26 +117,9 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
              compIndex++)
         {
-            updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                 compIndex,
-                                                 updateManager->transferFailed);
-#ifdef OEM_NVIDIA
-            if (completionCode ==
-                static_cast<uint8_t>(
-                    oemErrorCodes::RequestFwData::backgroundCopyInProgress))
-            {
-                std::cerr << "Background copy in progress for EID="
-                          << unsigned(eid) << "\n";
-                std::string resolution =
-                    "Wait for background copy operation to complete. Once the"
-                    " operation is complete retry the firmware update operation.";
-                std::string messageError = "Background copy in progress";
-                updateManager->createMessageRegistryResourceErrors(
-                    eid, fwDeviceIDRecord, compIndex,
-                    updateManager->resourceErrorDetected, messageError,
-                    resolution);
-            }
-#endif
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, compIndex, transferFailed, "",
+                PLDM_REQUEST_UPDATE, completionCode);
         }
         std::cerr << "RequestUpdate response failed with error "
                      "completion code, EID="
@@ -246,9 +234,14 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
 {
     if (response == nullptr || !respMsgLen)
     {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->transferFailed);
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE, COMMAND_TIMEOUT);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         std::cerr << "No response received for PassComponentTable, EID="
                   << unsigned(eid) << "\n";
         updateManager->updateDeviceCompletion(eid, false);
@@ -393,9 +386,9 @@ void DeviceUpdater::updateComponent(mctp_eid_t eid, const pldm_msg* response,
 {
     if (response == nullptr || !respMsgLen)
     {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->transferFailed);
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
         std::cerr << "No response received for updateComponent, EID="
                   << unsigned(eid) << "\n";
         updateManager->updateDeviceCompletion(eid, false);
@@ -437,9 +430,8 @@ void DeviceUpdater::updateComponent(mctp_eid_t eid, const pldm_msg* response,
 
     uaState.nextState(uaState.current, componentIndex, numComponents);
 
-    updateManager->createMessageRegistry(
-        eid, fwDeviceIDRecord, componentIndex,
-        updateManager->transferringToComponent);
+    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
+                                         transferringToComponent);
 }
 
 Response DeviceUpdater::requestFwData(const pldm_msg* request,
@@ -604,41 +596,12 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
     else
     {
         // TransferComplete Failed
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->transferFailed);
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_TRANSFER_COMPLETE, transferResult);
         std::cerr << "Transfer of the component failed, EID=" << unsigned(eid)
                   << ", COMPONENT_VERSION=" << compVersion
                   << ", TRANSFER_RESULT=" << unsigned(transferResult) << "\n";
-#ifdef OEM_NVIDIA
-        if (transferResult ==
-            static_cast<uint8_t>(
-                oemErrorCodes::TransferComplete::reqGrantError))
-        {
-            std::cerr << "SPI Access Error for EID=" << unsigned(eid) << "\n";
-            std::string resolution =
-                "Make sure device AP flash is not accessed by other"
-                " application and retry the firmware update operation.";
-            std::string messageError = "SPI Access Error";
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex,
-                updateManager->resourceErrorDetected, messageError, resolution);
-        }
-        else if (transferResult ==
-                 static_cast<uint8_t>(
-                     oemErrorCodes::TransferComplete::writeProtectEnabled))
-        {
-            std::cerr << "Write protect Error for EID=" << unsigned(eid)
-                      << "\n";
-            std::string resolution =
-                "Disable write protect on the device and retry the"
-                " firmware update operation.";
-            std::string messageError = "Write Protect Enabled";
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex,
-                updateManager->resourceErrorDetected, messageError, resolution);
-        }
-#endif
         updateManager->updateDeviceCompletion(eid, false);
         uaState.set(UASequence::Invalid);
     }
@@ -706,9 +669,9 @@ Response DeviceUpdater::verifyComplete(const pldm_msg* request,
     else
     {
         // VerifyComplete Failed
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->verificationFailed);
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, verificationFailed, "",
+            PLDM_VERIFY_COMPLETE, verifyResult);
         std::cerr << "Component verification failed, EID=" << unsigned(eid)
                   << ", COMPONENT_VERSION=" << compVersion
                   << ", VERIFY_RESULT=" << unsigned(verifyResult) << "\n";
@@ -773,23 +736,21 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
         updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->updateSuccessful);
+                                             componentIndex, updateSuccessful);
         if (updateManager->fwDebug)
         {
             std::cout << "Component apply complete, EID=" << unsigned(eid)
                       << ", COMPONENT_VERSION=" << compVersion << "\n";
         }
         updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex,
-            updateManager->awaitToActivate,
+            eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
             updateManager->getActivationMethod(compActivationModification));
     }
     else
     {
         // ApplyComplete Failed
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, updateManager->applyFailed);
+        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
+                                             componentIndex, applyFailed);
         std::cerr << "Component apply failed, EID=" << unsigned(eid)
                   << ", COMPONENT_VERSION=" << compVersion
                   << ", APPLY_RESULT=" << unsigned(applyResult) << "\n";
@@ -872,6 +833,15 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
                   << unsigned(eid) << "\n";
         updateManager->updateDeviceCompletion(eid, false);
         uaState.set(UASequence::Invalid);
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(fwDeviceIDRecord);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                PLDM_ACTIVATE_FIRMWARE, COMMAND_TIMEOUT);
+        }
         return;
     }
 
@@ -903,8 +873,7 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
              compIndex++)
         {
             updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                 compIndex,
-                                                 updateManager->activateFailed);
+                                                 compIndex, activateFailed);
         }
         std::cerr << "ActivateFirmware response failed with error "
                      "completion code, EID="
@@ -948,9 +917,9 @@ void DeviceUpdater::createRequestFwDataTimer()
             std::cerr << "RequestUpdate timeout EID=" << unsigned(eid)
                       << ", ComponentIndex= " << componentIndex << "\n";
         }
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex,
-                                             updateManager->transferFailed);
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_REQUEST_FIRMWARE_DATA, COMMAND_TIMEOUT);
         componentUpdateStatus[componentIndex] = false;
         uaState.set(UASequence::CancelUpdateComponent);
         sendcancelUpdateComponentRequest();
