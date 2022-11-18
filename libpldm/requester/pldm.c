@@ -27,10 +27,12 @@ pldm_requester_rc_t pldm_open()
 	rc = connect(fd, (struct sockaddr *)&addr,
 		     sizeof(path) + sizeof(addr.sun_family) - 1);
 	if (-1 == rc) {
+		close(fd);
 		return PLDM_REQUESTER_OPEN_FAIL;
 	}
 	rc = write(fd, &MCTP_MSG_TYPE_PLDM, sizeof(MCTP_MSG_TYPE_PLDM));
 	if (-1 == rc) {
+		close(fd);
 		return PLDM_REQUESTER_OPEN_FAIL;
 	}
 
@@ -64,7 +66,7 @@ static pldm_requester_rc_t mctp_recv(mctp_eid_t eid, int mctp_fd,
 	} else if (length < min_len) {
 		/* read and discard */
 		uint8_t buf[length];
-		recv(mctp_fd, buf, length, 0);
+		(void)recv(mctp_fd, buf, length, 0);
 		return PLDM_REQUESTER_INVALID_RECV_LEN;
 	} else {
 		struct iovec iov[2];
