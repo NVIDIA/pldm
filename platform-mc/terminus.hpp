@@ -24,9 +24,9 @@ using SensorId = uint16_t;
 using SensorCnt = uint8_t;
 using NameLanguageTag = std::string;
 using SensorName = std::string;
-using SensorAuxiliaryNames =
-    std::tuple<SensorId, SensorCnt,
-               std::vector<std::pair<NameLanguageTag, SensorName>>>;
+using SensorAuxiliaryNames = std::tuple<
+    SensorId, SensorCnt,
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>>;
 using EnitityAssociations =
     std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
 using AssociationDefinitionsIntf = sdbusplus::server::object_t<

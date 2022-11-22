@@ -495,8 +495,7 @@ struct pldm_sensor_auxiliary_names_pdr {
 	uint16_t terminus_handle;
 	uint16_t sensor_id;
 	uint8_t sensor_count;
-	uint8_t name_string_count;
-	uint8_t name_strings[1];
+	uint8_t names[1];
 } __attribute__((packed));
 
 /** @struct pldm_terminus_locator_type_mctp_eid
