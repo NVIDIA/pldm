@@ -45,13 +45,18 @@ requester::Coroutine SensorManager::doSensorPollingTask()
     {
         for (auto& sensor : terminus.second->numericSensors)
         {
+            if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
+            {
+                continue;
+            }
+
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             elapsed = t1 - t0;
             sensor->elapsedTime += (pollingTimeInUsec + elapsed);
             if (sensor->elapsedTime >= sensor->updateTime)
             {
                 co_await getSensorReading(sensor);
-                if (!sensorPollTimer->isRunning())
+                if (sensorPollTimer && !sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -67,7 +72,7 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             if (sensor->elapsedTime >= sensor->updateTime)
             {
                 co_await getStateSensorReadings(sensor);
-                if (!sensorPollTimer->isRunning())
+                if (sensorPollTimer && !sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -86,11 +91,11 @@ requester::Coroutine
     auto sensorId = sensor->sensorId;
     Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-    auto rc = encode_get_sensor_reading_req(0, sensorId, 0x0, requestMsg);
+    auto rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
     if (rc)
     {
         std::cerr << "encode_get_sensor_reading_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << std::endl;
+                  << unsigned(tid) << ", RC=" << unsigned(rc) << std::endl;
         co_return rc;
     }
 
@@ -103,7 +108,7 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (!sensorPollTimer->isRunning())
+    if (sensorPollTimer && !sensorPollTimer->isRunning())
     {
         co_return PLDM_ERROR;
     }
@@ -124,7 +129,7 @@ requester::Coroutine
     if (rc)
     {
         std::cerr << "Failed to decode response of GetSensorReading, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+                  << unsigned(tid) << ", RC=" << unsigned(rc) << "\n";
         sensor->handleErrGetSensorReading();
         co_return rc;
     }
@@ -154,22 +159,22 @@ requester::Coroutine
     switch (sensorDataSize)
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
-            value = static_cast<float>(presentReading.value_u8);
+            value = static_cast<double>(presentReading.value_u8);
             break;
         case PLDM_SENSOR_DATA_SIZE_SINT8:
-            value = static_cast<float>(presentReading.value_s8);
+            value = static_cast<double>(presentReading.value_s8);
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT16:
-            value = static_cast<float>(le16toh(presentReading.value_u16));
+            value = static_cast<double>(presentReading.value_u16);
             break;
         case PLDM_SENSOR_DATA_SIZE_SINT16:
-            value = static_cast<float>(le16toh(presentReading.value_s16));
+            value = static_cast<double>(presentReading.value_s16);
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT32:
-            value = static_cast<float>(le32toh(presentReading.value_u32));
+            value = static_cast<double>(presentReading.value_u32);
             break;
         case PLDM_SENSOR_DATA_SIZE_SINT32:
-            value = static_cast<float>(le32toh(presentReading.value_s32));
+            value = static_cast<double>(presentReading.value_s32);
             break;
         default:
             value = std::numeric_limits<double>::quiet_NaN();
@@ -212,7 +217,7 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (!sensorPollTimer->isRunning())
+    if (sensorPollTimer && !sensorPollTimer->isRunning())
     {
         co_return PLDM_ERROR;
     }

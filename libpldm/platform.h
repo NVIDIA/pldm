@@ -67,6 +67,13 @@ extern "C" {
 /* Minumum length of pldm cper event data */
 #define PLDM_CPER_EVENT_DATA_MIN_LENGTH 4
 
+/* Minimum length of numeric sensor PDR */
+#define PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH 57
+#define PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH 12
+#define PLDM_PDR_NUMERIC_SENSOR_PDR_MIN_LENGTH                                 \
+	(PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +                            \
+	 PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH)
+
 #define PLDM_INVALID_EFFECTER_ID 0xFFFF
 #define PLDM_TID_RESERVED 0xFF
 #define PLDM_EID_NULL 0x0

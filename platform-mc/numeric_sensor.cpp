@@ -212,7 +212,11 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     baseUnitModifier = pdr->unit_modifier;
 
     elapsedTime = 0;
-    updateTime = pdr->update_interval * 1000000;
+    updateTime = std::numeric_limits<uint64_t>::max();
+    if (!std::isnan(pdr->update_interval))
+    {
+        updateTime = pdr->update_interval * 1000000;
+    }
 
     valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
     valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
@@ -244,8 +248,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 double NumericSensor::conversionFormula(double value)
 {
     double convertedValue = value;
-    convertedValue *= resolution;
-    convertedValue += offset;
+    convertedValue *= std::isnan(resolution) ? 1 : resolution;
+    convertedValue += std::isnan(offset) ? 0 : offset;
     return convertedValue;
 }
 
@@ -306,7 +310,9 @@ bool NumericSensor::checkThreshold(bool alarm, bool direction, double value,
 void NumericSensor::updateThresholds()
 {
     auto value = valueIntf->value();
-    if (thresholdWarningIntf)
+
+    if (thresholdWarningIntf &&
+        !std::isnan(thresholdWarningIntf->warningHigh()))
     {
         auto threshold = thresholdWarningIntf->warningHigh();
         auto alarm = thresholdWarningIntf->warningAlarmHigh();
@@ -324,10 +330,14 @@ void NumericSensor::updateThresholds()
                 thresholdWarningIntf->warningHighAlarmDeasserted(value);
             }
         }
+    }
 
-        threshold = thresholdWarningIntf->warningLow();
-        alarm = thresholdWarningIntf->warningAlarmLow();
-        newAlarm = checkThreshold(alarm, false, value, threshold, hysteresis);
+    if (thresholdWarningIntf && !std::isnan(thresholdWarningIntf->warningLow()))
+    {
+        auto threshold = thresholdWarningIntf->warningLow();
+        auto alarm = thresholdWarningIntf->warningAlarmLow();
+        auto newAlarm =
+            checkThreshold(alarm, false, value, threshold, hysteresis);
         if (alarm != newAlarm)
         {
             thresholdWarningIntf->warningAlarmLow(newAlarm);
@@ -342,8 +352,8 @@ void NumericSensor::updateThresholds()
         }
     }
 
-    if (thresholdCriticalIntf && thresholdCriticalIntf->criticalHigh() !=
-                                     std::numeric_limits<double>::quiet_NaN())
+    if (thresholdCriticalIntf &&
+        !std::isnan(thresholdCriticalIntf->criticalHigh()))
     {
         auto threshold = thresholdCriticalIntf->criticalHigh();
         auto alarm = thresholdCriticalIntf->criticalAlarmHigh();
@@ -363,8 +373,8 @@ void NumericSensor::updateThresholds()
         }
     }
 
-    if (thresholdCriticalIntf && thresholdCriticalIntf->criticalLow() !=
-                                     std::numeric_limits<double>::quiet_NaN())
+    if (thresholdCriticalIntf &&
+        !std::isnan(thresholdCriticalIntf->criticalLow()))
     {
         auto threshold = thresholdCriticalIntf->criticalLow();
         auto alarm = thresholdCriticalIntf->criticalAlarmLow();
