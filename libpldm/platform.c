@@ -1051,7 +1051,7 @@ int decode_pldm_cper_event_data(const uint8_t *event_data,
 	    (struct pldm_cper_event_data *)event_data;
 	*format_version = pldm_cper_event->format_version;
 	*format_type = pldm_cper_event->format_type;
-	*cper_event_data_length = pldm_cper_event->event_data_length;
+	*cper_event_data_length = le16toh(pldm_cper_event->event_data_length);
 	*cper_event_data = pldm_cper_event->event_data;
 
 	return PLDM_SUCCESS;

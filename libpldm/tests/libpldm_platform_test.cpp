@@ -1363,7 +1363,7 @@ TEST(PlatformEventMessage, testGoodPldmCperEventDataDecodeRequest)
 
     eventData->format_version = formatVersion;
     eventData->format_type = formatType;
-    eventData->event_data_length = cperEventDataLength;
+    eventData->event_data_length = htole16(cperEventDataLength);
     eventData->event_data[0] = cperEventData0;
 
     uint8_t retFormatVersion;
