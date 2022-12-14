@@ -76,6 +76,31 @@ class StateSetNvlink : public StateSet
         ValueIntf->linkState(PortLinkStates::Unknown);
         ValueIntf->linkStatus(PortLinkStatus::NoLink);
     }
+    std::tuple<std::string, std::string> getEventData() const override
+    {
+        if (ValueIntf->linkStatus() == PortLinkStatus::LinkUp)
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Active")};
+        }
+        else if (ValueIntf->linkStatus() == PortLinkStatus::LinkDown)
+        {
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Inactive")};
+        }
+        else
+        {
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
+                std::string("Error")};
+        }
+    }
+
+    std::string getStringStateType() const override
+    {
+        return std::string("NVLink");
+    }
 };
 
 } // namespace oem_nvidia
