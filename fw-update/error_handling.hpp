@@ -4,6 +4,8 @@
 
 #include "common/types.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 namespace pldm
 {
 namespace fw_update
@@ -141,13 +143,15 @@ inline std::tuple<bool, std::string, std::string, std::string>
         }
         else
         {
-            std::cerr << "Error Code: : " << (unsigned)errorCode
-                      << "not found for command: " << commandType << "\n";
+            lg2::error(
+                "Error Code: {ERRORCODE} not found for command: {COMMANDTYPE}",
+                "ERRORCODE", errorCode, "COMMANDTYPE", (unsigned)commandType);
         }
     }
     else
     {
-        std::cerr << "No mapping found for command: " << commandType << "\n";
+        lg2::error("No mapping found for command: {COMMANDTYPE}", "COMMANDTYPE",
+                   (unsigned)commandType);
     }
     return {status, oemMessageId, oemMessageError, oemResolution};
 }

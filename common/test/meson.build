@@ -17,6 +17,7 @@ foreach t : tests
                          libpldm_dep,
                          nlohmann_json,
                          phosphor_dbus_interfaces,
+                         phosphor_logging,
                          sdbusplus]),
        workdir: meson.current_source_dir())
 endforeach

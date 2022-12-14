@@ -11,6 +11,7 @@
 #include "request.hpp"
 
 #include <function2/function2.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
@@ -132,21 +133,20 @@ class Handler
         auto instanceIdExpiryCallBack = [key, this](void) {
             if (this->handlers.contains(key))
             {
-                std::cerr << "Response not received for the request, instance "
-                             "ID expired."
-                          << " EID = " << (unsigned)key.eid
-                          << " INSTANCE_ID = " << (unsigned)key.instanceId
-                          << " TYPE = " << (unsigned)key.type
-                          << " COMMAND = " << (unsigned)key.command << "\n";
+                lg2::error("Response not received for the request, instance ID "
+                           "expired. EID={EID}, INSTANCE_ID={INSTANCE_ID} ,"
+                           "TYPE={TYPE}, COMMAND={COMMAND}",
+                           "EID", key.eid, "INSTANCE_ID", key.instanceId,
+                           "TYPE", key.type, "COMMAND", key.command);
                 auto& [request, responseHandler, timerInstance] =
                     this->handlers[key];
                 request->stop();
                 auto rc = timerInstance->stop();
                 if (rc)
                 {
-                    std::cerr
-                        << "Failed to stop the instance ID expiry timer. RC = "
-                        << rc << "\n";
+                    lg2::error(
+                        "Failed to stop the instance ID expiry timer. RC={RC}",
+                        "RC", rc);
                 }
                 // Call response handler with an empty response to indicate no
                 // response
@@ -218,8 +218,7 @@ class Handler
             if (rc)
             {
                 requester.markFree(eid, instanceId);
-                std::cerr << "Failure to send the PLDM request message"
-                          << "\n";
+                lg2::error("Failure to send the PLDM request message");
                 return rc;
             }
 
@@ -231,9 +230,8 @@ class Handler
             catch (const std::runtime_error& e)
             {
                 requester.markFree(eid, instanceId);
-                std::cerr
-                    << "Failed to start the instance ID expiry timer. RC = "
-                    << e.what() << "\n";
+                lg2::error("Failed to start the instance ID expiry timer.",
+                           "ERROR", e);
                 return PLDM_ERROR;
             }
         }
@@ -261,9 +259,9 @@ class Handler
             auto rc = timerInstance->stop();
             if (rc)
             {
-                std::cerr
-                    << "Failed to stop the instance ID expiry timer. RC = "
-                    << rc << "\n";
+                lg2::error(
+                    "Failed to stop the instance ID expiry timer. RC={RC}",
+                    "RC", rc);
             }
             // Call responseHandler after erase it from the handlers to avoid
             // starting it again in runRegisteredRequest()
@@ -278,11 +276,11 @@ class Handler
             // request handler, so freeing up the instance ID, this can be other
             // OpenBMC applications relying on PLDM D-Bus apis like
             // openpower-occ-control and softoff
-            std::cerr
-                << "Response received after timeout or for not registered request EID="
-                << unsigned(eid) << ",InstanceID=" << unsigned(instanceId)
-                << ",Type=" << unsigned(type)
-                << ",Command=" << unsigned(command) << "\n";
+            lg2::error("Response received after timeout or for not registered "
+                       "request EID={EID},InstanceID={INSTANCEID},Type={TYPE},"
+                       "Command={COMMAND}",
+                       "EID", eid, "INSTANCEID", instanceId, "TYPE", type,
+                       "COMMAND", command);
             requester.markFree(key.eid, key.instanceId);
         }
         runRegisteredRequest(eid);
@@ -404,8 +402,8 @@ struct SendRecvPldmMsg
             std::move(std::bind_front(&SendRecvPldmMsg::HandleResponse, this)));
         if (rc)
         {
-            std::cerr << "registerRequest failed, rc="
-                      << static_cast<unsigned>(rc) << "\n";
+            lg2::error("registerRequest failed, rc={RC}", "RC",
+                       static_cast<unsigned>(rc));
             return false;
         }
 
@@ -441,7 +439,7 @@ struct SendRecvPldmMsg
     {
         if (response == nullptr || !length)
         {
-            std::cerr << "No response received, EID=" << unsigned(eid) << "\n";
+            lg2::error("No response received, EID={EID}", "EID", eid);
             rc = PLDM_ERROR;
         }
         else

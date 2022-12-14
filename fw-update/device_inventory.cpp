@@ -150,7 +150,7 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                std::cerr << e.what() << '\n';
+                lg2::error("Set SKU Error: {ERROR}", "ERROR", e);
             }
         });
         propertySet.detach();

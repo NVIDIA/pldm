@@ -4,6 +4,8 @@
 
 #include <sys/socket.h>
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <iostream>
 #include <map>
 #include <optional>
@@ -88,8 +90,8 @@ class Manager
             if (rc == -1)
             {
                 rc = -errno;
-                std::cerr << "setsockopt call failed, RC= " << strerror(-rc)
-                          << "\n";
+                lg2::error("setsockopt call failed, RC={RC}", "RC",
+                           strerror(-rc));
             }
             else
             {

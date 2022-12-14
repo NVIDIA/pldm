@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
+#include <phosphor-logging/lg2.hpp>
+
 namespace pldm::mctp_socket
 {
 
@@ -69,7 +71,7 @@ SocketInfo Handler::initSocket(int type, int protocol,
         else if (peekedLength <= -1)
         {
             returnCode = -errno;
-            std::cerr << "recv system call failed, RC= " << returnCode << "\n";
+            lg2::error("recv system call failed, RC={RC}", "RC", returnCode);
         }
         else
         {
@@ -114,18 +116,18 @@ SocketInfo Handler::initSocket(int type, int protocol,
                         if (-1 == result)
                         {
                             returnCode = -errno;
-                            std::cerr << "sendto system call failed, RC= "
-                                      << returnCode << "\n";
+                            lg2::error("sendto system call failed, RC={RC}",
+                                       "RC", returnCode);
                         }
                     }
                 }
             }
             else
             {
-                std::cerr
-                    << "Failure to read peeked length packet. peekedLength= "
-                    << peekedLength << " recvDataLength=" << recvDataLength
-                    << "\n";
+                lg2::error("Failure to read peeked length packet. peekedLength="
+                           "{PEEKEDLENGTH} recvDataLength={RECVDATALENGTH}",
+                           "PEEKEDLENGTH", peekedLength, "RECVDATALENGTH",
+                           recvDataLength);
             }
         }
     };
@@ -137,8 +139,7 @@ SocketInfo Handler::initSocket(int type, int protocol,
     if (sockFd == -1)
     {
         rc = -errno;
-        std::cerr << "Failed to create the socket, RC= " << strerror(-rc)
-                  << "\n";
+        lg2::error("Failed to create the socket, RC={RC}", "RC", strerror(-rc));
         return {rc, sendBufferSize};
     }
 
@@ -151,8 +152,8 @@ SocketInfo Handler::initSocket(int type, int protocol,
     if (rc == -1)
     {
         rc = -errno;
-        std::cerr << "Error getting the default socket send buffer size, RC= "
-                  << strerror(-rc) << "\n";
+        lg2::error("Error getting the default socket send buffer size, RC={RC}",
+                   "RC", strerror(-rc));
         return {rc, sendBufferSize};
     }
 
@@ -166,8 +167,8 @@ SocketInfo Handler::initSocket(int type, int protocol,
     if (rc == -1)
     {
         rc = -errno;
-        std::cerr << "Failed to connect to the socket, RC= " << strerror(-rc)
-                  << "\n";
+        lg2::error("Failed to connect to the socket, RC={RC}", "RC",
+                   strerror(-rc));
         return {rc, sendBufferSize};
     }
 
@@ -177,8 +178,9 @@ SocketInfo Handler::initSocket(int type, int protocol,
     if (result == -1)
     {
         rc = -errno;
-        std::cerr << "Failed to send message type as PLDM to demux daemon, RC= "
-                  << strerror(-rc) << "\n";
+        lg2::error(
+            "Failed to send message type as PLDM to demux daemon, RC={RC}",
+            "RC", strerror(-rc));
         return {rc, sendBufferSize};
     }
 
@@ -199,7 +201,7 @@ std::optional<Response>
         requestMsg.data() + sizeof(eid) + sizeof(type));
     if (PLDM_SUCCESS != unpack_pldm_header(hdr, &hdrFields))
     {
-        std::cerr << "Empty PLDM request header \n";
+        lg2::error("Empty PLDM request header");
         return std::nullopt;
     }
 
@@ -235,7 +237,7 @@ std::optional<Response>
             header.command = hdrFields.command;
             if (PLDM_SUCCESS != pack_pldm_header(&header, responseHdr))
             {
-                std::cerr << "Failed adding response header \n";
+                lg2::error("Failed adding response header");
                 return std::nullopt;
             }
             response.insert(response.end(), completion_code);

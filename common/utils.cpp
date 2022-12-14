@@ -5,6 +5,7 @@
 #include "libpldm/pdr.h"
 #include "libpldm/pldm_types.h"
 
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 #include <xyz/openbmc_project/Software/ExtendedVersion/server.hpp>
@@ -72,8 +73,7 @@ std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t /*tid*/,
     }
     catch (const std::exception& e)
     {
-        std::cerr << " Failed to obtain a record. ERROR =" << e.what()
-                  << std::endl;
+        lg2::error(" Failed to obtain a record.", "ERROR", e);
     }
 
     return pdrs;
@@ -126,8 +126,7 @@ std::vector<std::vector<uint8_t>> findStateSensorPDR(uint8_t /*tid*/,
     }
     catch (const std::exception& e)
     {
-        std::cerr << " Failed to obtain a record. ERROR =" << e.what()
-                  << std::endl;
+        lg2::error(" Failed to obtain a record.", "ERROR", e);
     }
 
     return pdrs;
@@ -139,7 +138,8 @@ uint8_t readHostEID()
     std::ifstream eidFile{HOST_EID_PATH};
     if (!eidFile.good())
     {
-        std::cerr << "Could not open host EID file: " << HOST_EID_PATH << "\n";
+        lg2::error("Could not open host EID file: {HOST_EID_PATH}",
+                   "HOST_EID_PATH", std::string(HOST_EID_PATH));
     }
     else
     {
@@ -151,8 +151,7 @@ uint8_t readHostEID()
         }
         else
         {
-            std::cerr << "Host EID file was empty"
-                      << "\n";
+            lg2::error("Host EID file was empty");
         }
     }
 
@@ -267,8 +266,8 @@ void reportError(const char* errorMsg)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "failed to make a d-bus call to create error log, ERROR="
-                  << e.what() << "\n";
+        lg2::error("failed to make a d-bus call to create error log.", "ERROR",
+                   e);
     }
 }
 
@@ -408,7 +407,7 @@ PropertyValue jsonEntryToDbusVal(std::string_view type,
     }
     else
     {
-        std::cerr << "Unknown D-Bus property type, TYPE=" << type << "\n";
+        lg2::error("Unknown D-Bus property type, TYPE={TYPE}", "TYPE", type);
     }
 
     return propValue;
@@ -471,8 +470,7 @@ int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error emitting pldm event signal:"
-                  << "ERROR=" << e.what() << "\n";
+        lg2::error("Error emitting pldm event signal.", "ERROR", e);
         return PLDM_ERROR;
     }
 
@@ -514,21 +512,20 @@ void printBuffer(bool isTx, const std::vector<uint8_t>& buffer)
 {
     if (!buffer.empty())
     {
-        if (isTx)
-        {
-            std::cout << "Tx: ";
-        }
-        else
-        {
-            std::cout << "Rx: ";
-        }
         std::ostringstream tempStream;
         for (int byte : buffer)
         {
             tempStream << std::setfill('0') << std::setw(2) << std::hex << byte
                        << " ";
         }
-        std::cout << tempStream.str() << std::endl;
+        if (isTx)
+        {
+            lg2::info("Tx: {TX}", "TX", tempStream.str());
+        }
+        else
+        {
+            lg2::info("Rx: {RX}", "RX", tempStream.str());
+        }
     }
 }
 

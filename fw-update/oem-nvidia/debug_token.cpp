@@ -12,6 +12,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
@@ -34,7 +35,7 @@ bool DebugToken::activate()
     pldm::utils::DBusMapping dbusMapping{tokenPath,
                                          Server::Activation::interface,
                                          "RequestedActivation", "string"};
-    std::cout << "Activating : OBJPATH =" << tokenPath << "\n";
+    lg2::info("Activating : OBJPATH={OBJPATH}", "OBJPATH", tokenPath);
     try
     {
         pldm::utils::DBusHandler().setDbusProperty(
@@ -43,8 +44,9 @@ bool DebugToken::activate()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to set resource RequestedActivation :" << tokenPath
-                  << " " << std::string(e.what()) << "\n";
+        lg2::error(
+            "Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
+            "OBJPATH", tokenPath, "ERROR", e);
         std::string resolution;
         createLogEntry(transferFailed,
                        std::filesystem::path(tokenPath).filename(),
@@ -118,8 +120,7 @@ void DebugToken::updateDebugToken(
                     std::get<ApplicableComponents>(fwDeviceIDRecord);
                 if (applicableCompVec.size() == 0)
                 {
-                    std::cerr << "Invalid applicable components"
-                              << "\n";
+                    lg2::error("Invalid applicable components");
                     continue;
                 }
                 const auto& componentImageInfo =
@@ -141,13 +142,11 @@ void DebugToken::updateDebugToken(
                 }
                 catch (const sdbusplus::exception::SdBusError& e)
                 {
-                    std::cerr
-                        << "failed to get filepath :" << std::string(e.what())
-                        << "\n";
+                    lg2::error("failed to get filepath.", "ERROR", e);
                     continue;
                 }
-                std::cerr << "Got filepath for install token \"" << filepath
-                          << "\"\n";
+                lg2::info("Got filepath for install token. FILEPATH={FILEPATH}",
+                          "FILEPATH", filepath);
                 if (filepath == "")
                 {
                     continue;
@@ -161,8 +160,9 @@ void DebugToken::updateDebugToken(
                 filepath += "/" + boost::uuids::to_string(
                                       boost::uuids::random_generator()())
                                       .substr(0, 8);
-                std::cerr << "Extracting " << version
-                          << " to filepath : " << filepath << "\n";
+                lg2::info(
+                    "Extracting to filepath: VERSION={VERSION}, FILEPATH={FILEPATH}",
+                    "VERSION", version, "FILEPATH", filepath);
                 std::ofstream outfile(filepath, std::ofstream::binary);
                 outfile.write(reinterpret_cast<const char*>(&buffer[0]),
                               buffer.size() *
@@ -184,8 +184,7 @@ void DebugToken::updateDebugToken(
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            std::cerr << "failed to get filepath :" << std::string(e.what())
-                      << "\n";
+            lg2::error("failed to get filepath.", "ERROR", e);
             std::string resolution;
             createLogEntry(transferFailed, "HGX_FW_Debug_Token_Erase", "0.0",
                            resolution);
@@ -208,8 +207,7 @@ void DebugToken::updateDebugToken(
     setVersion();
     if (!activate())
     {
-        std::cerr << "Activation failed for debug token"
-                  << "\n";
+        lg2::error("Activation failed for debug token");
         startUpdate();
         return;
     }
@@ -266,9 +264,9 @@ void DebugToken::getValidPaths(std::vector<std::string>& paths)
     }
     catch (const std::exception& e)
     {
-        std::cerr
-            << "Failed to get software D-Bus objects implementing UUID interface, "
-            << "ERROR=" << e.what() << "\n";
+        lg2::error(
+            "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
+            "ERROR", e);
     }
 }
 
@@ -281,13 +279,11 @@ void DebugToken::startTimer(auto timerExpiryTime)
             createLogEntry(transferFailed,
                            std::filesystem::path(tokenPath).filename(),
                            tokenVersion, resolution);
-            std::cerr << "Activation Timer expired for install debug token"
-                      << "\n";
+            lg2::error("Activation Timer expired for install debug token");
             startUpdate();
         }
     });
-    std::cerr << "Starting Timer to allow install or erase debug token"
-              << "\n";
+    lg2::info("Starting Timer to allow install or erase debug token");
     timer->start(std::chrono::seconds(timerExpiryTime), false);
 }
 
@@ -313,8 +309,7 @@ void DebugToken::setVersion()
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        std::cerr << "Failed to set extended version :" << std::string(e.what())
-                  << "\n";
+        lg2::error("Failed to set extended version.", "ERROR", e);
     }
 }
 

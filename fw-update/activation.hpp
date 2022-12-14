@@ -3,6 +3,7 @@
 #include "dbusutil.hpp"
 #include "fw-update/update_manager.hpp"
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
@@ -125,7 +126,7 @@ class Activation : public ActivationIntf
             value = state;
             if (state == Activations::Failed)
             {
-                std::cerr << "Activation failed setting activation to fail ";
+                lg2::error("Activation failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
                 updateManager->clearFirmwareUpdatePackage();
             }
@@ -244,9 +245,8 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
     {
         if (updateManager->fwDebug)
         {
-            std::cout
-                << "Activating PLDM firmware update package - BMC reboots are disabled."
-                << "\n";
+            lg2::info(
+                "Activating PLDM firmware update package - BMC reboots are disabled.");
         }
         try
         {
@@ -257,8 +257,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         }
         catch (const std::exception& e)
         {
-            std::cerr << "Error starting service,"
-                      << "ERROR=" << e.what() << "\n";
+            lg2::error("Error starting service.", "ERROR", e);
         }
     }
 
@@ -270,9 +269,8 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
     {
         if (updateManager->fwDebug)
         {
-            std::cout
-                << "Activating PLDM firmware update package - BMC reboots are re-enabled."
-                << "\n";
+            lg2::info(
+                "Activating PLDM firmware update package - BMC reboots are re-enabled.");
         }
         try
         {
@@ -283,8 +281,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         }
         catch (const std::exception& e)
         {
-            std::cerr << "Error starting service,"
-                      << "ERROR=" << e.what() << "\n";
+            lg2::error("Error starting service.", "ERROR", e);
         }
     }
 };

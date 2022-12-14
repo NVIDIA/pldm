@@ -2,6 +2,7 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
@@ -107,8 +108,8 @@ inline void createLogEntry(const std::string& messageID,
     }
     else
     {
-        std::cerr << "Message Registry messageID is not recognised, "
-                  << messageID << "\n";
+        lg2::error("Message Registry messageID is not recognised", "MESSAGEID",
+                   messageID);
         return;
     }
 
@@ -130,8 +131,8 @@ inline void createLogEntry(const std::string& messageID,
         [](boost::system::error_code ec) {
             if (ec)
             {
-                std::cerr << "error while logging message registry: "
-                          << ec.message() << "\n";
+                lg2::error("error while logging message registry: ",
+                           "ERROR_MESSAGE", ec.message());
                 return;
             }
         },

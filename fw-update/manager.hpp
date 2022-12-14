@@ -15,6 +15,8 @@
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <unordered_map>
 #include <vector>
 
@@ -77,7 +79,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
         catch (const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            lg2::error("Error while parsing json.", "ERROR", e);
         }
     }
 

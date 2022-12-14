@@ -99,6 +99,7 @@ if get_option('libpldm-only').disabled()
   phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
   sdbusplus = dependency('sdbusplus')
   sdeventplus = dependency('sdeventplus')
+  phosphor_logging = dependency('phosphor-logging')
 
   if cpp.has_header('nlohmann/json.hpp')
     nlohmann_json = declare_dependency()
@@ -190,6 +191,7 @@ libpldmutils = library(
       phosphor_dbus_interfaces,
       nlohmann_json,
       sdbusplus,
+      phosphor_logging,
   ],
   install: true,
   include_directories: include_directories(libpldmutils_headers),
@@ -208,6 +210,7 @@ deps = [
   sdbusplus,
   sdeventplus,
   phosphor_dbus_interfaces,
+  phosphor_logging,
 ]
 
 if get_option('libpldmresponder').enabled()

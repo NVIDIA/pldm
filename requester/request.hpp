@@ -9,6 +9,7 @@
 
 #include <sys/socket.h>
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 
@@ -75,8 +76,7 @@ class RequestRetryTimer
         }
         catch (const std::runtime_error& e)
         {
-            std::cerr << "Failed to start the request timer. RC = " << e.what()
-                      << "\n";
+            lg2::error("Failed to start the request timer.", "ERROR", e);
             return PLDM_ERROR;
         }
 
@@ -89,8 +89,8 @@ class RequestRetryTimer
         auto rc = timer.stop();
         if (rc)
         {
-            std::cerr << "Failed to stop the request timer. RC = " << rc
-                      << "\n";
+            lg2::error("Failed to stop the request timer. RC={RC}", "RC",
+                       unsigned(rc));
         }
     }
 
@@ -178,8 +178,8 @@ class Request final : public RequestRetryTimer
         auto rc = pldm_send(eid, fd, requestMsg.data(), requestMsg.size());
         if (rc < 0)
         {
-            std::cerr << "Failed to send PLDM message. RC = " << rc
-                      << ", errno = " << errno << "\n";
+            lg2::error("Failed to send PLDM message. RC={RC}, errno={ERRNO}",
+                       "RC", unsigned(rc), "ERRNO", strerror(errno));
             return PLDM_ERROR;
         }
         return PLDM_SUCCESS;

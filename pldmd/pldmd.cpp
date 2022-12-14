@@ -24,6 +24,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/signal.hpp>
@@ -72,7 +73,7 @@ using namespace pldm::flightrecorder;
 void interruptFlightRecorderCallBack(Signal& /*signal*/,
                                      const struct signalfd_siginfo*)
 {
-    std::cerr << "\nReceived SIGUR1(10) Signal interrupt\n";
+    lg2::error("Received SIGUR1(10) Signal interrupt");
 
     // obtain the flight recorder instance and dump the recorder
     FlightRecorder::GetInstance().playRecorder();

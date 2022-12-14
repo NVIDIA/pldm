@@ -3,6 +3,7 @@
 #include <config.h>
 
 #include <common/utils.hpp>
+#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
 #include <iomanip>
@@ -92,8 +93,10 @@ class FlightRecorder
         if (flightRecorderPolicy)
         {
             std::ofstream recorderOutputFile(flightRecorderDumpPath);
-            std::cout << "Dumping the flight recorder into : "
-                      << flightRecorderDumpPath << "\n";
+            lg2::info(
+                "Dumping the flight recorder into : {FLIGHT_RECORDER_DUMPPATH}",
+                "FLIGHT_RECORDER_DUMPPATH",
+                std::string(flightRecorderDumpPath));
 
             for (const auto& message : tapeRecorder)
             {
@@ -118,7 +121,7 @@ class FlightRecorder
         }
         else
         {
-            std::cerr << "Fight recorder policy is disabled\n";
+            lg2::error("Fight recorder policy is disabled");
         }
     }
 };

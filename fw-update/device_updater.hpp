@@ -7,6 +7,7 @@
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
+#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
 
@@ -122,13 +123,12 @@ struct UAState
 
         if (fwDebug)
         {
-            std::cout << "prevSeq = " << unsigned(static_cast<size_t>(prevSeq))
-                      << ", command = "
-                      << unsigned(static_cast<size_t>(command))
-                      << ", currentSeq = "
-                      << unsigned(static_cast<size_t>(current))
-                      << ", compIndex = " << unsigned(compIndex)
-                      << ", numpComps = " << unsigned(numComps) << "\n";
+            lg2::info(
+                "prevSeq = {PREVSEQ}, command = {COMMAND}, currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX}, numComps = {NUMCOMPS}",
+                "PREVSEQ", static_cast<size_t>(prevSeq), "COMMAND",
+                static_cast<size_t>(command), "CURRENTSEQ",
+                static_cast<size_t>(current), "COMPINDEX", compIndex,
+                "NUMCOMPS", numComps);
         }
 
         return current;
@@ -156,10 +156,10 @@ struct UAState
         {
             if (command != current)
             {
-                std::cerr << "Unexpected command: inCmd = "
-                          << unsigned(static_cast<size_t>(command))
-                          << ", currentSeq = "
-                          << unsigned(static_cast<size_t>(current)) << "\n";
+                lg2::error(
+                    "Unexpected command: inCmd = {COMMAND}, currentSeq = {CURRENTSEQ}",
+                    "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                    static_cast<size_t>(current));
             }
             return (command == current);
         }

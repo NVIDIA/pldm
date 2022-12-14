@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 #include <nlohmann/json.hpp>
+#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -26,8 +27,8 @@ void parseConfig(const fs::path& jsonPath,
     auto data = Json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
-        std::cerr << "Parsing fw_update config file failed, FILE=" << jsonPath
-                  << "\n";
+        lg2::error("Parsing fw_update config file failed, FILE={JSONPATH}",
+                   "JSONPATH", jsonPath);
         return;
     }
 

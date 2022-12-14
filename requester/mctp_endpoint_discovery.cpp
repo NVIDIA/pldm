@@ -8,6 +8,7 @@
 #include "common/utils.hpp"
 
 #include <nlohmann/json.hpp>
+#include <phosphor-logging/lg2.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -144,7 +145,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
     }
     catch (const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        lg2::error("Error while getting properties.", "ERROR", e);
     }
 }
 
@@ -175,8 +176,8 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
     auto data = nlohmann::json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
-        std::cerr << "Parsing json file failed, FILE=" << staticEidTablePath
-                  << "\n";
+        lg2::error("Parsing json file failed. FilePath={FILE_PATH}",
+                   "FILE_PATH", std::string(staticEidTablePath));
         return;
     }
 

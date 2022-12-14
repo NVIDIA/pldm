@@ -4,6 +4,8 @@
 
 #include <fmt/format.h>
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <iostream>
 #include <thread>
 
@@ -151,7 +153,7 @@ void Manager::updateSwIdOnSignal(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                std::cerr << e.what() << '\n';
+                lg2::error("SoftwareId set error: {ERROR}", "ERROR", e);
             }
         });
         propertySet.detach();

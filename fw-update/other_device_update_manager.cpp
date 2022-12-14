@@ -12,6 +12,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
@@ -63,7 +64,7 @@ bool OtherDeviceUpdateManager::activate()
         pldm::utils::DBusMapping dbusMapping{path,
                                              Server::Activation::interface,
                                              "RequestedActivation", "string"};
-        std::cerr << "Activating : OBJPATH =" << path << "\n";
+        lg2::info("Activating : OBJPATH = {PATH}", "PATH", path);
         try
         {
             pldm::utils::DBusHandler().setDbusProperty(
@@ -72,8 +73,9 @@ bool OtherDeviceUpdateManager::activate()
         }
         catch (const std::exception& e)
         {
-            std::cerr << "Failed to set resource RequestedActivation :" << path
-                      << " " << std::string(e.what()) << "\n";
+            lg2::error("Failed to set resource RequestedActivation : {PATH}."
+                       " Error={ERROR}",
+                       "PATH", path, "ERROR", e);
             std::string resolution = "Retry firmware update operation";
             std::string messageArg0 = "Firmware Update Service";
             std::string messageArg1 =
@@ -163,7 +165,7 @@ bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        std::cerr << "Failed to set targets :" << std::string(e.what()) << "\n";
+        lg2::error("Failed to set targets : {ERROR}", "ERROR", e);
         // when target filter is specified only selected devices should update
         // return error so that user can retry the update on failed devices
         return false;
@@ -183,8 +185,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
     for (const auto& intf : interfaces)
     {
-        std::cerr << "New Interface Added. OBJPATH=" << path
-                  << ", INTF=" << intf.first << "\n";
+        lg2::info("New Interface Added. OBJPATH={PATH}, INTF={INTF}", "PATH",
+                  path, "INTF", intf.first);
         if (intf.first ==
             sdbusplus::xyz::openbmc_project::Common::server::UUID::interface)
         {
@@ -232,8 +234,9 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                         }
                         catch (const sdbusplus::exception::SdBusError& e)
                         {
-                            std::cerr << "Failed to set extended version :"
-                                      << std::string(e.what()) << "\n";
+                            lg2::error(
+                                "Failed to set extended version : {ERROR}",
+                                "ERROR", e);
                         }
                         if (!setUpdatePolicy(path))
                         {
@@ -295,8 +298,7 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                     std::get<ApplicableComponents>(fwDeviceIDRecord);
                 if (applicableCompVec.size() == 0)
                 {
-                    std::cerr << "Invalid applicable components"
-                              << "\n";
+                    lg2::error("Invalid applicable components");
                     continue;
                 }
                 const auto& componentImageInfo =
@@ -317,12 +319,10 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 }
                 catch (const sdbusplus::exception::SdBusError& e)
                 {
-                    std::cerr
-                        << "failed to get filename :" << std::string(e.what())
-                        << "\n";
+                    lg2::error("failed to get filename.", "ERROR", e);
                     continue;
                 }
-                std::cerr << "Got Filename \"" << fileName << "\"\n";
+                lg2::info("Got Filename {FILENAME}", "FILENAME", fileName);
                 if (fileName == "")
                 {
                     continue;
@@ -336,8 +336,8 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 fileName += "/" + boost::uuids::to_string(
                                       boost::uuids::random_generator()())
                                       .substr(0, 8);
-                std::cerr << "Extracting " << version
-                          << " to fileName : " << fileName << "\n";
+                lg2::info("Extracting {VERSION} to fileName : {FILENAME}",
+                          "VERSION", version, "FILENAME", fileName);
 
                 std::ofstream outfile(fileName, std::ofstream::binary);
                 outfile.write(reinterpret_cast<const char*>(&buffer[0]),
@@ -369,8 +369,8 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
             {
                 if (x.second == false)
                 {
-                    std::cerr << x.first << " not processed at timeout"
-                              << "\n";
+                    lg2::error("{PATH} not processed at timeout", "PATH",
+                               x.first);
                     // update message registry
                     std::string resolution = "Retry firmware update operation";
                     std::string messageArg0 = "Firmware Update Service";
@@ -383,12 +383,9 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
                                                                x.second);
                 }
             }
-            std::cerr << "Activation Timer expired"
-                      << "\n";
         }
     });
-    std::cerr << "Starting Timer to allow item updaters to process images"
-              << "\n";
+    lg2::info("Starting Timer to allow item updaters to process images");
     // Give time to add all activations
     timer->start(std::chrono::seconds(timerExpiryTime), false);
 }
@@ -418,7 +415,7 @@ std::pair<std::string, std::string>
     auto dbusHandler = pldm::utils::DBusHandler();
     for (auto& obj : paths)
     {
-        std::cerr << "Checking path \"" << obj.c_str() << "\"\n";
+        lg2::info("Checking path {OBJPATH}", "OBJPATH", obj);
         auto u = dbusHandler.getDbusProperty<std::string>(
             obj.c_str(), "UUID",
             sdbusplus::xyz::openbmc_project::Common::server::UUID::interface);
@@ -431,7 +428,7 @@ std::pair<std::string, std::string>
                     obj.c_str(), "Path",
                     sdbusplus::xyz::openbmc_project::Common::server::FilePath::
                         interface);
-                std::cerr << "Got Path: \"" << p << "\"\n";
+                lg2::info("Got Path: {OBJPATH}", "OBJPATH", p);
                 if (p != "")
                 {
                     return {std::filesystem::path(p).parent_path(), obj};
@@ -471,9 +468,9 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
         }
         catch (const std::exception& e)
         {
-            std::cerr
-                << "Failed to read UUID property from software D-Bus objects, "
-                << "ERROR=" << e.what() << "\n";
+            lg2::error(
+                "Failed to read UUID property from software D-Bus objects, ERROR={ERROR}",
+                "ERROR", e);
         }
     }
 }
@@ -502,9 +499,9 @@ void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string>& paths)
     }
     catch (const std::exception& e)
     {
-        std::cerr
-            << "Failed to get software D-Bus objects implementing UUID interface, "
-            << "ERROR=" << e.what() << "\n";
+        lg2::error(
+            "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
+            "ERROR", e);
     }
 }
 

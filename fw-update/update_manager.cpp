@@ -4,6 +4,8 @@
 #include "common/utils.hpp"
 #include "package_parser.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <bitset>
 #include <cassert>
 #include <cmath>
@@ -182,9 +184,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         if (activation->activation() ==
             software::Activation::Activations::Activating)
         {
-            std::cerr << "Activation of package already in progress"
-                      << ", PACKAGE_VERSION=" << parser->pkgVersion
-                      << ", clearing the current activation \n";
+            lg2::error(
+                "Activation of package already in progress, PACKAGE_VERSION={PACKAGE_VERSION}, clearing the current activation",
+                "PACKAGE_VERSION", parser->pkgVersion);
         }
         clearActivationInfo();
     }
@@ -202,8 +204,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
     {
-        std::cerr << "No devices found for firmware update"
-                  << "\n";
+        lg2::error("No devices found for firmware update");
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Ready, this);
@@ -214,9 +215,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                  std::ios::binary | std::ios::in | std::ios::ate);
     if (!package.good())
     {
-        std::cerr << "Opening the PLDM FW update package failed, ERR="
-                  << unsigned(errno) << ", PACKAGEFILE=" << packageFilePath
-                  << "\n";
+        lg2::error(
+            "Opening the PLDM FW update package failed, ERR={ERRNO}, PACKAGEFILEPATH={PACKAGEFILEPATH}",
+            "ERRNO", strerror(errno), "PACKAGEFILEPATH", packageFilePath);
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
@@ -226,9 +227,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     uintmax_t packageSize = package.tellg();
     if (packageSize < sizeof(pldm_package_header_information))
     {
-        std::cerr << "PLDM FW update package length less than the length of "
-                     "the package header information, PACKAGESIZE="
-                  << packageSize << "\n";
+        lg2::error(
+            "PLDM FW update package length less than the length of the package header information, PACKAGESIZE={PACKAGESIZE}",
+            "PACKAGESIZE", packageSize);
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
@@ -254,8 +255,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     parser = parsePkgHeader(packageHeader);
     if (parser == nullptr)
     {
-        std::cerr << "Invalid PLDM package header information"
-                  << "\n";
+        lg2::error("Invalid PLDM package header information");
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
@@ -272,8 +272,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Invalid PLDM package header"
-                  << "\n";
+        lg2::error("Invalid PLDM package header");
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Invalid, this);
@@ -286,23 +285,32 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
 
-    std::cout << "Total Components: " << totalNumComponentUpdates << "\n";
+    lg2::info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
+              "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
 
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
     {
-        std::cerr << "EID = " << unsigned(deviceUpdaterInfo.first)
-                  << ", RecordOffset = " << unsigned(deviceUpdaterInfo.second)
-                  << " ComponentIdentifiers = ";
         auto& applicableComponents = std::get<ApplicableComponents>(
             fwDeviceIDRecords[deviceUpdaterInfo.second]);
+        std::string compIdentifiers;
         for (const auto& index : applicableComponents)
         {
             const auto& compImageInfo = compImageInfos[index];
             CompIdentifier compIdentifier = std::get<static_cast<size_t>(
                 ComponentImageInfoPos::CompIdentifierPos)>(compImageInfo);
-            std::cout << unsigned(compIdentifier) << " ";
+            if (compIdentifiers.empty())
+            {
+                compIdentifiers = std::to_string(compIdentifier);
+            }
+            else
+            {
+                compIdentifiers += " " + std::to_string(compIdentifier);
+            }
         }
-        std::cerr << "\n";
+        lg2::info("EID={EID}, RecordOffset={RECORDOFFSET}, ComponentIdentifiers"
+                  "={COMPIDENTIFIERS}",
+                  "EID", deviceUpdaterInfo.first, "RECORDOFFSET",
+                  deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
     }
 
     // get non-pldm components, add to total component count
@@ -314,9 +322,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)
     {
-        std::cerr
-            << "No matching devices found with the PLDM firmware update package"
-            << "\n";
+        lg2::error(
+            "No matching devices found with the PLDM firmware update package");
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Ready, this);
@@ -372,7 +379,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
 
         for (const auto& target : targets)
         {
-            std::cerr << "Target=" << target;
+            lg2::info("Target={TARGET}", "TARGET", target);
         }
 
         for (const auto& [eid, componentIdNameMap] : componentNameMap)
@@ -522,9 +529,9 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     }
     else
     {
-        std::cerr
-            << "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, EID="
-            << unsigned(eid) << "\n";
+        lg2::error(
+            "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, EID={EID}",
+            "EID", eid);
         auto ptr = reinterpret_cast<pldm_msg*>(response.data());
         auto rc = encode_cc_only_resp(request->hdr.instance_id,
                                       request->hdr.type, +request->hdr.command,
@@ -582,8 +589,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
     if ((deviceUpdaterMap.size() == 0) &&
         (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
     {
-        std::cout
-            << "Nothing to activate, Setting Activations state to Active!\n";
+        lg2::info("Nothing to activate, Setting Activations state to Active!");
         activationProgress = std::make_unique<ActivationProgress>(
             pldm::utils::DBusHandler::getBus(), objPath);
         progressTimer->stop();
@@ -691,11 +697,9 @@ void UpdateManager::updatePackageCompletion()
             activation->activation(software::Activation::Activations::Active);
         }
         auto endTime = std::chrono::steady_clock::now();
-        std::cerr << "Firmware update time: "
-                  << std::chrono::duration<double, std::milli>(endTime -
-                                                               startTime)
-                         .count()
-                  << " ms\n";
+        lg2::info("Firmware update time: {UPDATE_TIME} ms", "UPDATE_TIME",
+                  std::chrono::duration<double, std::milli>(endTime - startTime)
+                      .count());
         activationBlocksTransition.reset();
         clearFirmwareUpdatePackage();
     }
@@ -721,8 +725,8 @@ void UpdateManager::updateOtherDeviceComponents(
     {
         if (!success)
         {
-            std::cerr << "Other device manager failed to get " << uuid
-                      << " ready\n";
+            lg2::error("Other device manager failed to get {UUID} ready",
+                       "UUID", uuid);
             /* report the error, but continue on */
         }
     }
@@ -810,8 +814,8 @@ void UpdateManager::createProgressUpdateTimer()
             std::floor((100 * updateInterval) / totalInterval));
         if (fwDebug)
         {
-            std::cerr << "Progress Percent: " << unsigned(progressPercent)
-                      << "\n";
+            lg2::info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
+                       progressPercent);
         }
         activationProgress->progress(progressPercent);
         // percent update should always be less than 100 when task is
@@ -821,7 +825,7 @@ void UpdateManager::createProgressUpdateTimer()
         {
             if (fwDebug)
             {
-                std::cerr << "Firmware update timeout \n";
+                lg2::error("Firmware update timeout");
             }
             progressTimer->stop();
         }

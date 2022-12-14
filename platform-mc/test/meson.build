@@ -53,6 +53,7 @@ foreach t : tests
                          libpldmutils,
                          nlohmann_json,
                          phosphor_dbus_interfaces,
+                         phosphor_logging,
                          sdbusplus,
                          sdeventplus,
                          test_src]),
