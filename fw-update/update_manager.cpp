@@ -38,7 +38,17 @@ UpdateManager::UpdateManager(
     {
         for (const auto& entry :
              std::filesystem::directory_iterator("/tmp/images"))
-            std::filesystem::remove_all(entry.path());
+        {
+            if (entry.is_directory() && entry.path() == "/tmp/images/pldm")
+            {
+                // skip removing pldm directory which contains non-pldm image
+                // directories.
+            }
+            else
+            {
+                std::filesystem::remove_all(entry.path());
+            }
+        }
     }
     progressTimer = nullptr;
 }
