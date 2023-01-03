@@ -123,6 +123,7 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             }
         }
     }
+    aggregationIntf->sensorMetrics(sensorMetric);
     co_return PLDM_SUCCESS;
 }
 
@@ -189,11 +190,11 @@ requester::Coroutine
         case PLDM_SENSOR_ENABLED:
             break;
         case PLDM_SENSOR_DISABLED:
-            sensor->updateReading(true, false);
+            sensor->updateReading(true, false, 0, &sensorMetric);
             co_return completionCode;
         case PLDM_SENSOR_UNAVAILABLE:
         default:
-            sensor->updateReading(false, false);
+            sensor->updateReading(false, false, 0, &sensorMetric);
             co_return completionCode;
     }
 
@@ -223,7 +224,7 @@ requester::Coroutine
             break;
     }
 
-    sensor->updateReading(true, true, value);
+    sensor->updateReading(true, true, value, &sensorMetric);
     co_return completionCode;
 }
 

@@ -10,10 +10,17 @@
 #include "terminus.hpp"
 #include "terminus_manager.hpp"
 
+#include <xyz/openbmc_project/Sensor/Aggregation/server.hpp>
+
 namespace pldm
 {
 namespace platform_mc
 {
+
+using AggregationIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Sensor::server::Aggregation>;
+constexpr auto aggregationDataPath =
+    "/xyz/openbmc_project/inventory/platformmetrics";
 
 /**
  * @brief SensorManager
@@ -37,7 +44,15 @@ class SensorManager
         std::map<tid_t, std::shared_ptr<Terminus>>& termini) :
         event(event),
         terminusManager(terminusManager), termini(termini),
-        pollingTime(SENSOR_POLLING_TIME){};
+        pollingTime(SENSOR_POLLING_TIME)
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        aggregationIntf =
+            std::make_unique<AggregationIntf>(bus, aggregationDataPath);
+        aggregationIntf->sensorMetrics(sensorMetric);
+        aggregationIntf->staleSensorUpperLimitms(
+            STALE_SENSOR_UPPER_LIMITS_POLLING_TIME);
+    };
 
     /** @brief starting sensor polling task
      */
@@ -110,6 +125,13 @@ class SensorManager
 
     /** @brief coroutine handle of doSensorPollingTask */
     std::coroutine_handle<> doSensorPollingTaskHandle;
+
+    std::unique_ptr<AggregationIntf> aggregationIntf = nullptr;
+
+    /** @brief All sensor aggregated metrics, mapping from sensor name to sensor
+     * value, timestamp and chassis path
+     */
+    sensorMap sensorMetric{};
 };
 } // namespace platform_mc
 } // namespace pldm

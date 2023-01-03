@@ -19,7 +19,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     tid(tid),
     sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
-               EntityInstance(pdr->entity_instance_num))
+               EntityInstance(pdr->entity_instance_num)),
+    sensorName(sensorName)
 {
     std::string path;
     SensorUnit sensorUnit = SensorUnit::DegreesC;
@@ -258,10 +259,13 @@ double NumericSensor::unitModifier(double value)
     return value * std::pow(10, baseUnitModifier);
 }
 
-void NumericSensor::updateReading(bool available, bool functional, double value)
+void NumericSensor::updateReading(bool available, bool functional, double value,
+                                  sensorMap* sensorMetrics)
 {
+    double reading{};
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
+
     if (functional && available)
     {
         valueIntf->value(unitModifier(conversionFormula(value)));
@@ -270,6 +274,33 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     else
     {
         valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+    }
+
+    if (sensorMetrics)
+    {
+        std::string endpoint{};
+        auto definitions = associationDefinitionsIntf->associations();
+        if (definitions.size() > 0)
+        {
+            endpoint = std::get<2>(definitions[0]);
+        }
+
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+
+        if (sensorMetrics->find(sensorName) == sensorMetrics->end())
+        {
+            (*sensorMetrics)[sensorName] =
+                std::make_tuple(reading, steadyTimeStamp, endpoint);
+        }
+        else
+        {
+            std::get<0>((*sensorMetrics)[sensorName]) = valueIntf->value();
+            std::get<1>((*sensorMetrics)[sensorName]) = steadyTimeStamp;
+            std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
+        }
     }
 }
 

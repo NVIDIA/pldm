@@ -34,6 +34,11 @@ using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
+using sensorMap = std::map<
+    std::string,
+    std::tuple<std::variant<std::string, int, int16_t, int64_t, uint16_t,
+                            uint32_t, uint64_t, double, bool>,
+               uint64_t, sdbusplus::message::object_path>>;
 
 /**
  * @brief NumericSensor
@@ -56,7 +61,8 @@ class NumericSensor
 
     /** @brief Updating the sensor status to D-Bus interface
      */
-    void updateReading(bool available, bool functional, double value = 0);
+    void updateReading(bool available, bool functional, double value = 0,
+                       sensorMap* sensorMetrics = nullptr);
 
     /** @brief ConversionFormula is used to convert raw value to the unit
      * specified in PDR
