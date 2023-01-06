@@ -29,7 +29,7 @@ const std::string resourceErrorDetected{
  * @return std::string
  */
 inline std::string getService(sdbusplus::bus::bus& bus, const char* path,
-                       const char* interface)
+                              const char* interface)
 {
     using DbusInterfaceList = std::vector<std::string>;
     std::map<std::string, std::vector<std::string>> mapperResponse;
@@ -51,7 +51,7 @@ inline std::string getService(sdbusplus::bus::bus& bus, const char* path,
  * @param[in] value - value to set
  */
 inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
-                     const std::string& value)
+                            const std::string& value)
 {
     auto bus = sdbusplus::bus::new_default();
     std::string dBusService =
@@ -72,9 +72,8 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
  *  @param[in] resolution - Resolution field
  */
 inline void createLogEntry(const std::string& messageID,
-                                   const std::string& arg0,
-                                   const std::string& arg1,
-                                   const std::string& resolution)
+                           const std::string& arg0, const std::string& arg1,
+                           const std::string& resolution)
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =

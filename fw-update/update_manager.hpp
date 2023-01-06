@@ -5,12 +5,12 @@
 
 #include "common/types.hpp"
 #include "device_updater.hpp"
+#include "error_handling.hpp"
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
-#include "error_handling.hpp"
 
 #include <chrono>
 #include <filesystem>

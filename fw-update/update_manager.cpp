@@ -125,7 +125,7 @@ void UpdateManager::createMessageRegistry(
     }
 
     createLogEntry(messageID, compName, compVersion, resolution);
-    if(commandType != 0)
+    if (commandType != 0)
     {
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
             getOemMessage(commandType, errorCode);
@@ -610,7 +610,7 @@ void UpdateManager::clearActivationInfo()
     otherDeviceUpdateManager.reset();
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
-    if(progressTimer)
+    if (progressTimer)
     {
         progressTimer->stop();
     }
@@ -674,7 +674,7 @@ void UpdateManager::updatePackageCompletion()
 void UpdateManager::updateActivationProgress()
 {
     compUpdateCompletedCount++;
-    if(compUpdateCompletedCount == totalNumComponentUpdates)
+    if (compUpdateCompletedCount == totalNumComponentUpdates)
     {
         progressTimer->stop();
         progressTimer.reset();
