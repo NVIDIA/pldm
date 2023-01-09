@@ -745,6 +745,8 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
             updateManager->getActivationMethod(compActivationModification));
+        successCompNames.emplace_back(updateManager->getComponentName(
+            eid, fwDeviceIDRecord, componentIndex));
     }
     else
     {
@@ -883,7 +885,7 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
         return;
     }
 
-    updateManager->updateDeviceCompletion(eid, true);
+    updateManager->updateDeviceCompletion(eid, true, successCompNames);
 }
 
 void DeviceUpdater::printBuffer(bool isTx, const std::vector<uint8_t>& buffer,

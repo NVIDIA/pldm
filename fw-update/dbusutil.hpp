@@ -70,10 +70,12 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
  *  @param[in] arg0 - argument 0
  *  @param[in] arg1 - argument 1
  *  @param[in] resolution - Resolution field
+ *  @param[in] logNamespace - Logging namespace, default is FWUpdate
  */
 inline void createLogEntry(const std::string& messageID,
                            const std::string& arg0, const std::string& arg1,
-                           const std::string& resolution)
+                           const std::string& resolution,
+                           const std::string logNamespace = "FWUpdate")
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -115,8 +117,11 @@ inline void createLogEntry(const std::string& messageID,
         addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
     }
 
-    // use separate container for fwupdate message registry
-    addData["namespace"] = "FWUpdate";
+    if (!logNamespace.empty())
+    {
+        addData["namespace"] = logNamespace;
+    }
+
     auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
     auto severity =
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(

@@ -459,8 +459,26 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     return deviceUpdaterInfos;
 }
 
-void UpdateManager::updateDeviceCompletion(mctp_eid_t eid, bool status)
+void UpdateManager::updateDeviceCompletion(
+    mctp_eid_t eid, bool status,
+    const std::vector<ComponentName>& successCompNames)
 {
+    // Update listCompNames with the components successfully updated
+    if (status && !successCompNames.empty())
+    {
+        for (const auto& compName : successCompNames)
+        {
+            if (listCompNames.empty())
+            {
+                listCompNames += compName;
+            }
+            else
+            {
+                listCompNames += " " + compName;
+            }
+        }
+    }
+
     /* update completion map */
     deviceUpdateCompletionMap.emplace(eid, status);
 
@@ -610,6 +628,7 @@ void UpdateManager::clearActivationInfo()
     otherDeviceUpdateManager.reset();
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
+    listCompNames.clear();
     if (progressTimer)
     {
         progressTimer->stop();
@@ -651,6 +670,17 @@ void UpdateManager::updatePackageCompletion()
     if ((pldmState != software::Activation::Activations::Activating) &&
         (otherState != software::Activation::Activations::Activating))
     {
+        // If atleast one component(PLDM or non-PLDM) succeeded, log
+        // Update.1.0.AwaitToActivate to the Default namespace as summary with
+        // the list of components updated.
+        if (!listCompNames.empty())
+        {
+            createLogEntry(
+                awaitToActivate, listCompNames, parser->pkgVersion,
+                "Perform the requested action to advance the update operation.",
+                "");
+        }
+
         if ((pldmState == software::Activation::Activations::Failed) ||
             (otherState == software::Activation::Activations::Failed))
         {
@@ -705,12 +735,25 @@ void UpdateManager::updateOtherDeviceComponents(
     }
 }
 
-void UpdateManager::updateOtherDeviceCompletion(std::string uuid, bool status)
+void UpdateManager::updateOtherDeviceCompletion(
+    std::string uuid, bool status, const ComponentName& successCompName)
 {
     /* update completion status map */
     if (otherDeviceCompleted.find(uuid) == otherDeviceCompleted.end())
     {
         otherDeviceCompleted.emplace(uuid, status);
+
+        if (status && !successCompName.empty())
+        {
+            if (listCompNames.empty())
+            {
+                listCompNames += successCompName;
+            }
+            else
+            {
+                listCompNames += " " + successCompName;
+            }
+        }
         updateActivationProgress();
         updatePackageCompletion();
     }
@@ -731,6 +774,31 @@ void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
     activation->activation(state);
+}
+
+ComponentName UpdateManager::getComponentName(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex)
+{
+    const auto& compImageInfos = parser->getComponentImageInfos();
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    const auto& comp = compImageInfos[applicableComponents[compIndex]];
+    CompIdentifier compIdentifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            comp);
+    std::string compName{};
+    if (componentNameMap.contains(eid))
+    {
+        auto eidSearch = componentNameMap.find(eid);
+        const auto& compIdNameInfo = eidSearch->second;
+        if (compIdNameInfo.contains(compIdentifier))
+        {
+            auto compIdSearch = compIdNameInfo.find(compIdentifier);
+            compName = compIdSearch->second;
+        }
+    }
+    return compName;
 }
 
 void UpdateManager::createProgressUpdateTimer()

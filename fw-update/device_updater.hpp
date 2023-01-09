@@ -461,6 +461,12 @@ class DeviceUpdater
      */
     Response sendCommandNotExpectedResponse(const pldm_msg* request,
                                             size_t requestLen);
+
+    /**
+     * @brief List of components successfully updated
+     *
+     */
+    std::vector<ComponentName> successCompNames;
 };
 
 } // namespace fw_update

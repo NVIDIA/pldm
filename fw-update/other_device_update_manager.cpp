@@ -105,7 +105,8 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(
             Server::Activation::Activations::Active)
         {
             updateManager->updateOtherDeviceCompletion(
-                otherDevices[objPath]->uuid, true);
+                otherDevices[objPath]->uuid, true,
+                uuidMappings[otherDevices[objPath]->uuid].componentName);
         }
         else if (otherDevices[objPath]->activationState ==
                  Server::Activation::Activations::Failed)

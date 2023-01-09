@@ -80,8 +80,11 @@ class UpdateManager
      *
      *  @param[in] eid - Remote MCTP Endpoint ID
      *  @param[in] status - True to indicate success and false for failure
+     *  @param[in] successCompNames - Name of components successfully updated
      */
-    void updateDeviceCompletion(mctp_eid_t eid, bool status);
+    void updateDeviceCompletion(
+        mctp_eid_t eid, bool status,
+        const std::vector<ComponentName>& successCompNames = {});
 
     /**
      * @brief Increments completed updates and refreshes the reported progress
@@ -210,8 +213,10 @@ class UpdateManager
      *
      * @param uuid UUID of the other device
      * @param status true if successful, false if failed
+     * @param successCompNames - Name of components successfully updated
      */
-    void updateOtherDeviceCompletion(std::string uuid, bool status);
+    void updateOtherDeviceCompletion(std::string uuid, bool status,
+                                     const ComponentName& successCompName = {});
 
     /**
      * @brief Checks that the completion map is full and if there were any
@@ -284,6 +289,22 @@ class UpdateManager
      */
     void setActivationStatus(const software::Activation::Activations& state);
 
+    /**
+     * @brief Get the component name corresponding to the input params
+     *
+     * @param[in] eid - Remote MCTP Endpoint ID
+     * @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
+     *                                package that matches the firmware device
+     * @param[in] compIndex - component index
+     *
+     * @return On success return the component name and empty stricng on no
+     *         match
+     */
+    ComponentName
+        getComponentName(mctp_eid_t eid,
+                         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+                         size_t compIndex);
+
   private:
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;
@@ -329,6 +350,11 @@ class UpdateManager
 #ifdef OEM_NVIDIA
     std::unique_ptr<DebugToken> debugToken;
 #endif
+
+    /** @brief List of components successfully updated. The component names are
+     *         separated by space and to be published in the summary log.
+     */
+    std::string listCompNames;
 
     /**
      * @brief timer to update progress percent
