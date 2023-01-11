@@ -254,7 +254,8 @@ TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
     EXPECT_EQ(parser->pkgHeaderSize, fwPkgHdr.size());
     EXPECT_EQ(parser->pkgVersion, pkgVersion);
     parser->parse(fwPkgHdr, pkgSize);
-    FirmwareDeviceIDRecords outfwDeviceIDRecords = parser->getFwDeviceIDRecords();
+    FirmwareDeviceIDRecords outfwDeviceIDRecords =
+        parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
          {0},
@@ -278,7 +279,8 @@ TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
 TEST_F(PackageParserMultipleDescSameType, DescriptorsNoMatch)
 {
     parser->parse(fwPkgHdr, pkgSize);
-    FirmwareDeviceIDRecords outfwDeviceIDRecords = parser->getFwDeviceIDRecords();
+    FirmwareDeviceIDRecords outfwDeviceIDRecords =
+        parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords incorrectfwDeviceIDRecords{
         {1,
          {0},

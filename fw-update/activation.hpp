@@ -1,7 +1,7 @@
 #pragma once
 
-#include "fw-update/update_manager.hpp"
 #include "dbusutil.hpp"
+#include "fw-update/update_manager.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>

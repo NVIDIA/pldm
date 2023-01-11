@@ -1,8 +1,11 @@
 #include "device_inventory.hpp"
-#include "dbusutil.hpp"
+
 #include "libpldm/firmware_update.h"
 
+#include "dbusutil.hpp"
+
 #include <fmt/format.h>
+
 #include <thread>
 
 namespace pldm::fw_update::device_inventory

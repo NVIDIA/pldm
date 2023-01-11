@@ -4,8 +4,8 @@
 #include "libpldm/firmware_update.h"
 
 #include "../activation.hpp"
-#include "../update_manager.hpp"
 #include "../dbusutil.hpp"
+#include "../update_manager.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 

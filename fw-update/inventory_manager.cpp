@@ -1,9 +1,9 @@
 #include "inventory_manager.hpp"
-#include "dbusutil.hpp"
 
 #include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
+#include "dbusutil.hpp"
 #include "xyz/openbmc_project/Software/Version/server.hpp"
 
 #include <functional>
@@ -56,8 +56,7 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
         std::cerr << "No response received for QueryDeviceIdentifiers, EID="
                   << unsigned(eid) << "\n";
         std::string messageError = "Discovery Timed Out";
-        std::string resolution =
-            "Reset the baseboard and retry the operation.";
+        std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
         mctpEidMap.erase(eid);
         return;
@@ -85,8 +84,7 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
                   << unsigned(eid) << ", CC=" << unsigned(completionCode)
                   << "\n";
         std::string messageError = "Failed to discover";
-        std::string resolution =
-            "Reset the baseboard and retry the operation.";
+        std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
         return;
     }
@@ -193,8 +191,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         std::cerr << "No response received for GetFirmwareParameters, EID="
                   << unsigned(eid) << "\n";
         std::string messageError = "Discovery Timed Out";
-        std::string resolution =
-            "Reset the baseboard and retry the operation.";
+        std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
         descriptorMap.erase(eid);
         mctpEidMap.erase(eid);
@@ -223,8 +220,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
                   << unsigned(eid)
                   << ", CC=" << unsigned(fwParams.completion_code) << "\n";
         std::string messageError = "Failed to discover";
-        std::string resolution =
-            "Reset the baseboard and retry the operation.";
+        std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
         return;
     }

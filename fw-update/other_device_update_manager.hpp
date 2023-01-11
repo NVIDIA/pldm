@@ -3,11 +3,9 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <sdbusplus/timer.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
-
-
-#include <sdbusplus/timer.hpp>
 
 #include <unordered_map>
 

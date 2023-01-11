@@ -11,7 +11,9 @@
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
+#include <boost/asio.hpp>
 #include <nlohmann/json.hpp>
+#include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/server.hpp>
 
 #include <exception>
@@ -20,8 +22,6 @@
 #include <string>
 #include <variant>
 #include <vector>
-#include <boost/asio.hpp>
-#include <sdbusplus/asio/connection.hpp>
 
 namespace pldm
 {
@@ -139,9 +139,10 @@ struct DBusMapping
     std::string propertyType; //!< D-Bus property type
 };
 
-using PropertyValue = std::variant < bool, uint8_t, int16_t, uint16_t, int32_t,
-      uint32_t, int64_t, uint64_t, double, std::string,
-      std::vector<sdbusplus::message::object_path>>;
+using PropertyValue =
+    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
+                 uint64_t, double, std::string,
+                 std::vector<sdbusplus::message::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<
