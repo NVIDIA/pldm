@@ -17,7 +17,7 @@ using ErrorMapping = std::unordered_map<ErrorCode, MessageMapping>;
 using CommandMapping = std::map<pldm_firmware_update_commands, ErrorMapping>;
 
 #ifdef OEM_NVIDIA
-ErrorCode constexpr backgroundCopyInProgress = 0x8A;
+ErrorCode constexpr unableToInitiateUpdate = 0x8A;
 ErrorCode constexpr reqGrantError = 0x70;
 ErrorCode constexpr writeProtectEnabled = 0x71;
 ErrorCode constexpr imageIdentical = 0x90;
@@ -33,10 +33,9 @@ static ErrorMapping requestUpdateMapping{
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
-    {backgroundCopyInProgress,
-     {"Background copy in progress",
-      "Wait for background copy operation to complete. Once the operation"
-      " is complete, retry the firmware update operation."}},
+    {unableToInitiateUpdate,
+     {"ERoT is busy", "Wait for background copy operation to complete and rate"
+                      " limit threshold to be cleared."}},
 #endif
 };
 
