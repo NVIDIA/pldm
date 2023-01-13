@@ -42,6 +42,8 @@ class EventManagerTest : public testing::Test
 
 TEST_F(EventManagerTest, processNumericSensorEventTest)
 {
+#define SENSOR_READING 50
+#define WARNING_HIGH 45
     pldm::tid_t tid = 1;
     termini[tid] = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
@@ -81,12 +83,12 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
         0,
         0,
-        0xc0,
-        0x3f, // resolution=1.5
-        0,
-        0,
         0x80,
-        0x3f, // offset=1.0
+        0x3f, // resolution=1.0
+        0,
+        0,
+        0,
+        0, // offset=1.0
         0,
         0, // accuracy
         0, // plusTolerance
@@ -109,7 +111,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0,                             // nominalValue
         0,                             // normalMax
         0,                             // normalMin
-        45,                            // warningHigh
+        WARNING_HIGH,                  // warningHigh
         20,                            // warningLow
         60,                            // criticalHigh
         10,                            // criticalLow
@@ -123,9 +125,9 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
     uint8_t platformEventStatus = 0;
     EXPECT_EQ(true, rc);
 
-    EXPECT_CALL(eventManager,
-                createSensorThresholdLogEntry(
-                    SensorThresholdWarningHighGoingHigh, _, 50, 45))
+    EXPECT_CALL(eventManager, createSensorThresholdLogEntry(
+                                  SensorThresholdWarningHighGoingHigh, _,
+                                  SENSOR_READING, WARNING_HIGH))
         .Times(1)
         .WillRepeatedly(Return());
     std::vector<uint8_t> eventData{0x1,
@@ -134,7 +136,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
                                    PLDM_SENSOR_UPPERWARNING,
                                    PLDM_SENSOR_NORMAL,
                                    PLDM_SENSOR_DATA_SIZE_UINT8,
-                                   50};
+                                   SENSOR_READING};
     rc = eventManager.handlePlatformEvent(tid, PLDM_SENSOR_EVENT,
                                           eventData.data(), eventData.size(),
                                           platformEventStatus);
@@ -145,6 +147,26 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
 TEST_F(EventManagerTest, getSensorThresholdMessageIdTest)
 {
     std::string messageId{};
+    messageId = eventManager.getSensorThresholdMessageId(PLDM_SENSOR_UNKNOWN,
+                                                         PLDM_SENSOR_NORMAL);
+    EXPECT_EQ(messageId, std::string{});
+
+    messageId = eventManager.getSensorThresholdMessageId(
+        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERWARNING);
+    EXPECT_EQ(messageId, SensorThresholdWarningLowGoingLow);
+
+    messageId = eventManager.getSensorThresholdMessageId(
+        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERCRITICAL);
+    EXPECT_EQ(messageId, SensorThresholdCriticalLowGoingLow);
+
+    messageId = eventManager.getSensorThresholdMessageId(
+        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERWARNING);
+    EXPECT_EQ(messageId, SensorThresholdWarningHighGoingHigh);
+
+    messageId = eventManager.getSensorThresholdMessageId(
+        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERCRITICAL);
+    EXPECT_EQ(messageId, SensorThresholdCriticalHighGoingHigh);
+
     messageId = eventManager.getSensorThresholdMessageId(
         PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERWARNING);
     EXPECT_EQ(messageId, SensorThresholdWarningLowGoingLow);

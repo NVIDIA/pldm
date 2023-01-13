@@ -1,6 +1,7 @@
 #include "event_manager.hpp"
-#include "platform.h"
+
 #include "libpldm/utils.h"
+#include "platform.h"
 
 #include "terminus_manager.hpp"
 
@@ -525,8 +526,10 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
                 default:
                     break;
             }
-            createSensorThresholdLogEntry(messageId, sensor->sensorName,
-                                          reading, threshold);
+            createSensorThresholdLogEntry(
+                messageId, sensor->sensorName,
+                sensor->unitModifier(sensor->conversionFormula(reading)),
+                threshold);
         }
     }
 }
@@ -576,6 +579,7 @@ std::string
                     break;
             }
             break;
+        case PLDM_SENSOR_UNKNOWN:
         case PLDM_SENSOR_NORMAL:
             switch (eventState)
             {
