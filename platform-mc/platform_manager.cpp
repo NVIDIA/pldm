@@ -2,6 +2,8 @@
 
 #include "terminus_manager.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 namespace pldm
 {
 namespace platform_mc
@@ -42,7 +44,8 @@ requester::Coroutine PlatformManager::initTerminus()
                 numberEventClassReturned, eventClass);
             if (rc)
             {
-                std::printf("eventMessageSupported: failed rc=0x%02x\n", rc);
+                lg2::error("failed to send eventMessageSupported, rc={RC}.",
+                           "RC", rc);
                 continue;
             }
 
@@ -76,9 +79,9 @@ requester::Coroutine
                                             repositorySize, largestRecordSize);
     if (rc)
     {
-        std::cerr
-            << "getPDRRepositoryInfo failed and set default value to repositoryState, recordCount and largestRecordSize"
-            << static_cast<unsigned>(rc) << "\n";
+        lg2::error(
+            "getPDRRepositoryInfo failed and set default value to repositoryState, recordCount and largestRecordSize, rc={RC}.",
+            "RC", rc);
         repositoryState = PLDM_AVAILABLE;
         recordCount = std::numeric_limits<uint32_t>::max();
         largestRecordSize = std::numeric_limits<uint32_t>::max();

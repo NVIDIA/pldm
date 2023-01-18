@@ -46,8 +46,8 @@ std::unique_ptr<StateSet>
 #endif
     else
     {
-        std::cerr << "State Sensor PDR Info, Set ID is unknown Id: "
-                  << unsigned(stateSetId) << "\n";
+        lg2::error("State Sensor PDR Info, Set ID is unknown Id:{STATESETID}.",
+                   "STATESETID", stateSetId);
         return nullptr;
     }
 }
@@ -58,8 +58,9 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
 {
     if (effecter == nullptr)
     {
-        std::cerr << "Invalid State Effecter Parameter, Set ID is : "
-                  << unsigned(stateSetId) << "\n";
+        lg2::error(
+            "Invalid State Effecter Parameter, Set ID is : {STATESETID}.",
+            "STATESETID", stateSetId);
         return nullptr;
     }
 
@@ -75,8 +76,9 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
     }
     else
     {
-        std::cerr << "State Effecter PDR Info, Set ID is unknown Id: "
-                  << unsigned(stateSetId) << "\n";
+        lg2::error(
+            "State Effecter PDR Info, Set ID is unknown Id: {STATESETID}.",
+            "STATESETID", stateSetId);
         return nullptr;
     }
 }

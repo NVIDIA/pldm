@@ -127,7 +127,7 @@ void StateEffecter::updateReading(uint8_t compEffecterIndex,
     }
     else
     {
-        std::cerr << "State Effecter updateReading index out of range \n";
+        lg2::error("State Effecter updateReading index out of range.");
     }
 }
 
@@ -139,8 +139,9 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
     auto rc = encode_get_state_effecter_states_req(0, effecterId, requestMsg);
     if (rc)
     {
-        std::cerr << "encode_get_state_effecter_states_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "encode_get_state_effecter_states_req failed, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -162,17 +163,18 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
         stateField.data());
     if (rc)
     {
-        std::cerr << "Failed to decode response of GetStateEffecterStates, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "Failed to decode response of GetStateEffecterStates, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         handleErrGetStateEffecterStates();
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of GetStateEffecterStates, TID="
-                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
+        lg2::error(
+            "Failed to decode response of GetStateEffecterStates, tid={TID}, rc={RC}, cc={CC}.",
+            "TID", tid, "RC", rc, "CC", completionCode);
         handleErrGetStateEffecterStates();
         co_return completionCode;
     }
@@ -195,16 +197,18 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
 
     if (cmpId >= cmpEffCnt)
     {
-        std::cerr << "Request Message Error: cmpId size " << cmpId
-                  << " is invalid, (Maximum " << cmpEffCnt << ") \n";
+        lg2::error(
+            "Request Message Error: cmpId size {CMPID} is invalid, (Maximum {CMPEFFCNT})",
+            "CMPID", cmpId, "CMPEFFCNT", cmpEffCnt);
         co_return PLDM_ERROR_INVALID_DATA;
     }
 
     if (cmpEffCnt > PLDM_COMPOSITE_EFFECTER_MAX_COUNT ||
         cmpEffCnt < PLDM_COMPOSITE_EFFECTER_MIN_COUNT)
     {
-        std::cerr << "Request Message Error: ComEffCnt size " << cmpEffCnt
-                  << "is invalid\n";
+        lg2::error(
+            "Request Message Error: ComEffCnt size  {CMPEFFCNT} is invalid",
+            "CMPEFFCNT", cmpEffCnt);
         co_return PLDM_ERROR_INVALID_DATA;
     }
 
@@ -221,8 +225,9 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
         0, effecterId, cmpEffCnt, stateField.data(), requestMsg);
     if (rc)
     {
-        std::cerr << "encode_set_state_effecter_states_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "encode_set_state_effecter_states_req failed, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -240,9 +245,9 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                &completionCode);
     if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Fail to decode response of setStateEffecterState, TID="
-                  << unsigned(tid) << ", RC=" << rc
-                  << ", CC=" << (int)completionCode << "\n";
+        lg2::error(
+            "Fail to decode response of setStateEffecterState, tid={TID}, rc={RC} cc={CC}.",
+            "TID", tid, "RC", rc, "CC", completionCode);
         co_await getStateEffecterStates();
         co_return (rc == PLDM_SUCCESS) ? completionCode : rc;
     }

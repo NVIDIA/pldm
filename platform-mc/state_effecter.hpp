@@ -4,8 +4,8 @@
 #include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
-#include "requester/handler.hpp"
 #include "platform-mc/oem_base.hpp"
+#include "requester/handler.hpp"
 #include "state_set.hpp"
 
 #include <sdbusplus/server/object.hpp>

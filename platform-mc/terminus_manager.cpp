@@ -237,7 +237,7 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     rc = co_await getPLDMTypes(tid, supportedTypes);
     if (rc)
     {
-        std::cerr << "failed to get PLDM Types\n";
+        lg2::error("failed to get PLDM Types.");
         co_return PLDM_ERROR;
     }
 
@@ -254,8 +254,7 @@ requester::Coroutine
         handler, eid, request, responseMsg, responseLen);
     if (rc)
     {
-        std::cerr << "sendRecvPldmMsgOverMctp failed. rc="
-                  << static_cast<unsigned>(rc) << "\n";
+        lg2::error("sendRecvPldmMsgOverMctp failed. rc={RC}", "RC", rc);
     }
     co_return rc;
 }
@@ -269,8 +268,7 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     if (rc)
     {
         requester.markFree(eid, instanceId);
-        std::cerr << "encode_get_tid_req failed. rc="
-                  << static_cast<unsigned>(rc) << "\n";
+        lg2::error("encode_get_tid_req failed. rc={RC}", "RC", rc);
         co_return rc;
     }
 
@@ -287,8 +285,7 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode, &tid);
     if (rc)
     {
-        std::cerr << "decode_get_tid_resp failed. rc="
-                  << static_cast<unsigned>(rc) << "\n";
+        lg2::error("decode_get_tid_resp failed. rc={RC}", "RC", rc);
         co_return rc;
     }
 
@@ -332,8 +329,7 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
     auto rc = encode_get_types_req(0, requestMsg);
     if (rc)
     {
-        std::cerr << "encode_get_types_req failed. rc="
-                  << static_cast<unsigned>(rc) << "\n";
+        lg2::error("encode_get_types_req failed, rc={RC}.", "RC", rc);
         co_return rc;
     }
 
@@ -352,8 +348,7 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
         decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
     if (rc)
     {
-        std::cerr << "decode_get_types_resp failed. rc="
-                  << static_cast<unsigned>(rc) << "\n";
+        lg2::error("decode_get_types_resp failed, rc={RC}.", "RC", rc);
         co_return rc;
     }
     co_return completionCode;
@@ -370,7 +365,8 @@ requester::Coroutine
         auto mctpInfo = toMctpInfo(tid);
         if (!mctpInfo)
         {
-            std::printf("SendRecvPldmMsg: tid:%d => eid not found\n", tid);
+            lg2::error("SendRecvPldmMsg: cannot find eid for tid:{TID}.", "TID",
+                       tid);
             co_return PLDM_ERROR;
         }
 
@@ -383,7 +379,7 @@ requester::Coroutine
     }
     else
     {
-        std::printf("SendRecvPldmMsg: tid:%d not found\n", tid);
+        lg2::error("SendRecvPldmMsg: tid:{TID} not found.", "TID", tid);
         co_return PLDM_ERROR;
     }
 }

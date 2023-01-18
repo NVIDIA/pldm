@@ -1,10 +1,13 @@
 #include "state_sensor.hpp"
-#include <xyz/openbmc_project/Logging/Entry/server.hpp>
+
 #include "libpldm/platform.h"
 
 #include "common/utils.hpp"
 
 #include <math.h>
+
+#include <phosphor-logging/lg2.hpp>
+#include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <limits>
 #include <regex>
@@ -17,13 +20,12 @@ namespace platform_mc
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
 using Level = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 
-StateSensor::StateSensor(const uint8_t tid,
-                             const bool sensorDisabled,
-                             const uint16_t sensorId,
-                             StateSetInfo sensorInfo,
-                             std::string& sensorName,
-                             std::string& associationPath) :
-    tid(tid), sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true)
+StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
+                         const uint16_t sensorId, StateSetInfo sensorInfo,
+                         std::string& sensorName,
+                         std::string& associationPath) :
+    tid(tid),
+    sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true)
 {
     std::string path = "/xyz/openbmc_project/state/" + sensorName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
@@ -79,8 +81,7 @@ void StateSensor::updateReading(bool available, bool functional,
     }
     else
     {
-        std::cerr << "State Sensor updateReading index out of range"
-                  << std::endl;
+        lg2::error("State Sensor updateReading index out of range");
     }
 }
 
@@ -97,8 +98,7 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
     }
     else
     {
-        std::cerr << "State Sensor updateReading index out of range"
-                  << std::endl;
+        lg2::error("State Sensor event offset out of range");
     }
 }
 
@@ -125,14 +125,15 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
         }
         catch (const std::exception& e)
         {
-            std::cerr
-                << "Failed to create D-Bus log entry for sensor message registry, ERROR="
-                << e.what() << "\n";
+            lg2::error(
+                "Failed to create D-Bus log entry for sensor message registry, {ERROR}.",
+                "ERROR", e);
         }
     };
 
     std::map<std::string, std::string> addData;
-    addData["REDFISH_MESSAGE_ID"] = "ResourceEvent.1.0.ResourceStatusChangedWarning";
+    addData["REDFISH_MESSAGE_ID"] =
+        "ResourceEvent.1.0.ResourceStatusChangedWarning";
     Level level = Level::Informational;
     addData["REDFISH_MESSAGE_ARGS"] = arg1 + "," + arg2;
     addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;

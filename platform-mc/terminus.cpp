@@ -227,8 +227,9 @@ std::shared_ptr<SensorAuxiliaryNames>
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to parse sensorAuxiliaryNamesPDR record handle:"
-                  << unsigned(pdr->hdr.record_handle) << '\n';
+        lg2::error(
+            "Failed to parse sensorAuxiliaryNamesPDR record handle, {ERROR}.",
+            "ERROR", e);
     }
 
     return std::make_shared<SensorAuxiliaryNames>(
@@ -278,8 +279,8 @@ std::shared_ptr<EffecterAuxiliaryNames>
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to parse effecterAuxiliaryNamesPDR record handle:"
-                  << unsigned(pdr->hdr.record_handle) << '\n';
+        lg2::error("Failed to parse effecterAuxiliaryNamesPDR, {ERROR}.",
+                   "ERROR", e);
     }
 
     return std::make_shared<EffecterAuxiliaryNames>(
@@ -298,9 +299,9 @@ void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
     {
         if (entityAssociations[containerId].first != container)
         {
-            std::cerr << "ERROR: TID:" << unsigned(tid)
-                      << " ContainerId:" << containerId
-                      << " has different entity." << '\n';
+            lg2::error(
+                "ERROR: TID:{TID} ContainerId:{CONTAINER_ID} has different entity.",
+                "TID", tid, "CONTAINER_ID", containerId);
             return;
         }
     }
@@ -331,8 +332,8 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
     size_t expectedPDRSize = PLDM_PDR_NUMERIC_SENSOR_PDR_MIN_LENGTH;
     if (pdr.size() < expectedPDRSize)
     {
-        std::cerr << "parseNumericSensorPDR() Corrupted PDR, size="
-                  << pdr.size() << "\n";
+        lg2::error("parseNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+                   "PDRSIZE", pdr.size());
         return nullptr;
     }
 
@@ -360,8 +361,8 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
 
     if (pdr.size() < expectedPDRSize)
     {
-        std::cerr << "parseNumericSensorPDR() Corrupted PDR, size="
-                  << pdr.size() << "\n";
+        lg2::error("parseNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+                   "PDRSIZE", pdr.size());
         return nullptr;
     }
 
@@ -386,8 +387,8 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
 
     if (pdr.size() < expectedPDRSize)
     {
-        std::cerr << "parseNumericSensorPDR() Corrupted PDR, size="
-                  << pdr.size() << "\n";
+        lg2::error("parseNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+                   "PDRSIZE", pdr.size());
         return nullptr;
     }
 
@@ -691,8 +692,8 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
     auto pdr = reinterpret_cast<const pldm_oem_pdr*>(oemPdr.data());
     std::vector<uint8_t> data;
 
-    // vendor-specific data bytes starting from 0; 0 = 1 byte, 1 = 2 bytes, and
-    // so on.
+    // vendor-specific data bytes starting from 0; 0 = 1 byte, 1 = 2 bytes,
+    // and so on.
     data.resize(pdr->data_length + 1);
     memcpy(data.data(), pdr->vendor_specific_data, data.size());
     return std::make_tuple(pdr->vendor_iana, pdr->ome_record_id,
@@ -750,7 +751,7 @@ void Terminus::scanInventories()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to scan inventories" << '\n';
+        lg2::error("Failed to scan inventories");
         return;
     }
 }
@@ -864,7 +865,8 @@ std::string Terminus::findInventory(const EntityInfo entityInfo,
         }
     }
 
-    // Store the result, and also create parent_chassis/all_chassis association
+    // Store the result, and also create parent_chassis/all_chassis
+    // association
     entities.emplace(entityInfo, Entity{inventoryPath, ContainerInventoryPath});
 
     if (inventoryPath.size())
@@ -892,7 +894,8 @@ std::string Terminus::findInventory(const ContainerID contianerId,
     auto itr = entityAssociations.find(contianerId);
     if (itr == entityAssociations.end())
     {
-        std::cerr << "cannot find contianerId:" << contianerId << '\n';
+        lg2::error("cannot find contianerId:{CONTIANERID}", "CONTIANERID",
+                   contianerId);
         return systemInventoryPath;
     }
     const auto& [containerEntity, containedEntities] = itr->second;
@@ -935,8 +938,8 @@ void Terminus::addNumericSensor(
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to create NumericSensor. ERROR=" << e.what()
-                  << "sensorName=" << sensorName << "\n";
+        lg2::error("Failed to create NumericSensor:{SENSORNAME}, {ERROR}.",
+                   "SENSORNAME", sensorName, "ERROR", e);
     }
 }
 
@@ -979,8 +982,8 @@ void Terminus::addNumericEffecter(
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to create NumericEffecter. ERROR=" << e.what()
-                  << " effecterName=" << effecterName << "\n";
+        lg2::error("Failed to create NumericEffecter:{EFFECTERNAME}, {ERROR}.",
+                   "EFFECTERNAME", effecterName, "ERROR", e);
     }
 }
 
@@ -1015,8 +1018,8 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
     }
     catch (const std::exception& e)
     {
-        std::cerr << " Failed to create StateSensor. ERROR =" << e.what()
-                  << " sensorName=" << sensorName << std::endl;
+        lg2::error("Failed to create StateSensor:{SENSORNAME}, {ERROR}.",
+                   "SENSORNAME", sensorName, "ERROR", e);
     }
 }
 
@@ -1052,8 +1055,8 @@ void Terminus::addStateEffecter(EffecterId eId, StateSetInfo effecterInfo)
     }
     catch (const std::exception& e)
     {
-        std::cerr << " Failed to create StateEffecter. ERROR =" << e.what()
-                  << " sensorName=" << effecterName << std::endl;
+        lg2::error("Failed to create NumericEffecter:{EFFECTERNAME}, {ERROR}.",
+                   "EFFECTERNAME", effecterName, "ERROR", e);
     }
 }
 
@@ -1068,9 +1071,8 @@ void Terminus::handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
             return;
         }
     }
-    // no match for sensor ID
-    std::cerr << "handleStateSensorEvent sensor id not found SID="
-              << unsigned(sensorId) << std::endl;
+    lg2::error("handleStateSensorEvent: sensor id, {SENSORID}, not found.",
+               "SENSORID", sensorId);
 }
 
 } // namespace platform_mc

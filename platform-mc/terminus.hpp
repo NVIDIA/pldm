@@ -169,7 +169,7 @@ class Terminus
     void interfaceAdded(sdbusplus::message::message& m);
 
     bool initalized;
-    
+
     /** @brief Handler to invoke when state sensor event is received
      *
      *  @param[in] id - sensor ID

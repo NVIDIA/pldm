@@ -5,6 +5,7 @@
 
 #include "terminus_manager.hpp"
 
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <cerrno>
@@ -31,8 +32,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
                                            &eventClassDataOffset);
         if (rc)
         {
-            std::cerr << "Failed to decode sensor event data, rc= "
-                      << static_cast<unsigned>(rc) << "\n";
+            lg2::error("Failed to decode sensor event data, rc={RC}.", "RC",
+                       rc);
             return rc;
         }
         switch (sensorEventClassType)
@@ -65,24 +66,23 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
                     }
                     else
                     {
-                        std::cout
-                            << "handlePlatformEvent failed to look for tid ="
-                            << unsigned(tid)
-                            << " of sid =" << unsigned(sensorId) << "\n";
+                        lg2::info(
+                            "received a state sensor event,sid={SID}, with invalid tid={TID}",
+                            "SID", sensorId, "TID", tid);
                     }
                 }
                 else
                 {
-                    std::cout
-                        << "decode_state_sensor_data failed for sensor id ="
-                        << unsigned(sensorId) << "\n";
+                    lg2::error(
+                        "failed to decode received state sensor event,sid={SID}.",
+                        "SID", sensorId);
                 }
                 break;
             }
             case PLDM_SENSOR_OP_STATE:
             default:
-                std::cout << "unhandled sensor event, class type="
-                          << unsigned(sensorEventClassType) << "\n";
+                lg2::info("unhandled sensor event, class type={CLASSTYPE}",
+                          "CLASSTYPE", sensorEventClassType);
                 platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
                 break;
         }
@@ -109,8 +109,7 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
 
         if (rc)
         {
-            std::cerr << "Failed to decode CPER event data, rc= "
-                      << static_cast<unsigned>(rc) << "\n";
+            lg2::error("Failed to decode CPER event data, rc={RC}", "RC", rc);
             return rc;
         }
 
@@ -121,7 +120,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         {
             if (!fs::is_directory(dirStatus))
             {
-                std::cerr << "Failed to create " << dirName << "directory\n";
+                lg2::error("Failed to create {DIRNAME} directory", "DIRNAME",
+                           dirName);
                 return PLDM_ERROR;
             }
         }
@@ -134,8 +134,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         auto fd = mkstemp(fileName.data());
         if (fd < 0)
         {
-            std::cerr << "failed to generate temp file:" << std::strerror(errno)
-                      << "\n";
+            lg2::error("Failed to generate temp file:{ERRORNO}", "ERRORNO",
+                       std::strerror(errno));
             return PLDM_ERROR;
         }
         close(fd);
@@ -161,16 +161,15 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         }
         catch (const std::exception& e)
         {
-            auto err = errno;
-            std::cerr << "failed to save CPER to " << fileName << ":"
-                      << std::strerror(err) << "\n";
+            lg2::error("Failed to save CPER to {FILENAME}, {ERROR}.",
+                       "FILENAME", fileName, "ERROR", e);
             return PLDM_ERROR;
         }
     }
     else
     {
-        std::cout << "unhandled event class:"
-                  << static_cast<unsigned>(eventClass) << "\n";
+        lg2::info("unhandled event, event class={EVENTCLASS}", "EVENTCLASS",
+                  eventClass);
         platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
     }
     return PLDM_SUCCESS;
@@ -293,11 +292,9 @@ requester::Coroutine
                     }
                     else
                     {
-                        std::cerr
-                            << "pollForPlatformEventMessageTask: event message(tid:"
-                            << static_cast<unsigned>(tid)
-                            << ",eventId:" << static_cast<unsigned>(eventId)
-                            << ") checksum error\n";
+                        lg2::error(
+                            "pollForPlatformEventMessageTask: event message, tid={TID} eventId={EVENTID} checksum error",
+                            "TID", tid, "EVENTID", eventId);
                     }
                 }
 
@@ -369,8 +366,8 @@ void EventManager::createCperDumpEntry(const std::string& dataType,
         }
         catch (const std::exception& e)
         {
-            std::cerr << "Failed to create D-Bus Dump entry, ERROR=" << e.what()
-                      << "\n";
+            lg2::error("Failed to create D-Bus Dump entry, {ERROR}.", "ERROR",
+                       e);
         }
     };
 
@@ -410,9 +407,9 @@ void EventManager::createSensorThresholdLogEntry(const std::string& messageId,
         }
         catch (const std::exception& e)
         {
-            std::cerr
-                << "Failed to create D-Bus log entry for message registry, ERROR="
-                << e.what() << "\n";
+            lg2::error(
+                "Failed to create D-Bus log entry for message registry, {ERROR}.",
+                "ERROR", e);
         }
     };
 
@@ -443,8 +440,8 @@ void EventManager::createSensorThresholdLogEntry(const std::string& messageId,
     }
     else
     {
-        std::cerr << "Message Registry messageID is not recognised, "
-                  << messageId << "\n";
+        lg2::error("Message Registry messageID is not recognised, {MESSAGEID}",
+                   "MESSAGEID", messageId);
         return;
     }
 

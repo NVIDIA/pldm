@@ -137,8 +137,8 @@ requester::Coroutine
     auto rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
     if (rc)
     {
-        std::cerr << "encode_get_sensor_reading_req failed, TID="
-                  << unsigned(tid) << ", RC=" << unsigned(rc) << std::endl;
+        lg2::error("encode_get_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                   "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -171,17 +171,18 @@ requester::Coroutine
         reinterpret_cast<uint8_t*>(&presentReading));
     if (rc)
     {
-        std::cerr << "Failed to decode response of GetSensorReading, TID="
-                  << unsigned(tid) << ", RC=" << unsigned(rc) << "\n";
+        lg2::error(
+            "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         sensor->handleErrGetSensorReading();
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of GetSensorReading, TID="
-                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
+        lg2::error(
+            "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}, cc={CC}.",
+            "TID", tid, "RC", rc, "CC", completionCode);
         co_return completionCode;
     }
 
@@ -242,9 +243,9 @@ requester::Coroutine
                                                    0x0, requestMsg);
     if (rc)
     {
-        std::cerr << "encode_get_state_sensor_readings_req failed, SID="
-                  << unsigned(sensorId) << " TID=" << unsigned(tid)
-                  << ", RC=" << rc << std::endl;
+        lg2::error(
+            "encode_get_state_sensor_readings_req failed, sid={SID}, tid={TID}, rc={RC}.",
+            "SID", sensorId, "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -255,8 +256,7 @@ requester::Coroutine
 
     if (rc)
     {
-        std::cerr << "SendRecvPldmMsg failed. rc=" << static_cast<unsigned>(rc)
-                  << "\n";
+        lg2::error("SendRecvPldmMsg failed. rc={RC}.", "RC", rc);
         co_return rc;
     }
 
@@ -273,17 +273,17 @@ requester::Coroutine
         stateField.data());
     if (rc)
     {
-        std::cerr << "Failed to decode response of GetStateSensorReadings, SID="
-                  << unsigned(sensorId) << " TID=" << unsigned(tid)
-                  << ", RC=" << rc << "\n";
+        lg2::error(
+            "Failed to decode response of GetStateSensorReadings, sid={SID}, tid={TID}, rc={RC}.",
+            "SID", sensorId, "TID", tid, "RC", rc);
         sensor->handleErrGetSensorReading();
         co_return rc;
     }
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of GetStateSensorReadings, SID="
-                  << unsigned(sensorId) << " TID=" << unsigned(tid)
-                  << ", CC=" << unsigned(completionCode) << "\n";
+        lg2::error(
+            "Failed to decode response of GetStateSensorReadings, sid={SID}, tid={TID}, cc={CC}.",
+            "SID", sensorId, "TID", tid, "CC", completionCode);
         sensor->handleErrGetSensorReading();
         co_return rc;
     }

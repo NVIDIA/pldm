@@ -212,8 +212,9 @@ requester::Coroutine
                                                      requestMsg);
     if (rc)
     {
-        std::cerr << "encode_set_numeric_effecter_enable_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "encode_set_numeric_effecter_enable_req failed, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -230,16 +231,17 @@ requester::Coroutine
     rc = decode_cc_only_resp(responseMsg, payloadLen, &completionCode);
     if (rc)
     {
-        std::cerr << "Failed to decode response of SetEffecterEnable, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "Failed to decode response of SetEffecterEnable, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of SetEffecterEnable, TID="
-                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
+        lg2::error(
+            "Failed to decode response of SetEffecterEnable, tid={TID}, rc={RC}, cc={CC}.",
+            "TID", tid, "RC", rc, "CC", completionCode);
         co_await getNumericEffecterValue();
         co_return completionCode;
     }
@@ -290,8 +292,9 @@ requester::Coroutine
                                                     requestMsg, payloadLength);
     if (rc)
     {
-        std::cerr << "encode_set_numeric_effecter_value_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "encode_set_numeric_effecter_value_req failed, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -309,16 +312,17 @@ requester::Coroutine
                                                 &completionCode);
     if (rc)
     {
-        std::cerr << "Failed to decode response of SetEffecterValue, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "Failed to decode response of SetEffecterValue, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of SetEffecterValue, TID="
-                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
+        lg2::error(
+            "Failed to decode response of SetEffecterValue, tid={TID}, cc={CC}.",
+            "TID", tid, "CC", completionCode);
         co_await getNumericEffecterValue();
         co_return completionCode;
     }
@@ -336,8 +340,9 @@ requester::Coroutine NumericEffecter::getNumericEffecterValue()
     auto rc = encode_get_numeric_effecter_value_req(0, effecterId, requestMsg);
     if (rc)
     {
-        std::cerr << "encode_get_numeric_effecter_value_req failed, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "encode_get_numeric_effecter_value_req failed, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -361,17 +366,18 @@ requester::Coroutine NumericEffecter::getNumericEffecterValue()
         reinterpret_cast<uint8_t*>(&presentValueRaw));
     if (rc)
     {
-        std::cerr << "Failed to decode response of GetEffecterReading, TID="
-                  << unsigned(tid) << ", RC=" << rc << "\n";
+        lg2::error(
+            "Failed to decode response of getNumericEffecterValue, tid={TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         handleErrGetNumericEffecterValue();
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to decode response of GetEffecterReading, TID="
-                  << unsigned(tid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
+        lg2::error(
+            "Failed to decode response of getNumericEffecterValue, tid={TID}, cc={CC}.",
+            "TID", tid, "CC", completionCode);
         handleErrGetNumericEffecterValue();
         co_return completionCode;
     }
