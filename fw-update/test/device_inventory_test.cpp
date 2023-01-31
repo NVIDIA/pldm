@@ -33,7 +33,7 @@ TEST(Entry, Basic)
     Entry entry(busMock, objPath, uuid, assocs, sku);
 }
 
-TEST(Manager, SingleMatch)
+TEST(Manager, SingleMatchForECSKU)
 {
     sdbusplus::SdBusMock sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -51,6 +51,89 @@ TEST(Manager, SingleMatch)
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("ECSKU",
+                           std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+}
+
+TEST(Manager, SingleMatchForAPSKU)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    DeviceInventoryInfo deviceInventoryInfo{
+        {uuid,
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}};
+    const EID eid = 1;
+    const DescriptorMap descriptorMap{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU",
+                           std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+}
+
+TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    DeviceInventoryInfo deviceInventoryInfo{
+        {uuid,
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {objPath}}}};
+    const EID eid = 1;
+    const DescriptorMap descriptorMap{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x56})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU",
+                           std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+}
+
+TEST(Manager, SingleMatchForAPSKUwithUpdate)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    DeviceInventoryInfo deviceInventoryInfo{
+        {uuid,
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {objPath}}}};
+    const EID eid = 1;
+    const DescriptorMap descriptorMap{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU",
                            std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
