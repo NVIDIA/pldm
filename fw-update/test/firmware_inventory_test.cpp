@@ -1,4 +1,5 @@
 #include "common/test/mocked_utils.hpp"
+#define private public
 #include "fw-update/firmware_inventory.hpp"
 
 #include <sdbusplus/bus.hpp>
@@ -15,6 +16,9 @@ using ::testing::Invoke;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::StrEq;
+using ::testing::Return;
+using ::testing::DoAll;
+using ::testing::_;
 
 TEST(Entry, Basic)
 {
@@ -104,6 +108,40 @@ TEST(Manager, SingleMatch)
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
             }));
+
+    sdbusplus::message::object_path deviceObjPath{
+        "/xyz/openbmc_project/inventory/chassis/bmc"};
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    manager.createEntry(eid, uuid, deviceObjPath);
+}
+
+TEST(Manager, SingleMatchTwoComponents)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    EID eid = 1;
+    const std::string activeCompVersion1{"Comp1v2.0"};
+    const std::string activeCompVersion2{"Comp2v3.0"};
+    constexpr uint16_t compClassification1 = 10;
+    constexpr uint16_t compIdentifier1 = 300;
+    constexpr uint8_t compClassificationIndex1 = 20;
+    constexpr uint16_t compClassification2 = 16;
+    constexpr uint16_t compIdentifier2 = 301;
+    constexpr uint8_t compClassificationIndex2 = 30;
+    ComponentInfoMap componentInfoMap{
+        {eid,
+         {{std::make_pair(compClassification1, compIdentifier1),
+           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+          {std::make_pair(compClassification2, compIdentifier2),
+           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string compName1{"CompName1"};
+
+    FirmwareInventoryInfo fwInventoryInfo{
+        {uuid, {{{compIdentifier1, compName1}, {compIdentifier2, compName1}}, {}}}};
 
     sdbusplus::message::object_path deviceObjPath{
         "/xyz/openbmc_project/inventory/chassis/bmc"};
@@ -202,4 +240,61 @@ TEST(Manager, MulipleMatch)
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
     manager.createEntry(eid1, uuid1, deviceObjPath);
     manager.createEntry(eid2, uuid2, deviceObjPath);
+}
+
+TEST(Manager, test_private_method_updateSwId)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+
+    EID eid = 1;
+    const std::string activeCompVersion1{"Comp1v2.0"};
+    const std::string activeCompVersion2{"Comp2v3.0"};
+    constexpr uint16_t compClassification1 = 10;
+    constexpr uint16_t compIdentifier1 = 300;
+    constexpr uint8_t compClassificationIndex1 = 20;
+    constexpr uint16_t compClassification2 = 16;
+    constexpr uint16_t compIdentifier2 = 301;
+    constexpr uint8_t compClassificationIndex2 = 30;
+    ComponentInfoMap componentInfoMap{
+        {eid,
+         {{std::make_pair(compClassification1, compIdentifier1),
+           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+          {std::make_pair(compClassification2, compIdentifier2),
+           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+
+    const std::string compName1{"CompName1"};
+    FirmwareInventoryInfo fwInventoryInfo{
+        {uuid, {{{compIdentifier1, compName1}, {compIdentifier2, compName1}}, {}}}};
+    const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
+
+
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    
+    EXPECT_NO_THROW({
+        manager.updateSwId(objPath, compName1);
+    });
+}
+
+TEST(Manager, test_private_method_updateSwId_emptyObjPath)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+
+    const std::string compName1{"CompName1"};
+    FirmwareInventoryInfo fwInventoryInfo{};
+
+    const std::string emptyObjPath;
+
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    
+    EXPECT_NO_THROW({
+        manager.updateSwId(emptyObjPath, compName1);
+    });
 }
