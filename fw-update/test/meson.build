@@ -20,6 +20,7 @@ tests = [
   'config_test',
   'device_inventory_test',
   'firmware_inventory_test',
+  'other_device_update_manager_test',
   'update_manager_pkg_association_test',
   'activation_test',
 ]
