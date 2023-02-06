@@ -275,12 +275,7 @@ class Handler
             // Got a response for a PLDM request message not registered with the
             // request handler, so freeing up the instance ID, this can be other
             // OpenBMC applications relying on PLDM D-Bus apis like
-            // openpower-occ-control and softoff
-            lg2::error("Response received after timeout or for not registered "
-                       "request EID={EID},InstanceID={INSTANCEID},Type={TYPE},"
-                       "Command={COMMAND}",
-                       "EID", eid, "INSTANCEID", instanceId, "TYPE", type,
-                       "COMMAND", command);
+            // openpower-occ-control and softoff or through pldmtool.
             requester.markFree(key.eid, key.instanceId);
         }
         runRegisteredRequest(eid);
