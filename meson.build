@@ -78,6 +78,7 @@ conf_data.set('INSTANCE_ID_EXPIRATION_INTERVAL',get_option('instance-id-expirati
 conf_data.set('RESPONSE_TIME_OUT',get_option('response-time-out'))
 conf_data.set('FLIGHT_RECORDER_MAX_ENTRIES',get_option('flightrecorder-max-entries'))
 conf_data.set('FIRMWARE_UPDATE_TIME', get_option('firmware-update-time'))
+conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR', get_option('firmware-package-staging-dir'))
 conf_data.set('PROGRESS_UPDATE_INTERVAL', get_option('progress-percent-updater-interval'))
 if get_option('libpldm-only').disabled()
   conf_data.set_quoted('HOST_EID_PATH', join_paths(package_datadir, 'host_eid'))

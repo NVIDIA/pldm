@@ -44,3 +44,4 @@ option('fw-update-skip-package-size-check', type: 'feature', description: 'Skip 
 option('pldm-type2', type: 'feature', description: 'Support for PLDM Type-2', value: 'disabled')
 option('firmware-update-time', type: 'integer', min: 5, max: 30, description: 'Time in minutes for firmware update to complete. Note: This value should be greater than webserver task timeout.', value: 20)
 option('progress-percent-updater-interval', type: 'integer', min: 1, max: 4, description: 'Time in minutes to update progress percent', value: 4)
+option('firmware-package-staging-dir', type: 'string', description: 'Firmware package staging directory for PLDM packages. This path will be used by bmcweb to copy the firmware update package.', value: '/tmp/images')

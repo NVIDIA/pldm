@@ -36,12 +36,14 @@ UpdateManager::UpdateManager(
     updatePolicy = std::make_unique<UpdatePolicy>(
         pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
 
-    if (std::filesystem::exists("/tmp/images"))
+    if (std::filesystem::exists(FIRMWARE_PACKAGE_STAGING_DIR))
     {
         for (const auto& entry :
-             std::filesystem::directory_iterator("/tmp/images"))
+             std::filesystem::directory_iterator(FIRMWARE_PACKAGE_STAGING_DIR))
         {
-            if (entry.is_directory() && entry.path() == "/tmp/images/pldm")
+            if (entry.is_directory() &&
+                entry.path() ==
+                    (std::string{FIRMWARE_PACKAGE_STAGING_DIR} + "/pldm"))
             {
                 // skip removing pldm directory which contains non-pldm image
                 // directories.

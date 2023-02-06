@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include "config.h"
 
 namespace pldm
 {
