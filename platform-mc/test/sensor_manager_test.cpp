@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "mock_sensor_manager.hpp"
 
 #include <sdeventplus/event.hpp>
@@ -53,9 +55,12 @@ class SensorManagerTest : public testing::Test
 
 TEST_F(SensorManagerTest, sensorPollingTest)
 {
+    uint64_t seconds = 10;
+    uint64_t expectedTimes = (seconds * 1000) / SENSOR_POLLING_TIME;
+
     EXPECT_CALL(sensorManager, doSensorPolling())
-        .Times(Between(9, 11))
+        .Times(Between(expectedTimes - 2, expectedTimes + 2))
         .WillRepeatedly(Return());
     sensorManager.startPolling();
-    runEventLoopForSeconds(11);
+    runEventLoopForSeconds(seconds);
 }

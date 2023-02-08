@@ -39,12 +39,13 @@ class SensorManager
     SensorManager& operator=(SensorManager&&) = delete;
     virtual ~SensorManager() = default;
 
-    explicit SensorManager(
-        sdeventplus::Event& event, TerminusManager& terminusManager,
-        std::map<tid_t, std::shared_ptr<Terminus>>& termini) :
+    explicit SensorManager(sdeventplus::Event& event,
+                           TerminusManager& terminusManager,
+                           std::map<tid_t, std::shared_ptr<Terminus>>& termini,
+                           bool verbose = false) :
         event(event),
         terminusManager(terminusManager), termini(termini),
-        pollingTime(SENSOR_POLLING_TIME)
+        pollingTime(SENSOR_POLLING_TIME), verbose(verbose)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         aggregationIntf =
@@ -117,7 +118,7 @@ class SensorManager
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
 
-    /** @brief sensor polling interval in sec. */
+    /** @brief sensor polling interval in ms. */
     uint32_t pollingTime;
 
     /** @brief sensor polling timer */
@@ -132,6 +133,9 @@ class SensorManager
      * value, timestamp and chassis path
      */
     sensorMap sensorMetric{};
+
+    /** @brief verbose tracing flag */
+    bool verbose;
 };
 } // namespace platform_mc
 } // namespace pldm

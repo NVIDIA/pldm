@@ -36,12 +36,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
-                     Requester& requester) :
+                     Requester& requester, bool verbose = false) :
         terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
                         this),
         platformManager(terminusManager, termini),
-        sensorManager(event, terminusManager, termini),
-        eventManager(event, terminusManager, termini)
+        sensorManager(event, terminusManager, termini, verbose),
+        eventManager(event, terminusManager, termini), verbose(verbose)
     {}
 
     requester::Coroutine beforeDiscoverTerminus()
@@ -134,6 +134,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     PlatformManager platformManager;
     SensorManager sensorManager;
     EventManager eventManager;
+    bool verbose;
 };
 } // namespace platform_mc
 } // namespace pldm

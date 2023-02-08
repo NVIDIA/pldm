@@ -142,7 +142,8 @@ int main(int argc, char** argv)
 
 #ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
-        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq);
+        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
+                                               verbose);
 #endif
 
 #ifdef LIBPLDMRESPONDER

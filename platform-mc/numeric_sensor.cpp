@@ -262,7 +262,6 @@ double NumericSensor::unitModifier(double value)
 void NumericSensor::updateReading(bool available, bool functional, double value,
                                   sensorMap* sensorMetrics)
 {
-    double reading{};
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
 
@@ -293,7 +292,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
         if (sensorMetrics->find(sensorName) == sensorMetrics->end())
         {
             (*sensorMetrics)[sensorName] =
-                std::make_tuple(reading, steadyTimeStamp, endpoint);
+                std::make_tuple(valueIntf->value(), steadyTimeStamp, endpoint);
         }
         else
         {

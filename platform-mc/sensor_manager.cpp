@@ -21,7 +21,8 @@ void SensorManager::startPolling()
     if (!sensorPollTimer->isRunning())
     {
         sensorPollTimer->start(
-            duration_cast<std::chrono::seconds>(seconds(pollingTime)), true);
+            duration_cast<std::chrono::milliseconds>(milliseconds(pollingTime)),
+            true);
     }
 }
 
@@ -38,9 +39,16 @@ requester::Coroutine SensorManager::doSensorPollingTask()
     uint64_t t0 = 0;
     uint64_t t1 = 0;
     uint64_t elapsed = 0;
-    uint64_t pollingTimeInUsec = pollingTime * 1000000;
+    uint64_t pollingTimeInUsec = pollingTime * 1000;
+    uint64_t start = 0;
+    uint64_t end = 0;
 
-    sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
+    if (verbose)
+    {
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &start);
+        lg2::info("start sensor polling at {NOW}.", "NOW", start);
+    }
+
     for (auto& terminus : termini)
     {
         for (auto& sensor : terminus.second->numericSensors)
@@ -124,6 +132,14 @@ requester::Coroutine SensorManager::doSensorPollingTask()
         }
     }
     aggregationIntf->sensorMetrics(sensorMetric);
+
+    if (verbose)
+    {
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &end);
+        lg2::info("end sensor polling at {END}. duration(us):{DELTA}", "END",
+                  end, "DELTA", end - start);
+    }
+
     co_return PLDM_SUCCESS;
 }
 
