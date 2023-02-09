@@ -34,6 +34,9 @@ static ErrorMapping requestUpdateMapping{
     {COMMAND_TIMEOUT,
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
+     {"Invalid state in FD while initiating firmware update",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {unableToInitiateUpdate,
      {"ERoT is busy", "Wait for background copy operation to complete and rate"
@@ -45,11 +48,17 @@ static ErrorMapping requestUpdateMapping{
 static ErrorMapping passComponentTblMapping{
     {COMMAND_TIMEOUT,
      {"Initiating firmware update timed out",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
+     {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}}};
 /* update component error mapping */
 static ErrorMapping updateComponentMapping{
     {COMMAND_TIMEOUT,
      {"Initiating component update timed out",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
+     {"Invalid state in FD while initiating component update",
       "Retry firmware update operation"}}};
 
 /* request firmware data error mapping */

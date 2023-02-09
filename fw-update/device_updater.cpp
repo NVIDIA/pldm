@@ -276,8 +276,19 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
     {
         // Handle error scenario
         lg2::error(
-            "PassComponentTable response failed with error completion code, EID={EID}, CC={CC}",
+            "PassComponentTable response failed with error completion code,"
+            " EID={EID}, CC={CC}",
             "EID", eid, "CC", completionCode);
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE,
+                          PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
+        updateManager->updateDeviceCompletion(eid, false);
         uaState.set(UASequence::Invalid);
         return;
     }
@@ -424,9 +435,13 @@ void DeviceUpdater::updateComponent(mctp_eid_t eid, const pldm_msg* response,
     }
     if (completionCode)
     {
-        lg2::error(
-            "UpdateComponent response failed with error completion code, EID={EID}, CC={CC}",
-            "EID", eid, "CC", completionCode);
+        lg2::error("UpdateComponent response failed with error completion code,"
+                   " EID={EID}, CC={CC}",
+                   "EID", eid, "CC", completionCode);
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_UPDATE_COMPONENT, PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
+        updateManager->updateDeviceCompletion(eid, false);
         uaState.set(UASequence::Invalid);
         return;
     }
