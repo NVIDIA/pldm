@@ -152,6 +152,10 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
         deviceIdentifiersLen -= nextDescriptorOffset;
     }
 
+    if (descriptorMap.contains(eid))
+    {
+        descriptorMap.erase(eid);
+    }
     descriptorMap.emplace(eid, std::move(descriptors));
 
     // Send GetFirmwareParameters request
@@ -262,6 +266,10 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         compParamTableLen -= sizeof(pldm_component_parameter_entry) +
                              activeCompVerStr.length + pendingCompVerStr.length;
     }
+    if (componentInfoMap.contains(eid))
+    {
+        componentInfoMap.erase(eid);
+    }
     componentInfoMap.emplace(eid, std::move(componentInfo));
 
     // If there are multiple endpoints associated with the same device, then
@@ -279,6 +287,27 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
             auto search = mctpInfoMap.find(uuid);
             const auto& prevTop = search->second.top();
             auto prevTopEid = prevTop.eid;
+            for (auto& mctpInfo : search->second)
+            {
+                if (mctpInfo.eid == eid)
+                {
+                    if (prevTopEid == eid)
+                    {
+                        lg2::info("Top EID in the queue matches with current "
+                                  "EID. Skip erasing the map for EID={EID}",
+                                  "EID", eid);
+                    }
+                    else
+                    {
+                        lg2::info("Top EID does not match with current EID."
+                                  " Erasing descriptor map for EID={EID}",
+                                  "EID", eid);
+                        descriptorMap.erase(eid);
+                        componentInfoMap.erase(eid);
+                    }
+                    return;
+                }
+            }
             search->second.push({eid, mediumType});
             const auto& top = search->second.top();
             if (prevTopEid == top.eid)

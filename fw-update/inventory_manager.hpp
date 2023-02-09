@@ -36,7 +36,19 @@ struct MctpEidInfo
     }
 };
 
-using MctpInfoMap = std::unordered_map<UUID, std::priority_queue<MctpEidInfo>>;
+struct MCTPEidInfoPriorityQueue : std::priority_queue<MctpEidInfo>
+{
+    auto begin() const
+    {
+        return c.begin();
+    }
+    auto end() const
+    {
+        return c.end();
+    }
+};
+
+using MctpInfoMap = std::unordered_map<UUID, MCTPEidInfoPriorityQueue>;
 
 /** @class InventoryManager
  *
