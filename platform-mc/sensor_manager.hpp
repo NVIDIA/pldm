@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config.h"
+
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
 
@@ -11,6 +13,8 @@
 #include "terminus_manager.hpp"
 
 #include <xyz/openbmc_project/Sensor/Aggregation/server.hpp>
+
+#include <queue>
 
 namespace pldm
 {
@@ -39,21 +43,11 @@ class SensorManager
     SensorManager& operator=(SensorManager&&) = delete;
     virtual ~SensorManager() = default;
 
-    explicit SensorManager(sdeventplus::Event& event,
-                           TerminusManager& terminusManager,
-                           std::map<tid_t, std::shared_ptr<Terminus>>& termini,
-                           bool verbose = false) :
-        event(event),
-        terminusManager(terminusManager), termini(termini),
-        pollingTime(SENSOR_POLLING_TIME), verbose(verbose)
-    {
-        auto& bus = pldm::utils::DBusHandler::getBus();
-        aggregationIntf =
-            std::make_unique<AggregationIntf>(bus, aggregationDataPath);
-        aggregationIntf->sensorMetrics(sensorMetric);
-        aggregationIntf->staleSensorUpperLimitms(
-            STALE_SENSOR_UPPER_LIMITS_POLLING_TIME);
-    };
+    explicit SensorManager(
+        sdeventplus::Event& event, TerminusManager& terminusManager,
+        std::map<tid_t, std::shared_ptr<Terminus>>& termini,
+        bool verbose = false,
+        const std::filesystem::path& configJson = PLDM_T2_CONFIG_JSON);
 
     /** @brief starting sensor polling task
      */
@@ -110,6 +104,22 @@ class SensorManager
     requester::Coroutine
         getStateSensorReadings(std::shared_ptr<StateSensor> sensor);
 
+    /** @brief check if numeric sensor is in priority name spaces
+     *
+     *  @param[in] sensor - the sensor to be checked
+     *
+     *  @return bool - true:is in priority
+     */
+    bool isPriority(std::shared_ptr<NumericSensor> sensor);
+
+    /** @brief check if numeric sensor is in aggregation name spaces
+     *
+     *  @param[in] sensor - the sensor to be checked
+     *
+     *  @return bool - true:is in priority
+     */
+    bool inSensorMetrics(std::shared_ptr<NumericSensor> sensor);
+
     sdeventplus::Event& event;
 
     /** @brief reference of terminusManager */
@@ -127,6 +137,7 @@ class SensorManager
     /** @brief coroutine handle of doSensorPollingTask */
     std::coroutine_handle<> doSensorPollingTaskHandle;
 
+    /** @brief aggregation Interface */
     std::unique_ptr<AggregationIntf> aggregationIntf = nullptr;
 
     /** @brief All sensor aggregated metrics, mapping from sensor name to sensor
@@ -136,6 +147,18 @@ class SensorManager
 
     /** @brief verbose tracing flag */
     bool verbose;
+
+    /** @brief aggregation SensorNameSpace list */
+    std::vector<std::string> aggregationSensorNameSpaces;
+
+    /** @brief priority SensorNameSpace list */
+    std::vector<std::string> prioritySensorNameSpaces;
+
+    /** @brief priority sensor list */
+    std::vector<std::shared_ptr<NumericSensor>> prioritySensors;
+
+    /** @brief round robin sensor list */
+    std::queue<std::shared_ptr<NumericSensor>> roundRobinSensors;
 };
 } // namespace platform_mc
 } // namespace pldm

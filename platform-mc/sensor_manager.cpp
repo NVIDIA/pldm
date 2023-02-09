@@ -9,8 +9,121 @@ namespace platform_mc
 
 using namespace std::chrono;
 
+SensorManager::SensorManager(
+    sdeventplus::Event& event, TerminusManager& terminusManager,
+    std::map<tid_t, std::shared_ptr<Terminus>>& termini, bool verbose,
+    const std::filesystem::path& configJson) :
+    event(event),
+    terminusManager(terminusManager), termini(termini),
+    pollingTime(SENSOR_POLLING_TIME), verbose(verbose)
+{
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    aggregationIntf =
+        std::make_unique<AggregationIntf>(bus, aggregationDataPath);
+
+    aggregationIntf->sensorMetrics(sensorMetric);
+    aggregationIntf->staleSensorUpperLimitms(
+        STALE_SENSOR_UPPER_LIMITS_POLLING_TIME);
+
+    // default priority sensor name spaces
+    prioritySensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/temperature/");
+    prioritySensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/power/");
+    prioritySensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/energy/");
+
+    // default aggregation sensor name spaces
+    aggregationSensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/temperature/");
+    aggregationSensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/power/");
+    aggregationSensorNameSpaces.emplace_back(
+        "/xyz/openbmc_project/sensors/energy/");
+
+    if (!std::filesystem::exists(configJson))
+    {
+        return;
+    }
+
+    std::ifstream jsonFile(configJson);
+    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
+    if (data.is_discarded())
+    {
+        lg2::error("Parsing json file failed. FilePath={FILE_PATH}",
+                   "FILE_PATH", std::string(configJson));
+        return;
+    }
+
+    // load priority sensor name spaces
+    const std::vector<std::string> emptyStringArray{};
+    auto nameSpaces = data.value("PrioritySensorNameSpaces", emptyStringArray);
+    if (nameSpaces.size() > 0)
+    {
+        prioritySensorNameSpaces.clear();
+        for (const auto& nameSpace : nameSpaces)
+        {
+            prioritySensorNameSpaces.emplace_back(nameSpace);
+        }
+    }
+
+    // load aggregation sensor name spaces
+    nameSpaces = data.value("AggregationSensorNameSpaces", emptyStringArray);
+    if (nameSpaces.size() > 0)
+    {
+        aggregationSensorNameSpaces.clear();
+        for (const auto& nameSpace : nameSpaces)
+        {
+            aggregationSensorNameSpaces.emplace_back(nameSpace);
+        }
+    }
+}
+
+bool SensorManager::isPriority(std::shared_ptr<NumericSensor> sensor)
+{
+    return (std::find(prioritySensorNameSpaces.begin(),
+                      prioritySensorNameSpaces.end(),
+                      sensor->sensorNameSpace) !=
+            prioritySensorNameSpaces.end());
+}
+
+bool SensorManager::inSensorMetrics(std::shared_ptr<NumericSensor> sensor)
+{
+    return (std::find(aggregationSensorNameSpaces.begin(),
+                      aggregationSensorNameSpaces.end(),
+                      sensor->sensorNameSpace) !=
+            aggregationSensorNameSpaces.end());
+}
+
 void SensorManager::startPolling()
 {
+    // initialize prioritySensors and roundRobinSensors list
+    for (auto& terminus : termini)
+    {
+        for (auto& sensor : terminus.second->numericSensors)
+        {
+            if (isPriority(sensor))
+            {
+                sensor->isPriority = true;
+                prioritySensors.emplace_back(sensor);
+            }
+            else
+            {
+                sensor->isPriority = false;
+                roundRobinSensors.push(sensor);
+            }
+
+            if (inSensorMetrics(sensor))
+            {
+                sensor->inSensorMetrics = true;
+            }
+            else
+            {
+                sensor->inSensorMetrics = false;
+            }
+        }
+    }
+
     if (!sensorPollTimer)
     {
         sensorPollTimer = std::make_unique<phosphor::Timer>(
@@ -28,6 +141,14 @@ void SensorManager::startPolling()
 
 void SensorManager::stopPolling()
 {
+    prioritySensors.clear();
+
+    // empty roundRobinSensors list
+    while (!roundRobinSensors.empty())
+    {
+        roundRobinSensors.pop();
+    }
+
     if (sensorPollTimer)
     {
         sensorPollTimer->stop();
@@ -40,38 +161,15 @@ requester::Coroutine SensorManager::doSensorPollingTask()
     uint64_t t1 = 0;
     uint64_t elapsed = 0;
     uint64_t pollingTimeInUsec = pollingTime * 1000;
-    uint64_t start = 0;
-    uint64_t end = 0;
 
+    sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
     if (verbose)
     {
-        sd_event_now(event.get(), CLOCK_MONOTONIC, &start);
-        lg2::info("start sensor polling at {NOW}.", "NOW", start);
+        lg2::info("start sensor polling at {NOW}.", "NOW", t0);
     }
 
     for (auto& terminus : termini)
     {
-        for (auto& sensor : terminus.second->numericSensors)
-        {
-            if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
-            {
-                continue;
-            }
-
-            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-            elapsed = t1 - t0;
-            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
-            if (sensor->elapsedTime >= sensor->updateTime)
-            {
-                co_await getSensorReading(sensor);
-                if (sensorPollTimer && !sensorPollTimer->isRunning())
-                {
-                    co_return PLDM_ERROR;
-                }
-                sensor->elapsedTime = 0;
-            }
-        }
-
         for (auto& effecter : terminus.second->numericEffecters)
         {
             // GetNumericEffecterValue
@@ -131,13 +229,53 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             }
         }
     }
+
+    // poll priority Sensors
+    for (auto& sensor : prioritySensors)
+    {
+        if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
+        {
+            continue;
+        }
+
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+        elapsed = t1 - t0;
+        sensor->elapsedTime += (pollingTimeInUsec + elapsed);
+        if (sensor->elapsedTime >= sensor->updateTime)
+        {
+            co_await getSensorReading(sensor);
+            if (sensorPollTimer && !sensorPollTimer->isRunning())
+            {
+                co_return PLDM_ERROR;
+            }
+            sensor->elapsedTime = 0;
+        }
+    }
+
+    // poll roundRobin Sensors
+    sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+    auto toBeUpdated = roundRobinSensors.size();
+    while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0))
+    {
+        auto sensor = roundRobinSensors.front();
+        co_await getSensorReading(sensor);
+        if (sensorPollTimer && !sensorPollTimer->isRunning())
+        {
+            co_return PLDM_ERROR;
+        }
+        toBeUpdated--;
+        roundRobinSensors.pop();
+        roundRobinSensors.push(std::move(sensor));
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+    }
+
     aggregationIntf->sensorMetrics(sensorMetric);
 
     if (verbose)
     {
-        sd_event_now(event.get(), CLOCK_MONOTONIC, &end);
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         lg2::info("end sensor polling at {END}. duration(us):{DELTA}", "END",
-                  end, "DELTA", end - start);
+                  t1, "DELTA", t1 - t0);
     }
 
     co_return PLDM_SUCCESS;

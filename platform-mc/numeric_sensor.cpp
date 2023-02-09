@@ -20,7 +20,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
-    sensorName(sensorName)
+    sensorName(sensorName), inSensorMetrics(false), isPriority(false)
 {
     std::string path;
     SensorUnit sensorUnit = SensorUnit::DegreesC;
@@ -28,35 +28,35 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     switch (pdr->base_unit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
-            path = "/xyz/openbmc_project/sensors/temperature/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/temperature/";
             sensorUnit = SensorUnit::DegreesC;
             break;
         case PLDM_SENSOR_UNIT_VOLTS:
-            path = "/xyz/openbmc_project/sensors/voltage/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/voltage/";
             sensorUnit = SensorUnit::Volts;
             break;
         case PLDM_SENSOR_UNIT_AMPS:
-            path = "/xyz/openbmc_project/sensors/current/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/current/";
             sensorUnit = SensorUnit::Amperes;
             break;
         case PLDM_SENSOR_UNIT_RPM:
-            path = "/xyz/openbmc_project/sensors/fan_pwm/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/fan_pwm/";
             sensorUnit = SensorUnit::RPMS;
             break;
         case PLDM_SENSOR_UNIT_WATTS:
-            path = "/xyz/openbmc_project/sensors/power/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/power/";
             sensorUnit = SensorUnit::Watts;
             break;
         case PLDM_SENSOR_UNIT_JOULES:
-            path = "/xyz/openbmc_project/sensors/energy/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/energy/";
             sensorUnit = SensorUnit::Joules;
             break;
         case PLDM_SENSOR_UNIT_HERTZ:
-            path = "/xyz/openbmc_project/sensors/frequency/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/frequency/";
             sensorUnit = SensorUnit::Hertz;
             break;
         case PLDM_SENSOR_UNIT_PERCENTAGE:
-            path = "/xyz/openbmc_project/sensors/utilization/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/utilization/";
             sensorUnit = SensorUnit::Percent;
             break;
         case PLDM_SENSOR_UNIT_COUNTS:
@@ -70,7 +70,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             break;
     }
 
-    path += sensorName;
+    path = sensorNameSpace + sensorName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -284,7 +284,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
         valueIntf->value(std::numeric_limits<double>::quiet_NaN());
     }
 
-    if (sensorMetrics)
+    if (sensorMetrics && inSensorMetrics)
     {
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();

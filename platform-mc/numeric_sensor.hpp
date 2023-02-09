@@ -197,6 +197,15 @@ class NumericSensor
     /** @brief  sensorName */
     std::string sensorName;
 
+    /** @brief  sensorNameSpace */
+    std::string sensorNameSpace;
+
+    /** @brief indicate that the sensor should be included in sensorMetrics */
+    bool inSensorMetrics;
+
+    /** @brief indicate if sensor is polled in priority */
+    bool isPriority;
+
   private:
     /**
      * @brief Check sensor reading if any threshold has been crossed and update

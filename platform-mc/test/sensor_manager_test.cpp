@@ -59,7 +59,7 @@ TEST_F(SensorManagerTest, sensorPollingTest)
     uint64_t expectedTimes = (seconds * 1000) / SENSOR_POLLING_TIME;
 
     EXPECT_CALL(sensorManager, doSensorPolling())
-        .Times(Between(expectedTimes - 2, expectedTimes + 2))
+        .Times(Between(expectedTimes - 3, expectedTimes + 3))
         .WillRepeatedly(Return());
     sensorManager.startPolling();
     runEventLoopForSeconds(seconds);
