@@ -1,13 +1,15 @@
 #pragma once
 
 #include "common/types.hpp"
+#include "component_updater.hpp"
+#include "device_updater_utility.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
-#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
 
@@ -19,166 +21,150 @@ namespace fw_update
 
 class UpdateManager;
 
-/** @enum Enumeration to represent the PLDM UA sequence in the firmware update
- *        flow
+/** @enum Enumeration to represent the PLDM DeviceUpdater sequence in the
+ * firmware update flow
  */
-enum class UASequence
+enum class DeviceUpdaterSequence
 {
     RequestUpdate,
     PassComponentTable,
-    UpdateComponent,
-    RequestFirmwareData,
-    TransferComplete,
-    VerifyComplete,
-    ApplyComplete,
     ActivateFirmware,
-    CancelUpdateComponent,
+    RetryRequest,
     Invalid,
+    Valid
 };
 
-/** @class UAState
+/** @class DeviceUpdaterState
  *
- *  To manage the sequence of the PLDM UA as part of the firmware update flow.
+ *  To manage the sequence of the PLDM DeviceUpdater as part of the firmware
+ * update flow.
  */
-struct UAState
+struct DeviceUpdaterState
 {
-    UAState(bool fwDebug = false) :
-        current(UASequence::RequestUpdate), fwDebug(fwDebug)
+    DeviceUpdaterState(bool fwDebug = false) :
+        current(DeviceUpdaterSequence::RequestUpdate),
+        prev(DeviceUpdaterSequence::Valid), fwDebug(fwDebug)
     {}
 
     /** @brief To get next action of the PLDM sequence as per the flow
      *
-     *  @param[in] command - the current sequence in the PLDM UA flow
+     *  @param[in] command - the current sequence in the PLDM DeviceUpdater flow
      *  @param[in] compIndex - current component index, this is applicable only
      *                         when the current action is PassComponentTable and
      *                         ApplyComplete
      *  @param[in] numComps - The number of components applicable for the FD
      *
      */
-    UASequence nextState(UASequence command, size_t compIndex, size_t numComps)
+    DeviceUpdaterSequence nextState(DeviceUpdaterSequence command,
+                                    size_t compIndex, size_t numComps)
     {
-        auto prevSeq = current;
+        if (prev == command)
+        {
+            lg2::error(
+                "DeviceUpdater: Retry Request for command: inCmd = {COMMAND}, "
+                "currentSeq ={CURRENTSEQ}, prevSeq = {PREVSEQ}",
+                "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                static_cast<size_t>(current), "PREVSEQ",
+                static_cast<size_t>(prev));
+            return DeviceUpdaterSequence::RetryRequest;
+        }
         switch (command)
         {
-            case UASequence::RequestUpdate:
+            case DeviceUpdaterSequence::RequestUpdate:
             {
-                current = UASequence::PassComponentTable;
+                prev = current;
+                current = DeviceUpdaterSequence::PassComponentTable;
                 break;
             }
-            case UASequence::PassComponentTable:
+            case DeviceUpdaterSequence::PassComponentTable:
             {
                 if (compIndex < numComps)
                 {
-                    current = UASequence::PassComponentTable;
+                    current = DeviceUpdaterSequence::PassComponentTable;
                 }
                 else
                 {
-                    current = UASequence::UpdateComponent;
+                    prev = current;
+                    current = DeviceUpdaterSequence::ActivateFirmware;
                 }
                 break;
             }
-            case UASequence::UpdateComponent:
+            case DeviceUpdaterSequence::ActivateFirmware:
             {
-                current = UASequence::RequestFirmwareData;
-                break;
-            }
-            case UASequence::RequestFirmwareData:
-            {
-                current = UASequence::TransferComplete;
-                break;
-            }
-            case UASequence::TransferComplete:
-            {
-                current = UASequence::VerifyComplete;
-                break;
-            }
-            case UASequence::VerifyComplete:
-            {
-                current = UASequence::ApplyComplete;
-                break;
-            }
-            case UASequence::ApplyComplete:
-            {
-                if (compIndex < numComps)
-                {
-                    current = UASequence::UpdateComponent;
-                }
-                else
-                {
-                    current = UASequence::ActivateFirmware;
-                }
-                break;
-            }
-            case UASequence::ActivateFirmware:
-            {
-                current = UASequence::Invalid;
+                prev = current;
+                current = DeviceUpdaterSequence::Invalid;
                 break;
             }
             default:
             {
-                current = UASequence::Invalid;
+                current = DeviceUpdaterSequence::Invalid;
                 break;
             }
         };
 
         if (fwDebug)
         {
-            lg2::info(
-                "prevSeq = {PREVSEQ}, command = {COMMAND}, currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX}, numComps = {NUMCOMPS}",
-                "PREVSEQ", static_cast<size_t>(prevSeq), "COMMAND",
-                static_cast<size_t>(command), "CURRENTSEQ",
-                static_cast<size_t>(current), "COMPINDEX", compIndex,
-                "NUMCOMPS", numComps);
+            lg2::info("DeviceUpdater: prevSeq = {PREVSEQ}, command = {COMMAND},"
+                      " currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX},"
+                      " numComps = {NUMCOMPS}",
+                      "PREVSEQ", static_cast<size_t>(prev), "COMMAND",
+                      static_cast<size_t>(command), "CURRENTSEQ",
+                      static_cast<size_t>(current), "COMPINDEX", compIndex,
+                      "NUMCOMPS", numComps);
         }
-
         return current;
     }
 
     /** @brief To validate if the command handled by the DeviceUpdater is as per
-     *         the expected PLDM UA flow.
+     *         the expected PLDM DeviceUpdater flow.
      *
-     *  @param[in] command - Validate the current sequence of the UA against the
-     *                     command received
+     *  @param[in] command - Validate the current sequence of the DeviceUpdater
+     * against the command received
      *
      *  @return bool - true if the command received is as expected, false if
      *          the command received is unexpected and return
      *          COMMAND_NOT_EXPECTED by the command handler
      */
-    bool expectedState(UASequence command)
+    DeviceUpdaterSequence expectedState(DeviceUpdaterSequence command)
     {
-        if ((current == UASequence::RequestFirmwareData) &&
-            (command == UASequence::TransferComplete))
+        if (prev == command)
         {
-            current = UASequence::TransferComplete;
-            return true;
+            lg2::error(
+                "DeviceUpdater Retry Request for command: inCmd = {COMMAND},"
+                " currentSeq={CURRENTSEQ}, prevSeq={PREVSEQ}",
+                "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                static_cast<size_t>(current), "PREVSEQ",
+                static_cast<size_t>(prev));
+            return DeviceUpdaterSequence::RetryRequest;
         }
-        else
+        if (command != current)
         {
-            if (command != current)
-            {
-                lg2::error(
-                    "Unexpected command: inCmd = {COMMAND}, currentSeq = {CURRENTSEQ}",
-                    "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
-                    static_cast<size_t>(current));
-            }
-            return (command == current);
+            lg2::error("DeviceUpdater Unexpected command: inCmd = {COMMAND}, "
+                       "currentSeq = {CURRENTSEQ}",
+                       "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                       static_cast<size_t>(current));
+            return DeviceUpdaterSequence::Invalid;
         }
+        return DeviceUpdaterSequence::Valid;
     }
 
-    /** @brief To set the state of the PLDM UA, it will be used for handling
-     *         exceptions in the firmware update flow and for tests
+    /** @brief To set the state of the PLDM DeviceUpdater, it will be used for
+     * handling exceptions in the firmware update flow and for tests
      *
      *  @param[in] state - The state to be set
      *
-     *  @return UASequence - the current state of the PLDM UA
+     *  @return DeviceUpdaterSequence - the current state of the PLDM
+     * DeviceUpdater
      */
-    UASequence set(UASequence state)
+    DeviceUpdaterSequence set(DeviceUpdaterSequence state)
     {
+        prev = current;
         current = state;
         return current;
     }
 
-    UASequence current;
+    DeviceUpdaterSequence current;
+    DeviceUpdaterSequence prev;
     bool fwDebug;
 };
 
@@ -195,7 +181,15 @@ class DeviceUpdater
     DeviceUpdater(DeviceUpdater&&) = default;
     DeviceUpdater& operator=(const DeviceUpdater&) = delete;
     DeviceUpdater& operator=(DeviceUpdater&&) = default;
-    ~DeviceUpdater() = default;
+    ~DeviceUpdater()
+    {
+        // clear device updater coroutine
+        if (deviceUpdaterHandle && deviceUpdaterHandle.done())
+        {
+            deviceUpdaterHandle.destroy();
+        }
+        componentUpdaterMap.clear();
+    }
 
     /** @brief Constructor
      *
@@ -222,10 +216,10 @@ class DeviceUpdater
                            uint32_t maxTransferSize,
                            UpdateManager* updateManager, bool fwDebug) :
         fwDeviceIDRecord(fwDeviceIDRecord),
-        uaState(fwDebug), eid(eid), package(package),
+        deviceUpdaterState(fwDebug), eid(eid), package(package),
         compImageInfos(compImageInfos), compInfo(compInfo),
         compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-        updateManager(updateManager), reqFwDataTimer(nullptr)
+        updateManager(updateManager)
     {}
 
     /** @brief Start the firmware update flow for the FD
@@ -247,39 +241,9 @@ class DeviceUpdater
     void requestUpdate(mctp_eid_t eid, const pldm_msg* response,
                        size_t respMsgLen);
 
-    /** @brief Handler for PassComponentTable command response
-     *
-     *  The response of the PassComponentTable is processed. If the response
-     *  indicates component can be updated, continue with either a) or b).
-     *
-     *  a. Send PassComponentTable request for the next component if
-     *     applicable
-     *  b. UpdateComponent command to request updating a specific
-     *     firmware component
-     *
-     *  If the response indicates component may be updateable, continue
-     *  based on the policy in DeviceUpdateOptionFlags.
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    void passCompTable(mctp_eid_t eid, const pldm_msg* response,
-                       size_t respMsgLen);
-
-    /** @brief Handler for UpdateComponent command response
-     *
-     *  The response of the UpdateComponent is processed and will wait for
-     *  FD to request the firmware data.
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    void updateComponent(mctp_eid_t eid, const pldm_msg* response,
-                         size_t respMsgLen);
-
-    /** @brief Handler for RequestFirmwareData request
+    /** @brief Handler for RequestFirmwareData request. Routes the request to
+     * component updater. If component updater is not present sends command not
+     * expected.
      *
      *  @param[in] request - Request message
      *  @param[in] payload_length - Request message payload length
@@ -287,7 +251,9 @@ class DeviceUpdater
      */
     Response requestFwData(const pldm_msg* request, size_t payloadLength);
 
-    /** @brief Handler for TransferComplete request
+    /** @brief Handler for TransferComplete request. Routes the request to
+     * component updater. If component updater is not present sends command not
+     * expected.
      *
      *  @param[in] request - Request message
      *  @param[in] payload_length - Request message payload length
@@ -295,7 +261,9 @@ class DeviceUpdater
      */
     Response transferComplete(const pldm_msg* request, size_t payloadLength);
 
-    /** @brief Handler for VerifyComplete request
+    /** @brief Handler for VerifyComplete request. Routes the request to
+     * component updater. If component updater is not present sends command not
+     * expected.
      *
      *  @param[in] request - Request message
      *  @param[in] payload_length - Request message payload length
@@ -303,7 +271,9 @@ class DeviceUpdater
      */
     Response verifyComplete(const pldm_msg* request, size_t payloadLength);
 
-    /** @brief Handler for ApplyComplete request
+    /** @brief Handler for ApplyComplete request. Routes the request to
+     * component updater. If component updater is not present sends command not
+     * expected.
      *
      *  @param[in] request - Request message
      *  @param[in] payload_length - Request message payload length
@@ -311,17 +281,14 @@ class DeviceUpdater
      */
     Response applyComplete(const pldm_msg* request, size_t payloadLength);
 
-    /** @brief Handler for ActivateFirmware command response
+    /**
+     * @brief update component update completion
      *
-     *  The response of the ActivateFirmware is processed and will update the
-     *  UpdateManager with the completion of the firmware update.
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
+     * @param[in] compIndex - component index
+     * @param[in] compStatus - component status
      */
-    void activateFirmware(mctp_eid_t eid, const pldm_msg* response,
-                          size_t respMsgLen);
+    requester::Coroutine updateComponentCompletion(const size_t compIndex,
+                                                   const bool compStatus);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device
@@ -330,23 +297,78 @@ class DeviceUpdater
 
     /** @brief PLDM UA state machine
      */
-    struct UAState uaState;
+    struct DeviceUpdaterState deviceUpdaterState;
 
   private:
+    std::coroutine_handle<> deviceUpdaterHandle;
+
+    /**
+     * @brief device update handler
+     *
+     */
+    void deviceUpdaterHandler();
+
+    /**
+     * @brief start device updater coroutine
+     *
+     * @return requester::Coroutine
+     */
+    requester::Coroutine startDeviceUpdate();
+
+    /**
+     * @brief send request update
+     *
+     * @return requester::Coroutine
+     */
+    requester::Coroutine sendRequestUpdate();
+    /**
+     * @brief process request update response
+     *
+     * @param[in] eid - mctp end point
+     * @param[in] response - pldm response
+     * @param[in] respMsgLen - response length
+     * @return requester::Coroutine
+     */
+    requester::Coroutine processRequestUpdateResponse(mctp_eid_t eid,
+                                                      const pldm_msg* response,
+                                                      size_t respMsgLen);
+
     /** @brief Send PassComponentTable command request
      *
      *  @param[in] compOffset - component offset in compImageInfos
+     *  @return requester::Coroutine
      */
-    void sendPassCompTableRequest(size_t offset);
+    requester::Coroutine sendPassCompTableRequest(size_t offset);
 
-    /** @brief Send UpdateComponent command request
+    /**
+     * @brief process pass component table response
      *
-     *  @param[in] compOffset - component offset in compImageInfos
+     * @param[in] eid - mctp end point
+     * @param[in] response - pldm response
+     * @param[in] respMsgLen - response length
+     * @return requester::Coroutine
      */
-    void sendUpdateComponentRequest(size_t offset);
+    requester::Coroutine processPassCompTableResponse(mctp_eid_t eid,
+                                                      const pldm_msg* response,
+                                                      size_t respMsgLen);
 
-    /** @brief Send ActivateFirmware command request */
-    void sendActivateFirmwareRequest();
+    /**
+     * @brief Send ActivateFirmware command request
+     *
+     * @return requester::Coroutine
+     */
+    requester::Coroutine sendActivateFirmwareRequest();
+
+    /**
+     * @brief process activate firmware response
+     *
+     * @param[in] eid - mctp end point
+     * @param[in] response - pldm response
+     * @param[in] respMsgLen - response size
+     * @return requester::Coroutine
+     */
+    requester::Coroutine processActivateFirmwareResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
@@ -389,84 +411,33 @@ class DeviceUpdater
     std::unique_ptr<sdeventplus::source::Defer> pldmRequest;
 
     /**
-     * @brief Print debug logs for firmware update when firmware debug option is
-     enabled
-     *        This variant of printBuffer takes integer vector as an input
-     *
-     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
-     if the buffer is an incoming PLDM message
-     * @param[in] buffer - integer vector buffer to log
-     * @param[in] message - Message string for logging
-     */
-    void printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
-                     const std::string& message);
-
-    /**
-     * @brief Print debug logs for firmware update when firmware debug option is
-     * enabled. This variant of printBuffer takes pldm_msg* buffer as an input.
-     *
-     * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
-     * if the buffer is an incoming PLDM message
-     * @param[in] buffer - pldm message buffer to log
-     * @param[in] bufferLen - pldm message buffer length
-     * @param[in] message - Message string for logging
-     */
-    void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen,
-                     const std::string& message);
-
-    /**
-     * @brief Timeout in seconds for the UA to cancel the component update if no
-     * command is received from the FD during component image transfer stage
+     * @brief send cancel update request
      *
      */
-    auto static constexpr updateTimeoutSeconds = 60;
+    requester::Coroutine sendCancelUpdateRequest();
     /**
-     * @brief map to hold component update status. true - success, false -
-     * cancelled
-     *
-     */
-    std::map<size_t, bool> componentUpdateStatus;
-    /**
-     * @brief timer to handle RequestFirmwareData timeout(UA_T2)
-     *
-     */
-    std::unique_ptr<phosphor::Timer> reqFwDataTimer;
-
-    /**
-     * @brief timeout handler for requestFirmwareData timeout (UA_T2)
-     *
-     */
-    void createRequestFwDataTimer();
-
-    /**
-     * @brief send cancel update component request
-     *
-     */
-    void sendcancelUpdateComponentRequest();
-    /**
-     * @brief cancel update component response handler
+     * @brief cancel update response handler
      *
      * @param[in] eid - mctp endpoint id
      * @param[in] response - cancel update response
      * @param[in] respMsgLen - response length
      */
-    void cancelUpdateComponent(mctp_eid_t eid, const pldm_msg* response,
-                               size_t respMsgLen);
-
-    /** @brief Send COMMAND_NOT_EXPECTED response sent by UA when it receives
-     *         a command from the FD out of sequence from when it is expected.
-     *
-     *  @param[in] request - PLDM request message
-     *  @param[in] requestLen - PLDM request message length
-     */
-    Response sendCommandNotExpectedResponse(const pldm_msg* request,
-                                            size_t requestLen);
+    requester::Coroutine processCancelUpdateResponse(mctp_eid_t eid,
+                                                     const pldm_msg* response,
+                                                     size_t respMsgLen);
 
     /**
      * @brief List of components successfully updated
      *
      */
     std::vector<ComponentName> successCompNames;
+
+    /**
+     * @brief component updater map to hold component updater object and status
+     *
+     */
+    std::map<ComponentIndex, std::pair<std::unique_ptr<ComponentUpdater>, bool>>
+        componentUpdaterMap;
 };
 
 } // namespace fw_update

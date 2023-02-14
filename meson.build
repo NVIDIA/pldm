@@ -238,6 +238,7 @@ source_files = [
   'pldmd/socket_handler.cpp',
   'fw-update/inventory_manager.cpp',
   'fw-update/package_parser.cpp',
+  'fw-update/component_updater.cpp',
   'fw-update/device_updater.cpp',
   'fw-update/watch.cpp',
   'fw-update/update_manager.cpp',

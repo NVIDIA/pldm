@@ -17,6 +17,74 @@ namespace fw_update
 
 void DeviceUpdater::startFwUpdateFlow()
 {
+    pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+        updateManager->event,
+        std::bind(&DeviceUpdater::deviceUpdaterHandler, this));
+}
+
+void DeviceUpdater::deviceUpdaterHandler()
+{
+    auto co = startDeviceUpdate();
+    deviceUpdaterHandle = co.handle;
+}
+
+requester::Coroutine DeviceUpdater::startDeviceUpdate()
+{
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    size_t numComponents = applicableComponents.size();
+    auto rc = co_await sendRequestUpdate();
+    if (rc)
+    {
+        lg2::error("Error while sending RequestUpdate.");
+        auto rc = co_await sendCancelUpdateRequest();
+        if (rc)
+        {
+            lg2::error("Error while sending CancelUpdate.");
+            co_return PLDM_ERROR;
+        }
+        co_return PLDM_ERROR;
+    }
+    for (size_t compIndex = 0; compIndex < numComponents; compIndex++)
+    {
+        rc = co_await sendPassCompTableRequest(compIndex);
+        if (rc)
+        {
+            lg2::error("Error while sending PassComponentTable.");
+            auto rc = co_await sendCancelUpdateRequest();
+            if (rc)
+            {
+                lg2::error("Error while sending CancelUpdate.");
+                co_return PLDM_ERROR;
+            }
+            co_return PLDM_ERROR;
+        }
+    }
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, maxTransferSize, updateManager, this,
+            componentIndex, updateManager->fwDebug);
+    componentUpdaterMap.emplace(componentIndex,
+                                std::make_pair(std::move(compUpdater), false));
+    // start the first component updater, once component update is complete,
+    // component updater calls updateComponentCompletion method based on
+    // remaining applicable components new component updater will be initiated
+    // in updateComponentCompletion method.
+    rc = co_await componentUpdaterMap[componentIndex]
+             .first->startComponentUpdater();
+    if (rc)
+    {
+        lg2::error("Error while initiating component updater for "
+                   "ComponentIndex={COMPONENTINDEX}.",
+                   "COMPONENTINDEX", componentIndex);
+        co_return PLDM_ERROR;
+    }
+    co_return PLDM_SUCCESS;
+}
+
+requester::Coroutine DeviceUpdater::sendRequestUpdate()
+{
     auto instanceId = updateManager->requester.getInstanceId(eid);
     // NumberOfComponents
     const auto& applicableComponents =
@@ -38,6 +106,8 @@ void DeviceUpdater::startFwUpdateFlow()
                     sizeof(struct pldm_request_update_req) +
                     compImgSetVerStrInfo.length);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    const pldm_msg* response = NULL;
+    size_t respMsgLen = 0;
 
     auto rc = encode_request_update_req(
         instanceId, maxTransferSize, applicableComponents.size(),
@@ -50,27 +120,31 @@ void DeviceUpdater::startFwUpdateFlow()
         updateManager->requester.markFree(eid, instanceId);
         lg2::error("encode_request_update_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
     }
 
     printBuffer(pldm::utils::Tx, request,
-                ("Send RequestUpdate for EID=" + std::to_string(eid)));
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_REQUEST_UPDATE, std::move(request),
-        std::move(std::bind_front(&DeviceUpdater::requestUpdate, this)));
+                ("Send RequestUpdate for EID=" + std::to_string(eid)),
+                updateManager->fwDebug);
+    rc = co_await SendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
-        lg2::error("Failed to send RequestUpdate request, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        lg2::error("Error while sending mctp request for RequestUpdate");
+        co_return rc;
     }
+    rc = co_await processRequestUpdateResponse(eid, response, respMsgLen);
+    if (rc)
+    {
+        lg2::error("Error while processing RequestUpdateResponse");
+    }
+    co_return rc;
 }
 
-void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
-                                  size_t respMsgLen)
+requester::Coroutine DeviceUpdater::processRequestUpdateResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -91,13 +165,14 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
         lg2::error("No response received for RequestUpdate, EID={EID}", "EID",
                    eid);
         updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
 
     printBuffer(
         pldm::utils::Rx, response, respMsgLen,
-        ("Received requestUpdate Response from EID=" + std::to_string(eid)));
+        ("Received requestUpdate Response from EID=" + std::to_string(eid)),
+        updateManager->fwDebug);
 
     uint8_t completionCode = 0;
     uint16_t fdMetaDataLen = 0;
@@ -109,8 +184,9 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
     {
         lg2::error("Decoding RequestUpdate response failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
+        ;
     }
     if (completionCode)
     {
@@ -127,19 +203,16 @@ void DeviceUpdater::requestUpdate(mctp_eid_t eid, const pldm_msg* response,
                    " EID={EID}, CompletionCode={COMPLETIONCODE}",
                    "EID", eid, "COMPLETIONCODE", completionCode);
         updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
 
-    uaState.nextState(uaState.current, componentIndex, numComponents);
-    // Optional fields DeviceMetaData and GetPackageData not handled
-    pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-        updateManager->event,
-        std::bind(&DeviceUpdater::sendPassCompTableRequest, this,
-                  componentIndex));
+    deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
+                                 numComponents);
+    co_return PLDM_SUCCESS;
 }
 
-void DeviceUpdater::sendPassCompTableRequest(size_t offset)
+requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
 {
     pldmRequest.reset();
 
@@ -148,6 +221,8 @@ void DeviceUpdater::sendPassCompTableRequest(size_t offset)
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     uint8_t transferFlag = 0;
+    const pldm_msg* response = NULL;
+    size_t respMsgLen = 0;
     if (applicableComponents.size() == 1)
     {
         transferFlag = PLDM_START_AND_END;
@@ -180,10 +255,6 @@ void DeviceUpdater::sendPassCompTableRequest(size_t offset)
         auto search = compInfo.find(compKey);
         compClassificationIndex = std::get<0>(search->second);
     }
-    else
-    {
-        // Handle error scenario
-    }
     // ComponentComparisonStamp
     CompComparisonStamp compComparisonStamp = std::get<static_cast<size_t>(
         ComponentImageInfoPos::CompComparisonStampPos)>(comp);
@@ -209,30 +280,31 @@ void DeviceUpdater::sendPassCompTableRequest(size_t offset)
         updateManager->requester.markFree(eid, instanceId);
         lg2::error("encode_pass_component_table_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
     }
 
     printBuffer(pldm::utils::Tx, request,
                 ("Send PassCompTable for EID=" + std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)));
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_PASS_COMPONENT_TABLE,
-        std::move(request),
-        std::move(std::bind_front(&DeviceUpdater::passCompTable, this)));
+                 " ,ComponentIndex=" + std::to_string(componentIndex)),
+                updateManager->fwDebug);
+    rc = co_await SendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
-        lg2::error(
-            "Failed to send PassComponentTable request, EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
+        lg2::error("Error while sending mctp request for PassCompTable.");
+        co_return rc;
     }
+    rc = co_await processPassCompTableResponse(eid, response, respMsgLen);
+    if (rc)
+    {
+        lg2::error("Error while processing PassCompTable response.");
+    }
+    co_return rc;
 }
 
-void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
-                                  size_t respMsgLen)
+requester::Coroutine DeviceUpdater::processPassCompTableResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -247,14 +319,15 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
         lg2::error("No response received for PassComponentTable, EID={EID}",
                    "EID", eid);
         updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
 
     printBuffer(
         pldm::utils::Rx, response, respMsgLen,
         ("Received Response for PassCompTable from EID=" + std::to_string(eid) +
-         " ,ComponentIndex=" + std::to_string(componentIndex)));
+         " ,ComponentIndex=" + std::to_string(componentIndex)),
+        updateManager->fwDebug);
 
     uint8_t completionCode = 0;
     uint8_t compResponse = 0;
@@ -269,8 +342,8 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
         lg2::error(
             "Decoding PassComponentTable response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
     }
     if (completionCode)
     {
@@ -289,550 +362,79 @@ void DeviceUpdater::passCompTable(mctp_eid_t eid, const pldm_msg* response,
                 oemMessageError, oemResolution);
         }
         updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
-    // Handle ComponentResponseCode
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    if (componentIndex == applicableComponents.size() - 1)
-    {
-        uaState.nextState(uaState.current, numComponents, numComponents);
-        componentIndex = 0;
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendUpdateComponentRequest, this,
-                      componentIndex));
-    }
-    else
-    {
-        componentIndex++;
-        uaState.nextState(uaState.current, componentIndex, numComponents);
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendPassCompTableRequest, this,
-                      componentIndex));
-    }
-}
-
-void DeviceUpdater::sendUpdateComponentRequest(size_t offset)
-{
-    pldmRequest.reset();
-
-    auto instanceId = updateManager->requester.getInstanceId(eid);
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[offset]];
-    // ComponentClassification
-    CompClassification compClassification = std::get<static_cast<size_t>(
-        ComponentImageInfoPos::CompClassificationPos)>(comp);
-    // ComponentIdentifier
-    CompIdentifier compIdentifier =
-        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
-            comp);
-    // ComponentClassificationIndex
-    CompClassificationIndex compClassificationIndex{};
-    auto compKey = std::make_pair(compClassification, compIdentifier);
-    if (compInfo.contains(compKey))
-    {
-        auto search = compInfo.find(compKey);
-        compClassificationIndex = std::get<0>(search->second);
-    }
-    else
-    {
-        // Handle error scenario
-    }
-
-    // UpdateOptionFlags
-    bitfield32_t updateOptionFlags;
-    // TODO: Revert to reading the UpdateOptionFlags from package header instead
-    // of hardcoding.
-    // updateOptionFlags.bits.bit0 = std::get<3>(comp)[0];
-    updateOptionFlags.bits.bit0 = 1;
-    // ComponentVersion
-    const auto& compVersion = std::get<7>(comp);
-    variable_field compVerStrInfo{};
-    compVerStrInfo.ptr = reinterpret_cast<const uint8_t*>(compVersion.data());
-    compVerStrInfo.length = static_cast<uint8_t>(compVersion.size());
-
-    Request request(sizeof(pldm_msg_hdr) +
-                    sizeof(struct pldm_update_component_req) +
-                    compVerStrInfo.length);
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-
-    auto rc = encode_update_component_req(
-        instanceId, compClassification, compIdentifier, compClassificationIndex,
-        std::get<static_cast<size_t>(
-            ComponentImageInfoPos::CompComparisonStampPos)>(comp),
-        std::get<static_cast<size_t>(ComponentImageInfoPos::CompSizePos)>(comp),
-        updateOptionFlags, PLDM_STR_TYPE_ASCII, compVerStrInfo.length,
-        &compVerStrInfo, requestMsg,
-        sizeof(pldm_update_component_req) + compVerStrInfo.length);
-    if (rc)
-    {
-        updateManager->requester.markFree(eid, instanceId);
-        lg2::error("encode_update_component_req failed, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
-    }
-
-    printBuffer(pldm::utils::Tx, request,
-                ("Send UpdateComponent for EID=" + std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)));
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_UPDATE_COMPONENT, std::move(request),
-        std::move(std::bind_front(&DeviceUpdater::updateComponent, this)));
-    if (rc)
-    {
-        lg2::error(
-            "Failed to send UpdateComponent request, EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        // Handle error scenario
-    }
-}
-
-void DeviceUpdater::updateComponent(mctp_eid_t eid, const pldm_msg* response,
-                                    size_t respMsgLen)
-{
-    if (response == nullptr || !respMsgLen)
-    {
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
-        lg2::error("No response received for updateComponent, EID={EID}", "EID",
-                   eid);
-        updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
-    }
-
-    printBuffer(pldm::utils::Rx, response, respMsgLen,
-                ("Received Response for UpdateComponent from EID=" +
-                 std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)));
-
-    uint8_t completionCode = 0;
-    uint8_t compCompatibilityResp = 0;
-    uint8_t compCompatibilityRespCode = 0;
-    bitfield32_t updateOptionFlagsEnabled{};
-    uint16_t timeBeforeReqFWData = 0;
-
-    auto rc = decode_update_component_resp(
-        response, respMsgLen, &completionCode, &compCompatibilityResp,
-        &compCompatibilityRespCode, &updateOptionFlagsEnabled,
-        &timeBeforeReqFWData);
-    if (rc)
-    {
-        lg2::error(
-            "Decoding UpdateComponent response failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        uaState.set(UASequence::Invalid);
-        return;
-    }
-    if (completionCode)
-    {
-        lg2::error("UpdateComponent response failed with error completion code,"
-                   " EID={EID}, CC={CC}",
-                   "EID", eid, "CC", completionCode);
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
-        updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-        return;
-    }
-
-    uaState.nextState(uaState.current, componentIndex, numComponents);
-
-    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
-                                         transferringToComponent);
+    deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
+                                 numComponents);
+    co_return PLDM_SUCCESS;
 }
 
 Response DeviceUpdater::requestFwData(const pldm_msg* request,
                                       size_t payloadLength)
 {
-    uint8_t completionCode = PLDM_SUCCESS;
-    uint32_t offset = 0;
-    uint32_t length = 0;
-    Response response(sizeof(pldm_msg_hdr) + sizeof(completionCode), 0);
-    auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-    auto rc = decode_request_firmware_data_req(request, payloadLength, &offset,
-                                               &length);
-    if (rc)
+    if (componentUpdaterMap.contains(componentIndex))
     {
-        lg2::error(
-            "Decoding RequestFirmwareData request failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        rc = encode_request_firmware_data_resp(
-            request->hdr.instance_id, PLDM_ERROR_INVALID_DATA, responseMsg,
-            sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
+        return componentUpdaterMap[componentIndex].first->requestFwData(
+            request, payloadLength);
     }
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[componentIndex]];
-    auto compOffset = std::get<5>(comp);
-    auto compSize = std::get<6>(comp);
-    if (updateManager->fwDebug)
-    {
-        lg2::info("EID={EID}, ComponentIndex={COMPONENTINDEX}, Offset="
-                  "{OFFSET}, Length={LENGTH}",
-                  "EID", eid, "COMPONENTINDEX", componentIndex, "OFFSET",
-                  offset, "LENGTH", length);
-    }
-
-    if (!uaState.expectedState(UASequence::RequestFirmwareData))
+    else
     {
         return sendCommandNotExpectedResponse(request, payloadLength);
     }
-
-    if (length < PLDM_FWUP_BASELINE_TRANSFER_SIZE || length > maxTransferSize)
-    {
-        lg2::error(
-            "RequestFirmwareData reported PLDM_FWUP_INVALID_TRANSFER_LENGTH, EID={EID}, offset={OFFSET}, length={LENGTH}",
-            "EID", eid, "OFFSET", offset, "LENGTH", length);
-        rc = encode_request_firmware_data_resp(
-            request->hdr.instance_id, PLDM_FWUP_INVALID_TRANSFER_LENGTH,
-            responseMsg, sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
-    }
-
-    if (offset + length > compSize + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
-    {
-        lg2::error(
-            "RequestFirmwareData reported PLDM_FWUP_DATA_OUT_OF_RANGE, EID={EID}, offset={OFFSET}, length={LENGTH}",
-            "EID", eid, "OFFSET", offset, "LENGTH", length);
-        rc = encode_request_firmware_data_resp(
-            request->hdr.instance_id, PLDM_FWUP_DATA_OUT_OF_RANGE, responseMsg,
-            sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
-    }
-
-    size_t padBytes = 0;
-    if (offset + length > compSize)
-    {
-        padBytes = offset + length - compSize;
-    }
-
-    response.resize(sizeof(pldm_msg_hdr) + sizeof(completionCode) + length);
-    responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-    package.seekg(compOffset + offset);
-    package.read(reinterpret_cast<char*>(response.data() +
-                                         sizeof(pldm_msg_hdr) +
-                                         sizeof(completionCode)),
-                 length - padBytes);
-    rc = encode_request_firmware_data_resp(request->hdr.instance_id,
-                                           completionCode, responseMsg,
-                                           sizeof(completionCode));
-    if (rc)
-    {
-        lg2::error(
-            "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        return response;
-    }
-    if (offset == 0 && !reqFwDataTimer)
-    {
-        // create timer for first request
-        createRequestFwDataTimer();
-    }
-    reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds), false);
-    return response;
 }
 
 Response DeviceUpdater::transferComplete(const pldm_msg* request,
                                          size_t payloadLength)
 {
-    uint8_t completionCode = PLDM_SUCCESS;
-    Response response(sizeof(pldm_msg_hdr) + sizeof(completionCode), 0);
-    auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-
-    printBuffer(pldm::utils::Rx, request, payloadLength,
-                ("Received transferComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)));
-
-    uint8_t transferResult = 0;
-    auto rc =
-        decode_transfer_complete_req(request, payloadLength, &transferResult);
-    if (rc)
+    if (componentUpdaterMap.contains(componentIndex))
     {
-        lg2::error(
-            "Decoding TransferComplete request failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        rc = encode_transfer_complete_resp(request->hdr.instance_id,
-                                           PLDM_ERROR_INVALID_DATA, responseMsg,
-                                           sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding TransferComplete response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
-    }
-
-    if (!uaState.expectedState(UASequence::TransferComplete))
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
-
-    reqFwDataTimer->stop();
-    reqFwDataTimer.reset();
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[componentIndex]];
-    const auto& compVersion = std::get<7>(comp);
-
-    if (transferResult == PLDM_FWUP_TRANSFER_SUCCESS)
-    {
-        if (updateManager->fwDebug)
-        {
-            lg2::info(
-                "Component Transfer complete, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}",
-                "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
-        uaState.nextState(uaState.current, componentIndex, numComponents);
+        return componentUpdaterMap[componentIndex].first->transferComplete(
+            request, payloadLength);
     }
     else
     {
-        // TransferComplete Failed
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_TRANSFER_COMPLETE, transferResult);
-        lg2::error(
-            "Transfer of the component failed, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}, TRANSFER_RESULT={TRANSFER_RESULT}",
-            "EID", eid, "COMPONENT_VERSION", compVersion, "TRANSFER_RESULT",
-            transferResult);
-        updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
+        return sendCommandNotExpectedResponse(request, payloadLength);
     }
-
-    rc = encode_transfer_complete_resp(request->hdr.instance_id, completionCode,
-                                       responseMsg, sizeof(completionCode));
-    if (rc)
-    {
-        lg2::error(
-            "Encoding TransferComplete response failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        return response;
-    }
-
-    return response;
 }
 
 Response DeviceUpdater::verifyComplete(const pldm_msg* request,
                                        size_t payloadLength)
 {
-    uint8_t completionCode = PLDM_SUCCESS;
-    Response response(sizeof(pldm_msg_hdr) + sizeof(completionCode), 0);
-    auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-
-    printBuffer(pldm::utils::Rx, request, payloadLength,
-                ("Received verifyComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)));
-
-    uint8_t verifyResult = 0;
-    auto rc = decode_verify_complete_req(request, payloadLength, &verifyResult);
-    if (rc)
+    if (componentUpdaterMap.contains(componentIndex))
     {
-        lg2::error("Decoding VerifyComplete request failed, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
-        rc = encode_verify_complete_resp(request->hdr.instance_id,
-                                         PLDM_ERROR_INVALID_DATA, responseMsg,
-                                         sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
-    }
-
-    if (!uaState.expectedState(UASequence::VerifyComplete))
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[componentIndex]];
-    const auto& compVersion = std::get<7>(comp);
-
-    if (verifyResult == PLDM_FWUP_VERIFY_SUCCESS)
-    {
-        if (updateManager->fwDebug)
-        {
-            lg2::info(
-                "Component verification complete, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}",
-                "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
-        uaState.nextState(uaState.current, componentIndex, numComponents);
+        return componentUpdaterMap[componentIndex].first->verifyComplete(
+            request, payloadLength);
     }
     else
     {
-        // VerifyComplete Failed
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, verificationFailed, "",
-            PLDM_VERIFY_COMPLETE, verifyResult);
-        lg2::error(
-            "Component verification failed, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}, VERIFY_RESULT={VERIFY_RESULT}",
-            "EID", eid, "COMPONENT_VERSION", compVersion, "VERIFY_RESULT",
-            verifyResult);
-        updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
+        return sendCommandNotExpectedResponse(request, payloadLength);
     }
-
-    rc = encode_verify_complete_resp(request->hdr.instance_id, completionCode,
-                                     responseMsg, sizeof(completionCode));
-    if (rc)
-    {
-        lg2::error(
-            "Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
-        return response;
-    }
-
-    return response;
 }
 
 Response DeviceUpdater::applyComplete(const pldm_msg* request,
                                       size_t payloadLength)
 {
-    uint8_t completionCode = PLDM_SUCCESS;
-    Response response(sizeof(pldm_msg_hdr) + sizeof(completionCode), 0);
-    auto responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-
-    printBuffer(pldm::utils::Rx, request, payloadLength,
-                ("Received applyComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)));
-
-    uint8_t applyResult = 0;
-    bitfield16_t compActivationModification{};
-
-    auto rc = decode_apply_complete_req(request, payloadLength, &applyResult,
-                                        &compActivationModification);
-    if (rc)
+    if (componentUpdaterMap.contains(componentIndex))
     {
-        lg2::error("Decoding ApplyComplete request failed, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
-        rc = encode_apply_complete_resp(request->hdr.instance_id,
-                                        PLDM_ERROR_INVALID_DATA, responseMsg,
-                                        sizeof(completionCode));
-        if (rc)
-        {
-            lg2::error(
-                "Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
-        }
-        return response;
+        return componentUpdaterMap[componentIndex].first->applyComplete(
+            request, payloadLength);
     }
-
-    if (!uaState.expectedState(UASequence::ApplyComplete))
+    else
     {
         return sendCommandNotExpectedResponse(request, payloadLength);
     }
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[componentIndex]];
-    const auto& compVersion = std::get<7>(comp);
-
-    if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
-        applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
-    {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex, updateSuccessful);
-        if (updateManager->fwDebug)
-        {
-            lg2::info(
-                "Component apply complete, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}",
-                "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
-            updateManager->getActivationMethod(compActivationModification));
-        successCompNames.emplace_back(updateManager->getComponentName(
-            eid, fwDeviceIDRecord, componentIndex));
-    }
-    else
-    {
-        // ApplyComplete Failed
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex, applyFailed);
-        lg2::error(
-            "Component apply failed, EID={EID}, COMPONENT_VERSION={COMPONENT_VERSION}, APPLY_RESULT={APPLY_RESULT}",
-            "EID", eid, "COMPONENT_VERSION", compVersion, "APPLY_RESULT",
-            applyResult);
-        updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
-    }
-
-    rc = encode_apply_complete_resp(request->hdr.instance_id, completionCode,
-                                    responseMsg, sizeof(completionCode));
-    if (rc)
-    {
-        lg2::error("Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
-        return response;
-    }
-
-    if (componentIndex == applicableComponents.size() - 1)
-    {
-        uaState.nextState(uaState.current, numComponents, numComponents);
-        componentIndex = 0;
-        componentUpdateStatus.clear();
-        componentUpdateStatus[componentIndex] = true;
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendActivateFirmwareRequest, this));
-    }
-    else
-    {
-        updateManager->updateActivationProgress(); // for previous component
-        componentIndex++;
-        uaState.nextState(uaState.current, componentIndex, numComponents);
-        componentUpdateStatus[componentIndex] = true;
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendUpdateComponentRequest, this,
-                      componentIndex));
-    }
-
-    return response;
 }
 
-void DeviceUpdater::sendActivateFirmwareRequest()
+requester::Coroutine DeviceUpdater::sendActivateFirmwareRequest()
 {
     pldmRequest.reset();
     auto instanceId = updateManager->requester.getInstanceId(eid);
     Request request(sizeof(pldm_msg_hdr) +
                     sizeof(struct pldm_activate_firmware_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    const pldm_msg* response = NULL;
+    size_t respMsgLen = 0;
 
     auto rc = encode_activate_firmware_req(
         instanceId, PLDM_NOT_ACTIVATE_SELF_CONTAINED_COMPONENTS, requestMsg,
@@ -842,24 +444,32 @@ void DeviceUpdater::sendActivateFirmwareRequest()
         updateManager->requester.markFree(eid, instanceId);
         lg2::error("encode_activate_firmware_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
+        co_return rc;
     }
 
     printBuffer(pldm::utils::Tx, request,
-                ("Send ActivateFirmware for EID=" + std::to_string(eid)));
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_ACTIVATE_FIRMWARE, std::move(request),
-        std::move(std::bind_front(&DeviceUpdater::activateFirmware, this)));
+                ("Send ActivateFirmware for EID=" + std::to_string(eid)),
+                updateManager->fwDebug);
+    rc = co_await SendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
         lg2::error(
-            "Failed to send ActivateFirmware request, EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
+            "Error while sending mctp request for ActivateFirmware. EID={EID}",
+            "EID", eid);
+        co_return rc;
     }
+    rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen);
+    if (rc)
+    {
+        lg2::error("Error while processing ActivateFirmware. EID={EID}", "EID",
+                   eid);
+    }
+    co_return rc;
 }
 
-void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
-                                     size_t respMsgLen)
+requester::Coroutine DeviceUpdater::processActivateFirmwareResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -867,7 +477,7 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
         lg2::error("No response received for ActivateFirmware, EID={EID}",
                    "EID", eid);
         updateManager->updateDeviceCompletion(eid, false);
-        uaState.set(UASequence::Invalid);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         const auto& applicableComponents =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
@@ -877,19 +487,20 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
                 eid, fwDeviceIDRecord, compIndex, activateFailed, "",
                 PLDM_ACTIVATE_FIRMWARE, COMMAND_TIMEOUT);
         }
-        return;
+        co_return PLDM_ERROR;
     }
 
     printBuffer(
         pldm::utils::Rx, response, respMsgLen,
-        ("Received ActivateFirmware Response from EID=" + std::to_string(eid)));
+        ("Received ActivateFirmware Response from EID=" + std::to_string(eid)),
+        updateManager->fwDebug);
 
     uint8_t completionCode = 0;
     uint16_t estimatedTimeForActivation = 0;
 
     // On receiving ActivateFirmware response success/failure make the UA state
     // to Invalid to further not responds to any PLDM Type 5 requests from FD.
-    uaState.set(UASequence::Invalid);
+    deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
 
     auto rc = decode_activate_firmware_resp(
         response, respMsgLen, &completionCode, &estimatedTimeForActivation);
@@ -899,7 +510,7 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
         lg2::error(
             "Decoding ActivateFirmware response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
-        return;
+        co_return PLDM_ERROR;
     }
     if (completionCode)
     {
@@ -915,178 +526,148 @@ void DeviceUpdater::activateFirmware(mctp_eid_t eid, const pldm_msg* response,
             "ActivateFirmware response failed with error completion code, EID={EID}, CC={CC}",
             "EID", eid, "CC", completionCode);
         updateManager->updateDeviceCompletion(eid, false);
-        return;
+        co_return PLDM_ERROR;
     }
 
     updateManager->updateDeviceCompletion(eid, true, successCompNames);
+    deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
+                                 numComponents);
+    co_return PLDM_SUCCESS;
 }
 
-void DeviceUpdater::printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
-                                const std::string& message)
+requester::Coroutine
+    DeviceUpdater::updateComponentCompletion(const size_t compIndex,
+                                             const bool compStatus)
 {
-    if (updateManager->fwDebug)
+    componentUpdaterMap[compIndex].second = compStatus;
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    if (compStatus)
     {
-        lg2::info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
-        pldm::utils::printBuffer(isTx, buffer);
+        successCompNames.emplace_back(updateManager->getComponentName(
+            eid, fwDeviceIDRecord, componentIndex));
     }
-}
-
-void DeviceUpdater::printBuffer(bool isTx, const pldm_msg* buffer,
-                                size_t bufferLen, const std::string& message)
-{
-    if (updateManager->fwDebug)
+    if (compIndex < applicableComponents.size() - 1)
     {
-        lg2::info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
-        auto ptr = reinterpret_cast<const uint8_t*>(buffer);
-        auto outBuffer =
-            std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
-        pldm::utils::printBuffer(isTx, outBuffer);
+        updateManager->updateActivationProgress(); // for previous component
+        componentIndex++;
+        std::unique_ptr<ComponentUpdater> compUpdater =
+            std::make_unique<ComponentUpdater>(
+                eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+                compIdNameInfo, maxTransferSize, updateManager, this,
+                componentIndex, updateManager->fwDebug);
+        componentUpdaterMap.emplace(
+            componentIndex, std::make_pair(std::move(compUpdater), false));
+        componentUpdaterMap[componentIndex].first->startComponentUpdater();
+        co_return PLDM_SUCCESS;
     }
-}
-
-void DeviceUpdater::createRequestFwDataTimer()
-{
-    reqFwDataTimer = std::make_unique<phosphor::Timer>([this]() {
-        if (updateManager->fwDebug)
+    else
+    {
+        for (const auto& compUpdater : componentUpdaterMap)
         {
-            lg2::error(
-                "RequestUpdate timeout EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                "EID", eid, "COMPONENTINDEX", componentIndex);
+            // Activate firmware if atleast one component update is success.
+            if (compUpdater.second.second == true)
+            {
+                auto rc = co_await sendActivateFirmwareRequest();
+                if (rc)
+                {
+                    lg2::error("Error while sending ActivateFirmware.");
+                    co_return PLDM_ERROR;
+                }
+                co_return PLDM_SUCCESS;
+            }
         }
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_REQUEST_FIRMWARE_DATA, COMMAND_TIMEOUT);
-        componentUpdateStatus[componentIndex] = false;
-        uaState.set(UASequence::CancelUpdateComponent);
-        sendcancelUpdateComponentRequest();
-        updateManager->updateDeviceCompletion(eid, false);
-        return;
-    });
+        // None of the component update is success, cancel the update
+        auto rc = co_await sendCancelUpdateRequest();
+        if (rc)
+        {
+            lg2::error("Error while sending CancelUpdate.");
+            co_return PLDM_ERROR;
+        }
+        updateManager->updateDeviceCompletion(eid, compStatus);
+        co_return PLDM_SUCCESS;
+    }
 }
 
-void DeviceUpdater::sendcancelUpdateComponentRequest()
+requester::Coroutine DeviceUpdater::sendCancelUpdateRequest()
 {
-    pldmRequest.reset();
     auto instanceId = updateManager->requester.getInstanceId(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    const pldm_msg* response = NULL;
+    size_t respMsgLen = 0;
 
-    auto rc = encode_cancel_update_component_req(
-        instanceId, requestMsg, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
+    auto rc = encode_cancel_update_req(instanceId, requestMsg,
+                                       PLDM_CANCEL_UPDATE_REQ_BYTES);
     if (rc)
     {
         updateManager->requester.markFree(eid, instanceId);
-        lg2::error(
-            "encode_cancel_update_component_req failed, EID={EID}, ComponentIndex={COMPONENTINDEX}, RC={RC}",
-            "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
-        uaState.set(UASequence::Invalid);
+        lg2::error("encode_cancel_update_req failed, EID={EID}, RC={RC}", "EID",
+                   eid, "RC", rc);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
     }
 
-    printBuffer(
-        pldm::utils::Tx, request,
-        ("Send CancelUpdateComponentRequest for EID=" + std::to_string(eid)));
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_CANCEL_UPDATE_COMPONENT,
-        std::move(request),
-        std::move(
-            std::bind_front(&DeviceUpdater::cancelUpdateComponent, this)));
+    printBuffer(pldm::utils::Tx, request,
+                ("Send CancelUpdate for EID=" + std::to_string(eid)),
+                updateManager->fwDebug);
+    rc = co_await SendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
         lg2::error(
-            "Failed to send cancelUpdateComponent request, EID={EID}, ComponentIndex={COMPONENTINDEX}, RC={RC} ",
-            "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
-        uaState.set(UASequence::Invalid);
+            "Error while sending mctp request for CancelUpdate. EID={EID}",
+            "EID", eid);
+        co_return rc;
     }
+    rc = co_await processCancelUpdateResponse(eid, response, respMsgLen);
+    if (rc)
+    {
+        lg2::error("Error while processing CancelUpdate Response. EID={EID}",
+                   "EID", eid);
+    }
+    co_return rc;
 }
 
-void DeviceUpdater::cancelUpdateComponent(mctp_eid_t eid,
-                                          const pldm_msg* response,
-                                          size_t respMsgLen)
+requester::Coroutine DeviceUpdater::processCancelUpdateResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
         // Handle error scenario
-        lg2::error("No response received for CancelUpdateComponent, EID={EID}",
-                   "EID", eid);
-        uaState.set(UASequence::Invalid);
-        return;
+        lg2::error("No response received for CancelUpdate, EID={EID}", "EID",
+                   eid);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
 
-    printBuffer(pldm::utils::Rx, response, respMsgLen,
-                ("Received CancelUpdateComponent Response from EID=" +
-                 std::to_string(eid)));
+    printBuffer(
+        pldm::utils::Rx, response, respMsgLen,
+        ("Received CancelUpdate Response from EID=" + std::to_string(eid)),
+        updateManager->fwDebug);
 
     uint8_t completionCode = 0;
-    auto rc = decode_cancel_update_component_resp(response, respMsgLen,
-                                                  &completionCode);
+    bool8_t nonFunctioningComponentIndication;
+    bitfield64_t nonFunctioningComponentBitmap{0};
+    auto rc = decode_cancel_update_resp(response, respMsgLen, &completionCode,
+                                        &nonFunctioningComponentIndication,
+                                        &nonFunctioningComponentBitmap);
     if (rc)
     {
-        lg2::error(
-            "Decoding CancelUpdateComponent response failed, EID={EID}, ComponentIndex={COMPONENTINDEX}, CC={CC}",
-            "EID", eid, "COMPONENTINDEX", componentIndex, "CC", completionCode);
-        uaState.set(UASequence::Invalid);
-        return;
+        lg2::error("Decoding CancelUpdate response failed, EID={EID}, CC={CC}",
+                   "EID", eid, "CC", completionCode);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
     }
-    if (completionCode)
+    if (completionCode && completionCode != PLDM_FWUP_NOT_IN_UPDATE_MODE)
     {
         lg2::error(
-            "CancelUpdateComponent response failed with error, EID={EID}, ComponentIndex={COMPONENTINDEX}, CC={CC}",
-            "EID", eid, "COMPONENTINDEX", componentIndex, "CC", completionCode);
-        uaState.set(UASequence::Invalid);
-        return;
+            "CancelUpdate response failed with error, EID={EID}, CC={CC}",
+            "EID", eid, "CC", completionCode);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    // this scenario occurs when last component update is cancelled
-    if (componentIndex == applicableComponents.size() - 1)
-    {
-        size_t cancelledUpdates = 0;
-        for (auto& compStatus : componentUpdateStatus)
-        {
-            if (!compStatus.second)
-            {
-                cancelledUpdates += 1;
-            }
-        }
-        // send activation request if atleast one device is succeeded
-        if (cancelledUpdates < applicableComponents.size() - 1)
-        {
-            componentIndex = 0;
-            componentUpdateStatus.clear();
-            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-                updateManager->event,
-                std::bind(&DeviceUpdater::sendActivateFirmwareRequest, this));
-            uaState.set(UASequence::ActivateFirmware);
-        }
-        else
-        {
-            uaState.set(UASequence::Invalid);
-        }
-    }
-    else
-    {
-        componentIndex++;
-        componentUpdateStatus[componentIndex] = true;
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendUpdateComponentRequest, this,
-                      componentIndex));
-        uaState.set(UASequence::UpdateComponent);
-    }
-    return;
-}
-
-Response DeviceUpdater::sendCommandNotExpectedResponse(const pldm_msg* request,
-                                                       size_t /*requestLen*/)
-{
-    Response response(sizeof(pldm_msg), 0);
-    auto ptr = reinterpret_cast<pldm_msg*>(response.data());
-    auto rc = encode_cc_only_resp(request->hdr.instance_id, request->hdr.type,
-                                  request->hdr.command,
-                                  PLDM_FWUP_COMMAND_NOT_EXPECTED, ptr);
-    assert(rc == PLDM_SUCCESS);
-    return response;
+    co_return PLDM_SUCCESS;
 }
 
 } // namespace fw_update

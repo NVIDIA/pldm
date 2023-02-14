@@ -106,6 +106,11 @@ static ErrorMapping verifyCompleteMapping{
 #endif
 };
 
+/* apply complete command error mapping */
+static ErrorMapping applyCompleteMapping{
+    {COMMAND_TIMEOUT,
+     {"Complete Commands Timeout", "Retry firmware update operation."}}};
+
 /* activate firmware error mapping */
 static ErrorMapping activateFirmwareMapping{
     {COMMAND_TIMEOUT,
@@ -119,6 +124,7 @@ static const CommandMapping commandMappingTbl = {
     {PLDM_REQUEST_FIRMWARE_DATA, requestFwDataMapping},
     {PLDM_TRANSFER_COMPLETE, transferCompleteMapping},
     {PLDM_VERIFY_COMPLETE, verifyCompleteMapping},
+    {PLDM_APPLY_COMPLETE, applyCompleteMapping},
     {PLDM_ACTIVATE_FIRMWARE, activateFirmwareMapping}};
 
 /**

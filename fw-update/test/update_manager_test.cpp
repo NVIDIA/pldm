@@ -341,7 +341,7 @@ TEST_F(UpdateManagerTest, handleRequest_transfer_complete)
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
-        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+        reqFwDataReq{0x8A, 0x05, 0x16, 0x00, 0x00, 0x00,
                      0x00, 0x00, 0x02, 0x00, 0x00};
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
@@ -374,7 +374,7 @@ TEST_F(UpdateManagerTest, handleRequest_verify_complete)
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
-        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+        reqFwDataReq{0x8A, 0x05, 0x17, 0x00, 0x00, 0x00,
                      0x00, 0x00, 0x02, 0x00, 0x00};
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
@@ -408,7 +408,7 @@ TEST_F(UpdateManagerTest, handleRequest_apply_complete)
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
-        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+        reqFwDataReq{0x8A, 0x05, 0x18, 0x00, 0x00, 0x00,
                      0x00, 0x00, 0x02, 0x00, 0x00};
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
