@@ -1,6 +1,7 @@
 #include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
+#define private public
 #include "fw-update/device_updater.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
@@ -8,10 +9,15 @@
 #include "requester/handler.hpp"
 
 #include <sdeventplus/test/sdevent.hpp>
+#include "mocked_firmware_update_function.hpp"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <sdbusplus/bus.hpp>
+#include <sdbusplus/test/sdbus_mock.hpp>
+
+using ::testing::_;
 using namespace pldm;
 using namespace pldm::fw_update;
 
@@ -174,4 +180,358 @@ TEST_F(DeviceUpdaterTest, ReadPackage512B)
         0xC4, 0x12, 0xD7, 0x3C, 0x65, 0x6C, 0xE1, 0x5A, 0x32, 0xAA, 0x0B, 0xA3,
         0xA2, 0x72, 0x33, 0x00, 0x3C, 0x7E, 0x28, 0x36, 0x10, 0x90, 0x38, 0xFB};
     EXPECT_EQ(response, compFirst512B);
+}
+
+TEST_F(DeviceUpdaterTest, requestUpdate)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                      sizeof(pldm_request_firmware_data_req)>
+        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                     0x00, 0x00, 0x02, 0x00, 0x00};
+  
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    deviceUpdater.requestUpdate(eid, requestMsg, sizeof(struct pldm_request_update_resp));
+}
+
+TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START_AND_END)
+{
+    mctp_eid_t eid = 0;
+    size_t offset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendPassCompTableRequest(offset);
+    });
+}
+
+TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START)
+{
+    mctp_eid_t eid = 0;
+    size_t offset = 0;
+
+    FirmwareDeviceIDRecord fwDeviceIDRecord2;
+    fwDeviceIDRecord2 = {
+            1,
+            {0x00, 0x01, 0x02},
+            "VersionString2",
+            {{PLDM_FWUP_UUID,
+              std::vector<uint8_t>{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41,
+                                   0x15, 0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49,
+                                   0xD6, 0x75}}},
+            {}};
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord2, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendPassCompTableRequest(offset);
+    });
+}
+
+TEST_F(DeviceUpdaterTest, passCompTable)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                      sizeof(pldm_request_firmware_data_req)>
+        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                     0x00, 0x00, 0x02, 0x00, 0x00};
+  
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    EXPECT_NO_THROW({
+        deviceUpdater.passCompTable(eid, requestMsg, sizeof(struct pldm_pass_component_table_resp));
+    });    
+}
+
+TEST_F(DeviceUpdaterTest, sendUpdateComponentRequest)
+{
+    mctp_eid_t eid = 0;
+    size_t offset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendUpdateComponentRequest(offset);
+    });
+}
+
+
+TEST_F(DeviceUpdaterTest, transferComplete)
+{
+    DeviceUpdater deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    {
+        constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                        sizeof(pldm_request_firmware_data_req)>
+            reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x02, 0x00, 0x00};
+        auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+        deviceUpdater.uaState.set(UASequence::RequestFirmwareData);
+        deviceUpdater.requestFwData(
+            requestMsg, sizeof(pldm_request_firmware_data_req));
+    }
+
+    constexpr uint8_t transferResult = PLDM_FWUP_TRANSFER_SUCCESS;
+    constexpr uint64_t pldm_request_transfer_complete = sizeof(pldm_msg_hdr) + 
+                                        sizeof(transferResult);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + pldm_request_transfer_complete>
+        transferCompleteReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    constexpr uint8_t instanceId = 0x0A;
+    constexpr uint8_t completionCode = PLDM_SUCCESS;
+    deviceUpdater.uaState.set(UASequence::RequestFirmwareData);
+
+    auto response = deviceUpdater.transferComplete(
+        requestMsg, sizeof(transferResult));
+
+    EXPECT_EQ(response.size(),
+              sizeof(pldm_msg_hdr) + sizeof(completionCode));
+    auto responeMsg = reinterpret_cast<const pldm_msg*>(response.data());
+    EXPECT_EQ(responeMsg->hdr.request, PLDM_RESPONSE);
+    EXPECT_EQ(responeMsg->hdr.instance_id, instanceId);
+    EXPECT_EQ(responeMsg->hdr.type, PLDM_FWUP);
+    EXPECT_EQ(responeMsg->hdr.command, PLDM_TRANSFER_COMPLETE);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], completionCode);
+
+    const std::vector<uint8_t> compTransferData{0x0A, 0x05, 0x16, 0x00};
+    EXPECT_EQ(response, compTransferData);
+}
+
+TEST_F(DeviceUpdaterTest, verifyComplete)
+{
+    DeviceUpdater deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    {
+        constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                        sizeof(pldm_request_firmware_data_req)>
+            reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x02, 0x00, 0x00};
+        auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+        deviceUpdater.uaState.set(UASequence::RequestFirmwareData);
+        deviceUpdater.requestFwData(
+            requestMsg, sizeof(pldm_request_firmware_data_req));
+    }
+
+    constexpr uint8_t verifyResult = PLDM_FWUP_VERIFY_SUCCESS;
+    constexpr uint64_t pldm_request_verify_complete = sizeof(pldm_msg_hdr) + 
+                                        sizeof(verifyResult);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + pldm_request_verify_complete>
+        verifyCompleteReq{0x8A, 0x05, 0x16, 0x00, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    constexpr uint8_t instanceId = 0x0A;
+    constexpr uint8_t completionCode = PLDM_SUCCESS;
+    deviceUpdater.uaState.set(UASequence::VerifyComplete);
+
+    auto response = deviceUpdater.verifyComplete(
+        requestMsg, sizeof(verifyResult));
+
+    EXPECT_EQ(response.size(),
+              sizeof(pldm_msg_hdr) + sizeof(completionCode));
+    auto responeMsg = reinterpret_cast<const pldm_msg*>(response.data());
+    EXPECT_EQ(responeMsg->hdr.request, PLDM_RESPONSE);
+    EXPECT_EQ(responeMsg->hdr.instance_id, instanceId);
+    EXPECT_EQ(responeMsg->hdr.type, PLDM_FWUP);
+    EXPECT_EQ(responeMsg->hdr.command, PLDM_VERIFY_COMPLETE);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], completionCode);
+
+    const std::vector<uint8_t> compTransferData{0x0A, 0x05, 0x17, 0x00};
+    EXPECT_EQ(response, compTransferData);
+}
+
+TEST_F(DeviceUpdaterTest, sendActivateFirmwareRequest)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendActivateFirmwareRequest();
+    });
+}
+
+
+TEST_F(DeviceUpdaterTest, activateFirmware)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                      sizeof(pldm_activate_firmware_resp)>
+        activateFirmwareReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00};
+
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(activateFirmwareReq.data());
+
+    EXPECT_NO_THROW({
+        deviceUpdater.activateFirmware(eid, requestMsg, sizeof(struct pldm_activate_firmware_resp));
+    });
+}
+
+TEST_F(DeviceUpdaterTest, sendcancelUpdateComponentRequest)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendcancelUpdateComponentRequest();
+    });
+}
+
+TEST_F(DeviceUpdaterTest, cancelUpdateComponent_empty_response)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    EXPECT_NO_THROW({
+        deviceUpdater.cancelUpdateComponent(eid, nullptr, 0);
+    });
+}
+
+TEST_F(DeviceUpdaterTest, cancelUpdateComponent)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    const pldm_msg pldmmsg{};
+
+    EXPECT_NO_THROW({
+        deviceUpdater.cancelUpdateComponent(eid, &pldmmsg, 0);
+    });
+}
+
+TEST_F(DeviceUpdaterTest, sendCommandNotExpectedResponse)
+{
+    mctp_eid_t eid = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false);
+
+    const pldm_msg pldmmsg{};
+
+    EXPECT_NO_THROW({
+        deviceUpdater.sendCommandNotExpectedResponse(&pldmmsg, 0);
+    });
+}
+
+TEST(UASequence, command_RequestUpdate)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::RequestUpdate, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::PassComponentTable);
+}
+
+TEST(UASequence, command_PassComponentTable)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::PassComponentTable, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::UpdateComponent);
+}
+
+TEST(UASequence, command_PassComponentTable_compIndex_less_then_numComps)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::PassComponentTable, 0, 1);
+
+    EXPECT_EQ(sequence, UASequence::PassComponentTable);
+}
+
+TEST(UASequence, command_UpdateComponent)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::UpdateComponent, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::RequestFirmwareData);
+}
+
+TEST(UASequence, command_RequestFirmwareData)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::RequestFirmwareData, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::TransferComplete);
+}
+
+TEST(UASequence, command_ApplyComplete_compIndex_less_then_numComps)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::ApplyComplete, 0, 1);
+
+    EXPECT_EQ(sequence, UASequence::UpdateComponent);
+}
+
+TEST(UASequence, command_ApplyComplete)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::ApplyComplete, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::ActivateFirmware);
+}
+
+TEST(UASequence, command_Invalid)
+{
+    struct UAState uaState;
+
+    UASequence sequence = uaState.nextState(UASequence::Invalid, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::Invalid);
+}
+
+TEST(UASequence, command_Invalid_fwDebug)
+{
+    struct UAState uaState(true);
+
+    UASequence sequence = uaState.nextState(UASequence::Invalid, 0, 0);
+
+    EXPECT_EQ(sequence, UASequence::Invalid);
 }

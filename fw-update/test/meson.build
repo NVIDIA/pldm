@@ -17,6 +17,7 @@ tests = [
   'inventory_manager_test',
   'package_parser_test',
   'device_updater_test',
+  'device_updater_firmware_update_test',
   'error_handling_test',
   'config_test',
   'device_inventory_test',
