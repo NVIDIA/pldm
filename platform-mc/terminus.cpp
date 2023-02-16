@@ -724,6 +724,13 @@ void Terminus::scanInventories()
                 {
                     if (interface == overallSystemInterface)
                     {
+                        if (std::find(interfaces.begin(), interfaces.end(),
+                                      chassisInterface) == interfaces.end())
+                        {
+                            // The system should also has Chassis interface,
+                            // continue if not.
+                            continue;
+                        }
                         systemInventoryPath = objPath;
                         continue;
                     }

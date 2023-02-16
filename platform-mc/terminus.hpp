@@ -49,6 +49,7 @@ constexpr auto instanceInterface =
 constexpr auto instanceProperty = "InstanceNumber";
 constexpr auto overallSystemInterface =
     "xyz.openbmc_project.Inventory.Item.System";
+constexpr auto chassisInterface = "xyz.openbmc_project.Inventory.Item.Chassis";
 constexpr ContainerID overallSystemCotainerId = 0;
 static const std::map<EntityType, std::string_view> entityInterfaces = {
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
