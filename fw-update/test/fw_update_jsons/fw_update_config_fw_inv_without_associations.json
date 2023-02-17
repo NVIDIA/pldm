@@ -20,14 +20,7 @@
             "firmware_inventory": {
                 "create": {
                     "ComponentName1": {
-                        "component_id": 1,
-                        "associations": [
-                            {
-                                "forward": "inventory",
-                                "reverse": "activation",
-                                "endpoint": "/xyz/openbmc_project/software/ComponentName1"
-                            }
-                        ]
+                        "component_id": 1
                     }
                 },
                 "update": {

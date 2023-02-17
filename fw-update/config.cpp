@@ -82,12 +82,33 @@ void parseConfig(const fs::path& jsonPath,
         {
             CreateComponentIdNameMap createcomponentIdNameMap{};
             UpdateComponentIdNameMap updatecomponentIdNameMap{};
+            
             if (entry.value()["firmware_inventory"].contains("create"))
             {
-                for (auto& [componentName, componentID] :
-                     entry.value()["firmware_inventory"]["create"].items())
+                for (const auto& createObject : 
+                        entry.value()["firmware_inventory"]["create"].items())
                 {
-                    createcomponentIdNameMap[componentID] = componentName;
+                    Associations assocs{};
+                    
+                    if (createObject.value().contains( "associations"))
+                    {
+                        auto associations = createObject.value()["associations"];
+                        for (const auto& assocEntry : associations.items())
+                        {
+                            auto forward = assocEntry.value()["forward"];
+                            auto reverse = assocEntry.value()["reverse"];
+                            auto endpoint = assocEntry.value()["endpoint"];
+                            assocs.emplace_back(
+                                std::make_tuple(forward, reverse, endpoint));
+                        }
+                    }
+                    
+                    if (createObject.value().contains("component_id"))
+                    {
+                        auto componentID = createObject.value()["component_id"];
+                        auto componentName = createObject.key();
+                        createcomponentIdNameMap[componentID] = { componentName, assocs };
+                    }
                 }
             }
             if (entry.value()["firmware_inventory"].contains("update"))

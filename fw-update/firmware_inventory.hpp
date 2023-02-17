@@ -40,9 +40,6 @@ class Entry : public Ifaces
     Entry(Entry&&) = default;
     Entry& operator=(Entry&&) = default;
 
-    const std::string invFwdAssociation = "inventory";
-    const std::string invRevAssociation = "activation";
-
     const std::string upFwdAssociation = "software_version";
     const std::string upRevAssociation = "updateable";
 
@@ -55,20 +52,23 @@ class Entry : public Ifaces
      */
     explicit Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
                    const std::string& versionStr, const std::string& swId);
-
-    /** @brief Create association {"inventory", "activation"} between software
-     *         object and the device inventory object
-     *
-     *  @param[in] deviceObjPath - device inventory object
-     */
-    void createInventoryAssociation(const std::string& deviceObjPath);
-
+                   
     /** @brief Create association {"software_version", "updateable"} between
      * software version object and "/xyz/openbmc_project/software"
      *
      *  @param[in] swObjPath - "/xyz/openbmc_project/software"
      */
     void createUpdateableAssociation(const std::string& swObjPath);
+
+    /** @brief Create association defined in parameters
+     *
+     *  @param[in] fwdAssociation - Association forward
+     *  @param[in] revAssociation - Association reverse
+     *  @param[in] objPath - D-Bus object path
+     */
+    void createAssociation(const std::string fwdAssociation, 
+                            const std::string revAssociation,
+                            const std::string& objPath);
 };
 
 /** @class Manager
@@ -102,8 +102,7 @@ class Manager
      *  @param[in] uuid - MCTP UUID
      *  @param[in] deviceObjPath - Object path of the device inventory object
      */
-    void createEntry(pldm::EID eid, const pldm::UUID& uuid,
-                     const sdbusplus::message::object_path& deviceObjPath);
+    void createEntry(pldm::EID eid, const pldm::UUID& uuid);
 
     const std::string swBasePath = "/xyz/openbmc_project/software";
 

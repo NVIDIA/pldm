@@ -4,7 +4,16 @@
             "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
             "firmware_inventory": {
                 "create": {
-                    "ComponentName1": 1
+                    "ComponentName1": {
+                        "component_id": 1,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName1"
+                            }
+                        ]
+                    }
                 }
             },
             "component_info": {

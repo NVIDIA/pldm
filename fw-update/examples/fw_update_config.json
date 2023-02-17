@@ -32,8 +32,9 @@
 //
 // 2) Firmware Inventory - The firmware version for the components on the FD is
 // populated on the D-Bus if "create" entry is present in "firmware_inventory"
-// section. The key is the component name and value is the ComponentIdentifier
-// as defined in DSP0267. The firmware inventory D-Bus object path will be
+// section. The key is the component name and value is the object with two property,
+// the first called component_id contains ComponentIdentifier as defined in DSP0267
+// the second is the collection of associations. The object path is
 // "ComponentName" appended to "/xyz/openbmc_project/software".
 // "/xyz/openbmc_project/software/ComponentName" D-Bus object will implement
 // xyz.openbmc_project.Software.Version interface and default Purpose to
@@ -82,15 +83,36 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "ComponentName1": 1
+                    "ComponentName1": {
+                        "component_id": 1,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName1"
+                            }
+                        ]
+					},
+
+                    "ComponentName2": {
+                        "component_id": 2,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName2"
+                            }
+                        ]
+                    }
                 },
                 "update": {
-                    "ComponentName2": 1
+                    "ComponentName3": 3
                 }
             },
             "component_info": {
                 "ComponentName1": 1,
-                "ComponentName2": 2
+                "ComponentName2": 2,
+                "ComponentName3": 3
             }
         }
     ]

@@ -115,10 +115,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     void createInventory(EID eid, UUID uuid)
     {
-        auto objectPath = deviceInventoryManager.createEntry(eid, uuid);
+        (void) deviceInventoryManager.createEntry(eid, uuid);
         if (componentInfoMap.contains(eid))
         {
-            fwInventoryManager.createEntry(eid, uuid, objectPath);
+            fwInventoryManager.createEntry(eid, uuid);
         }
     }
 

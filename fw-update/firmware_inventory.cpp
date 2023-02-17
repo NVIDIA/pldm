@@ -23,19 +23,22 @@ Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
     Ifaces::emit_object_added();
 }
 
-void Entry::createInventoryAssociation(const std::string& deviceObjPath)
-{
-    auto assocs = associations();
-    assocs.emplace_back(
-        std::make_tuple(invFwdAssociation, invRevAssociation, deviceObjPath));
-    associations(assocs);
-}
-
 void Entry::createUpdateableAssociation(const std::string& swObjPath)
 {
     auto assocs = associations();
     assocs.emplace_back(
         std::make_tuple(upFwdAssociation, upRevAssociation, swObjPath));
+    associations(assocs);
+}
+
+void Entry::createAssociation(const std::string fwdAssociation, 
+                            const std::string revAssociation,
+                            const std::string& objPath)
+{
+    auto assocs = associations();
+    assocs.emplace_back(
+         std::make_tuple(fwdAssociation, revAssociation, objPath));
+
     associations(assocs);
 }
 
@@ -48,8 +51,7 @@ Manager::Manager(sdbusplus::bus::bus& bus,
     componentInfoMap(componentInfoMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 
-void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
-                          const sdbusplus::message::object_path& objectPath)
+void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid)
 {
     if (firmwareInventoryInfo.contains(uuid) && componentInfoMap.contains(eid))
     {
@@ -60,16 +62,26 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
         {
             if ((std::get<0>(fwInfoSearch->second)).contains(compKey.second))
             {
-                auto componentName =
+                auto componentObject =
                     (std::get<0>(fwInfoSearch->second)).find(compKey.second);
-                std::string objPath = swBasePath + "/" + componentName->second;
+                std::string objPath = swBasePath + "/" + std::get<ComponentName>(componentObject->second);
+
                 auto swId = fmt::format("0x{:04X}", compKey.second);
                 auto entry = std::make_unique<Entry>(
                     bus, objPath, std::get<1>(compInfo), swId);
                 entry->createUpdateableAssociation(swBasePath);
-                if (objectPath != "")
-                {
-                    entry->createInventoryAssociation(objectPath);
+
+                const auto& assocs =
+                    std::get<Associations>(componentObject->second);
+
+                for (auto& assoc : assocs){
+                    std::string fwdAssociation = std::get<0>(assoc);
+                    std::string revAssociation = std::get<1>(assoc);
+                    std::string objectPathAssociation = std::get<2>(assoc);
+
+                    entry->createAssociation(fwdAssociation, 
+                        revAssociation, 
+                        objectPathAssociation);
                 }
 
                 firmwareInventoryMap.emplace(

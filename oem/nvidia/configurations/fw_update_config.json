@@ -24,7 +24,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_FPGA_0": 65280
+                    "HGX_FW_ERoT_FPGA_0": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_FPGA_0"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_FPGA_0": 80
@@ -59,7 +68,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_1": 65280
+                    "HGX_FW_ERoT_GPU_SXM_1": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_1"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_1": 32
@@ -94,7 +112,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_2": 65280
+                    "HGX_FW_ERoT_GPU_SXM_2": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_2"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_2": 32
@@ -129,7 +156,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_3": 65280
+                    "HGX_FW_ERoT_GPU_SXM_3": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_3"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_3": 32
@@ -164,7 +200,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_4": 65280
+                    "HGX_FW_ERoT_GPU_SXM_4": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_4"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_4": 32
@@ -199,7 +244,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_5": 65280
+                    "HGX_FW_ERoT_GPU_SXM_5": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_5"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_5": 32
@@ -234,7 +288,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_6": 65280
+                    "HGX_FW_ERoT_GPU_SXM_6": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_6"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_6": 32
@@ -269,7 +332,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_7": 65280
+                    "HGX_FW_ERoT_GPU_SXM_7": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_7"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_7": 32
@@ -304,7 +376,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_GPU_SXM_8": 65280
+                    "HGX_FW_ERoT_GPU_SXM_8": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_8"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_GPU_SXM_8": 32
@@ -339,7 +420,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_BMC_0": 65280
+                    "HGX_FW_ERoT_BMC_0": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_BMC_0"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_BMC_0": 16
@@ -374,7 +464,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_NVSwitch_0": 65280
+                    "HGX_FW_ERoT_NVSwitch_0": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_0"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_NVSwitch_0": 112
@@ -409,7 +508,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_NVSwitch_1": 65280
+                    "HGX_FW_ERoT_NVSwitch_1": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_1"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_NVSwitch_1": 112
@@ -444,7 +552,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_NVSwitch_2": 65280
+                    "HGX_FW_ERoT_NVSwitch_2": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_2"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_NVSwitch_2": 112
@@ -479,7 +596,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_NVSwitch_3": 65280
+                    "HGX_FW_ERoT_NVSwitch_3": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_3"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_NVSwitch_3": 112
@@ -514,7 +640,16 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "HGX_FW_ERoT_PCIeSwitch_0": 65280
+                    "HGX_FW_ERoT_PCIeSwitch_0": {
+                        "component_id": 65280,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_PCIeSwitch_0"
+                            }
+                        ]
+                    }
                 },
                 "update": {
                     "HGX_FW_PCIeSwitch_0": 64

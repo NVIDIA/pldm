@@ -38,8 +38,26 @@
             },
             "firmware_inventory": {
                 "create": {
-                    "ComponentName3": 3,
-                    "ComponentName4": 4
+                    "ComponentName3": {
+                        "component_id": 3,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName3"
+                            }
+                        ]
+                    },
+                    "ComponentName4": {
+                        "component_id": 4,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName4"
+                            }
+                        ]
+                    }
                 }
             },
             "component_info": {

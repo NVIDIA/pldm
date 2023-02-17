@@ -123,7 +123,8 @@ using DeviceInventoryInfo = std::unordered_map<UUID, DeviceInfo>;
 // FirmwareInventory
 using ComponentName = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
-using CreateComponentIdNameMap = ComponentIdNameMap;
+using ComponentObject = std::tuple<ComponentName, Associations>;
+using CreateComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;
 using FirmwareInventoryInfo = std::unordered_map<
     UUID, std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>>;
