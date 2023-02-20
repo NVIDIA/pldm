@@ -7,6 +7,7 @@
 
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Critical/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
 #include <xyz/openbmc_project/Sensor/Value/server.hpp>
@@ -34,6 +35,10 @@ using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
+using PhysicalContextType = sdbusplus::xyz::openbmc_project::Inventory::
+    Decorator::server::Area::PhysicalContextType;
+using InventoryDecoratorAreaIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Area>;
 using sensorMap = std::map<
     std::string,
     std::tuple<std::variant<std::string, int, int16_t, int64_t, uint16_t,
@@ -111,6 +116,18 @@ class NumericSensor
                 {{"chassis", "all_sensors", inventoryPath.c_str()}});
         }
     }
+
+    /** @brief Updating the physicalContext to D-Bus interface
+     *  @param[in] type - physical context type
+     */
+    inline void setPhysicalContext(PhysicalContextType type)
+    {
+        if (inventoryDecoratorAreaIntf)
+        {
+            inventoryDecoratorAreaIntf->physicalContext(type);
+        }
+    }
+
     /** @brief Get Upper Critical threshold
      *
      *  @return double - Upper Critical threshold
@@ -194,6 +211,8 @@ class NumericSensor
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =
         nullptr;
+    std::unique_ptr<InventoryDecoratorAreaIntf>
+        inventoryDecoratorAreaIntf = nullptr;
 
     /** @brief Amount of hysteresis associated with the sensor thresholds */
     double hysteresis;

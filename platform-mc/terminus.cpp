@@ -790,6 +790,9 @@ void Terminus::updateAssociations()
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPath(inventoryPath);
+
+        auto type = toPhysicalContextType(std::get<1>(entityInfo));
+        ptr->setPhysicalContext(type);
     }
 
     for (const auto& ptr : numericEffecters)
@@ -1080,6 +1083,30 @@ void Terminus::handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
     }
     lg2::error("handleStateSensorEvent: sensor id, {SENSORID}, not found.",
                "SENSORID", sensorId);
+}
+
+PhysicalContextType
+    Terminus::toPhysicalContextType(const EntityType entityType)
+{
+    switch (entityType)
+    {
+        case PLDM_ENTITY_MEMORY_CONTROLLER:
+            return PhysicalContextType::Memory;
+        case PLDM_ENTITY_PROC:
+            return PhysicalContextType::CPU;
+        case PLDM_ENTITY_PROC_MODULE:
+        case PLDM_ENTITY_PROC_IO_MODULE:
+            // todo: define new PhysicalContextType enum for PROC_MODULE
+            return PhysicalContextType::CPU;
+        case PLDM_ENTITY_DC_DC_CONVERTER:
+        case PLDM_ENTITY_POWER_CONVERTER:
+            return PhysicalContextType::VoltageRegulator;
+        case PLDM_ENTITY_SYS_BOARD:
+            return PhysicalContextType::SystemBoard;
+        default:
+            break;
+    }
+    return PhysicalContextType::SystemBoard;
 }
 
 } // namespace platform_mc

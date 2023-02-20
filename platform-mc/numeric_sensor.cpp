@@ -244,6 +244,11 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         thresholdCriticalIntf->criticalHigh(unitModifier(criticalHigh));
         thresholdCriticalIntf->criticalLow(unitModifier(criticalLow));
     }
+
+    inventoryDecoratorAreaIntf =
+        std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
+    inventoryDecoratorAreaIntf->physicalContext(
+        PhysicalContextType::SystemBoard);
 }
 
 double NumericSensor::conversionFormula(double value)

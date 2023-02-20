@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/types.hpp"
 #include "platform-mc/oem_base.hpp"
-#include "platform-mc/terminus.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>

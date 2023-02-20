@@ -1,5 +1,7 @@
 #include "oem_nvidia.hpp"
 
+#include "platform-mc/terminus.hpp"
+
 using namespace pldm::pdr;
 
 namespace pldm

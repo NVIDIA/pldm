@@ -13,6 +13,7 @@
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 
 #include <coroutine>
 
@@ -36,7 +37,10 @@ using SensorAuxiliaryNames = std::tuple<
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
     std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
-using VendorIANA = uint32_t;
+using PhysicalContextType = sdbusplus::xyz::openbmc_project::Inventory::
+    Decorator::server::Area::PhysicalContextType;
+using InventoryDecoratorAreaIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Area>;
 using OemRecordId = uint16_t;
 using VendorSpecificData = std::vector<uint8_t>;
 using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
@@ -203,6 +207,13 @@ class Terminus
         parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
 
     OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);
+
+    /** @brief Convert EntityType to PhysicalContextType
+     *
+     *  @param[in] EntityType - entityType
+     *  @return PhysicalContextType
+     */
+    PhysicalContextType toPhysicalContextType(const EntityType entityType);
 
     tid_t tid;
     std::bitset<64> supportedTypes;

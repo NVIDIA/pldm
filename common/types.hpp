@@ -26,6 +26,7 @@ using NetworkId = uint8_t;
 using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId>;
 using MctpInfos = std::vector<MctpInfo>;
 using tid_t = uint8_t;
+using VendorIANA = uint32_t;
 
 namespace dbus
 {
