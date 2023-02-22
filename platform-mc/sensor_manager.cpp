@@ -10,6 +10,24 @@ namespace platform_mc
 
 using namespace std::chrono;
 
+SensorPollingEnableIntf::SensorPollingEnableIntf(SensorManager& parent) :
+    EnableIntf(pldm::utils::DBusHandler::getBus(), sensorPollingControlPath),
+    parent(parent){};
+
+bool SensorPollingEnableIntf::enabled(bool value)
+{
+    if (value)
+    {
+        parent.startPolling();
+    }
+    else
+    {
+        parent.stopPolling();
+    }
+    // We have set the Enabled property in start/stop Polling functions
+    return EnableIntf::enabled();
+}
+
 SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
@@ -19,6 +37,9 @@ SensorManager::SensorManager(
     pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
+
+    enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);
+
     aggregationIntf =
         std::make_unique<AggregationIntf>(bus, aggregationDataPath);
 
@@ -149,6 +170,8 @@ void SensorManager::startPolling()
                 true);
         }
     }
+
+    enableIntf->EnableIntf::enabled(true, false);
 }
 
 void SensorManager::stopPolling()
@@ -163,6 +186,8 @@ void SensorManager::stopPolling()
             sensorPollTimers[tid]->stop();
         }
     }
+
+    enableIntf->EnableIntf::enabled(false, false);
 }
 
 void SensorManager::doSensorPolling(tid_t tid)

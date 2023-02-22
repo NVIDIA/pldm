@@ -12,6 +12,7 @@
 #include "terminus.hpp"
 #include "terminus_manager.hpp"
 
+#include <xyz/openbmc_project/Object/Enable/server.hpp>
 #include <xyz/openbmc_project/Sensor/Aggregation/server.hpp>
 
 #include <queue>
@@ -24,8 +25,22 @@ namespace platform_mc
 
 using AggregationIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::server::Aggregation>;
+using EnableIntf = sdbusplus::xyz::openbmc_project::Object::server::Enable;
 constexpr auto aggregationDataPath =
     "/xyz/openbmc_project/inventory/platformmetrics";
+constexpr auto sensorPollingControlPath =
+    "/xyz/openbmc_project/pldm/sensor_polling";
+
+class SensorManager;
+class SensorPollingEnableIntf : public EnableIntf
+{
+  public:
+    SensorPollingEnableIntf(SensorManager& parent);
+    bool enabled(bool value) override;
+
+  private:
+    SensorManager& parent;
+};
 
 /**
  * @brief SensorManager
@@ -116,6 +131,8 @@ class SensorManager
 
     /** @brief aggregation Interface */
     std::unique_ptr<AggregationIntf> aggregationIntf = nullptr;
+
+    std::unique_ptr<SensorPollingEnableIntf> enableIntf = nullptr;
 
     /** @brief All sensor aggregated metrics, mapping from sensor name to sensor
      * value, timestamp and chassis path
