@@ -3,6 +3,7 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
@@ -60,9 +61,18 @@ class Entity
             {"parent_chassis", "all_chassis", ContainerInventory.c_str()}};
         if (inventoryAssociationInft == nullptr)
         {
-            inventoryAssociationInft =
-                std::make_unique<AssociationDefinitionsIntf>(
-                    utils::DBusHandler::getBus(), inventory.c_str());
+            try
+            {
+                inventoryAssociationInft =
+                    std::make_unique<AssociationDefinitionsIntf>(
+                        utils::DBusHandler::getBus(), inventory.c_str());
+            }
+            catch (const std::exception& e)
+            {
+                lg2::error(
+                    "Failed to create AssociationDefinitionsIntf to {INVENTORY}.",
+                    "INVENTORY", inventory, "ERROR", e);
+            }
             if (inventoryAssociationInft == nullptr)
             {
                 return;
