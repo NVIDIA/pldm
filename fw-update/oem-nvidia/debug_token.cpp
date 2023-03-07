@@ -47,10 +47,9 @@ bool DebugToken::activate()
         lg2::error(
             "Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
             "OBJPATH", tokenPath, "ERROR", e);
-        std::string resolution;
         createLogEntry(transferFailed,
                        std::filesystem::path(tokenPath).filename(),
-                       tokenVersion, resolution);
+                       tokenVersion, transferFailedResolution);
         activationStatus = false;
     }
     return activationStatus;
@@ -185,9 +184,8 @@ void DebugToken::updateDebugToken(
         catch (const sdbusplus::exception::SdBusError& e)
         {
             lg2::error("failed to get filepath.", "ERROR", e);
-            std::string resolution;
             createLogEntry(transferFailed, "HGX_FW_Debug_Token_Erase", "0.0",
-                           resolution);
+                           transferFailedResolution);
             startUpdate();
             return;
         }
@@ -275,10 +273,9 @@ void DebugToken::startTimer(auto timerExpiryTime)
     timer = std::make_unique<phosphor::Timer>([this]() {
         if (!tokenStatus)
         {
-            std::string resolution;
             createLogEntry(transferFailed,
                            std::filesystem::path(tokenPath).filename(),
-                           tokenVersion, resolution);
+                           tokenVersion, transferFailedResolution);
             lg2::error("Activation Timer expired for install debug token");
             startUpdate();
         }

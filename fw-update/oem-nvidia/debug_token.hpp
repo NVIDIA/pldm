@@ -17,6 +17,10 @@ namespace Server = sdbusplus::xyz::openbmc_project::Software::server;
 class UpdateManager;
 const std::string InstallTokenUUID = "76910DFA1E4C11ED861D0242AC120002";
 const std::string EraseTokenUUID = "76910DFA1E4C11ED861D0242AE52A53E";
+const std::string transferFailedResolution =
+    "Debug Token Service is not ready, retry the firmware update operation "
+    "after the management controller is ready. If the issue still persists"
+    " reset the baseboard.";
 
 /**
  * @brief Debug Token implementation in pldm for token installation and erase
