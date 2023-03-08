@@ -59,6 +59,10 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             path = "/xyz/openbmc_project/sensors/utilization/";
             sensorUnit = SensorUnit::Percent;
             break;
+        case PLDM_SENSOR_UNIT_COUNTS:
+            path = "/xyz/openbmc_project/sensors/counter/";
+            sensorUnit = SensorUnit::Counts;
+            break;
         default:
             throw std::runtime_error("baseUnit(" +
                                      std::to_string(pdr->base_unit) +
