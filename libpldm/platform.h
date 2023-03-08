@@ -464,10 +464,17 @@ enum pldm_repository_data_transfer_handler_timeout {
 
 /** @brief PLDM state set IDs */
 enum pldm_state_set_id {
+	PLDM_STATESET_ID_PRESENCE = 13,
 	PLDM_STATESET_ID_PERFORMANCE = 14,
 	PLDM_STATESET_ID_LINKSTATE = 33,
 	PLDM_STATESET_ID_BOOT_REQUEST = 193,
 	PLDM_STATESET_ID_POWERSUPPLY = 256
+};
+
+/** @brief PLDM state set ID 13 Presence values  */
+enum pldm_stateset_presence_values {
+	PLDM_STATESET_PRESENCE_PRESENT = 1,
+	PLDM_STATESET_PRESENCE_NOT_PRESENT = 2
 };
 
 /** @brief PLDM state set ID 14 Performance values  */
@@ -1669,7 +1676,7 @@ int decode_set_state_effecter_states_resp(const struct pldm_msg *msg,
  *         to allocate the field parameter as sizeof(set_effecter_op_field) *
  *         comp_effecter_count
  */
- int encode_set_state_effecter_enables_req(uint8_t instance_id,
+int encode_set_state_effecter_enables_req(uint8_t instance_id,
 					  uint16_t effecter_id,
 					  uint8_t comp_effecter_count,
 					  set_effecter_op_field *field,

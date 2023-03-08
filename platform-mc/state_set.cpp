@@ -37,6 +37,11 @@ std::unique_ptr<StateSet>
         return std::make_unique<StateSetClearNonvolatileVariable>(
             stateSetId, compId, path, stateAssociation, nullptr);
     }
+    else if (stateSetId == PLDM_STATESET_ID_PRESENCE)
+    {
+        return std::make_unique<StateSetPresenceState>(stateSetId, compId, path,
+                                                       stateAssociation);
+    }
 #ifdef OEM_NVIDIA
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK)
     {

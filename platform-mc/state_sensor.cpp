@@ -25,7 +25,7 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
                          std::string& sensorName,
                          std::string& associationPath) :
     tid(tid),
-    sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true)
+    sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true), async(false)
 {
     std::string path = "/xyz/openbmc_project/state/" + sensorName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");

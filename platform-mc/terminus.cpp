@@ -13,7 +13,9 @@ namespace platform_mc
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes,
                    TerminusManager& terminusManager) :
     initalized(false),
-    tid(tid), supportedTypes(supportedTypes), terminusManager(terminusManager)
+    synchronyConfigurationSupported(0), tid(tid),
+    supportedTypes(supportedTypes), terminusManager(terminusManager)
+
 {
     maxBufferSize = 256;
 
@@ -1024,6 +1026,11 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         auto sensor =
             std::make_shared<StateSensor>(tid, true, sId, std::move(sensorInfo),
                                           sensorName, systemInventoryPath);
+        if (synchronyConfigurationSupported &
+            (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
+        {
+            sensor->async = true;
+        }
         stateSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
@@ -1085,8 +1092,7 @@ void Terminus::handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
                "SENSORID", sensorId);
 }
 
-PhysicalContextType
-    Terminus::toPhysicalContextType(const EntityType entityType)
+PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
 {
     switch (entityType)
     {

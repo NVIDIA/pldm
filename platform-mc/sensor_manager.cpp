@@ -198,7 +198,7 @@ requester::Coroutine SensorManager::doSensorPollingTask()
 
         for (auto sensor : terminus.second->stateSensors)
         {
-            if (sensor->needUpdate)
+            if (sensor->needUpdate || !sensor->async)
             {
                 co_await getStateSensorReadings(sensor);
                 if (sensorPollTimer && !sensorPollTimer->isRunning())

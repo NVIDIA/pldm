@@ -20,15 +20,9 @@ requester::Coroutine PlatformManager::initTerminus()
 
         if (terminus->doesSupport(PLDM_PLATFORM))
         {
-            auto rc = co_await getPDRs(terminus);
-            if (!rc)
-            {
-                terminus->parsePDRs();
-            }
-
             uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
-            rc = co_await eventMessageBufferSize(tid, terminus->maxBufferSize,
-                                                 terminusMaxBufferSize);
+            auto rc = co_await eventMessageBufferSize(
+                tid, terminus->maxBufferSize, terminusMaxBufferSize);
             if (!rc)
             {
                 terminus->maxBufferSize =
@@ -36,29 +30,37 @@ requester::Coroutine PlatformManager::initTerminus()
             }
 
             uint8_t synchronyConfiguration = 0;
-            uint8_t synchronyConfigurationSupported = 0;
             uint8_t numberEventClassReturned = 0;
             std::vector<uint8_t> eventClass{};
             rc = co_await eventMessageSupported(
-                tid, 1, synchronyConfiguration, synchronyConfigurationSupported,
+                tid, 1, synchronyConfiguration,
+                terminus->synchronyConfigurationSupported,
                 numberEventClassReturned, eventClass);
             if (rc)
             {
                 lg2::error("failed to send eventMessageSupported, rc={RC}.",
                            "RC", rc);
-                continue;
+            }
+            else
+            {
+                if (terminus->synchronyConfigurationSupported &
+                    (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
+                {
+                    rc = co_await setEventReceiver(
+                        tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
+                        terminusManager.getLocalEid());
+                    if (rc)
+                    {
+                        lg2::error("failed to send setEventReceiver, rc={RC}.",
+                                   "RC", rc);
+                    }
+                }
             }
 
-            if (synchronyConfigurationSupported &
-                (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
+            rc = co_await getPDRs(terminus);
+            if (!rc)
             {
-                rc = co_await setEventReceiver(
-                    tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
-                    terminusManager.getLocalEid());
-                if (rc)
-                {
-                    continue;
-                }
+                terminus->parsePDRs();
             }
         }
         terminus->initalized = true;

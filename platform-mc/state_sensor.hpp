@@ -90,6 +90,9 @@ class StateSensor
     /** @brief flag to update the value once */
     bool needUpdate;
 
+    /** @brief indicate the sensor updated asynchronously */
+    bool async;
+
     std::string getAssociationEntityId()
     {
         return associationEntityId;

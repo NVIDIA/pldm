@@ -184,6 +184,10 @@ class Terminus
     void handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
                                 uint8_t eventState);
 
+    /** @brief This value indicates the event messaging styles supported by the
+     * terminus */
+    uint8_t synchronyConfigurationSupported;
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
         parseNumericSensorPDR(const std::vector<uint8_t>& pdrData);
