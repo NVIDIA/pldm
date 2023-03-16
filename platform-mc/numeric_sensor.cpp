@@ -60,7 +60,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             sensorUnit = SensorUnit::Percent;
             break;
         case PLDM_SENSOR_UNIT_COUNTS:
-            path = "/xyz/openbmc_project/sensors/counter/";
+            sensorNameSpace = "/xyz/openbmc_project/sensors/counter/";
             sensorUnit = SensorUnit::Counts;
             break;
         default:
