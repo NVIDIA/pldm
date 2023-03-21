@@ -40,7 +40,9 @@ class StateSensor
   public:
     StateSensor(const uint8_t tid, const bool sensorDisabled,
                 const uint16_t sensorId, StateSetInfo sensorInfo,
-                std::string& sensorName, std::string& associationPath);
+                std::vector<std::vector<std::pair<std::string, std::string>>>*
+                    sensorNames,
+                std::string& associationPath);
     ~StateSensor(){};
 
     /** @brief The function called by Sensor Manager to set sensor to

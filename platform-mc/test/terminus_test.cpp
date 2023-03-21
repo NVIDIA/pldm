@@ -85,7 +85,45 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         0x0 // sensorName
     };
 
+    std::vector<uint8_t> pdr2{
+        0x0,
+        0x0,
+        0x0,
+        0x1,                             // record handle
+        0x1,                             // PDRHeaderVersion
+        PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
+        0x0,
+        0x0, // recordChangeNumber
+        0x0,
+        21, // dataLength
+        0,
+        0x0, // PLDMTerminusHandle
+        0x2,
+        0x0, // sensorID
+        0x2, // sensorCount
+//sensor0
+        0x0, // nameStringCount
+//sensor1
+        0x1, // nameStringCount
+        'e',
+        'n',
+        0x0, // nameLanguageTag
+        0x0,
+        'T',
+        0x0,
+        'E',
+        0x0,
+        'M',
+        0x0,
+        'P',
+        0x0,
+        '2',
+        0x0,
+        0x0 // sensorName
+    };
+
     t1.pdrs.emplace_back(pdr1);
+    t1.pdrs.emplace_back(pdr2);
     auto rc = t1.parsePDRs();
     EXPECT_EQ(true, rc);
 
@@ -102,6 +140,18 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
     EXPECT_EQ(1, names[0].size());
     EXPECT_EQ("en", names[0][0].first);
     EXPECT_EQ("TEMP1", names[0][0].second);
+
+    sensorAuxNames = t1.getSensorAuxiliaryNames(2);
+    EXPECT_NE(nullptr, sensorAuxNames);
+
+    const auto& [sensorId2, sensorCnt2, names2] = *sensorAuxNames;
+    EXPECT_EQ(2, sensorId2);
+    EXPECT_EQ(2, sensorCnt2);
+    EXPECT_EQ(2, names2.size());
+    EXPECT_EQ(0, names2[0].size());
+    EXPECT_EQ(1, names2[1].size());
+    EXPECT_EQ("en", names2[1][0].first);
+    EXPECT_EQ("TEMP2", names2[1][0].second);
 }
 
 TEST_F(TerminusTest, addNumericSensorTest)

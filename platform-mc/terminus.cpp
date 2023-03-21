@@ -1005,27 +1005,18 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         "PLDM_Sensor_" + std::to_string(sId) + "_" + std::to_string(tid);
 
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>* sensorNames =
+        nullptr;
     if (sensorAuxiliaryNames)
     {
-        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
-        if (sensorCnt == 1 && sensorNames.size() > 0)
-        {
-            for (const auto& [languageTag, name] : sensorNames[0])
-            {
-                if (languageTag == "en")
-                {
-                    sensorName = name + "_" + std::to_string(sId) + "_" +
-                                 std::to_string(tid);
-                }
-            }
-        }
+        sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
     }
 
     try
     {
         auto sensor =
             std::make_shared<StateSensor>(tid, true, sId, std::move(sensorInfo),
-                                          sensorName, systemInventoryPath);
+                                          sensorNames, systemInventoryPath);
         if (synchronyConfigurationSupported &
             (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
         {

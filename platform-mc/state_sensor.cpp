@@ -20,15 +20,16 @@ namespace platform_mc
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
 using Level = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 
-StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
-                         const uint16_t sensorId, StateSetInfo sensorInfo,
-                         std::string& sensorName,
-                         std::string& associationPath) :
+StateSensor::StateSensor(
+    const uint8_t tid, const bool sensorDisabled, const uint16_t sensorId,
+    StateSetInfo sensorInfo,
+    std::vector<std::vector<std::pair<std::string, std::string>>>* sensorNames,
+    std::string& associationPath) :
     tid(tid),
     sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true), async(false)
 {
-    std::string path = "/xyz/openbmc_project/state/" + sensorName;
-    path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
+    std::string path = "/xyz/openbmc_project/state/PLDM_Sensor_" +
+                       std::to_string(sensorId) + "_" + std::to_string(tid);
 
     auto& bus = pldm::utils::DBusHandler::getBus();
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
@@ -45,10 +46,26 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
         auto stateSetId = std::get<0>(sensor);
         dbus::PathAssociation association = {"chassis", "all_states",
                                              associationPath};
-        std::string stateSetPath =
-            path + "/Id_" + std::to_string(stateSets.size());
-        auto stateSet = StateSetCreator::createSensor(
-            stateSetId, idx++, stateSetPath, association);
+        std::string compositeSensorName = "Id";
+        auto compositeSensorId = stateSets.size();
+        // pick first en langTag sensor aux name
+        if (sensorNames && sensorNames->size() > compositeSensorId)
+        {
+            for (const auto& [tag, name] : sensorNames->at(compositeSensorId))
+            {
+                if (tag == "en")
+                {
+                    compositeSensorName = name;
+                }
+            }
+        }
+
+        std::string objPath = path + "/" + compositeSensorName + "_" +
+                              std::to_string(stateSets.size());
+        objPath =
+            std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
+        auto stateSet = StateSetCreator::createSensor(stateSetId, idx++,
+                                                      objPath, association);
         if (stateSet != nullptr)
         {
             stateSets.emplace_back(std::move(stateSet));
