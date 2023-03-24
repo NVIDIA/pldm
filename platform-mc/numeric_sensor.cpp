@@ -291,23 +291,25 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
         if (definitions.size() > 0)
         {
             endpoint = std::get<2>(definitions[0]);
-        }
-
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
-
-        if (sensorMetrics->find(sensorName) == sensorMetrics->end())
-        {
-            (*sensorMetrics)[sensorName] =
-                std::make_tuple(valueIntf->value(), steadyTimeStamp, endpoint);
-        }
-        else
-        {
-            std::get<0>((*sensorMetrics)[sensorName]) = valueIntf->value();
-            std::get<1>((*sensorMetrics)[sensorName]) = steadyTimeStamp;
-            std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
+            if (endpoint.size() > 0)
+            {
+                uint64_t steadyTimeStamp = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count());
+                if (sensorMetrics->find(sensorName) == sensorMetrics->end())
+                {
+                    (*sensorMetrics)[sensorName] = std::make_tuple(
+                        valueIntf->value(), steadyTimeStamp, endpoint);
+                }
+                else
+                {
+                    std::get<0>((*sensorMetrics)[sensorName]) =
+                        valueIntf->value();
+                    std::get<1>((*sensorMetrics)[sensorName]) = steadyTimeStamp;
+                    std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
+                }
+            }
         }
     }
 }
