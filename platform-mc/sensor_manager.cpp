@@ -98,19 +98,20 @@ bool SensorManager::inSensorMetrics(std::shared_ptr<NumericSensor> sensor)
 void SensorManager::startPolling()
 {
     // initialize prioritySensors and roundRobinSensors list
-    for (auto& terminus : termini)
+    for (const auto& [tid, terminus] : termini)
     {
-        for (auto& sensor : terminus.second->numericSensors)
+        // numeric sensor
+        for (auto& sensor : terminus->numericSensors)
         {
             if (isPriority(sensor))
             {
                 sensor->isPriority = true;
-                prioritySensors.emplace_back(sensor);
+                prioritySensors[tid].emplace_back(sensor);
             }
             else
             {
                 sensor->isPriority = false;
-                roundRobinSensors.push(sensor);
+                roundRobinSensors[tid].push(sensor);
             }
 
             if (inSensorMetrics(sensor))
@@ -122,86 +123,132 @@ void SensorManager::startPolling()
                 sensor->inSensorMetrics = false;
             }
         }
-    }
 
-    if (!sensorPollTimer)
-    {
-        sensorPollTimer = std::make_unique<phosphor::Timer>(
-            event.get(),
-            std::bind_front(&SensorManager::doSensorPolling, this));
-    }
+        // state sensor
+        for (auto& sensor : terminus->stateSensors)
+        {
+            if (!sensor->async)
+            {
+                roundRobinSensors[tid].push(sensor);
+            }
+        }
 
-    if (!sensorPollTimer->isRunning())
-    {
-        sensorPollTimer->start(
-            duration_cast<std::chrono::milliseconds>(milliseconds(pollingTime)),
-            true);
+        if (sensorPollTimers.find(tid) == sensorPollTimers.end())
+        {
+            sensorPollTimers[tid] = std::make_unique<phosphor::Timer>(
+                event.get(),
+                std::bind_front(&SensorManager::doSensorPolling, this, tid));
+        }
+
+        if (!sensorPollTimers[tid]->isRunning())
+        {
+            sensorPollTimers[tid]->start(
+                duration_cast<std::chrono::milliseconds>(
+                    milliseconds(pollingTime)),
+                true);
+        }
     }
 }
 
 void SensorManager::stopPolling()
 {
     prioritySensors.clear();
+    roundRobinSensors.clear();
 
-    // empty roundRobinSensors list
-    while (!roundRobinSensors.empty())
+    for (const auto& [tid, terminus] : termini)
     {
-        roundRobinSensors.pop();
-    }
-
-    if (sensorPollTimer)
-    {
-        sensorPollTimer->stop();
+        if (sensorPollTimers[tid])
+        {
+            sensorPollTimers[tid]->stop();
+        }
     }
 }
 
-requester::Coroutine SensorManager::doSensorPollingTask()
+void SensorManager::doSensorPolling(tid_t tid)
+{
+    if (doSensorPollingTaskHandles[tid])
+    {
+        if (doSensorPollingTaskHandles[tid].done())
+        {
+            doSensorPollingTaskHandles[tid].destroy();
+            auto co = doSensorPollingTask(tid);
+            doSensorPollingTaskHandles[tid] = co.handle;
+            if (doSensorPollingTaskHandles[tid].done())
+            {
+                doSensorPollingTaskHandles[tid] = nullptr;
+            }
+        }
+    }
+    else
+    {
+        auto co = doSensorPollingTask(tid);
+        doSensorPollingTaskHandles[tid] = co.handle;
+        if (doSensorPollingTaskHandles[tid].done())
+        {
+            doSensorPollingTaskHandles[tid] = nullptr;
+        }
+    }
+}
+
+requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 {
     uint64_t t0 = 0;
     uint64_t t1 = 0;
     uint64_t elapsed = 0;
     uint64_t pollingTimeInUsec = pollingTime * 1000;
 
-    sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
-    if (verbose)
+    do
     {
-        lg2::info("start sensor polling at {NOW}.", "NOW", t0);
-    }
-
-    for (auto& terminus : termini)
-    {
-        for (auto& effecter : terminus.second->numericEffecters)
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
+        if (verbose)
         {
-            // GetNumericEffecterValue
+            lg2::info("TID:{TID} start sensor polling at {NOW}.", "TID", tid,
+                      "NOW", t0);
+        }
+
+        if (termini.find(tid) == termini.end())
+        {
+            co_return PLDM_SUCCESS;
+        }
+
+        auto& terminus = termini[tid];
+
+        for (auto& effecter : terminus->numericEffecters)
+        {
+            // GetNumericEffecterValue if we haven't sync.
             if (effecter->state() == StateType::Deferring)
             {
-                if (effecter->updateTime ==
-                    std::numeric_limits<uint64_t>::max())
+                co_await effecter->getNumericEffecterValue();
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
                 {
-                    continue;
-                }
-
-                sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-                elapsed = t1 - t0;
-                effecter->elapsedTime += (pollingTimeInUsec + elapsed);
-                if (effecter->elapsedTime >= effecter->updateTime)
-                {
-                    co_await effecter->getNumericEffecterValue();
-                    if (sensorPollTimer && !sensorPollTimer->isRunning())
-                    {
-                        co_return PLDM_ERROR;
-                    }
-                    effecter->elapsedTime = 0;
+                    co_return PLDM_ERROR;
                 }
             }
         }
 
-        for (auto sensor : terminus.second->stateSensors)
+        for (auto effecter : terminus->stateEffecters)
         {
-            if (sensor->needUpdate || !sensor->async)
+            // Get StateEffecter states if we haven't sync.
+            if (effecter->getOperationalStatus() == StateType::Deferring)
+            {
+                co_await effecter->getStateEffecterStates();
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
+            }
+        }
+
+        for (auto sensor : terminus->stateSensors)
+        {
+            // Get State sensor if we haven't sync.
+            if (sensor->needUpdate)
             {
                 co_await getStateSensorReadings(sensor);
-                if (sensorPollTimer && !sensorPollTimer->isRunning())
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -209,74 +256,74 @@ requester::Coroutine SensorManager::doSensorPollingTask()
             }
         }
 
-        for (auto effecter : terminus.second->stateEffecters)
+        // poll priority Sensors
+        for (auto& sensor : prioritySensors[tid])
         {
-            // Get StateEffecter states if we haven't sync.
-            if (effecter->getOperationalStatus() == StateType::Deferring)
+            if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
             {
-                sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-                elapsed = t1 - t0;
-                effecter->elapsedTime += (pollingTimeInUsec + elapsed);
-                if (effecter->elapsedTime >= effecter->updateTime)
+                continue;
+            }
+
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            elapsed = t1 - t0;
+            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
+            if (sensor->elapsedTime >= sensor->updateTime)
+            {
+                co_await getSensorReading(sensor);
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
                 {
-                    co_await effecter->getStateEffecterStates();
-                    if (!sensorPollTimer->isRunning())
-                    {
-                        co_return PLDM_ERROR;
-                    }
-                    effecter->elapsedTime = 0;
+                    co_return PLDM_ERROR;
+                }
+                sensor->elapsedTime = 0;
+            }
+        }
+
+        // poll roundRobin Sensors
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+        auto toBeUpdated = roundRobinSensors[tid].size();
+        while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0))
+        {
+            auto sensor = roundRobinSensors[tid].front();
+            if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
+            {
+                co_await getSensorReading(
+                    std::get<std::shared_ptr<NumericSensor>>(sensor));
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
                 }
             }
-        }
-    }
-
-    // poll priority Sensors
-    for (auto& sensor : prioritySensors)
-    {
-        if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
-        {
-            continue;
-        }
-
-        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-        elapsed = t1 - t0;
-        sensor->elapsedTime += (pollingTimeInUsec + elapsed);
-        if (sensor->elapsedTime >= sensor->updateTime)
-        {
-            co_await getSensorReading(sensor);
-            if (sensorPollTimer && !sensorPollTimer->isRunning())
+            else if (std::holds_alternative<std::shared_ptr<StateSensor>>(
+                         sensor))
             {
-                co_return PLDM_ERROR;
+                co_await getStateSensorReadings(
+                    std::get<std::shared_ptr<StateSensor>>(sensor));
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
             }
-            sensor->elapsedTime = 0;
-        }
-    }
 
-    // poll roundRobin Sensors
-    sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-    auto toBeUpdated = roundRobinSensors.size();
-    while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0))
-    {
-        auto sensor = roundRobinSensors.front();
-        co_await getSensorReading(sensor);
-        if (sensorPollTimer && !sensorPollTimer->isRunning())
+            toBeUpdated--;
+            roundRobinSensors[tid].pop();
+            roundRobinSensors[tid].push(std::move(sensor));
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+        }
+
+        aggregationIntf->sensorMetrics(sensorMetric);
+
+        if (verbose)
         {
-            co_return PLDM_ERROR;
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            lg2::info("end sensor polling at {END}. duration(us):{DELTA}",
+                      "END", t1, "DELTA", t1 - t0);
         }
-        toBeUpdated--;
-        roundRobinSensors.pop();
-        roundRobinSensors.push(std::move(sensor));
-        sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-    }
 
-    aggregationIntf->sensorMetrics(sensorMetric);
-
-    if (verbose)
-    {
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-        lg2::info("end sensor polling at {END}. duration(us):{DELTA}", "END",
-                  t1, "DELTA", t1 - t0);
-    }
+    } while ((t1 - t0) >= pollingTimeInUsec);
 
     co_return PLDM_SUCCESS;
 }
@@ -305,7 +352,7 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (sensorPollTimer && !sensorPollTimer->isRunning())
+    if (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning())
     {
         co_return PLDM_ERROR;
     }
@@ -414,7 +461,7 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (sensorPollTimer && !sensorPollTimer->isRunning())
+    if (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning())
     {
         co_return PLDM_ERROR;
     }

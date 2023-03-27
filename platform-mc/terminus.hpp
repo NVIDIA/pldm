@@ -154,6 +154,7 @@ class Terminus
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
     void scanInventories();
+
     void updateAssociations();
 
     void addNumericSensor(
@@ -163,6 +164,7 @@ class Terminus
 
     void addNumericEffecter(
         const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr);
+
     void addStateEffecter(EffecterId eId, StateSetInfo effecterInfo);
 
     /** @brief maximum buffer size the terminus can send and receive */
@@ -207,6 +209,7 @@ class Terminus
     void parseStateSetInfo(const unsigned char* statesPtr,
                            uint8_t compositeSensorCount,
                            std::vector<StateSetData>& stateSets);
+
     std::tuple<EffecterId, StateSetInfo>
         parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
 
@@ -220,6 +223,7 @@ class Terminus
     PhysicalContextType toPhysicalContextType(const EntityType entityType);
 
     tid_t tid;
+
     std::bitset<64> supportedTypes;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
@@ -229,10 +233,14 @@ class Terminus
         effecterAuxiliaryNamesTbl{};
 
     std::string systemInventoryPath;
+
     std::vector<std::tuple<dbus::ObjectPath, EntityType, EntityInstance>>
         inventories;
+
     std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
+
     EnitityAssociations entityAssociations;
+
     TerminusManager& terminusManager;
 };
 } // namespace platform_mc

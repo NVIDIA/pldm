@@ -112,14 +112,6 @@ class StateEffecter
                        pldm_effecter_oper_state effecterOperState,
                        uint8_t pendingValue, uint8_t presentValue);
 
-    /** @brief  The time since last getStateEffecterStates command
-     */
-    uint64_t elapsedTime;
-
-    /** @brief  The time of sensor update interval in second
-     */
-    uint64_t updateTime;
-
     /** @brief  The DBus path of effecter */
     std::string path;
 

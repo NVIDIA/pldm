@@ -17,7 +17,7 @@ class MockSensorManager : public SensorManager
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
         SensorManager(event, terminusManager, termini){};
 
-    MOCK_METHOD(void, doSensorPolling, (), (override));
+    MOCK_METHOD(void, doSensorPolling, (tid_t tid), (override));
 };
 
 } // namespace platform_mc

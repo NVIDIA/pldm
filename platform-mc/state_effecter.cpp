@@ -54,11 +54,6 @@ StateEffecter::StateEffecter(const uint8_t tid, const bool effecterDisabled,
         }
     }
 
-    elapsedTime = 0;
-
-    // TODO : Polling must be based on event support
-    updateTime = 1000000;
-
     getStateEffecterStates().detach();
 }
 

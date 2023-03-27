@@ -171,12 +171,6 @@ class NumericEffecter
      * the sensor belongs to */
     EntityInfo entityInfo;
 
-    /** @brief  The time since last getNumericEffecterValue command in usec */
-    uint64_t elapsedTime;
-
-    /** @brief  The time of sensor update interval in usec */
-    uint64_t updateTime;
-
     /** @brief  The PLDM defined effecterDataSize enum */
     uint8_t dataSize;
 

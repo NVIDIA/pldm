@@ -87,13 +87,6 @@ NumericEffecter::NumericEffecter(
     offset = pdr->offset;
     unitModifier = pdr->unit_modifier;
 
-    elapsedTime = 0;
-    updateTime = std::numeric_limits<uint64_t>::max();
-    if (!std::isnan(pdr->transition_interval))
-    {
-        updateTime = pdr->transition_interval * 1000000;
-    }
-
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
 

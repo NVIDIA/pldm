@@ -15,6 +15,7 @@
 #include <xyz/openbmc_project/Sensor/Aggregation/server.hpp>
 
 #include <queue>
+#include <variant>
 
 namespace pldm
 {
@@ -60,35 +61,11 @@ class SensorManager
   protected:
     /** @brief start a coroutine for polling all sensors.
      */
-    virtual void doSensorPolling()
-    {
-        if (doSensorPollingTaskHandle)
-        {
-            if (doSensorPollingTaskHandle.done())
-            {
-                doSensorPollingTaskHandle.destroy();
-                auto co = doSensorPollingTask();
-                doSensorPollingTaskHandle = co.handle;
-                if (doSensorPollingTaskHandle.done())
-                {
-                    doSensorPollingTaskHandle = nullptr;
-                }
-            }
-        }
-        else
-        {
-            auto co = doSensorPollingTask();
-            doSensorPollingTaskHandle = co.handle;
-            if (doSensorPollingTaskHandle.done())
-            {
-                doSensorPollingTaskHandle = nullptr;
-            }
-        }
-    }
+    virtual void doSensorPolling(tid_t tid);
 
     /** @brief polling all sensors in each terminus
      */
-    requester::Coroutine doSensorPollingTask();
+    requester::Coroutine doSensorPollingTask(tid_t tid);
 
     /** @brief Sending getSensorReading command for the sensor
      *
@@ -131,11 +108,11 @@ class SensorManager
     /** @brief sensor polling interval in ms. */
     uint32_t pollingTime;
 
-    /** @brief sensor polling timer */
-    std::unique_ptr<phosphor::Timer> sensorPollTimer;
+    /** @brief sensor polling timers */
+    std::map<tid_t, std::unique_ptr<phosphor::Timer>> sensorPollTimers;
 
-    /** @brief coroutine handle of doSensorPollingTask */
-    std::coroutine_handle<> doSensorPollingTaskHandle;
+    /** @brief coroutine handle of doSensorPollingTasks */
+    std::map<tid_t, std::coroutine_handle<>> doSensorPollingTaskHandles;
 
     /** @brief aggregation Interface */
     std::unique_ptr<AggregationIntf> aggregationIntf = nullptr;
@@ -155,10 +132,13 @@ class SensorManager
     std::vector<std::string> prioritySensorNameSpaces;
 
     /** @brief priority sensor list */
-    std::vector<std::shared_ptr<NumericSensor>> prioritySensors;
+    std::map<tid_t, std::vector<std::shared_ptr<NumericSensor>>>
+        prioritySensors;
 
     /** @brief round robin sensor list */
-    std::queue<std::shared_ptr<NumericSensor>> roundRobinSensors;
+    std::map<tid_t, std::queue<std::variant<std::shared_ptr<NumericSensor>,
+                                            std::shared_ptr<StateSensor>>>>
+        roundRobinSensors;
 };
 } // namespace platform_mc
 } // namespace pldm
