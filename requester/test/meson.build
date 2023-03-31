@@ -13,13 +13,16 @@ test_src = declare_dependency(
             '../../fw-update/device_inventory.cpp',
             '../../fw-update/firmware_inventory.cpp',
             '../../fw-update/other_device_update_manager.cpp',
-            '../../fw-update/watch.cpp'])
+            '../../fw-update/watch.cpp',
+            '../../fw-update/package_signature.cpp'])
 
 tests = [
   'handler_test',
   'request_test',
   'mctp_endpoint_discovery_test',
 ]
+
+openssl = dependency('openssl', required : true)
 
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
@@ -35,6 +38,7 @@ foreach t : tests
                          phosphor_logging,
                          sdbusplus,
                          sdeventplus,
-                         test_src]),
+                         test_src,
+                         openssl]),
        workdir: meson.current_source_dir())
 endforeach

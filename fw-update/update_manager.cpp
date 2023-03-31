@@ -3,6 +3,7 @@
 #include "activation.hpp"
 #include "common/utils.hpp"
 #include "package_parser.hpp"
+#include "package_signature.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -281,6 +282,29 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return -1;
     }
 
+#ifdef PLDM_PACKAGE_VERIFICATION
+
+    try
+    {
+        if (!verifyPackage())
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Failed, this);
+            return -1;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Invalid PLDM package signature");
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Invalid, this);
+        return -1;
+    }
+
+#endif
+
     const auto& compImageInfos = parser->getComponentImageInfos();
     auto targets = updatePolicy->targets();
     auto deviceUpdaterInfos = associatePkgToDevices(
@@ -354,6 +378,85 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     return 0;
 }
+
+
+bool UpdateManager::verifyPackage()
+{
+    std::string compName = "Firmware Update Service";
+    std::string messageError = "Validating FW Package signature failed";
+    std::string messageErrorUnsupportedVersion =
+        "Unsupported version of package signature";
+    std::string resolution =
+        "Retry firmware update operation with correctly signed FW package.";
+
+    uintmax_t calcPkgSize = parser->calculatePackageSize();
+
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    if (pkgSignHdrData.size())
+    {
+
+        std::unique_ptr<PackageSignature> packageSignatureParser;
+
+        try
+        {
+            packageSignatureParser =
+                PackageSignature::createPackageSignatureParser(
+                    pkgSignHdrData, PLDM_PACKAGE_VERIFICATION_KEY);
+
+            if (packageSignatureParser == nullptr)
+            {
+                createLogEntry(resourceErrorDetected, compName,
+                               messageErrorUnsupportedVersion, resolution);
+
+                return false;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorUnsupportedVersion, resolution);
+
+            return false;
+        }
+
+        try
+        {
+            packageSignatureParser->parseHeader();
+        }
+        catch (const std::exception& e)
+        {
+            createLogEntry(resourceErrorDetected, compName, messageError,
+                           resolution);
+
+            return false;
+        }
+
+        uintmax_t sizeOfSignedData =
+            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
+
+        bool isSignedProperly =
+            packageSignatureParser->verify(package, sizeOfSignedData);
+
+        if (!isSignedProperly)
+        {
+            createLogEntry(resourceErrorDetected, compName, messageError,
+                           resolution);
+
+            return false;
+        }
+
+        lg2::info("FW package signature was successfully verified");
+    }
+    else
+    {
+        lg2::info("FW package does not contain signature header");
+    }
+
+    return true;
+}
+
 
 DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     const FirmwareDeviceIDRecords& inFwDeviceIDRecords,

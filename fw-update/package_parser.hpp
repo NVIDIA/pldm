@@ -88,6 +88,15 @@ class PackageParser
     /** @brief Package version string */
     const PackageVersion pkgVersion;
 
+    /** @brief Calculate size of the package
+     *
+     *  The method calculates size of the package without signature. 
+     *  The method sums header of the package with all component images sizes.
+     *
+     *  @return size of the package without signature
+     */
+    virtual uintmax_t calculatePackageSize();
+
   protected:
     /** @brief Parse the firmware device identification area
      *

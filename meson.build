@@ -63,6 +63,9 @@ endif
 if get_option('fw-update-skip-package-size-check').enabled()
     add_project_arguments('-DSKIP_PACKAGE_SIZE_CHECK', language : ['c','cpp'])
 endif
+if get_option('pldm-package-verification').enabled()
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
+endif
 if get_option('pldm-type2').enabled()
   add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
 endif
@@ -87,6 +90,7 @@ conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
 conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
 conf_data.set_quoted('STATIC_EID_TABLE_PATH', join_paths(package_datadir, 'static_eid_table.json'))
 conf_data.set_quoted('PLDM_T2_CONFIG_JSON', join_paths(package_datadir, 'pldm_t2_config.json'))
+conf_data.set_quoted('PLDM_PACKAGE_VERIFICATION_KEY', get_option('pldm-package-verification-key'))
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
 conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
@@ -183,6 +187,8 @@ subdir('libpldm')
 
 if get_option('libpldm-only').disabled()
 
+openssl = dependency('openssl', required : true)
+
 libpldmutils_headers = ['.']
 libpldmutils = library(
   'pldmutils',
@@ -213,6 +219,7 @@ deps = [
   sdeventplus,
   phosphor_dbus_interfaces,
   phosphor_logging,
+  openssl,
 ]
 
 if get_option('libpldmresponder').enabled()
@@ -236,6 +243,7 @@ source_files = [
   'fw-update/config.cpp',
   'fw-update/device_inventory.cpp',
   'fw-update/firmware_inventory.cpp',
+  'fw-update/package_signature.cpp',
   'platform-mc/terminus_manager.cpp',
   'platform-mc/terminus.cpp',
   'platform-mc/platform_manager.cpp',

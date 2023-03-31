@@ -7,6 +7,7 @@ fw_update_test_src = declare_dependency(
             '../config.cpp',
             '../device_inventory.cpp',
             '../firmware_inventory.cpp',
+            '../package_signature.cpp',
             '../../common/utils.cpp',
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',
@@ -26,7 +27,12 @@ tests = [
   'update_manager_pkg_association_test',
   'update_manager_test',
   'activation_test',
+  'package_signature_test',
 ]
+
+cc = meson.get_compiler('c')
+libcrypto = cc.find_library('libcrypto', required: true)
+openssl = dependency('openssl', required : true)
 
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
@@ -42,6 +48,8 @@ foreach t : tests
                          phosphor_dbus_interfaces,
                          phosphor_logging,
                          sdbusplus,
-                         sdeventplus]),
+                         sdeventplus,
+                         libcrypto,
+                         openssl]),
        workdir: meson.current_source_dir())
 endforeach

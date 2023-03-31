@@ -21,6 +21,7 @@ dep_src_files = [
   '../../fw-update/other_device_update_manager.cpp',
   '../../fw-update/package_parser.cpp',
   '../../fw-update/device_updater.cpp',
+  '../../fw-update/package_signature.cpp',
 ]
 
 if get_option('oem-nvidia').enabled()
@@ -41,6 +42,8 @@ tests = [
   'state_effecter_test',
 ]
 
+openssl = dependency('openssl', required : true)
+
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
                      implicit_include_directories: false,
@@ -56,6 +59,7 @@ foreach t : tests
                          phosphor_logging,
                          sdbusplus,
                          sdeventplus,
-                         test_src]),
+                         test_src,
+                         openssl]),
        workdir: meson.current_source_dir())
 endforeach

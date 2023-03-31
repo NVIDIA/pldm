@@ -1,4 +1,5 @@
 #include "package_parser.hpp"
+#include "package_signature.hpp"
 
 #include "libpldm/firmware_update.h"
 #include "libpldm/utils.h"
@@ -182,7 +183,7 @@ size_t PackageParser::parseCompImageInfoArea(ComponentImageCount compImageCount,
     return offset;
 }
 
-void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
+uintmax_t PackageParser::calculatePackageSize()
 {
     uintmax_t calcPkgSize = pkgHeaderSize;
     for (const auto& componentImageInfo : componentImageInfos)
@@ -207,19 +208,29 @@ void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
         calcPkgSize += compSize;
     }
 
-    if (calcPkgSize != pkgSize)
+    return calcPkgSize;
+}
+
+void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
+{
+    uintmax_t calcPkgSize = calculatePackageSize();
+    
+    //The package can be signed or not signed.
+    //For not signed package, the real size of package must be equal with calculated size.
+    //For signed package, the real size is 1K higher than the calculated size.
+    //The FW Update Package Signature is padding to 1 KB (1024 bytes)
+
+    if ((calcPkgSize != pkgSize) && (calcPkgSize + pldmFwupSignaturePackageSize != pkgSize))
     {
-#ifndef SKIP_PACKAGE_SIZE_CHECK
         lg2::error(
             "Package size does not match calculated package size, PKG_SIZE={PKG_SIZE} ,CALC_PKG_SIZE={CALC_PKG_SIZE}",
             "PKG_SIZE", pkgSize, "CALC_PKG_SIZE", calcPkgSize);
         throw InternalFailure();
-#endif
     }
 }
 
 void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
-                            uintmax_t pkgSize)
+                            [[maybe_unused]] uintmax_t pkgSize)
 {
     if (pkgHeaderSize != pkgHdr.size())
     {
@@ -289,7 +300,11 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
         throw InternalFailure();
     }
 
+    #ifndef SKIP_PACKAGE_SIZE_CHECK
+
     validatePkgTotalSize(pkgSize);
+
+    #endif
 }
 
 std::unique_ptr<PackageParser> parsePkgHeader(std::vector<uint8_t>& pkgData)

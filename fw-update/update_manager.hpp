@@ -305,6 +305,8 @@ class UpdateManager
                          const FirmwareDeviceIDRecord& fwDeviceIDRecord,
                          size_t compIndex);
 
+    bool verifyPackage();
+
   private:
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;
