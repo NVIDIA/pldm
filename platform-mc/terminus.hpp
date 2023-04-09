@@ -170,12 +170,16 @@ class Terminus
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
 
-    /** @brief Handle of started pollForPlatformEventTask coroutine */
-    std::coroutine_handle<> pollForPlatformEventTaskHandle;
-
     void interfaceAdded(sdbusplus::message::message& m);
 
+    /** @brief The flag indicates whether the terminus has been initialized
+     * by terminusManaer */
     bool initalized;
+
+    /** @brief The flag indicates that the terminus FIFO contains a large
+     * message that will require a multipart transfer via the
+     * PollForPlatformEvent command */
+    bool pollEvent;
 
     /** @brief Handler to invoke when state sensor event is received
      *

@@ -46,7 +46,7 @@ class SensorManager
 
     explicit SensorManager(
         sdeventplus::Event& event, TerminusManager& terminusManager,
-        std::map<tid_t, std::shared_ptr<Terminus>>& termini,
+        std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
         bool verbose = false,
         const std::filesystem::path& configJson = PLDM_T2_CONFIG_JSON);
 
@@ -139,6 +139,9 @@ class SensorManager
     std::map<tid_t, std::queue<std::variant<std::shared_ptr<NumericSensor>,
                                             std::shared_ptr<StateSensor>>>>
         roundRobinSensors;
+
+    /** @brief pointer to Manager */
+    Manager* manager;
 };
 } // namespace platform_mc
 } // namespace pldm

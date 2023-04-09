@@ -12,10 +12,9 @@ namespace platform_mc
 class MockEventManager : public EventManager
 {
   public:
-    MockEventManager(
-        sdeventplus::Event& event, TerminusManager& terminusManager,
-        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
-        EventManager(event, terminusManager, termini){};
+    MockEventManager(TerminusManager& terminusManager,
+                     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
+        EventManager(terminusManager, termini){};
 
     MOCK_METHOD(void, createSensorThresholdLogEntry,
                 (const std::string& messageID, const std::string& sensorName,

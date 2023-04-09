@@ -40,8 +40,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
                         this),
         platformManager(terminusManager, termini),
-        sensorManager(event, terminusManager, termini, verbose),
-        eventManager(event, terminusManager, termini), verbose(verbose)
+        sensorManager(event, terminusManager, termini, this, verbose),
+        eventManager(terminusManager, termini), verbose(verbose)
     {}
 
     requester::Coroutine beforeDiscoverTerminus()
@@ -124,6 +124,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         eventManager.handlePlatformEvent(tid, PLDM_SENSOR_EVENT, eventData,
                                          eventDataSize, platformEventStatus);
         return PLDM_SUCCESS;
+    }
+
+    requester::Coroutine pollForPlatformEvent(tid_t tid)
+    {
+        auto it = termini.find(tid);
+        if (it != termini.end())
+        {
+            auto& terminus = it->second;
+            co_await eventManager.pollForPlatformEventTask(
+                tid, terminus->maxBufferSize);
+            terminus->pollEvent = false;
+        }
+        co_return PLDM_SUCCESS;
     }
 
   private:

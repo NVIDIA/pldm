@@ -22,7 +22,7 @@ class SensorManagerTest : public testing::Test
         reqHandler(event, dbusImplRequester, sockManager, false),
         terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
                         nullptr),
-        sensorManager(event, terminusManager, termini)
+        sensorManager(event, terminusManager, termini, nullptr)
     {}
 
     void runEventLoopForSeconds(uint64_t sec)

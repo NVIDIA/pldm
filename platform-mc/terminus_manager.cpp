@@ -207,6 +207,8 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto rc = co_await getTidOverMctp(eid, tid);
     if (rc || tid == PLDM_TID_RESERVED)
     {
+        lg2::error("getTidOverMctp failed, eid={EID} rc={RC}.", "EID", eid,
+                   "RC", rc);
         co_return PLDM_ERROR;
     }
 
@@ -215,6 +217,7 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto mappedTid = mapTid(mctpInfo);
     if (!mappedTid)
     {
+        lg2::error("failed to assign a TID to Terminus eid={EID}.", "EID", eid);
         co_return PLDM_ERROR;
     }
 
@@ -223,13 +226,16 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     if (rc != PLDM_SUCCESS && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
     {
         unmapTid(tid);
+        lg2::info("setTidOverMctp failed, eid={EID} tid={TID} rc={RC}.", "EID",
+                  eid, "TID", tid, "RC", rc);
         co_return rc;
     }
 
     auto it = termini.find(tid);
     if (it != termini.end())
     {
-        // the terminus has been discovered before
+        lg2::info("terminus tid={TID} eid={EID} has been initialized.", "TID",
+                  tid, "EID", eid);
         co_return PLDM_SUCCESS;
     }
 
@@ -237,7 +243,8 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     rc = co_await getPLDMTypes(tid, supportedTypes);
     if (rc)
     {
-        lg2::error("failed to get PLDM Types.");
+        lg2::error("getPLDMTypes failed, TID={TID} rc={RC}.", "TID", tid, "RC",
+                   rc);
         co_return PLDM_ERROR;
     }
 
@@ -254,7 +261,8 @@ requester::Coroutine
         handler, eid, request, responseMsg, responseLen);
     if (rc)
     {
-        lg2::error("sendRecvPldmMsgOverMctp failed. rc={RC}", "RC", rc);
+        lg2::error("sendRecvPldmMsgOverMctp failed. eid={EID} rc={RC}", "EID",
+                   eid, "RC", rc);
     }
     co_return rc;
 }
@@ -268,7 +276,8 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     if (rc)
     {
         requester.markFree(eid, instanceId);
-        lg2::error("encode_get_tid_req failed. rc={RC}", "RC", rc);
+        lg2::error("encode_get_tid_req failed, eid={EID} rc={RC}", "EID", eid,
+                   "RC", rc);
         co_return rc;
     }
 
@@ -278,6 +287,8 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
                                           &responseLen);
     if (rc)
     {
+        lg2::error("getTidOverMctp failed. eid={EID} rc={RC}", "EID", eid, "RC",
+                   rc);
         co_return rc;
     }
 
@@ -285,7 +296,8 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode, &tid);
     if (rc)
     {
-        lg2::error("decode_get_tid_resp failed. rc={RC}", "RC", rc);
+        lg2::error("decode_get_tid_resp failed. eid={EID} rc={RC}", "EID", eid,
+                   "RC", rc);
         co_return rc;
     }
 
@@ -310,6 +322,8 @@ requester::Coroutine TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
                                           &responseLen);
     if (rc)
     {
+        lg2::error("setTidOverMctp failed. eid={EID} tid={TID} rc={RC}", "EID",
+                   eid, "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -329,7 +343,8 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
     auto rc = encode_get_types_req(0, requestMsg);
     if (rc)
     {
-        lg2::error("encode_get_types_req failed, rc={RC}.", "RC", rc);
+        lg2::error("encode_get_types_req failed, tid={TID} rc={RC}.", "TID",
+                   tid, "RC", rc);
         co_return rc;
     }
 
@@ -348,7 +363,8 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
         decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
     if (rc)
     {
-        lg2::error("decode_get_types_resp failed, rc={RC}.", "RC", rc);
+        lg2::error("decode_get_types_resp failed, tid={TID} rc={RC}.", "TID",
+                   tid, "RC", rc);
         co_return rc;
     }
     co_return completionCode;

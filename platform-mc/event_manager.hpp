@@ -50,10 +50,10 @@ class EventManager
     virtual ~EventManager() = default;
 
     explicit EventManager(
-        sdeventplus::Event& event, TerminusManager& terminusManager,
+        TerminusManager& terminusManager,
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
-        event(event),
-        terminusManager(terminusManager), termini(termini){};
+        terminusManager(terminusManager),
+        termini(termini){};
 
     /** @brief Handle platform event
      *
@@ -71,13 +71,6 @@ class EventManager
     std::string getSensorThresholdMessageId(uint8_t previousEventState,
                                             uint8_t eventState);
 
-  protected:
-    /** @brief Start a coroutine for polling all events from terminus
-     *
-     *  @param[in] tid - the tid of terminus to be polled
-     */
-    void pollForPlatformEvent(tid_t tid);
-
     /** @brief A Coroutine to poll all events from terminus
      *
      *  @param[in] dstTid - the destination TID
@@ -85,6 +78,7 @@ class EventManager
     requester::Coroutine pollForPlatformEventTask(tid_t tid,
                                                   uint16_t maxBufferSize);
 
+  protected:
     /** @brief Send pollForPlatformEventMessage and return response
      *
      *  @param[in] tid
@@ -124,15 +118,11 @@ class EventManager
                                                const double reading,
                                                const double threshold);
 
-    sdeventplus::Event& event;
-
     /** @brief Reference of terminusManager */
     TerminusManager& terminusManager;
 
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
-
-    std::unique_ptr<sdeventplus::source::Defer> deferredPldmMessagePollEvent;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -146,6 +146,8 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
                                                   &payloadLen);
     if (rc)
     {
+        lg2::error("getStateEffecterStates failed, tid={TID}, rc={RC}.", "TID",
+                   tid, "RC", rc);
         co_return rc;
     }
 
@@ -232,6 +234,8 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                   &payloadLen);
     if (rc)
     {
+        lg2::error("setStateEffecterStates failed, tid={TID}, rc={RC}.", "TID",
+                   tid, "RC", rc);
         co_return rc;
     }
 

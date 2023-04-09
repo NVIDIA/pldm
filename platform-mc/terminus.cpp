@@ -12,7 +12,7 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes,
                    TerminusManager& terminusManager) :
-    initalized(false),
+    initalized(false), pollEvent(false),
     synchronyConfigurationSupported(0), tid(tid),
     supportedTypes(supportedTypes), terminusManager(terminusManager)
 

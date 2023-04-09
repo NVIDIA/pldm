@@ -26,8 +26,7 @@ class EventManagerTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        eventManager(*(static_cast<sdeventplus::Event*>(nullptr)),
-                     *(static_cast<TerminusManager*>(nullptr)), termini)
+        eventManager(*(static_cast<TerminusManager*>(nullptr)), termini)
     {}
 
     sdbusplus::bus::bus& bus;

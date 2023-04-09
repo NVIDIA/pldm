@@ -89,13 +89,12 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
     }
     else if (eventClass == PLDM_MESSAGE_POLL_EVENT)
     {
-        deferredPldmMessagePollEvent =
-            std::make_unique<sdeventplus::source::Defer>(
-                event,
-                std::bind(
-                    std::mem_fn(
-                        &EventManager::processDeferredPldmMessagePollEvent),
-                    this, tid));
+        lg2::info("received poll event tid={TID}", "TID", tid);
+        auto it = termini.find(tid);
+        if (it != termini.end())
+        {
+            termini[tid]->pollEvent = true;
+        }
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA)
     {
@@ -175,44 +174,6 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
     return PLDM_SUCCESS;
 }
 
-void EventManager::processDeferredPldmMessagePollEvent(tid_t tid)
-{
-    deferredPldmMessagePollEvent.reset();
-    pollForPlatformEvent(tid);
-}
-
-void EventManager::pollForPlatformEvent(tid_t tid)
-{
-    auto it = termini.find(tid);
-    if (it != termini.end())
-    {
-        auto& terminus = it->second;
-        if (terminus->pollForPlatformEventTaskHandle)
-        {
-            if (terminus->pollForPlatformEventTaskHandle.done())
-            {
-                terminus->pollForPlatformEventTaskHandle.destroy();
-                auto co =
-                    pollForPlatformEventTask(tid, terminus->maxBufferSize);
-                terminus->pollForPlatformEventTaskHandle = co.handle;
-                if (terminus->pollForPlatformEventTaskHandle.done())
-                {
-                    terminus->pollForPlatformEventTaskHandle = nullptr;
-                }
-            }
-        }
-        else
-        {
-            auto co = pollForPlatformEventTask(tid, terminus->maxBufferSize);
-            terminus->pollForPlatformEventTaskHandle = co.handle;
-            if (terminus->pollForPlatformEventTaskHandle.done())
-            {
-                terminus->pollForPlatformEventTaskHandle = nullptr;
-            }
-        }
-    }
-}
-
 requester::Coroutine
     EventManager::pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize)
 {
@@ -240,11 +201,18 @@ requester::Coroutine
             eventData, eventDataIntegrityChecksum);
         if (rc)
         {
+            lg2::error(
+                "pollForPlatformEventMessage failed. tid={TID} transferOpFlag={OPFLAG} rc={RC}",
+                "TID", tid, "OPFLAG", transferOperationFlag, "RC", rc);
             co_return rc;
         }
 
         if (completionCode != PLDM_SUCCESS)
         {
+            lg2::error(
+                "pollForPlatformEventMessage failed. tid={TID} transferOpFlag={OPFLAG} cc={CC}",
+                "TID", tid, "OPFLAG", transferOperationFlag, "CC",
+                completionCode);
             co_return completionCode;
         }
 
@@ -293,8 +261,9 @@ requester::Coroutine
                     else
                     {
                         lg2::error(
-                            "pollForPlatformEventMessageTask: event message, tid={TID} eventId={EVENTID} checksum error",
-                            "TID", tid, "EVENTID", eventId);
+                            "pollForPlatformEventMessage checksum error, tid={TID} eventId={EVENTID} eventClass={EVENTCLASS} ",
+                            "TID", tid, "EVENTID", eventId, "EVENTCLASS",
+                            eventClass);
                     }
                 }
 
@@ -323,6 +292,9 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
         eventIdToAcknowledge, requestMsg);
     if (rc)
     {
+        lg2::error(
+            "encode_poll_for_platform_event_message_req tid={TID} rc={RC}",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -341,6 +313,9 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
         eventData.data(), &eventDataIntegrityChecksum);
     if (rc)
     {
+        lg2::error(
+            "decode_poll_for_platform_event_message_resp tid={TID} rc={RC} responseLen={RLEN}",
+            "TID", tid, "RC", rc, "RLEN", responseLen);
         co_return rc;
     }
     co_return completionCode;

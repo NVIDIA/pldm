@@ -2027,7 +2027,7 @@ int decode_poll_for_platform_event_message_resp(
 	}
 
 	if (payload_length <
-	    PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_MIN_RESP_BYTES) {
+	    PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_OMITTED_RESP_BYTES) {
 		return PLDM_ERROR_INVALID_LENGTH;
 	}
 
@@ -2042,6 +2042,15 @@ int decode_poll_for_platform_event_message_resp(
 	*completion_code = response->completion_code;
 	*tid = response->tid;
 	*event_id = response->event_id;
+	if (*event_id == 0x0000 || *event_id == 0xffff) {
+		return PLDM_SUCCESS;
+	}
+
+	if (payload_length <
+	    PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_MIN_RESP_BYTES) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
 	*next_data_transfer_handle = response->next_data_transfer_handle;
 	*transfer_flag = response->transfer_flag;
 	*event_class = response->event_class;

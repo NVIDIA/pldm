@@ -1,5 +1,6 @@
 #include "sensor_manager.hpp"
 
+#include "manager.hpp"
 #include "terminus_manager.hpp"
 
 namespace pldm
@@ -11,11 +12,11 @@ using namespace std::chrono;
 
 SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
-    std::map<tid_t, std::shared_ptr<Terminus>>& termini, bool verbose,
-    const std::filesystem::path& configJson) :
+    std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
+    bool verbose, const std::filesystem::path& configJson) :
     event(event),
     terminusManager(terminusManager), termini(termini),
-    pollingTime(SENSOR_POLLING_TIME), verbose(verbose)
+    pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
     aggregationIntf =
@@ -213,6 +214,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         auto& terminus = termini[tid];
 
+        if (manager && terminus->pollEvent)
+        {
+            co_await manager->pollForPlatformEvent(tid);
+        }
+
         for (auto& effecter : terminus->numericEffecters)
         {
             // GetNumericEffecterValue if we haven't sync.
@@ -349,6 +355,9 @@ requester::Coroutine
                                                   &responseLen);
     if (rc)
     {
+        lg2::error(
+            "getSensorReading failed, tid={TID}, sensorId={SID}, rc={RC}.",
+            "TID", tid, "SID", sensorId, "RC", rc);
         co_return rc;
     }
 
@@ -457,7 +466,9 @@ requester::Coroutine
 
     if (rc)
     {
-        lg2::error("SendRecvPldmMsg failed. rc={RC}.", "RC", rc);
+        lg2::error(
+            "getStateSensorReadings failed, tid={TID}, sensorId={SID}, rc={RC}.",
+            "TID", tid, "SID", sensorId, "RC", rc);
         co_return rc;
     }
 
