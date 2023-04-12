@@ -454,9 +454,11 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
             double reading = std::numeric_limits<double>::quiet_NaN();
             switch (eventState)
             {
+                case PLDM_SENSOR_LOWERFATAL:
                 case PLDM_SENSOR_LOWERCRITICAL:
                     threshold = sensor->getThresholdLowerCritical();
                     break;
+                case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
                     threshold = sensor->getThresholdUpperCritical();
                     break;
