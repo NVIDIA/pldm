@@ -79,6 +79,8 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
         lg2::error(
             "Decoding QueryDeviceIdentifiers response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
+        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -90,6 +92,8 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
         std::string messageError = "Failed to discover";
         std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
+        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -107,6 +111,8 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
             lg2::error(
                 "Decoding descriptor type, length and value failed, EID={EID}, RC={RC} ",
                 "EID", eid, "RC", rc);
+            pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+            mctpEidMap.erase(eid);
             return;
         }
 
@@ -131,6 +137,8 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
                 lg2::error(
                     "Decoding Vendor-defined descriptor value failed, EID={EID}, RC={RC} ",
                     "EID", eid, "RC", rc);
+                pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+                mctpEidMap.erase(eid);
                 return;
             }
 
@@ -220,6 +228,9 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         lg2::error(
             "Decoding GetFirmwareParameters response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
+        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+        descriptorMap.erase(eid);
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -231,6 +242,9 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         std::string messageError = "Failed to discover";
         std::string resolution = "Reset the baseboard and retry the operation.";
         logDiscoveryFailedMessage(eid, messageError, resolution);
+        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+        descriptorMap.erase(eid);
+        mctpEidMap.erase(eid);
         return;
     }
 
@@ -251,6 +265,9 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
             lg2::error(
                 "Decoding component parameter table entry failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
+            pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+            descriptorMap.erase(eid);
+            mctpEidMap.erase(eid);
             return;
         }
 

@@ -529,6 +529,14 @@ void printBuffer(bool isTx, const std::vector<uint8_t>& buffer)
     }
 }
 
+void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen)
+{
+    auto ptr = reinterpret_cast<const uint8_t*>(buffer);
+    auto outBuffer =
+        std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
+    printBuffer(isTx, outBuffer);
+}
+
 std::string toString(const struct variable_field& var)
 {
     if (var.ptr == nullptr || !var.length)

@@ -390,6 +390,17 @@ int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
  */
 void printBuffer(bool isTx, const std::vector<uint8_t>& buffer);
 
+/** @brief Print the buffer
+ *
+ *  @param[in]  isTx - True if the buffer is an outgoing PLDM message, false if
+                       the buffer is an incoming PLDM message
+ *  @param[in] buffer - pldm message buffer to log
+ *  @param[in] bufferLen - pldm message buffer length
+ *
+ *  @return - None
+ */
+void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen);
+
 /** @brief Convert the buffer to std::string
  *
  *  If there are characters that are not printable characters, it is replaced
