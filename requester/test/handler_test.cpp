@@ -132,15 +132,15 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::Request requestNxt{};
-    auto instanceIdNxt = dbusImplReq.getInstanceId(eid);
+    auto instanceIdNxt = dbusImplReq.getInstanceId(eid + 1);
     rc = reqHandler.registerRequest(
-        eid, instanceIdNxt, 0, 0, std::move(requestNxt),
+        eid + 1, instanceIdNxt, 0, 0, std::move(requestNxt),
         std::move(std::bind_front(&HandlerTest::pldmResponseCallBack, this)));
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t));
     auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
-    reqHandler.handleResponse(eid, instanceIdNxt, 0, 0, responsePtr,
+    reqHandler.handleResponse(eid + 1, instanceIdNxt, 0, 0, responsePtr,
                               sizeof(response));
     EXPECT_EQ(validResponse, true);
     EXPECT_EQ(callbackCount, 1);

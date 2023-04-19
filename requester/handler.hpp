@@ -19,7 +19,9 @@
 #include <cassert>
 #include <chrono>
 #include <coroutine>
+#include <map>
 #include <memory>
+#include <queue>
 #include <tuple>
 #include <unordered_map>
 
@@ -131,37 +133,41 @@ class Handler
         RequestKey key{eid, instanceId, type, command};
 
         auto instanceIdExpiryCallBack = [key, this](void) {
-            if (this->handlers.contains(key))
+            if (!this->handlers[key.eid].empty())
             {
-                lg2::error("Response not received for the request, instance ID "
-                           "expired. EID={EID}, INSTANCE_ID={INSTANCE_ID} ,"
-                           "TYPE={TYPE}, COMMAND={COMMAND}",
-                           "EID", key.eid, "INSTANCE_ID", key.instanceId,
-                           "TYPE", key.type, "COMMAND", key.command);
-                auto& [request, responseHandler, timerInstance] =
-                    this->handlers[key];
-                request->stop();
-                auto rc = timerInstance->stop();
-                if (rc)
+                auto& [request, responseHandler, timerInstance, requestKey] =
+                    handlers[key.eid].front();
+                if (key == requestKey)
                 {
                     lg2::error(
-                        "Failed to stop the instance ID expiry timer. RC={RC}",
-                        "RC", rc);
+                        "Response not received for the request, instance ID "
+                        "expired. EID={EID}, INSTANCE_ID={INSTANCE_ID} ,"
+                        "TYPE={TYPE}, COMMAND={COMMAND}",
+                        "EID", key.eid, "INSTANCE_ID", key.instanceId, "TYPE",
+                        key.type, "COMMAND", key.command);
+                    request->stop();
+                    auto rc = timerInstance->stop();
+                    if (rc)
+                    {
+                        lg2::error(
+                            "Failed to stop the instance ID expiry timer. RC={RC}",
+                            "RC", rc);
+                    }
+                    // Call response handler with an empty response to indicate
+                    // no response
+                    responseHandler(key.eid, nullptr, 0);
+                    this->removeRequestContainer.emplace(
+                        key, std::make_unique<sdeventplus::source::Defer>(
+                                 event, std::bind(&Handler::removeRequestEntry,
+                                                  this, key)));
                 }
-                // Call response handler with an empty response to indicate no
-                // response
-                responseHandler(key.eid, nullptr, 0);
-                this->removeRequestContainer.emplace(
-                    key, std::make_unique<sdeventplus::source::Defer>(
-                             event, std::bind(&Handler::removeRequestEntry,
-                                              this, key)));
-            }
-            else
-            {
-                // This condition is not possible, if a response is received
-                // before the instance ID expiry, then the response handler
-                // is executed and the entry will be removed.
-                assert(false);
+                else
+                {
+                    // This condition is not possible, if a response is received
+                    // before the instance ID expiry, then the response handler
+                    // is executed and the entry will be removed.
+                    assert(false);
+                }
             }
         };
 
@@ -178,63 +184,49 @@ class Handler
         auto timer = std::make_unique<phosphor::Timer>(
             event.get(), instanceIdExpiryCallBack);
 
-        handlers.emplace(key, std::make_tuple(std::move(request),
-                                              std::move(responseHandler),
-                                              std::move(timer)));
+        handlers[eid].emplace(
+            std::make_tuple(std::move(request), std::move(responseHandler),
+                            std::move(timer), std::move(key)));
         return runRegisteredRequest(eid);
     }
 
     int runRegisteredRequest(mctp_eid_t eid)
     {
-        RequestValue* toRun = nullptr;
-        uint8_t instanceId = 0;
-        for (auto& handler : handlers)
+        if (handlers[eid].empty())
         {
-            auto& key = handler.first;
-            auto& [request, responseHandler, timerInstance] = handler.second;
-            if (key.eid != eid)
-            {
-                continue;
-            }
-
-            if (timerInstance->isRunning())
-            {
-                // A PLDM request for the EID is running
-                return PLDM_SUCCESS;
-            }
-
-            if (toRun == nullptr)
-            {
-                // First request of the EID
-                toRun = &handler.second;
-                instanceId = key.instanceId;
-            }
+            return PLDM_SUCCESS;
         }
 
-        if (toRun != nullptr)
-        {
-            auto& [request, responseHandler, timerInstance] = *toRun;
-            auto rc = request->start();
-            if (rc)
-            {
-                requester.markFree(eid, instanceId);
-                lg2::error("Failure to send the PLDM request message");
-                return rc;
-            }
+        auto& [request, responseHandler, timerInstance, key] =
+            handlers[eid].front();
 
-            try
-            {
-                timerInstance->start(duration_cast<std::chrono::microseconds>(
-                    instanceIdExpiryInterval));
-            }
-            catch (const std::runtime_error& e)
-            {
-                requester.markFree(eid, instanceId);
-                lg2::error("Failed to start the instance ID expiry timer.",
-                           "ERROR", e);
-                return PLDM_ERROR;
-            }
+        if (timerInstance->isRunning())
+        {
+            // A PLDM request for the EID is running
+            return PLDM_SUCCESS;
         }
+
+        auto rc = request->start();
+        if (rc)
+        {
+            requester.markFree(eid, key.instanceId);
+            lg2::error("Failure to send the PLDM request message");
+            return rc;
+        }
+
+        try
+        {
+            timerInstance->start(duration_cast<std::chrono::microseconds>(
+                instanceIdExpiryInterval));
+        }
+        catch (const std::runtime_error& e)
+        {
+            requester.markFree(eid, key.instanceId);
+            lg2::error("Failed to start the instance ID expiry timer.", "ERROR",
+                       e);
+            return PLDM_ERROR;
+        }
+
         return PLDM_SUCCESS;
     }
 
@@ -252,31 +244,39 @@ class Handler
                         size_t respMsgLen)
     {
         RequestKey key{eid, instanceId, type, command};
-        if (handlers.contains(key))
+        bool responseHandled = false;
+
+        if (!handlers[eid].empty())
         {
-            auto& [request, responseHandler, timerInstance] = handlers[key];
-            request->stop();
-            auto rc = timerInstance->stop();
-            if (rc)
+            auto& [request, responseHandler, timerInstance, requestKey] =
+                handlers[eid].front();
+            if (key == requestKey)
             {
-                lg2::error(
-                    "Failed to stop the instance ID expiry timer. RC={RC}",
-                    "RC", rc);
+                request->stop();
+                auto rc = timerInstance->stop();
+                if (rc)
+                {
+                    lg2::error(
+                        "Failed to stop the instance ID expiry timer. RC={RC}",
+                        "RC", rc);
+                }
+                // Call responseHandler after erase it from the handlers to
+                // avoid starting it again in runRegisteredRequest()
+                auto unique_handler = std::move(responseHandler);
+                requester.markFree(eid, instanceId);
+                handlers[eid].pop();
+                unique_handler(eid, response, respMsgLen);
+                responseHandled = true;
             }
-            // Call responseHandler after erase it from the handlers to avoid
-            // starting it again in runRegisteredRequest()
-            auto unique_handler = std::move(responseHandler);
-            requester.markFree(key.eid, key.instanceId);
-            handlers.erase(key);
-            unique_handler(eid, response, respMsgLen);
         }
-        else
+
+        if (!responseHandled)
         {
-            // Got a response for a PLDM request message not registered with the
-            // request handler, so freeing up the instance ID, this can be other
-            // OpenBMC applications relying on PLDM D-Bus apis like
+            // Got a response for a PLDM request message not registered with
+            // the request handler, so freeing up the instance ID, this can
+            // be other OpenBMC applications relying on PLDM D-Bus apis like
             // openpower-occ-control and softoff or through pldmtool.
-            requester.markFree(key.eid, key.instanceId);
+            requester.markFree(eid, instanceId);
         }
         runRegisteredRequest(eid);
     }
@@ -295,15 +295,16 @@ class Handler
         responseTimeOut; //!< time to wait between each retry
 
     /** @brief Container for storing the details of the PLDM request
-     *         message, handler for the corresponding PLDM response and the
-     *         timer object for the Instance ID expiration
+     *         message, handler for the corresponding PLDM response, the
+     *         timer object for the Instance ID expiration and RequestKey
      */
     using RequestValue =
         std::tuple<std::unique_ptr<RequestInterface>, ResponseHandler,
-                   std::unique_ptr<phosphor::Timer>>;
+                   std::unique_ptr<phosphor::Timer>, RequestKey>;
+    using RequestQueue = std::queue<RequestValue>;
 
     /** @brief Container for storing the PLDM request entries */
-    std::unordered_map<RequestKey, RequestValue, RequestKeyHasher> handlers;
+    std::map<mctp_eid_t, RequestQueue> handlers;
 
     /** @brief Container to store information about the request entries to be
      *         removed after the instance ID timer expires
@@ -322,7 +323,15 @@ class Handler
         {
             removeRequestContainer[key].reset();
             requester.markFree(key.eid, key.instanceId);
-            handlers.erase(key);
+            if (!handlers[key.eid].empty())
+            {
+                auto& [request, responseHandler, timerInstance, requestKey] =
+                    handlers[key.eid].front();
+                if (key == requestKey)
+                {
+                    handlers[key.eid].pop();
+                }
+            }
             removeRequestContainer.erase(key);
         }
         runRegisteredRequest(key.eid);
