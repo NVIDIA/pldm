@@ -113,6 +113,10 @@ class EventManager
                                    const uint8_t* sensorData,
                                    size_t sensorDataLength);
 
+    void processStateSensorEvent(tid_t tid, uint16_t sensorId,
+                                 const uint8_t* sensorData,
+                                 size_t sensorDataLength);
+
     virtual void createSensorThresholdLogEntry(const std::string& messageID,
                                                const std::string& sensorName,
                                                const double reading,

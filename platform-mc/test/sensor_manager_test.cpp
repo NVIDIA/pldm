@@ -34,10 +34,7 @@ class SensorManagerTest : public testing::Test
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
         do
         {
-            if (!sd_event_run(event.get(), usec - elapsed))
-            {
-                break;
-            }
+            sd_event_run(event.get(), usec - elapsed);
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             elapsed = t1 - t0;
         } while (elapsed < usec);
@@ -59,8 +56,8 @@ TEST_F(SensorManagerTest, sensorPollingTest)
     uint64_t expectedTimes = (seconds * 1000) / SENSOR_POLLING_TIME;
 
     pldm::tid_t tid = 1;
-    termini[tid] =
-        std::make_shared<pldm::platform_mc::Terminus>(tid, 0, terminusManager);
+    termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
 
     EXPECT_CALL(sensorManager, doSensorPolling(tid))
         .Times(Between(expectedTimes - 3, expectedTimes + 3))

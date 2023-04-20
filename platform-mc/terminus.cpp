@@ -12,8 +12,8 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes,
                    TerminusManager& terminusManager) :
-    initalized(false), pollEvent(false),
-    synchronyConfigurationSupported(0), tid(tid),
+    initalized(false),
+    pollEvent(false), synchronyConfigurationSupported(0), tid(tid),
     supportedTypes(supportedTypes), terminusManager(terminusManager)
 
 {
@@ -160,7 +160,7 @@ bool Terminus::parsePDRs()
 }
 
 std::shared_ptr<SensorAuxiliaryNames>
-    Terminus::getSensorAuxiliaryNames(SensorId id)
+    Terminus::getSensorAuxiliaryNames(SensorID id)
 {
     for (auto sensorAuxiliaryNames : sensorAuxiliaryNamesTbl)
     {
@@ -174,7 +174,7 @@ std::shared_ptr<SensorAuxiliaryNames>
 }
 
 std::shared_ptr<EffecterAuxiliaryNames>
-    Terminus::getEffecterAuxiliaryNames(EffecterId id)
+    Terminus::getEffecterAuxiliaryNames(EffecterID id)
 {
     for (auto effecterAuxiliaryNames : effecterAuxiliaryNamesTbl)
     {
@@ -634,7 +634,7 @@ std::tuple<SensorID, StateSetInfo>
     return std::make_tuple(pdr->sensor_id, std::move(stateSetInfo));
 }
 
-std::tuple<EffecterId, StateSetInfo>
+std::tuple<EffecterID, StateSetInfo>
     Terminus::parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr)
 {
     auto pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(
@@ -1005,8 +1005,8 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         "PLDM_Sensor_" + std::to_string(sId) + "_" + std::to_string(tid);
 
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>* sensorNames =
-        nullptr;
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>*
+        sensorNames = nullptr;
     if (sensorAuxiliaryNames)
     {
         sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
@@ -1031,7 +1031,7 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
     }
 }
 
-void Terminus::addStateEffecter(EffecterId eId, StateSetInfo effecterInfo)
+void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
 {
     std::string effecterName =
         "PLDM_Effecter_" + std::to_string(eId) + "_" + std::to_string(tid);
@@ -1066,21 +1066,6 @@ void Terminus::addStateEffecter(EffecterId eId, StateSetInfo effecterInfo)
         lg2::error("Failed to create NumericEffecter:{EFFECTERNAME}, {ERROR}.",
                    "EFFECTERNAME", effecterName, "ERROR", e);
     }
-}
-
-void Terminus::handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
-                                      uint8_t eventState)
-{
-    for (auto& sensor : stateSensors)
-    {
-        if (sensor->sensorId == sensorId)
-        {
-            sensor->handleSensorEvent(sensorOffset, eventState);
-            return;
-        }
-    }
-    lg2::error("handleStateSensorEvent: sensor id, {SENSORID}, not found.",
-               "SENSORID", sensorId);
 }
 
 PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)

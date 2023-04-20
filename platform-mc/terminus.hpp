@@ -23,16 +23,13 @@ namespace pldm
 {
 namespace platform_mc
 {
-using SensorId = uint16_t;
-using EffecterId = SensorId;
 using SensorCnt = uint8_t;
-using EffecterId = SensorId;
 using EffecterCnt = SensorCnt;
 using NameLanguageTag = std::string;
 using SensorName = std::string;
 using EffecterName = SensorName;
 using SensorAuxiliaryNames = std::tuple<
-    SensorId, SensorCnt,
+    SensorID, SensorCnt,
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>>;
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
@@ -134,14 +131,14 @@ class Terminus
     std::map<EntityInfo, Entity> entities;
 
     /** @brief A list of parsed state effecter PDRs */
-    std::vector<std::tuple<EffecterId, StateSetInfo>> stateEffecterPdrs{};
+    std::vector<std::tuple<EffecterID, StateSetInfo>> stateEffecterPdrs{};
 
     /** @brief Get Sensor Auxiliary Names by sensorID
      *
      *  @param[in] id - sensor ID
      *  @return sensor auxiliary names
      */
-    std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorId id);
+    std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorID id);
 
     /** @brief Get Effecter Auxiliary Names by effecterID
      *
@@ -149,7 +146,7 @@ class Terminus
      *  @return effecter auxiliary names
      */
     std::shared_ptr<EffecterAuxiliaryNames>
-        getEffecterAuxiliaryNames(EffecterId id);
+        getEffecterAuxiliaryNames(EffecterID id);
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
@@ -165,7 +162,7 @@ class Terminus
     void addNumericEffecter(
         const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr);
 
-    void addStateEffecter(EffecterId eId, StateSetInfo effecterInfo);
+    void addStateEffecter(EffecterID eId, StateSetInfo effecterInfo);
 
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
@@ -180,15 +177,6 @@ class Terminus
      * message that will require a multipart transfer via the
      * PollForPlatformEvent command */
     bool pollEvent;
-
-    /** @brief Handler to invoke when state sensor event is received
-     *
-     *  @param[in] id - sensor ID
-     *  @param[in] id - sensor offset
-     *  @param[in] id - event state
-     */
-    void handleStateSensorEvent(uint16_t sensorId, uint8_t sensorOffset,
-                                uint8_t eventState);
 
     /** @brief This value indicates the event messaging styles supported by the
      * terminus */
@@ -214,7 +202,7 @@ class Terminus
                            uint8_t compositeSensorCount,
                            std::vector<StateSetData>& stateSets);
 
-    std::tuple<EffecterId, StateSetInfo>
+    std::tuple<EffecterID, StateSetInfo>
         parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
 
     OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);

@@ -122,6 +122,11 @@ void SensorManager::startPolling()
     // initialize prioritySensors and roundRobinSensors list
     for (const auto& [tid, terminus] : termini)
     {
+        if (!terminus->doesSupport(PLDM_PLATFORM))
+        {
+            continue;
+        }
+
         // numeric sensor
         for (auto& sensor : terminus->numericSensors)
         {

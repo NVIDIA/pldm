@@ -1,11 +1,16 @@
 #include "state_set.hpp"
 
 #ifdef OEM_NVIDIA
-#include "oem/nvidia/platform-mc/state_set_oem.hpp"
+#include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
 #endif
 #include "libpldm/platform.h"
 
 #include "state_effecter.hpp"
+#include "state_set/clearNonVolatileVariables.hpp"
+#include "state_set/pciePortLinkState.hpp"
+#include "state_set/performance.hpp"
+#include "state_set/powerSupplyInput.hpp"
+#include "state_set/presenceState.hpp"
 
 namespace pldm
 {
@@ -29,8 +34,8 @@ std::unique_ptr<StateSet>
     }
     else if (stateSetId == PLDM_STATESET_ID_LINKSTATE)
     {
-        return std::make_unique<StateSetRemoteDebug>(stateSetId, compId, path,
-                                                     stateAssociation, nullptr);
+        return std::make_unique<StateSetPciePortLinkState>(stateSetId, compId, path,
+                                                   stateAssociation);
     }
     else if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
     {
@@ -51,8 +56,9 @@ std::unique_ptr<StateSet>
 #endif
     else
     {
-        lg2::error("State Sensor PDR Info, Set ID is unknown Id:{STATESETID}.",
-                   "STATESETID", stateSetId);
+        lg2::error(
+            "State Sensor PDR Info, Composite ID:{COMPID} Set ID is unknown Id:{STATESETID}.",
+            "COMPID", compId, "STATESETID", stateSetId);
         return nullptr;
     }
 }
@@ -69,12 +75,7 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
         return nullptr;
     }
 
-    if (stateSetId == PLDM_STATESET_ID_LINKSTATE)
-    {
-        return std::make_unique<StateSetRemoteDebug>(
-            stateSetId, compId, path, stateAssociation, effecter);
-    }
-    else if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
+    if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
     {
         return std::make_unique<StateSetClearNonvolatileVariable>(
             stateSetId, compId, path, stateAssociation, effecter);
@@ -82,52 +83,10 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
     else
     {
         lg2::error(
-            "State Effecter PDR Info, Set ID is unknown Id: {STATESETID}.",
-            "STATESETID", stateSetId);
+            "State Effecter PDR Info, Composite ID:{COMPID} Set ID is unknown Id: {STATESETID}.",
+            "COMPID", compId, "STATESETID", stateSetId);
         return nullptr;
     }
-}
-
-void RemoteDebugEffecterIntf::update(bool value)
-{
-    RemoteDebugInterfaceIntf::enabled(value);
-}
-
-bool RemoteDebugEffecterIntf::enabled(bool value)
-{
-    uint8_t requestState = 0;
-    if (value)
-    {
-        requestState = PLDM_STATESET_LINK_STATE_CONNECTED;
-    }
-    else
-    {
-        requestState = PLDM_STATESET_LINK_STATE_DISCONNECTED;
-    }
-
-    effecter.setStateEffecterStates(compId, requestState).detach();
-    return value;
-}
-
-void ClearNonVolatileVariablesEffecterIntf::update(bool value)
-{
-    ClearNonVolatileVariablesIntf::clear(value);
-}
-
-bool ClearNonVolatileVariablesEffecterIntf::clear(bool value)
-{
-    uint8_t requestState = 0;
-    if (value)
-    {
-        requestState = PLDM_STATESET_BOOT_REQUEST_REQUESTED;
-    }
-    else
-    {
-        requestState = PLDM_STATESET_BOOT_REQUEST_NORMAL;
-    }
-
-    effecter.setStateEffecterStates(compId, requestState).detach();
-    return value;
 }
 
 } // namespace platform_mc

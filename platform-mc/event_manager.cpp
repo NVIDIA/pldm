@@ -48,35 +48,10 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
             }
             case PLDM_STATE_SENSOR_STATE:
             {
-                uint8_t sensorOffset;
-                uint8_t eventState;
-                uint8_t previousEventState;
-                rc = decode_state_sensor_data(
-                    eventData + eventClassDataOffset,
-                    eventDataSize - eventClassDataOffset, &sensorOffset,
-                    &eventState, &previousEventState);
-                if (rc == PLDM_SUCCESS)
-                {
-                    auto it = termini.find(tid);
-                    if (it != termini.end())
-                    {
-                        auto terminus = get<1>(*it);
-                        terminus->handleStateSensorEvent(sensorId, sensorOffset,
-                                                         eventState);
-                    }
-                    else
-                    {
-                        lg2::info(
-                            "received a state sensor event,sid={SID}, with invalid tid={TID}",
-                            "SID", sensorId, "TID", tid);
-                    }
-                }
-                else
-                {
-                    lg2::error(
-                        "failed to decode received state sensor event,sid={SID}.",
-                        "SID", sensorId);
-                }
+                const uint8_t* sensorData = eventData + eventClassDataOffset;
+                size_t sensorDataLength = eventDataSize - eventClassDataOffset;
+                processStateSensorEvent(tid, sensorId, sensorData,
+                                        sensorDataLength);
                 break;
             }
             case PLDM_SENSOR_OP_STATE:
@@ -614,6 +589,46 @@ std::string
             break;
     }
     return std::string{};
+}
+
+void EventManager::processStateSensorEvent(tid_t tid, uint16_t sensorId,
+                                           const uint8_t* sensorData,
+                                           size_t sensorDataLength)
+
+{
+    uint8_t sensorOffset;
+    uint8_t eventState;
+    uint8_t previousEventState;
+    auto rc =
+        decode_state_sensor_data(sensorData, sensorDataLength, &sensorOffset,
+                                 &eventState, &previousEventState);
+    if (rc != PLDM_SUCCESS)
+    {
+        lg2::error("failed to decode received state sensor event,sid={SID}.",
+                   "SID", sensorId);
+        return;
+    }
+
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::info(
+            "received a state sensor event,sid={SID}, with invalid tid={TID}",
+            "SID", sensorId, "TID", tid);
+        return;
+    }
+
+    auto terminus = get<1>(*it);
+    auto sensorIterator = std::find_if(
+        terminus->stateSensors.begin(), terminus->stateSensors.end(),
+        [&sensorId](auto& sensor) { return sensor->sensorId == sensorId; });
+    if (sensorIterator != terminus->stateSensors.end())
+    {
+        lg2::error("processStateSensorEvent: sensor id, {SENSORID}, not found.",
+                   "SENSORID", sensorId);
+        return;
+    }
+    (*sensorIterator)->handleSensorEvent(sensorOffset, eventState);
 }
 
 } // namespace platform_mc

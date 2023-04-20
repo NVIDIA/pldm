@@ -491,8 +491,8 @@ enum pldm_stateset_powersupply_values {
 	PLDM_STATESET_POWERSUPPLY_OUTOFRANGE = 8
 };
 
-/** @brief PLDM state set ID 33 Remote Debug values  */
-enum pldm_stateset_remotedebug_values {
+/** @brief PLDM state set ID 33 Link State values  */
+enum pldm_stateset_link_state_values {
 	PLDM_STATESET_LINK_STATE_CONNECTED = 1,
 	PLDM_STATESET_LINK_STATE_DISCONNECTED = 2
 };

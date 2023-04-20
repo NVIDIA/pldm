@@ -98,7 +98,9 @@ void StateSensor::updateReading(bool available, bool functional,
     }
     else
     {
-        lg2::error("State Sensor updateReading index out of range");
+        lg2::error(
+            "State Sensor id:{SENSORID} updateReading index out of range",
+            "SENSORID", sensorId);
     }
 }
 
@@ -115,7 +117,8 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
     }
     else
     {
-        lg2::error("State Sensor event offset out of range");
+        lg2::error("State Sensor id:{SENSORID} event offset out of range",
+                   "SENSORID", sensorId);
     }
 }
 

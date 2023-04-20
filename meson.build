@@ -14,6 +14,8 @@ project('pldm', ['c', 'cpp'],
 # project uses the same compiler, we can safely ignmore these info notes.
 add_project_arguments('-Wno-psabi', language: 'cpp')
 
+# Enable support for the C++ coroutines extension
+add_project_arguments('-fcoroutines',language : ['cpp'])
 
 # Disable FORTIFY_SOURCE when compiling with no optimization
 if(get_option('optimization') == '0')
