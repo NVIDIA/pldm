@@ -63,6 +63,15 @@ class ClearNonVolatileVariablesEffecterIntf :
         return value;
     }
 
+    /** return cached value and send getStateEffecterStates command to terminus.
+     * the present value will be updated to D-Bus once received response
+     */
+    bool clear() const override
+    {
+        effecter.getStateEffecterStates().detach();
+        return ClearNonVolatileVariablesIntf::clear();
+    }
+
   private:
     StateEffecter& effecter;
 };

@@ -249,34 +249,6 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             co_await manager->pollForPlatformEvent(tid);
         }
 
-        for (auto& effecter : terminus->numericEffecters)
-        {
-            // GetNumericEffecterValue if we haven't sync.
-            if (effecter->state() == StateType::Deferring)
-            {
-                co_await effecter->getNumericEffecterValue();
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
-                {
-                    co_return PLDM_ERROR;
-                }
-            }
-        }
-
-        for (auto effecter : terminus->stateEffecters)
-        {
-            // Get StateEffecter states if we haven't sync.
-            if (effecter->getOperationalStatus() == StateType::Deferring)
-            {
-                co_await effecter->getStateEffecterStates();
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
-                {
-                    co_return PLDM_ERROR;
-                }
-            }
-        }
-
         for (auto sensor : terminus->stateSensors)
         {
             // Get State sensor if we haven't sync.

@@ -15,17 +15,19 @@ namespace pldm
 namespace platform_mc
 {
 
-StateEffecter::StateEffecter(const uint8_t tid, const bool effecterDisabled,
-                             const uint16_t effecterId,
-                             StateSetInfo effecterInfo,
-                             std::string& effecterName,
-                             std::string& associationPath,
-                             TerminusManager& terminusManager) :
+StateEffecter::StateEffecter(
+    const uint8_t tid, const bool effecterDisabled, const uint16_t effecterId,
+    StateSetInfo effecterInfo,
+    std::vector<std::vector<std::pair<std::string, std::string>>>*
+        effecterNames,
+    std::string& associationPath, TerminusManager& terminusManager) :
     tid(tid),
     effecterId(effecterId), effecterInfo(effecterInfo),
     terminusManager(terminusManager)
 {
-    path = "/xyz/openbmc_project/control/" + effecterName;
+    path = "/xyz/openbmc_project/control/PLDM_Effecter_" +
+           std::to_string(effecterId) + "_" + std::to_string(tid);
+
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -44,10 +46,29 @@ StateEffecter::StateEffecter(const uint8_t tid, const bool effecterDisabled,
         auto stateSetId = std::get<0>(effecter);
         dbus::PathAssociation association = {"chassis", "all_controls",
                                              associationPath};
-        std::string stateSetPath =
-            path + "/Id_" + std::to_string(stateSets.size());
+
+        std::string compositeEffecterName = "Id";
+        auto compositeEffecterId = stateSets.size();
+        // pick first en langTag sensor aux name
+        if (effecterNames && effecterNames->size() > compositeEffecterId)
+        {
+            for (const auto& [tag, name] :
+                 effecterNames->at(compositeEffecterId))
+            {
+                if (tag == "en")
+                {
+                    compositeEffecterName = name;
+                }
+            }
+        }
+
+        std::string objPath = path + "/" + compositeEffecterName + "_" +
+                              std::to_string(stateSets.size());
+        objPath =
+            std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
+
         auto stateSet = StateSetCreator::createEffecter(
-            stateSetId, idx++, stateSetPath, association, this);
+            stateSetId, idx++, objPath, association, this);
         if (stateSet != nullptr)
         {
             stateSets.emplace_back(std::move(stateSet));
@@ -122,7 +143,9 @@ void StateEffecter::updateReading(uint8_t compEffecterIndex,
     }
     else
     {
-        lg2::error("State Effecter updateReading index out of range.");
+        lg2::error(
+            "State Effecter id:{EFFECTERID} updateReading index out of range.",
+            "EFFECTERID", effecterId);
     }
 }
 

@@ -48,7 +48,9 @@ class StateEffecter
 
     StateEffecter(const uint8_t tid, const bool effecterDisabled,
                   const uint16_t effecterId, StateSetInfo effecterInfo,
-                  std::string& effecterName, std::string& associationPath,
+                  std::vector<std::vector<std::pair<std::string, std::string>>>*
+                      effecterNames,
+                  std::string& associationPath,
                   TerminusManager& terminusManager);
     ~StateEffecter(){};
 
@@ -119,11 +121,12 @@ class StateEffecter
      * sdbusplus object as extra attribute */
     std::vector<std::unique_ptr<platform_mc::OemIntf>> oemIntfs;
 
+    /** @brief  composite state effecters */
+    StateSets stateSets;
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
-    StateSets stateSets;
-
     TerminusManager& terminusManager;
 };
 } // namespace platform_mc

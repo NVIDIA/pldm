@@ -23,7 +23,7 @@ NumericEffecter::NumericEffecter(
     effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance)),
-    terminusManager(terminusManager)
+    terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
     std::string reverseAssociation;
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -32,12 +32,15 @@ NumericEffecter::NumericEffecter(
     path += effecerName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
-    switch (pdr->base_unit)
+    switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_WATTS:
             reverseAssociation = "power_controls";
             unitIntf = std::make_unique<NumericEffecterWattInft>(*this, bus,
                                                                  path.c_str());
+            break;
+        case PLDM_SENSOR_UNIT_MINUTES:
+            unitIntf = std::make_unique<NumericEffecterBaseUnit>(*this);
             break;
         default:
             throw std::runtime_error(
@@ -151,11 +154,13 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
             available = true;
             functional = true;
             state = StateType::Deferring;
+            value = pendingValue;
             break;
         case EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING:
             available = true;
             functional = true;
             state = StateType::Enabled;
+            value = presentValue;
             break;
         case EFFECTER_OPER_STATE_DISABLED:
             available = true;

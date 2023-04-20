@@ -2,7 +2,10 @@
 
 #include "memoryPageRetirementCount.hpp"
 #include "platform-mc/state_sensor.hpp"
+#include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/terminus.hpp"
+
+#include <phosphor-logging/lg2.hpp>
 
 using namespace pldm::pdr;
 
@@ -119,6 +122,68 @@ void nvidiaInitTerminus(Terminus& terminus)
                     sensor->path.c_str());
             sensor->oemIntfs.push_back(std::move(memoryPageRetirementCount));
         }
+    }
+    // remote debug state effecter
+    std::shared_ptr<StateEffecter> stateEffecter = nullptr;
+    for (auto effecter : terminus.stateEffecters)
+    {
+        auto& [entityInfo, stateSets] = effecter->effecterInfo;
+        if (stateSets.size() == 6 &&
+            std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+        {
+            stateEffecter = effecter;
+            break;
+        }
+    }
+
+    if (stateEffecter == nullptr)
+    {
+        lg2::error("Cannot found remote debug state effecter");
+    }
+
+    // remote debug timeout effecter
+    std::shared_ptr<NumericEffecter> numericEffecter = nullptr;
+    for (auto effecter : terminus.numericEffecters)
+    {
+        auto& [containerId, entityType, entityInstance] = effecter->entityInfo;
+        if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_MINUTES &&
+            entityType == PLDM_ENTITY_SYS_BOARD)
+        {
+            numericEffecter = effecter;
+            break;
+        }
+    }
+
+    if (numericEffecter == nullptr)
+    {
+        lg2::error("Cannot find remote debug timeout effecter");
+    }
+
+    // remote debug state sensor
+    std::shared_ptr<StateSensor> stateSensor = nullptr;
+    for (auto sensor : terminus.stateSensors)
+    {
+        auto& [entityInfo, stateSets] = sensor->sensorInfo;
+        if (stateSets.size() == 6 &&
+            std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+        {
+            stateSensor = sensor;
+            break;
+        }
+    }
+
+    if (stateSensor == nullptr)
+    {
+        lg2::error("Cannot found remote debug state sensor");
+    }
+
+    if (numericEffecter && stateEffecter && stateSensor)
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        auto remoteDebugIntf = std::make_unique<oem_nvidia::OemRemoteDebugIntf>(
+            bus, stateEffecter->path.c_str(), stateEffecter, numericEffecter,
+            stateSensor);
+        stateEffecter->oemIntfs.push_back(std::move(remoteDebugIntf));
     }
 }
 

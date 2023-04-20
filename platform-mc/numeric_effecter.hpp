@@ -161,6 +161,24 @@ class NumericEffecter
         }
     }
 
+    /** @brief Getter of value member variable */
+    double getValue()
+    {
+        return value;
+    }
+
+    /** @brief Setter of value member variable */
+    void setValue(double v)
+    {
+        value = v;
+    }
+
+    /** @brief getter of baseUnit member variable */
+    uint8_t getBaseUnit()
+    {
+        return baseUnit;
+    }
+
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
 
@@ -203,6 +221,12 @@ class NumericEffecter
 
     /** @brief reference of TerminusManager */
     TerminusManager& terminusManager;
+
+    /** @brief raw value of numeric effecter */
+    double value;
+
+    /** @brief baseUnit of numeric effecter */
+    uint8_t baseUnit;
 };
 } // namespace platform_mc
 } // namespace pldm

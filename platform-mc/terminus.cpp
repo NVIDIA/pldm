@@ -1015,11 +1015,6 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         auto sensor =
             std::make_shared<StateSensor>(tid, true, sId, std::move(sensorInfo),
                                           sensorNames, systemInventoryPath);
-        if (synchronyConfigurationSupported &
-            (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
-        {
-            sensor->async = true;
-        }
         stateSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
@@ -1035,27 +1030,17 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
         "PLDM_Effecter_" + std::to_string(eId) + "_" + std::to_string(tid);
 
     auto effecterAuxiliaryNames = getEffecterAuxiliaryNames(eId);
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>*
+        effecterNames = nullptr;
     if (effecterAuxiliaryNames)
     {
-        const auto& [effecterId, effecterCnt, effecterNames] =
-            *effecterAuxiliaryNames;
-        if (effecterCnt == 1 && effecterNames.size() > 0)
-        {
-            for (const auto& [languageTag, name] : effecterNames[0])
-            {
-                if (languageTag == "en")
-                {
-                    effecterName = name + "_" + std::to_string(eId) + "_" +
-                                   std::to_string(tid);
-                }
-            }
-        }
+        effecterNames = &(std::get<2>(*effecterAuxiliaryNames));
     }
 
     try
     {
         auto effecter = std::make_shared<StateEffecter>(
-            tid, true, eId, std::move(effecterInfo), effecterName,
+            tid, true, eId, std::move(effecterInfo), effecterNames,
             systemInventoryPath, terminusManager);
         stateEffecters.emplace_back(effecter);
     }

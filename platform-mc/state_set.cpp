@@ -1,6 +1,7 @@
 #include "state_set.hpp"
 
 #ifdef OEM_NVIDIA
+#include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
 #include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
 #endif
@@ -45,6 +46,11 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     {
         return std::make_unique<oem_nvidia::StateSetNvlink>(stateSetId, path,
                                                             stateAssociation);
+    }
+    else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+    {
+        return std::make_unique<oem_nvidia::StateSetDebugState>(
+            stateSetId, compId, path, stateAssociation, nullptr);
     }
 #endif
 
@@ -93,6 +99,13 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
         return std::make_unique<StateSetClearNonvolatileVariable>(
             stateSetId, compId, path, stateAssociation, effecter);
     }
+#ifdef OEM_NVIDIA
+    else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+    {
+        return std::make_unique<oem_nvidia::StateSetDebugState>(
+            stateSetId, compId, path, stateAssociation, effecter);
+    }
+#endif
     else
     {
         lg2::error(
