@@ -167,6 +167,7 @@ class Activation : public ActivationIntf
                     "Retry firmware update operation with valid FW package.";
                 createLogEntry(resourceErrorDetected, compName, messageError,
                                resolution);
+                updateManager->clearFirmwareUpdatePackage();
                 activation(Activations::Failed);
             }
         }
