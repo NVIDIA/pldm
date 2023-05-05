@@ -65,7 +65,7 @@ StateSensor::StateSensor(
         objPath =
             std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
         auto stateSet = StateSetCreator::createSensor(stateSetId, idx++,
-                                                      objPath, association);
+                                                      objPath, association, this);
         if (stateSet != nullptr)
         {
             stateSets.emplace_back(std::move(stateSet));

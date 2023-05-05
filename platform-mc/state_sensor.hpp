@@ -27,7 +27,6 @@ using OperationalStatusIntf =
                                     Decorator::server::OperationalStatus>;
 using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
-using StateSets = std::vector<std::unique_ptr<StateSet>>;
 
 /**
  * @brief StateSensor
@@ -100,10 +99,11 @@ class StateSensor
         return associationEntityId;
     }
 
+    StateSets stateSets;
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
-    StateSets stateSets;
     std::string associationEntityId;
 };
 } // namespace platform_mc

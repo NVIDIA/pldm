@@ -3,7 +3,7 @@
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
-
+#include "platform-mc/oem_base.hpp"
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 
 namespace pldm
@@ -12,9 +12,11 @@ namespace platform_mc
 {
 
 class StateEffecter;
+class StateSensor;
+class StateSet;
 
+using StateSets = std::vector<std::shared_ptr<StateSet>>;
 using namespace sdbusplus;
-
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 
@@ -62,7 +64,7 @@ class StateSetCreator
   public:
     static std::unique_ptr<StateSet>
         createSensor(uint16_t stateSetId, uint8_t compId, std::string& path,
-                     dbus::PathAssociation& stateAssociation);
+                     dbus::PathAssociation& stateAssociation, StateSensor* sensor);
 
     static std::unique_ptr<StateSet>
         createEffecter(uint16_t stateSetId, uint8_t compId, std::string& path,

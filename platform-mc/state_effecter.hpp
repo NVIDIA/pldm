@@ -30,7 +30,7 @@ using OperationalStatusIntf =
                                     Decorator::server::OperationalStatus>;
 using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
-using StateSets = std::vector<std::unique_ptr<StateSet>>;
+
 
 using StateType = sdbusplus::xyz::openbmc_project::State::Decorator::server::
     OperationalStatus::StateType;
