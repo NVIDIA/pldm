@@ -19,7 +19,6 @@
 #include <cassert>
 #include <chrono>
 #include <coroutine>
-#include <map>
 #include <memory>
 #include <queue>
 #include <tuple>
@@ -133,7 +132,8 @@ class Handler
         RequestKey key{eid, instanceId, type, command};
 
         auto instanceIdExpiryCallBack = [key, this](void) {
-            if (!this->handlers[key.eid].empty())
+            if (this->handlers.contains(key.eid) &&
+                !this->handlers[key.eid].empty())
             {
                 auto& [request, responseHandler, timerInstance, requestKey] =
                     handlers[key.eid].front();
@@ -246,7 +246,7 @@ class Handler
         RequestKey key{eid, instanceId, type, command};
         bool responseHandled = false;
 
-        if (!handlers[eid].empty())
+        if (handlers.contains(eid) && !handlers[eid].empty())
         {
             auto& [request, responseHandler, timerInstance, requestKey] =
                 handlers[eid].front();
@@ -287,12 +287,12 @@ class Handler
     pldm::dbus_api::Requester& requester; //!< reference to Requester object
     pldm::mctp_socket::Manager& sockManager;
 
-    bool verbose; //!< verbose tracing flag
+    bool verbose;                 //!< verbose tracing flag
     std::chrono::seconds
         instanceIdExpiryInterval; //!< Instance ID expiration interval
     uint8_t numRetries;           //!< number of request retries
     std::chrono::milliseconds
-        responseTimeOut; //!< time to wait between each retry
+        responseTimeOut;          //!< time to wait between each retry
 
     /** @brief Container for storing the details of the PLDM request
      *         message, handler for the corresponding PLDM response, the
@@ -304,7 +304,7 @@ class Handler
     using RequestQueue = std::queue<RequestValue>;
 
     /** @brief Container for storing the PLDM request entries */
-    std::map<mctp_eid_t, RequestQueue> handlers;
+    std::unordered_map<mctp_eid_t, RequestQueue> handlers;
 
     /** @brief Container to store information about the request entries to be
      *         removed after the instance ID timer expires
