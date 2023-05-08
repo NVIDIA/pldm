@@ -1,5 +1,7 @@
 #include "oem_nvidia.hpp"
 
+#include "memoryPageRetirementCount.hpp"
+#include "platform-mc/state_sensor.hpp"
 #include "platform-mc/terminus.hpp"
 
 using namespace pldm::pdr;
@@ -8,6 +10,9 @@ namespace pldm
 {
 namespace platform_mc
 {
+
+using MemoryPageRetirementCountIntf = sdbusplus::server::object_t<
+    sdbusplus::com::nvidia::server::MemoryPageRetirementCount>;
 
 namespace nvidia
 {
@@ -98,6 +103,21 @@ void nvidiaInitTerminus(Terminus& terminus)
                 break;
             default:
                 continue;
+        }
+    }
+
+    for (auto sensor : terminus.numericSensors)
+    {
+        auto& [containerId, entityType, entityInstance] = sensor->entityInfo;
+        if ((entityType == PLDM_ENTITY_PROC ||
+             entityType == PLDM_ENTITY_MEMORY_CONTROLLER) &&
+            sensor->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
+        {
+            auto memoryPageRetirementCount =
+                std::make_shared<OemMemoryPageRetirementCountInft>(
+                    sensor, utils::DBusHandler().getBus(),
+                    sensor->path.c_str());
+            sensor->oemIntfs.push_back(std::move(memoryPageRetirementCount));
         }
     }
 }

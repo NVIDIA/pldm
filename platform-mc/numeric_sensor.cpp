@@ -20,12 +20,11 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
-    sensorName(sensorName), inSensorMetrics(false), isPriority(false)
+    sensorName(sensorName), inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit)
 {
-    std::string path;
     SensorUnit sensorUnit = SensorUnit::DegreesC;
 
-    switch (pdr->base_unit)
+    switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
             sensorNameSpace = "/xyz/openbmc_project/sensors/temperature/";

@@ -4,6 +4,7 @@
 #include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
+#include "platform-mc/oem_base.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
@@ -178,6 +179,27 @@ class NumericSensor
         return thresholdWarningIntf->warningLow();
     };
 
+    /** @brief Get base unit defined in table74 of DSP0248 v1.2.1
+     *
+     *  @return uint8_t - base unit
+     */
+    uint8_t getBaseUnit()
+    {
+        return baseUnit;
+    };
+
+    /** @brief Get Sensor Reading
+     *
+     *  @return uint8_t - base unit
+     */
+    double getReading()
+    {
+        if(valueIntf) {
+            return valueIntf->value();
+        }
+        return std::numeric_limits<double>::quiet_NaN();
+    };
+
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
 
@@ -187,6 +209,9 @@ class NumericSensor
     /** @brief ContainerID, EntityType, EntityInstance of the PLDM Entity which
      * the sensor belongs to */
     EntityInfo entityInfo;
+
+    /** @brief  The DBus path of sensor */
+    std::string path;
 
     /** @brief  The time since last getSensorReading command in usec */
     uint64_t elapsedTime;
@@ -206,6 +231,10 @@ class NumericSensor
     /** @brief indicate if sensor is polled in priority */
     bool isPriority;
 
+    /** @brief  A container to store OemIntf, it allows us to add additional OEM
+     * sdbusplus object as extra attribute */
+    std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
+
   private:
     /**
      * @brief Check sensor reading if any threshold has been crossed and update
@@ -220,8 +249,8 @@ class NumericSensor
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =
         nullptr;
-    std::unique_ptr<InventoryDecoratorAreaIntf>
-        inventoryDecoratorAreaIntf = nullptr;
+    std::unique_ptr<InventoryDecoratorAreaIntf> inventoryDecoratorAreaIntf =
+        nullptr;
 
     /** @brief Amount of hysteresis associated with the sensor thresholds */
     double hysteresis;
@@ -235,6 +264,9 @@ class NumericSensor
 
     /** @brief A power-of-10 multiplier for baseUnit */
     int8_t baseUnitModifier;
+
+    /** @brief sensor reading baseUnit */
+    uint8_t baseUnit;
 };
 } // namespace platform_mc
 } // namespace pldm

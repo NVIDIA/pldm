@@ -1,6 +1,7 @@
 
 #include "libpldm/entity.h"
 
+#include "oem/nvidia/platform-mc/memoryPageRetirementCount.hpp"
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
@@ -38,21 +39,21 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -77,12 +78,12 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x80,
         0x3f, // offset=1.0
         0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
-        0, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
+        0,    // accuracy
+        0,    // plusTolerance
+        0,    // minusTolerance
+        2,    // hysteresis
+        0,    // supportedThresholds
+        0,    // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -129,21 +130,21 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -168,12 +169,12 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x80,
         0x3f, // offset=1.0
         0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
-        0, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
+        0,    // accuracy
+        0,    // plusTolerance
+        0,    // minusTolerance
+        2,    // hysteresis
+        0,    // supportedThresholds
+        0,    // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -286,4 +287,102 @@ TEST_F(NumericSensorTest, checkThreshold)
     lowAlarm = sensor.checkThreshold(lowAlarm, false, reading, lowThreshold,
                                      hysteresis);
     EXPECT_EQ(false, lowAlarm);
+}
+
+TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
+{
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::vector<uint8_t> pdr1{
+        0x0,
+        0x0,
+        0x0,
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
+        0x0,
+        0x0,                         // recordChangeNumber
+        0x0,
+        56,                          // dataLength
+        0,
+        0,                           // PLDMTerminusHandle
+        0x1,
+        0x0,                         // sensorID=1
+        PLDM_ENTITY_MEMORY_CONTROLLER,
+        0,                           // entityType=Memory Controller(143)
+        1,
+        0,                           // entityInstanceNumber
+        0x1,
+        0x0,                         // containerID=1
+        PLDM_NO_INIT,                // sensorInit
+        false,                       // sensorAuxiliaryNamesPDR
+        PLDM_SENSOR_UNIT_COUNTS,     // baseUint(67)=counts
+        0,                           // unitModifier = 0
+        0,                           // rateUnit
+        0,                           // baseOEMUnitHandle
+        0,                           // auxUnit
+        0,                           // auxUnitModifier
+        0,                           // auxRateUnit
+        0,                           // rel
+        0,                           // auxOEMUnitHandle
+        true,                        // isLinear
+        PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
+        0,
+        0,
+        0x80,
+        0x3f, // resolution=1.0
+        0,
+        0,
+        0,
+        0, // offset=0
+        0,
+        0, // accuracy
+        0, // plusTolerance
+        0, // minusTolerance
+        2, // hysteresis
+        0, // supportedThresholds
+        0, // thresholdAndHysteresisVolatility
+        0,
+        0,
+        0x80,
+        0x3f, // stateTransistionInterval=1.0
+        0,
+        0,
+        0x80,
+        0x3f,                          // updateInverval=1.0
+        255,                           // maxReadable
+        0,                             // minReadable
+        PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
+        0,                             // rangeFieldsupport
+        0,                             // nominalValue
+        0,                             // normalMax
+        0,                             // normalMin
+        0,                             // warningHigh
+        0,                             // warningLow
+        0,                             // criticalHigh
+        0,                             // criticalLow
+        0,                             // fatalHigh
+        0                              // fatalLow
+    };
+
+    t1.pdrs.emplace_back(pdr1);
+    auto rc = t1.parsePDRs();
+    EXPECT_EQ(true, rc);
+    EXPECT_EQ(1, t1.numericSensorPdrs.size());
+    EXPECT_EQ(1, t1.numericSensors.size());
+
+    auto numericSensor = t1.numericSensors[0];
+    EXPECT_EQ(1, numericSensor->oemIntfs.size());
+
+    auto memoryPageRetirementCount =
+        dynamic_pointer_cast<OemMemoryPageRetirementCountInft>(
+            numericSensor->oemIntfs[0]);
+
+    // Should be the same as value in updateReading()
+    numericSensor->updateReading(true, true, 10, nullptr);
+    EXPECT_EQ(10, memoryPageRetirementCount->memoryPageRetirementCount());
+
+    // Should be zero for nan value
+    numericSensor->updateReading(
+        true, true, std::numeric_limits<double>::quiet_NaN(), nullptr);
+    EXPECT_EQ(0, memoryPageRetirementCount->memoryPageRetirementCount());
 }
