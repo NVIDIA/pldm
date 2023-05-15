@@ -40,6 +40,17 @@ class FakeUpdateManager
     {
         return;    
     }
+    void clearStagedPackage()
+    {
+        return;
+    }
+    int processPackage([
+        [maybe_unused]] const std::filesystem::path& packageFilePath)
+    {
+        return 0;
+    }
+    std::string stagedObjPath;
+    std::filesystem::path stagedfwPackageFilePath;
 };
 }//namespace testing
 
