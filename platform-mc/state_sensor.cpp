@@ -46,8 +46,8 @@ StateSensor::StateSensor(
         auto stateSetId = std::get<0>(sensor);
         dbus::PathAssociation association = {"chassis", "all_states",
                                              associationPath};
-        std::string compositeSensorName = "Id";
         auto compositeSensorId = stateSets.size();
+        std::string compositeSensorName = "Id_" + std::to_string(compositeSensorId);
         // pick first en langTag sensor aux name
         if (sensorNames && sensorNames->size() > compositeSensorId)
         {
@@ -60,8 +60,7 @@ StateSensor::StateSensor(
             }
         }
 
-        std::string objPath = path + "/" + compositeSensorName + "_" +
-                              std::to_string(stateSets.size());
+        std::string objPath = path + "/" + compositeSensorName;
         objPath =
             std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
         auto stateSet = StateSetCreator::createSensor(stateSetId, idx++,

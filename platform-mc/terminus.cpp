@@ -933,9 +933,7 @@ void Terminus::addNumericSensor(
                 {
                     if (languageTag == "en")
                     {
-                        sensorName = name + "_" +
-                                     std::to_string(pdr->sensor_id) + "_" +
-                                     std::to_string(tid);
+                        sensorName = name;
                     }
                 }
             }
