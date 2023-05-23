@@ -97,6 +97,10 @@ conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
 conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
 conf_data.set('STALE_SENSOR_UPPER_LIMITS_POLLING_TIME', get_option('stale-sensor-upper-limitms-polling-time'))
+if get_option('platform-prefix') != ''
+  conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
+endif
+
 configure_file(output: 'config.h',
   configuration: conf_data
 )
