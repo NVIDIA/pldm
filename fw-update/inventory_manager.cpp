@@ -156,7 +156,10 @@ void InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
     {
         descriptorMap.erase(eid);
     }
-    descriptorMap.emplace(eid, std::move(descriptors));
+    if (eid != 0) // Revert this workaround once SPI issue is fixed
+    {
+        descriptorMap.emplace(eid, std::move(descriptors));
+    }
 
     // Send GetFirmwareParameters request
     sendGetFirmwareParametersRequest(eid);
