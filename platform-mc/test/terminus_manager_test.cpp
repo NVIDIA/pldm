@@ -51,7 +51,7 @@ class TerminusManagerTest : public testing::Test
 
 TEST_F(TerminusManagerTest, mapTidTest)
 {
-    pldm::MctpInfo mctpInfo1(1, "", "", 0);
+    pldm::MctpInfo mctpInfo1(1, "", "", 0, "");
 
     auto tid1 = terminusManager.toTid(mctpInfo1);
     EXPECT_EQ(tid1, std::nullopt);
@@ -71,17 +71,17 @@ TEST_F(TerminusManagerTest, mapTidTest)
 TEST_F(TerminusManagerTest, negativeMapTidTest)
 {
     // map null EID(0) to TID
-    pldm::MctpInfo m0(0, "", "", 0);
+    pldm::MctpInfo m0(0, "", "", 0, "");
     auto mappedTid = terminusManager.mapTid(m0);
     EXPECT_EQ(mappedTid, std::nullopt);
 
     // map broadcast EID(0xff) to TID
-    pldm::MctpInfo m1(0xff, "", "", 0);
+    pldm::MctpInfo m1(0xff, "", "", 0, "");
     mappedTid = terminusManager.mapTid(m1);
     EXPECT_EQ(mappedTid, std::nullopt);
 
     // look up an unmapped MctpInfo to TID
-    pldm::MctpInfo m2(1, "", "", 0);
+    pldm::MctpInfo m2(1, "", "", 0, "");
     mappedTid = terminusManager.toTid(m2);
     EXPECT_EQ(mappedTid, std::nullopt);
 
@@ -98,14 +98,14 @@ TEST_F(TerminusManagerTest, negativeMapTidTest)
     EXPECT_EQ(mappedEid, std::nullopt);
 
     // map two mctpInfo with same EID but different network Id
-    pldm::MctpInfo m3(12, "", "", 1);
-    pldm::MctpInfo m4(12, "", "", 2);
+    pldm::MctpInfo m3(12, "", "", 1, "");
+    pldm::MctpInfo m4(12, "", "", 2, "");
     auto mappedTid3 = terminusManager.mapTid(m3);
     auto mappedTid4 = terminusManager.mapTid(m4);
     EXPECT_NE(mappedTid3.value(), mappedTid4.value());
 
     // map same mctpInfo twice
-    pldm::MctpInfo m5(12, "", "", 3);
+    pldm::MctpInfo m5(12, "", "", 3, "");
     auto mappedTid5 = terminusManager.mapTid(m5);
     auto mappedTid6 = terminusManager.mapTid(m5);
     EXPECT_EQ(mappedTid5.value(), mappedTid6.value());
@@ -145,7 +145,7 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::MctpInfos mctpInfos{};
-    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1));
+    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, ""));
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(1, termini.size());
 
@@ -191,7 +191,7 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::MctpInfos mctpInfos{};
-    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1));
+    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, ""));
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(0, termini.size());
 

@@ -123,8 +123,10 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
         if (interfaces.contains(mctpBindingIntfName))
         {
             const auto& properties = interfaces.at(mctpBindingIntfName);
-            if (properties.contains("BindingType")
+            if (properties.contains("BindingType"))
+            {
                 bindingType = std::get<std::string>(properties.at("BindingType"));
+            }
         }
         if (interfaces.contains(mctpEndpointIntfName))
         {
