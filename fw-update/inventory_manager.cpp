@@ -18,9 +18,9 @@ namespace fw_update
 
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
 {
-    for (const auto& [eid, uuid, mediumType, networkId] : mctpInfos)
+    for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
     {
-        mctpEidMap[eid] = std::make_tuple(uuid, mediumType);
+        mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
 
         auto instanceId = requester.getInstanceId(eid);
         Request requestMsg(sizeof(pldm_msg_hdr) +
@@ -284,7 +284,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
     // UUID.
     if (mctpEidMap.contains(eid))
     {
-        const auto& [uuid, mediumType] = mctpEidMap[eid];
+        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
         if (mctpInfoMap.contains(uuid))
         {
             auto search = mctpInfoMap.find(uuid);
@@ -311,7 +311,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
                     return;
                 }
             }
-            search->second.push({eid, mediumType});
+            search->second.push({eid, mediumType, bindingType});
             const auto& top = search->second.top();
             if (prevTopEid == top.eid)
             {
@@ -327,7 +327,7 @@ void InventoryManager::getFirmwareParameters(mctp_eid_t eid,
         else
         {
             std::priority_queue<MctpEidInfo> mctpEidInfo;
-            mctpEidInfo.push({eid, mediumType});
+            mctpEidInfo.push({eid, mediumType, bindingType});
             mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
             if (createInventoryCallBack)
             {
@@ -343,7 +343,7 @@ void InventoryManager::logDiscoveryFailedMessage(
 {
     if (mctpEidMap.contains(eid))
     {
-        const auto& [uuid, mediumType] = mctpEidMap[eid];
+        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
         if (deviceInventoryInfo.contains(uuid))
         {
             auto search = deviceInventoryInfo.find(uuid);

@@ -98,7 +98,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
 
         inventoryMgr.discoverFDs(mctpInfos);
-        for (const auto& [eid, uuid, mediumType, networkId] : mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
         {
             if (componentNameMapInfo.contains(uuid))
             {

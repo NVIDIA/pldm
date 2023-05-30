@@ -96,7 +96,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
     int type = 0;
     int protocol = 0;
     std::vector<uint8_t> address{};
-
+    std::string bindingType;
     try
     {
         for (const auto& [intfName, properties] : interfaces)
@@ -120,6 +120,12 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
             return;
         }
 
+        if (interfaces.contains(mctpBindingIntfName))
+        {
+            const auto& properties = interfaces.at(mctpBindingIntfName);
+            if (properties.contains("BindingType")
+                bindingType = std::get<std::string>(properties.at("BindingType"));
+        }
         if (interfaces.contains(mctpEndpointIntfName))
         {
             const auto& properties = interfaces.at(mctpEndpointIntfName);
@@ -138,7 +144,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                 {
                     handler.registerMctpEndpoint(eid, type, protocol, address);
                     mctpInfos.emplace_back(
-                        std::make_tuple(eid, uuid, mediumType, networkId));
+                        std::make_tuple(eid, uuid, mediumType, networkId, bindingType));
                 }
             }
         }
@@ -191,10 +197,11 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
         auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
         auto mediumType = endpoint.value("MediumType", emptyString);
         auto networkId = endpoint.value("NetworkId", 0xFF);
+        auto bindingType = endpoint.value("BindingType", emptyString);
         if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
             mctpInfos.emplace_back(
-                MctpInfo(eid, emptyUUID, mediumType, networkId));
+                MctpInfo(eid, emptyUUID, mediumType, networkId, bindingType));
         }
     }
 }

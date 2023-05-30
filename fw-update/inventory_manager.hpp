@@ -6,7 +6,6 @@
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
-
 #include <queue>
 
 namespace pldm
@@ -16,7 +15,7 @@ namespace fw_update
 {
 
 using CreateInventoryCallBack = std::function<void(EID, UUID)>;
-using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium>>;
+using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
 
 using Priority = int;
 static std::unordered_map<MctpMedium, Priority> mediumPriority{
@@ -25,14 +24,24 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority{
     {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 2},
 };
 
+static std::unordered_map<MctpBinding, Priority> bindingPriority{
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 1},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 2},
+};
+
 struct MctpEidInfo
 {
     EID eid;
     MctpMedium medium;
+    MctpBinding binding;
 
     friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
     {
-        return mediumPriority.at(lhs.medium) > mediumPriority.at(rhs.medium);
+        if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
+            return bindingPriority.at(lhs.binding) > bindingPriority.at(rhs.binding);
+        else
+            return mediumPriority.at(lhs.medium) > mediumPriority.at(rhs.medium);
     }
 };
 

@@ -78,6 +78,8 @@ class MctpDiscovery
     /** @brief MCTP endpoint interface name */
     const std::string mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
 
+    const std::string mctpBindingIntfName{"xyz.openbmc_project.MCTP.Binding"};
+
     /** @brief UUID interface name */
     static constexpr std::string_view uuidEndpointIntfName{
         "xyz.openbmc_project.Common.UUID"};
