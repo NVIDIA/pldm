@@ -55,10 +55,8 @@ constexpr ContainerID overallSystemCotainerId = 0;
 static const std::map<EntityType, std::string_view> entityInterfaces = {
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
      "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
-    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC,
-     "xyz.openbmc_project.Inventory.Item.Cpu"},
-    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_SYS_BUS,
-     "xyz.openbmc_project.Inventory.Item.Port"}};
+    {PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC,
+     "xyz.openbmc_project.Inventory.Item.Cpu"}};
 
 /**
  * @brief Terminus
