@@ -319,6 +319,12 @@ class UpdateManager
     bool verifyPackage();
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
+
+    /**
+     * @brief clear staged package associated objects
+     *
+     */
+    void clearStagedPackageInfo();
     /**
      * @brief clear staged package and it's associated objects
      *
@@ -330,6 +336,15 @@ class UpdateManager
      *
      */
     void restoreStagedPackageActivationObjects();
+
+    /**
+     * @brief close file handler of firmware package
+     *
+     */
+    void closePackage()
+    {
+        package.close();
+    }
 
   private:
     /** @brief Device identifiers of the managed FDs */

@@ -118,10 +118,7 @@ class Activation : public ActivationIntf
         bus(bus), objPath(objPath), updateManager(updateManager)
     {
         activation(activationStatus);
-        if (!deleteImpl)
-        {
-            deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
-        }
+        deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
         emit_object_added();
     }
 
@@ -153,7 +150,7 @@ class Activation : public ActivationIntf
                         "Retry firmware update operation with valid FW package.";
                     createLogEntry(resourceErrorDetected, compName,
                                    messageError, resolution);
-                    updateManager->clearFirmwareUpdatePackage();
+                    updateManager->closePackage();
                     updateManager->restoreStagedPackageActivationObjects();
                     return ActivationIntf::activation(Activations::Failed);
                 }

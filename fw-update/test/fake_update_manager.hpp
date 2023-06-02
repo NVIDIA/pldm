@@ -53,6 +53,10 @@ class FakeUpdateManager
     {
         return;
     }
+    void closePackage()
+    {
+        return;
+    }
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
 };
