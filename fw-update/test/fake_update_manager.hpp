@@ -49,6 +49,10 @@ class FakeUpdateManager
     {
         return 0;
     }
+    void restoreStagedPackageActivationObjects()
+    {
+        return;
+    }
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
 };

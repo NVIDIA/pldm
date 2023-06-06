@@ -251,9 +251,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
     {
         lg2::error("No devices found for firmware update");
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Ready, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Ready);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Ready, this);
+        }
         return 0;
     }
 
@@ -264,9 +271,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         lg2::error(
             "Opening the PLDM FW update package failed, ERR={ERRNO}, PACKAGEFILEPATH={PACKAGEFILEPATH}",
             "ERRNO", strerror(errno), "PACKAGEFILEPATH", packageFilePath);
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
         return -1;
     }
 
@@ -274,11 +288,19 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     if (packageSize < sizeof(pldm_package_header_information))
     {
         lg2::error(
-            "PLDM FW update package length less than the length of the package header information, PACKAGESIZE={PACKAGESIZE}",
+            "PLDM FW update package length less than the length of the package"
+            " header information, PACKAGESIZE={PACKAGESIZE}",
             "PACKAGESIZE", packageSize);
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
         return -1;
     }
 
@@ -302,9 +324,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     if (parser == nullptr)
     {
         lg2::error("Invalid PLDM package header information");
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
         return -1;
     }
 
@@ -319,9 +348,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     catch (const std::exception& e)
     {
         lg2::error("Invalid PLDM package header");
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
         return -1;
     }
 
@@ -331,18 +367,33 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     {
         if (!verifyPackage())
         {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Failed, this);
+            if (activation)
+            {
+                activation->activation(
+                    software::Activation::Activations::Failed);
+            }
+            else
+            {
+                activation = std::make_unique<Activation>(
+                    pldm::utils::DBusHandler::getBus(), objPath,
+                    software::Activation::Activations::Failed, this);
+            }
             return -1;
         }
     }
     catch (const std::exception& e)
     {
         lg2::error("Invalid PLDM package signature");
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Invalid, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
         return -1;
     }
 
@@ -392,9 +443,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     {
         lg2::error(
             "No matching devices found with the PLDM firmware update package");
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Ready, this);
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Failed);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Failed, this);
+        }
         return 0;
     }
 
@@ -737,8 +795,11 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
     {
         lg2::info("Nothing to activate, Setting Activations state to Active!");
-        activationProgress = std::make_unique<ActivationProgress>(
-            pldm::utils::DBusHandler::getBus(), objPath);
+        if (activationProgress == nullptr)
+        {
+            activationProgress = std::make_unique<ActivationProgress>(
+                pldm::utils::DBusHandler::getBus(), objPath);
+        }
         progressTimer->stop();
         progressTimer.reset();
         activationProgress->progress(100);
@@ -856,14 +917,13 @@ void UpdateManager::updatePackageCompletion()
         activationBlocksTransition.reset();
         if (fwPackageFilePath == stagedfwPackageFilePath)
         {
-            // set requested activation to non to support b2b updates
-            activation->requestedActivation(
-                software::Activation::RequestedActivations::None);
+            // set requested activation to none to support b2b updates
+            // activation->requestedActivation(
+            //     software::Activation::RequestedActivations::None);
             // targets should be cleared to avoid previous targets getting
             // re-used in b2b updates
             updatePolicyStaged->targets({});
-            activationStaged = std::move(activation);
-            activationProgressStaged = std::move(activationProgress);
+            restoreStagedPackageActivationObjects();
         }
         clearFirmwareUpdatePackage();
     }
@@ -947,6 +1007,7 @@ void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
     activation->activation(state);
+    restoreStagedPackageActivationObjects();
 }
 
 ComponentName UpdateManager::getComponentName(
@@ -1148,6 +1209,17 @@ int UpdateManager::processStagedPackage(
 #endif
     updateStagedPackageProperties(true, packageSize);
     return 0;
+}
+
+void UpdateManager::restoreStagedPackageActivationObjects()
+{
+    if (fwPackageFilePath == stagedfwPackageFilePath)
+    {
+        activationStaged = std::move(activation);
+        activationProgressStaged = std::move(activationProgress);
+        activation = nullptr;
+        activationProgress = nullptr;
+    }
 }
 
 } // namespace fw_update

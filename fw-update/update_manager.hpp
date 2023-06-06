@@ -325,6 +325,12 @@ class UpdateManager
      */
     void clearStagedPackage();
 
+    /**
+     * @brief Move staged update activation object to persist states
+     *
+     */
+    void restoreStagedPackageActivationObjects();
+
   private:
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;

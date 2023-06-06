@@ -118,7 +118,10 @@ class Activation : public ActivationIntf
         bus(bus), objPath(objPath), updateManager(updateManager)
     {
         activation(activationStatus);
-        deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
+        if (!deleteImpl)
+        {
+            deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
+        }
         emit_object_added();
     }
 
@@ -138,8 +141,22 @@ class Activation : public ActivationIntf
                 sdbusplus::xyz::openbmc_project::Software::server;
             if (objPath == updateManager->stagedObjPath)
             {
-                updateManager->processPackage(
-                    updateManager->stagedfwPackageFilePath);
+                if (updateManager->processPackage(
+                        updateManager->stagedfwPackageFilePath) != 0)
+                {
+                    lg2::error("Invalid Staged PLDM Package.");
+                    deleteImpl =
+                        std::make_unique<Delete>(bus, objPath, updateManager);
+                    std::string compName = "Firmware Update Service";
+                    std::string messageError = "Invalid FW Package";
+                    std::string resolution =
+                        "Retry firmware update operation with valid FW package.";
+                    createLogEntry(resourceErrorDetected, compName,
+                                   messageError, resolution);
+                    updateManager->clearFirmwareUpdatePackage();
+                    updateManager->restoreStagedPackageActivationObjects();
+                    return ActivationIntf::activation(Activations::Failed);
+                }
             }
             auto state = updateManager->activatePackage();
             value = state;
@@ -148,10 +165,13 @@ class Activation : public ActivationIntf
                 lg2::error("Activation failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
                 updateManager->clearFirmwareUpdatePackage();
+                updateManager->restoreStagedPackageActivationObjects();
             }
             else if (state == Activations::Active)
             {
+                lg2::info("Activation set to active");
                 updateManager->clearFirmwareUpdatePackage();
+                updateManager->restoreStagedPackageActivationObjects();
             }
         }
         else if (value == Activations::Active || value == Activations::Failed)
@@ -162,7 +182,6 @@ class Activation : public ActivationIntf
                     std::make_unique<Delete>(bus, objPath, updateManager);
             }
         }
-
         return ActivationIntf::activation(value);
     }
 
@@ -190,7 +209,16 @@ class Activation : public ActivationIntf
                 activation(Activations::Activating);
             }
         }
-        return ActivationIntf::requestedActivation(value);
+        // set requested activation to none to support b2b updates
+        if (objPath == updateManager->stagedObjPath)
+        {
+            return ActivationIntf::requestedActivation(
+                RequestedActivations::None);
+        }
+        else
+        {
+            return ActivationIntf::requestedActivation(value);
+        }
     }
 
   private:
