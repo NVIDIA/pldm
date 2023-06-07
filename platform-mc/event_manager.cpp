@@ -32,8 +32,10 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
                                            &eventClassDataOffset);
         if (rc)
         {
-            lg2::error("Failed to decode sensor event data, rc={RC}.", "RC",
-                       rc);
+            lg2::error(
+                "Failed to decode sensor event data, rc={RC} eventDataSize={SIZE} sensorId={SID}, ClassType={CTYPE}.",
+                "RC", rc, "SIZE", eventDataSize, "SID", sensorId, "CTYPE",
+                sensorEventClassType);
             return rc;
         }
         switch (sensorEventClassType)

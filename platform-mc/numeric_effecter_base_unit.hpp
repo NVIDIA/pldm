@@ -30,11 +30,25 @@ class NumericEffecterBaseUnit
 
     virtual ~NumericEffecterBaseUnit() = default;
 
-    virtual void pdrMaxSettable([[maybe_unused]] double maxValue)
-    {}
+    virtual void pdrMaxSettable([[maybe_unused]] double value)
+    {
+        maxValue = value;
+    }
 
-    virtual void pdrMinSettable([[maybe_unused]] double minValue)
-    {}
+    virtual void pdrMinSettable([[maybe_unused]] double value)
+    {
+        minValue = value;
+    }
+
+    virtual double pdrMaxSettable()
+    {
+        return maxValue;
+    }
+
+    virtual double pdrMinSettable()
+    {
+        return minValue;
+    }
 
     virtual void handleGetNumericEffecterValue(
         [[maybe_unused]] pldm_effecter_oper_state effecterOperState,
@@ -50,6 +64,8 @@ class NumericEffecterBaseUnit
   protected:
     /** @brief Reference to associated NumericEffecter */
     NumericEffecter& effecter;
+    double maxValue;
+    double minValue;
 };
 
 } // namespace platform_mc

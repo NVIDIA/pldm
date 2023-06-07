@@ -1,9 +1,10 @@
 #include "oem_nvidia.hpp"
 
 #include "memoryPageRetirementCount.hpp"
-#include "platform-mc/state_sensor.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
+#include "platform-mc/state_sensor.hpp"
 #include "platform-mc/terminus.hpp"
+#include "staticPowerHint.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -13,9 +14,6 @@ namespace pldm
 {
 namespace platform_mc
 {
-
-using MemoryPageRetirementCountIntf = sdbusplus::server::object_t<
-    sdbusplus::com::nvidia::server::MemoryPageRetirementCount>;
 
 namespace nvidia
 {
@@ -123,67 +121,136 @@ void nvidiaInitTerminus(Terminus& terminus)
             sensor->oemIntfs.push_back(std::move(memoryPageRetirementCount));
         }
     }
-    // remote debug state effecter
-    std::shared_ptr<StateEffecter> stateEffecter = nullptr;
+
+    // remote debug
+    std::shared_ptr<StateEffecter> remoteDebugStateEffecter = nullptr;
+    std::shared_ptr<NumericEffecter> remoteDebugNumericEffecter = nullptr;
+    std::shared_ptr<StateSensor> remoteDebugStateSensor = nullptr;
+
+    // static power hint
+    std::shared_ptr<NumericEffecter> staticPowerHintTemperatureEffecter =
+        nullptr;
+    std::shared_ptr<NumericEffecter> staticPowerHintWorkloadFactorEffecter =
+        nullptr;
+    std::shared_ptr<NumericEffecter> staticPowerHintCpuClockFrequencyEffecter =
+        nullptr;
+    std::shared_ptr<NumericEffecter> staticPowerHintPowerEstimationEffecter =
+        nullptr;
+
     for (auto effecter : terminus.stateEffecters)
     {
         auto& [entityInfo, stateSets] = effecter->effecterInfo;
         if (stateSets.size() == 6 &&
             std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
         {
-            stateEffecter = effecter;
+            remoteDebugStateEffecter = effecter;
             break;
         }
     }
 
-    if (stateEffecter == nullptr)
-    {
-        lg2::error("Cannot found remote debug state effecter");
-    }
-
-    // remote debug timeout effecter
-    std::shared_ptr<NumericEffecter> numericEffecter = nullptr;
     for (auto effecter : terminus.numericEffecters)
     {
         auto& [containerId, entityType, entityInstance] = effecter->entityInfo;
         if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_MINUTES &&
             entityType == PLDM_ENTITY_SYS_BOARD)
         {
-            numericEffecter = effecter;
-            break;
+            remoteDebugNumericEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_WATTS &&
+                 entityType == PLDM_ENTITY_SYS_BOARD)
+        {
+            staticPowerHintPowerEstimationEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_NONE &&
+                 entityType == PLDM_ENTITY_SYS_BOARD)
+        {
+            staticPowerHintWorkloadFactorEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_DEGRESS_C &&
+                 entityType == PLDM_ENTITY_SYS_BOARD)
+        {
+            staticPowerHintTemperatureEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_HERTZ &&
+                 entityType == PLDM_ENTITY_SYS_BOARD)
+        {
+            staticPowerHintCpuClockFrequencyEffecter = effecter;
         }
     }
 
-    if (numericEffecter == nullptr)
-    {
-        lg2::error("Cannot find remote debug timeout effecter");
-    }
-
-    // remote debug state sensor
-    std::shared_ptr<StateSensor> stateSensor = nullptr;
     for (auto sensor : terminus.stateSensors)
     {
         auto& [entityInfo, stateSets] = sensor->sensorInfo;
         if (stateSets.size() == 6 &&
             std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
         {
-            stateSensor = sensor;
+            remoteDebugStateSensor = sensor;
             break;
         }
     }
 
-    if (stateSensor == nullptr)
+    if (remoteDebugStateEffecter == nullptr)
+    {
+        lg2::error("Cannot found remote debug state effecter");
+    }
+
+    if (remoteDebugNumericEffecter == nullptr)
+    {
+        lg2::error("Cannot find remote debug timeout effecter");
+    }
+
+    if (remoteDebugStateSensor == nullptr)
     {
         lg2::error("Cannot found remote debug state sensor");
     }
 
-    if (numericEffecter && stateEffecter && stateSensor)
+    if (remoteDebugNumericEffecter && remoteDebugStateEffecter &&
+        remoteDebugStateSensor)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         auto remoteDebugIntf = std::make_unique<oem_nvidia::OemRemoteDebugIntf>(
-            bus, stateEffecter->path.c_str(), stateEffecter, numericEffecter,
-            stateSensor);
-        stateEffecter->oemIntfs.push_back(std::move(remoteDebugIntf));
+            bus, remoteDebugStateEffecter->path.c_str(),
+            remoteDebugStateEffecter, remoteDebugNumericEffecter,
+            remoteDebugStateSensor);
+        remoteDebugStateEffecter->oemIntfs.push_back(
+            std::move(remoteDebugIntf));
+    }
+
+    if (staticPowerHintTemperatureEffecter == nullptr)
+    {
+        lg2::error("Cannot found static power hint Temperature effecter");
+    }
+
+    if (staticPowerHintWorkloadFactorEffecter == nullptr)
+    {
+        lg2::error("Cannot found static power hint WorkloadFactor effecter");
+    }
+
+    if (staticPowerHintCpuClockFrequencyEffecter == nullptr)
+    {
+        lg2::error("Cannot found static power hint CpuClockFrequency effecter");
+    }
+
+    if (staticPowerHintPowerEstimationEffecter == nullptr)
+    {
+        lg2::error("Cannot found static power hint power effecter");
+    }
+
+    if (staticPowerHintTemperatureEffecter &&
+        staticPowerHintWorkloadFactorEffecter &&
+        staticPowerHintCpuClockFrequencyEffecter &&
+        staticPowerHintPowerEstimationEffecter)
+    {
+        auto staticPowerHintPowerEstimation =
+            std::make_shared<OemStaticPowerHintInft>(
+                utils::DBusHandler().getBus(),
+                staticPowerHintPowerEstimationEffecter->path.c_str(),
+                staticPowerHintCpuClockFrequencyEffecter,
+                staticPowerHintTemperatureEffecter,
+                staticPowerHintWorkloadFactorEffecter,
+                staticPowerHintPowerEstimationEffecter);
+        staticPowerHintPowerEstimationEffecter->oemIntfs.push_back(
+            std::move(staticPowerHintPowerEstimation));
     }
 }
 

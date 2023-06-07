@@ -230,8 +230,9 @@ std::shared_ptr<SensorAuxiliaryNames>
     catch (const std::exception& e)
     {
         lg2::error(
-            "Failed to parse sensorAuxiliaryNamesPDR record handle, {ERROR}.",
-            "ERROR", e);
+            "Failed to parse sensorAuxiliaryNamesPDR record, sensorId={SENSORID}, {ERROR}.",
+
+            "SENSORID", pdr->sensor_id, "ERROR", e);
     }
 
     return std::make_shared<SensorAuxiliaryNames>(
@@ -281,8 +282,9 @@ std::shared_ptr<EffecterAuxiliaryNames>
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to parse effecterAuxiliaryNamesPDR, {ERROR}.",
-                   "ERROR", e);
+        lg2::error(
+            "Failed to parse effecterAuxiliaryNamesPDR record, effecterId={EFFECTERID}, {ERROR}.",
+            "EFFECTERID", pdr->effecter_id, "ERROR", e);
     }
 
     return std::make_shared<EffecterAuxiliaryNames>(
@@ -715,6 +717,10 @@ void Terminus::scanInventories()
     {
         auto getSubTreeResponse = utils::DBusHandler().getSubtree(
             "/xyz/openbmc_project/inventory", 0, interestedInterfaces);
+        // default system inventory object path
+        systemInventoryPath =
+            "/xyz/openbmc_project/inventory/system/chassis/Baseboard_0";
+
         inventories.clear();
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
@@ -777,6 +783,7 @@ void Terminus::updateAssociations()
             findInventory(entityInfo, false);
         }
     };
+
     for (const auto& [containerId, entityAssociation] : entityAssociations)
     {
         const auto& [containerEntity, containedEntities] = entityAssociation;
@@ -970,14 +977,11 @@ void Terminus::addNumericEffecter(
                 *effecterAuxiliaryNames;
             if (effecterCnt == 1 && effecterNames.size() > 0)
             {
-                for (const auto& [languageTag, pdrEffecterName] :
-                     effecterNames[0])
+                for (const auto& [languageTag, name] : effecterNames[0])
                 {
                     if (languageTag == "en")
                     {
-                        effecterName = pdrEffecterName + "_" +
-                                       std::to_string(pdr->effecter_id) + "_" +
-                                       std::to_string(tid);
+                        effecterName = name;
                     }
                 }
             }

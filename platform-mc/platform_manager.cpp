@@ -40,27 +40,26 @@ requester::Coroutine PlatformManager::initTerminus()
             {
                 lg2::error("failed to send eventMessageSupported, rc={RC}.",
                            "RC", rc);
-            }
-            else
-            {
-                if (terminus->synchronyConfigurationSupported &
-                    (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
-                {
-                    rc = co_await setEventReceiver(
-                        tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
-                        terminusManager.getLocalEid());
-                    if (rc)
-                    {
-                        lg2::error("failed to send setEventReceiver, rc={RC}.",
-                                   "RC", rc);
-                    }
-                }
+                terminus->synchronyConfigurationSupported = 0;
             }
 
             rc = co_await getPDRs(terminus);
             if (!rc)
             {
                 terminus->parsePDRs();
+            }
+
+            if (terminus->synchronyConfigurationSupported &
+                (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
+            {
+                rc = co_await setEventReceiver(
+                    tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
+                    terminusManager.getLocalEid());
+                if (rc)
+                {
+                    lg2::error("failed to send setEventReceiver, rc={RC}.",
+                               "RC", rc);
+                }
             }
         }
         terminus->initalized = true;

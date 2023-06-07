@@ -25,7 +25,7 @@ NumericEffecter::NumericEffecter(
                EntityInstance(pdr->entity_instance)),
     terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
-    std::string reverseAssociation;
+    std::string reverseAssociation = "all_controls";
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     path = "/xyz/openbmc_project/control/";
@@ -35,10 +35,21 @@ NumericEffecter::NumericEffecter(
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_WATTS:
-            reverseAssociation = "power_controls";
-            unitIntf = std::make_unique<NumericEffecterWattInft>(*this, bus,
-                                                                 path.c_str());
+            if (pdr->entity_type == PLDM_ENTITY_PROC ||
+                pdr->entity_type == PLDM_ENTITY_PROC_IO_MODULE)
+            {
+                reverseAssociation = "power_controls";
+                unitIntf = std::make_unique<NumericEffecterWattInft>(
+                    *this, bus, path.c_str());
+            }
+            else
+            {
+                unitIntf = std::make_unique<NumericEffecterBaseUnit>(*this);
+            }
             break;
+        case PLDM_SENSOR_UNIT_NONE:
+        case PLDM_SENSOR_UNIT_DEGRESS_C:
+        case PLDM_SENSOR_UNIT_HERTZ:
         case PLDM_SENSOR_UNIT_MINUTES:
             unitIntf = std::make_unique<NumericEffecterBaseUnit>(*this);
             break;
@@ -108,8 +119,6 @@ NumericEffecter::NumericEffecter(
         unitIntf->pdrMaxSettable(unitToBase(maxValue));
         unitIntf->pdrMinSettable(unitToBase(minValue));
     }
-
-    getNumericEffecterValue().detach();
 }
 
 double NumericEffecter::rawToUnit(double value)
@@ -396,8 +405,8 @@ requester::Coroutine NumericEffecter::getNumericEffecterValue()
     if (rc)
     {
         lg2::error(
-            "Failed to decode response of getNumericEffecterValue, tid={TID}, rc={RC}.",
-            "TID", tid, "RC", rc);
+            "Failed to decode response of getNumericEffecterValue, tid={TID}, effecterId={EFFECTERID}, rc={RC}.",
+            "TID", tid, "EFFECTERID", effecterId, "RC", rc);
         handleErrGetNumericEffecterValue();
         co_return rc;
     }
@@ -405,8 +414,8 @@ requester::Coroutine NumericEffecter::getNumericEffecterValue()
     if (completionCode != PLDM_SUCCESS)
     {
         lg2::error(
-            "Failed to decode response of getNumericEffecterValue, tid={TID}, cc={CC}.",
-            "TID", tid, "CC", completionCode);
+            "Failed to decode response of getNumericEffecterValue, tid={TID}, effecterId={EFFECTERID}, cc={CC}.",
+            "TID", tid, "EFFECTERID", effecterId, "CC", completionCode);
         handleErrGetNumericEffecterValue();
         co_return completionCode;
     }

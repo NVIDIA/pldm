@@ -155,6 +155,11 @@ class StateSetNvlink : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
 
+        if (stateAssociation.path.empty())
+        {
+            return;
+        }
+
         pldm::pdr::EntityInstance instanceNumber = 0;
         constexpr auto instanceInterface =
             "xyz.openbmc_project.Inventory.Decorator.Instance";

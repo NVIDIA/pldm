@@ -74,8 +74,6 @@ StateEffecter::StateEffecter(
             stateSets.emplace_back(std::move(stateSet));
         }
     }
-
-    getStateEffecterStates().detach();
 }
 
 void StateEffecter::handleErrGetStateEffecterStates()
@@ -169,8 +167,9 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
                                                   &payloadLen);
     if (rc)
     {
-        lg2::error("getStateEffecterStates failed, tid={TID}, rc={RC}.", "TID",
-                   tid, "RC", rc);
+        lg2::error(
+            "getStateEffecterStates failed, tid={TID}. effecterId={EFFECTERID}, rc={RC}.",
+            "TID", tid, "EFFECTERID", effecterId, "RC", rc);
         co_return rc;
     }
 
@@ -184,8 +183,8 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
     if (rc)
     {
         lg2::error(
-            "Failed to decode response of GetStateEffecterStates, tid={TID}, rc={RC}.",
-            "TID", tid, "RC", rc);
+            "Failed to decode response of GetStateEffecterStates, tid={TID}, effecterId={EFFECTERID}, rc={RC}.",
+            "TID", tid, "EFFECTERID", effecterId, "RC", rc);
         handleErrGetStateEffecterStates();
         co_return rc;
     }
@@ -193,8 +192,8 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
     if (completionCode != PLDM_SUCCESS)
     {
         lg2::error(
-            "Failed to decode response of GetStateEffecterStates, tid={TID}, rc={RC}, cc={CC}.",
-            "TID", tid, "RC", rc, "CC", completionCode);
+            "Failed to decode response of GetStateEffecterStates, tid={TID}, effecterId={EFFECTERID}, cc={CC}.",
+            "TID", tid, "EFFECTERID", effecterId, "CC", completionCode);
         handleErrGetStateEffecterStates();
         co_return completionCode;
     }

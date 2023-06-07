@@ -197,13 +197,13 @@ class NumericEffecter
 
     /** @brief  A container to store OemIntf, it allows us to add additional OEM
      * sdbusplus object as extra attribute */
-    std::vector<std::unique_ptr<platform_mc::OemIntf>> oemIntfs;
+    std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
 
-  private:
     /** @brief NumericEffecterBaseUnit is a base class of all different units,
      * it provides uniform APIs to NumericEffecter */
     std::unique_ptr<NumericEffecterBaseUnit> unitIntf = nullptr;
 
+  private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =

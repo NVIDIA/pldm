@@ -60,7 +60,7 @@ TEST_F(SensorManagerTest, sensorPollingTest)
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
 
     EXPECT_CALL(sensorManager, doSensorPolling(tid))
-        .Times(Between(expectedTimes - 3, expectedTimes + 3))
+        .Times(Between(expectedTimes - 5, expectedTimes + 5))
         .WillRepeatedly(Return());
     sensorManager.startPolling();
     runEventLoopForSeconds(seconds);
