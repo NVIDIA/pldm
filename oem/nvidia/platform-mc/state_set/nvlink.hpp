@@ -142,6 +142,12 @@ class StateSetNvlink : public StateSet
             return;
         }
 
+        if (stateAssociation.path.empty())
+        {
+            return;
+
+        }
+
         associationDefinitionsIntf->associations(
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),

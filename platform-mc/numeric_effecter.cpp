@@ -91,14 +91,23 @@ NumericEffecter::NumericEffecter(
     unitModifier = pdr->unit_modifier;
 
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
-    availabilityIntf->available(true);
+    if (availabilityIntf)
+    {
+        availabilityIntf->available(true);
+    }
 
     operationalStatusIntf =
         std::make_unique<OperationalStatusIntf>(bus, path.c_str());
-    operationalStatusIntf->functional(!effecterDisabled);
+    if (operationalStatusIntf)
+    {
+        operationalStatusIntf->functional(!effecterDisabled);
+    }
 
-    unitIntf->pdrMaxSettable(unitToBase(maxValue));
-    unitIntf->pdrMinSettable(unitToBase(minValue));
+    if (unitIntf)
+    {
+        unitIntf->pdrMaxSettable(unitToBase(maxValue));
+        unitIntf->pdrMinSettable(unitToBase(minValue));
+    }
 
     getNumericEffecterValue().detach();
 }
@@ -183,21 +192,43 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
             state = StateType::UnavailableOffline;
             break;
     }
-    availabilityIntf->available(available);
-    operationalStatusIntf->functional(functional);
-    operationalStatusIntf->state(state);
+    if (availabilityIntf)
+    {
+        availabilityIntf->available(available);
+    }
 
-    unitIntf->handleGetNumericEffecterValue(
-        effecterOperState, rawToBase(pendingValue), rawToBase(presentValue));
+    if (operationalStatusIntf)
+    {
+        operationalStatusIntf->functional(functional);
+        operationalStatusIntf->state(state);
+    }
+
+    if (unitIntf)
+    {
+        unitIntf->handleGetNumericEffecterValue(effecterOperState,
+                                                rawToBase(pendingValue),
+                                                rawToBase(presentValue));
+    }
+
 }
 
 void NumericEffecter::handleErrGetNumericEffecterValue()
 {
-    availabilityIntf->available(false);
-    operationalStatusIntf->functional(false);
-    operationalStatusIntf->state(StateType::UnavailableOffline);
+    if (availabilityIntf)
+    {
+        availabilityIntf->available(false);
+    }
 
-    unitIntf->handleErrGetNumericEffecterValue();
+    if (operationalStatusIntf)
+    {
+        operationalStatusIntf->functional(false);
+        operationalStatusIntf->state(StateType::UnavailableOffline);
+    }
+
+    if (unitIntf)
+    {
+        unitIntf->handleErrGetNumericEffecterValue();
+    }
 }
 
 requester::Coroutine
