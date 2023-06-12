@@ -11,6 +11,9 @@
 #include <xyz/openbmc_project/Inventory/Item/Endpoint/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
+
+#include <filesystem>
+
 namespace pldm
 {
 namespace platform_mc
@@ -145,7 +148,6 @@ class StateSetNvlink : public StateSet
         if (stateAssociation.path.empty())
         {
             return;
-
         }
 
         associationDefinitionsIntf->associations(
@@ -160,9 +162,16 @@ class StateSetNvlink : public StateSet
 
         try
         {
+            // C2C NVLink instanceNumber should pick processorModule SMBIOS
+            // instanceNumber instead of CPU SMBIOS instanceNumber.
+            // CPU is counted per processorModule so all CPU
+            // SMBIOS instanceNumber is 0 on CG4.
+            // ProcessModule is counted per baseboard so its instanceNumber is
+            // 0~3 on CG4.
+            std::string parentPath =
+                std::filesystem::path(stateAssociation.path).parent_path();
             instanceNumber = utils::DBusHandler().getDbusProperty<uint64_t>(
-                stateAssociation.path.c_str(), instanceProperty,
-                instanceInterface);
+                parentPath.c_str(), instanceProperty, instanceInterface);
         }
         catch (const std::exception& e)
         {
@@ -171,9 +180,9 @@ class StateSetNvlink : public StateSet
 
         std::string endpointName =
             std::filesystem::path(stateAssociation.path).filename();
-        std::string endpointObjectPath = fabricsObjectPath + c2clinkFabricPrefix +
-                                         std::to_string(instanceNumber) +
-                                         "/Endpoints/" + endpointName;
+        std::string endpointObjectPath =
+            fabricsObjectPath + c2clinkFabricPrefix +
+            std::to_string(instanceNumber) + "/Endpoints/" + endpointName;
 
         auto& bus = pldm::utils::DBusHandler::getBus();
 
