@@ -68,6 +68,9 @@ endif
 if get_option('pldm-package-verification').enabled()
     add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
 endif
+if get_option('pldm-package-verification-must-be-signed').enabled()
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language : ['c','cpp'])
+endif
 if get_option('pldm-type2').enabled()
   add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
 endif
@@ -178,6 +181,7 @@ else
 endif
 
 if get_option('tests').enabled()
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
     gtest = dependency('gtest', main: true, disabler: true, required: false)
     gmock = dependency('gmock', disabler: true, required: false)
     if not gtest.found() or not gmock.found()

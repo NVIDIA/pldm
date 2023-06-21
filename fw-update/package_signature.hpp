@@ -28,7 +28,6 @@ const std::string packageSignatureSha384Name = "SHA384";
 constexpr uint8_t pldmFwupSignatureMagicLength = 4;
 constexpr uint8_t pldmFwupSignaturePayloadLength = 4;
 constexpr uint8_t pldmFwupSignatureLength = 2;
-constexpr uint8_t pldmFwupSignatureOffsetLength = 4;
 
 /** @struct PldmSignatureHeaderInformationV2
  *

@@ -528,7 +528,18 @@ bool UpdateManager::verifyPackage()
     }
     else
     {
+
+#ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
+        std::string messageErrorNotContainSignatureHeader =
+            "Package does not contain signature header";
+
+        createLogEntry(resourceErrorDetected, compName,
+                       messageErrorNotContainSignatureHeader, resolution);
+
+        return false;
+#else
         lg2::info("FW package does not contain signature header");
+#endif
     }
 
     return true;

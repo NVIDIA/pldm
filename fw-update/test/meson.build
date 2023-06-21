@@ -1,5 +1,6 @@
 fw_update_test_src = declare_dependency(
           sources: [
+            'fake_dbusutil.cpp',
             '../inventory_manager.cpp',
             '../package_parser.cpp',
             '../component_updater.cpp',
@@ -55,3 +56,24 @@ foreach t : tests
                          openssl]),
        workdir: meson.current_source_dir())
 endforeach
+
+test('update_manager_pkg_must_be_signed_test', 
+      executable('update_manager_pkg_must_be_signed_test'.underscorify(), 
+                 'update_manager_pkg_must_be_signed_test.cpp',
+                 cpp_args : ['-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED'],
+                 implicit_include_directories: false,
+                 link_args: dynamic_linker,
+                 build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
+                 dependencies: [
+                    fw_update_test_src,
+                    gmock,
+                    gtest,
+                    libpldm_dep,
+                    nlohmann_json,
+                    phosphor_dbus_interfaces,
+                    phosphor_logging,
+                    sdbusplus,
+                    sdeventplus,
+                    libcrypto,
+                    openssl]),
+      workdir: meson.current_source_dir())

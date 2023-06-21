@@ -28,7 +28,7 @@ PackageSignatureSha384::PackageSignatureSha384()
 
     digestLength = SHA384_DIGEST_LENGTH;
     digestName = packageSignatureSha384Name;
-    useChunks = false;
+    useChunks = true;
 }
 
 std::vector<uint8_t>
@@ -39,7 +39,7 @@ std::vector<uint8_t>
 
     uintmax_t packageSize = package.tellg();
 
-    if(sizeOfPkgWithoutSignHdr == packageSize)
+    if (sizeOfPkgWithoutSignHdr == packageSize)
     {
         lg2::info("Package Signature: package does not have Signature Header");
         return std::vector<uint8_t>();
@@ -109,6 +109,9 @@ bool PackageSignature::verify(std::istream& package,
     BIO* bo = NULL;
 
     input = BN_new();
+    std::unique_ptr<BIGNUM, decltype(&::BN_free)> ctxInputPtr{input,
+                                                              &::BN_free};
+
     int inputLength = BN_hex2bn(&input, publicKey.c_str());
     inputLength = (inputLength + 1) / 2;
 
@@ -116,8 +119,12 @@ bool PackageSignature::verify(std::istream& package,
     BN_bn2bin(input, publicKeyBuffer.data());
 
     bo = BIO_new(BIO_s_mem());
+    std::unique_ptr<BIO, decltype(&::BIO_free)> ctxBoPtr{bo, &::BIO_free};
+
     BIO_write(bo, publicKeyBuffer.data(), inputLength);
     vkey = PEM_read_bio_PUBKEY(bo, &vkey, nullptr, nullptr);
+    std::unique_ptr<EVP_PKEY, decltype(&::EVP_PKEY_free)> ctxVkeyPtr{
+        vkey, &::EVP_PKEY_free};
 
     verctx = EVP_PKEY_CTX_new(vkey, NULL);
     if (!verctx)
@@ -126,11 +133,11 @@ bool PackageSignature::verify(std::istream& package,
             "Verifying signature failed, cannot create a verify context");
         result = false;
 
-        EVP_PKEY_free(vkey);
-        BN_free(input);
-        BIO_free(bo);
         return result;
     }
+
+    std::unique_ptr<EVP_PKEY_CTX, decltype(&::EVP_PKEY_CTX_free)> ctxVerctxPtr{
+        verctx, &::EVP_PKEY_CTX_free};
 
     if (EVP_PKEY_verify_init(verctx) <= 0)
     {
@@ -138,10 +145,6 @@ bool PackageSignature::verify(std::istream& package,
             "Verifying signature failed, cannot initialize a verify context");
         result = false;
 
-        EVP_PKEY_CTX_free(verctx);
-        EVP_PKEY_free(vkey);
-        BN_free(input);
-        BIO_free(bo);
         return result;
     }
 
@@ -158,11 +161,6 @@ bool PackageSignature::verify(std::istream& package,
         result = false;
     }
 
-    EVP_PKEY_CTX_free(verctx);
-    EVP_PKEY_free(vkey);
-    BN_free(input);
-    BIO_free(bo);
-    
     return result;
 }
 
@@ -241,24 +239,17 @@ void PackageSignatureV2::parseHeader()
 
 std::vector<unsigned char>
     PackageSignatureShaBase::calculateDigest(std::istream& package,
-                                          uintmax_t lengthOfSignedData)
+                                             uintmax_t lengthOfSignedData)
 {
     package.seekg(0);
-    unsigned char* digest;
 
     if (useChunks)
     {
+        std::vector<unsigned char> hash(digestLength);
+
         const EVP_MD* md = NULL;
         EVP_MD_CTX* mdctx = NULL;
         unsigned int mdLength;
-
-        auto cleanupFunc = [&](EVP_MD_CTX* mdctx) {
-            EVP_MD_CTX_free(mdctx);
-            OPENSSL_free(digest);
-            EVP_cleanup();
-        };
-        std::unique_ptr<EVP_MD_CTX, decltype(cleanupFunc)> ctxPtr(mdctx,
-                                                                  cleanupFunc);
 
         md = EVP_get_digestbyname(digestName.c_str());
         if (md == NULL)
@@ -270,7 +261,8 @@ std::vector<unsigned char>
         }
 
         mdctx = EVP_MD_CTX_new();
-        digest = reinterpret_cast<unsigned char*>(OPENSSL_malloc(digestLength));
+        std::unique_ptr<EVP_MD_CTX, decltype(&::EVP_MD_CTX_free)> ctxMdctxPtr{
+            mdctx, &::EVP_MD_CTX_free};
 
         if (!EVP_DigestInit_ex(mdctx, md, NULL))
         {
@@ -307,35 +299,29 @@ std::vector<unsigned char>
                 break;
         }
 
-        EVP_DigestFinal(mdctx, reinterpret_cast<unsigned char*>(digest),
-                        &mdLength);
+        EVP_DigestFinal(mdctx, hash.data(), &mdLength);
 
-        std::vector<unsigned char> digestVector(digest, digest + digestLength);
-
-        return digestVector;
+        return hash;
     }
+    else
+    {
 
-    std::vector<uint8_t> testVector;
-    testVector.resize(lengthOfSignedData);
+        std::vector<uint8_t> packageVector;
+        packageVector.resize(lengthOfSignedData);
 
-    package.read(reinterpret_cast<char*>(&testVector[0]), lengthOfSignedData);
+        package.read(reinterpret_cast<char*>(&packageVector[0]),
+                     lengthOfSignedData);
 
-    unsigned char* bufferDigest = (unsigned char*)OPENSSL_malloc(digestLength);
+        std::vector<unsigned char> buffer(digestLength);
 
-    auto cleanupFunc = [](unsigned char* bufferDigest) {
-        OPENSSL_free(bufferDigest);
-        EVP_cleanup();
-    };
+        unsigned char* digest =
+            SHA384((const unsigned char*)packageVector.data(),
+                   lengthOfSignedData, buffer.data());
 
-    std::unique_ptr<unsigned char, decltype(cleanupFunc)> ctxPtr(bufferDigest,
-                                                                 cleanupFunc);
+        std::vector<unsigned char> hash(digest, digest + (int)digestLength);
 
-    digest = SHA384((const unsigned char*)testVector.data(), lengthOfSignedData,
-                    bufferDigest);
-
-    std::vector<unsigned char> digestVector(digest, digest + (int)digestLength);
-
-    return digestVector;
+        return hash;
+    }
 }
 
 } // namespace fw_update
