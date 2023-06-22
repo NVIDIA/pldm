@@ -1459,10 +1459,6 @@ class GetPDR : public CommandInterface
         output["responseCount"] = respCnt;
 
         struct pldm_pdr_hdr* pdr = (struct pldm_pdr_hdr*)data;
-        if (!pdr)
-        {
-            return;
-        }
 
         if (!pdrRecType.empty())
         {

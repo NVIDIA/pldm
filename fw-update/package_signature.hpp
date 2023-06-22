@@ -203,19 +203,19 @@ class PackageSignature
     std::string publicKey;
 
     /** @brief Version of FW Update Package Signature Format */
-    PackageSignatureVersion version;
+    PackageSignatureVersion version = 0;
 
     /** @brief Security version for the package */
-    PackageSignatureSecurityVersion securityVersion;
+    PackageSignatureSecurityVersion securityVersion = 0;
 
     /** @brief Size of the FW Update Package being signed */
-    PackageSignaturePayloadSize payloadSize;
+    PackageSignaturePayloadSize payloadSize = 0;
 
     /** @brief Signature type */
-    PackageSignatureSignatureType signatureType;
+    PackageSignatureSignatureType signatureType = 0;
 
     /** @brief Size of the signature */
-    PackageSignatureSignatureSize signatureSize;
+    PackageSignatureSignatureSize signatureSize = 0;
 
     /** @brief Signature */
     PackageSignatureSignature signature;
@@ -243,8 +243,8 @@ class PackageSignatureV2 : public PackageSignature
         signatureSha = std::make_unique<PackageSignatureSha384>();
     }
 
-    PackageSignatureMinorVersion minorVersion;
-    PackageSignatureOffsetToSignature offsetToSignature;
+    PackageSignatureMinorVersion minorVersion = 0;
+    PackageSignatureOffsetToSignature offsetToSignature = 0;
 
     /** @brief Calculate size of signed data
      *         The size contains size of package without size of signature

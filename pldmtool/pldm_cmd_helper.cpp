@@ -97,7 +97,7 @@ int mctpSockSendRecv(const std::vector<uint8_t>& requestMsg,
         auto reqhdr = reinterpret_cast<const pldm_msg_hdr*>(&requestMsg[2]);
         do
         {
-            ssize_t peekedLength =
+            auto peekedLength =
                 recv(socketFd(), nullptr, 0, MSG_PEEK | MSG_TRUNC);
             responseMsg.resize(peekedLength);
             auto recvDataLength =

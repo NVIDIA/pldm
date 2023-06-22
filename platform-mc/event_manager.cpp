@@ -624,7 +624,7 @@ void EventManager::processStateSensorEvent(tid_t tid, uint16_t sensorId,
     auto sensorIterator = std::find_if(
         terminus->stateSensors.begin(), terminus->stateSensors.end(),
         [&sensorId](auto& sensor) { return sensor->sensorId == sensorId; });
-    if (sensorIterator != terminus->stateSensors.end())
+    if (sensorIterator == terminus->stateSensors.end())
     {
         lg2::error("processStateSensorEvent: sensor id, {SENSORID}, not found.",
                    "SENSORID", sensorId);

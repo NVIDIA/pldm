@@ -263,8 +263,10 @@ int HostEffecterParser::setHostStateEffecter(
 
     if (rc != PLDM_SUCCESS)
     {
-        std::cerr << "Message encode failure. PLDM error code = " << std::hex
-                  << std::showbase << rc << "\n";
+        std::ostringstream tempStream;
+        tempStream << std::setfill('0') << std::setw(2) << std::hex << rc;
+        std::cerr << "Message encode failure. PLDM error code = "
+                  << tempStream.str() << rc << "\n";
         requester->markFree(mctpEid, instanceId);
         return rc;
     }

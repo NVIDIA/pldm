@@ -59,8 +59,9 @@ struct RequestKeyHasher
 {
     std::size_t operator()(const RequestKey& key) const
     {
-        return (key.eid << 24 | key.instanceId << 16 | key.type << 8 |
-                key.command);
+        size_t requestKeyHash = (key.eid << 24 | key.instanceId << 16 |
+                                 key.type << 8 | key.command);
+        return requestKeyHash;
     }
 };
 

@@ -196,8 +196,10 @@ void Handler::processSetEventReceiver(
     if (rc != PLDM_SUCCESS)
     {
         requester.markFree(eid, instanceId);
+        std::ostringstream tempStream;
+        tempStream << std::setfill('0') << std::setw(2) << std::hex << rc;
         std::cerr << "Failed to encode_set_event_receiver_req, rc = "
-                  << std::hex << std::showbase << rc << std::endl;
+                  << tempStream.str() << rc << std::endl;
         return;
     }
 

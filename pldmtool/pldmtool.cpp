@@ -64,21 +64,27 @@ void registerCommand(CLI::App& app)
 
 int main(int argc, char** argv)
 {
+    try
+    {
+        CLI::App app{"PLDM requester tool for OpenBMC"};
+        app.require_subcommand(1)->ignore_case();
 
-    CLI::App app{"PLDM requester tool for OpenBMC"};
-    app.require_subcommand(1)->ignore_case();
-
-    pldmtool::raw::registerCommand(app);
-    pldmtool::base::registerCommand(app);
-    pldmtool::bios::registerCommand(app);
-    pldmtool::platform::registerCommand(app);
-    pldmtool::fru::registerCommand(app);
-    pldmtool::fw_update::registerCommand(app);
-
+        pldmtool::raw::registerCommand(app);
+        pldmtool::base::registerCommand(app);
+        pldmtool::bios::registerCommand(app);
+        pldmtool::platform::registerCommand(app);
+        pldmtool::fru::registerCommand(app);
+        pldmtool::fw_update::registerCommand(app);
 #ifdef OEM_IBM
-    pldmtool::oem_ibm::registerCommand(app);
+        pldmtool::oem_ibm::registerCommand(app);
 #endif
 
-    CLI11_PARSE(app, argc, argv);
-    return 0;
+        CLI11_PARSE(app, argc, argv);
+        return 0;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        return -1;
+    }
 }
