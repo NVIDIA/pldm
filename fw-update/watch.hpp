@@ -62,6 +62,10 @@ class Watch
      */
     void initStagedUpdateWatch();
 
+    /* time stamp for immediate and split update to handle duplicate events */
+    uint64_t stateChangeTimeImmediate = 0;
+    uint64_t stateChangeTimeSplitStage = 0;
+
   private:
     /** @brief sd-event callback for immediate update
      *
@@ -85,8 +89,11 @@ class Watch
     static int callbackSplitStaged(sd_event_source* s, int fd, uint32_t revents,
                                    void* userdata);
 
-    /** @brief image upload directory watch descriptor */
-    int wd = -1;
+    /** @brief image upload directory watch descriptor Immediate update */
+    int wdImmediate = -1;
+
+    /** @brief image upload directory watch descriptor staged update */
+    int wdSplitStage = -1;
 
     /** @brief inotify file descriptor */
     int fdImmediate = -1;
@@ -127,8 +134,10 @@ class Watch
      * @brief subscribe for service stage change events
      *
      * @param[in] serviceName
+     * @param[in] imagePath
      */
-    void subscribeToServiceStateChange(const std::string& serviceName);
+    void subscribeToServiceStateChange(const std::string& serviceName,
+                                       const std::string& imagePath);
     std::unique_ptr<sdbusplus::bus::match_t> immediateUpdateEvent;
     std::unique_ptr<sdbusplus::bus::match_t> stagedUpdateEvent;
 };
