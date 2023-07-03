@@ -21,6 +21,9 @@ using namespace sdbusplus;
 using StaticPowerHintInft = sdbusplus::server::object_t<
     sdbusplus::com::nvidia::server::StaticPowerHint>;
 
+using StateOfEstimatePower =
+    sdbusplus::com::nvidia::server::StaticPowerHint::StateOfEstimatePower;
+
 class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
 {
   public:
@@ -109,16 +112,21 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         {
             if (!estimationTaskHandle.done())
             {
+                StaticPowerHintInft::stateOfLastEstimatePower(
+                    StateOfEstimatePower::Failed);
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     Unavailable();
             }
             estimationTaskHandle.destroy();
+            estimationTaskHandle = nullptr;
         }
 
         // check range
         if (cpuClockFrequency > maxCpuClockFrequency() ||
             cpuClockFrequency < minCpuClockFrequency())
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::InvalidArgument);
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 InvalidArgument();
         }
@@ -126,12 +134,17 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         if (workloadFactor > maxWorkloadFactor() ||
             workloadFactor < minWorkloadFactor())
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::InvalidArgument);
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 InvalidArgument();
         }
 
         if (temperature > maxTemperature() || temperature < minTemperature())
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::InvalidArgument);
+
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 InvalidArgument();
         }
@@ -142,6 +155,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         StaticPowerHintInft::temperature(temperature, true);
         StaticPowerHintInft::powerEstimate(0, true);
         StaticPowerHintInft::valid(false, true);
+        StaticPowerHintInft::stateOfLastEstimatePower(
+            StateOfEstimatePower::InProgress);
         auto co =
             estimationTask(cpuClockFrequency, workloadFactor, temperature);
         estimationTaskHandle = co.handle;
@@ -168,6 +183,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             effecterCpuClockFrequency->baseToRaw(cpuClockFrequency));
         if (rc)
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::Failed);
             co_return PLDM_ERROR;
         }
 
@@ -175,6 +192,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             effecterWorkloadFactor->baseToRaw(workloadFactor));
         if (rc)
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::Failed);
             co_return PLDM_ERROR;
         }
 
@@ -182,12 +201,16 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             effecterTemperature->baseToRaw(temperature));
         if (rc)
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::Failed);
             co_return PLDM_ERROR;
         }
 
         rc = co_await effecterPowerEstimation->getNumericEffecterValue();
         if (rc)
         {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::Failed);
             co_return PLDM_ERROR;
         }
 
@@ -198,6 +221,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         }
 
         StaticPowerHintInft::valid(true, false);
+        StaticPowerHintInft::stateOfLastEstimatePower(
+            StateOfEstimatePower::Completed);
         StaticPowerHintInft::powerEstimate(
             effecterPowerEstimation->rawToBase(
                 effecterPowerEstimation->getValue()),
