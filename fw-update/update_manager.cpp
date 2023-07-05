@@ -742,7 +742,7 @@ software::Activation::Activations UpdateManager::activatePackage()
     progressTimer->start(std::chrono::minutes(PROGRESS_UPDATE_INTERVAL), true);
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
         pldm::utils::DBusHandler::getBus(), objPath, this);
-#ifdef OEM_NVIDIA
+#ifdef DEBUG_TOKEN
     debugToken =
         std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);
     debugToken->updateDebugToken(parser->getFwDeviceIDRecords(),

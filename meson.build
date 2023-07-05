@@ -77,6 +77,9 @@ endif
 if get_option('oem-nvidia').enabled()
     add_project_arguments('-DOEM_NVIDIA', language : ['c','cpp'])
 endif
+if get_option('debug-token').enabled()
+    add_project_arguments('-DDEBUG_TOKEN', language : ['c','cpp'])
+endif
 conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
 if get_option('fw-debug').enabled()
   conf_data.set('FWDEBUG', '--fw-debug')
@@ -282,10 +285,16 @@ source_files = [
 
 if get_option('oem-nvidia').enabled()
   source_files += [
-    'fw-update/oem-nvidia/debug_token.cpp',
     'oem/nvidia/platform-mc/oem_nvidia.cpp'
   ]
 endif
+
+if get_option('debug-token').enabled()
+  source_files += [
+    'fw-update/oem-nvidia/debug_token.cpp'
+  ]
+endif
+
 
 executable(
   'pldmd',
