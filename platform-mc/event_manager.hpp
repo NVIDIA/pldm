@@ -51,9 +51,9 @@ class EventManager
 
     explicit EventManager(
         TerminusManager& terminusManager,
-        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
+        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini, bool verbose = false) :
         terminusManager(terminusManager),
-        termini(termini){};
+        termini(termini), verbose(verbose){};
 
     /** @brief Handle platform event
      *
@@ -127,6 +127,9 @@ class EventManager
 
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
+
+    /** @brief verbose tracing flag */
+    bool verbose;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -41,7 +41,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                         this),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, this, verbose),
-        eventManager(terminusManager, termini), verbose(verbose)
+        eventManager(terminusManager, termini, verbose), verbose(verbose)
     {}
 
     requester::Coroutine beforeDiscoverTerminus()

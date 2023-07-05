@@ -66,7 +66,10 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
     }
     else if (eventClass == PLDM_MESSAGE_POLL_EVENT)
     {
-        lg2::info("received poll event tid={TID}", "TID", tid);
+        if (verbose)
+        {
+            lg2::info("received poll event tid={TID}", "TID", tid);
+        }
         auto it = termini.find(tid);
         if (it != termini.end())
         {
@@ -270,7 +273,7 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
     if (rc)
     {
         lg2::error(
-            "encode_poll_for_platform_event_message_req tid={TID} rc={RC}",
+            "encode_poll_for_platform_event_message_req failed. tid={TID} rc={RC}",
             "TID", tid, "RC", rc);
         co_return rc;
     }
@@ -291,7 +294,7 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
     if (rc)
     {
         lg2::error(
-            "decode_poll_for_platform_event_message_resp tid={TID} rc={RC} responseLen={RLEN}",
+            "decode_poll_for_platform_event_message_resp failed. tid={TID} rc={RC} responseLen={RLEN}",
             "TID", tid, "RC", rc, "RLEN", responseLen);
         co_return rc;
     }
