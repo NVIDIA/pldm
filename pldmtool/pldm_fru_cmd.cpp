@@ -415,7 +415,7 @@ class GetFruRecordTable : public CommandInterface
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
         auto rc = encode_get_fru_record_table_req(
-            instanceId, 0, PLDM_START_AND_END, request,
+            instanceId, 0, PLDM_GET_FIRSTPART, request,
             requestMsg.size() - sizeof(pldm_msg_hdr));
         return {rc, requestMsg};
     }
