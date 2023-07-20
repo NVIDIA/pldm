@@ -5,6 +5,7 @@
 
 #include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
+
 namespace pldm
 {
 namespace platform_mc

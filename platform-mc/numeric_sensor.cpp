@@ -323,7 +323,8 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
                 {
                     std::get<0>((*sensorMetrics)[sensorName]) =
                         valueIntf->value();
-                    std::get<1>((*sensorMetrics)[sensorName]) = steadyTimeStamp;
+                    std::get<1>((*sensorMetrics)[sensorName]) =
+                        steadyTimeStamp;
                     std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
                 }
             }

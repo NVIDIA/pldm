@@ -191,19 +191,24 @@ void nvidiaInitTerminus(Terminus& terminus)
         }
     }
 
-    if (remoteDebugStateEffecter == nullptr)
+    if (remoteDebugStateEffecter != nullptr ||
+        remoteDebugNumericEffecter != nullptr ||
+        remoteDebugStateSensor != nullptr)
     {
-        lg2::error("Cannot found remote debug state effecter");
-    }
+        if (remoteDebugStateEffecter == nullptr)
+        {
+            lg2::error("Cannot find remote debug state effecter");
+        }
 
-    if (remoteDebugNumericEffecter == nullptr)
-    {
-        lg2::error("Cannot find remote debug timeout effecter");
-    }
+        if (remoteDebugNumericEffecter == nullptr)
+        {
+            lg2::error("Cannot find remote debug timeout effecter");
+        }
 
-    if (remoteDebugStateSensor == nullptr)
-    {
-        lg2::error("Cannot found remote debug state sensor");
+        if (remoteDebugStateSensor == nullptr)
+        {
+            lg2::error("Cannot find remote debug state sensor");
+        }
     }
 
     if (remoteDebugNumericEffecter && remoteDebugStateEffecter &&
@@ -218,24 +223,32 @@ void nvidiaInitTerminus(Terminus& terminus)
             std::move(remoteDebugIntf));
     }
 
-    if (staticPowerHintTemperatureEffecter == nullptr)
+    if (staticPowerHintTemperatureEffecter != nullptr ||
+        staticPowerHintWorkloadFactorEffecter != nullptr ||
+        staticPowerHintCpuClockFrequencyEffecter != nullptr ||
+        staticPowerHintPowerEstimationEffecter != nullptr)
     {
-        lg2::error("Cannot found static power hint Temperature effecter");
-    }
 
-    if (staticPowerHintWorkloadFactorEffecter == nullptr)
-    {
-        lg2::error("Cannot found static power hint WorkloadFactor effecter");
-    }
+        if (staticPowerHintTemperatureEffecter == nullptr)
+        {
+            lg2::error("Cannot find static power hint Temperature effecter");
+        }
 
-    if (staticPowerHintCpuClockFrequencyEffecter == nullptr)
-    {
-        lg2::error("Cannot found static power hint CpuClockFrequency effecter");
-    }
+        if (staticPowerHintWorkloadFactorEffecter == nullptr)
+        {
+            lg2::error("Cannot find static power hint WorkloadFactor effecter");
+        }
 
-    if (staticPowerHintPowerEstimationEffecter == nullptr)
-    {
-        lg2::error("Cannot found static power hint power effecter");
+        if (staticPowerHintCpuClockFrequencyEffecter == nullptr)
+        {
+            lg2::error(
+                "Cannot find static power hint CpuClockFrequency effecter");
+        }
+
+        if (staticPowerHintPowerEstimationEffecter == nullptr)
+        {
+            lg2::error("Cannot find static power hint power effecter");
+        }
     }
 
     if (staticPowerHintTemperatureEffecter &&

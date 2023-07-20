@@ -317,10 +317,19 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
+        if (verbose)
+        {
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            lg2::info(
+                "TID:{TID} end prioritySensors polling at {END}. duration(us):{DELTA}",
+                "TID", tid, "END", t1, "DELTA", t1 - t0);
+        }
+
         // poll roundRobin Sensors
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         auto toBeUpdated = roundRobinSensors[tid].size();
-        while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0))
+
+        do
         {
             if (manager && terminus->pollEvent)
             {
@@ -328,6 +337,10 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
 
             auto sensor = roundRobinSensors[tid].front();
+            roundRobinSensors[tid].pop();
+            roundRobinSensors[tid].push(sensor);
+            toBeUpdated--;
+
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
                 co_await getSensorReading(
@@ -349,20 +362,17 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                     co_return PLDM_ERROR;
                 }
             }
-
-            toBeUpdated--;
-            roundRobinSensors[tid].pop();
-            roundRobinSensors[tid].push(std::move(sensor));
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-        }
+        } while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0));
 
         aggregationIntf->sensorMetrics(sensorMetric);
 
         if (verbose)
         {
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-            lg2::info("end sensor polling at {END}. duration(us):{DELTA}",
-                      "END", t1, "DELTA", t1 - t0);
+            lg2::info(
+                "TID:{TID} end roundRobinSensors polling at {END}. duration(us):{DELTA}",
+                "TID", tid, "END", t1, "DELTA", t1 - t0);
         }
 
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);

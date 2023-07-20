@@ -14,6 +14,8 @@
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 
 #include <coroutine>
 
@@ -28,9 +30,9 @@ using EffecterCnt = SensorCnt;
 using NameLanguageTag = std::string;
 using SensorName = std::string;
 using EffecterName = SensorName;
-using SensorAuxiliaryNames = std::tuple<
-    SensorID, SensorCnt,
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>>;
+using AuxiliaryNames =
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>;
+using SensorAuxiliaryNames = std::tuple<SensorID, SensorCnt, AuxiliaryNames>;
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
     std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
@@ -43,6 +45,7 @@ using VendorSpecificData = std::vector<uint8_t>;
 using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
 using AssociationDefinitionsIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
+
 class TerminusManager;
 
 constexpr auto instanceInterface =
@@ -56,7 +59,9 @@ static const std::map<EntityType, std::string_view> entityInterfaces = {
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
      "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
     {PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC,
-     "xyz.openbmc_project.Inventory.Item.Cpu"}};
+     "xyz.openbmc_project.Inventory.Item.Cpu"},
+    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_ADD_IN_CARD,
+     "xyz.openbmc_project.Inventory.Item.Board"}};
 
 /**
  * @brief Terminus
@@ -167,6 +172,20 @@ class Terminus
 
     void interfaceAdded(sdbusplus::message::message& m);
 
+    /** @brief check if device inventory belong to the terminus
+     *
+     *  @param[in] objPath - device inventory path
+     *  @return true  - the device inventory might belong to the terminus
+     *          false - the device inventory doesn't belong to the terminus
+     */
+    bool checkDeviceInventory(const std::string& objPath);
+
+    /** @brief get Sensor Aux Name from EM configuration PDI
+     *
+     *  @param[in] objPath - device inventory path
+     */
+    void getSensorAuxNameFromEM(const std::string& objPath);
+
     /** @brief The flag indicates whether the terminus has been initialized
      * by terminusManaer */
     bool initalized;
@@ -221,6 +240,9 @@ class Terminus
 
     std::vector<std::shared_ptr<EffecterAuxiliaryNames>>
         effecterAuxiliaryNamesTbl{};
+
+    /** @brief The sensor aux name from EntityManager configuration PDI */
+    std::map<SensorID, AuxiliaryNames> sensorAuxNameOverwriteTbl{};
 
     std::string systemInventoryPath;
 

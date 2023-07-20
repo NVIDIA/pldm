@@ -5,6 +5,8 @@
 #endif
 #include "terminus_manager.hpp"
 
+#include <filesystem>
+
 namespace pldm
 {
 namespace platform_mc
@@ -68,6 +70,129 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         {
             updateAssociations();
         }
+    }
+}
+
+bool Terminus::checkDeviceInventory(const std::string& objPath)
+{
+    try
+    {
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            objPath, 0,
+            {"xyz.openbmc_project.Configuration.I2CDeviceAssociation"});
+
+        if (getSubTreeResponse.size() == 0)
+        {
+            return true;
+        }
+
+        uint64_t i2cBus = 0;
+        uint64_t i2cAddr = 0;
+        if (getSubTreeResponse.size() == 1)
+        {
+            const auto& [path, mapperServiceMap] = getSubTreeResponse.front();
+            i2cBus = utils::DBusHandler().getDbusProperty<uint64_t>(
+                path.c_str(), "Bus",
+                "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
+            i2cAddr = utils::DBusHandler().getDbusProperty<uint64_t>(
+                path.c_str(), "Address",
+                "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
+        }
+
+        auto mctpInfo = terminusManager.toMctpInfo(tid);
+        if (mctpInfo)
+        {
+            auto eid = std::get<0>(mctpInfo.value());
+            auto mctpEndpoints = utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/mctp", 0,
+                {"xyz.openbmc_project.MCTP.Endpoint"});
+
+            for (const auto& [endPointPath, mapperServiceMap] : mctpEndpoints)
+            {
+                std::filesystem::path filePath(endPointPath);
+                if (eid != std::stoi(filePath.filename()))
+                {
+                    continue;
+                }
+
+                auto binding =
+                    pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                        endPointPath.c_str(), "BindingType",
+                        "xyz.openbmc_project.MCTP.Binding");
+                if (binding !=
+                    "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus")
+                {
+                    continue;
+                }
+
+                auto mctpI2cBus =
+                    pldm::utils::DBusHandler().getDbusProperty<size_t>(
+                        endPointPath.c_str(), "Bus",
+                        "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
+                if (mctpI2cBus != i2cBus)
+                {
+                    continue;
+                }
+
+                auto mctpI2cAddr =
+                    pldm::utils::DBusHandler().getDbusProperty<size_t>(
+                        endPointPath.c_str(), "Address",
+                        "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
+
+                if (mctpI2cAddr != i2cAddr)
+                {
+                    continue;
+                }
+
+                getSensorAuxNameFromEM(objPath);
+                return true;
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "no Configuration.I2CDeviceAssociation Error: {ERROR} path:{PATH}",
+            "ERROR", e, "PATH", objPath);
+    }
+
+    return false;
+}
+
+void Terminus::getSensorAuxNameFromEM(const std::string& objPath)
+{
+    try
+    {
+        sensorAuxNameOverwriteTbl.clear();
+
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            objPath, 0, {"xyz.openbmc_project.Configuration.SensorAuxName"});
+
+        if (getSubTreeResponse.size() == 0)
+        {
+            return;
+        }
+
+        for (auto& [path, mapperServiceMap] : getSubTreeResponse)
+        {
+            auto sensorId = utils::DBusHandler().getDbusProperty<uint64_t>(
+                path.c_str(), "SensorId",
+                "xyz.openbmc_project.Configuration.SensorAuxName");
+
+            auto auxNames =
+                utils::DBusHandler().getDbusProperty<std::vector<std::string>>(
+                    path.c_str(), "AuxNames",
+                    "xyz.openbmc_project.Configuration.SensorAuxName");
+            for (auto auxName : auxNames)
+            {
+                sensorAuxNameOverwriteTbl[sensorId] = {{{"en", auxName}}};
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::info("no Configuration.SensorAuxName Error: {ERROR} path:{PATH}",
+                  "ERROR", e, "PATH", objPath);
     }
 }
 
@@ -165,12 +290,21 @@ bool Terminus::parsePDRs()
 std::shared_ptr<SensorAuxiliaryNames>
     Terminus::getSensorAuxiliaryNames(SensorID id)
 {
-    for (auto sensorAuxiliaryNames : sensorAuxiliaryNamesTbl)
+    if (sensorAuxNameOverwriteTbl.find(id) != sensorAuxNameOverwriteTbl.end())
     {
-        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
-        if (sensorId == id)
+        return std::make_shared<SensorAuxiliaryNames>(
+            id, 1, sensorAuxNameOverwriteTbl[id]);
+    }
+    else
+    {
+        for (auto sensorAuxiliaryNames : sensorAuxiliaryNamesTbl)
         {
-            return sensorAuxiliaryNames;
+            const auto& [sensorId, sensorCnt, sensorNames] =
+                *sensorAuxiliaryNames;
+            if (sensorId == id)
+            {
+                return sensorAuxiliaryNames;
+            }
         }
     }
     return nullptr;
@@ -234,7 +368,6 @@ std::shared_ptr<SensorAuxiliaryNames>
     {
         lg2::error(
             "Failed to parse sensorAuxiliaryNamesPDR record, sensorId={SENSORID}, {ERROR}.",
-
             "SENSORID", pdr->sensor_id, "ERROR", e);
     }
 
@@ -634,6 +767,7 @@ std::tuple<SensorID, StateSetInfo>
         std::make_tuple(static_cast<ContainerID>(pdr->container_id),
                         static_cast<EntityType>(pdr->entity_type),
                         static_cast<EntityInstance>(pdr->entity_instance));
+
     auto stateSetInfo =
         std::make_tuple(std::move(entityInfo), std::move(stateSets));
     return std::make_tuple(pdr->sensor_id, std::move(stateSetInfo));
@@ -764,7 +898,11 @@ bool Terminus::scanInventories()
                     }
                 }
             }
-            inventories.emplace_back(objPath, type, instanceNumber);
+            if (checkDeviceInventory(objPath))
+            {
+
+                inventories.emplace_back(objPath, type, instanceNumber);
+            }
         }
     }
     catch (const std::exception& e)
@@ -910,19 +1048,19 @@ std::string Terminus::findInventory(const EntityInfo entityInfo,
     }
 }
 
-std::string Terminus::findInventory(const ContainerID contianerId,
+std::string Terminus::findInventory(const ContainerID containerId,
                                     const bool findClosest)
 {
-    if (contianerId == overallSystemCotainerId)
+    if (containerId == overallSystemCotainerId)
     {
         return systemInventoryPath;
     }
 
-    auto itr = entityAssociations.find(contianerId);
+    auto itr = entityAssociations.find(containerId);
     if (itr == entityAssociations.end())
     {
-        lg2::error("cannot find contianerId:{CONTIANERID}", "CONTIANERID",
-                   contianerId);
+        lg2::error("cannot find containerId:{CONTAINERID}", "CONTAINERID",
+                   containerId);
         return systemInventoryPath;
     }
     const auto& [containerEntity, containedEntities] = itr->second;
@@ -935,21 +1073,17 @@ void Terminus::addNumericSensor(
     std::string sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) +
                              "_" + std::to_string(tid);
 
-    if (pdr->sensor_auxiliary_names_pdr)
+    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
+    if (sensorAuxiliaryNames)
     {
-        auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
-        if (sensorAuxiliaryNames)
+        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
+        if (sensorCnt == 1 && sensorNames.size() > 0)
         {
-            const auto& [sensorId, sensorCnt, sensorNames] =
-                *sensorAuxiliaryNames;
-            if (sensorCnt == 1 && sensorNames.size() > 0)
+            for (const auto& [languageTag, name] : sensorNames[0])
             {
-                for (const auto& [languageTag, name] : sensorNames[0])
+                if (languageTag == "en")
                 {
-                    if (languageTag == "en")
-                    {
-                        sensorName = name;
-                    }
+                    sensorName = name;
                 }
             }
         }
@@ -1078,8 +1212,9 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
         case PLDM_ENTITY_DC_DC_CONVERTER:
         case PLDM_ENTITY_POWER_CONVERTER:
             return PhysicalContextType::VoltageRegulator;
+        case PLDM_ENTITY_NETWORK_CONTROLLER:
+            return PhysicalContextType::NetworkingDevice;
         case PLDM_ENTITY_SYS_BOARD:
-            return PhysicalContextType::SystemBoard;
         default:
             break;
     }
