@@ -68,19 +68,22 @@ PackageSignatureVersion
 
 std::unique_ptr<PackageSignature>
     PackageSignature::createPackageSignatureParser(
-        std::vector<uint8_t>& pkgSignData, const std::string& publicKey)
+        std::vector<uint8_t>& pkgSignData)
 {
     PackageSignatureVersion version = getSignatureVersion(pkgSignData);
 
     switch (version)
     {
         case packageSignatureVersion1:
+        case packageSignatureVersion2:
             lg2::error(
                 "Parsing signature header failed, version {VERSION} is deprecated",
-                "VERSION", packageSignatureVersion1);
+                "VERSION", version);
             throw InternalFailure();
-        case packageSignatureVersion2:
-            return std::make_unique<PackageSignatureV2>(pkgSignData, publicKey);
+        case packageSignatureVersion3:
+        {
+            return std::make_unique<PackageSignatureV3>(pkgSignData);
+        }
         default:
         {
             lg2::error(
@@ -94,6 +97,7 @@ std::unique_ptr<PackageSignature>
 }
 
 bool PackageSignature::verify(std::istream& package,
+                              const std::string& publicKey,
                               uintmax_t lengthOfSignedData)
 {
     int verificationErrorCode;
@@ -129,6 +133,7 @@ bool PackageSignature::verify(std::istream& package,
     verctx = EVP_PKEY_CTX_new(vkey, NULL);
     if (!verctx)
     {
+
         lg2::error(
             "Verifying signature failed, cannot create a verify context");
         result = false;
@@ -164,17 +169,10 @@ bool PackageSignature::verify(std::istream& package,
     return result;
 }
 
-uintmax_t PackageSignatureV2::calculateSizeOfSignedData(
-    uintmax_t sizeOfPkgWithoutSignHdr)
-{
-    return sizeOfPkgWithoutSignHdr + sizeof(PldmSignatureHeaderInformationV2) -
-           pldmFwupSignatureLength;
-}
-
-void PackageSignatureV2::parseHeader()
+void PackageSignatureV3::parseHeader()
 {
     auto signatureHeader =
-        reinterpret_cast<struct PldmSignatureHeaderInformationV2*>(
+        reinterpret_cast<struct PldmSignatureHeaderInformationV3*>(
             packageSignData.data());
 
     constexpr std::array<uint8_t, pldmFwupSignatureMagicLength>
@@ -193,7 +191,7 @@ void PackageSignatureV2::parseHeader()
 
     version = signatureHeader->majorVersion;
 
-    if (version != packageSignatureVersion2)
+    if (version != packageSignatureVersion3)
     {
         lg2::error(
             "Parsing signature header failed, version={VERSION} is not supported",
@@ -212,13 +210,32 @@ void PackageSignatureV2::parseHeader()
 
     if (signatureType != 0)
     {
+
         lg2::error(
             "Parsing signature header failed, signatureType={SIGNATURE_TYPE} is not supported",
             "SIGNATURE_TYPE", signatureType);
         throw InternalFailure();
     }
 
-    signatureSize = be16toh(signatureHeader->signatureSize);
+    offsetToPublicKey = be16toh(signatureHeader->offsetToPublicKey);
+
+    auto iteratorToPublicKeySize = packageSignData.begin() + offsetToPublicKey;
+    publicKeySize = static_cast<uint16_t>(*iteratorToPublicKeySize) << 8 |
+                    *(iteratorToPublicKeySize + 1);
+
+    size_t publicKeyBegin =
+        sizeof(PldmSignatureHeaderInformationV3) + pldmFwupPublicKeySizeLength;
+    size_t publicKeyEnd = sizeof(PldmSignatureHeaderInformationV3) +
+                          pldmFwupPublicKeySizeLength + publicKeySize;
+
+    publicKeyData =
+        std::vector<uint8_t>(packageSignData.begin() + publicKeyBegin,
+                             packageSignData.begin() + publicKeyEnd);
+
+    auto iteratorToSignatureSize = packageSignData.begin() + publicKeyEnd;
+
+    signatureSize = static_cast<uint16_t>(*iteratorToSignatureSize) << 8 |
+                    *(iteratorToSignatureSize + 1);
 
     if (signatureSize < signatureSha->minimumSignatureSize ||
         signatureSize > signatureSha->maximumSignatureSize)
@@ -229,17 +246,42 @@ void PackageSignatureV2::parseHeader()
         throw InternalFailure();
     }
 
-    size_t signatureBegin = sizeof(PldmSignatureHeaderInformationV2);
+    size_t signatureBegin = offsetToSignature + pldmFwupSignatureSizeLength;
     size_t signatureEnd =
-        sizeof(PldmSignatureHeaderInformationV2) + signatureSize;
+        offsetToSignature + pldmFwupSignatureSizeLength + signatureSize;
 
     signature = std::vector<uint8_t>(packageSignData.begin() + signatureBegin,
                                      packageSignData.begin() + signatureEnd);
 }
 
+uintmax_t PackageSignatureV3::calculateSizeOfSignedData(
+    uintmax_t sizeOfPkgWithoutSignHdr)
+{
+    return sizeOfPkgWithoutSignHdr + sizeof(PldmSignatureHeaderInformationV3) +
+           pldmFwupPublicKeySizeLength + publicKeySize;
+}
+
+bool PackageSignature::integrityCheck(std::istream& package,
+                                      uintmax_t lengthOfSignedData)
+{
+    std::string publicKeyString(publicKeyData.begin(), publicKeyData.end());
+
+    std::stringstream publicKeyStream;
+
+    publicKeyStream << std::hex << std::setfill('0');
+    for (size_t i = 0; publicKeyString.length() > i; ++i)
+    {
+        publicKeyStream << std::setw(2)
+                        << static_cast<unsigned int>(
+                               static_cast<unsigned char>(publicKeyString[i]));
+    }
+
+    return verify(package, publicKeyStream.str(), lengthOfSignedData);
+}
+
 std::vector<unsigned char>
-    PackageSignatureShaBase::calculateDigest(std::istream& package,
-                                             uintmax_t lengthOfSignedData)
+    PackageSignatureSha384::calculateDigest(std::istream& package,
+                                            uintmax_t lengthOfSignedData)
 {
     package.seekg(0);
 
@@ -247,12 +289,12 @@ std::vector<unsigned char>
     {
         std::vector<unsigned char> hash(digestLength);
 
-        const EVP_MD* md = NULL;
-        EVP_MD_CTX* mdctx = NULL;
-        unsigned int mdLength;
+        const EVP_MD* md = nullptr;
+        EVP_MD_CTX* mdctx = nullptr;
+        unsigned int mdLength = 0;
 
         md = EVP_get_digestbyname(digestName.c_str());
-        if (md == NULL)
+        if (md == nullptr)
         {
             lg2::error(
                 "Parsing signature header failed, unknown digest name {DIGESTNAME}",
@@ -291,15 +333,24 @@ std::vector<unsigned char>
                     lengthOfSignedData - ((chunkNumber - 1) * buffer.size());
             }
 
-            EVP_DigestUpdate(
-                mdctx, reinterpret_cast<const unsigned char*>(buffer.data()),
-                currentChunkSize);
+            if (!EVP_DigestUpdate(
+                    mdctx,
+                    reinterpret_cast<const unsigned char*>(buffer.data()),
+                    currentChunkSize))
+            {
+                lg2::error("Error in EVP_DigestUpdate");
+                throw InternalFailure();
+            }
 
             if (currentChunkSize < buffer.size())
                 break;
         }
 
-        EVP_DigestFinal(mdctx, hash.data(), &mdLength);
+        if (!EVP_DigestFinal(mdctx, hash.data(), &mdLength))
+        {
+            lg2::error("Error in EVP_DigestFinal");
+            throw InternalFailure();
+        }
 
         return hash;
     }

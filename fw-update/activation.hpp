@@ -117,8 +117,8 @@ class Activation : public ActivationIntf
         ActivationIntf(bus, objPath.c_str(), action::defer_emit),
         bus(bus), objPath(objPath), updateManager(updateManager)
     {
-        activation(activationStatus);
         deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
+        activation(activationStatus);
         emit_object_added();
     }
 

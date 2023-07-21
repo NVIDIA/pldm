@@ -325,6 +325,7 @@ class UpdateManager
      *
      */
     void clearStagedPackageInfo();
+
     /**
      * @brief clear staged package and it's associated objects
      *
@@ -345,6 +346,12 @@ class UpdateManager
     {
         package.close();
     }
+
+    /**
+     * @brief integrity check of firmware package
+     *
+     */
+    bool packageIntegrityCheck();
 
   private:
     /** @brief Device identifiers of the managed FDs */

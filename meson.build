@@ -65,12 +65,17 @@ endif
 if get_option('fw-update-skip-package-size-check').enabled()
     add_project_arguments('-DSKIP_PACKAGE_SIZE_CHECK', language : ['c','cpp'])
 endif
-if get_option('pldm-package-verification').enabled()
+
+if(get_option('pldm-package-verification') == 'authentication')
     add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
 endif
 if get_option('pldm-package-verification-must-be-signed').enabled()
     add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language : ['c','cpp'])
 endif
+if(get_option('pldm-package-verification') == 'integrity')
+    add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language : ['c','cpp'])
+endif
+
 if get_option('pldm-type2').enabled()
   add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
 endif

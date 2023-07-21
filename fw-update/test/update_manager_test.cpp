@@ -660,7 +660,7 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
 }
 
 
-TEST_F(UpdateManagerTest, processPackage_Package_v2_with_corrupted_bytes)
+TEST_F(UpdateManagerTest, processPackage_Package_v3_with_corrupted_bytes)
 {
 
     int expectedResult = -1;
@@ -681,12 +681,12 @@ TEST_F(UpdateManagerTest, processPackage_Package_v2_with_corrupted_bytes)
     UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
                       componentInfoMap, componentNameMap, true);
 
-    int result = updateManager.processPackage("./test_pkg_v2_signed_corrupted_bytes");
+    int result = updateManager.processPackage("./test_pkg_v3_signed_corrupted_bytes");
 
     EXPECT_EQ(result, expectedResult);
 }
 
-TEST_F(UpdateManagerTest, processPackage_Package_v2_incorrectly_signed)
+TEST_F(UpdateManagerTest, processPackage_Package_v3_incorrectly_signed)
 {
 
     int expectedResult = -1;
@@ -707,12 +707,12 @@ TEST_F(UpdateManagerTest, processPackage_Package_v2_incorrectly_signed)
     UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
                       componentInfoMap, componentNameMap, true);
 
-    int result = updateManager.processPackage("./test_pkg_v2_incorrectly_signed");
+    int result = updateManager.processPackage("./test_pkg_v3_incorrectly_signed");
 
     EXPECT_EQ(result, expectedResult);
 }
 
-TEST_F(UpdateManagerTest, processPackage_Package_v2_truncated)
+TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
 {
 
     int expectedResult = -1;
@@ -733,7 +733,7 @@ TEST_F(UpdateManagerTest, processPackage_Package_v2_truncated)
     UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
                       componentInfoMap, componentNameMap, true);
 
-    int result = updateManager.processPackage("./test_pkg_v2_signed_truncated");
+    int result = updateManager.processPackage("./test_pkg_v3_signed_truncated");
 
     EXPECT_EQ(result, expectedResult);
 }

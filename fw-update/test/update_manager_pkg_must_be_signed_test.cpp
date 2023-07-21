@@ -35,9 +35,9 @@ class UpdateManagerMustBeSignedTest : public testing::Test
     ComponentNameMap componentNameMap;
 };
 
-TEST_F(UpdateManagerMustBeSignedTest, processPackage_pkg_v2_signed_enabled_must_be_signed)
+TEST_F(UpdateManagerMustBeSignedTest, processPackage_pkg_v3_signed_enabled_must_be_signed)
 {
-    int expectedResult(0);
+    int expectedResult = 0;
 
     requester::Handler<requester::Request> reqHandler2(event, dbusImplRequester, sockManager, false,
                    std::chrono::seconds(1), 2, std::chrono::milliseconds(100));
@@ -55,14 +55,14 @@ TEST_F(UpdateManagerMustBeSignedTest, processPackage_pkg_v2_signed_enabled_must_
     UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
                       componentInfoMap, componentNameMap, true);
 
-    int result = updateManager.processPackage("./test_pkg_v2_signed");
+    int result = updateManager.processPackage("./test_pkg_v3_signed");
 
     EXPECT_EQ(result, expectedResult);
 }
 
-TEST_F(UpdateManagerMustBeSignedTest, processPackage_pkg_v2_not_signed_enabled_must_be_signed)
+TEST_F(UpdateManagerMustBeSignedTest, processPackage_pkg_v3_not_signed_enabled_must_be_signed)
 {
-    int expectedResult(-1);
+    int expectedResult = -1;
 
     requester::Handler<requester::Request> reqHandler2(event, dbusImplRequester, sockManager, false,
                    std::chrono::seconds(1), 2, std::chrono::milliseconds(100));

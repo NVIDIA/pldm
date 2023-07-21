@@ -338,6 +338,32 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return -1;
     }
 
+#ifdef PLDM_PACKAGE_INTEGRITY_CHECK
+
+    bool integrityCheck = packageIntegrityCheck();
+
+    if (integrityCheck)
+    {
+        lg2::info("FW package integrity check completed successfully");
+    }
+    else
+    {
+        lg2::error("FW package integrity check failed");
+        if (activation)
+        {
+            activation->activation(software::Activation::Activations::Invalid);
+        }
+        else
+        {
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Invalid, this);
+        }
+        return -1;
+    }
+
+#endif
+
 #ifdef PLDM_PACKAGE_VERIFICATION
 
     try
@@ -347,13 +373,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             if (activation)
             {
                 activation->activation(
-                    software::Activation::Activations::Failed);
+                    software::Activation::Activations::Invalid);
             }
             else
             {
                 activation = std::make_unique<Activation>(
                     pldm::utils::DBusHandler::getBus(), objPath,
-                    software::Activation::Activations::Failed, this);
+                    software::Activation::Activations::Invalid, this);
             }
             return -1;
         }
@@ -467,10 +493,18 @@ bool UpdateManager::verifyPackage()
         "Retry firmware update operation with correctly signed FW package.";
 
     uintmax_t calcPkgSize = parser->calculatePackageSize();
+    std::vector<uint8_t> pkgSignHdrData;
 
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
-
+    try
+    {
+        pkgSignHdrData =
+            PackageSignature::getSignatureHeader(package, calcPkgSize);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to get signature header.");
+        return false;
+    }
     if (pkgSignHdrData.size())
     {
 
@@ -480,7 +514,7 @@ bool UpdateManager::verifyPackage()
         {
             packageSignatureParser =
                 PackageSignature::createPackageSignatureParser(
-                    pkgSignHdrData, PLDM_PACKAGE_VERIFICATION_KEY);
+                    pkgSignHdrData);
 
             if (packageSignatureParser == nullptr)
             {
@@ -514,7 +548,7 @@ bool UpdateManager::verifyPackage()
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
 
         bool isSignedProperly =
-            packageSignatureParser->verify(package, sizeOfSignedData);
+            packageSignatureParser->verify(package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData);
 
         if (!isSignedProperly)
         {
@@ -545,6 +579,79 @@ bool UpdateManager::verifyPackage()
     return true;
 }
 
+bool UpdateManager::packageIntegrityCheck()
+{
+    std::string compName = "Firmware Update Service";
+    std::string messageError = "Integrity check failed for FW Package";
+    std::string messageErrorParseSignatureHeader =
+        "Failed to parse FW Package signature header";
+    std::string resolution = "Retry firmware update using a valid package.";
+
+    uintmax_t calcPkgSize = parser->calculatePackageSize();
+    std::vector<uint8_t> pkgSignHdrData;
+
+    try
+    {
+        pkgSignHdrData =
+            PackageSignature::getSignatureHeader(package, calcPkgSize);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to get signature header.");
+        return false;
+    }
+
+    if (pkgSignHdrData.size())
+    {
+        std::unique_ptr<PackageSignature> packageSignatureParser;
+
+        try
+        {
+            packageSignatureParser =
+                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::info("Failed to create signature header parser.");
+
+            return true;
+        }
+
+        try
+        {
+            packageSignatureParser->parseHeader();
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Failed to parse signature header.", "ERROR", e);
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorParseSignatureHeader, resolution);
+
+            return false;
+        }
+
+        uintmax_t sizeOfSignedData =
+            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
+
+        bool integritycheckResult =
+            packageSignatureParser->integrityCheck(package, sizeOfSignedData);
+
+        if (integritycheckResult)
+        {
+            lg2::info("Integrity check successful for FW Package");
+            return true;
+        }
+    }
+    else
+    {
+        lg2::info("FW package does not contain signature header");
+        return true;
+    }
+
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+
+    return false;
+}
 
 DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
@@ -1070,20 +1177,28 @@ void UpdateManager::updateStagedPackageProperties(
     bool packageVerificationStatus, uintmax_t packageSize)
 {
     std::string packageVersion;
+    std::string digest;
     if (packageVerificationStatus)
     {
         packageVersion = parser->pkgVersion;
     }
     std::unique_ptr<PackageSignatureShaBase> signatureSha =
         std::make_unique<PackageSignatureSha384>();
-    auto digestVector =
-        signatureSha->calculateDigest(package, packageSize);
-    std::ostringstream tempStream;
-    for (int byte : digestVector)
+    try
     {
-        tempStream << std::setfill('0') << std::setw(2) << std::hex << byte;
+        auto digestVector = signatureSha->calculateDigest(package, packageSize);
+        std::ostringstream tempStream;
+        for (int byte : digestVector)
+        {
+            tempStream << std::setfill('0') << std::setw(2) << std::hex << byte;
+        }
+        digest = tempStream.str();
     }
-    std::string digest = tempStream.str();
+    catch (const std::exception& e)
+    {
+        lg2::error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR", e.what());
+        packageVerificationStatus = false;
+    }
     std::filesystem::file_time_type packageTimeStamp =
         std::filesystem::last_write_time(stagedfwPackageFilePath);
     const auto packageTimeStampSys =
@@ -1180,6 +1295,19 @@ int UpdateManager::processStagedPackage(
         updateStagedPackageProperties(false, packageSize);
         return -1;
     }
+
+#ifdef PLDM_PACKAGE_INTEGRITY_CHECK
+
+    bool integrityCheck = packageIntegrityCheck();
+
+    if (!integrityCheck)
+    {
+        lg2::error("FW package integrity check failed");
+        updateStagedPackageProperties(false, packageSize);
+        return -1;
+    }
+
+#endif
 
 #ifdef PLDM_PACKAGE_VERIFICATION
 

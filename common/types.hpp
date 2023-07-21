@@ -146,17 +146,18 @@ enum class ComponentImageInfoPos : size_t
     CompVersionPos = 7,
 };
 
-// PackageSignatureFormat v1
+// PackageSignatureFormat
 using PackageSignatureVersion = uint8_t;
 using PackageSignatureSecurityVersion = uint8_t;
 using PackageSignaturePayloadSize = size_t;
 using PackageSignatureSignatureType = uint8_t;
 using PackageSignatureSignatureSize = uint16_t;
 using PackageSignatureSignature = std::vector<uint8_t>;
-
-// PackageSignatureFormat v2
 using PackageSignatureMinorVersion = uint8_t;
 using PackageSignatureOffsetToSignature = uint16_t;
+using PackageSignatureOffsetToPublicKey = uint16_t;
+using PackageSignaturePublicKeySize = uint16_t;
+using PackageSignaturePublicKey = std::vector<uint8_t>;
 
 } // namespace fw_update
 
