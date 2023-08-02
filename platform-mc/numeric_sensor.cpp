@@ -20,7 +20,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
-    sensorName(sensorName), inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit)
+    sensorName(sensorName), inSensorMetrics(false), isPriority(false),
+    baseUnit(pdr->base_unit)
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
 
@@ -235,10 +236,13 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         std::make_unique<OperationalStatusIntf>(bus, path.c_str());
     operationalStatusIntf->functional(!sensorDisabled);
 
-    thresholdWarningIntf =
-        std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
-    thresholdWarningIntf->warningHigh(unitModifier(warningHigh));
-    thresholdWarningIntf->warningLow(unitModifier(warningLow));
+    if (warningLow < warningHigh)
+    {
+        thresholdWarningIntf =
+            std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
+        thresholdWarningIntf->warningHigh(unitModifier(warningHigh));
+        thresholdWarningIntf->warningLow(unitModifier(warningLow));
+    }
 
     if (hasCriticalThresholds)
     {
