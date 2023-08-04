@@ -2,7 +2,7 @@
 
 #include "common/types.hpp"
 #include "component_updater.hpp"
-#include "device_updater_utility.hpp"
+#include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 

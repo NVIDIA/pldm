@@ -3,6 +3,7 @@
 #include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
+#include "fw_update_utility.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -76,7 +77,6 @@ class InventoryManager
     InventoryManager(InventoryManager&&) = delete;
     InventoryManager& operator=(const InventoryManager&) = delete;
     InventoryManager& operator=(InventoryManager&&) = delete;
-    ~InventoryManager() = default;
 
     /** @brief Constructor
      *
@@ -89,6 +89,7 @@ class InventoryManager
      *  @param[out] componentInfoMap - Populate the component info for the FDs
      *                                 managed by the BMC.
      *  @param[in] deviceInventoryInfo - device inventory info for message
+     *  @param[in] numAttempts - number of command attempts
      * registry
      */
     explicit InventoryManager(
@@ -96,12 +97,28 @@ class InventoryManager
         pldm::dbus_api::Requester& requester,
         CreateInventoryCallBack createInventoryCallBack,
         DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap,
-        DeviceInventoryInfo& deviceInventoryInfo) :
+        DeviceInventoryInfo& deviceInventoryInfo,
+        uint8_t numAttempts = static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler),
         requester(requester), createInventoryCallBack(createInventoryCallBack),
         descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
-        deviceInventoryInfo(deviceInventoryInfo)
+        deviceInventoryInfo(deviceInventoryInfo),
+        numAttempts(numAttempts)
     {}
+
+    /** @brief Destructor
+     *
+     * The main purpose of this destructor is to release all coroutine handlers
+     * stored in the collection inventoryCoRoutineHandlers.
+     *
+     */
+    ~InventoryManager()
+    {
+        for (const auto& [eid, cohandler] : inventoryCoRoutineHandlers)
+        {
+            cohandler.destroy();
+        }
+    }
 
     /** @brief Discover the firmware identifiers and component details of FDs
      *
@@ -122,9 +139,12 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] response - PLDM response message
      *  @param[in] respMsgLen - Response message length
+     *  @param[in] messageError - message error
+     *  @param[in] resolution - recommended resolution
      */
-    void queryDeviceIdentifiers(mctp_eid_t eid, const pldm_msg* response,
-                                size_t respMsgLen);
+    requester::Coroutine parseQueryDeviceIdentifiersResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        std::string& messageError, std::string& resolution);
 
     /** @brief Handler for GetFirmwareParameters command response
      *
@@ -134,16 +154,49 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] response - PLDM response message
      *  @param[in] respMsgLen - Response message length
+     *  @param[in] messageError - message error
+     *  @param[in] resolution - recommended resolution
      */
-    void getFirmwareParameters(mctp_eid_t eid, const pldm_msg* response,
-                               size_t respMsgLen);
+    requester::Coroutine parseGetFWParametersResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        std::string& messageError, std::string& resolution);
 
   private:
-    /** @brief Send GetFirmwareParameters command request
+
+    /** @brief A collection of coroutine handlers used to register PLDM request message handlers */
+    std::map<mctp_eid_t, std::coroutine_handle<>> inventoryCoRoutineHandlers;
+
+    /** @brief Starts firmware discovery flow
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    void sendGetFirmwareParametersRequest(mctp_eid_t eid);
+    requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid);
+
+    /** @brief Cleans up mctpEidMap and descriptorMap
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     */
+    void cleanUpResources(mctp_eid_t eid);
+
+    /** @brief Send QueryDeviceIdentifiers command request
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] messageError - message error
+     *  @param[in] resolution - recommended resolution
+     */
+    requester::Coroutine queryDeviceIdentifiers(mctp_eid_t eid,
+                                                std::string& messageError,
+                                                std::string& resolution);
+
+    /** @brief Send GetFirmwareParameters command request
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] messageError - message error
+     *  @param[in] resolution - recommended resolution
+     */
+    requester::Coroutine getFirmwareParameters(mctp_eid_t eid,
+                                               std::string& messageError,
+                                               std::string& resolution);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
@@ -167,6 +220,9 @@ class InventoryManager
     MctpEidMap mctpEidMap;
 
     MctpInfoMap mctpInfoMap;
+
+    /** @brief Inventory command attempt count */
+    uint8_t numAttempts;
 
     /**
      * @brief log devicediscovery failed messages

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/types.hpp"
-#include "device_updater_utility.hpp"
+#include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 
