@@ -251,6 +251,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         for (auto sensor : terminus->stateSensors)
         {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
             // Get State sensor if we haven't sync.
             if (sensor->needUpdate)
             {
@@ -267,6 +272,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         // poll priority Sensors
         for (auto& sensor : prioritySensors[tid])
         {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
             if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
             {
                 continue;
@@ -292,6 +302,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         auto toBeUpdated = roundRobinSensors[tid].size();
         while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0))
         {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
             auto sensor = roundRobinSensors[tid].front();
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
