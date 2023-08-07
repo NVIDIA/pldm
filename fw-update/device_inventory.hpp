@@ -12,6 +12,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Location/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Chassis/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/SPDMResponder/server.hpp>
+#include <xyz/openbmc_project/State/Decorator/Health/server.hpp>
 
 namespace pldm::fw_update::device_inventory
 {
@@ -27,11 +28,13 @@ using DecoratorAssetIntf =
     sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset;
 using LocationCodeIntf =
     sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Location;
+using DecoratorHealthIntf =
+    sdbusplus::xyz::openbmc_project::State::Decorator::server::Health;
 
 using Ifaces =
     sdbusplus::server::object::object<ChassisIntf, UUIDIntf, AssociationIntf,
                                       SPDMResponderIntf, DecoratorAssetIntf,
-                                      LocationCodeIntf>;
+                                      LocationCodeIntf, DecoratorHealthIntf>;
 
 /** @class Entry
  *

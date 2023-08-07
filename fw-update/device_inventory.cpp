@@ -23,6 +23,7 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
     Ifaces::manufacturer("NVIDIA", true);
     Ifaces::locationType(LocationTypes::Embedded, true);
     Ifaces::emit_object_added();
+    Ifaces::health(HealthType::OK);
 }
 
 Manager::Manager(sdbusplus::bus::bus& bus,
