@@ -17,7 +17,7 @@ option('systemd', type: 'feature', description: 'Include systemd support', value
 # Timing specifications for PLDM messages
 option('number-of-request-retries', type: 'integer', min: 2, max: 30, description: 'The number of times a requester is obligated to retry a request', value: 2)
 option('number-of-command-attempts', type: 'integer', min: 1, max: 30, description: 'The number of command attempts beyond the PLDM Base specification requirements for a PLDM Request', value: 3)
-option('instance-id-expiration-interval', type: 'integer', min: 5, max: 15, description: 'Instance ID expiration interval in seconds', value: 5)
+option('instance-id-expiration-interval', type: 'integer', min: 5, max: 20, description: 'Instance ID expiration interval in seconds', value: 5)
 # Default response-time-out set to 2 seconds to facilitate a minimum retry of the request of 2.
 option('response-time-out', type: 'integer', min: 300, max: 4800, description: 'The amount of time a requester has to wait for a response message in milliseconds', value: 2000)
 
