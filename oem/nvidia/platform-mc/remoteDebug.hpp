@@ -170,9 +170,21 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 InvalidArgument();
         }
-        stateEffecter
-            ->setStateEffecterStates(compId, PLDM_STATE_SET_DEBUG_STATE_ENABLED)
-            .detach();
+
+        if (stateSensor->stateSets[compId]->getValue() ==
+            PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+        {
+            throw sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed();
+        }
+
+        if (stateSensor->stateSets[compId]->getValue() !=
+            PLDM_STATE_SET_DEBUG_STATE_ENABLED)
+        {
+            stateEffecter
+                ->setStateEffecterStates(compId,
+                                         PLDM_STATE_SET_DEBUG_STATE_ENABLED)
+                .detach();
+        }
     }
 
     void disable(DebugPolicy debugPolicy) override
@@ -183,10 +195,21 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 InvalidArgument();
         }
-        stateEffecter
-            ->setStateEffecterStates(compId,
-                                     PLDM_STATE_SET_DEBUG_STATE_DISABLED)
-            .detach();
+
+        if (stateSensor->stateSets[compId]->getValue() ==
+            PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+        {
+            throw sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed();
+        }
+
+        if (stateSensor->stateSets[compId]->getValue() !=
+            PLDM_STATE_SET_DEBUG_STATE_DISABLED)
+        {
+            stateEffecter
+                ->setStateEffecterStates(compId,
+                                         PLDM_STATE_SET_DEBUG_STATE_DISABLED)
+                .detach();
+        }
     }
 
     uint8_t toCompId(DebugPolicy value)
