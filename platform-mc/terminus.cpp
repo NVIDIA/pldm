@@ -809,6 +809,9 @@ void Terminus::updateAssociations()
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPath(inventoryPath);
+
+        auto type = toPhysicalContextType(std::get<1>(entityInfo));
+        ptr->setPhysicalContext(type);
     }
 
     for (const auto& ptr : stateSensors)

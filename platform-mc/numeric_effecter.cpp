@@ -119,6 +119,11 @@ NumericEffecter::NumericEffecter(
         unitIntf->pdrMaxSettable(unitToBase(maxValue));
         unitIntf->pdrMinSettable(unitToBase(minValue));
     }
+
+    inventoryDecoratorAreaIntf =
+        std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
+    inventoryDecoratorAreaIntf->physicalContext(
+        PhysicalContextType::SystemBoard);
 }
 
 double NumericEffecter::rawToUnit(double value)
