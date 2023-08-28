@@ -219,6 +219,9 @@ class NumericEffecter
      * it provides uniform APIs to NumericEffecter */
     std::unique_ptr<NumericEffecterBaseUnit> unitIntf = nullptr;
 
+    /** @brief flag to update the value once */
+    bool needUpdate;
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;

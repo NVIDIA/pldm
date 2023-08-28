@@ -23,7 +23,7 @@ NumericEffecter::NumericEffecter(
     effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance)),
-    terminusManager(terminusManager), baseUnit(pdr->base_unit)
+    needUpdate(true), terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
     std::string reverseAssociation = "all_controls";
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -223,7 +223,6 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
                                                 rawToBase(pendingValue),
                                                 rawToBase(presentValue));
     }
-
 }
 
 void NumericEffecter::handleErrGetNumericEffecterValue()

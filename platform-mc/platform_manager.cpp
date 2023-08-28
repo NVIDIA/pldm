@@ -57,8 +57,8 @@ requester::Coroutine PlatformManager::initTerminus()
                     terminusManager.getLocalEid());
                 if (rc)
                 {
-                    lg2::error("failed to send setEventReceiver, rc={RC}.",
-                               "RC", rc);
+                    lg2::error("failed to send setEventReceiver to tid:{TID}, rc={RC}.",
+                               "TID", tid, "RC", rc);
                 }
             }
         }
@@ -291,6 +291,8 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                             eventReceiverEid, 0x0, requestMsg);
     if (rc)
     {
+        lg2::error("failed to encode_set_event_receiver_req. tid:{TID}, rc={RC}.",
+                    "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -300,6 +302,8 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                                   &responseLen);
     if (rc)
     {
+        lg2::error("failed to SendRecvPldmMsg to tid:{TID}, rc={RC}.",
+                    "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -308,6 +312,8 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                         &completionCode);
     if (rc)
     {
+        lg2::error("failed to decode_set_event_receiver_resp. tid:{TID}, rc={RC}.",
+                    "TID", tid, "RC", rc);
         co_return rc;
     }
     co_return completionCode;

@@ -249,6 +249,26 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             co_await manager->pollForPlatformEvent(tid);
         }
 
+        for (auto effector : terminus->numericEffecters)
+        {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
+            // Get numeric effector if we haven't sync.
+            if (effector->needUpdate)
+            {
+                co_await effector->getNumericEffecterValue();
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
+                effector->needUpdate = false;
+            }
+        }
+
         for (auto sensor : terminus->stateSensors)
         {
             if (manager && terminus->pollEvent)

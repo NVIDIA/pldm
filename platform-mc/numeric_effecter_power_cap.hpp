@@ -69,13 +69,10 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         }
     }
 
-    /** return cached value and send getNumericEffecterValue command to
-     * terminus. the present value will be updated to D-Bus once received
-     * response
+    /** return cached value
      */
     uint32_t powerCap() const override
     {
-        effecter.getNumericEffecterValue().detach();
         return PowerCapInft::powerCap();
     }
 
