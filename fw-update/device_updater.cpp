@@ -41,6 +41,7 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
         if (rc)
         {
             lg2::error("Error while sending CancelUpdate.");
+            updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
         }
         co_return PLDM_ERROR;
@@ -55,6 +56,7 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
             if (rc)
             {
                 lg2::error("Error while sending CancelUpdate.");
+                updateManager->updateDeviceCompletion(eid, false);
                 co_return PLDM_ERROR;
             }
             co_return PLDM_ERROR;
@@ -582,6 +584,7 @@ requester::Coroutine
         if (rc)
         {
             lg2::error("Error while sending CancelUpdate.");
+            updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
         }
         updateManager->updateDeviceCompletion(eid, compStatus);
