@@ -432,25 +432,22 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
                 getSensorThresholdMessageId(previousEventState, eventState);
             double threshold = std::numeric_limits<double>::quiet_NaN();
             double reading = std::numeric_limits<double>::quiet_NaN();
-            switch (eventState)
+
+            if (messageId == SensorThresholdWarningLowGoingHigh ||
+                messageId == SensorThresholdWarningHighGoingLow ||
+                messageId == SensorThresholdWarningLowGoingLow ||
+                messageId == SensorThresholdWarningHighGoingHigh)
             {
-                case PLDM_SENSOR_LOWERFATAL:
-                case PLDM_SENSOR_LOWERCRITICAL:
-                    threshold = sensor->getThresholdLowerCritical();
-                    break;
-                case PLDM_SENSOR_UPPERFATAL:
-                case PLDM_SENSOR_UPPERCRITICAL:
-                    threshold = sensor->getThresholdUpperCritical();
-                    break;
-                case PLDM_SENSOR_LOWERWARNING:
-                    threshold = sensor->getThresholdLowerWarning();
-                    break;
-                case PLDM_SENSOR_UPPERWARNING:
-                    threshold = sensor->getThresholdUpperWarning();
-                    break;
-                default:
-                    break;
+                threshold = sensor->getThresholdUpperWarning();
             }
+            else if (messageId == SensorThresholdCriticalLowGoingLow ||
+                     messageId == SensorThresholdCriticalHighGoingHigh ||
+                     messageId == SensorThresholdCriticalLowGoingHigh ||
+                     messageId == SensorThresholdCriticalHighGoingLow)
+            {
+                threshold = sensor->getThresholdUpperCritical();
+            }
+
             switch (sensorDataSize)
             {
                 case PLDM_SENSOR_DATA_SIZE_UINT8:
