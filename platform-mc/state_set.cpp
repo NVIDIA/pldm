@@ -11,6 +11,7 @@
 #include "state_effecter.hpp"
 #include "state_sensor.hpp"
 #include "state_set/clearNonVolatileVariables.hpp"
+#include "state_set/healthState.hpp"
 #include "state_set/pciePortLinkState.hpp"
 #include "state_set/performance.hpp"
 #include "state_set/powerSupplyInput.hpp"
@@ -74,6 +75,11 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     {
         return std::make_unique<StateSetClearNonvolatileVariable>(
             stateSetId, compId, path, stateAssociation, nullptr);
+    }
+    else if (stateSetId == PLDM_STATESET_ID_HEALTHSTATE)
+    {
+        return std::make_unique<StateSetHealthState>(stateSetId, compId, path,
+                                                     stateAssociation);
     }
 
     lg2::error(
