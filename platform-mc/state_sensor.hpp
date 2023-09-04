@@ -74,6 +74,18 @@ class StateSensor
         }
     }
 
+    /** @brief associating numeric sensor to state set D-Bus interface
+     *  @param[in] inventoryPath - inventory path of the entity
+     */
+    inline void associateNumericSensor(
+        std::vector<std::shared_ptr<NumericSensor>>& numericSensors)
+    {
+        for (auto& stateSet : stateSets)
+        {
+            stateSet->associateNumericSensor(getEntityInfo(), numericSensors);
+        }
+    }
+
     void handleSensorEvent(uint8_t sensorOffset, uint8_t eventState);
     void createLogEntry(std::string& messageID, std::string& arg1,
                         std::string& arg2, std::string& resolution);

@@ -4,6 +4,8 @@
 
 #include "common/utils.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <limits>
 #include <regex>
 
@@ -24,7 +26,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     baseUnit(pdr->base_unit)
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
-
+    bool hasValueIntf = true;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -64,9 +66,11 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             sensorUnit = SensorUnit::Counts;
             break;
         default:
-            throw std::runtime_error("baseUnit(" +
-                                     std::to_string(pdr->base_unit) +
-                                     ") is not of supported type");
+            hasValueIntf = false;
+            sensorNameSpace = "/xyz/openbmc_project/sensors/none/";
+            lg2::info(
+                "SensorID={SENSORID}, baseUnit({BASEUNIT}) is not supported by value PDI.",
+                "SENSORID", sensorId, "BASEUNIT", pdr->base_unit);
             break;
     }
 
@@ -223,11 +227,15 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         updateTime = pdr->update_interval * 1000000;
     }
 
-    valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
-    valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
-    valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+    if (hasValueIntf)
+    {
+        valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
+        valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
+        valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+        valueIntf->unit(sensorUnit);
+    }
+
     hysteresis = unitModifier(conversionFormula(hysteresis));
-    valueIntf->unit(sensorUnit);
 
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
@@ -274,8 +282,14 @@ double NumericSensor::unitModifier(double value)
 void NumericSensor::updateReading(bool available, bool functional, double value,
                                   sensorMap* sensorMetrics)
 {
+    rawValue = value;
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
+
+    if (!valueIntf)
+    {
+        return;
+    }
 
     if (functional && available)
     {
@@ -320,7 +334,10 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
 void NumericSensor::handleErrGetSensorReading()
 {
     operationalStatusIntf->functional(false);
-    valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+    if (valueIntf)
+    {
+        valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+    }
 }
 
 bool NumericSensor::checkThreshold(bool alarm, bool direction, double value,
@@ -353,7 +370,7 @@ bool NumericSensor::checkThreshold(bool alarm, bool direction, double value,
 
 void NumericSensor::updateThresholds()
 {
-    auto value = valueIntf->value();
+    auto value = getReading();
 
     if (thresholdWarningIntf &&
         !std::isnan(thresholdWarningIntf->warningHigh()))

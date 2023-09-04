@@ -3,7 +3,9 @@
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/oem_base.hpp"
+
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 
 namespace pldm
@@ -46,6 +48,11 @@ class StateSet
               stateAssociation.path.c_str()}});
     }
 
+    virtual void associateNumericSensor(
+        [[maybe_unused]] const EntityInfo& entityInfo,
+        [[maybe_unused]] std::vector<std::shared_ptr<NumericSensor>>&
+            numericSensors){};
+
     virtual uint8_t getValue()
     {
         return 0;
@@ -64,7 +71,8 @@ class StateSetCreator
   public:
     static std::unique_ptr<StateSet>
         createSensor(uint16_t stateSetId, uint8_t compId, std::string& path,
-                     dbus::PathAssociation& stateAssociation, StateSensor* sensor);
+                     dbus::PathAssociation& stateAssociation,
+                     StateSensor* sensor);
 
     static std::unique_ptr<StateSet>
         createEffecter(uint16_t stateSetId, uint8_t compId, std::string& path,

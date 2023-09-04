@@ -190,14 +190,15 @@ class NumericSensor
 
     /** @brief Get Sensor Reading
      *
-     *  @return uint8_t - base unit
+     *  @return double
      */
     double getReading()
     {
-        if(valueIntf) {
+        if (valueIntf)
+        {
             return valueIntf->value();
         }
-        return std::numeric_limits<double>::quiet_NaN();
+        return unitModifier(conversionFormula(rawValue));
     };
 
     /** @brief Terminus ID which the sensor belongs to */
@@ -267,6 +268,9 @@ class NumericSensor
 
     /** @brief sensor reading baseUnit */
     uint8_t baseUnit;
+
+    /** @brief raw value of numeric sensor */
+    double rawValue;
 };
 } // namespace platform_mc
 } // namespace pldm

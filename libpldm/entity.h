@@ -137,6 +137,9 @@ enum pldm_entity_id_codes {
 	PLDM_ENTITY_PLUG = 189,
 	PLDM_ENTITY_SOCKET = 190,
 
+	/* Network ports connection types */
+	PLDM_ENTITY_ETHERNET = 300,
+
 	/* OEM ranges */
 	PLDM_OEM_ENTITY_TYPE_START = 24576,
 	PLDM_OEM_ENTITY_TYPE_END = 32767,

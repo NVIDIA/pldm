@@ -823,6 +823,7 @@ void Terminus::updateAssociations()
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPath(inventoryPath);
+        ptr->associateNumericSensor(numericSensors);
     }
 
     for (const auto& ptr : stateEffecters)
