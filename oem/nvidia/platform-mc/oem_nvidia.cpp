@@ -18,8 +18,8 @@ namespace platform_mc
 namespace nvidia
 {
 
-static void processEffecterLifetimePdr(Terminus& terminus,
-                                       nvidia_oem_effecter_lifetime_pdr* pdr)
+static void processEffecterPowerCapPdr(Terminus& terminus,
+                                       nvidia_oem_effecter_powercap_pdr* pdr)
 {
     for (auto& effecter : terminus.numericEffecters)
     {
@@ -31,9 +31,11 @@ static void processEffecterLifetimePdr(Terminus& terminus,
         auto persistenceIntf = std::make_unique<OemPersistenceIntf>(
             utils::DBusHandler().getBus(), effecter->path.c_str());
         bool persistence =
-            (pdr->oem_effecter_lifetime ==
-             static_cast<uint8_t>(
-                 OemLifetimePersistence::OEM_LIFETIME_NONVOLATILE))
+            ((pdr->oem_effecter_powercap ==
+             static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_TDP_NONVOLATILE))
+            ||
+            (pdr->oem_effecter_powercap ==
+             static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE)))
                 ? true
                 : false;
         persistenceIntf->persistent(persistence);
@@ -86,13 +88,13 @@ void nvidiaInitTerminus(Terminus& terminus)
 
         switch (type)
         {
-            case NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_EFFECTER_LIFETIME:
-                if (data.size() < sizeof(nvidia_oem_effecter_lifetime_pdr))
+            case NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_EFFECTER_POWERCAP:
+                if (data.size() < sizeof(nvidia_oem_effecter_powercap_pdr))
                 {
                     continue;
                 }
-                processEffecterLifetimePdr(
-                    terminus, (nvidia_oem_effecter_lifetime_pdr*)commonPdr);
+                processEffecterPowerCapPdr(
+                    terminus, (nvidia_oem_effecter_powercap_pdr*)commonPdr);
                 break;
             case NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_EFFECTER_STORAGE:
                 if (data.size() < sizeof(nvidia_oem_effecter_storage_pdr))

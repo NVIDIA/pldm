@@ -24,7 +24,7 @@ constexpr VendorIANA NvidiaIana = 0x1647;
 
 enum class NvidiaOemPdrType : uint8_t
 {
-    NVIDIA_OEM_PDR_TYPE_EFFECTER_LIFETIME = 1,
+    NVIDIA_OEM_PDR_TYPE_EFFECTER_POWERCAP = 1,
     NVIDIA_OEM_PDR_TYPE_EFFECTER_STORAGE = 2,
 };
 
@@ -34,10 +34,12 @@ struct nvidia_oem_pdr
     uint8_t oem_pdr_type;
 } __attribute__((packed));
 
-enum class OemLifetimePersistence : uint8_t
-{
-    OEM_LIFETIME_VOLATILE,
-    OEM_LIFETIME_NONVOLATILE
+enum class OemPowerCapPersistence : uint8_t
+{ 
+    OEM_POWERCAP_TDP_VOLATILE,
+    OEM_POWERCAP_TDP_NONVOLATILE,
+    OEM_POWERCAP_EDPP_VOLATILE,
+    OEM_POWERCAP_EDPP_NONVOLATILE
 };
 
 enum class OemStorageSecureState : uint8_t
@@ -46,11 +48,11 @@ enum class OemStorageSecureState : uint8_t
     OEM_STORAGE_SECURE_VARIABLE
 };
 
-struct nvidia_oem_effecter_lifetime_pdr
+struct nvidia_oem_effecter_powercap_pdr
 {
     uint16_t terminus_handle;
     uint8_t oem_pdr_type;
-    uint8_t oem_effecter_lifetime;
+    uint8_t oem_effecter_powercap;
     uint16_t associated_effecterid;
 } __attribute__((packed));
 
