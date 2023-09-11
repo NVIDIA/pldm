@@ -224,6 +224,11 @@ void Watch::initStagedUpdateWatch()
 
 void Watch::addFileEventWatchImmediate()
 {
+    fs::path imgImmediateDirPath(FIRMWARE_PACKAGE_STAGING_DIR);
+    if (!fs::is_directory(imgImmediateDirPath))
+    {
+        fs::create_directories(imgImmediateDirPath);
+    }
     fdImmediate = inotify_init1(IN_NONBLOCK);
     if (-1 == fdImmediate)
     {
@@ -255,6 +260,11 @@ void Watch::addFileEventWatchImmediate()
 
 void Watch::addFileEventWatchStaged()
 {
+    fs::path imgSplitStageDirPath(FIRMWARE_PACKAGE_SPLIT_STAGING_DIR);
+    if (!fs::is_directory(imgSplitStageDirPath))
+    {
+        fs::create_directories(imgSplitStageDirPath);
+    }
     // initiate object paths for staged image
     for (const auto& entry : std::filesystem::directory_iterator(
              FIRMWARE_PACKAGE_SPLIT_STAGING_DIR))
