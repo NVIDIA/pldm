@@ -148,7 +148,7 @@ class Terminus
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
-    void scanInventories();
+    bool scanInventories();
 
     void updateAssociations();
 

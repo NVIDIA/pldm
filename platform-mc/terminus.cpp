@@ -63,8 +63,11 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
 
     if (needRefresh)
     {
-        scanInventories();
-        updateAssociations();
+        auto ret = scanInventories();
+        if (ret)
+        {
+            updateAssociations();
+        }
     }
 }
 
@@ -704,7 +707,7 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
                            std::move(data));
 }
 
-void Terminus::scanInventories()
+bool Terminus::scanInventories()
 {
     std::vector<std::string> interestedInterfaces;
     interestedInterfaces.emplace_back(overallSystemInterface);
@@ -767,8 +770,9 @@ void Terminus::scanInventories()
     catch (const std::exception& e)
     {
         lg2::error("Failed to scan inventories");
-        return;
+        return false;
     }
+    return true;
 }
 
 void Terminus::updateAssociations()
