@@ -433,19 +433,25 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
             double threshold = std::numeric_limits<double>::quiet_NaN();
             double reading = std::numeric_limits<double>::quiet_NaN();
 
-            if (messageId == SensorThresholdWarningLowGoingHigh ||
-                messageId == SensorThresholdWarningHighGoingLow ||
-                messageId == SensorThresholdWarningLowGoingLow ||
+            if (messageId == SensorThresholdWarningHighGoingLow ||
                 messageId == SensorThresholdWarningHighGoingHigh)
             {
                 threshold = sensor->getThresholdUpperWarning();
             }
-            else if (messageId == SensorThresholdCriticalLowGoingLow ||
-                     messageId == SensorThresholdCriticalHighGoingHigh ||
-                     messageId == SensorThresholdCriticalLowGoingHigh ||
+            else if (messageId == SensorThresholdCriticalHighGoingHigh ||
                      messageId == SensorThresholdCriticalHighGoingLow)
             {
                 threshold = sensor->getThresholdUpperCritical();
+            }
+            else if (messageId == SensorThresholdWarningLowGoingHigh ||
+                     messageId == SensorThresholdWarningLowGoingLow)
+            {
+                threshold = sensor->getThresholdLowerWarning();
+            }
+            else if (messageId == SensorThresholdCriticalLowGoingLow ||
+                     messageId == SensorThresholdCriticalLowGoingHigh)
+            {
+                threshold = sensor->getThresholdLowerCritical();
             }
 
             switch (sensorDataSize)
