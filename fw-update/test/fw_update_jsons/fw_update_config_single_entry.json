@@ -1,7 +1,16 @@
 {
     "entries": [
         {
-            "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8360-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName1",

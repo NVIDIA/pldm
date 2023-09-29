@@ -43,6 +43,7 @@ MctpDiscovery::MctpDiscovery(
     dbus::ObjectValueTree objects;
     std::set<dbus::Service> mctpCtrlServices;
     MctpInfos mctpInfos;
+    dbus::MctpInterfaces mctpInterfaces;
 
     try
     {
@@ -60,7 +61,7 @@ MctpDiscovery::MctpDiscovery(
     catch (const std::exception& e)
     {
         loadStaticEndpoints(mctpInfos);
-        handleMctpEndpoints(mctpInfos);
+        handleMctpEndpoints(mctpInfos, mctpInterfaces);
         return;
     }
 
@@ -76,7 +77,7 @@ MctpDiscovery::MctpDiscovery(
             reply.read(objects);
             for (const auto& [objectPath, interfaces] : objects)
             {
-                populateMctpInfo(interfaces, mctpInfos);
+                populateMctpInfo(interfaces, mctpInfos, mctpInterfaces);
             }
         }
         catch (const std::exception& e)
@@ -86,11 +87,11 @@ MctpDiscovery::MctpDiscovery(
     }
 
     loadStaticEndpoints(mctpInfos);
-    handleMctpEndpoints(mctpInfos);
+    handleMctpEndpoints(mctpInfos, mctpInterfaces);
 }
 
 void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
-                                     MctpInfos& mctpInfos)
+                                     MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
 {
     UUID uuid{};
     int type = 0;
@@ -104,6 +105,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
             if (intfName == uuidEndpointIntfName)
             {
                 uuid = std::get<std::string>(properties.at("UUID"));
+                mctpInterfaces[uuid] = interfaces;
             }
 
             if (intfName == unixSocketIntfName)
@@ -162,15 +164,16 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
     constexpr std::string_view mctpEndpointIntfName{
         "xyz.openbmc_project.MCTP.Endpoint"};
     MctpInfos mctpInfos;
+    dbus::MctpInterfaces mctpInterfaces;
 
     sdbusplus::message::object_path objPath;
     dbus::InterfaceMap interfaces;
     msg.read(objPath, interfaces);
 
-    populateMctpInfo(interfaces, mctpInfos);
+    populateMctpInfo(interfaces, mctpInfos, mctpInterfaces);
 
     loadStaticEndpoints(mctpInfos);
-    handleMctpEndpoints(mctpInfos);
+    handleMctpEndpoints(mctpInfos, mctpInterfaces);
 }
 
 void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
@@ -208,13 +211,13 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
     }
 }
 
-void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
+void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
 {
     for (MctpDiscoveryHandlerIntf* handler : handlers)
     {
         if (handler)
         {
-            handler->handleMctpEndpoints(mctpInfos);
+            handler->handleMctpEndpoints(mctpInfos, mctpInterfaces);
         }
     }
 }

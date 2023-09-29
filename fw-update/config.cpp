@@ -37,8 +37,28 @@ void parseConfig(const fs::path& jsonPath,
     auto entries = data.value("entries", emptyJson);
     for (const auto& entry : entries.items())
     {
-        auto mctp_endpoint_uuid =
-            entry.value()["mctp_endpoint_uuid"].get<std::string>();
+        auto match =
+            entry.value()["match"];
+        auto intf = match["Interface"].get<std::string>();
+        auto props = match["Properties"];
+        dbus::PropertyMap propMap;
+        for (const auto& prop : props.items())
+        {
+            auto name = prop.value()["Name"].get<std::string>();
+            auto type = prop.value()["Type"].get<std::string>();
+            dbus::Value value;
+            if(type == "s")
+            {
+                value = prop.value()["Value"].get<std::string>();
+            }
+            else if(type == "u")
+            {
+                value = prop.value()["Value"].get<uint32_t>();
+            }
+            propMap.emplace(name, value);
+        }
+
+        DBusIntfMatch toMatch = {intf, propMap};
 
         if (entry.value().contains("device_inventory"))
         {
@@ -73,9 +93,9 @@ void parseConfig(const fs::path& jsonPath,
                 }
             }
 
-            deviceInventoryInfo[mctp_endpoint_uuid] = std::make_tuple(
+            deviceInventoryInfo.infos.push_back(std::make_tuple(toMatch, std::make_tuple(
                 std::make_tuple(std::move(createObjPath), std::move(assocs)),
-                std::move(updateObjPath));
+                std::move(updateObjPath))));
         }
 
         if (entry.value().contains("firmware_inventory"))
@@ -120,9 +140,9 @@ void parseConfig(const fs::path& jsonPath,
                 }
             }
 
-            fwInventoryInfo[mctp_endpoint_uuid] =
-                std::make_tuple(std::move(createcomponentIdNameMap),
-                                std::move(updatecomponentIdNameMap));
+            fwInventoryInfo.infos.push_back(
+                std::make_tuple(toMatch, std::make_tuple(std::move(createcomponentIdNameMap),
+                                std::move(updatecomponentIdNameMap))));
         }
 
         if (entry.value().contains("component_info"))
@@ -135,7 +155,8 @@ void parseConfig(const fs::path& jsonPath,
             }
             if (componentIdNameMap.size())
             {
-                componentNameMapInfo[mctp_endpoint_uuid] = componentIdNameMap;
+                componentNameMapInfo.infos.push_back(
+                    std::make_tuple(std::move(toMatch), std::move(componentIdNameMap)));
             }
         }
     }

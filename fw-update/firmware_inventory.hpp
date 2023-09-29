@@ -102,7 +102,7 @@ class Manager
      *  @param[in] uuid - MCTP UUID
      *  @param[in] deviceObjPath - Object path of the device inventory object
      */
-    void createEntry(pldm::EID eid, const pldm::UUID& uuid);
+    void createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces);
 
     const std::string swBasePath = "/xyz/openbmc_project/software";
 

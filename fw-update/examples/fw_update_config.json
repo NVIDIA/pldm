@@ -4,8 +4,12 @@
 // applicable for all PLDM implementations and alternate mechanisms can be used
 // for the above purposes. This configuration depends on MCTP UUID which is
 // known in advance and that is used as the key to derive device and component
-// information. "mctp_endpoint_uuid" field is mandatory for each entry in the
-// configuration.
+// information. "match" field is mandatory for each entry in the
+// configuration, it is used to identify whether an entry can be mapped to an MCTP endpoint.
+// "match" uses D-Bus interface and properties to compare the inventory entry with MCTP endpoint.
+// Inside "match", "Interface" indicates the D-Bus interface which the MCTP endpoint needs to have,
+// "Properties" with "Name", "Type", "Value" indicates the MCTP endpoint need to have these properties
+// with same values in order to use this inventory entry.
 //
 // 1) Device Inventory - Device inventory should be ideally created by
 // processing PLDM for FRU (Type 4) from the devices. PLDM for FRU is not
@@ -65,7 +69,16 @@
 {
     "entries": [
         {
-            "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8360-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName1",
@@ -101,6 +114,71 @@
                                 "forward": "inventory",
                                 "reverse": "activation",
                                 "endpoint": "/xyz/openbmc_project/software/ComponentName2"
+                            }
+                        ]
+                    }
+                },
+                "update": {
+                    "ComponentName3": 3
+                }
+            },
+            "component_info": {
+                "ComponentName1": 1,
+                "ComponentName2": 2,
+                "ComponentName3": 3
+            }
+        },
+        {
+            "match": {
+                "Interface":"xyz.openbmc_project.Inventory.Decorator.I2CDevice",
+                "Properties":[
+                    {
+                        "Name":"Address",
+                        "Type":"u",
+                        "Value":0
+                    },
+                    {
+                        "Name":"Bus",
+                        "Type":"u",
+                        "Value":16
+                    }
+                ]
+			},
+            "device_inventory": {
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName3",
+                    "associations": [
+                        {
+                            "forward": "parent",
+                            "reverse": "child",
+                            "endpoint": "/xyz/openbmc_project/inventory/chassis"
+                        }
+                    ]
+                },
+                "update": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName4"
+                }
+            },
+            "firmware_inventory": {
+                "create": {
+                    "ComponentName1": {
+                        "component_id": 1,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName3"
+                            }
+                        ]
+					},
+
+                    "ComponentName2": {
+                        "component_id": 2,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName4"
                             }
                         ]
                     }

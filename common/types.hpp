@@ -45,7 +45,7 @@ using Value =
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
 using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
-
+using MctpInterfaces = std::map<UUID, InterfaceMap>;
 typedef struct _pathAssociation
 {
     std::string forward;
@@ -116,10 +116,11 @@ using ComponentImageInfos = std::vector<ComponentImageInfo>;
 using DeviceObjPath = std::string;
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
+using DBusIntfMatch = std::pair<dbus::Interface, dbus::PropertyMap>;
 using CreateDeviceInfo = std::tuple<DeviceObjPath, Associations>;
 using UpdateDeviceInfo = DeviceObjPath;
 using DeviceInfo = std::tuple<CreateDeviceInfo, UpdateDeviceInfo>;
-using DeviceInventoryInfo = std::unordered_map<UUID, DeviceInfo>;
+using MatchDeviceInfo = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>;
 
 // FirmwareInventory
 using ComponentName = std::string;
@@ -127,12 +128,58 @@ using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
 using ComponentObject = std::tuple<ComponentName, Associations>;
 using CreateComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;
-using FirmwareInventoryInfo = std::unordered_map<
-    UUID, std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>>;
+using FirmwareInfo = std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>;
+using MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>;
 
 // ComponentInformation
-using ComponentNameMapInfo = std::unordered_map<UUID, ComponentIdNameMap>;
+using MatchComponentNameMapInfo = std::vector<std::tuple<DBusIntfMatch, ComponentIdNameMap>>;
 using ComponentNameMap = std::unordered_map<EID, ComponentIdNameMap>;
+
+/** @struct MatchEntryInfo
+ *  @brief the template struct to find the matched configured info for an dbus interface from mctp endpoint
+*/
+template <typename T, typename U>
+struct MatchEntryInfo
+{
+    MatchEntryInfo(const MatchEntryInfo&) = delete;
+    MatchEntryInfo& operator=(const MatchEntryInfo&) = delete;
+    MatchEntryInfo(MatchEntryInfo&&) = delete;
+    MatchEntryInfo& operator=(MatchEntryInfo&&) = delete;
+
+    MatchEntryInfo(const T &i) : infos(i){}
+    MatchEntryInfo(){}
+    ~MatchEntryInfo(){}
+
+    T infos;
+
+    bool matchInventoryEntry(dbus::InterfaceMap interfaceMap, U& entry) const
+    {
+        for(uint16_t i = 0; i < infos.size(); i++)
+        {
+            auto match = std::get<0>(infos[i]);
+
+            if(interfaceMap.contains(match.first) && interfaceMap[match.first] == match.second)
+            {
+                entry = std::get<1>(infos[i]);
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+/** @struct DeviceInventoryInfo
+ *  @brief the Device inventory infor parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+*/
+using DeviceInventoryInfo = MatchEntryInfo<MatchDeviceInfo, DeviceInfo>;
+/** @struct FirmwareInventoryInfo
+ *  @brief the Firmware inventory info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+*/
+using FirmwareInventoryInfo = MatchEntryInfo<MatchFirmwareInfo, FirmwareInfo>;
+/** @struct ComponentNameMapInfo
+ *  @brief the Component name info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+*/
+using ComponentNameMapInfo = MatchEntryInfo<MatchComponentNameMapInfo, ComponentIdNameMap>;
 
 enum class ComponentImageInfoPos : size_t
 {

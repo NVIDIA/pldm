@@ -136,8 +136,9 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
             0x30};
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp1.data());
+    dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg1, respPayloadLength1, messageError, resolution);
+        1, responseMsg1, respPayloadLength1, messageError, resolution, mctpInterfaces);
 
     ComponentInfoMap componentInfoMap1{
         {1,
@@ -168,7 +169,7 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     auto responseMsg2 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp2.data());
     inventoryManager.parseGetFWParametersResponse(
-        2, responseMsg2, respPayloadLength2, messageError, resolution);
+        2, responseMsg2, respPayloadLength2, messageError, resolution, mctpInterfaces);
 
     ComponentInfoMap componentInfoMap2{
         {1,
@@ -190,8 +191,9 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponseErrorCC)
         getFirmwareParametersResp{0x00, 0x00, 0x00, 0x01};
     auto responseMsg =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
+    dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg, respPayloadLength, messageError, resolution);
+        1, responseMsg, respPayloadLength, messageError, resolution, mctpInterfaces);
     EXPECT_EQ(outComponentInfoMap.size(), 0);
 }
 

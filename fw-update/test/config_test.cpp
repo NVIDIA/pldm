@@ -8,22 +8,21 @@ using namespace pldm::fw_update;
 
 TEST(ParseConfig, SingleEntry)
 {
-
-    DeviceInventoryInfo deviceInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}};
+          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}});
 
-    FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    FirmwareInventoryInfo fwInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{{1, {"ComponentName1", 
            {{"inventory", "activation", "/xyz/openbmc_project/software/ComponentName1"}}}}}, 
-         {{2, "ComponentName2"}}}}};
+         {{2, "ComponentName2"}}}}});
 
-    ComponentNameMapInfo componentNameMapInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
-         {{1, "ComponentName1"}, {2, "ComponentName2"}}}};
+    ComponentNameMapInfo componentNameMapInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
+         {{1, "ComponentName1"}, {2, "ComponentName2"}}}});
 
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
@@ -33,38 +32,73 @@ TEST(ParseConfig, SingleEntry)
                 outdeviceInventoryInfo, outFwInventoryInfo,
                 outComponentNameMapConfig);
 
-    EXPECT_EQ(outdeviceInventoryInfo, deviceInventoryInfo);
-    EXPECT_EQ(outFwInventoryInfo, fwInventoryInfo);
-    EXPECT_EQ(outComponentNameMapConfig, componentNameMapInfo);
+    EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
+    EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
+    EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
+}
+
+TEST(ParseConfig, CombinedPropertyMatch)
+{
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}},
+         {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}});
+
+    FirmwareInventoryInfo fwInventoryInfo({
+        {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}},
+         {{{1, {"ComponentName1", 
+           {{"inventory", "activation", "/xyz/openbmc_project/software/ComponentName1"}}}}}, 
+         {{2, "ComponentName2"}}}}});
+
+    ComponentNameMapInfo componentNameMapInfo({
+        {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}},
+         {{1, "ComponentName1"}, {2, "ComponentName2"}}}});
+
+    DeviceInventoryInfo outdeviceInventoryInfo;
+    FirmwareInventoryInfo outFwInventoryInfo;
+    ComponentNameMapInfo outComponentNameMapConfig;
+
+    parseConfig("./fw_update_jsons/fw_update_config_combined_properties_match.json",
+                outdeviceInventoryInfo, outFwInventoryInfo,
+                outComponentNameMapConfig);
+
+    EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
+    EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
+    EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
+
+    pldm::dbus::InterfaceMap interfaceMap = {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}}};
+    DeviceInfo deviceInfo;
+
+    EXPECT_EQ(outdeviceInventoryInfo.matchInventoryEntry(interfaceMap, deviceInfo), true);
 }
 
 TEST(ParseConfig, MultipleEntry)
 {
-
-    DeviceInventoryInfo deviceInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"},
             {"right", "left", "/xyz/openbmc_project/inventory/direction"}}},
           {}}},
-        {"ad4c8360-c54c-11eb-8529-0242ac130004",
-         {{"", {}}, "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}};
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130004"}}},
+         {{"", {}}, "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}});
 
-    FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003", {{}, {{1, "ComponentName1"}}}},
-        {"ad4c8360-c54c-11eb-8529-0242ac130004",
+    FirmwareInventoryInfo fwInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}}, {{}, {{1, "ComponentName1"}}}},
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130004"}}},
          {{{3, {"ComponentName3", 
             {{"inventory", "activation", "/xyz/openbmc_project/software/ComponentName3"}}}}, 
            {4, {"ComponentName4", 
             {{"inventory", "activation", "/xyz/openbmc_project/software/ComponentName4"}}}}
            }, 
-        {}}}};
+        {}}}});
 
-    ComponentNameMapInfo componentNameMapInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    ComponentNameMapInfo componentNameMapInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{1, "ComponentName1"}, {2, "ComponentName2"}}},
-        {"ad4c8360-c54c-11eb-8529-0242ac130004",
-         {{3, "ComponentName3"}, {4, "ComponentName4"}}}};
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130004"}}},
+         {{3, "ComponentName3"}, {4, "ComponentName4"}}}});
 
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
@@ -74,25 +108,24 @@ TEST(ParseConfig, MultipleEntry)
                 outdeviceInventoryInfo, outFwInventoryInfo,
                 outComponentNameMapConfig);
 
-    EXPECT_EQ(outdeviceInventoryInfo, deviceInventoryInfo);
-    EXPECT_EQ(outFwInventoryInfo, fwInventoryInfo);
-    EXPECT_EQ(outComponentNameMapConfig, componentNameMapInfo);
+    EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
+    EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
+    EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
 }
 
 TEST(ParseConfig, LimitedEntry)
 {
     DeviceInventoryInfo deviceInventoryInfo{};
-
-    FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    FirmwareInventoryInfo fwInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{{1, {"ComponentName1", 
           {{"inventory", "activation", "/xyz/openbmc_project/software/ComponentName1"}}}}
          }, 
-        {}}}};
+        {}}}});
 
-    ComponentNameMapInfo componentNameMapInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
-         {{1, "ComponentName1"}, {2, "ComponentName2"}}}};
+    ComponentNameMapInfo componentNameMapInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
+         {{1, "ComponentName1"}, {2, "ComponentName2"}}}});
 
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
@@ -102,29 +135,28 @@ TEST(ParseConfig, LimitedEntry)
                 outdeviceInventoryInfo, outFwInventoryInfo,
                 outComponentNameMapConfig);
 
-    EXPECT_EQ(outdeviceInventoryInfo, deviceInventoryInfo);
-    EXPECT_EQ(outFwInventoryInfo, fwInventoryInfo);
-    EXPECT_EQ(outComponentNameMapConfig, componentNameMapInfo);
+    EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
+    EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
+    EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
 }
 
 TEST(ParseConfig, SingleEntryWithoutFwInvAssociations)
 {
-
-    DeviceInventoryInfo deviceInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{"/xyz/openbmc_project/inventory/chassis/DeviceName1",
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}};
+          "/xyz/openbmc_project/inventory/chassis/DeviceName2"}}});
 
-    FirmwareInventoryInfo fwInventoryInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
+    FirmwareInventoryInfo fwInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{{1, {"ComponentName1", 
            {}}}}, 
-         {{2, "ComponentName2"}}}}};
+         {{2, "ComponentName2"}}}}});
 
-    ComponentNameMapInfo componentNameMapInfo{
-        {"ad4c8360-c54c-11eb-8529-0242ac130003",
-         {{1, "ComponentName1"}, {2, "ComponentName2"}}}};
+    ComponentNameMapInfo componentNameMapInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
+         {{1, "ComponentName1"}, {2, "ComponentName2"}}}});
 
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
@@ -134,7 +166,7 @@ TEST(ParseConfig, SingleEntryWithoutFwInvAssociations)
                 outdeviceInventoryInfo, outFwInventoryInfo,
                 outComponentNameMapConfig);
 
-    EXPECT_EQ(outdeviceInventoryInfo, deviceInventoryInfo);
-    EXPECT_EQ(outFwInventoryInfo, fwInventoryInfo);
-    EXPECT_EQ(outComponentNameMapConfig, componentNameMapInfo);
+    EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
+    EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
+    EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
 }

@@ -13,7 +13,7 @@ TEST(MctpEndpointDiscoveryTest, SingleHandleMctpEndpoint)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
 
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager, handleMctpEndpoints(_,_)).Times(1);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, *(static_cast<pldm::mctp_socket::Handler*>(nullptr)),
@@ -27,8 +27,8 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
     pldm::MockManager manager1;
     pldm::MockManager manager2;
 
-    EXPECT_CALL(manager1, handleMctpEndpoints(_)).Times(1);
-    EXPECT_CALL(manager2, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager1, handleMctpEndpoints(_,_)).Times(1);
+    EXPECT_CALL(manager2, handleMctpEndpoints(_,_)).Times(1);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, *(static_cast<pldm::mctp_socket::Handler*>(nullptr)),

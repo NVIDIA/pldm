@@ -39,11 +39,11 @@ TEST(Manager, SingleMatchForECSKU)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
          {{objPath,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {}}}};
+          {}}}});
     const EID eid = 1;
     const DescriptorMap descriptorMap{
         {eid,
@@ -52,12 +52,13 @@ TEST(Manager, SingleMatchForECSKU)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("ECSKU",
                            std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}}}}};
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKU)
@@ -66,11 +67,11 @@ TEST(Manager, SingleMatchForAPSKU)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
          {{objPath,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {}}}};
+          {}}}});
     const EID eid = 1;
     const DescriptorMap descriptorMap{
         {eid,
@@ -84,7 +85,8 @@ TEST(Manager, SingleMatchForAPSKU)
         .Times(1);
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
@@ -93,11 +95,11 @@ TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
          {{objPath,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {objPath}}}};
+          {objPath}}}});
     const EID eid = 1;
     const DescriptorMap descriptorMap{
         {eid,
@@ -113,7 +115,8 @@ TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
         .Times(1);
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKUwithUpdate)
@@ -122,11 +125,11 @@ TEST(Manager, SingleMatchForAPSKUwithUpdate)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
          {{objPath,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {objPath}}}};
+          {objPath}}}});
     const EID eid = 1;
     const DescriptorMap descriptorMap{
         {eid,
@@ -140,7 +143,8 @@ TEST(Manager, SingleMatchForAPSKUwithUpdate)
         .Times(1);
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    EXPECT_EQ(manager.createEntry(eid, uuid), objPath);
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, MultipleMatch)
@@ -151,15 +155,15 @@ TEST(Manager, MultipleMatch)
     const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
     const std::string objPath1{"/xyz/openbmc_project/inventory/chassis/bmc1"};
     const std::string objPath2{"/xyz/openbmc_project/inventory/chassis/bmc2"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid1,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
          {{objPath1,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
           {}}},
-        {uuid2,
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}},
          {{objPath2,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {}}}};
+          {}}}});
     const EID eid1 = 1;
     const EID eid2 = 1;
     const DescriptorMap descriptorMap{
@@ -177,8 +181,37 @@ TEST(Manager, MultipleMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    EXPECT_EQ(manager.createEntry(eid1, uuid1), objPath1);
-    EXPECT_EQ(manager.createEntry(eid2, uuid2), objPath2);
+    dbus::MctpInterfaces mctpInterfaces1{{uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}}};
+    dbus::MctpInterfaces mctpInterfaces2{{uuid2, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
+
+    EXPECT_EQ(manager.createEntry(eid1, uuid1, mctpInterfaces1), objPath1);
+    EXPECT_EQ(manager.createEntry(eid2, uuid2, mctpInterfaces2), objPath2);
+}
+
+TEST(Manager, MultiPropertyMatch)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc1"};
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}},
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}});
+    const EID eid = 1;
+    const DescriptorMap descriptorMap{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}}}}};
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, NoMatch)
@@ -187,11 +220,11 @@ TEST(Manager, NoMatch)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const UUID uuid1{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    DeviceInventoryInfo deviceInventoryInfo{
-        {uuid1,
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
          {{objPath,
            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
-          {}}}};
+          {}}}});
     const EID eid1 = 1;
     const DescriptorMap descriptorMap{
         {eid1,
@@ -203,8 +236,42 @@ TEST(Manager, NoMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    // Non-matching MCTP UUID, not present in the config entry
-    const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
     const std::string emptyString{};
-    EXPECT_EQ(manager.createEntry(eid1, uuid2), emptyString);
+    dbus::MctpInterfaces mctpInterfaces;
+    const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
+    // Non-matching MCTP UUID, not present in the mctp end point interface entry
+    EXPECT_EQ(manager.createEntry(eid1, uuid2, mctpInterfaces), emptyString);
+    // Non-matching for "match" condition in device inventory info
+    mctpInterfaces = {{uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
+    EXPECT_EQ(manager.createEntry(eid1, uuid1, mctpInterfaces), emptyString);
+
+}
+
+TEST(Manager, MultiPropertyNoMatch)
+{
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc1"};
+    DeviceInventoryInfo deviceInventoryInfo({
+        {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}},
+         {{objPath,
+           {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+          {}}}});
+    const EID eid = 1;
+    const DescriptorMap descriptorMap{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(0);
+
+    MockdBusHandler dbusHandler;
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    const std::string emptyString{};
+    //No match for wrong property value
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(17)}}}}}};
+    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), emptyString);
+
 }

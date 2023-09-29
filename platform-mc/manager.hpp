@@ -55,8 +55,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return rc;
     }
 
-    void handleMctpEndpoints(const MctpInfos& mctpInfos)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
     {
+        (void)mctpInterfaces;
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 

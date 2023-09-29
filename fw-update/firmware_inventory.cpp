@@ -51,19 +51,19 @@ Manager::Manager(sdbusplus::bus::bus& bus,
     componentInfoMap(componentInfoMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 
-void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid)
+void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
 {
-    if (firmwareInventoryInfo.contains(uuid) && componentInfoMap.contains(eid))
+    FirmwareInfo fwInfoSearch;
+    if (mctpInterfaces.find(uuid) != mctpInterfaces.end() && firmwareInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid], fwInfoSearch) && componentInfoMap.contains(eid))
     {
-        auto fwInfoSearch = firmwareInventoryInfo.find(uuid);
         auto compInfoSearch = componentInfoMap.find(eid);
 
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
-            if ((std::get<0>(fwInfoSearch->second)).contains(compKey.second))
+            if ((std::get<0>(fwInfoSearch)).contains(compKey.second))
             {
                 auto componentObject =
-                    (std::get<0>(fwInfoSearch->second)).find(compKey.second);
+                    (std::get<0>(fwInfoSearch)).find(compKey.second);
                 std::string objPath = swBasePath + "/" + std::get<ComponentName>(componentObject->second);
 
                 auto swId = fmt::format("0x{:04X}", compKey.second);
@@ -87,10 +87,10 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid)
                 firmwareInventoryMap.emplace(
                     std::make_pair(eid, compKey.second), std::move(entry));
             }
-            if ((std::get<1>(fwInfoSearch->second)).contains(compKey.second))
+            if ((std::get<1>(fwInfoSearch)).contains(compKey.second))
             {
                 auto componentName =
-                    (std::get<1>(fwInfoSearch->second)).find(compKey.second);
+                    (std::get<1>(fwInfoSearch)).find(compKey.second);
                 std::string objPath = swBasePath + "/" + componentName->second;
                 auto swId = fmt::format("0x{:04X}", compKey.second);
                 updateSwId(objPath, swId);

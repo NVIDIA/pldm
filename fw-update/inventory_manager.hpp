@@ -16,7 +16,7 @@ namespace pldm
 namespace fw_update
 {
 
-using CreateInventoryCallBack = std::function<void(EID, UUID)>;
+using CreateInventoryCallBack = std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
 
 using Priority = int;
@@ -59,7 +59,7 @@ struct MCTPEidInfoPriorityQueue : std::priority_queue<MctpEidInfo>
     }
 };
 
-using MctpInfoMap = std::unordered_map<UUID, MCTPEidInfoPriorityQueue>;
+using MctpInfoMap = std::map<UUID, MCTPEidInfoPriorityQueue>;
 
 /** @class InventoryManager
  *
@@ -128,7 +128,7 @@ class InventoryManager
      *
      *  @param[in] eids - MCTP endpoint ID of the FDs
      */
-    void discoverFDs(const MctpInfos& mctpInfos);
+    void discoverFDs(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -159,7 +159,7 @@ class InventoryManager
      */
     requester::Coroutine parseGetFWParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
-        std::string& messageError, std::string& resolution);
+        std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces);
 
   private:
 
@@ -170,7 +170,7 @@ class InventoryManager
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid);
+    requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -196,7 +196,7 @@ class InventoryManager
      */
     requester::Coroutine getFirmwareParameters(mctp_eid_t eid,
                                                std::string& messageError,
-                                               std::string& resolution);
+                                               std::string& resolution, dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
@@ -233,7 +233,8 @@ class InventoryManager
      */
     void logDiscoveryFailedMessage(const mctp_eid_t& eid,
                                    const std::string& messageError,
-                                   const std::string& resolution);
+                                   const std::string& resolution,
+                                   dbus::MctpInterfaces mctpInterfaces);
 };
 
 } // namespace fw_update

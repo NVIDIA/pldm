@@ -2,12 +2,17 @@
     "entries": [
         {
             "match": {
-                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Interface":"xyz.openbmc_project.Inventory.Decorator.I2CDevice",
                 "Properties":[
                     {
-                        "Name":"UUID",
-                        "Type":"s",
-                        "Value":"ad4c8360-c54c-11eb-8529-0242ac130003"
+                        "Name":"Address",
+                        "Type":"u",
+                        "Value":0
+                    },
+                    {
+                        "Name":"Bus",
+                        "Type":"u",
+                        "Value":16
                     }
                 ]
             },
@@ -29,7 +34,14 @@
             "firmware_inventory": {
                 "create": {
                     "ComponentName1": {
-                        "component_id": 1
+                        "component_id": 1,
+                        "associations": [
+                            {
+                                "forward": "inventory",
+                                "reverse": "activation",
+                                "endpoint": "/xyz/openbmc_project/software/ComponentName1"
+                            }
+                        ]
                     }
                 },
                 "update": {

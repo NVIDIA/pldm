@@ -1,7 +1,16 @@
 {
     "entries": [
         {
-            "mctp_endpoint_uuid": "ad4c8360-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8360-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_FPGA_0",
@@ -45,7 +54,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8361-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8361-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_1",
@@ -89,7 +107,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8362-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8362-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_2",
@@ -133,7 +160,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8363-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8363-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_3",
@@ -177,7 +213,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8364-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8364-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_4",
@@ -221,7 +266,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8365-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8365-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_5",
@@ -265,7 +319,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8366-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8366-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_6",
@@ -309,7 +372,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8367-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8367-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_7",
@@ -353,7 +425,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8368-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8368-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_GPU_SXM_8",
@@ -397,7 +478,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c836b-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c836b-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_BMC_0",
@@ -441,7 +531,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c836c-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c836c-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_0",
@@ -485,7 +584,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c836d-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c836d-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_1",
@@ -529,7 +637,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c836e-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c836e-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_2",
@@ -573,7 +690,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c836f-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c836f-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_NVSwitch_3",
@@ -617,7 +743,16 @@
             }
         },
         {
-            "mctp_endpoint_uuid": "ad4c8370-c54c-11eb-8529-0242ac130003",
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"ad4c8370-c54c-11eb-8529-0242ac130003"
+                    }
+                ]
+            },
             "device_inventory": {
                 "create": {
                     "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_PCIeSwitch_0",

@@ -24,7 +24,7 @@ namespace pldm
 class MctpDiscoveryHandlerIntf
 {
   public:
-    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos) = 0;
+    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces) = 0;
     virtual ~MctpDiscoveryHandlerIntf()
     {}
 };
@@ -71,7 +71,7 @@ class MctpDiscovery
      *  @param[out] mctpInfos - MCTP info for PLDM discovery
      */
     void populateMctpInfo(const dbus::InterfaceMap& interfaces,
-                          MctpInfos& mctpInfos);
+                          MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces);
 
     static constexpr uint8_t mctpTypePLDM = 1;
 
@@ -97,7 +97,7 @@ class MctpDiscovery
      *
      *  @param[in] mctpInfos - information of discovered MCTP endpoints
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos);
+    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Loading the static MCTP endpoints to mctpInfos.
      *

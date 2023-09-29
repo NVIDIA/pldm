@@ -36,16 +36,20 @@ Manager::Manager(sdbusplus::bus::bus& bus,
 {}
 
 sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
-                                                     const pldm::UUID& uuid)
+                                                     const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
 {
     sdbusplus::message::object_path deviceObjPath{};
-    if (deviceInventoryInfo.contains(uuid) && descriptorMap.contains(eid))
+
+    DeviceInfo deviceInfo;
+
+    if (mctpInterfaces.find(uuid) != mctpInterfaces.end()
+                && deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid], deviceInfo)
+                && descriptorMap.contains(eid))
     {
-        auto search = deviceInventoryInfo.find(uuid);
         const auto& objPath =
-            std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(search->second));
+            std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
         const auto& assocs =
-            std::get<Associations>(std::get<CreateDeviceInfo>(search->second));
+            std::get<Associations>(std::get<CreateDeviceInfo>(deviceInfo));
         auto descSearch = descriptorMap.find(eid);
         std::string ecsku{};
         std::string apsku{};
@@ -75,7 +79,7 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
             uuid, std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
         deviceObjPath = objPath;
 
-        const auto& updateObjPath = std::get<UpdateDeviceInfo>(search->second);
+        const auto& updateObjPath = std::get<UpdateDeviceInfo>(deviceInfo);
 
         if (!apsku.empty() && !updateObjPath.empty())
         {

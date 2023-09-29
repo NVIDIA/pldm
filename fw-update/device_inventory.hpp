@@ -105,7 +105,7 @@ class Manager
      *  @return Object path of the device inventory object
      */
     sdbusplus::message::object_path createEntry(pldm::EID eid,
-                                                const pldm::UUID& uuid);
+                                                const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces);
 
   private:
     sdbusplus::bus::bus& bus;

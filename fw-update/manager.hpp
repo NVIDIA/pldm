@@ -89,7 +89,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
     {
         std::vector<mctp_eid_t> eids;
         for (auto& mctpInfo : mctpInfos)
@@ -97,12 +97,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             eids.emplace_back(std::get<0>(mctpInfo));
         }
 
-        inventoryMgr.discoverFDs(mctpInfos);
+        inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
         for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
         {
-            if (componentNameMapInfo.contains(uuid))
+            ComponentIdNameMap componentIdNameMap;
+            if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid], componentIdNameMap))
             {
-                componentNameMap[eid] = componentNameMapInfo[uuid];
+                componentNameMap[eid] = componentIdNameMap;
             }
         }
     }
@@ -113,12 +114,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
      */
-    void createInventory(EID eid, UUID uuid)
+    void createInventory(EID eid, UUID uuid, dbus::MctpInterfaces& mctpInterfaces)
     {
-        (void) deviceInventoryManager.createEntry(eid, uuid);
+        (void) deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
         {
-            fwInventoryManager.createEntry(eid, uuid);
+            fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         }
     }
 
