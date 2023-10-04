@@ -102,10 +102,16 @@ void TerminusManager::unmapTid(const tid_t& tid)
     tidPool[tid] = false;
 
     auto transportLayerTableIterator = transportLayerTable.find(tid);
-    transportLayerTable.erase(transportLayerTableIterator);
+    if (transportLayerTableIterator != transportLayerTable.end())
+    {
+        transportLayerTable.erase(transportLayerTableIterator);
+    }
 
     auto mctpInfoTableIterator = mctpInfoTable.find(tid);
-    mctpInfoTable.erase(mctpInfoTableIterator);
+    if (mctpInfoTableIterator != mctpInfoTable.end())
+    {
+        mctpInfoTable.erase(mctpInfoTableIterator);
+    }
 }
 
 void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
@@ -151,7 +157,7 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
         }
 
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
-        // remove absent terminus
+        // remove existing terminus with the same EID.
         for (auto it = termini.begin(); it != termini.end();)
         {
             bool found = false;
@@ -169,7 +175,7 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
                 }
             }
 
-            if (!found)
+            if (found)
             {
                 unmapTid(it->first);
                 termini.erase(it++);

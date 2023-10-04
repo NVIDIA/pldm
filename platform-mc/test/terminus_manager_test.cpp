@@ -167,14 +167,6 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
 
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(1, termini.size());
-
-    // 2.discover an empty mctp list
-    rc = mockTerminusManager.clearQueuedResponses();
-    EXPECT_EQ(rc, PLDM_SUCCESS);
-
-    mctpInfos.clear();
-    mockTerminusManager.discoverMctpTerminus(mctpInfos);
-    EXPECT_EQ(0, termini.size());
 }
 
 TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
