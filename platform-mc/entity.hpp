@@ -27,9 +27,7 @@ class Entity
   public:
     Entity(std::string& inventory, std::string& ContainerInventory) :
         inventory(inventory), ContainerInventory(ContainerInventory)
-    {
-        createAssociation();
-    }
+    {}
 
     auto getInventory()
     {
