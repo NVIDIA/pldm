@@ -22,13 +22,12 @@ namespace helper
  * Initialize the socket, send pldm command & recieve response from socket
  *
  */
-int mctpSockSendRecv(const std::vector<uint8_t>& requestMsg,
+int mctpSockSendRecv(std::string socketName,
+                     const std::vector<uint8_t>& requestMsg,
                      std::vector<uint8_t>& responseMsg, bool pldmVerbose)
 {
-
-    const char devPath[] = "\0mctp-mux";
+    auto devPath = std::string(1, '\0') + socketName;
     int returnCode = 0;
-
     int sockFd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
     if (-1 == sockFd)
     {
@@ -42,16 +41,16 @@ int mctpSockSendRecv(const std::vector<uint8_t>& requestMsg,
     {};
     addr.sun_family = AF_UNIX;
 
-    memcpy(addr.sun_path, devPath, sizeof(devPath) - 1);
+    memcpy(addr.sun_path, devPath.data(), devPath.size());
 
     CustomFD socketFd(sockFd);
     int result = connect(socketFd(), reinterpret_cast<struct sockaddr*>(&addr),
-                         sizeof(devPath) + sizeof(addr.sun_family) - 1);
+                         devPath.size() + sizeof(addr.sun_family));
     if (-1 == result)
     {
         returnCode = -errno;
-        std::cerr << "Failed to connect to socket : RC = " << returnCode
-                  << "\n";
+        std::cerr << "Failed to connect to socket '" << socketName
+                  << "' : RC = " << returnCode << "\n";
         return returnCode;
     }
     Logger(pldmVerbose, "Success in connecting to socket : RC = ", returnCode);
@@ -136,6 +135,17 @@ int mctpSockSendRecv(const std::vector<uint8_t>& requestMsg,
 
 void CommandInterface::exec()
 {
+
+    if (mctp_eid == PLDM_ENTITY_ID && !socketName.has_value())
+    {
+        std::cout << "--socket_name is required when "
+                  << "--mctp_eid is equal to "
+                  << static_cast<int>(PLDM_ENTITY_ID)
+                  << " or when MCTP endpoint is not provided\n"
+                  << "Run with --help for more information.\n";
+        return;
+    }
+
     static constexpr auto pldmObjPath = "/xyz/openbmc_project/pldm";
     static constexpr auto pldmRequester = "xyz.openbmc_project.PLDM.Requester";
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -341,7 +351,14 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
     }
     else
     {
-        mctpSockSendRecv(requestMsg, responseMsg, mctpVerbose);
+        auto rc = mctpSockSendRecv(socketName.value(), requestMsg, responseMsg,
+                                   mctpVerbose);
+
+        if (rc != PLDM_SUCCESS)
+        {
+            return rc;
+        }
+
         if (pldmVerbose)
         {
             std::cout << "pldmtool: ";

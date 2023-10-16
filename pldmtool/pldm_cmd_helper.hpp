@@ -63,6 +63,7 @@ static inline void DisplayInJson(const ordered_json& data)
 
 /** @brief MCTP socket read/recieve
  *
+ *  @param[in]  socketName - Socket name
  *  @param[in]  requestMsg - Request message to compare against loopback
  *              message recieved from mctp socket
  *  @param[out] responseMsg - Response buffer recieved from mctp socket
@@ -71,7 +72,8 @@ static inline void DisplayInJson(const ordered_json& data)
  *  @return -   0 on success.
  *             -1 or -errno on failure.
  */
-int mctpSockSendRecv(const std::vector<uint8_t>& requestMsg,
+int mctpSockSendRecv(std::string socketName,
+                     const std::vector<uint8_t>& requestMsg,
                      std::vector<uint8_t>& responseMsg, bool pldmVerbose);
 
 class CommandInterface
@@ -85,6 +87,7 @@ class CommandInterface
         instanceId(0)
     {
         app->add_option("-m,--mctp_eid", mctp_eid, "MCTP endpoint ID");
+        app->add_option("-n,--socket_name", socketName, "Socket Name");
         app->add_flag("-v, --verbose", pldmVerbose);
         app->callback([&]() { exec(); });
     }
@@ -131,6 +134,7 @@ class CommandInterface
 
   protected:
     uint8_t instanceId;
+    std::optional<std::string> socketName;
 };
 
 } // namespace helper
