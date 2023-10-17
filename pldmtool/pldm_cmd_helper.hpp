@@ -76,6 +76,16 @@ int mctpSockSendRecv(std::string socketName,
                      const std::vector<uint8_t>& requestMsg,
                      std::vector<uint8_t>& responseMsg, bool pldmVerbose);
 
+/**
+ *  @brief Translate PLDM completion code as human-readable string
+ *
+ *  @param[in] completionCode - PLDM completion code
+ *  @param[in] data - The JSON data to which the completion code is added.
+ *
+ *  @return - None.
+ */
+void fillCompletionCode(uint8_t completionCode, ordered_json& data);
+
 class CommandInterface
 {
 
