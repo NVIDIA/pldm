@@ -611,6 +611,46 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
     pldmtool::helper::DisplayInJson(data);
 }
 
+class CancelUpdateComponent : public CommandInterface
+{
+  public:
+    ~CancelUpdateComponent() = default;
+    CancelUpdateComponent() = delete;
+    CancelUpdateComponent(const CancelUpdateComponent&) = delete;
+    CancelUpdateComponent(CancelUpdateComponent&&) = default;
+    CancelUpdateComponent& operator=(const CancelUpdateComponent&) = delete;
+    CancelUpdateComponent& operator=(CancelUpdateComponent&&) = default;
+
+    using CommandInterface::CommandInterface;
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto rc = encode_cancel_update_component_req(
+            instanceId, request, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t cc = 0;
+
+        auto rc = decode_cancel_update_component_resp(responsePtr,
+                                                      payloadLength, &cc);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Response Message Error: "
+                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(cc, data);
+        pldmtool::helper::DisplayInJson(data);
+    }
+};
+
 void registerCommand(CLI::App& app)
 {
     auto fwUpdate =
@@ -630,6 +670,11 @@ void registerCommand(CLI::App& app)
         "QueryDeviceIdentifiers", "To query device identifiers of the FD");
     commands.push_back(std::make_unique<QueryDeviceIdentifiers>(
         "fw_update", "QueryDeviceIdentifiers", queryDeviceIdentifiers));
+
+    auto cancelUpdateComp = fwUpdate->add_subcommand(
+        "CancelUpdateComponent", "To cancel component update");
+    commands.push_back(std::make_unique<CancelUpdateComponent>(
+        "fw_update", "CancelUpdateComponent", cancelUpdateComp));
 }
 
 } // namespace fw_update
