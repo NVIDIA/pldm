@@ -5,6 +5,10 @@
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
 
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#endif
+
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
 #include "pldmd/dbus_impl_requester.hpp"

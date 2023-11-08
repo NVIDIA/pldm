@@ -2,6 +2,9 @@
 
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#endif
 
 #include "common/types.hpp"
 #include "platform-mc/oem_base.hpp"
@@ -46,6 +49,11 @@ using sensorMap = std::map<
                             uint32_t, uint64_t, double, bool>,
                uint64_t, sdbusplus::message::object_path>>;
 
+enum polling_method_indicator {
+    POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO,
+    POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM
+};
+
 /**
  * @brief NumericSensor
  *
@@ -58,6 +66,11 @@ class NumericSensor
     NumericSensor(const tid_t tid, const bool sensorDisabled,
                   std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
                   std::string& sensorName, std::string& associationPath);
+#ifdef OEM_NVIDIA
+    NumericSensor(const tid_t tid, const bool sensorDisabled,
+                  std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
+                  std::string& sensorName, std::string& associationPath, uint8_t oemIndicator);
+#endif
     ~NumericSensor(){};
 
     /** @brief The function called by Sensor Manager to set sensor to
@@ -201,6 +214,15 @@ class NumericSensor
         return unitModifier(conversionFormula(rawValue));
     };
 
+    /** @brief Get polling method indicator
+     *
+     *  @return uint8_t - polling indicator
+     */
+    uint8_t getPollingIndicator()
+    {
+        return pollingIndicator;
+    };
+
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
 
@@ -271,6 +293,10 @@ class NumericSensor
 
     /** @brief raw value of numeric sensor */
     double rawValue;
+    
+    /** @brief indicates if we are using PLDM Type-2 command or PLDM OEM Type 
+     * command for polling */
+    uint8_t pollingIndicator;
 };
 } // namespace platform_mc
 } // namespace pldm

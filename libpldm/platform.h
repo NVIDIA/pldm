@@ -101,7 +101,9 @@ enum pldm_effecter_data_size {
 	PLDM_EFFECTER_DATA_SIZE_UINT16,
 	PLDM_EFFECTER_DATA_SIZE_SINT16,
 	PLDM_EFFECTER_DATA_SIZE_UINT32,
-	PLDM_EFFECTER_DATA_SIZE_SINT32
+	PLDM_EFFECTER_DATA_SIZE_SINT32,
+	PLDM_EFFECTER_DATA_SIZE_UINT64,
+	PLDM_EFFECTER_DATA_SIZE_SINT64
 };
 
 enum pldm_range_field_format {
@@ -304,7 +306,9 @@ enum pldm_sensor_readings_data_type {
 	PLDM_SENSOR_DATA_SIZE_UINT16,
 	PLDM_SENSOR_DATA_SIZE_SINT16,
 	PLDM_SENSOR_DATA_SIZE_UINT32,
-	PLDM_SENSOR_DATA_SIZE_SINT32
+	PLDM_SENSOR_DATA_SIZE_SINT32,
+	PLDM_SENSOR_DATA_SIZE_UINT64,
+	PLDM_SENSOR_DATA_SIZE_SINT64
 };
 
 /** @brief PLDM PlatformEventMessage response status
@@ -756,6 +760,8 @@ typedef union {
 	int16_t value_s16;
 	uint32_t value_u32;
 	int32_t value_s32;
+	uint64_t value_u64;
+	int64_t value_s64;
 } union_sensor_data_size;
 
 /** @struct pldm_numeric_sensor_value_pdr

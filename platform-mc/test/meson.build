@@ -19,6 +19,7 @@ dep_src_files = [
 
 dep_src_files += [
   '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
+  '../../oem/nvidia/libpldm/energy_count_numeric_sensor_oem.c'
 ]
 
 dep_src_headers = [

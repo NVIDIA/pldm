@@ -269,6 +269,92 @@ void nvidiaInitTerminus(Terminus& terminus)
     }
 }
 
+std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
+    parseOEMEnergyCountNumericSensorPDR(const std::vector<uint8_t>& vendorData)
+{
+    const uint8_t* ptr = vendorData.data();
+    auto parsedPdr = std::make_shared<pldm_oem_energycount_numeric_sensor_value_pdr>();
+
+    size_t expectedPDRSize = PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_MIN_LENGTH;
+    if (vendorData.size() < expectedPDRSize)
+    {
+        lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+                   "PDRSIZE", vendorData.size());
+        return nullptr;
+    }
+
+    size_t count = (uint8_t*)(&parsedPdr->max_readable.value_u8) -
+            (uint8_t*)(&parsedPdr->terminus_handle);
+    memcpy(&parsedPdr->terminus_handle, ptr, count);
+    ptr += count;
+
+    expectedPDRSize -= PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH;
+    switch (parsedPdr->sensor_data_size)
+    {
+        case PLDM_SENSOR_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_DATA_SIZE_SINT8:
+            expectedPDRSize += 2 * sizeof(uint8_t);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_DATA_SIZE_SINT16:
+            expectedPDRSize += 2 * sizeof(uint16_t);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_DATA_SIZE_SINT32:
+            expectedPDRSize += 2 * sizeof(uint32_t);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
+            expectedPDRSize += 2 * sizeof(uint64_t);
+            break;
+        default:
+            break;
+    }
+
+    if (vendorData.size() < expectedPDRSize)
+    {
+        lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+                   "PDRSIZE", vendorData.size());
+        return nullptr;
+    }
+
+    switch (parsedPdr->sensor_data_size)
+    {
+        case PLDM_SENSOR_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_DATA_SIZE_SINT8:
+            parsedPdr->max_readable.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->max_readable.value_u8);
+            parsedPdr->min_readable.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->min_readable.value_u8);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_DATA_SIZE_SINT16:
+            parsedPdr->max_readable.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->max_readable.value_u16);
+            parsedPdr->min_readable.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->min_readable.value_u16);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_DATA_SIZE_SINT32:
+            parsedPdr->max_readable.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->max_readable.value_u32);
+            parsedPdr->min_readable.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->min_readable.value_u32);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
+            parsedPdr->max_readable.value_u64 = le64toh(*((uint64_t*)ptr));
+            ptr += sizeof(parsedPdr->max_readable.value_u64);
+            parsedPdr->min_readable.value_u64 = le64toh(*((uint64_t*)ptr));
+            ptr += sizeof(parsedPdr->min_readable.value_u64);
+            break;
+        default:
+            break;
+    }
+
+    return parsedPdr;
+}
+
 } // namespace nvidia
 } // namespace platform_mc
 } // namespace pldm

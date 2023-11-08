@@ -249,7 +249,21 @@ bool Terminus::parsePDRs()
         else if (pdrHdr->type == PLDM_OEM_PDR)
         {
             auto parsedPdr = parseOemPDR(pdr);
-            oemPdrs.emplace_back(std::move(parsedPdr));
+#ifdef OEM_NVIDIA
+            if (static_cast<nvidia::NvidiaOemPdrType>(std::get<2>(parsedPdr)[2])
+                == nvidia::NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+            {
+                auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
+                                    std::get<2>(parsedPdr));
+                oemEnergyCountNumericSensorPdrs.emplace_back(std::move(parsedOEMPdr));
+            }
+            else
+            {
+#endif
+                oemPdrs.emplace_back(std::move(parsedPdr));
+#ifdef OEM_NVIDIA
+            }
+#endif
         }
         else
         {
@@ -261,6 +275,13 @@ bool Terminus::parsePDRs()
     {
         addNumericSensor(pdr);
     }
+
+#ifdef OEM_NVIDIA
+    for (auto pdr : oemEnergyCountNumericSensorPdrs)
+    {
+        addOEMEnergyCountNumericSensor(pdr);
+    }
+#endif
 
     for (auto pdr : numericEffecterPdrs)
     {
@@ -1101,6 +1122,43 @@ void Terminus::addNumericSensor(
                    "SENSORNAME", sensorName, "ERROR", e);
     }
 }
+
+#ifdef OEM_NVIDIA
+void Terminus::addOEMEnergyCountNumericSensor(
+    const std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr)
+{
+    std::string sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) +
+                             "_" + std::to_string(tid);
+
+    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
+    if (sensorAuxiliaryNames)
+    {
+        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
+        if (sensorCnt == 1 && sensorNames.size() > 0)
+        {
+            for (const auto& [languageTag, name] : sensorNames[0])
+            {
+                if (languageTag == "en")
+                {
+                    sensorName = name;
+                }
+            }
+        }
+    }
+
+    try
+    {
+        auto sensor = std::make_shared<NumericSensor>(
+            tid, true, pdr, sensorName, systemInventoryPath, POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM);
+        numericSensors.emplace_back(sensor);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to create OEMEnergyCountNumericSensor:{SENSORNAME}, {ERROR}.",
+                   "SENSORNAME", sensorName, "ERROR", e);
+    }
+}
+#endif
 
 void Terminus::addNumericEffecter(
     const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr)

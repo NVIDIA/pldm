@@ -391,20 +391,50 @@ requester::Coroutine
 {
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
-    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-    auto rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
-    if (rc)
-    {
-        lg2::error("encode_get_sensor_reading_req failed, tid={TID}, rc={RC}.",
-                   "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
+    auto pollingIndicator = sensor->getPollingIndicator();
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
-    rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
-                                                  &responseLen);
+    int rc;
+    
+    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO) 
+    {
+        Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
+        auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+
+        rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
+        if (rc)
+        {
+            lg2::error("encode_get_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                    "TID", tid, "RC", rc);
+            co_return rc;
+        }
+        rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
+                                                &responseLen);
+    }
+#ifdef OEM_NVIDIA
+    else if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM)
+    {
+        Request request(sizeof(pldm_msg_hdr) + PLDM_GET_OEM_ENERGYCOUNT_SENSOR_READING_REQ_BYTES);
+        auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+
+        rc = encode_get_oem_enegy_count_sensor_reading_req(0, sensorId, requestMsg);
+        if (rc)
+        {
+            lg2::error("encode_get_oem_enegycount_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                    "TID", tid, "RC", rc);
+            co_return rc;
+        }
+        rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
+                                                &responseLen);
+    }
+#endif
+    else
+    {
+        lg2::error("Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
+                    "INDICATOR", pollingIndicator);
+        co_return PLDM_ERROR;
+    }
+
     if (rc)
     {
         lg2::error(
@@ -426,18 +456,47 @@ requester::Coroutine
     uint8_t previousState = 0;
     uint8_t eventState = 0;
     union_sensor_data_size presentReading;
-    rc = decode_get_sensor_reading_resp(
-        responseMsg, responseLen, &completionCode, &sensorDataSize,
-        &sensorOperationalState, &sensorEventMessageEnable, &presentState,
-        &previousState, &eventState,
-        reinterpret_cast<uint8_t*>(&presentReading));
-    if (rc)
+
+    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
-        lg2::error(
-            "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}.",
-            "TID", tid, "RC", rc);
-        sensor->handleErrGetSensorReading();
-        co_return rc;
+        rc = decode_get_sensor_reading_resp(
+            responseMsg, responseLen, &completionCode, &sensorDataSize,
+            &sensorOperationalState, &sensorEventMessageEnable, &presentState,
+            &previousState, &eventState,
+            reinterpret_cast<uint8_t*>(&presentReading));
+            
+        if (rc)
+        {
+            lg2::error(
+                "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}.",
+                "TID", tid, "RC", rc);
+            sensor->handleErrGetSensorReading();
+            co_return rc;
+        }
+    }
+#ifdef OEM_NVIDIA
+    else if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM)
+    {
+        sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT64;
+        rc = decode_get_oem_energy_count_sensor_reading_resp(
+            responseMsg, responseLen, &completionCode, &sensorDataSize,
+            &sensorOperationalState, reinterpret_cast<uint8_t*>(&presentReading));
+        
+        if (rc)
+        {
+            lg2::error(
+                "Failed to decode response of GetOemEnergyCountSensorReading, tid={TID}, rc={RC}.",
+                "TID", tid, "RC", rc);
+            sensor->handleErrGetSensorReading();
+            co_return rc;
+        }
+    }
+#endif
+    else
+    {
+        lg2::error("Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
+                    "INDICATOR", pollingIndicator);
+        co_return PLDM_ERROR;
     }
 
     if (completionCode != PLDM_SUCCESS)
@@ -482,11 +541,17 @@ requester::Coroutine
         case PLDM_SENSOR_DATA_SIZE_SINT32:
             value = static_cast<double>(presentReading.value_s32);
             break;
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
+            value = static_cast<double>(presentReading.value_u64);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
+            value = static_cast<double>(presentReading.value_s64);
+            break;
         default:
             value = std::numeric_limits<double>::quiet_NaN();
             break;
     }
-
+    
     sensor->updateReading(true, true, value, &sensorMetric);
     co_return completionCode;
 }

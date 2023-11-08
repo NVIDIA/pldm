@@ -44,7 +44,11 @@ endif
 
 if get_option('oem-nvidia').enabled()
   headers += [
-    '../oem/nvidia/libpldm/state_set_oem_nvidia.h'
+    '../oem/nvidia/libpldm/state_set_oem_nvidia.h',
+    '../oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h'
+  ]
+  sources += [
+    '../oem/nvidia/libpldm/energy_count_numeric_sensor_oem.c'
   ]
   libpldm_headers += ['../oem/nvidia']
 endif

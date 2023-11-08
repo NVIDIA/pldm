@@ -2,6 +2,7 @@
 
 #include "common/types.hpp"
 #include "platform-mc/oem_base.hpp"
+#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
@@ -26,6 +27,7 @@ enum class NvidiaOemPdrType : uint8_t
 {
     NVIDIA_OEM_PDR_TYPE_EFFECTER_POWERCAP = 1,
     NVIDIA_OEM_PDR_TYPE_EFFECTER_STORAGE = 2,
+    NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT = 3
 };
 
 struct nvidia_oem_pdr
@@ -86,6 +88,10 @@ class OemStorageIntf : public OemIntf, public SecureStateIntf
 };
 
 void nvidiaInitTerminus(Terminus& terminus);
+
+std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
+        parseOEMEnergyCountNumericSensorPDR(
+                        const std::vector<uint8_t>& pdrData);
 
 } // namespace nvidia
 } // namespace platform_mc

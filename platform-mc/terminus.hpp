@@ -3,6 +3,10 @@
 #include "libpldm/entity.h"
 #include "libpldm/platform.h"
 
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#endif
+
 #include "common/types.hpp"
 #include "entity.hpp"
 #include "numeric_effecter.hpp"
@@ -120,6 +124,12 @@ class Terminus
     std::vector<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
         numericSensorPdrs{};
 
+#ifdef OEM_NVIDIA
+    /** @brief A list of parsed OEM energyCount numeric sensor PDRs */
+    std::vector<std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>>
+        oemEnergyCountNumericSensorPdrs{};
+#endif
+
     /** @brief A list of parsed numeric effecter PDRs */
     std::vector<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
         numericEffecterPdrs{};
@@ -159,6 +169,11 @@ class Terminus
 
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
+
+#ifdef OEM_NVIDIA
+    void addOEMEnergyCountNumericSensor(
+        const std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr);
+#endif
 
     void addStateSensor(SensorID sId, StateSetInfo sensorInfo);
 

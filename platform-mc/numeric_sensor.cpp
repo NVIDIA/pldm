@@ -27,6 +27,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
     bool hasValueIntf = true;
+    pollingIndicator = POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -265,6 +266,156 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     inventoryDecoratorAreaIntf->physicalContext(
         PhysicalContextType::SystemBoard);
 }
+
+#ifdef OEM_NVIDIA
+NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
+                             std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
+                             std::string& sensorName,
+                             std::string& associationPath,
+                             uint8_t oemIndicator) :
+    tid(tid),
+    sensorId(pdr->sensor_id),
+    entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
+               EntityInstance(pdr->entity_instance_num)),
+    sensorName(sensorName), inSensorMetrics(false), isPriority(false),
+    baseUnit(pdr->base_unit),
+    pollingIndicator(oemIndicator)
+{
+    SensorUnit sensorUnit = SensorUnit::DegreesC;
+    bool hasValueIntf = true;
+    switch (baseUnit)
+    {
+        case PLDM_SENSOR_UNIT_DEGRESS_C:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/temperature/";
+            sensorUnit = SensorUnit::DegreesC;
+            break;
+        case PLDM_SENSOR_UNIT_VOLTS:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/voltage/";
+            sensorUnit = SensorUnit::Volts;
+            break;
+        case PLDM_SENSOR_UNIT_AMPS:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/current/";
+            sensorUnit = SensorUnit::Amperes;
+            break;
+        case PLDM_SENSOR_UNIT_RPM:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/fan_pwm/";
+            sensorUnit = SensorUnit::RPMS;
+            break;
+        case PLDM_SENSOR_UNIT_WATTS:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/power/";
+            sensorUnit = SensorUnit::Watts;
+            break;
+        case PLDM_SENSOR_UNIT_JOULES:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/energy/";
+            sensorUnit = SensorUnit::Joules;
+            break;
+        case PLDM_SENSOR_UNIT_HERTZ:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/frequency/";
+            sensorUnit = SensorUnit::Hertz;
+            break;
+        case PLDM_SENSOR_UNIT_PERCENTAGE:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/utilization/";
+            sensorUnit = SensorUnit::Percent;
+            break;
+        case PLDM_SENSOR_UNIT_COUNTS:
+            sensorNameSpace = "/xyz/openbmc_project/sensors/counter/";
+            sensorUnit = SensorUnit::Counts;
+            break;
+        default:
+            hasValueIntf = false;
+            sensorNameSpace = "/xyz/openbmc_project/sensors/none/";
+            lg2::error(
+                "SensorID={SENSORID}, baseUnit({BASEUNIT}) is not supported by value PDI.",
+                "SENSORID", sensorId, "BASEUNIT", pdr->base_unit);
+            break;
+    }
+
+    path = sensorNameSpace + sensorName;
+    path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
+
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    associationDefinitionsIntf =
+        std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
+    associationDefinitionsIntf->associations(
+        {{"chassis", "all_sensors", associationPath.c_str()}});
+
+    double maxValue = std::numeric_limits<double>::quiet_NaN();
+    double minValue = std::numeric_limits<double>::quiet_NaN();
+
+    switch (pdr->sensor_data_size)
+    {
+        case PLDM_SENSOR_DATA_SIZE_UINT8:
+            maxValue = pdr->max_readable.value_u8;
+            minValue = pdr->min_readable.value_u8;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT8:
+            maxValue = pdr->max_readable.value_s8;
+            minValue = pdr->min_readable.value_s8;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT16:
+            maxValue = pdr->max_readable.value_u16;
+            minValue = pdr->min_readable.value_u16;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT16:
+            maxValue = pdr->max_readable.value_s16;
+            minValue = pdr->min_readable.value_s16;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT32:
+            maxValue = pdr->max_readable.value_u32;
+            minValue = pdr->min_readable.value_u32;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT32:
+            maxValue = pdr->max_readable.value_s32;
+            minValue = pdr->min_readable.value_s32;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
+            maxValue = pdr->max_readable.value_u64;
+            minValue = pdr->min_readable.value_u64;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
+            maxValue = pdr->max_readable.value_s64;
+            minValue = pdr->min_readable.value_s64;
+            break;
+        default:
+            lg2::error(
+                "SensorID={SENSORID}, sensor_data_size({SENSORDATASIZE}) is not a valid value.",
+                "SENSORID", sensorId, "SENSORDATASIZE", pdr->sensor_data_size);
+            break;
+    }
+
+    // resloution and offset not provided in pdr
+    resolution = 1;
+    offset = 0;
+    baseUnitModifier = pdr->unit_modifier;
+
+    elapsedTime = 0;
+    updateTime = std::numeric_limits<uint64_t>::max();
+    if (!std::isnan(pdr->update_interval))
+    {
+        updateTime = pdr->update_interval * 1000000;
+    }
+
+    if (hasValueIntf)
+    {
+        valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
+        valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
+        valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+        valueIntf->unit(sensorUnit);
+    }
+
+    availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
+    availabilityIntf->available(true);
+
+    operationalStatusIntf =
+        std::make_unique<OperationalStatusIntf>(bus, path.c_str());
+    operationalStatusIntf->functional(!sensorDisabled);
+
+    inventoryDecoratorAreaIntf =
+        std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
+    inventoryDecoratorAreaIntf->physicalContext(
+        PhysicalContextType::SystemBoard);
+}
+#endif
 
 double NumericSensor::conversionFormula(double value)
 {
