@@ -331,6 +331,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         do
         {
+            if (toBeUpdated == 0)
+            {
+                break;
+            }
+
             if (manager && terminus->pollEvent)
             {
                 co_return PLDM_ERROR;
@@ -363,7 +368,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                 }
             }
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-        } while (((t1 - t0) < pollingTimeInUsec) && (toBeUpdated > 0));
+        } while ((t1 - t0) < pollingTimeInUsec);
 
         aggregationIntf->sensorMetrics(sensorMetric);
 
