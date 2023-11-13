@@ -153,7 +153,7 @@ class GetStatus : public CommandInterface
             responsePtr, payloadLength, &completionCode, &currentState,
             &previousState, &auxState, &auxStateStatus, &progressPercent,
             &reasonCode, &updateOptionFlagsEnabled);
-        if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
+        if (rc != PLDM_SUCCESS)
         {
             std::cerr << "Response Message Error: "
                       << "rc=" << rc << ",cc=" << (int)completionCode << "\n";
@@ -161,29 +161,36 @@ class GetStatus : public CommandInterface
         }
 
         ordered_json data;
-        data["CurrentState"] = fdStateMachine.at(currentState);
-        data["PreviousState"] = fdStateMachine.at(previousState);
-        data["AuxState"] = fdAuxState.at(auxState);
-        if (auxStateStatus >= PLDM_FD_VENDOR_DEFINED_STATUS_CODE_START &&
-            auxStateStatus <= PLDM_FD_VENDOR_DEFINED_STATUS_CODE_END)
+
+        fillCompletionCode(completionCode, data);
+
+        if (completionCode == PLDM_SUCCESS)
         {
-            data["AuxStateStatus"] = auxStateStatus;
+
+            data["CurrentState"] = fdStateMachine.at(currentState);
+            data["PreviousState"] = fdStateMachine.at(previousState);
+            data["AuxState"] = fdAuxState.at(auxState);
+            if (auxStateStatus >= PLDM_FD_VENDOR_DEFINED_STATUS_CODE_START &&
+                auxStateStatus <= PLDM_FD_VENDOR_DEFINED_STATUS_CODE_END)
+            {
+                data["AuxStateStatus"] = auxStateStatus;
+            }
+            else
+            {
+                data["AuxStateStatus"] = fdAuxStateStatus.at(auxStateStatus);
+            }
+            data["ProgressPercent"] = progressPercent;
+            if (reasonCode >= PLDM_FD_STATUS_VENDOR_DEFINED_MIN &&
+                reasonCode <= PLDM_FD_STATUS_VENDOR_DEFINED_MAX)
+            {
+                data["ReasonCode"] = reasonCode;
+            }
+            else
+            {
+                data["ReasonCode"] = fdReasonCode.at(reasonCode);
+            }
+            data["UpdateOptionFlagsEnabled"] = updateOptionFlagsEnabled.value;
         }
-        else
-        {
-            data["AuxStateStatus"] = fdAuxStateStatus.at(auxStateStatus);
-        }
-        data["ProgressPercent"] = progressPercent;
-        if (reasonCode >= PLDM_FD_STATUS_VENDOR_DEFINED_MIN &&
-            reasonCode <= PLDM_FD_STATUS_VENDOR_DEFINED_MAX)
-        {
-            data["ReasonCode"] = reasonCode;
-        }
-        else
-        {
-            data["ReasonCode"] = fdReasonCode.at(reasonCode);
-        }
-        data["UpdateOptionFlagsEnabled"] = updateOptionFlagsEnabled.value;
 
         pldmtool::helper::DisplayInJson(data);
     }
@@ -238,7 +245,7 @@ class GetFwParams : public CommandInterface
         auto rc = decode_get_firmware_parameters_resp(
             responsePtr, payloadLength, &fwParams, &activeCompImageSetVersion,
             &pendingCompImageSetVersion, &compParameterTable);
-        if (rc != PLDM_SUCCESS || fwParams.completion_code != PLDM_SUCCESS)
+        if (rc != PLDM_SUCCESS)
         {
             std::cerr << "Response Message Error: "
                       << "rc=" << rc << ",cc=" << (int)fwParams.completion_code
@@ -246,207 +253,225 @@ class GetFwParams : public CommandInterface
             return;
         }
 
-        ordered_json capabilitiesDuringUpdate;
-        if (fwParams.capabilities_during_update.bits.bit0)
-        {
-            capabilitiesDuringUpdate
-                ["Component Update Failure Recovery Capability"] =
-                    "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer.";
-        }
-        else
-        {
-            capabilitiesDuringUpdate
-                ["Component Update Failure Recovery Capability"] =
-                    "Device will revert to previous component image upon failure, timeout or cancellation of the transfer.";
-        }
-
-        if (fwParams.capabilities_during_update.bits.bit1)
-        {
-            capabilitiesDuringUpdate["Component Update Failure Retry Capability"] =
-                "Device will not be able to update component again unless it exits update mode and the UA sends a new Request Update command.";
-        }
-        else
-        {
-            capabilitiesDuringUpdate["Component Update Failure Retry Capability"] =
-                " Device can have component updated again without exiting update mode and restarting transfer via RequestUpdate command.";
-        }
-
-        if (fwParams.capabilities_during_update.bits.bit2)
-        {
-            capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                "Firmware Device can support a partial update, whereby a package which contains a component image set that is a subset of all components currently residing on the FD, can be transferred.";
-        }
-        else
-        {
-            capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                "Firmware Device cannot accept a partial update and all components present on the FD shall be updated.";
-        }
-
-        if (fwParams.capabilities_during_update.bits.bit3)
-        {
-            capabilitiesDuringUpdate
-                ["Firmware Device Host Functionality during Firmware Update"] =
-                    "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer";
-        }
-        else
-        {
-            capabilitiesDuringUpdate
-                ["Firmware Device Host Functionality during Firmware Update"] =
-                    "Device will revert to previous component image upon failure, timeout or cancellation of the transfer";
-        }
-
-        if (fwParams.capabilities_during_update.bits.bit4)
-        {
-            capabilitiesDuringUpdate["Firmware Device Update Mode Restrictions"] =
-                "Firmware device unable to enter update mode if host OS environment is active.";
-        }
-        else
-        {
-            capabilitiesDuringUpdate
-                ["Firmware Device Update Mode Restrictions"] =
-                    "No host OS environment restriction for update mode";
-        }
-
         ordered_json data;
-        data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
-        data["ComponentCount"] = static_cast<uint16_t>(fwParams.comp_count);
-        data["ActiveComponentImageSetVersionString"] =
-            pldm::utils::toString(activeCompImageSetVersion);
-        data["PendingComponentImageSetVersionString"] =
-            pldm::utils::toString(pendingCompImageSetVersion);
 
-        auto compParamPtr = compParameterTable.ptr;
-        auto compParamTableLen = compParameterTable.length;
-        pldm_component_parameter_entry compEntry{};
-        variable_field activeCompVerStr{};
-        variable_field pendingCompVerStr{};
-        ordered_json compDataEntries;
+        fillCompletionCode(fwParams.completion_code, data);
 
-        while (fwParams.comp_count-- && (compParamTableLen > 0))
+        if (fwParams.completion_code == PLDM_SUCCESS)
         {
-            ordered_json compData;
-            auto rc = decode_get_firmware_parameters_resp_comp_entry(
-                compParamPtr, compParamTableLen, &compEntry, &activeCompVerStr,
-                &pendingCompVerStr);
-            if (rc)
-            {
-                std::cerr
-                    << "Decoding component parameter table entry failed, RC="
-                    << rc << "\n";
-                return;
-            }
 
-            if (componentClassification.contains(compEntry.comp_classification))
+            ordered_json capabilitiesDuringUpdate;
+            if (fwParams.capabilities_during_update.bits.bit0)
             {
-                compData["ComponentClassification"] =
-                    componentClassification.at(compEntry.comp_classification);
+                capabilitiesDuringUpdate
+                    ["Component Update Failure Recovery Capability"] =
+                        "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer.";
             }
             else
             {
-                compData["ComponentClassification"] =
-                    static_cast<uint16_t>(compEntry.comp_classification);
+                capabilitiesDuringUpdate
+                    ["Component Update Failure Recovery Capability"] =
+                        "Device will revert to previous component image upon failure, timeout or cancellation of the transfer.";
             }
-            compData["ComponentIdentifier"] =
-                static_cast<uint16_t>(compEntry.comp_identifier);
-            compData["ComponentClassificationIndex"] =
-                static_cast<uint8_t>(compEntry.comp_classification_index);
-            compData["ActiveComponentComparisonStamp"] =
-                static_cast<uint32_t>(compEntry.active_comp_comparison_stamp);
 
-            // ActiveComponentReleaseData
-            std::array<uint8_t, 8> noReleaseData{0x00, 0x00, 0x00, 0x00,
-                                                 0x00, 0x00, 0x00, 0x00};
-            if (std::equal(noReleaseData.begin(), noReleaseData.end(),
-                           compEntry.active_comp_release_date))
+            if (fwParams.capabilities_during_update.bits.bit1)
             {
-                compData["ActiveComponentReleaseDate"] = "";
+                capabilitiesDuringUpdate
+                    ["Component Update Failure Retry Capability"] =
+                        "Device will not be able to update component again unless it exits update mode and the UA sends a new Request Update command.";
             }
             else
             {
-                std::string activeComponentReleaseDate(
-                    reinterpret_cast<const char*>(
-                        compEntry.active_comp_release_date),
-                    sizeof(compEntry.active_comp_release_date));
-                compData["ActiveComponentReleaseDate"] =
-                    activeComponentReleaseDate;
+                capabilitiesDuringUpdate
+                    ["Component Update Failure Retry Capability"] =
+                        " Device can have component updated again without exiting update mode and restarting transfer via RequestUpdate command.";
             }
 
-            compData["PendingComponentComparisonStamp"] =
-                static_cast<uint32_t>(compEntry.pending_comp_comparison_stamp);
-
-            // PendingComponentReleaseData
-            if (std::equal(noReleaseData.begin(), noReleaseData.end(),
-                           compEntry.pending_comp_release_date))
+            if (fwParams.capabilities_during_update.bits.bit2)
             {
-                compData["PendingComponentReleaseDate"] = "";
+                capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
+                    "Firmware Device can support a partial update, whereby a package which contains a component image set that is a subset of all components currently residing on the FD, can be transferred.";
             }
             else
             {
-                std::string pendingComponentReleaseDate(
-                    reinterpret_cast<const char*>(
-                        compEntry.pending_comp_release_date),
-                    sizeof(compEntry.pending_comp_release_date));
-                compData["PendingComponentReleaseDate"] =
-                    pendingComponentReleaseDate;
+                capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
+                    "Firmware Device cannot accept a partial update and all components present on the FD shall be updated.";
             }
 
-            // ComponentActivationMethods
-            ordered_json componentActivationMethods;
-            if (compEntry.comp_activation_methods.bits.bit0)
+            if (fwParams.capabilities_during_update.bits.bit3)
             {
-                componentActivationMethods.push_back("Automatic");
-            }
-            if (compEntry.comp_activation_methods.bits.bit1)
-            {
-                componentActivationMethods.push_back("Self-Contained");
-            }
-            if (compEntry.comp_activation_methods.bits.bit2)
-            {
-                componentActivationMethods.push_back("Medium-specific reset");
-            }
-            if (compEntry.comp_activation_methods.bits.bit3)
-            {
-                componentActivationMethods.push_back("System reboot");
-            }
-            if (compEntry.comp_activation_methods.bits.bit4)
-            {
-                componentActivationMethods.push_back("DC power cycle");
-            }
-            if (compEntry.comp_activation_methods.bits.bit5)
-            {
-                componentActivationMethods.push_back("AC power cycle");
-            }
-            compData["ComponentActivationMethods"] = componentActivationMethods;
-
-            // CapabilitiesDuringUpdate
-            ordered_json compCapabilitiesDuringUpdate;
-            if (compEntry.capabilities_during_update.bits.bit0)
-            {
-                compCapabilitiesDuringUpdate
-                    ["Firmware Device apply state functionality"] =
-                        "Firmware Device performs an auto-apply during transfer phase and apply step will be completed immediately.";
+                capabilitiesDuringUpdate
+                    ["Firmware Device Host Functionality during Firmware Update"] =
+                        "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer";
             }
             else
             {
-                compCapabilitiesDuringUpdate
-                    ["Firmware Device apply state functionality"] =
-                        " Firmware Device will execute an operation during the APPLY state which will include migrating the new component image to its final non-volatile storage destination.";
+                capabilitiesDuringUpdate
+                    ["Firmware Device Host Functionality during Firmware Update"] =
+                        "Device will revert to previous component image upon failure, timeout or cancellation of the transfer";
             }
-            compData["CapabilitiesDuringUpdate"] = compCapabilitiesDuringUpdate;
 
-            compData["ActiveComponentVersionString"] =
-                pldm::utils::toString(activeCompVerStr);
-            compData["PendingComponentVersionString"] =
-                pldm::utils::toString(pendingCompVerStr);
+            if (fwParams.capabilities_during_update.bits.bit4)
+            {
+                capabilitiesDuringUpdate
+                    ["Firmware Device Update Mode Restrictions"] =
+                        "Firmware device unable to enter update mode if host OS environment is active.";
+            }
+            else
+            {
+                capabilitiesDuringUpdate
+                    ["Firmware Device Update Mode Restrictions"] =
+                        "No host OS environment restriction for update mode";
+            }
 
-            compParamPtr += sizeof(pldm_component_parameter_entry) +
-                            activeCompVerStr.length + pendingCompVerStr.length;
-            compParamTableLen -= sizeof(pldm_component_parameter_entry) +
-                                 activeCompVerStr.length +
-                                 pendingCompVerStr.length;
-            compDataEntries.push_back(compData);
+            data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
+            data["ComponentCount"] = static_cast<uint16_t>(fwParams.comp_count);
+            data["ActiveComponentImageSetVersionString"] =
+                pldm::utils::toString(activeCompImageSetVersion);
+            data["PendingComponentImageSetVersionString"] =
+                pldm::utils::toString(pendingCompImageSetVersion);
+
+            auto compParamPtr = compParameterTable.ptr;
+            auto compParamTableLen = compParameterTable.length;
+            pldm_component_parameter_entry compEntry{};
+            variable_field activeCompVerStr{};
+            variable_field pendingCompVerStr{};
+            ordered_json compDataEntries;
+
+            while (fwParams.comp_count-- && (compParamTableLen > 0))
+            {
+                ordered_json compData;
+                auto rc = decode_get_firmware_parameters_resp_comp_entry(
+                    compParamPtr, compParamTableLen, &compEntry,
+                    &activeCompVerStr, &pendingCompVerStr);
+                if (rc)
+                {
+                    std::cerr
+                        << "Decoding component parameter table entry failed, RC="
+                        << rc << "\n";
+                    return;
+                }
+
+                if (componentClassification.contains(
+                        compEntry.comp_classification))
+                {
+                    compData["ComponentClassification"] =
+                        componentClassification.at(
+                            compEntry.comp_classification);
+                }
+                else
+                {
+                    compData["ComponentClassification"] =
+                        static_cast<uint16_t>(compEntry.comp_classification);
+                }
+                compData["ComponentIdentifier"] =
+                    static_cast<uint16_t>(compEntry.comp_identifier);
+                compData["ComponentClassificationIndex"] =
+                    static_cast<uint8_t>(compEntry.comp_classification_index);
+                compData["ActiveComponentComparisonStamp"] =
+                    static_cast<uint32_t>(
+                        compEntry.active_comp_comparison_stamp);
+
+                // ActiveComponentReleaseData
+                std::array<uint8_t, 8> noReleaseData{0x00, 0x00, 0x00, 0x00,
+                                                     0x00, 0x00, 0x00, 0x00};
+                if (std::equal(noReleaseData.begin(), noReleaseData.end(),
+                               compEntry.active_comp_release_date))
+                {
+                    compData["ActiveComponentReleaseDate"] = "";
+                }
+                else
+                {
+                    std::string activeComponentReleaseDate(
+                        reinterpret_cast<const char*>(
+                            compEntry.active_comp_release_date),
+                        sizeof(compEntry.active_comp_release_date));
+                    compData["ActiveComponentReleaseDate"] =
+                        activeComponentReleaseDate;
+                }
+
+                compData["PendingComponentComparisonStamp"] =
+                    static_cast<uint32_t>(
+                        compEntry.pending_comp_comparison_stamp);
+
+                // PendingComponentReleaseData
+                if (std::equal(noReleaseData.begin(), noReleaseData.end(),
+                               compEntry.pending_comp_release_date))
+                {
+                    compData["PendingComponentReleaseDate"] = "";
+                }
+                else
+                {
+                    std::string pendingComponentReleaseDate(
+                        reinterpret_cast<const char*>(
+                            compEntry.pending_comp_release_date),
+                        sizeof(compEntry.pending_comp_release_date));
+                    compData["PendingComponentReleaseDate"] =
+                        pendingComponentReleaseDate;
+                }
+
+                // ComponentActivationMethods
+                ordered_json componentActivationMethods;
+                if (compEntry.comp_activation_methods.bits.bit0)
+                {
+                    componentActivationMethods.push_back("Automatic");
+                }
+                if (compEntry.comp_activation_methods.bits.bit1)
+                {
+                    componentActivationMethods.push_back("Self-Contained");
+                }
+                if (compEntry.comp_activation_methods.bits.bit2)
+                {
+                    componentActivationMethods.push_back(
+                        "Medium-specific reset");
+                }
+                if (compEntry.comp_activation_methods.bits.bit3)
+                {
+                    componentActivationMethods.push_back("System reboot");
+                }
+                if (compEntry.comp_activation_methods.bits.bit4)
+                {
+                    componentActivationMethods.push_back("DC power cycle");
+                }
+                if (compEntry.comp_activation_methods.bits.bit5)
+                {
+                    componentActivationMethods.push_back("AC power cycle");
+                }
+                compData["ComponentActivationMethods"] =
+                    componentActivationMethods;
+
+                // CapabilitiesDuringUpdate
+                ordered_json compCapabilitiesDuringUpdate;
+                if (compEntry.capabilities_during_update.bits.bit0)
+                {
+                    compCapabilitiesDuringUpdate
+                        ["Firmware Device apply state functionality"] =
+                            "Firmware Device performs an auto-apply during transfer phase and apply step will be completed immediately.";
+                }
+                else
+                {
+                    compCapabilitiesDuringUpdate
+                        ["Firmware Device apply state functionality"] =
+                            " Firmware Device will execute an operation during the APPLY state which will include migrating the new component image to its final non-volatile storage destination.";
+                }
+                compData["CapabilitiesDuringUpdate"] =
+                    compCapabilitiesDuringUpdate;
+
+                compData["ActiveComponentVersionString"] =
+                    pldm::utils::toString(activeCompVerStr);
+                compData["PendingComponentVersionString"] =
+                    pldm::utils::toString(pendingCompVerStr);
+
+                compParamPtr += sizeof(pldm_component_parameter_entry) +
+                                activeCompVerStr.length +
+                                pendingCompVerStr.length;
+                compParamTableLen -= sizeof(pldm_component_parameter_entry) +
+                                     activeCompVerStr.length +
+                                     pendingCompVerStr.length;
+                compDataEntries.push_back(compData);
+            }
+            data["ComponentParameterEntries"] = compDataEntries;
         }
-        data["ComponentParameterEntries"] = compDataEntries;
 
         pldmtool::helper::DisplayInJson(data);
     }
@@ -586,72 +611,76 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
                   << unsigned(eid) << ", RC=" << rc << "\n";
         return;
     }
-    if (completionCode)
-    {
-        std::cerr << "QueryDeviceIdentifiers response failed with error "
-                     "completion code, EID="
-                  << unsigned(eid) << ", CC=" << unsigned(completionCode)
-                  << "\n";
-        return;
-    }
+
     ordered_json data;
+
+    fillCompletionCode(completionCode, data);
+
     data["EID"] = eid;
-    ordered_json descriptors;
-    while (descriptorCount-- && (deviceIdentifiersLen > 0))
+
+    if (completionCode == PLDM_SUCCESS)
     {
-        DescriptorType descriptorType = 0;
-        variable_field descriptorData{};
-
-        rc = decode_descriptor_type_length_value(
-            descriptorPtr, deviceIdentifiersLen, &descriptorType,
-            &descriptorData);
-        if (rc)
+        ordered_json descriptors;
+        while (descriptorCount-- && (deviceIdentifiersLen > 0))
         {
-            std::cerr << "Decoding descriptor type, length and value failed,"
-                      << "EID=" << unsigned(eid) << ",RC=" << rc << "\n ";
-            return;
-        }
+            DescriptorType descriptorType = 0;
+            variable_field descriptorData{};
 
-        if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
-        {
-            std::vector<uint8_t> descData(
-                descriptorData.ptr, descriptorData.ptr + descriptorData.length);
-            updateDescriptor(descriptors, descriptorType, descData);
-        }
-        else
-        {
-            uint8_t descriptorTitleStrType = 0;
-            variable_field descriptorTitleStr{};
-            variable_field vendorDefinedDescriptorData{};
-
-            rc = decode_vendor_defined_descriptor_value(
-                descriptorData.ptr, descriptorData.length,
-                &descriptorTitleStrType, &descriptorTitleStr,
-                &vendorDefinedDescriptorData);
+            rc = decode_descriptor_type_length_value(
+                descriptorPtr, deviceIdentifiersLen, &descriptorType,
+                &descriptorData);
             if (rc)
             {
-                std::cerr << "Decoding Vendor-defined descriptor value"
-                          << "failed EID=" << unsigned(eid) << ", RC=" << rc
-                          << "\n ";
+                std::cerr
+                    << "Decoding descriptor type, length and value failed,"
+                    << "EID=" << unsigned(eid) << ",RC=" << rc << "\n ";
                 return;
             }
 
-            auto vendorDescTitle = pldm::utils::toString(descriptorTitleStr);
-            std::vector<uint8_t> vendorDescData(
-                vendorDefinedDescriptorData.ptr,
-                vendorDefinedDescriptorData.ptr +
-                    vendorDefinedDescriptorData.length);
-            updateDescriptor(descriptors, descriptorType,
-                             std::make_tuple(vendorDescTitle, vendorDescData));
+            if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
+            {
+                std::vector<uint8_t> descData(descriptorData.ptr,
+                                              descriptorData.ptr +
+                                                  descriptorData.length);
+                updateDescriptor(descriptors, descriptorType, descData);
+            }
+            else
+            {
+                uint8_t descriptorTitleStrType = 0;
+                variable_field descriptorTitleStr{};
+                variable_field vendorDefinedDescriptorData{};
+
+                rc = decode_vendor_defined_descriptor_value(
+                    descriptorData.ptr, descriptorData.length,
+                    &descriptorTitleStrType, &descriptorTitleStr,
+                    &vendorDefinedDescriptorData);
+                if (rc)
+                {
+                    std::cerr << "Decoding Vendor-defined descriptor value"
+                              << "failed EID=" << unsigned(eid) << ", RC=" << rc
+                              << "\n ";
+                    return;
+                }
+
+                auto vendorDescTitle =
+                    pldm::utils::toString(descriptorTitleStr);
+                std::vector<uint8_t> vendorDescData(
+                    vendorDefinedDescriptorData.ptr,
+                    vendorDefinedDescriptorData.ptr +
+                        vendorDefinedDescriptorData.length);
+                updateDescriptor(
+                    descriptors, descriptorType,
+                    std::make_tuple(vendorDescTitle, vendorDescData));
+            }
+            auto nextDescriptorOffset =
+                sizeof(pldm_descriptor_tlv().descriptor_type) +
+                sizeof(pldm_descriptor_tlv().descriptor_length) +
+                descriptorData.length;
+            descriptorPtr += nextDescriptorOffset;
+            deviceIdentifiersLen -= nextDescriptorOffset;
         }
-        auto nextDescriptorOffset =
-            sizeof(pldm_descriptor_tlv().descriptor_type) +
-            sizeof(pldm_descriptor_tlv().descriptor_length) +
-            descriptorData.length;
-        descriptorPtr += nextDescriptorOffset;
-        deviceIdentifiersLen -= nextDescriptorOffset;
+        data["Descriptors"] = descriptors;
     }
-    data["Descriptors"] = descriptors;
     pldmtool::helper::DisplayInJson(data);
 }
 
