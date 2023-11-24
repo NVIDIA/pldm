@@ -327,9 +327,29 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 {
                     continue;
                 }
-                package.seekg(
-                    std::get<5>(componentImageInfo)); // SEEK to image offset
-                std::vector<uint8_t> buffer(std::get<6>(componentImageInfo));
+
+                auto compOffset = std::get<5>(componentImageInfo);
+                auto compSize = std::get<6>(componentImageInfo);
+                package.seekg(0, std::ios::end);
+                uintmax_t packageSize = package.tellg();
+
+                // An enhancement designed to safeguard the package against
+                // damage in the event of a truncated component. An attempt to
+                // read such a component from the package may lead to an effort
+                // to read a set of bytes beyond the package's boundaries,
+                // triggering the state of the package to be set to
+                // std::ios::failbit. This, in turn, could potentially block the
+                // ability to read other components from the package.
+                if (packageSize < static_cast<uintmax_t>(compOffset) +
+                                      static_cast<uintmax_t>(compSize))
+                {
+                    lg2::error(
+                        "Failed to extract non pldm device component image");
+                    return 0;
+                }
+
+                package.seekg(compOffset); // SEEK to image offset
+                std::vector<uint8_t> buffer(compSize);
                 package.read(reinterpret_cast<char*>(buffer.data()),
                              buffer.size());
 
