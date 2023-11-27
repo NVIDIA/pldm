@@ -329,8 +329,8 @@ class ComponentUpdater
      * @return requester::Coroutine
      */
     int processGetStatusResponse(mctp_eid_t eid, const pldm_msg* response,
-                                 size_t respMsgLen, uint8_t currentFDState,
-                                 uint8_t progressPercent);
+                                 size_t respMsgLen, uint8_t& currentFDState,
+                                 uint8_t& progressPercent);
 
     /**
      * @brief run get status coroutine
@@ -418,6 +418,24 @@ class ComponentUpdater
      *
      */
     void createCompleteCommandsTimeoutTimer();
+
+    /** @brief Handler for the Failed Status of the ApplyComplete request.
+     *
+     *  @param[in] applyResult - Apply Result
+     *  @return None
+     */
+    void applyCompleteFailedStatusHandler(uint8_t applyResult);
+
+    /** @brief Handler for the Succeeded Status of the ApplyComplete request.
+     *
+     *  @param[in] compVersion - Component Version
+     *  @param[in] compActivationModification - Component Activation
+     * Modification
+     *  @return None
+     */
+    void applyCompleteSucceededStatusHandler(
+        const std::string& compVersion,
+        bitfield16_t compActivationModification);
 
     /**
      * @brief UA_T6 complete command timout timer

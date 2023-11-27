@@ -31,7 +31,8 @@ enum class DeviceUpdaterSequence
     ActivateFirmware,
     RetryRequest,
     Invalid,
-    Valid
+    Valid,
+    CancelUpdate
 };
 
 /** @class DeviceUpdaterState

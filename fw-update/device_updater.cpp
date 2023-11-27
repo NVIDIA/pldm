@@ -188,7 +188,6 @@ requester::Coroutine DeviceUpdater::processRequestUpdateResponse(
                    "EID", eid, "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
-        ;
     }
     if (completionCode)
     {
@@ -256,6 +255,14 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
     {
         auto search = compInfo.find(compKey);
         compClassificationIndex = std::get<0>(search->second);
+    }
+    else
+    {
+        updateManager->requester.markFree(eid, instanceId);
+        lg2::error(
+            "Error: Unable to find the specified component in ComponentInfo");
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
     }
     // ComponentComparisonStamp
     CompComparisonStamp compComparisonStamp = std::get<static_cast<size_t>(
@@ -512,6 +519,7 @@ requester::Coroutine DeviceUpdater::processActivateFirmwareResponse(
         lg2::error(
             "Decoding ActivateFirmware response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
     if (completionCode)
@@ -528,6 +536,7 @@ requester::Coroutine DeviceUpdater::processActivateFirmwareResponse(
             "ActivateFirmware response failed with error completion code, EID={EID}, CC={CC}",
             "EID", eid, "CC", completionCode);
         updateManager->updateDeviceCompletion(eid, false);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
 
@@ -594,6 +603,7 @@ requester::Coroutine
 
 requester::Coroutine DeviceUpdater::sendCancelUpdateRequest()
 {
+    deviceUpdaterState.set(DeviceUpdaterSequence::CancelUpdate);
     auto instanceId = updateManager->requester.getInstanceId(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());

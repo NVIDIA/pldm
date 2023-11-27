@@ -199,6 +199,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                 "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -326,6 +327,7 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
                 "Encoding TransferComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -454,6 +456,7 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
                 "Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -545,6 +548,57 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
     return response;
 }
 
+void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
+{
+    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
+                                         applyFailed);
+    lg2::error("Component apply failed, EID={EID}, ComponentIndex="
+               "{COMPONENT_INDEX}, APPLY_RESULT={APPLY_RESULT}",
+               "EID", eid, "COMPONENT_INDEX", componentIndex, "APPLY_RESULT",
+               applyResult);
+    componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+    if (completeCommandsTimeoutTimer)
+    {
+        completeCommandsTimeoutTimer->stop();
+        completeCommandsTimeoutTimer.reset();
+    }
+    if (cancelCompUpdateHandle == nullptr)
+    {
+        auto co = sendcancelUpdateComponentRequest();
+        cancelCompUpdateHandle = co.handle;
+    }
+    else if (cancelCompUpdateHandle.done())
+    {
+        cancelCompUpdateHandle.destroy();
+        auto co = sendcancelUpdateComponentRequest();
+        cancelCompUpdateHandle = co.handle;
+    }
+}
+
+void ComponentUpdater::applyCompleteSucceededStatusHandler(
+    const std::string& compVersion, bitfield16_t compActivationModification)
+{
+    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
+                                         updateSuccessful);
+    if (updateManager->fwDebug)
+    {
+        lg2::info("Component apply complete, EID={EID}, "
+                  "COMPONENT_VERSION={COMPONENT_VERSION}",
+                  "EID", eid, "COMPONENT_VERSION", compVersion);
+    }
+    updateManager->createMessageRegistry(
+        eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
+        updateManager->getActivationMethod(compActivationModification));
+    pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+        updateManager->event,
+        std::bind(&ComponentUpdater::updateComponentComplete, this, true));
+    if (completeCommandsTimeoutTimer)
+    {
+        completeCommandsTimeoutTimer->stop();
+        completeCommandsTimeoutTimer.reset();
+    }
+}
+
 Response ComponentUpdater::applyComplete(const pldm_msg* request,
                                          size_t payloadLength)
 {
@@ -576,6 +630,7 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 "Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -612,54 +667,31 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
     if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex, updateSuccessful);
-        if (updateManager->fwDebug)
-        {
-            lg2::info("Component apply complete, EID={EID}, "
-                      "COMPONENT_VERSION={COMPONENT_VERSION}",
-                      "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
-            updateManager->getActivationMethod(compActivationModification));
+        auto validateApplyStatusSuccess = [this, applyResult, compVersion,
+                                         compActivationModification](
+                                            uint8_t currentFDState) {
+            if (currentFDState == PLDM_FD_STATE_READY_XFER)
+            {
+                applyCompleteSucceededStatusHandler(compVersion,
+                                                    compActivationModification);
+            }
+            else
+            {
+                applyCompleteFailedStatusHandler(applyResult);
+            }
+        };
+
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, true));
-        if (completeCommandsTimeoutTimer)
-        {
-            completeCommandsTimeoutTimer->stop();
-            completeCommandsTimeoutTimer.reset();
-        }
+            updateManager->event, [this, validateApplyStatusSuccess](EventBase&) {
+                GetStatus(validateApplyStatusSuccess);
+            });
     }
     else
     {
         // verify the status once by sending GetStatus before failing the update
         auto applyFailedStatusHandler = [this, applyResult]() {
             // ApplyComplete Failed
-            updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                 componentIndex, applyFailed);
-            lg2::error("Component apply failed, EID={EID}, ComponentIndex="
-                       "{COMPONENT_INDEX}, APPLY_RESULT={APPLY_RESULT}",
-                       "EID", eid, "COMPONENT_INDEX", componentIndex,
-                       "APPLY_RESULT", applyResult);
-            componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-            if (completeCommandsTimeoutTimer)
-            {
-                completeCommandsTimeoutTimer->stop();
-                completeCommandsTimeoutTimer.reset();
-            }
-            if (cancelCompUpdateHandle == nullptr)
-            {
-                auto co = sendcancelUpdateComponentRequest();
-                cancelCompUpdateHandle = co.handle;
-            }
-            else if (cancelCompUpdateHandle.done())
-            {
-                cancelCompUpdateHandle.destroy();
-                auto co = sendcancelUpdateComponentRequest();
-                cancelCompUpdateHandle = co.handle;
-            }
+            applyCompleteFailedStatusHandler(applyResult);
         };
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -896,8 +928,8 @@ requester::Coroutine
 int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
                                                const pldm_msg* response,
                                                size_t respMsgLen,
-                                               uint8_t currentFDState,
-                                               uint8_t progressPercent)
+                                               uint8_t& currentFDState,
+                                               uint8_t& progressPercent)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -925,6 +957,7 @@ int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
                    "ComponentIndex={COMPONENTINDEX}, CC={CC}",
                    "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
                    completionCode);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return rc;
     }
     if (completionCode)
@@ -933,6 +966,7 @@ int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
                    "ComponentIndex={COMPONENTINDEX}, CC={CC}",
                    "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
                    completionCode);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return PLDM_ERROR;
     }
     return PLDM_SUCCESS;
