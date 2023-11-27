@@ -904,7 +904,7 @@ int decode_platform_event_message_req(const struct pldm_msg *msg,
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	if (payload_length <= PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES) {
+	if (payload_length < PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES) {
 		return PLDM_ERROR_INVALID_LENGTH;
 	}
 	struct pldm_platform_event_message_req *response =
