@@ -36,12 +36,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
-                     Requester& requester, bool verbose = false) :
+                     Requester& requester, fw_update::Manager& fwUpdateManager,
+                     bool verbose = false) :
+        fwUpdateManager(fwUpdateManager),
         terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
                         this),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, this, verbose),
-        eventManager(terminusManager, termini, verbose), verbose(verbose)
+        eventManager(terminusManager, termini, fwUpdateManager, verbose),
+        verbose(verbose)
     {}
 
     requester::Coroutine beforeDiscoverTerminus()
@@ -79,6 +82,34 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
         eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFA,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
+     * @brief Handles the Active Firmware Version Change Event.
+     *
+     * @param request Pointer to the PLDM message.
+     * @param payloadLength Length of the payload in the PLDM message.
+     * @param formatVersion Format version of the PLDM message (unused in this
+     * function).
+     * @param tid PLDM Terminus ID.
+     * @param eventDataOffset Offset in the message where event data begins.
+     * @param[out] platformEventStatus Status of platform event, to
+     * be set by this function.
+     * @return int Returns 0 on success, or an error code on failure.
+     */
+    int handleActiveFWVersionChangeEvent(const pldm_msg* request,
+                                         size_t payloadLength,
+                                         uint8_t /* formatVersion */,
+                                         uint8_t tid, size_t eventDataOffset,
+                                         uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFB,
                                          eventData, eventDataSize,
                                          platformEventStatus);
         return PLDM_SUCCESS;
@@ -144,6 +175,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>> termini{};
 
+    fw_update::Manager& fwUpdateManager;
     TerminusManager terminusManager;
     PlatformManager platformManager;
     SensorManager sensorManager;

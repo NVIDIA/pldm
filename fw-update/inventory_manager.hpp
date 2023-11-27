@@ -17,6 +17,7 @@ namespace fw_update
 {
 
 using CreateInventoryCallBack = std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
+using UpdateFWVersionCallBack = std::function<void(EID)>;
 using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
 
 using Priority = int;
@@ -156,10 +157,19 @@ class InventoryManager
      *  @param[in] respMsgLen - Response message length
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
+     *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware version after receiving platform event
      */
     requester::Coroutine parseGetFWParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
-        std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces);
+        std::string& messageError, std::string& resolution,
+        dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly = false);
+
+    /** @brief Initiate Get Active Firmware Version
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] updateFWVersionCallback - Callback function for updating firmware version in the D-BUS
+     */
+    void initiateGetActiveFirmwareVersion(mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
   private:
 
@@ -171,6 +181,16 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      */
     requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces);
+
+    /** @brief Starts get Active Firmware Version Flow
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] mctpInterfaces - Reference to the dbus::MctpInterfaces object for MCTP communication.
+     *  @param[in] updateFWVersionCallback - Callback function for updating firmware version in the D-BUS
+     */
+    requester::Coroutine getActiveFirmwareVersion(
+        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
+        UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -193,10 +213,11 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
+     *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware version after receiving platform event
      */
-    requester::Coroutine getFirmwareParameters(mctp_eid_t eid,
-                                               std::string& messageError,
-                                               std::string& resolution, dbus::MctpInterfaces& mctpInterfaces);
+    requester::Coroutine getFirmwareParameters(
+        mctp_eid_t eid, std::string& messageError, std::string& resolution,
+        dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly = false);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;

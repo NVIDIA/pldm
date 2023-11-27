@@ -14,6 +14,8 @@ dep_src_files = [
   '../event_manager.cpp',
   '../../pldmd/dbus_impl_requester.cpp',
   '../../pldmd/instance_id.cpp',
+  '../../fw-update/inventory_manager.cpp',
+  '../../fw-update/firmware_inventory.cpp',
 ]
 
 

@@ -5,6 +5,7 @@
 #include "common/types.hpp"
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
+#include "fw-update/manager.hpp"
 
 #include <gtest/gtest.h>
 
@@ -26,7 +27,7 @@ class EventManagerTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        eventManager(*(static_cast<TerminusManager*>(nullptr)), termini)
+        eventManager(*(static_cast<TerminusManager*>(nullptr)), termini, *(static_cast<pldm::fw_update::Manager*>(nullptr)))
     {}
 
     sdbusplus::bus::bus& bus;

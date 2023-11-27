@@ -13,8 +13,8 @@ class MockEventManager : public EventManager
 {
   public:
     MockEventManager(TerminusManager& terminusManager,
-                     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini) :
-        EventManager(terminusManager, termini){};
+                     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini, pldm::fw_update::Manager& fwUpdateManager) :
+        EventManager(terminusManager, termini, fwUpdateManager){};
 
     MOCK_METHOD(void, createSensorThresholdLogEntry,
                 (const std::string& messageID, const std::string& sensorName,

@@ -250,6 +250,8 @@ enum pldm_event_types {
 	PLDM_MESSAGE_POLL_EVENT = 0x05,
 	PLDM_HEARTBEAT_TIMER_ELAPSED_EVENT = 0x06,
 	PLDM_OEM_EVENT_CLASS_0xFA = 0xFA,
+	// OEM platform event for FW version change
+	PLDM_OEM_EVENT_CLASS_0xFB = 0xFB
 };
 
 /** @brief PLDM cperEventClass formatType

@@ -42,6 +42,11 @@ void Entry::createAssociation(const std::string fwdAssociation,
     associations(assocs);
 }
 
+void Entry::setVersion(const std::string& versionStr)
+{
+    Ifaces::version(versionStr, false);
+}
+
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
                  const ComponentInfoMap& componentInfoMap,
@@ -101,6 +106,24 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInter
     {
         // Skip if UUID is not present or firmware inventory information from
         // firmware update config JSON is empty
+    }
+}
+
+void Manager::updateFWVersion(pldm::EID eid)
+{
+    if (auto compInfoSearch = componentInfoMap.find(eid);
+        compInfoSearch != componentInfoMap.end())
+    {
+
+        for (const auto& [compKey, compInfo] : compInfoSearch->second)
+        {
+            auto key = std::make_pair(eid, compKey.second);
+            if (auto inventoryEntry = firmwareInventoryMap.find(key);
+                inventoryEntry != firmwareInventoryMap.end())
+            {
+                inventoryEntry->second->setVersion(std::get<1>(compInfo));
+            }
+        }
     }
 }
 

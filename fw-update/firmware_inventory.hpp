@@ -69,6 +69,13 @@ class Entry : public Ifaces
     void createAssociation(const std::string fwdAssociation, 
                             const std::string revAssociation,
                             const std::string& objPath);
+
+    
+    /** @brief Update Active Firmware version 
+     *
+     *  @param[in] version - Version string
+     */
+    void setVersion(const std::string& versionStr);
 };
 
 /** @class Manager
@@ -103,6 +110,12 @@ class Manager
      *  @param[in] deviceObjPath - Object path of the device inventory object
      */
     void createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces);
+
+    /** @brief Update firmware version
+     *
+     *  @param[in] eid - MCTP endpointID
+     */
+    void updateFWVersion(pldm::EID eid);
 
     const std::string swBasePath = "/xyz/openbmc_project/software";
 

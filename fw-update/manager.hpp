@@ -123,6 +123,33 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
+    /** @brief Update Active Firmware Version for the given EID
+     * This method is called whenever platform event is received for firmware
+     * version change.
+     *  Data Structure containing active firmware version is updated for all the
+     * components associated with the input EID in the
+     * initiateGetActiveFirmwareVersion method, and then in updateFWVersion
+     * method, for each component, dbus is updated only if there's a change in
+     * firmware version
+     *
+     *  @param[in] eid - MCTP endpoint
+     */
+    void updateFWInventory(EID eid)
+    {
+        try
+        {
+            UpdateFWVersionCallBack updateFWVersionCallback = [this](EID eid) {
+                this->fwInventoryManager.updateFWVersion(eid);
+            };
+            inventoryMgr.initiateGetActiveFirmwareVersion(
+                eid, updateFWVersionCallback);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Error while updating Firmware version.", "ERROR", e);
+        }
+    }
+
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
      *
