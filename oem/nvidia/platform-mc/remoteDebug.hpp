@@ -162,9 +162,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
         return numericEffecter->rawToBase(numericEffecter->getValue());
     }
 
-    void enable(DebugPolicy debugPolicy) override
+    void enable(std::vector<DebugPolicy> debugPolicy) override
     {
-        auto compId = toCompId(debugPolicy);
+        auto compId = toCompId(debugPolicy[0]);
         if (compId == INVALID_COMP_ID)
         {
             throw sdbusplus::xyz::openbmc_project::Common::Error::
@@ -187,9 +187,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
         }
     }
 
-    void disable(DebugPolicy debugPolicy) override
+    void disable(std::vector<DebugPolicy> debugPolicy) override
     {
-        auto compId = toCompId(debugPolicy);
+        auto compId = toCompId(debugPolicy[0]);
         if (compId == INVALID_COMP_ID)
         {
             throw sdbusplus::xyz::openbmc_project::Common::Error::

@@ -66,26 +66,99 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo,
     return tid;
 }
 
+/**
+ * @brief MCTP Medium Type priority table ordering by bandwidth
+ */
+using Priority = int;
+static std::unordered_map<MctpMedium, Priority> mediumPriority = {
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.KCS", 3},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 4},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 5}};
+
+/**
+ * @brief MCTP Binding Type priority table ordering by bandwidth
+ */
+static std::unordered_map<MctpBinding, Priority> bindingPriority = {
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.KCS", 3},
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial", 4},
+    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SMBus", 5}};
+
+static bool isPreferred(const MctpInfo& currentMctpInfo,
+                        const MctpInfo& newMctpInfo)
+{
+    auto currentMedium = std::get<2>(currentMctpInfo);
+    auto newMedium = std::get<2>(newMctpInfo);
+    auto currentBinding = std::get<4>(currentMctpInfo);
+    auto newBinding = std::get<4>(newMctpInfo);
+
+    if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
+    {
+        return bindingPriority.at(currentBinding) >
+               bindingPriority.at(newBinding);
+    }
+    else
+    {
+        return mediumPriority.at(currentMedium) > mediumPriority.at(newMedium);
+    }
+}
+
 std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
 {
+    // skip reserved EID
     if (std::get<0>(mctpInfo) == 0 || std::get<0>(mctpInfo) == 0xff)
     {
+        lg2::error("unable to assign a TID to reserved eid={EID}.", "EID",
+                   std::get<0>(mctpInfo));
         return std::nullopt;
     }
 
+    // check if the mctpInfo has mapped before
     auto mctpInfoTableIterator = std::find_if(
         mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
             return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
-                   (std::get<3>(v.second) == std::get<3>(mctpInfo));
+                   (std::get<1>(v.second) == std::get<1>(mctpInfo)) &&
+                   (std::get<2>(v.second) == std::get<2>(mctpInfo)) &&
+                   (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
+                   (std::get<4>(v.second) == std::get<4>(mctpInfo));
         });
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {
         return mctpInfoTableIterator->first;
     }
 
+    // check if the same UUID has been mapped to TID before
+    mctpInfoTableIterator = std::find_if(
+        mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](const auto& v) {
+            return (std::get<1>(v.second) == std::get<1>(mctpInfo));
+        });
+    if (mctpInfoTableIterator != mctpInfoTable.end())
+    {
+        // check if new medium type is preferred than original
+        auto& currentMctpInfo = mctpInfoTableIterator->second;
+        auto tid = mctpInfoTableIterator->first;
+        if (!isPreferred(currentMctpInfo, mctpInfo))
+        {
+            return std::nullopt;
+        }
+        lg2::info(
+            "Reassign the terminus TID={TID} to preferred medium eid={EID}.",
+            "TID", tid, "EID", std::get<0>(mctpInfo));
+        tidPool[tid] = false;
+        return mapTid(mctpInfo, tid);
+    }
+
     auto tidPoolIterator = std::find(tidPool.begin(), tidPool.end(), false);
     if (tidPoolIterator == tidPool.end())
     {
+        // cannot find a free tid to assign
+        lg2::error("failed to assign a TID to Terminus eid={EID}.", "EID",
+                   std::get<0>(mctpInfo));
         return std::nullopt;
     }
 
@@ -157,7 +230,7 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
         }
 
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
-        // remove existing terminus with the same EID.
+        // remove existing terminus with the same EID and UUID
         for (auto it = termini.begin(); it != termini.end();)
         {
             bool found = false;
@@ -223,7 +296,6 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto mappedTid = mapTid(mctpInfo);
     if (!mappedTid)
     {
-        lg2::error("failed to assign a TID to Terminus eid={EID}.", "EID", eid);
         co_return PLDM_ERROR;
     }
 

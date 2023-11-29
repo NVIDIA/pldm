@@ -51,21 +51,75 @@ class TerminusManagerTest : public testing::Test
 
 TEST_F(TerminusManagerTest, mapTidTest)
 {
-    pldm::MctpInfo mctpInfo1(1, "", "", 0, "");
+    pldm::MctpInfo mctpInfo1(
+        1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
 
+    // look up a unmapped mctpInfo, returned tid should be null
     auto tid1 = terminusManager.toTid(mctpInfo1);
     EXPECT_EQ(tid1, std::nullopt);
 
+    // assign tid to mctpInfo, the returned tid should not be null
     tid1 = terminusManager.mapTid(mctpInfo1);
     EXPECT_NE(tid1, std::nullopt);
 
+    // look up mapped mctpInfo for tid, return mctpInfo should matched faster
+    // mctpInfo
     auto mctpInfo2 = terminusManager.toMctpInfo(tid1.value());
     EXPECT_EQ(mctpInfo1, mctpInfo2.value());
 
+    // unmap tid and then look up the unmapped mctpInfo, return tid should be
+    // null
     terminusManager.unmapTid(tid1.value());
 
     tid1 = terminusManager.toTid(mctpInfo1);
     EXPECT_EQ(tid1, std::nullopt);
+}
+
+TEST_F(TerminusManagerTest, preferredMediumAndBindingTest)
+{
+    pldm::MctpInfo mctpInfo1(
+        1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SMBus");
+    pldm::MctpInfo mctpInfo1_Faster(
+        2, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+    pldm::MctpInfo mctpInfo1_Slower(
+        3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial");
+    pldm::MctpInfo mctpInfo1_SameMediumSlowerBinding(
+        3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial");
+
+    // assign tid to mctpInfo, the returned tid should not be null
+    auto tid1 = terminusManager.mapTid(mctpInfo1);
+    EXPECT_NE(tid1, std::nullopt);
+
+    // assign a tid for another mctpInfo with the same UUID but faster medium,
+    // return tid should be the same
+    auto tid2 = terminusManager.mapTid(mctpInfo1_Faster);
+    EXPECT_EQ(tid2, tid1);
+
+    // assign a tid for another mctpInfo with the same UUID but slower medium,
+    // return tid should be null
+    tid2 = terminusManager.mapTid(mctpInfo1_Slower);
+    EXPECT_EQ(tid2, std::nullopt);
+
+    // assign a tip for another mctpInfo with the same UUID but slower binding,
+    // return tid should be null
+    tid2 = terminusManager.mapTid(mctpInfo1_SameMediumSlowerBinding);
+    EXPECT_EQ(tid2, std::nullopt);
+
+    // look up mapped mctpInfo for tid, return mctpInfo should be matched to
+    // faster mctpInfo
+    auto mctpInfo2 = terminusManager.toMctpInfo(tid1.value());
+    EXPECT_NE(mctpInfo1, mctpInfo2.value());
+    EXPECT_EQ(mctpInfo1_Faster, mctpInfo2.value());
 }
 
 TEST_F(TerminusManagerTest, negativeMapTidTest)
@@ -97,15 +151,21 @@ TEST_F(TerminusManagerTest, negativeMapTidTest)
     mappedEid = terminusManager.toMctpInfo(1);
     EXPECT_EQ(mappedEid, std::nullopt);
 
-    // map two mctpInfo with same EID but different network Id
-    pldm::MctpInfo m3(12, "", "", 1, "");
-    pldm::MctpInfo m4(12, "", "", 2, "");
+    // map two mctpInfo with same EID but different UUID and network Id
+    pldm::MctpInfo m3(12, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+                      "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1,
+                      "");
+    pldm::MctpInfo m4(12, "f72d6f90-5675-11ed-9b6a-0242ac120012",
+                      "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 2,
+                      "");
     auto mappedTid3 = terminusManager.mapTid(m3);
     auto mappedTid4 = terminusManager.mapTid(m4);
     EXPECT_NE(mappedTid3.value(), mappedTid4.value());
 
     // map same mctpInfo twice
-    pldm::MctpInfo m5(12, "", "", 3, "");
+    pldm::MctpInfo m5(13, "f72d6f90-5675-11ed-9b6a-0242ac120013",
+                      "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 3,
+                      "");
     auto mappedTid5 = terminusManager.mapTid(m5);
     auto mappedTid6 = terminusManager.mapTid(m5);
     EXPECT_EQ(mappedTid5.value(), mappedTid6.value());
