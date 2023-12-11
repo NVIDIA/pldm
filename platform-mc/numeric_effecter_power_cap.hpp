@@ -4,6 +4,7 @@
 
 #include "common/types.hpp"
 #include "platform-mc/numeric_effecter_base_unit.hpp"
+#include "platform-mc/errors.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Control/Power/Cap/server.hpp>
@@ -81,6 +82,13 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
      */
     uint32_t powerCap(uint32_t value) override
     {
+        if (value > PowerCapInft::maxPowerCapValue() ||
+            value < PowerCapInft::minPowerCapValue())
+        {
+            throw errors::InvalidArgument("PowerCap",
+                                          "Out of range");
+        }
+
         double newValue = value;
         effecter.setNumericEffecterValue(effecter.baseToRaw(newValue)).detach();
         return PowerCapInft::powerCap();
