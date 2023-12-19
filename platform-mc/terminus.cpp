@@ -1,22 +1,21 @@
-#include "terminus.hpp"
+#include <filesystem>
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/oem_nvidia.hpp"
 #endif
-#include "terminus_manager.hpp"
 
-#include <filesystem>
+#include "terminus_manager.hpp"
 
 namespace pldm
 {
 namespace platform_mc
 {
 
-Terminus::Terminus(tid_t tid, uint64_t supportedTypes,
+Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
     initalized(false),
     pollEvent(false), synchronyConfigurationSupported(0), tid(tid),
-    supportedTypes(supportedTypes), terminusManager(terminusManager)
+    supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
 
 {
     maxBufferSize = 256;
@@ -66,86 +65,125 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     }
 }
 
+bool Terminus::checkI2CDeviceInventory(uint8_t bus, uint8_t addr)
+{
+    auto mctpInfo = terminusManager.toMctpInfo(tid);
+    if (!mctpInfo)
+    {
+        return false;
+    }
+
+    auto eid = std::get<0>(mctpInfo.value());
+    auto mctpEndpoints = utils::DBusHandler().getSubtree(
+        "/xyz/openbmc_project/mctp", 0, {"xyz.openbmc_project.MCTP.Endpoint"});
+
+    for (const auto& [endPointPath, mapperServiceMap] : mctpEndpoints)
+    {
+        std::filesystem::path filePath(endPointPath);
+        if (eid != std::stoi(filePath.filename()))
+        {
+            continue;
+        }
+
+        auto binding = pldm::utils::DBusHandler().getDbusProperty<std::string>(
+            endPointPath.c_str(), "BindingType",
+            "xyz.openbmc_project.MCTP.Binding");
+        if (binding != "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus")
+        {
+            continue;
+        }
+
+        auto mctpI2cBus = pldm::utils::DBusHandler().getDbusProperty<size_t>(
+            endPointPath.c_str(), "Bus",
+            "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
+        if (mctpI2cBus != bus)
+        {
+            continue;
+        }
+
+        auto mctpI2cAddr = pldm::utils::DBusHandler().getDbusProperty<size_t>(
+            endPointPath.c_str(), "Address",
+            "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
+
+        if (mctpI2cAddr != addr)
+        {
+            continue;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
+{
+    if (nsmUuid.substr(0, 36) == uuid.substr(0, 36)) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
 bool Terminus::checkDeviceInventory(const std::string& objPath)
 {
     try
     {
         auto getSubTreeResponse = utils::DBusHandler().getSubtree(
             objPath, 0,
-            {"xyz.openbmc_project.Configuration.I2CDeviceAssociation"});
+            {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
+             "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
 
         if (getSubTreeResponse.size() == 0)
         {
             return true;
         }
 
-        uint64_t i2cBus = 0;
-        uint64_t i2cAddr = 0;
-        if (getSubTreeResponse.size() == 1)
-        {
-            const auto& [path, mapperServiceMap] = getSubTreeResponse.front();
-            i2cBus = utils::DBusHandler().getDbusProperty<uint64_t>(
-                path.c_str(), "Bus",
-                "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
-            i2cAddr = utils::DBusHandler().getDbusProperty<uint64_t>(
-                path.c_str(), "Address",
-                "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
-        }
+        bool found = false;
 
-        auto mctpInfo = terminusManager.toMctpInfo(tid);
-        if (mctpInfo)
+        for (const auto& [objectPath, serviceMap] : getSubTreeResponse)
         {
-            auto eid = std::get<0>(mctpInfo.value());
-            auto mctpEndpoints = utils::DBusHandler().getSubtree(
-                "/xyz/openbmc_project/mctp", 0,
-                {"xyz.openbmc_project.MCTP.Endpoint"});
-
-            for (const auto& [endPointPath, mapperServiceMap] : mctpEndpoints)
+            for (const auto& [serviceName, interfaces] : serviceMap)
             {
-                std::filesystem::path filePath(endPointPath);
-                if (eid != std::stoi(filePath.filename()))
+                for (const auto& interface : interfaces)
                 {
-                    continue;
+                    if (interface ==
+                        "xyz.openbmc_project.Configuration.I2CDeviceAssociation")
+                    {
+                        uint64_t bus = 0;
+                        uint64_t addr = 0;
+                        bus = utils::DBusHandler().getDbusProperty<uint64_t>(
+                            objectPath.c_str(), "Bus",
+                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
+                        addr = utils::DBusHandler().getDbusProperty<uint64_t>(
+                            objectPath.c_str(), "Address",
+                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
+                        found = checkI2CDeviceInventory(bus, addr);
+                    }
+                    else if (
+                        interface ==
+                        "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
+                    {
+                        auto nsmUuid = utils::DBusHandler().getDbusProperty<std::string>(
+                            objectPath.c_str(), "UUID",
+                            "xyz.openbmc_project.Configuration.NsmDeviceAssociation");
+                        found = checkNsmDeviceInventory(nsmUuid);
+                    }
+
+                    if (found)
+                    {
+                        getSensorAuxNameFromEM(objPath);
+                        return true;
+                    }
                 }
-
-                auto binding =
-                    pldm::utils::DBusHandler().getDbusProperty<std::string>(
-                        endPointPath.c_str(), "BindingType",
-                        "xyz.openbmc_project.MCTP.Binding");
-                if (binding !=
-                    "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus")
-                {
-                    continue;
-                }
-
-                auto mctpI2cBus =
-                    pldm::utils::DBusHandler().getDbusProperty<size_t>(
-                        endPointPath.c_str(), "Bus",
-                        "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
-                if (mctpI2cBus != i2cBus)
-                {
-                    continue;
-                }
-
-                auto mctpI2cAddr =
-                    pldm::utils::DBusHandler().getDbusProperty<size_t>(
-                        endPointPath.c_str(), "Address",
-                        "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
-
-                if (mctpI2cAddr != i2cAddr)
-                {
-                    continue;
-                }
-
-                getSensorAuxNameFromEM(objPath);
-                return true;
             }
         }
     }
     catch (const std::exception& e)
     {
         lg2::error(
-            "no Configuration.I2CDeviceAssociation Error: {ERROR} path:{PATH}",
+            "no interested Configuration PDIs found, Error: {ERROR} path:{PATH}",
             "ERROR", e, "PATH", objPath);
     }
 

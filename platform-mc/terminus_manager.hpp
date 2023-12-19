@@ -134,6 +134,14 @@ class TerminusManager
      */
     requester::Coroutine getPLDMTypes(tid_t tid, uint64_t& supportedTypes);
 
+    /** @brief getTerminusUID command
+     *
+     *  @param[in] tid - Destination TID
+     *  @param[out] uuid - UUID in string format xxxxxxxx-xxxx-xxxx-xxxxxxxxxxxx
+     *  @return coroutine return_value - PLDM completion code
+     */
+    requester::Coroutine getTerminusUID(tid_t tid, UUID& uuidStr);
+
     sdeventplus::Event& event;
     RequesterHandler& handler;
     dbus_api::Requester& requester;

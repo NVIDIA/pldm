@@ -14,7 +14,8 @@ using namespace pldm;
 TEST(TestOemStateSensor, memorySpareChannelPresence)
 {
     uint16_t sensorId = 1;
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM,
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
                        *(static_cast<TerminusManager*>(nullptr)));
     std::vector<uint8_t> pdr1{
         0x0,
@@ -24,17 +25,17 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
         0x1,                   // PDRHeaderVersion
         PLDM_STATE_SENSOR_PDR, // PDRType
         0x0,
-        0x0,                   // recordChangeNumber
+        0x0, // recordChangeNumber
         0x0,
-        0x11,                  // dataLength
+        0x11, // dataLength
         0,
-        0,                     // PLDMTerminusHandle
+        0, // PLDMTerminusHandle
         static_cast<uint8_t>(sensorId & 0xFF),
         static_cast<uint8_t>((sensorId >> 8) & 0xFF),
         PLDM_ENTITY_MEMORY_CONTROLLER,
-        0,            // entityType=Memory controller (143)
+        0, // entityType=Memory controller (143)
         1,
-        0,            // entityInstanceNumber
+        0, // entityInstanceNumber
         0x1,
         0x0,          // containerID=1
         PLDM_NO_INIT, // sensorInit

@@ -45,8 +45,9 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
 #define SENSOR_READING 50
 #define WARNING_HIGH 45
     pldm::tid_t tid = 1;
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
     termini[tid] = std::make_shared<Terminus>(
-        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,

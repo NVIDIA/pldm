@@ -2611,3 +2611,52 @@ TEST(EventMessageBufferSize, testBadDecodeResponse)
                                                &retTerminusMaxBufferSize);
     EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
 }
+
+TEST(GetTerminusUID, testGoodEncodeRequest)
+{
+    std::array<uint8_t, sizeof(pldm_msg_hdr)> requestMsg{};
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    auto rc = encode_get_terminus_uid_req(0, request);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(request->hdr.type, PLDM_PLATFORM);
+    EXPECT_EQ(request->hdr.command, PLDM_GET_TERMINUS_UID);
+}
+
+TEST(GetTerminusUID, testGoodDecodeResponse)
+{
+    std::array<uint8_t, hdrSize + PLDM_GET_TERMINUS_UID_RESP_BYTES>
+        responseMsg{};
+
+    auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
+    struct pldm_get_terminus_uid_resp* resp =
+        reinterpret_cast<struct pldm_get_terminus_uid_resp*>(response->payload);
+
+    resp->completion_code = PLDM_SUCCESS;
+    for (int i = 0; i < 16; i++)
+    {
+        resp->uuidValue[i] = i;
+    }
+
+    uint8_t retCompletionCode = 0;
+    uint8_t retUuidValue[16];
+    memset(retUuidValue, 0, 16);
+
+    auto rc = decode_get_terminus_UID_resp(
+        response, responseMsg.size() - sizeof(pldm_msg_hdr), &retCompletionCode,
+        retUuidValue);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(retCompletionCode, PLDM_SUCCESS);
+
+    bool uuidMatched = true;
+    for (int i = 0; i < 16; i++)
+    {
+        if (retUuidValue[i] != resp->uuidValue[i])
+        {
+            uuidMatched = false;
+            break;
+        }
+    }
+    EXPECT_EQ(uuidMatched, true);
+}

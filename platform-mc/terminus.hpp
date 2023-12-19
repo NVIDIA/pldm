@@ -76,7 +76,7 @@ static const std::map<EntityType, std::string_view> entityInterfaces = {
 class Terminus
 {
   public:
-    Terminus(tid_t tid, uint64_t supportedPLDMTypes,
+    Terminus(tid_t tid, uint64_t supportedPLDMTypes, UUID& uuid,
              TerminusManager& terminusManager);
 
     /** @brief Check if the terminus supports the PLDM type message
@@ -172,7 +172,8 @@ class Terminus
 
 #ifdef OEM_NVIDIA
     void addOEMEnergyCountNumericSensor(
-        const std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr);
+        const std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
+            pdr);
 #endif
 
     void addStateSensor(SensorID sId, StateSetInfo sensorInfo);
@@ -194,6 +195,8 @@ class Terminus
      *          false - the device inventory doesn't belong to the terminus
      */
     bool checkDeviceInventory(const std::string& objPath);
+    bool checkI2CDeviceInventory(uint8_t bus, uint8_t addr);
+    bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI
      *
@@ -249,6 +252,8 @@ class Terminus
     tid_t tid;
 
     std::bitset<64> supportedTypes;
+
+    UUID uuid;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};

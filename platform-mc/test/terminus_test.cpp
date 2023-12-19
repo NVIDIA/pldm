@@ -31,8 +31,11 @@ class TerminusTest : public testing::Test
 
 TEST_F(TerminusTest, supportedTypeTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE, terminusManager);
-    auto t2 = Terminus(2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    std::string uuid2("00000000-0000-0000-0000-000000000002");
+    auto t1 = Terminus(1, 1 << PLDM_BASE, uuid1, terminusManager);
+    auto t2 = Terminus(2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid2,
+                       terminusManager);
 
     EXPECT_EQ(true, t1.doesSupport(PLDM_BASE));
     EXPECT_EQ(false, t1.doesSupport(PLDM_PLATFORM));
@@ -43,14 +46,17 @@ TEST_F(TerminusTest, supportedTypeTest)
 TEST_F(TerminusTest, getTidTest)
 {
     const pldm::tid_t tid = 1;
-    auto t1 = Terminus(tid, 1 << PLDM_BASE, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(tid, 1 << PLDM_BASE, uuid1, terminusManager);
 
     EXPECT_EQ(tid, t1.getTid());
 }
 
 TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -86,9 +92,7 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
     };
 
     std::vector<uint8_t> pdr2{
-        0x0,
-        0x0,
-        0x0,
+        0x0, 0x0, 0x0,
         0x1,                             // record handle
         0x1,                             // PDRHeaderVersion
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
@@ -101,24 +105,13 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         0x2,
         0x0, // sensorID
         0x2, // sensorCount
-//sensor0
+             // sensor0
         0x0, // nameStringCount
-//sensor1
+             // sensor1
         0x1, // nameStringCount
-        'e',
-        'n',
+        'e', 'n',
         0x0, // nameLanguageTag
-        0x0,
-        'T',
-        0x0,
-        'E',
-        0x0,
-        'M',
-        0x0,
-        'P',
-        0x0,
-        '2',
-        0x0,
+        0x0, 'T', 0x0, 'E', 0x0, 'M', 0x0, 'P', 0x0, '2', 0x0,
         0x0 // sensorName
     };
 
@@ -156,7 +149,9 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
 
 TEST_F(TerminusTest, addNumericSensorTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -273,7 +268,9 @@ TEST_F(TerminusTest, addNumericSensorTest)
 
 TEST_F(TerminusTest, parseNumericSensorPdrTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -377,7 +374,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrTest)
 
 TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -481,7 +480,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
 
 TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -598,7 +599,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
 
 TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -715,7 +718,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
 
 TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -856,7 +861,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
 
 TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -997,7 +1004,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
 
 TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -1138,7 +1147,9 @@ TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
 
 TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     // A corrupted PDR. The data after plusTolerance missed.
     std::vector<uint8_t> pdr1{
         0x0,

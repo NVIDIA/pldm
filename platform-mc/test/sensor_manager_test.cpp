@@ -56,8 +56,9 @@ TEST_F(SensorManagerTest, sensorPollingTest)
     uint64_t expectedTimes = (seconds * 1000) / SENSOR_POLLING_TIME;
 
     pldm::tid_t tid = 1;
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
-        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
 
     EXPECT_CALL(sensorManager, doSensorPolling(tid))
         .Times(Between(expectedTimes - 5, expectedTimes + 5))
