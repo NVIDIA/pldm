@@ -93,7 +93,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0, // plusTolerance
         0, // minusTolerance
         2, // hysteresis
-        0, // supportedThresholds
+        63, // supportedThresholds
         0, // thresholdAndHysteresisVolatility
         0,
         0,
