@@ -106,9 +106,32 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(
         if (otherDevices[objPath]->activationState ==
             Server::Activation::Activations::Active)
         {
-            updateManager->updateOtherDeviceCompletion(
-                otherDevices[objPath]->uuid, true,
-                uuidMappings[otherDevices[objPath]->uuid].componentName);
+
+            /*
+             * Conditions to add awaitToActivate message for Non PLDM Components in Summary Log:
+             * Condition 1:
+             *          Targets vector is empty implying that no target filtering is done.
+             *          In this case, the Active state is from an update to the component
+             * Condition 2:
+             *          Check if any Non PLDM components are part of the target filtering list.
+             * */
+            if (targets.empty() ||
+                    std::find_if(targets.begin(), targets.end(), [&](const std::string& target) {
+                           const std::string targetBaseName = target.substr(target.rfind('/')+1);
+                           const std::string objBaseName = objPath.substr(objPath.rfind('/')+1);
+
+                           return (targetBaseName.find(objBaseName) != std::string::npos);
+                        }) != targets.end())
+            {
+                updateManager->updateOtherDeviceCompletion(
+                    otherDevices[objPath]->uuid, true,
+                    uuidMappings[otherDevices[objPath]->uuid].componentName);
+            }
+            else
+            {
+                updateManager->updateOtherDeviceCompletion(
+                    otherDevices[objPath]->uuid, true);
+            }
         }
         else if (otherDevices[objPath]->activationState ==
                  Server::Activation::Activations::Failed)
