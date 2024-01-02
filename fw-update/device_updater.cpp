@@ -374,6 +374,12 @@ requester::Coroutine DeviceUpdater::processPassCompTableResponse(
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
+    if (compResponse)
+    {
+        lg2::info(
+            "In PassComponentTable, componentResponse is non-zero. Component may be updateable EID={EID}, ComponentResponse={CR}, ComponentResponseCode= {CRC}",
+            "EID", eid, "CR", compResponse, "CRC", compResponseCode);
+    }
     deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
                                  numComponents);
     co_return PLDM_SUCCESS;

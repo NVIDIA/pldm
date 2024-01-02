@@ -178,13 +178,12 @@ void OtherDeviceUpdateManager::onActivationChanged(
 
 bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
 {
-    pldm::utils::DBusMapping dbusMapping{
+    pldm::utils::DBusMapping targetsDBusMapping{
         path, "xyz.openbmc_project.Software.UpdatePolicy", "Targets",
         "array[object_path]"};
     try
     {
-        pldm::utils::DBusHandler().setDbusProperty(dbusMapping, targets);
-        return true;
+        pldm::utils::DBusHandler().setDbusProperty(targetsDBusMapping, targets);
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
@@ -193,6 +192,21 @@ bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
         // return error so that user can retry the update on failed devices
         return false;
     }
+
+    pldm::utils::DBusMapping forceUpdateDBusMapping{
+        path, "xyz.openbmc_project.Software.UpdatePolicy", "ForceUpdate",
+        "bool"};
+    try
+    {
+        pldm::utils::DBusHandler().setDbusProperty(forceUpdateDBusMapping,
+                                                   forceUpdateMappings[path]);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        lg2::error("Failed to set forceUpdate : {ERROR}", "ERROR", e);
+        return false;
+    }
+    return true;
 }
 
 void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
@@ -290,7 +304,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
 
 size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    const ComponentImageInfos& componentImageInfos, std::istream& package)
+    const ComponentImageInfos& componentImageInfos, std::istream& package,
+    bool forceUpdate)
 {
 #ifndef NON_PLDM
     return 0;
@@ -391,6 +406,16 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 isImageFileProcessed[uuid] = false;
                 uuidMappings[uuid] = {
                     version, std::filesystem::path(objPath).filename()};
+                const auto& compOptions = std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompOptionsPos)>(componentImageInfo);
+                if (forceUpdate || compOptions.test(forceUpdateBit))
+                {
+                    forceUpdateMappings[objPath] = true;
+                }
+                else
+                {
+                    forceUpdateMappings[objPath] = false;
+                }
             }
         }
     }

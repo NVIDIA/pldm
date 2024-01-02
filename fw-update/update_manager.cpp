@@ -211,12 +211,15 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activationProgress = std::move(activationProgressStaged);
         activationProgress->progress(0);
         targets = updatePolicyStaged->targets();
+        forceUpdate = updatePolicyStaged->forceUpdate();
+
     }
     else
     {
         size_t versionHash = std::hash<std::string>{}(packageFilePath);
         objPath = swRootPath + std::to_string(versionHash);
         targets = updatePolicy->targets();
+        forceUpdate = updatePolicy->forceUpdate();
     }
     fwPackageFilePath = packageFilePath;
 
@@ -375,7 +378,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     size_t otherDevicesImageCount =
         otherDeviceUpdateManager->extractOtherDevicePkgs(
             parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
-            package);
+            package, forceUpdate);
     totalNumComponentUpdates += otherDevicesImageCount;
 
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)

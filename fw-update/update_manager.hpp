@@ -280,7 +280,12 @@ class UpdateManager
      *
      */
     void clearFirmwareUpdatePackage();
-
+    /**
+     * @brief Stores the force update flag set on update policy
+     *
+     */
+    bool forceUpdate;
+    
     bool fwDebug;
     /**
      * @brief start pldm firmware update

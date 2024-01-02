@@ -43,14 +43,14 @@ class OtherDeviceUpdateManagerTest : public testing::Test
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    UpdateManager updateManager;  
+    UpdateManager updateManager;
 };
 
 TEST_F(OtherDeviceUpdateManagerTest, activate)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
+        busMock,
+        &updateManager,
         updatePolicy.targets());
 
     bool result = otherDeviceUpdateManager.activate();
@@ -61,8 +61,8 @@ TEST_F(OtherDeviceUpdateManagerTest, activate)
 TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
+        busMock,
+        &updateManager,
         updatePolicy.targets());
 
     std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
@@ -71,7 +71,7 @@ TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
     pldm::dbus::PropertyMap properties;
 
     properties.insert(
-        std::pair<std::string, 
+        std::pair<std::string,
         std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
                  uint64_t, double, std::string, std::vector<uint8_t>>>("/xyz/openbmc_project/pldm", value));
 
@@ -84,8 +84,8 @@ TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
 TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicy)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
+        busMock,
+        &updateManager,
         updatePolicy.targets());
 
     bool result = otherDeviceUpdateManager.setUpdatePolicy("/xyz/openbmc_project/pldm");
@@ -98,12 +98,12 @@ TEST_F(OtherDeviceUpdateManagerTest, getNumberOfProcessedImages)
     int expectedResult(0);
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
+        busMock,
+        &updateManager,
         updatePolicy.targets());
 
     int result = otherDeviceUpdateManager.getNumberOfProcessedImages();
-    
+
     EXPECT_EQ(result, expectedResult);
 }
 
@@ -112,12 +112,12 @@ TEST_F(OtherDeviceUpdateManagerTest, getValidTargets)
     int expectedResult(0);
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
+        busMock,
+        &updateManager,
         updatePolicy.targets());
 
     size_t result = otherDeviceUpdateManager.getValidTargets();
-    
+
     EXPECT_EQ(result, expectedResult);
 }
 
@@ -126,9 +126,10 @@ TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
     int expectedResult(0);
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
-        busMock, 
-        &updateManager, 
-        updatePolicy.targets());
+        busMock,
+        &updateManager,
+        updatePolicy.targets()
+        );
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -150,7 +151,8 @@ TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
     size_t result = otherDeviceUpdateManager.extractOtherDevicePkgs(
         fwDeviceIDRecords,
         compImageInfos,
-        dummyStream
+        dummyStream,
+        updatePolicy.forceUpdate()
         );
 
     EXPECT_EQ(result, expectedResult);

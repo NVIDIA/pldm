@@ -45,6 +45,8 @@ struct ComponentMap
     std::string componentName;
 };
 
+constexpr const uint8_t forceUpdateBit = 0; // force update bit in component option
+
 class UpdateManager;
 
 /**
@@ -133,11 +135,12 @@ class OtherDeviceUpdateManager
      * @param componentImageInfos - Image info like offset, size
      * @param package - pldm image input stream
      * @return size_t - number of other device images
+     * @param forceUpdate - force update flag set by the user
      */
     size_t
         extractOtherDevicePkgs(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
                                const ComponentImageInfos& componentImageInfos,
-                               std::istream& package);
+                               std::istream& package, bool forceUpdate);
 
     /**
      * @brief Get the Number Of Processed Images object
@@ -258,6 +261,13 @@ class OtherDeviceUpdateManager
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
     std::vector<sdbusplus::message::object_path> targets;
+
+    /**
+     * @brief map to match object path with their force update flag.
+     * This will keep track of the force update flags for all the components in 
+     * the package
+     */
+    std::map<dbus::ObjectPath, bool> forceUpdateMappings;
 };
 
 } // namespace fw_update

@@ -20,6 +20,7 @@ const std::string activateFailed{"Update.1.0.ActivateFailed"};
 const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
+const std::string componentUpdateSkipped{"OpenBMC.0.4.ComponentUpdateSkipped"};
 
 /**
  * @brief Get the D-Bus service using mapper lookup
@@ -86,7 +87,7 @@ inline void createLogEntry(const std::string& messageID,
     addData["REDFISH_MESSAGE_ID"] = messageID;
     Level level = Level::Informational;
 
-    if (messageID == targetDetermined || messageID == updateSuccessful)
+    if (messageID == targetDetermined || messageID == updateSuccessful || messageID == componentUpdateSkipped)
     {
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }
