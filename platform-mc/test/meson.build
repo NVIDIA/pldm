@@ -64,6 +64,7 @@ foreach t : tests
                          sdeventplus,
                          test_src,
                          nvidia_shmem,
+                         smbus_telemetry_target,
                          openssl]),
        workdir: meson.current_source_dir())
 endforeach

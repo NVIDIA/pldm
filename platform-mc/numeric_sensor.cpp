@@ -6,6 +6,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 #include <telemetry_mrd_producer.hpp>
+#include <smbus_telemetry_target_api.hpp>
 
 #include <limits>
 #include <regex>
@@ -505,6 +506,17 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
                     nv::shmem::AggregationService::updateTelemetry(
                         objPath, ifaceName, propertyName, propValue,
                         steadyTimeStamp, retCode, endpoint);
+                // smbus telemetry update.
+                uint64_t val = static_cast<uint64_t>(rawValue);
+                val = le64toh(val);
+                int rc = 0;
+                rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
+                                            (void*)&val, sizeof(val),
+                                            steadyTimeStamp, retCode);
+                if(rc != 0)
+                {
+                    lg2::error("Failed to updateSmbusTelemetry");
+                }
             }
         }
     }

@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <smbus_telemetry_target_api.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/signal.hpp>
@@ -152,12 +153,18 @@ int main(int argc, char** argv)
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
                                                *(fwManager.get()), verbose);
+
     // Intitializing shared memory space for pldmd
     if (nv::shmem::AggregationService::namespaceInit("pldmd"))
     {
         lg2::info("Initialized shared memory pldmd");
     }
 
+    // Initializing smbus telemetry for pldmd
+    if (smbusSlaveInit())
+    {
+        lg2::info("Initialized smbusSlaveInit()!!!");
+    }
 #endif
 
     try
