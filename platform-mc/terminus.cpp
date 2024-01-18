@@ -20,22 +20,15 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes,
 
 {
     maxBufferSize = 256;
-
-    if (doesSupport(PLDM_PLATFORM))
-    {
-        interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
-            utils::DBusHandler().getBus(),
-            sdbusplus::bus::match::rules::interfacesAdded(
-                "/xyz/openbmc_project/inventory"),
-            std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
-                      std::placeholders::_1));
-
-        scanInventories();
-    }
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
 {
+    if (!initalized)
+    {
+        return;
+    }
+
     sdbusplus::message::object_path objPath;
     pldm::dbus::InterfaceMap interfaces;
     m.read(objPath, interfaces);
@@ -250,12 +243,15 @@ bool Terminus::parsePDRs()
         {
             auto parsedPdr = parseOemPDR(pdr);
 #ifdef OEM_NVIDIA
-            if (static_cast<nvidia::NvidiaOemPdrType>(std::get<2>(parsedPdr)[2])
-                == nvidia::NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+            if (static_cast<nvidia::NvidiaOemPdrType>(
+                    std::get<2>(parsedPdr)[2]) ==
+                nvidia::NvidiaOemPdrType::
+                    NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
             {
                 auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
-                                    std::get<2>(parsedPdr));
-                oemEnergyCountNumericSensorPdrs.emplace_back(std::move(parsedOEMPdr));
+                    std::get<2>(parsedPdr));
+                oemEnergyCountNumericSensorPdrs.emplace_back(
+                    std::move(parsedOEMPdr));
             }
             else
             {
@@ -300,10 +296,19 @@ bool Terminus::parsePDRs()
         addStateEffecter(effecterId, std::move(stateSetEffecterInfo));
     }
 
-    updateAssociations();
 #ifdef OEM_NVIDIA
     nvidia::nvidiaInitTerminus(*this);
 #endif
+
+    scanInventories();
+    updateAssociations();
+
+    interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
+        utils::DBusHandler().getBus(),
+        sdbusplus::bus::match::rules::interfacesAdded(
+            "/xyz/openbmc_project/inventory"),
+        std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
+                  std::placeholders::_1));
 
     return rc;
 }
@@ -928,7 +933,7 @@ bool Terminus::scanInventories()
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to scan inventories");
+        lg2::error("Failed to scan inventories Error: {ERROR}", "ERROR", e);
         return false;
     }
     return true;
@@ -1149,13 +1154,15 @@ void Terminus::addOEMEnergyCountNumericSensor(
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            tid, true, pdr, sensorName, systemInventoryPath, POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM);
+            tid, true, pdr, sensorName, systemInventoryPath,
+            POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM);
         numericSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to create OEMEnergyCountNumericSensor:{SENSORNAME}, {ERROR}.",
-                   "SENSORNAME", sensorName, "ERROR", e);
+        lg2::error(
+            "Failed to create OEMEnergyCountNumericSensor:{SENSORNAME}, {ERROR}.",
+            "SENSORNAME", sensorName, "ERROR", e);
     }
 }
 #endif
