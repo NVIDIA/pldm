@@ -269,6 +269,26 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
+        for (auto effector : terminus->stateEffecters)
+        {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
+            // Get state effector if effecter is updatePending
+            if (effector->isUpdatePending())
+            {
+                co_await effector->getStateEffecterStates();
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
+                effector->needUpdate = false;
+            }
+        }
+
         for (auto sensor : terminus->stateSensors)
         {
             if (manager && terminus->pollEvent)
@@ -395,8 +415,8 @@ requester::Coroutine
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
     int rc;
-    
-    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO) 
+
+    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
         Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
@@ -464,7 +484,7 @@ requester::Coroutine
             &sensorOperationalState, &sensorEventMessageEnable, &presentState,
             &previousState, &eventState,
             reinterpret_cast<uint8_t*>(&presentReading));
-            
+
         if (rc)
         {
             lg2::error(
@@ -481,7 +501,7 @@ requester::Coroutine
         rc = decode_get_oem_energy_count_sensor_reading_resp(
             responseMsg, responseLen, &completionCode, &sensorDataSize,
             &sensorOperationalState, reinterpret_cast<uint8_t*>(&presentReading));
-        
+
         if (rc)
         {
             lg2::error(
@@ -551,7 +571,7 @@ requester::Coroutine
             value = std::numeric_limits<double>::quiet_NaN();
             break;
     }
-    
+
     sensor->updateReading(true, true, value, &sensorMetric);
     co_return completionCode;
 }

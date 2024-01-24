@@ -94,6 +94,11 @@ class StateEffecter
      */
     requester::Coroutine setStateEffecterStates(uint8_t cmpId, uint8_t value);
 
+    /** @brief Sending setStateEffecterStates command for the effecter
+     *
+     */
+    requester::Coroutine setStateEffecterStates(std::vector<set_effecter_state_field>& stateField);
+
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */
     uint8_t tid;
 
@@ -114,6 +119,10 @@ class StateEffecter
                        pldm_effecter_oper_state effecterOperState,
                        uint8_t pendingValue, uint8_t presentValue);
 
+    /** @brief check if any composite effecter is updatePending
+     */
+    bool isUpdatePending();
+
     /** @brief  The DBus path of effecter */
     std::string path;
 
@@ -124,6 +133,8 @@ class StateEffecter
     /** @brief  composite state effecters */
     StateSets stateSets;
 
+    /** @brief flag to update the value once */
+    bool needUpdate;
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
