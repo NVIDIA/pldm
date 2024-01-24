@@ -353,6 +353,18 @@ class UpdateManager
      */
     bool packageIntegrityCheck();
 
+    /**
+     * @brief perform security checks
+     * The function performs two types of security checks:
+     * 1. Package integrity check - using the public key stored in the signature
+     * header of the firmware package.
+     * 2. Package verification - using the public key stored on the machine
+     * in the proper location."
+     *
+     * @return True if all security checks pass; False otherwise.
+     */
+    bool performSecurityChecks();
+
   private:
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;

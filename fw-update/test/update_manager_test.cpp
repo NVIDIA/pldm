@@ -659,59 +659,6 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
     });
 }
 
-
-TEST_F(UpdateManagerTest, processPackage_Package_v3_with_corrupted_bytes)
-{
-
-    int expectedResult = -1;
-
-    requester::Handler<requester::Request> reqHandler2(event, dbusImplRequester, sockManager, false,
-                   std::chrono::seconds(1), 2, std::chrono::milliseconds(100));
-
-    mctp_eid_t eid = 0x01;
-
-    const DescriptorMap descriptorMap2{
-        {eid,
-         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
-           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
-          {PLDM_FWUP_UUID,
-                std::vector<uint8_t>{0x16, 0x20, 0x23, 0xc9, 0x3e, 0xc5, 0x41, 0x15,
-                                    0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6, 0x75}}}}};
-
-    UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
-                      componentInfoMap, componentNameMap, true);
-
-    int result = updateManager.processPackage("./test_pkg_v3_signed_corrupted_bytes");
-
-    EXPECT_EQ(result, expectedResult);
-}
-
-TEST_F(UpdateManagerTest, processPackage_Package_v3_incorrectly_signed)
-{
-
-    int expectedResult = -1;
-
-    requester::Handler<requester::Request> reqHandler2(event, dbusImplRequester, sockManager, false,
-                   std::chrono::seconds(1), 2, std::chrono::milliseconds(100));
-
-    mctp_eid_t eid = 0x01;
-
-    const DescriptorMap descriptorMap2{
-        {eid,
-         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
-           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
-          {PLDM_FWUP_UUID,
-                std::vector<uint8_t>{0x16, 0x20, 0x23, 0xc9, 0x3e, 0xc5, 0x41, 0x15,
-                                    0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6, 0x75}}}}};
-
-    UpdateManager updateManager(event, reqHandler2, dbusImplRequester, descriptorMap2,
-                      componentInfoMap, componentNameMap, true);
-
-    int result = updateManager.processPackage("./test_pkg_v3_incorrectly_signed");
-
-    EXPECT_EQ(result, expectedResult);
-}
-
 TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
 {
 

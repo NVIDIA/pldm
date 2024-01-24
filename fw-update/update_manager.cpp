@@ -338,70 +338,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return -1;
     }
 
-#ifdef PLDM_PACKAGE_INTEGRITY_CHECK
-
-    bool integrityCheck = packageIntegrityCheck();
-
-    if (integrityCheck)
-    {
-        lg2::info("FW package integrity check completed successfully");
-    }
-    else
-    {
-        lg2::error("FW package integrity check failed");
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
-    }
-
-#endif
-
-#ifdef PLDM_PACKAGE_VERIFICATION
-
-    try
-    {
-        if (!verifyPackage())
-        {
-            if (activation)
-            {
-                activation->activation(
-                    software::Activation::Activations::Invalid);
-            }
-            else
-            {
-                activation = std::make_unique<Activation>(
-                    pldm::utils::DBusHandler::getBus(), objPath,
-                    software::Activation::Activations::Invalid, this);
-            }
-            return -1;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Invalid PLDM package signature");
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
-    }
-
-#endif
-
     const auto& compImageInfos = parser->getComponentImageInfos();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
@@ -482,6 +418,49 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     return 0;
 }
 
+
+bool UpdateManager::performSecurityChecks()
+{
+    bool securityChecksPassed = true;
+
+#ifdef PLDM_PACKAGE_INTEGRITY_CHECK
+
+    // Perform integrity check on the firmware package
+    bool integrityCheck = packageIntegrityCheck();
+
+    if (integrityCheck)
+    {
+        lg2::info("Firmware package integrity check completed successfully");
+    }
+    else
+    {
+        lg2::error("Firmware package integrity check failed");
+        securityChecksPassed = false;
+    }
+
+#endif
+
+#ifdef PLDM_PACKAGE_VERIFICATION
+
+    try
+    {
+        // Verify the signature of the firmware package
+        if (!verifyPackage())
+        {
+            securityChecksPassed = false;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Invalid PLDM package signature");
+        securityChecksPassed = false;
+    }
+
+#endif
+
+    // Return the overall result of security checks
+    return securityChecksPassed;
+}
 
 bool UpdateManager::verifyPackage()
 {

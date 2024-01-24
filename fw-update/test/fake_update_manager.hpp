@@ -57,6 +57,10 @@ class FakeUpdateManager
     {
         return;
     }
+    bool performSecurityChecks()
+    {
+        return true;
+    }
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
 };

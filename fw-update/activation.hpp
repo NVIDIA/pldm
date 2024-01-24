@@ -155,20 +155,34 @@ class Activation : public ActivationIntf
                     return ActivationIntf::activation(Activations::Failed);
                 }
             }
-            auto state = updateManager->activatePackage();
-            value = state;
-            if (state == Activations::Failed)
+
+            if ((objPath != updateManager->stagedObjPath) &&
+                (!updateManager->performSecurityChecks()))
             {
-                lg2::error("Activation failed setting activation to fail");
+                lg2::error("Security checks failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
                 updateManager->clearFirmwareUpdatePackage();
                 updateManager->restoreStagedPackageActivationObjects();
+
+                value = Activations::Failed;
             }
-            else if (state == Activations::Active)
+            else
             {
-                lg2::info("Activation set to active");
-                updateManager->clearFirmwareUpdatePackage();
-                updateManager->restoreStagedPackageActivationObjects();
+                auto state = updateManager->activatePackage();
+                value = state;
+                if (state == Activations::Failed)
+                {
+                    lg2::error("Activation failed setting activation to fail");
+                    updateManager->resetActivationBlocksTransition();
+                    updateManager->clearFirmwareUpdatePackage();
+                    updateManager->restoreStagedPackageActivationObjects();
+                }
+                else if (state == Activations::Active)
+                {
+                    lg2::info("Activation set to active");
+                    updateManager->clearFirmwareUpdatePackage();
+                    updateManager->restoreStagedPackageActivationObjects();
+                }
             }
         }
         else if (value == Activations::Active || value == Activations::Failed)
