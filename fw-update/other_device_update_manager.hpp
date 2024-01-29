@@ -6,6 +6,7 @@
 #include <sdbusplus/timer.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 
 #include <unordered_map>
 
@@ -183,10 +184,12 @@ class OtherDeviceUpdateManager
      * @brief Get file path based on UUID
      *
      * @param UUID UUID to find file path for
+     * @param sku Optional descriptor to match descriptor published by ItemUpdater
+     *            Skips validation if an empty string is passed
      * @return pair with filepath and object path, returns {} on no match
      *
      */
-    std::pair<std::string, std::string> getFilePath(const std::string& uuid);
+    std::pair<std::string, std::string> getFilePath(const std::string& uuid, const std::string& sku);
 
     /**
      * @brief Get the Valid Paths that may contain UUIDs
@@ -201,6 +204,26 @@ class OtherDeviceUpdateManager
      */
     void updateValidTargets(void);
 
+    /**
+     * @brief Match the descriptors published by ItemUpdater to
+     *  the descriptors in the package
+     *
+     * @param objPath - D-Bus Object Path of ItemUpdater object
+     * @param descriptor - Descriptor value obtained from the package
+     * @param descriptorName - Name of Descriptor Property
+     * @param dbusInterface - D-Bus Interace of the Descriptor
+     *
+     */
+    bool validateDescriptor(const std::string& objPath, std::string descriptor,
+         const char* descriptorName, const char* dbusInterface);
+    /**
+     * @brief Fetches UUID and SKU from the package
+     *
+     * @param fwDeviceIDRecord - Firmware Record of the current image
+     */
+    std::pair<UUID, SKU> fetchDescriptorsFromPackage(
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord);
+
     UpdateManager* updateManager;
 
     /**
@@ -210,7 +233,7 @@ class OtherDeviceUpdateManager
     size_t validTargetCount;
 
     /**
-     * @brief Dbus object referance
+     * @brief D-Bus object referance
      *
      */
     sdbusplus::bus::bus& bus;
@@ -273,3 +296,4 @@ class OtherDeviceUpdateManager
 } // namespace fw_update
 
 } // namespace pldm
+

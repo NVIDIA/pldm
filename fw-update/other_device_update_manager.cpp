@@ -12,15 +12,18 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <fmt/format.h>
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <tuple>
+#include <unordered_set>
 
 #define SW_PATH_OTHER "/xyz/openbmc_project/software/other"
 
@@ -302,6 +305,46 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
 }
 
+    std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+{
+    const auto& deviceIDDescriptors =
+        std::get<Descriptors>(fwDeviceIDRecord);
+    UUID uuid{};
+    SKU sku{};
+    for (const auto& [descriptorType, descriptorValue] : deviceIDDescriptors) // For each Descriptors
+    {
+        if (descriptorType == PLDM_FWUP_UUID) // Check UUID
+        {
+            std::ostringstream tempStream;
+            for (int byte : std::get<0>(descriptorValue))
+            {
+                tempStream << std::setfill('0') << std::setw(2) << std::hex
+                           << byte;
+            }
+
+            uuid = tempStream.str(); // Extract UUID
+            std::transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
+        }
+
+        if (descriptorType == PLDM_FWUP_VENDOR_DEFINED) // Check SKU
+        {
+            const auto& [vendorDescTitle, vendorDescData] =
+                std::get<VendorDefinedDescriptorInfo>(descriptorValue);
+            if (vendorDescTitle == "APSKU")
+            {
+                sku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                                    vendorDescData[0], vendorDescData[1],
+                                    vendorDescData[2], vendorDescData[3]);
+
+            }
+        }
+
+    }
+
+    return {uuid, sku};
+}
+
 size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
     const ComponentImageInfos& componentImageInfos, std::istream& package,
@@ -315,108 +358,106 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
         const auto& fwDeviceIDRecord = fwDeviceIDRecords[index];
-        const auto& deviceIDDescriptors =
-            std::get<Descriptors>(fwDeviceIDRecord);
-        for (auto& it : deviceIDDescriptors) // For each Descriptors
+
+        const auto& [uuid, sku] = fetchDescriptorsFromPackage(fwDeviceIDRecord);
+
+        if (uuid.empty())
         {
-            if (it.first == PLDM_FWUP_UUID) // Check UUID
-            {
-                std::ostringstream tempStream;
-                for (int byte : std::get<0>(it.second))
-                {
-                    tempStream << std::setfill('0') << std::setw(2) << std::hex
-                               << byte;
-                }
+            continue;
+        }
 
-                std::string uuid = tempStream.str(); // Extract UUID
-                using namespace std;
-                transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
+        if (sku.empty())
+        {
+            lg2::warning("No Sku descriptor found in package for UUID {UUID}", "UUID", uuid);
+        }
 
-                const auto& applicableCompVec =
-                    std::get<ApplicableComponents>(fwDeviceIDRecord);
-                if (applicableCompVec.size() == 0)
-                {
-                    lg2::error("Invalid applicable components");
-                    continue;
-                }
-                const auto& componentImageInfo =
-                    componentImageInfos[applicableCompVec[0]];
-                if (std::get<static_cast<size_t>(
-                        ComponentImageInfoPos::CompIdentifierPos)>(
-                        componentImageInfo) == deadComponent)
-                {
-                    continue;
-                }
-                const auto& version = std::get<7>(componentImageInfo);
-                std::string fileName = "";
-                std::string objPath;
-                try
-                {
-                    // get File PATH and object path
-                    std::tie(fileName, objPath) = getFilePath(uuid);
-                }
-                catch (const sdbusplus::exception::SdBusError& e)
-                {
-                    lg2::error("failed to get filename.", "ERROR", e);
-                    continue;
-                }
-                lg2::info("Got Filename {FILENAME}", "FILENAME", fileName);
-                if (fileName == "")
-                {
-                    continue;
-                }
+        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID", uuid, "SKU", sku);
 
-                auto compOffset = std::get<5>(componentImageInfo);
-                auto compSize = std::get<6>(componentImageInfo);
-                package.seekg(0, std::ios::end);
-                uintmax_t packageSize = package.tellg();
+        const auto& applicableCompVec =
+            std::get<ApplicableComponents>(fwDeviceIDRecord);
+        if (applicableCompVec.size() == 0)
+        {
+            lg2::error("Invalid applicable components");
+            continue;
+        }
 
-                // An enhancement designed to safeguard the package against
-                // damage in the event of a truncated component. An attempt to
-                // read such a component from the package may lead to an effort
-                // to read a set of bytes beyond the package's boundaries,
-                // triggering the state of the package to be set to
-                // std::ios::failbit. This, in turn, could potentially block the
-                // ability to read other components from the package.
-                if (packageSize < static_cast<uintmax_t>(compOffset) +
-                                      static_cast<uintmax_t>(compSize))
-                {
-                    lg2::error(
-                        "Failed to extract non pldm device component image");
-                    return 0;
-                }
+        const auto& componentImageInfo =
+            componentImageInfos[applicableCompVec[0]];
+        if (std::get<static_cast<size_t>(
+                ComponentImageInfoPos::CompIdentifierPos)>(
+                componentImageInfo) == deadComponent)
+        {
+            continue;
+        }
+        const auto& version = std::get<7>(componentImageInfo);
+        std::string fileName = "";
+        std::string objPath;
+        try
+        {
+            // get File PATH and object path
+            std::tie(fileName, objPath) = getFilePath(uuid, sku);
+        }
+        catch (const sdbusplus::exception::SdBusError& e)
+        {
+            lg2::error("failed to get filename. {ERROR}", "ERROR", e);
+            continue;
+        }
+        lg2::info("Got Filename {FILENAME}", "FILENAME", fileName);
+        if (fileName == "")
+        {
+            continue;
+        }
 
-                package.seekg(compOffset); // SEEK to image offset
-                std::vector<uint8_t> buffer(compSize);
-                package.read(reinterpret_cast<char*>(buffer.data()),
-                             buffer.size());
+        auto compOffset = std::get<5>(componentImageInfo);
+        auto compSize = std::get<6>(componentImageInfo);
+        package.seekg(0, std::ios::end);
+        uintmax_t packageSize = package.tellg();
 
-                fileName += "/" + boost::uuids::to_string(
-                                      boost::uuids::random_generator()())
-                                      .substr(0, 8);
-                lg2::info("Extracting {VERSION} to fileName : {FILENAME}",
-                          "VERSION", version, "FILENAME", fileName);
+        // An enhancement designed to safeguard the package against
+        // damage in the event of a truncated component. An attempt to
+        // read such a component from the package may lead to an effort
+        // to read a set of bytes beyond the package's boundaries,
+        // triggering the state of the package to be set to
+        // std::ios::failbit. This, in turn, could potentially block the
+        // ability to read other components from the package.
+        if (packageSize < static_cast<uintmax_t>(compOffset) +
+                              static_cast<uintmax_t>(compSize))
+        {
+            lg2::error(
+                "Failed to extract non pldm device component image");
+            return 0;
+        }
 
-                std::ofstream outfile(fileName, std::ofstream::binary);
-                outfile.write(reinterpret_cast<const char*>(&buffer[0]),
-                              buffer.size() *
-                                  sizeof(uint8_t)); // Write to image offset
-                outfile.close();
-                totalNumImages++;
-                isImageFileProcessed[uuid] = false;
-                uuidMappings[uuid] = {
-                    version, std::filesystem::path(objPath).filename()};
-                const auto& compOptions = std::get<static_cast<size_t>(
-                    ComponentImageInfoPos::CompOptionsPos)>(componentImageInfo);
-                if (forceUpdate || compOptions.test(forceUpdateBit))
-                {
-                    forceUpdateMappings[objPath] = true;
-                }
-                else
-                {
-                    forceUpdateMappings[objPath] = false;
-                }
-            }
+        package.seekg(compOffset); // SEEK to image offset
+        std::vector<uint8_t> buffer(compSize);
+        package.read(reinterpret_cast<char*>(buffer.data()),
+                     buffer.size());
+
+        fileName += "/" + boost::uuids::to_string(
+                              boost::uuids::random_generator()())
+                              .substr(0, 8);
+        lg2::info("Extracting {VERSION} to fileName : {FILENAME}",
+                  "VERSION", version, "FILENAME", fileName);
+
+        std::ofstream outfile(fileName, std::ofstream::binary);
+        outfile.write(reinterpret_cast<const char*>(&buffer[0]),
+                      buffer.size() *
+                          sizeof(uint8_t)); // Write to image offset
+        outfile.close();
+        totalNumImages++;
+        isImageFileProcessed[uuid] = false;
+        uuidMappings[uuid] = {
+            version, std::filesystem::path(objPath).filename()};
+
+        const auto& compOptions = std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompOptionsPos)>(componentImageInfo);
+        if (forceUpdate || compOptions.test(forceUpdateBit))
+        {
+            forceUpdateMappings[objPath] = true;
+        }
+        else
+        {
+            forceUpdateMappings[objPath] = false;
         }
     }
     startTimer(totalNumImages * UPDATER_ACTIVATION_WAIT_PER_IMAGE_SEC);
@@ -475,33 +516,68 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
+bool OtherDeviceUpdateManager::validateDescriptor(const dbus::ObjectPath& objPath,
+        std::string descriptor,
+        const char* descriptorName, const char* dbusInterface)
+{
+    static auto dbusHandler = pldm::utils::DBusHandler();
+    std::string tmpDescriptor{};
+    try
+    {
+        tmpDescriptor = dbusHandler.getDbusProperty<std::string>(
+            objPath.c_str(), descriptorName, dbusInterface);
+    }
+    catch (const std::exception&)
+    {
+        lg2::warning(fmt::format("Object {} does not have descriptor {}", objPath,
+                    descriptorName).c_str());
+        return false;
+    }
+
+    std::transform(descriptor.begin(), descriptor.end(),
+            descriptor.begin(), ::toupper);
+    std::transform(tmpDescriptor.begin(), tmpDescriptor.end(),
+            tmpDescriptor.begin(), ::toupper);
+    return (descriptor == tmpDescriptor);
+}
+
 std::pair<std::string, std::string>
-    OtherDeviceUpdateManager::getFilePath(const std::string& uuid)
+    OtherDeviceUpdateManager::getFilePath(const UUID& uuid, const SKU& packageSKU)
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
+
     auto dbusHandler = pldm::utils::DBusHandler();
     for (auto& obj : paths)
     {
-        lg2::info("Checking path {OBJPATH}", "OBJPATH", obj);
-        auto u = dbusHandler.getDbusProperty<std::string>(
-            obj.c_str(), "UUID",
-            sdbusplus::xyz::openbmc_project::Common::server::UUID::interface);
-        if (u != "")
+
+        if (!validateDescriptor(obj, uuid, "UUID",
+                sdbusplus::xyz::openbmc_project::Common::server::UUID::interface))
         {
-            transform(u.begin(), u.end(), u.begin(), ::toupper);
-            if (u == uuid)
+            continue;
+        }
+
+        if (!packageSKU.empty())
+        {
+            if (validateDescriptor(obj, packageSKU, "SKU",
+                    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset::interface))
             {
-                auto p = dbusHandler.getDbusProperty<std::string>(
-                    obj.c_str(), "Path",
-                    sdbusplus::xyz::openbmc_project::Common::server::FilePath::
-                        interface);
-                lg2::info("Got Path: {OBJPATH}", "OBJPATH", p);
-                if (p != "")
-                {
-                    return {std::filesystem::path(p).parent_path(), obj};
-                }
+                lg2::info(fmt::format("Found object {} with matching SKU {}", obj, packageSKU).c_str());
+
             }
+            else
+            {
+                continue;
+            }
+        }
+
+        auto p = dbusHandler.getDbusProperty<std::string>(
+            obj.c_str(), "Path",
+            sdbusplus::xyz::openbmc_project::Common::server::FilePath::
+                interface);
+        if (!p.empty())
+        {
+            return {std::filesystem::path(p).parent_path(), obj};
         }
     }
     return {};

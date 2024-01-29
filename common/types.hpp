@@ -17,6 +17,7 @@ namespace pldm
 
 using EID = uint8_t;
 using UUID = std::string;
+using SKU = std::string;
 using Request = std::vector<uint8_t>;
 using Response = std::vector<uint8_t>;
 using Command = uint8_t;
