@@ -37,6 +37,15 @@ enum class ComponentUpdaterSequence
     Valid
 };
 
+/** @enum Enumeration to represent the PLDM ComponentUpdateStatus
+ */
+enum class ComponentUpdateStatus
+{
+    UpdateFailed,
+    UpdateComplete,
+    UpdateSkipped
+};
+
 /** @class ComponentUpdaterState
  *
  *  To manage the sequence of the PLDM ComponentUpdater as part of the firmware
@@ -408,7 +417,7 @@ class ComponentUpdater
      *
      * @param[in] status
      */
-    void updateComponentComplete(bool status);
+    void updateComponentComplete(ComponentUpdateStatus status);
 
     /* Complete commands timout(UA_T6) in seconds. Default value is 600 as per
      * the spec*/

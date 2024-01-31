@@ -14,10 +14,12 @@ namespace fw_update
 using ErrorCode = uint8_t;
 using OemMessage = std::string;
 using OemResolution = std::string;
-using OemMessageId = std::string;
+using CompCompatibilityMessageId = std::string;
+using CompCompatibilityMessage = std::string;
+using CompCompatibilityResolution = std::string;
 using MessageMapping = std::pair<OemMessage, OemResolution>;
 using ComponentCompatibilityMessageMapping =
-    std::tuple<OemMessageId, OemMessage, OemResolution>;
+    std::tuple<CompCompatibilityMessageId, CompCompatibilityMessage, CompCompatibilityResolution>;
 using ErrorMapping = std::unordered_map<ErrorCode, MessageMapping>;
 using CompCompatibilityMapping =
     std::unordered_map<ErrorCode, ComponentCompatibilityMessageMapping>;
@@ -193,25 +195,34 @@ inline std::tuple<bool, std::string, std::string, std::string>
     return {status, oemMessageId, oemMessageError, oemResolution};
 }
 
+/**
+ * @brief Get the Component Compatibility Message for enhanced message registry
+ *
+ * @param[in] commandType - pldm command type
+ * @param[in] errorCode - error code
+ * @return true, message id, error and resolution - error code mapping is
+ * present
+ * @return false - error code mapping is not present
+ */
 inline std::tuple<bool, std::string, std::string, std::string>
-    getCompCompatibilityOemMessage(
+    getCompCompatibilityMessage(
         const pldm_firmware_update_commands& commandType,
         const ErrorCode& errorCode)
 {
     using namespace pldm::fw_update;
     bool status = false;
-    std::string oemMessageId;
-    OemMessage oemMessageError;
-    OemResolution oemResolution;
+    CompCompatibilityMessageId messageId;
+    CompCompatibilityMessage messageError;
+    CompCompatibilityResolution resolution;
     if (CommandToCompCompatibilityTbl.contains(commandType))
     {
         auto commandMapping = CommandToCompCompatibilityTbl.find(commandType);
         if (commandMapping->second.contains(errorCode))
         {
             auto errorCodeSearch = commandMapping->second.find(errorCode);
-            oemMessageId = std::get<0>(errorCodeSearch->second);
-            oemMessageError = std::get<1>(errorCodeSearch->second);
-            oemResolution = std::get<2>(errorCodeSearch->second);
+            messageId = std::get<0>(errorCodeSearch->second);
+            messageError = std::get<1>(errorCodeSearch->second);
+            resolution = std::get<2>(errorCodeSearch->second);
             status = true;
         }
         else
@@ -227,7 +238,7 @@ inline std::tuple<bool, std::string, std::string, std::string>
             "No component compatibility response code mapping found for command: {COMMANDTYPE}",
             "COMMANDTYPE", (unsigned)commandType);
     }
-    return {status, oemMessageId, oemMessageError, oemResolution};
+    return {status, messageId, messageError, resolution};
 }
 
 } // namespace fw_update

@@ -122,7 +122,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, false));
+            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
         return PLDM_ERROR;
     }
 
@@ -163,7 +163,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, false));
+            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
         return PLDM_ERROR;
     }
     if (compCompatibilityResp)
@@ -174,7 +174,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
             compCompatibilityResp, "CCRC", compCompatibilityRespCode);
 
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getCompCompatibilityOemMessage(PLDM_UPDATE_COMPONENT, compCompatibilityRespCode);
+            getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, compCompatibilityRespCode);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(
@@ -182,9 +182,26 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
                 oemMessageError, oemResolution);
         }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, false));
+        if (compCompatibilityRespCode ==
+            PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL)
+        {
+            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+                updateManager->event,
+                std::bind(&ComponentUpdater::updateComponentComplete, this,
+                          ComponentUpdateStatus::UpdateSkipped));
+        }
+        // Set updateComponentComplete to UpdateFailed when
+        // compCompatibilityRespCode is either
+        // PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER or any value other than
+        // PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL and
+        // PLDM_CCRC_NO_RESPONSE_CODE
+        else
+        {
+            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+                updateManager->event,
+                std::bind(&ComponentUpdater::updateComponentComplete, this,
+                          ComponentUpdateStatus::UpdateFailed));
+        }
         return PLDM_ERROR;
     }
 
@@ -611,7 +628,7 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
         updateManager->getActivationMethod(compActivationModification));
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,
-        std::bind(&ComponentUpdater::updateComponentComplete, this, true));
+        std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateComplete));
     if (completeCommandsTimeoutTimer)
     {
         completeCommandsTimeoutTimer->stop();
@@ -835,7 +852,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
     }
     // update the status of update
-    updateComponentComplete(false);
+    updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
     co_return rc;
 }
 
@@ -879,7 +896,7 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
     return PLDM_SUCCESS;
 }
 
-void ComponentUpdater::updateComponentComplete(bool status)
+void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
 {
     if (updateCompletionCoHandle == nullptr)
     {

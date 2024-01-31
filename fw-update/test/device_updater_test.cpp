@@ -375,5 +375,5 @@ TEST_F(DeviceUpdaterTest, updateComponentCompletion)
             componentOffset, false);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
-    EXPECT_NO_THROW({ deviceUpdater.updateComponentCompletion(0, false); });
+    EXPECT_NO_THROW({ deviceUpdater.updateComponentCompletion(0, ComponentUpdateStatus::UpdateFailed); });
 }

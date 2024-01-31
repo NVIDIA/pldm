@@ -289,7 +289,7 @@ class DeviceUpdater
      * @param[in] compStatus - component status
      */
     requester::Coroutine updateComponentCompletion(const size_t compIndex,
-                                                   const bool compStatus);
+                                                   const ComponentUpdateStatus compStatus);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device

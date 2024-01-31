@@ -54,7 +54,7 @@ TEST(error_handling, getOemMessage_unknown_error_code)
     EXPECT_EQ(outoemResolution, oemResolution);
 }
 
-TEST(error_handling, getCompCompatibilityOemMessage_update_component_identical_comp_stamp)
+TEST(error_handling, getCompCompatibilityMessage_update_component_identical_comp_stamp)
 {
     const std::string oemMessageId = "OpenBMC.0.4.ComponentUpdateSkipped";
     const std::string oemMessageError = "Component image is identical";
@@ -62,7 +62,7 @@ TEST(error_handling, getCompCompatibilityOemMessage_update_component_identical_c
     const bool oemMessageStatus = true;
 
     auto [outmessageStatus, outoemMessageId, outoemMessageError, outoemResolution] =
-                getCompCompatibilityOemMessage(PLDM_UPDATE_COMPONENT, PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL);
+                getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL);
 
     EXPECT_EQ(outmessageStatus, oemMessageStatus);
     EXPECT_EQ(outoemMessageId, oemMessageId);
@@ -70,7 +70,7 @@ TEST(error_handling, getCompCompatibilityOemMessage_update_component_identical_c
     EXPECT_EQ(outoemResolution, oemResolution);
 }
 
-TEST(error_handling, getCompCompatibilityOemMessage_update_component_lower_comp_stamp)
+TEST(error_handling, getCompCompatibilityMessage_update_component_lower_comp_stamp)
 {
     const std::string oemMessageId = "ResourceEvent.1.0.ResourceErrorsDetected";
     const std::string oemMessageError = "Component comparison stamp is lower than the firmware component comparison stamp in the FD";
@@ -78,7 +78,7 @@ TEST(error_handling, getCompCompatibilityOemMessage_update_component_lower_comp_
     const bool oemMessageStatus = true;
 
     auto [outmessageStatus, outoemMessageId, outoemMessageError, outoemResolution] =
-                getCompCompatibilityOemMessage(PLDM_UPDATE_COMPONENT, PLDM_CRC_COMP_COMPARISON_STAMP_LOWER);
+                getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, PLDM_CRC_COMP_COMPARISON_STAMP_LOWER);
 
     EXPECT_EQ(outmessageStatus, oemMessageStatus);
     EXPECT_EQ(outoemMessageId, oemMessageId);

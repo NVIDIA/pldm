@@ -552,14 +552,20 @@ requester::Coroutine DeviceUpdater::processActivateFirmwareResponse(
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine
-    DeviceUpdater::updateComponentCompletion(const size_t compIndex,
-                                             const bool compStatus)
+requester::Coroutine DeviceUpdater::updateComponentCompletion(
+    const size_t compIndex, const ComponentUpdateStatus compStatus)
 {
-    componentUpdaterMap[compIndex].second = compStatus;
+    if (compStatus == ComponentUpdateStatus::UpdateComplete)
+    {
+        componentUpdaterMap[compIndex].second = true;
+    }
+    else
+    {
+        componentUpdaterMap[compIndex].second = false;
+    }
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
-    if (compStatus)
+    if (compStatus == ComponentUpdateStatus::UpdateComplete)
     {
         successCompNames.emplace_back(updateManager->getComponentName(
             eid, fwDeviceIDRecord, componentIndex));
@@ -602,7 +608,14 @@ requester::Coroutine
             updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
         }
-        updateManager->updateDeviceCompletion(eid, compStatus);
+        if (compStatus != ComponentUpdateStatus::UpdateFailed)
+        {
+            updateManager->updateDeviceCompletion(eid, true);
+        }
+        else
+        {
+            updateManager->updateDeviceCompletion(eid, false);
+        }
         co_return PLDM_SUCCESS;
     }
 }
