@@ -5,6 +5,7 @@
 #include "common/utils.hpp"
 
 #include <phosphor-logging/lg2.hpp>
+#include <telemetry_mrd_producer.hpp>
 
 #include <limits>
 #include <regex>
@@ -458,12 +459,12 @@ double NumericSensor::unitModifier(double value)
     return value * std::pow(10, baseUnitModifier);
 }
 
-void NumericSensor::updateReading(bool available, bool functional, double value,
-                                  sensorMap* sensorMetrics)
+void NumericSensor::updateReading(bool available, bool functional, double value)
 {
     rawValue = value;
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
+
 
     if (!valueIntf)
     {
@@ -480,8 +481,16 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
         valueIntf->value(std::numeric_limits<double>::quiet_NaN());
     }
 
-    if (sensorMetrics && inSensorMetrics)
+    if (inSensorMetrics)
     {
+        // Update Shared Memory Space
+        std::string propertyName = "Value";
+        std::string objPath = path;
+        std::string ifaceName = valueIntf->interface;
+        DbusVariantType propValue = value;
+        // TODO: update retCode for errors once error code handling defined for pldm
+        uint16_t retCode = 0;
+        
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();
         if (definitions.size() > 0)
@@ -493,18 +502,9 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now().time_since_epoch())
                         .count());
-                if (sensorMetrics->find(sensorName) == sensorMetrics->end())
-                {
-                    (*sensorMetrics)[sensorName] = std::make_tuple(
-                        valueIntf->value(), steadyTimeStamp, endpoint);
-                }
-                else
-                {
-                    std::get<0>((*sensorMetrics)[sensorName]) =
-                        valueIntf->value();
-                    std::get<1>((*sensorMetrics)[sensorName]) = steadyTimeStamp;
-                    std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
-                }
+                    nv::shmem::AggregationService::updateTelemetry(
+                        objPath, ifaceName, propertyName, propValue,
+                        steadyTimeStamp, retCode, endpoint);
             }
         }
     }

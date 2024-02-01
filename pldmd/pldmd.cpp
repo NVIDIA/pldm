@@ -29,6 +29,7 @@
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/signal.hpp>
 #include <stdplus/signal.hpp>
+#include <telemetry_mrd_producer.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -151,6 +152,12 @@ int main(int argc, char** argv)
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
                                                *(fwManager.get()), verbose);
+    // Intitializing shared memory space for pldmd
+    if (nv::shmem::AggregationService::namespaceInit("pldmd"))
+    {
+        lg2::info("Initialized shared memory pldmd");
+    }
+
 #endif
 
     try

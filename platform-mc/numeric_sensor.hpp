@@ -80,8 +80,7 @@ class NumericSensor
 
     /** @brief Updating the sensor status to D-Bus interface
      */
-    void updateReading(bool available, bool functional, double value = 0,
-                       sensorMap* sensorMetrics = nullptr);
+    void updateReading(bool available, bool functional, double value = 0);
 
     /** @brief ConversionFormula is used to convert raw value to the unit
      * specified in PDR

@@ -378,11 +378,11 @@ TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
             numericSensor->oemIntfs[0]);
 
     // Should be the same as value in updateReading()
-    numericSensor->updateReading(true, true, 10, nullptr);
+    numericSensor->updateReading(true, true, 10);
     EXPECT_EQ(10, memoryPageRetirementCount->memoryPageRetirementCount());
 
     // Should be zero for nan value
     numericSensor->updateReading(
-        true, true, std::numeric_limits<double>::quiet_NaN(), nullptr);
+        true, true, std::numeric_limits<double>::quiet_NaN());
     EXPECT_EQ(0, memoryPageRetirementCount->memoryPageRetirementCount());
 }
