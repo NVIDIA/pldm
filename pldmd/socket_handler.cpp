@@ -86,7 +86,7 @@ SocketInfo Handler::initSocket(int type, int protocol,
                     printBuffer(Rx, requestMsg);
                 }
 
-                if (MCTP_MSG_TYPE_PLDM != requestMsg[1])
+                if (MCTP_MSG_TYPE_PLDM != requestMsg[2])
                 {
                     // Skip this message and continue.
                 }
@@ -103,9 +103,14 @@ SocketInfo Handler::initSocket(int type, int protocol,
                             printBuffer(Tx, *response);
                         }
 
+                        constexpr uint8_t tagOwnerBitPos = 3;
+                        constexpr uint8_t tagOwnerMask = ~(1 << tagOwnerBitPos);
+                        // Set tag owner bit to 0 for PLDM responses
+                        requestMsg[0] = requestMsg[0] & tagOwnerMask;
                         iov[0].iov_base = &requestMsg[0];
-                        iov[0].iov_len =
-                            sizeof(requestMsg[0]) + sizeof(requestMsg[1]);
+                        iov[0].iov_len = sizeof(requestMsg[0]) +
+                                         sizeof(requestMsg[1]) +
+                                         sizeof(requestMsg[2]);
                         iov[1].iov_base = (*response).data();
                         iov[1].iov_len = (*response).size();
 
@@ -194,11 +199,12 @@ SocketInfo Handler::initSocket(int type, int protocol,
 std::optional<Response>
     Handler::processRxMsg(const std::vector<uint8_t>& requestMsg)
 {
+    using MsgTag = uint8_t;
     using type = uint8_t;
-    uint8_t eid = requestMsg[0];
+    uint8_t eid = requestMsg[1];
     pldm_header_info hdrFields{};
     auto hdr = reinterpret_cast<const pldm_msg_hdr*>(
-        requestMsg.data() + sizeof(eid) + sizeof(type));
+        requestMsg.data() + sizeof(MsgTag) + sizeof(eid) + sizeof(type));
     if (PLDM_SUCCESS != unpack_pldm_header(hdr, &hdrFields))
     {
         lg2::error("Empty PLDM request header");
@@ -210,7 +216,7 @@ std::optional<Response>
         Response response;
         auto request = reinterpret_cast<const pldm_msg*>(hdr);
         size_t requestLen = requestMsg.size() - sizeof(struct pldm_msg_hdr) -
-                            sizeof(eid) - sizeof(type);
+                            sizeof(MsgTag) - sizeof(eid) - sizeof(type);
         try
         {
             if (hdrFields.pldm_type != PLDM_FWUP)
@@ -248,7 +254,7 @@ std::optional<Response>
     {
         auto response = reinterpret_cast<const pldm_msg*>(hdr);
         size_t responseLen = requestMsg.size() - sizeof(struct pldm_msg_hdr) -
-                             sizeof(eid) - sizeof(type);
+                             sizeof(MsgTag) - sizeof(eid) - sizeof(type);
         handler.handleResponse(eid, hdrFields.instance, hdrFields.pldm_type,
                                hdrFields.command, response, responseLen);
     }

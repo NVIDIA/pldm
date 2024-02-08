@@ -1,6 +1,7 @@
 #include "pldm.h"
 #include "base.h"
 
+#include <libmctp-externals.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -8,6 +9,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+const uint8_t MCTP_TAG_OWNER_REQ = 0x01;
+const uint8_t MCTP_MSG_TAG_REQ = (MCTP_TAG_OWNER_REQ << 3) | MCTP_TAG_PLDM;
 const uint8_t MCTP_MSG_TYPE_PLDM = 1;
 
 pldm_requester_rc_t pldm_open()
@@ -58,7 +61,9 @@ static pldm_requester_rc_t mctp_recv(mctp_eid_t eid, int mctp_fd,
 				     uint8_t **pldm_resp_msg,
 				     size_t *resp_msg_len)
 {
-	ssize_t min_len = sizeof(eid) + sizeof(MCTP_MSG_TYPE_PLDM) +
+	uint8_t msgTag = 0;
+	ssize_t min_len = sizeof(msgTag) + sizeof(eid) +
+			  sizeof(MCTP_MSG_TYPE_PLDM) +
 			  sizeof(struct pldm_msg_hdr);
 	ssize_t length = recv(mctp_fd, NULL, 0, MSG_PEEK | MSG_TRUNC);
 	if (length <= 0) {
@@ -71,7 +76,7 @@ static pldm_requester_rc_t mctp_recv(mctp_eid_t eid, int mctp_fd,
 	} else {
 		struct iovec iov[2];
 		size_t mctp_prefix_len =
-		    sizeof(eid) + sizeof(MCTP_MSG_TYPE_PLDM);
+		    sizeof(msgTag) + sizeof(eid) + sizeof(MCTP_MSG_TYPE_PLDM);
 		uint8_t mctp_prefix[mctp_prefix_len];
 		size_t pldm_len = length - mctp_prefix_len;
 		iov[0].iov_len = mctp_prefix_len;
@@ -87,8 +92,8 @@ static pldm_requester_rc_t mctp_recv(mctp_eid_t eid, int mctp_fd,
 			free(*pldm_resp_msg);
 			return PLDM_REQUESTER_INVALID_RECV_LEN;
 		}
-		if ((mctp_prefix[0] != eid) ||
-		    (mctp_prefix[1] != MCTP_MSG_TYPE_PLDM)) {
+		if ((mctp_prefix[1] != eid) ||
+		    (mctp_prefix[2] != MCTP_MSG_TYPE_PLDM)) {
 			free(*pldm_resp_msg);
 			return PLDM_REQUESTER_NOT_PLDM_MSG;
 		}
@@ -170,8 +175,7 @@ pldm_requester_rc_t pldm_send_recv(mctp_eid_t eid, int mctp_fd,
 pldm_requester_rc_t pldm_send(mctp_eid_t eid, int mctp_fd,
 			      const uint8_t *pldm_req_msg, size_t req_msg_len)
 {
-	uint8_t hdr[2] = {eid, MCTP_MSG_TYPE_PLDM};
-
+	uint8_t hdr[3] = {MCTP_MSG_TAG_REQ, eid, MCTP_MSG_TYPE_PLDM};
 	struct iovec iov[2];
 	iov[0].iov_base = hdr;
 	iov[0].iov_len = sizeof(hdr);
