@@ -19,6 +19,7 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
 
 {
     maxBufferSize = 256;
+    scanInventories();
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
@@ -338,7 +339,6 @@ bool Terminus::parsePDRs()
     nvidia::nvidiaInitTerminus(*this);
 #endif
 
-    scanInventories();
     updateAssociations();
 
     interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
