@@ -57,8 +57,22 @@ requester::Coroutine PlatformManager::initTerminus()
                     terminusManager.getLocalEid());
                 if (rc)
                 {
-                    lg2::error("failed to send setEventReceiver to tid:{TID}, rc={RC}.",
-                               "TID", tid, "RC", rc);
+                    auto mctpInfo = terminusManager.toMctpInfo(tid);
+                    if (!mctpInfo)
+                    {
+                        lg2::error(
+                            "Failed to send setEventReceiver to tid:{TID}, rc={RC}. "
+                            "No match for tid:{TID} in mctpInfo.",
+                            "TID", tid, "RC", rc);
+                    }
+                    else
+                    {
+                        auto destEid = std::get<0>(mctpInfo.value());
+                        lg2::error(
+                            "failed to send setEventReceiver to tid:{TID}, rc={RC}, localEid:{EID}, destEid:{DESTEID}",
+                            "TID", tid, "RC", rc, "EID",
+                            terminusManager.getLocalEid(), "DESTEID", destEid);
+                    }
                 }
             }
         }

@@ -43,9 +43,6 @@ SensorManager::SensorManager(
     aggregationIntf =
         std::make_unique<AggregationIntf>(bus, aggregationDataPath);
 
-    aggregationIntf->sensorMetrics(sensorMetric);
-    aggregationIntf->staleSensorUpperLimitms(
-        STALE_SENSOR_UPPER_LIMITS_POLLING_TIME);
 
     // default priority sensor name spaces
     prioritySensorNameSpaces.emplace_back(
@@ -269,6 +266,26 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
+        for (auto effector : terminus->stateEffecters)
+        {
+            if (manager && terminus->pollEvent)
+            {
+                co_return PLDM_ERROR;
+            }
+
+            // Get state effector if effecter is updatePending
+            if (effector->isUpdatePending())
+            {
+                co_await effector->getStateEffecterStates();
+                if (sensorPollTimers[tid] &&
+                    !sensorPollTimers[tid]->isRunning())
+                {
+                    co_return PLDM_ERROR;
+                }
+                effector->needUpdate = false;
+            }
+        }
+
         for (auto sensor : terminus->stateSensors)
         {
             if (manager && terminus->pollEvent)
@@ -370,7 +387,6 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         } while ((t1 - t0) < pollingTimeInUsec);
 
-        aggregationIntf->sensorMetrics(sensorMetric);
 
         if (verbose)
         {
@@ -395,8 +411,8 @@ requester::Coroutine
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
     int rc;
-    
-    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO) 
+
+    if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
         Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
@@ -464,7 +480,7 @@ requester::Coroutine
             &sensorOperationalState, &sensorEventMessageEnable, &presentState,
             &previousState, &eventState,
             reinterpret_cast<uint8_t*>(&presentReading));
-            
+
         if (rc)
         {
             lg2::error(
@@ -481,7 +497,7 @@ requester::Coroutine
         rc = decode_get_oem_energy_count_sensor_reading_resp(
             responseMsg, responseLen, &completionCode, &sensorDataSize,
             &sensorOperationalState, reinterpret_cast<uint8_t*>(&presentReading));
-        
+
         if (rc)
         {
             lg2::error(
@@ -512,11 +528,11 @@ requester::Coroutine
         case PLDM_SENSOR_ENABLED:
             break;
         case PLDM_SENSOR_DISABLED:
-            sensor->updateReading(true, false, 0, &sensorMetric);
+            sensor->updateReading(true, false, 0);
             co_return completionCode;
         case PLDM_SENSOR_UNAVAILABLE:
         default:
-            sensor->updateReading(false, false, 0, &sensorMetric);
+            sensor->updateReading(false, false, 0);
             co_return completionCode;
     }
 
@@ -552,7 +568,7 @@ requester::Coroutine
             break;
     }
     
-    sensor->updateReading(true, true, value, &sensorMetric);
+    sensor->updateReading(true, true, value);
     co_return completionCode;
 }
 

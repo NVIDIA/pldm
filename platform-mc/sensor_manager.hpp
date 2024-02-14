@@ -138,11 +138,6 @@ class SensorManager
 
     std::unique_ptr<SensorPollingEnableIntf> enableIntf = nullptr;
 
-    /** @brief All sensor aggregated metrics, mapping from sensor name to sensor
-     * value, timestamp and chassis path
-     */
-    sensorMap sensorMetric{};
-
     /** @brief verbose tracing flag */
     bool verbose;
 

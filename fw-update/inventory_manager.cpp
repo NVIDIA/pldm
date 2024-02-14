@@ -105,6 +105,71 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid
     co_return rc;
 }
 
+void InventoryManager::initiateGetActiveFirmwareVersion(
+    mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
+{
+    dbus::MctpInterfaces mctpInterfaces;
+    auto co =
+        getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
+
+    if (inventoryCoRoutineHandlers.contains(eid))
+    {
+        inventoryCoRoutineHandlers[eid].destroy();
+        inventoryCoRoutineHandlers[eid] = co.handle;
+    }
+    else
+    {
+        inventoryCoRoutineHandlers.emplace(eid, co.handle);
+    }
+}
+
+requester::Coroutine InventoryManager::getActiveFirmwareVersion(
+    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
+    UpdateFWVersionCallBack updateFWVersionCallback)
+{
+    uint8_t rc = 0;
+    uint8_t getFirmwareParametersAttempts = numAttempts;
+
+    std::string messageError{};
+    std::string resolution{};
+
+    while (getFirmwareParametersAttempts--)
+    {
+        rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                            mctpInterfaces, true);
+
+        if (rc == PLDM_SUCCESS)
+        {
+            if (updateFWVersionCallback)
+            {
+                updateFWVersionCallback(eid);
+            }
+            break;
+        }
+        else
+        {
+            lg2::error(
+                "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
+                "EID", eid, "RC", rc);
+        }
+    }
+
+    if (rc)
+    {
+        cleanUpResources(eid);
+        lg2::error(
+            "Failed to execute the 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
+            "EID", eid, "RC", rc);
+        if (!messageError.empty() && !resolution.empty())
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
+        }
+    }
+
+    co_return rc;
+}
+
 void InventoryManager::cleanUpResources(mctp_eid_t eid)
 {
     mctpEidMap.erase(eid);
@@ -275,7 +340,8 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
 }
 
 requester::Coroutine InventoryManager::getFirmwareParameters(
-    mctp_eid_t eid, std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces)
+    mctp_eid_t eid, std::string& messageError, std::string& resolution,
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     auto instanceId = requester.getInstanceId(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
@@ -307,7 +373,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     }
 
     rc = co_await parseGetFWParametersResponse(eid, responseMsg, responseLen,
-                                                 messageError, resolution, mctpInterfaces);
+                                                 messageError, resolution, mctpInterfaces, refreshFWVersionOnly);
 
     if (rc)
     {
@@ -321,7 +387,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
 
 requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
-    std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces)
+    std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -411,7 +477,9 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     // physical medium is the fastest. Skip firmware/device inventory for the
     // next endpoints after discovering the first endpoint associated with the
     // UUID.
-    if (mctpEidMap.contains(eid))
+    // The logic to calculate fastest EID to the PLDM FD is not
+    // needed when FW versions are refreshed.
+    if (mctpEidMap.contains(eid) && !refreshFWVersionOnly)
     {
         const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
         if (mctpInfoMap.contains(uuid))

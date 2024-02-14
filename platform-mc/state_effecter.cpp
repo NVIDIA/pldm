@@ -22,7 +22,7 @@ StateEffecter::StateEffecter(
         effecterNames,
     std::string& associationPath, TerminusManager& terminusManager) :
     tid(tid),
-    effecterId(effecterId), effecterInfo(effecterInfo),
+    effecterId(effecterId), effecterInfo(effecterInfo), needUpdate(true),
     terminusManager(terminusManager)
 {
     path = "/xyz/openbmc_project/control/PLDM_Effecter_" +
@@ -138,6 +138,7 @@ void StateEffecter::updateReading(uint8_t compEffecterIndex,
     if (compEffecterIndex < stateSets.size())
     {
         stateSets[compEffecterIndex]->setValue(value);
+        stateSets[compEffecterIndex]->setOpState(effecterOperState);
     }
     else
     {
@@ -213,6 +214,7 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                            uint8_t value)
 {
     uint8_t cmpEffCnt = stateSets.size();
+    uint8_t rc = PLDM_SUCCESS;
 
     if (cmpId >= cmpEffCnt)
     {
@@ -234,6 +236,32 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
     std::vector<set_effecter_state_field> stateField(cmpEffCnt,
                                                      {PLDM_NO_CHANGE, 0});
     stateField[cmpId] = {PLDM_REQUEST_SET, value};
+    rc = co_await setStateEffecterStates(stateField);
+
+    co_return rc;
+}
+
+requester::Coroutine StateEffecter::setStateEffecterStates(
+    std::vector<set_effecter_state_field>& stateField)
+{
+    uint8_t cmpEffCnt = stateSets.size();
+
+    if (stateField.size() != cmpEffCnt)
+    {
+        lg2::error(
+            "Request Message Error: number of composited effecters {STATECNT} is invalid, (Maximum {CMPEFFCNT})",
+            "STATECNT", stateField.size(), "CMPEFFCNT", cmpEffCnt);
+        co_return PLDM_ERROR_INVALID_DATA;
+    }
+
+    if (cmpEffCnt > PLDM_COMPOSITE_EFFECTER_MAX_COUNT ||
+        cmpEffCnt < PLDM_COMPOSITE_EFFECTER_MIN_COUNT)
+    {
+        lg2::error(
+            "Request Message Error: ComEffCnt size {CMPEFFCNT} is invalid",
+            "CMPEFFCNT", cmpEffCnt);
+        co_return PLDM_ERROR_INVALID_DATA;
+    }
 
     Request request(sizeof(pldm_msg_hdr) + sizeof(effecterId) +
                     sizeof(cmpEffCnt) +
@@ -269,13 +297,22 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
         lg2::error(
             "Fail to decode response of setStateEffecterState, tid={TID}, rc={RC} cc={CC}.",
             "TID", tid, "RC", rc, "CC", completionCode);
-        co_await getStateEffecterStates();
-        co_return (rc == PLDM_SUCCESS) ? completionCode : rc;
     }
 
     co_await getStateEffecterStates();
+    co_return (rc == PLDM_SUCCESS) ? completionCode : rc;
+}
 
-    co_return completionCode;
+bool StateEffecter::isUpdatePending()
+{
+    for (auto stateSet : stateSets)
+    {
+        if (stateSet->getOpState() == EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace platform_mc

@@ -51,12 +51,10 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
         compClassificationIndex = std::get<0>(search->second);
     }
 
+    const auto& compOptions = std::get<static_cast<size_t>(ComponentImageInfoPos::CompOptionsPos)>(comp);
     // UpdateOptionFlags
-    bitfield32_t updateOptionFlags;
-    // TODO: Revert to reading the UpdateOptionFlags from package header instead
-    // of hardcoding.
-    // updateOptionFlags.bits.bit0 = std::get<3>(comp)[0];
-    updateOptionFlags.bits.bit0 = 1;
+    bitfield32_t updateOptionFlags = {0};
+    updateOptionFlags.bits.bit0 = updateManager->forceUpdate || compOptions.test(forceUpdateBit);
     // ComponentVersion
     const auto& compVersion = std::get<7>(comp);
     variable_field compVerStrInfo{};
@@ -69,7 +67,6 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
     size_t respMsgLen = 0;
-
     auto rc = encode_update_component_req(
         instanceId, compClassification, compIdentifier, compClassificationIndex,
         std::get<static_cast<size_t>(
@@ -125,7 +122,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, false));
+            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
         return PLDM_ERROR;
     }
 
@@ -155,16 +152,56 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
     }
     if (completionCode)
     {
-        lg2::error("UpdateComponent response failed with error completion code,"
-                   " EID={EID}, CC={CC}",
-                   "EID", eid, "CC", completionCode);
+        lg2::error(
+            "UpdateComponent response failed with error completion code,"
+            " EID={EID}, CC={CC}, compCompatibilityResp={CCR}, compCompatibilityRespCode= {CCRC}",
+            "EID", eid, "CC", completionCode, "CCR", compCompatibilityResp,
+            "CCRC", compCompatibilityRespCode);
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
             PLDM_UPDATE_COMPONENT, PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, false));
+            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
+        return PLDM_ERROR;
+    }
+    if (compCompatibilityResp)
+    {
+        lg2::error(
+            "In UpdateComponent response, ComponentCompatibilityResponse is non-zero EID={EID}, RC= {RC}, CompletionCode= {CC}, compCompatibilityResp={CCR}, compCompatibilityRespCode= {CCRC}",
+            "EID", eid, "RC", rc, "CC", completionCode, "CCR",
+            compCompatibilityResp, "CCRC", compCompatibilityRespCode);
+
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, compCompatibilityRespCode);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        if (compCompatibilityRespCode ==
+            PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL)
+        {
+            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+                updateManager->event,
+                std::bind(&ComponentUpdater::updateComponentComplete, this,
+                          ComponentUpdateStatus::UpdateSkipped));
+        }
+        // Set updateComponentComplete to UpdateFailed when
+        // compCompatibilityRespCode is either
+        // PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER or any value other than
+        // PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL and
+        // PLDM_CCRC_NO_RESPONSE_CODE
+        else
+        {
+            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+                updateManager->event,
+                std::bind(&ComponentUpdater::updateComponentComplete, this,
+                          ComponentUpdateStatus::UpdateFailed));
+        }
         return PLDM_ERROR;
     }
 
@@ -591,7 +628,7 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
         updateManager->getActivationMethod(compActivationModification));
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,
-        std::bind(&ComponentUpdater::updateComponentComplete, this, true));
+        std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateComplete));
     if (completeCommandsTimeoutTimer)
     {
         completeCommandsTimeoutTimer->stop();
@@ -815,7 +852,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
     }
     // update the status of update
-    updateComponentComplete(false);
+    updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
     co_return rc;
 }
 
@@ -859,7 +896,7 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
     return PLDM_SUCCESS;
 }
 
-void ComponentUpdater::updateComponentComplete(bool status)
+void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
 {
     if (updateCompletionCoHandle == nullptr)
     {

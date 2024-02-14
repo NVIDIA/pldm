@@ -5,6 +5,8 @@
 #include "common/utils.hpp"
 
 #include <phosphor-logging/lg2.hpp>
+#include <telemetry_mrd_producer.hpp>
+#include <smbus_telemetry_target_api.hpp>
 
 #include <limits>
 #include <regex>
@@ -121,45 +123,73 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             break;
     }
 
+    bool hasWarningThresholds = false;
     bool hasCriticalThresholds = false;
     double criticalHigh = std::numeric_limits<double>::quiet_NaN();
     double criticalLow = std::numeric_limits<double>::quiet_NaN();
     double warningHigh = std::numeric_limits<double>::quiet_NaN();
     double warningLow = std::numeric_limits<double>::quiet_NaN();
 
-    switch (pdr->range_field_format)
+    if (pdr->supported_thresholds.bits.bit0)
     {
-        case PLDM_RANGE_FIELD_FORMAT_UINT8:
-            warningHigh = pdr->warning_high.value_u8;
-            warningLow = pdr->warning_low.value_u8;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_SINT8:
-            warningHigh = pdr->warning_high.value_s8;
-            warningLow = pdr->warning_low.value_u8;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_UINT16:
-            warningHigh = pdr->warning_high.value_u16;
-            warningLow = pdr->warning_low.value_u16;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_SINT16:
-            warningHigh = pdr->warning_high.value_s16;
-            warningLow = pdr->warning_low.value_s16;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_UINT32:
-            warningHigh = pdr->warning_high.value_u32;
-            warningLow = pdr->warning_low.value_u32;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_SINT32:
-            warningHigh = pdr->warning_high.value_s32;
-            warningLow = pdr->warning_low.value_s32;
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_REAL32:
-            warningHigh = pdr->warning_high.value_f32;
-            warningLow = pdr->warning_low.value_f32;
-            break;
+        hasWarningThresholds = true;
+        switch (pdr->range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                warningHigh = pdr->warning_high.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                warningHigh = pdr->warning_high.value_s8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                warningHigh = pdr->warning_high.value_u16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                warningHigh = pdr->warning_high.value_s16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                warningHigh = pdr->warning_high.value_u32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                warningHigh = pdr->warning_high.value_s32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                warningHigh = pdr->warning_high.value_f32;
+                break;
+        }
     }
 
-    if (pdr->range_field_support.bits.bit3)
+    if (pdr->supported_thresholds.bits.bit3)
+    {
+        hasWarningThresholds = true;
+        switch (pdr->range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                warningLow = pdr->warning_low.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                warningLow = pdr->warning_low.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                warningLow = pdr->warning_low.value_u16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                warningLow = pdr->warning_low.value_s16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                warningLow = pdr->warning_low.value_u32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                warningLow = pdr->warning_low.value_s32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                warningLow = pdr->warning_low.value_f32;
+                break;
+        }
+    }
+
+    if (pdr->range_field_support.bits.bit3 &&
+        pdr->supported_thresholds.bits.bit1)
     {
         hasCriticalThresholds = true;
         switch (pdr->range_field_format)
@@ -188,7 +218,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         }
     }
 
-    if (pdr->range_field_support.bits.bit4)
+    if (pdr->range_field_support.bits.bit4 &&
+        pdr->supported_thresholds.bits.bit4)
     {
         hasCriticalThresholds = true;
         switch (pdr->range_field_format)
@@ -245,7 +276,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         std::make_unique<OperationalStatusIntf>(bus, path.c_str());
     operationalStatusIntf->functional(!sensorDisabled);
 
-    if (warningLow < warningHigh)
+    if (hasWarningThresholds)
     {
         thresholdWarningIntf =
             std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
@@ -268,18 +299,17 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 }
 
 #ifdef OEM_NVIDIA
-NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
-                             std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
-                             std::string& sensorName,
-                             std::string& associationPath,
-                             uint8_t oemIndicator) :
+NumericSensor::NumericSensor(
+    const tid_t tid, const bool sensorDisabled,
+    std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
+    std::string& sensorName, std::string& associationPath,
+    uint8_t oemIndicator) :
     tid(tid),
     sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
     sensorName(sensorName), inSensorMetrics(false), isPriority(false),
-    baseUnit(pdr->base_unit),
-    pollingIndicator(oemIndicator)
+    baseUnit(pdr->base_unit), pollingIndicator(oemIndicator)
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
     bool hasValueIntf = true;
@@ -430,12 +460,12 @@ double NumericSensor::unitModifier(double value)
     return value * std::pow(10, baseUnitModifier);
 }
 
-void NumericSensor::updateReading(bool available, bool functional, double value,
-                                  sensorMap* sensorMetrics)
+void NumericSensor::updateReading(bool available, bool functional, double value)
 {
     rawValue = value;
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
+
 
     if (!valueIntf)
     {
@@ -452,8 +482,16 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
         valueIntf->value(std::numeric_limits<double>::quiet_NaN());
     }
 
-    if (sensorMetrics && inSensorMetrics)
+    if (inSensorMetrics)
     {
+        // Update Shared Memory Space
+        std::string propertyName = "Value";
+        std::string objPath = path;
+        std::string ifaceName = valueIntf->interface;
+        DbusVariantType propValue = value;
+        // TODO: update retCode for errors once error code handling defined for pldm
+        uint16_t retCode = 0;
+        
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();
         if (definitions.size() > 0)
@@ -465,18 +503,19 @@ void NumericSensor::updateReading(bool available, bool functional, double value,
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now().time_since_epoch())
                         .count());
-                if (sensorMetrics->find(sensorName) == sensorMetrics->end())
+                    nv::shmem::AggregationService::updateTelemetry(
+                        objPath, ifaceName, propertyName, propValue,
+                        steadyTimeStamp, retCode, endpoint);
+                // smbus telemetry update.
+                uint64_t val = static_cast<uint64_t>(rawValue);
+                val = le64toh(val);
+                int rc = 0;
+                rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
+                                            (void*)&val, sizeof(val),
+                                            steadyTimeStamp, retCode);
+                if(rc != 0)
                 {
-                    (*sensorMetrics)[sensorName] = std::make_tuple(
-                        valueIntf->value(), steadyTimeStamp, endpoint);
-                }
-                else
-                {
-                    std::get<0>((*sensorMetrics)[sensorName]) =
-                        valueIntf->value();
-                    std::get<1>((*sensorMetrics)[sensorName]) =
-                        steadyTimeStamp;
-                    std::get<2>((*sensorMetrics)[sensorName]) = endpoint;
+                    lg2::error("Failed to updateSmbusTelemetry");
                 }
             }
         }

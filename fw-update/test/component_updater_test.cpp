@@ -485,7 +485,7 @@ TEST_F(ComponentUpdaterTest, updateComponentComplete)
                                       512, &updateManager, &deviceUpdater,
                                       componentOffset, false);
 
-    EXPECT_NO_THROW({ componentUpdater.updateComponentComplete(false); });
+    EXPECT_NO_THROW({ componentUpdater.updateComponentComplete(ComponentUpdateStatus::UpdateFailed); });
 }
 
 TEST_F(ComponentUpdaterTest, createRequestFwDataTimer)

@@ -9,6 +9,11 @@
 #include "requester/handler.hpp"
 #include "terminus.hpp"
 
+namespace pldm::fw_update
+{
+class Manager;
+}
+
 namespace pldm
 {
 namespace platform_mc
@@ -51,9 +56,10 @@ class EventManager
 
     explicit EventManager(
         TerminusManager& terminusManager,
-        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini, bool verbose = false) :
+        std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
+        fw_update::Manager& fwUpdateManager, bool verbose = false) :
         terminusManager(terminusManager),
-        termini(termini), verbose(verbose){};
+        termini(termini), fwUpdateManager(fwUpdateManager), verbose(verbose){};
 
     /** @brief Handle platform event
      *
@@ -127,6 +133,8 @@ class EventManager
 
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
+
+    fw_update::Manager& fwUpdateManager;
 
     /** @brief verbose tracing flag */
     bool verbose;

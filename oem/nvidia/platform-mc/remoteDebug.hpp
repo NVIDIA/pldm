@@ -119,33 +119,32 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     DebugState jtagDebug() const override
     {
-        return toDebugState(stateSensor->stateSets[JTAGEN_COMP_ID]->getValue());
+        return getDebugState(JTAGEN_COMP_ID);
     }
 
     DebugState deviceDebug() const override
     {
-        return toDebugState(stateSensor->stateSets[DEVEN_COMP_ID]->getValue());
+        return getDebugState(DEVEN_COMP_ID);
     }
 
     DebugState securePrivilegeNonInvasiveDebug() const override
     {
-        return toDebugState(
-            stateSensor->stateSets[SPNIDEN_COMP_ID]->getValue());
+        return getDebugState(SPNIDEN_COMP_ID);
     }
 
     DebugState securePrivilegeInvasiveDebug() const override
     {
-        return toDebugState(stateSensor->stateSets[SPIDEN_COMP_ID]->getValue());
+        return getDebugState(SPIDEN_COMP_ID);
     }
 
     DebugState nonInvasiveDebug() const override
     {
-        return toDebugState(stateSensor->stateSets[NIDEN_COMP_ID]->getValue());
+        return getDebugState(NIDEN_COMP_ID);
     }
 
     DebugState invasiveDebug() const override
     {
-        return toDebugState(stateSensor->stateSets[DBGEN_COMP_ID]->getValue());
+        return getDebugState(DBGEN_COMP_ID);
     }
 
     uint32_t timeout(uint32_t value, bool skipSignal)
@@ -162,54 +161,59 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
         return numericEffecter->rawToBase(numericEffecter->getValue());
     }
 
-    void enable(DebugPolicy debugPolicy) override
+    void enable(std::vector<DebugPolicy> debugPolicy) override
     {
-        auto compId = toCompId(debugPolicy);
-        if (compId == INVALID_COMP_ID)
+        uint8_t cmpEffCnt = stateEffecter->stateSets.size();
+        std::vector<set_effecter_state_field> stateField(cmpEffCnt,
+                                                         {PLDM_NO_CHANGE, 0});
+        for (auto& v : debugPolicy)
         {
-            throw sdbusplus::xyz::openbmc_project::Common::Error::
-                InvalidArgument();
+            auto compId = toCompId(v);
+            if (compId == INVALID_COMP_ID)
+            {
+                throw sdbusplus::xyz::openbmc_project::Common::Error::
+                    InvalidArgument();
+            }
+
+            if (stateSensor->stateSets[compId]->getValue() ==
+                PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            {
+                throw sdbusplus::xyz::openbmc_project::Common::Error::
+                    NotAllowed();
+            }
+            stateField[compId] = {PLDM_REQUEST_SET,
+                                  PLDM_STATE_SET_DEBUG_STATE_ENABLED};
         }
 
-        if (stateSensor->stateSets[compId]->getValue() ==
-            PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
-        {
-            throw sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed();
-        }
-
-        if (stateSensor->stateSets[compId]->getValue() !=
-            PLDM_STATE_SET_DEBUG_STATE_ENABLED)
-        {
-            stateEffecter
-                ->setStateEffecterStates(compId,
-                                         PLDM_STATE_SET_DEBUG_STATE_ENABLED)
-                .detach();
-        }
+        stateEffecter->setStateEffecterStates(stateField).detach();
     }
 
-    void disable(DebugPolicy debugPolicy) override
+    void disable(std::vector<DebugPolicy> debugPolicy) override
     {
-        auto compId = toCompId(debugPolicy);
-        if (compId == INVALID_COMP_ID)
+        uint8_t cmpEffCnt = stateEffecter->stateSets.size();
+        std::vector<set_effecter_state_field> stateField(cmpEffCnt,
+                                                         {PLDM_NO_CHANGE, 0});
+
+        for (auto& v : debugPolicy)
         {
-            throw sdbusplus::xyz::openbmc_project::Common::Error::
-                InvalidArgument();
+            auto compId = toCompId(v);
+            if (compId == INVALID_COMP_ID)
+            {
+                throw sdbusplus::xyz::openbmc_project::Common::Error::
+                    InvalidArgument();
+            }
+
+            if (stateSensor->stateSets[compId]->getValue() ==
+                PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            {
+                throw sdbusplus::xyz::openbmc_project::Common::Error::
+                    NotAllowed();
+            }
+            stateField[compId] = {PLDM_REQUEST_SET,
+                                  PLDM_STATE_SET_DEBUG_STATE_DISABLED};
         }
 
-        if (stateSensor->stateSets[compId]->getValue() ==
-            PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
-        {
-            throw sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed();
-        }
-
-        if (stateSensor->stateSets[compId]->getValue() !=
-            PLDM_STATE_SET_DEBUG_STATE_DISABLED)
-        {
-            stateEffecter
-                ->setStateEffecterStates(compId,
-                                         PLDM_STATE_SET_DEBUG_STATE_DISABLED)
-                .detach();
-        }
+        stateEffecter->setStateEffecterStates(stateField).detach();
     }
 
     uint8_t toCompId(DebugPolicy value)
@@ -246,6 +250,16 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
             default:
                 return DebugState::Unknown;
         }
+    }
+
+    DebugState getDebugState(uint8_t compositeId) const
+    {
+        if (stateEffecter->stateSets[compositeId]->getOpState() ==
+            EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING)
+        {
+            return DebugState::Pending;
+        }
+        return toDebugState(stateSensor->stateSets[compositeId]->getValue());
     }
 
   private:

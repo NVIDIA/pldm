@@ -25,10 +25,12 @@
 #include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <smbus_telemetry_target_api.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/signal.hpp>
 #include <stdplus/signal.hpp>
+#include <telemetry_mrd_producer.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -142,10 +144,27 @@ int main(int argc, char** argv)
                                                       sockManager, verbose);
     DBusHandler dbusHandler;
 
+    std::unique_ptr<fw_update::Manager> fwManager =
+        std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
+                                             FW_UPDATE_CONFIG_JSON,
+                                             &dbusHandler, fwDebug);
+
 #ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
-                                               verbose);
+                                               *(fwManager.get()), verbose);
+
+    // Intitializing shared memory space for pldmd
+    if (nv::shmem::AggregationService::namespaceInit("pldmd"))
+    {
+        lg2::info("Initialized shared memory pldmd");
+    }
+
+    // Initializing smbus telemetry for pldmd
+    if (smbusSlaveInit())
+    {
+        lg2::info("Initialized smbusSlaveInit()!!!");
+    }
 #endif
 
     try
@@ -222,6 +241,15 @@ int main(int argc, char** argv)
                      request, payloadLength, formatVersion, tid,
                      eventDataOffset, platformEventStatus);
              }}},
+            {PLDM_OEM_EVENT_CLASS_0xFB,
+             {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                                 uint8_t formatVersion, uint8_t tid,
+                                 size_t eventDataOffset,
+                                 uint8_t& platformEventStatus) {
+                 return platformManager->handleActiveFWVersionChangeEvent(
+                     request, payloadLength, formatVersion, tid,
+                     eventDataOffset, platformEventStatus);
+             }}},
             {PLDM_MESSAGE_POLL_EVENT,
              {[&platformManager](const pldm_msg* request, size_t payloadLength,
                                  uint8_t formatVersion, uint8_t tid,
@@ -270,10 +298,6 @@ int main(int argc, char** argv)
             bus, "/xyz/openbmc_project/pldm");
 
 #endif
-        std::unique_ptr<fw_update::Manager> fwManager =
-            std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
-                                                 FW_UPDATE_CONFIG_JSON,
-                                                 &dbusHandler, fwDebug);
 
         pldm::mctp_socket::Handler sockHandler(event, reqHandler, invoker,
                                                *(fwManager.get()), sockManager,
@@ -282,11 +306,17 @@ int main(int argc, char** argv)
         std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
             std::make_unique<MctpDiscovery>(
                 bus, sockHandler,
+                // For refreshing the firmware version, it's important to invoke
+                // PLDM type 5 code prior to type 2. The descriptor Map with
+                // firmware version info is maintained in fwManager, so
+                // that whenever platform event for version change is received
+                // in plaformManager, the same descriptor Map is updated.
                 std::initializer_list<MctpDiscoveryHandlerIntf*>{
+                    fwManager.get(),
 #ifdef PLDM_TYPE2
-                    platformManager.get(),
+                    platformManager.get()
 #endif
-                    fwManager.get()});
+                });
 
         bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
         bus.request_name("xyz.openbmc_project.PLDM");

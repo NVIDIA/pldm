@@ -239,6 +239,9 @@ libpldmutils = declare_dependency(
   include_directories: include_directories(libpldmutils_headers),
   link_with: libpldmutils)
 
+nvidia_shmem =dependency('nvidia-shmem', required : true)
+smbus_telemetry_target =dependency('smbus-telemetry-target', required : true)
+
 deps = [
   fmt_dep,
   function2_dep,
@@ -250,6 +253,8 @@ deps = [
   phosphor_dbus_interfaces,
   phosphor_logging,
   openssl,
+  nvidia_shmem,
+  smbus_telemetry_target,
 ]
 
 if get_option('libpldmresponder').enabled()

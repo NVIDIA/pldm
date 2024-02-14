@@ -28,9 +28,10 @@ class StateSet
     uint16_t id;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =
         nullptr;
+    uint8_t opState;
 
   public:
-    StateSet(uint16_t id) : id(id)
+    StateSet(uint16_t id) : id(id), opState(0)
     {}
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) = 0;
@@ -56,6 +57,16 @@ class StateSet
     virtual uint8_t getValue()
     {
         return 0;
+    }
+
+    virtual uint8_t getOpState()
+    {
+        return opState;
+    }
+
+    virtual void setOpState(uint8_t value)
+    {
+        opState = value;
     }
 
     uint16_t getStateSetId()

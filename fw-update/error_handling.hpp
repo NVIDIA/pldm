@@ -14,9 +14,18 @@ namespace fw_update
 using ErrorCode = uint8_t;
 using OemMessage = std::string;
 using OemResolution = std::string;
+using CompCompatibilityMessageId = std::string;
+using CompCompatibilityMessage = std::string;
+using CompCompatibilityResolution = std::string;
 using MessageMapping = std::pair<OemMessage, OemResolution>;
+using ComponentCompatibilityMessageMapping =
+    std::tuple<CompCompatibilityMessageId, CompCompatibilityMessage, CompCompatibilityResolution>;
 using ErrorMapping = std::unordered_map<ErrorCode, MessageMapping>;
+using CompCompatibilityMapping =
+    std::unordered_map<ErrorCode, ComponentCompatibilityMessageMapping>;
 using CommandMapping = std::map<pldm_firmware_update_commands, ErrorMapping>;
+using CommandToCompCompatibilityMap =
+    std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
 
 #ifdef OEM_NVIDIA
 ErrorCode constexpr unableToInitiateUpdate = 0x8A;
@@ -116,6 +125,17 @@ static ErrorMapping activateFirmwareMapping{
     {COMMAND_TIMEOUT,
      {"Activating firmware timed out", "Retry firmware update operation."}}};
 
+static CompCompatibilityMapping updateComponentResponseCodeMapping{
+    {PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL,
+     {"OpenBMC.0.4.ComponentUpdateSkipped",
+      "Component image is identical",
+      "Retry firmware update operation with the force flag"}},
+    {PLDM_CRC_COMP_COMPARISON_STAMP_LOWER,
+     {"ResourceEvent.1.0.ResourceErrorsDetected",
+      "Component comparison stamp is lower than the firmware component comparison stamp in the FD",
+      "Retry firmware update operation with the force flag"}},
+};
+
 /* Error mapping table for each pldm command */
 static const CommandMapping commandMappingTbl = {
     {PLDM_REQUEST_UPDATE, requestUpdateMapping},
@@ -126,6 +146,10 @@ static const CommandMapping commandMappingTbl = {
     {PLDM_VERIFY_COMPLETE, verifyCompleteMapping},
     {PLDM_APPLY_COMPLETE, applyCompleteMapping},
     {PLDM_ACTIVATE_FIRMWARE, activateFirmwareMapping}};
+
+static const CommandToCompCompatibilityMap CommandToCompCompatibilityTbl = {
+    {PLDM_UPDATE_COMPONENT, updateComponentResponseCodeMapping},
+};
 
 /**
  * @brief Get the Oem Message for enhanced message registry
@@ -169,6 +193,52 @@ inline std::tuple<bool, std::string, std::string, std::string>
                    (unsigned)commandType);
     }
     return {status, oemMessageId, oemMessageError, oemResolution};
+}
+
+/**
+ * @brief Get the Component Compatibility Message for enhanced message registry
+ *
+ * @param[in] commandType - pldm command type
+ * @param[in] errorCode - error code
+ * @return true, message id, error and resolution - error code mapping is
+ * present
+ * @return false - error code mapping is not present
+ */
+inline std::tuple<bool, std::string, std::string, std::string>
+    getCompCompatibilityMessage(
+        const pldm_firmware_update_commands& commandType,
+        const ErrorCode& errorCode)
+{
+    using namespace pldm::fw_update;
+    bool status = false;
+    CompCompatibilityMessageId messageId;
+    CompCompatibilityMessage messageError;
+    CompCompatibilityResolution resolution;
+    if (CommandToCompCompatibilityTbl.contains(commandType))
+    {
+        auto commandMapping = CommandToCompCompatibilityTbl.find(commandType);
+        if (commandMapping->second.contains(errorCode))
+        {
+            auto errorCodeSearch = commandMapping->second.find(errorCode);
+            messageId = std::get<0>(errorCodeSearch->second);
+            messageError = std::get<1>(errorCodeSearch->second);
+            resolution = std::get<2>(errorCodeSearch->second);
+            status = true;
+        }
+        else
+        {
+            lg2::error(
+                "Component Compatibility Response Code: {ERRORCODE} not found for command: {COMMANDTYPE}",
+                "ERRORCODE", errorCode, "COMMANDTYPE", (unsigned)commandType);
+        }
+    }
+    else
+    {
+        lg2::error(
+            "No component compatibility response code mapping found for command: {COMMANDTYPE}",
+            "COMMANDTYPE", (unsigned)commandType);
+    }
+    return {status, messageId, messageError, resolution};
 }
 
 } // namespace fw_update

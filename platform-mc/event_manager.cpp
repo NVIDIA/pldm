@@ -3,6 +3,7 @@
 #include "libpldm/utils.h"
 #include "platform.h"
 
+#include "fw-update/manager.hpp"
 #include "terminus_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -75,6 +76,19 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         {
             termini[tid]->pollEvent = true;
         }
+    }
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFB)
+    {
+        auto mctpInfo = terminusManager.toMctpInfo(tid);
+        if (!mctpInfo)
+        {
+            lg2::error("handlePlatformEvent: cannot find eid for tid:{TID}.",
+                       "TID", tid);
+            return PLDM_ERROR;
+        }
+
+        auto eid = std::get<0>(mctpInfo.value());
+        fwUpdateManager.updateFWInventory(eid);
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA)
     {
