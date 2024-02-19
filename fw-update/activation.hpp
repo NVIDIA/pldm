@@ -156,8 +156,7 @@ class Activation : public ActivationIntf
                 }
             }
 
-            if ((objPath != updateManager->stagedObjPath) &&
-                (!updateManager->performSecurityChecks()))
+            if (!updateManager->performSecurityChecks())
             {
                 lg2::error("Security checks failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
