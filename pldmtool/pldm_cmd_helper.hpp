@@ -26,8 +26,10 @@ namespace pldmtool
 namespace helper
 {
 
-constexpr uint8_t PLDM_ENTITY_ID = 8;
-constexpr uint8_t MCTP_MSG_TYPE_PLDM = 1;
+constexpr static uint8_t PLDM_ENTITY_ID = 8;
+constexpr static uint8_t MCTP_MSG_TYPE_PLDM = 1;
+constexpr static auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
+constexpr static auto unixSocketIntfName{"xyz.openbmc_project.Common.UnixSocket"};
 using ordered_json = nlohmann::ordered_json;
 
 /** @brief print the input message if pldmverbose is enabled
@@ -125,6 +127,27 @@ class CommandInterface
     }
 
   private:
+
+    /** @brief Get Managed Objects for an MCTP service
+     *
+     *  @param[in]  service - Service to fetch objects for
+     *
+     *  @return On success return the objects managed by the service
+     *          on error return empty
+     */
+    pldm::dbus::ObjectValueTree getMctpManagedObjects(const std::string& service) const noexcept;
+
+    /** @brief Get set of MCTP services 
+     *
+     * getmctpservices does an objectmapper for objects implementing 
+     * mctp remote endpoint and collects the service names from the objects
+     *
+     *
+     *  @return On success return the set of MCTP services, on dbus error
+     *          the set will be empty
+     */
+    std::set<pldm::dbus::Service> getMctpServices() const;
+
     /** @brief Get MCTP demux daemon socket address
      *
      *  getMctpSockAddr does a D-Bus lookup for MCTP remote endpoint and return
