@@ -19,7 +19,8 @@
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 
 #include <coroutine>
 

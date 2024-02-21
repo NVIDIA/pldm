@@ -4,7 +4,8 @@
 
 #include "platform-mc/state_set.hpp"
 
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 
 namespace pldm
 {
@@ -13,22 +14,25 @@ namespace platform_mc
 namespace oem_nvidia
 {
 
-using PortValueIntf = sdbusplus::server::object_t<
-    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Port>;
+using PortInfoIntf = sdbusplus::server::object_t<
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
+using PortStateIntf = sdbusplus::server::object_t<
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState>;
 
 using PortType =
-    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Port::PortType;
-using PortProtocol = sdbusplus::xyz::openbmc_project::Inventory::Item::server::
-    Port::PortProtocol;
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
+using PortProtocol =
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
 using PortLinkStates =
-    sdbusplus::xyz::openbmc_project::Inventory::Item::server::Port::LinkStates;
-using PortLinkStatus = sdbusplus::xyz::openbmc_project::Inventory::Item::
-    server::Port::LinkStatusType;
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStates;
+using PortLinkStatus =
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStatusType;
 
 class StateSetNvlink : public StateSet
 {
   private:
-    std::unique_ptr<PortValueIntf> ValueIntf = nullptr;
+    std::unique_ptr<PortInfoIntf> ValuePortInfoIntf = nullptr;
+    std::unique_ptr<PortStateIntf> ValuePortStateIntf = nullptr;
 
   public:
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
@@ -43,7 +47,8 @@ class StateSetNvlink : public StateSet
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
-        ValueIntf = std::make_unique<PortValueIntf>(bus, objectPath.c_str());
+        ValuePortInfoIntf = std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
+        ValuePortStateIntf = std::make_unique<PortStateIntf>(bus, objectPath.c_str());
         setDefaultValue();
     }
     ~StateSetNvlink() = default;
@@ -52,38 +57,38 @@ class StateSetNvlink : public StateSet
         switch (value)
         {
             case PLDM_STATE_SET_NVLINK_INACTIVE:
-                ValueIntf->linkState(PortLinkStates::Disabled);
-                ValueIntf->linkStatus(PortLinkStatus::LinkDown);
+                ValuePortStateIntf->linkState(PortLinkStates::Disabled);
+                ValuePortStateIntf->linkStatus(PortLinkStatus::LinkDown);
                 break;
             case PLDM_STATE_SET_NVLINK_ACTIVE:
-                ValueIntf->linkState(PortLinkStates::Enabled);
-                ValueIntf->linkStatus(PortLinkStatus::LinkUp);
+                ValuePortStateIntf->linkState(PortLinkStates::Enabled);
+                ValuePortStateIntf->linkStatus(PortLinkStatus::LinkUp);
                 break;
             case PLDM_STATE_SET_NVLINK_ERROR:
-                ValueIntf->linkState(PortLinkStates::Error);
-                ValueIntf->linkStatus(PortLinkStatus::NoLink);
+                ValuePortStateIntf->linkState(PortLinkStates::Error);
+                ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
                 break;
             default:
-                ValueIntf->linkState(PortLinkStates::Unknown);
-                ValueIntf->linkStatus(PortLinkStatus::NoLink);
+                ValuePortStateIntf->linkState(PortLinkStates::Unknown);
+                ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
                 break;
         }
     }
     void setDefaultValue() const override
     {
-        ValueIntf->type(PortType::BidirectionalPort);
-        ValueIntf->protocol(PortProtocol::NVLink);
-        ValueIntf->linkState(PortLinkStates::Unknown);
-        ValueIntf->linkStatus(PortLinkStatus::NoLink);
+        ValuePortInfoIntf->type(PortType::BidirectionalPort);
+        ValuePortInfoIntf->protocol(PortProtocol::NVLink);
+        ValuePortStateIntf->linkState(PortLinkStates::Unknown);
+        ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
     }
     std::tuple<std::string, std::string> getEventData() const override
     {
-        if (ValueIntf->linkStatus() == PortLinkStatus::LinkUp)
+        if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("Active")};
         }
-        else if (ValueIntf->linkStatus() == PortLinkStatus::LinkDown)
+        else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
