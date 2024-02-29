@@ -482,15 +482,32 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         valueIntf->value(std::numeric_limits<double>::quiet_NaN());
     }
 
+    std::string propertyName = "Value";
+    std::string objPath = path;
+    std::string ifaceName = valueIntf->interface;
+    // TODO: update retCode for errors once error code handling defined for pldm
+    uint16_t retCode = 0;
+
+    uint64_t steadyTimeStamp = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    // smbus telemetry update for all Numeric Sensors.
+    uint64_t val = static_cast<uint64_t>(rawValue);
+    val = le64toh(val);
+    int rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
+                                (void*)&val, sizeof(val),
+                                steadyTimeStamp, retCode);
+    if(rc != 0)
+    {
+        lg2::error("PLDM: Failed to updateSmbusTelemetry DbusObjPath={OBJPATH}, RC={RETVAL} ",
+                            "OBJPATH", objPath, "RETVAL", rc);
+    }
+
     if (inSensorMetrics)
     {
         // Update Shared Memory Space
-        std::string propertyName = "Value";
-        std::string objPath = path;
-        std::string ifaceName = valueIntf->interface;
         DbusVariantType propValue = value;
-        // TODO: update retCode for errors once error code handling defined for pldm
-        uint16_t retCode = 0;
         
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();
@@ -499,24 +516,9 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
             endpoint = std::get<2>(definitions[0]);
             if (endpoint.size() > 0)
             {
-                uint64_t steadyTimeStamp = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch())
-                        .count());
                     nv::shmem::AggregationService::updateTelemetry(
                         objPath, ifaceName, propertyName, propValue,
                         steadyTimeStamp, retCode, endpoint);
-                // smbus telemetry update.
-                uint64_t val = static_cast<uint64_t>(rawValue);
-                val = le64toh(val);
-                int rc = 0;
-                rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
-                                            (void*)&val, sizeof(val),
-                                            steadyTimeStamp, retCode);
-                if(rc != 0)
-                {
-                    lg2::error("Failed to updateSmbusTelemetry");
-                }
             }
         }
     }
