@@ -466,7 +466,6 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
 
-
     if (!valueIntf)
     {
         return;
@@ -493,10 +492,9 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
             std::chrono::steady_clock::now().time_since_epoch())
             .count());
     // smbus telemetry update for all Numeric Sensors.
-    uint64_t val = static_cast<uint64_t>(rawValue);
-    val = le64toh(val);
+    double convertVal = valueIntf->value();
     int rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
-                                (void*)&val, sizeof(val),
+                                (void*)&convertVal, sizeof(convertVal),
                                 steadyTimeStamp, retCode);
     if(rc != 0)
     {
