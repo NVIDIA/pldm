@@ -504,22 +504,19 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
                             "OBJPATH", objPath, "RETVAL", rc);
     }
 
-    if (inSensorMetrics)
+    // Update Shared Memory Space
+    DbusVariantType propValue = value;
+    
+    std::string endpoint{};
+    auto definitions = associationDefinitionsIntf->associations();
+    if (definitions.size() > 0)
     {
-        // Update Shared Memory Space
-        DbusVariantType propValue = value;
-        
-        std::string endpoint{};
-        auto definitions = associationDefinitionsIntf->associations();
-        if (definitions.size() > 0)
+        endpoint = std::get<2>(definitions[0]);
+        if (endpoint.size() > 0)
         {
-            endpoint = std::get<2>(definitions[0]);
-            if (endpoint.size() > 0)
-            {
-                    nv::shmem::AggregationService::updateTelemetry(
-                        objPath, ifaceName, propertyName, propValue,
-                        steadyTimeStamp, retCode, endpoint);
-            }
+                nv::shmem::AggregationService::updateTelemetry(
+                    objPath, ifaceName, propertyName, propValue,
+                    steadyTimeStamp, retCode, endpoint);
         }
     }
 }
