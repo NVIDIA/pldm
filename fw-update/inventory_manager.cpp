@@ -505,6 +505,7 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
                         descriptorMap.erase(eid);
                         componentInfoMap.erase(eid);
                     }
+                    co_return PLDM_SUCCESS;
                 }
             }
             search->second.push({eid, mediumType, bindingType});
