@@ -25,12 +25,11 @@
 #include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
-#include <smbus_telemetry_target_api.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/signal.hpp>
 #include <stdplus/signal.hpp>
-#include <telemetry_mrd_producer.hpp>
+#include <tal.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -154,16 +153,9 @@ int main(int argc, char** argv)
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
                                                *(fwManager.get()), verbose);
 
-    // Intitializing shared memory space for pldmd
-    if (nv::shmem::AggregationService::namespaceInit("pldmd"))
-    {
-        lg2::info("Initialized shared memory pldmd");
-    }
-
-    // Initializing smbus telemetry for pldmd
-    if (smbusSlaveInit())
-    {
-        lg2::info("Initialized smbusSlaveInit()!!!");
+    // Initializing telemetry for pldmd
+    if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,"pldmd")){
+        lg2::info("Initialized tal from pldmd");
     }
 #endif
 

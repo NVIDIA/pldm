@@ -5,8 +5,7 @@
 #include "common/utils.hpp"
 
 #include <phosphor-logging/lg2.hpp>
-#include <telemetry_mrd_producer.hpp>
-#include <smbus_telemetry_target_api.hpp>
+#include <tal.hpp>
 
 #include <limits>
 #include <regex>
@@ -491,18 +490,11 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch())
             .count());
-    // smbus telemetry update for all Numeric Sensors.
+    // tal telemetry update for all Numeric Sensors.
     double convertVal = valueIntf->value();
-    int rc = updateSmbusTelemetry(objPath, ifaceName, propertyName,
-                                (void*)&convertVal, sizeof(convertVal),
-                                steadyTimeStamp, retCode);
-    if(rc != 0)
-    {
-        lg2::error("PLDM: Failed to updateSmbusTelemetry DbusObjPath={OBJPATH}, RC={RETVAL} ",
-                            "OBJPATH", objPath, "RETVAL", rc);
-    }
+    std::vector<uint8_t> rawSmbpbiData(sizeof(double));
+    std::memcpy(rawSmbpbiData.data(), &convertVal, sizeof(double));
 
-    // Update Shared Memory Space
     DbusVariantType propValue = value;
     
     std::string endpoint{};
@@ -512,11 +504,12 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         endpoint = std::get<2>(definitions[0]);
         if (endpoint.size() > 0)
         {
-                nv::shmem::AggregationService::updateTelemetry(
-                    objPath, ifaceName, propertyName, propValue,
-                    steadyTimeStamp, retCode, endpoint);
+	    tal::TelemetryAggregator::updateTelemetry(
+		objPath, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode, propValue, endpoint);
         }
+
     }
+
 }
 
 void NumericSensor::handleErrGetSensorReading()
