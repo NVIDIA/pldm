@@ -15,6 +15,8 @@ using namespace pldm::dbus_api;
 class MockHostEffecterParser : public HostEffecterParser
 {
   public:
+    using HostEffecterParser::createHostEffecterMatch;
+    using HostEffecterParser::setHostStateEffecter;
     MockHostEffecterParser(int fd, const pldm_pdr* repo,
                            DBusHandler* const dbusHandler,
                            const std::string& jsonPath) :
