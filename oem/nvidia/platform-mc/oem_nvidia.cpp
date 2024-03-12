@@ -19,6 +19,7 @@
 #include "memoryPageRetirementCount.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
+#include "platform-mc/state_set/ethernetPortLinkState.hpp"
 #include "platform-mc/terminus.hpp"
 #include "staticPowerHint.hpp"
 
@@ -204,6 +205,30 @@ void nvidiaInitTerminus(Terminus& terminus)
         {
             remoteDebugStateSensor = sensor;
             break;
+        }
+
+        auto sensorPortInfo = terminus.getSensorPortInfo(sensor->sensorId);
+        if (sensorPortInfo != NULL &&
+            std::get<1>(entityInfo) == PLDM_ENTITY_ETHERNET)
+        {
+            for (auto& stateSet : sensor->stateSets)
+            {
+                if (stateSet->getStateSetId() == PLDM_STATESET_ID_LINKSTATE)
+                {
+                    StateSetEthernetPortLinkState* ptr =
+                        dynamic_cast<StateSetEthernetPortLinkState*>(
+                            stateSet.get());
+
+                    ptr->setPortTypeValue(get<0>(*sensorPortInfo));
+
+                    // convert MBps to Gbps then assign to maxSpeed
+                    double maxSpeedInGbps =
+                        (double)((get<1>(*sensorPortInfo) / 1000.0) * 8);
+                    ptr->setMaxSpeedValue(maxSpeedInGbps);
+
+                    ptr->addAssociation(get<2>(*sensorPortInfo));
+                }
+            }
         }
     }
 

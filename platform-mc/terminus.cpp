@@ -191,6 +191,9 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
                     if (found)
                     {
                         getSensorAuxNameFromEM(objPath);
+#ifdef OEM_NVIDIA
+                        getPortInfoFromEM(objPath);
+#endif
                         return true;
                     }
                 }
@@ -243,6 +246,116 @@ void Terminus::getSensorAuxNameFromEM(const std::string& objPath)
                   "ERROR", e, "PATH", objPath);
     }
 }
+
+#ifdef OEM_NVIDIA
+static PortType getPortTypeValue(const std::string& type)
+{
+    if (type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.BidirectionalPort")
+    {
+        return (PortType::BidirectionalPort);
+    }
+    else if (
+        type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.DownstreamPort")
+    {
+        return (PortType::DownstreamPort);
+    }
+    else if (
+        type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.InterswitchPort")
+    {
+        return (PortType::InterswitchPort);
+    }
+    else if (
+        type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.ManagementPort")
+    {
+        return (PortType::ManagementPort);
+    }
+    else if (
+        type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.UnconfiguredPort")
+    {
+        return (PortType::UnconfiguredPort);
+    }
+    else if (
+        type ==
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.UpstreamPort")
+    {
+        return (PortType::UpstreamPort);
+    }
+    else
+    {
+        // default value
+        return (PortType::BidirectionalPort);
+    }
+}
+
+void Terminus::getPortInfoFromEM(const std::string& objPath)
+{
+    try
+    {
+        sensorPortInfoOverwriteTbl.clear();
+
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            objPath, 0, {"xyz.openbmc_project.Configuration.SensorPortInfo"});
+
+        if (getSubTreeResponse.size() == 0)
+        {
+            return;
+        }
+
+        for (auto& [path, mapperServiceMap] : getSubTreeResponse)
+        {
+            auto sensorId =
+                pldm::utils::DBusHandler().getDbusProperty<uint64_t>(
+                    path.c_str(), "SensorId",
+                    "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto maxSpeed =
+                pldm::utils::DBusHandler().getDbusProperty<uint64_t>(
+                    path.c_str(), "MaxSpeedMBps",
+                    "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto portType =
+                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                    path.c_str(), "PortType",
+                    "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto associationsEM =
+                pldm::utils::DBusHandler()
+                    .getDbusProperty<std::vector<std::string>>(
+                        path.c_str(), "Association",
+                        "xyz.openbmc_project.Configuration.SensorPortInfo");
+
+            std::vector<dbus::PathAssociation> associations;
+            if (associationsEM.size() % 3 != 0)
+            {
+                lg2::error(
+                    "Association in port info must follow (fwd, bck, Path) for {OBJ}",
+                    "OBJ", path);
+                return;
+            }
+
+            for (uint8_t it = 0; it < associationsEM.size(); it += 3)
+            {
+                associations.push_back({});
+                auto& tmp = associations.back();
+
+                tmp.forward = associationsEM[it];
+                tmp.reverse = associationsEM[it + 1];
+                tmp.path = associationsEM[it + 2];
+            }
+
+            sensorPortInfoOverwriteTbl[sensorId] = std::make_tuple(
+                getPortTypeValue(portType), maxSpeed, associations);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::info("no Configuration.SensorPortInfo Error: {ERROR} path:{PATH}",
+                  "ERROR", e, "PATH", objPath);
+    }
+}
+#endif
 
 bool Terminus::doesSupport(uint8_t type)
 {
@@ -389,6 +502,17 @@ std::shared_ptr<SensorAuxiliaryNames>
     }
     return nullptr;
 }
+
+#ifdef OEM_NVIDIA
+std::shared_ptr<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>> Terminus::getSensorPortInfo(SensorID id)
+{
+    if (sensorPortInfoOverwriteTbl.find(id) != sensorPortInfoOverwriteTbl.end())
+    {
+        return std::make_shared<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>(sensorPortInfoOverwriteTbl[id]);
+    }
+    return nullptr;
+}
+#endif
 
 std::shared_ptr<EffecterAuxiliaryNames>
     Terminus::getEffecterAuxiliaryNames(EffecterID id)

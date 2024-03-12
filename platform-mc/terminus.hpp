@@ -66,6 +66,8 @@ using VendorSpecificData = std::vector<uint8_t>;
 using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
 using AssociationDefinitionsIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
+using PortType =
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
 
 class TerminusManager;
 
@@ -178,6 +180,16 @@ class Terminus
     std::shared_ptr<EffecterAuxiliaryNames>
         getEffecterAuxiliaryNames(EffecterID id);
 
+#ifdef OEM_NVIDIA
+    /** @brief Get Sensor Port type by sensorID
+     *
+     *  @param[in] id - sensor ID
+     *  @return sensor port types
+     */
+    std::shared_ptr<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>
+        getSensorPortInfo(SensorID id);
+#endif
+
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
     bool scanInventories();
@@ -220,6 +232,14 @@ class Terminus
      *  @param[in] objPath - device inventory path
      */
     void getSensorAuxNameFromEM(const std::string& objPath);
+
+#ifdef OEM_NVIDIA
+     /** @brief get sensor Port information from EM configuration PDI
+     *
+     *  @param[in] objPath - device inventory path
+     */
+    void getPortInfoFromEM(const std::string& objPath);
+#endif
 
     /** @brief The flag indicates whether the terminus has been initialized
      * by terminusManaer */
@@ -290,6 +310,13 @@ class Terminus
 
     /** @brief The sensor aux name from EntityManager configuration PDI */
     std::map<SensorID, AuxiliaryNames> sensorAuxNameOverwriteTbl{};
+
+#ifdef OEM_NVIDIA
+    /** @brief The Port information from EntityManager configuration PDI */
+    std::map<SensorID,
+             std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>
+        sensorPortInfoOverwriteTbl{};
+#endif
 
     std::string systemInventoryPath;
 

@@ -25,6 +25,7 @@
 
 #include <xyz/openbmc_project/Inventory/Decorator/Instance/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Endpoint/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
@@ -38,6 +39,8 @@ namespace platform_mc
 namespace oem_nvidia
 {
 
+using PortIntf = sdbusplus::server::object_t<
+    sdbusplus::server::xyz::openbmc_project::inventory::item::Port>;
 using PortInfoIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
 using PortStateIntf = sdbusplus::server::object_t<
@@ -60,6 +63,7 @@ using InstanceIntf = sdbusplus::server::object_t<
 class StateSetNvlink : public StateSet
 {
   private:
+    std::unique_ptr<PortIntf> ValuePortIntf = nullptr;
     std::unique_ptr<PortInfoIntf> ValuePortInfoIntf = nullptr;
     std::unique_ptr<PortStateIntf> ValuePortStateIntf = nullptr;
     std::unique_ptr<EndpointIntf> endpointIntf = nullptr;
@@ -89,6 +93,7 @@ class StateSetNvlink : public StateSet
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
+        ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
         ValuePortInfoIntf = std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
         ValuePortStateIntf = std::make_unique<PortStateIntf>(bus, objectPath.c_str());
 
