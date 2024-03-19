@@ -269,73 +269,104 @@ void CommandInterface::exec()
     parseResponseMsg(responsePtr, responseMsg.size() - sizeof(pldm_msg_hdr));
 }
 
+std::set<pldm::dbus::Service> CommandInterface::getMctpServices() const
+{
+    pldm::utils::GetSubTreeResponse getSubTreeResponse{};
+    std::set<pldm::dbus::Service> mctpCtrlServices{};
+    const pldm::dbus::Interfaces ifaceList{mctpEndpointIntfName};
+    try
+    {
+        getSubTreeResponse = pldm::utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/mctp", 0, ifaceList);
+
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "D-Bus error calling Subtrees method on ObjectMapper: "
+            << e.what() << '\n';
+    }
+
+    for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+    {
+        for (const auto& [service, interfaces] : mapperServiceMap)
+        {
+            mctpCtrlServices.insert(service);
+        }
+    }
+
+    return mctpCtrlServices;
+}
+
+pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(const std::string& service) const noexcept
+{
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    pldm::dbus::ObjectValueTree objects{};
+    try
+    {
+        pldm::dbus::ObjectValueTree tmpObjects{};
+        auto method = bus.new_method_call(service.c_str(), "/xyz/openbmc_project/mctp",
+                "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+        auto reply = bus.call(method);
+        reply.read(tmpObjects);
+        objects.insert(tmpObjects.begin(), tmpObjects.end());
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "D-Bus error while fetching MCTP managed objects for: "
+            << service << '\n' << e.what() << '\n';
+    }
+    return objects;
+}
+
+
 std::tuple<int, int, std::vector<uint8_t>>
     CommandInterface::getMctpSockInfo(uint8_t remoteEID)
 {
     using namespace pldm;
-    std::set<dbus::Service> mctpCtrlServices;
     int type = 0;
     int protocol = 0;
     std::vector<uint8_t> address{};
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    const auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
-    const auto unixSocketIntfName{"xyz.openbmc_project.Common.UnixSocket"};
 
-    try
+    const auto& mctpCtrlServices = getMctpServices();
+
+    for (const auto& serviceName : mctpCtrlServices)
     {
-        const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
-            "/xyz/openbmc_project/mctp", 0, ifaceList);
-        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
-        {
-            for (const auto& [serviceName, interfaces] : mapperServiceMap)
-            {
-                dbus::ObjectValueTree objects{};
+        const auto& objects = getMctpManagedObjects(serviceName);
 
-                auto method = bus.new_method_call(
-                    serviceName.c_str(), "/xyz/openbmc_project/mctp",
-                    "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
-                auto reply = bus.call(method);
-                reply.read(objects);
-                for (const auto& [objectPath, interfaces] : objects)
+        for (const auto& [objectPath, interfaces] : objects)
+        {
+            if (interfaces.contains(mctpEndpointIntfName))
+            {
+                const auto& mctpProperties =
+                    interfaces.at(mctpEndpointIntfName);
+                auto eid = std::get<size_t>(mctpProperties.at("EID"));
+                if (remoteEID != eid)
                 {
-                    if (interfaces.contains(mctpEndpointIntfName))
-                    {
-                        const auto& mctpProperties =
-                            interfaces.at(mctpEndpointIntfName);
-                        auto eid = std::get<size_t>(mctpProperties.at("EID"));
-                        if (remoteEID == eid)
-                        {
-                            if (interfaces.contains(unixSocketIntfName))
-                            {
-                                const auto& properties =
-                                    interfaces.at(unixSocketIntfName);
-                                type = std::get<size_t>(properties.at("Type"));
-                                protocol =
-                                    std::get<size_t>(properties.at("Protocol"));
-                                address = std::get<std::vector<uint8_t>>(
-                                    properties.at("Address"));
-                                if (address.empty() || !type)
-                                {
-                                    address.clear();
-                                    return {0, 0, address};
-                                }
-                                else
-                                {
-                                    return {type, protocol, address};
-                                }
-                            }
-                        }
-                    }
+                    continue;
+                }
+                if (!interfaces.contains(unixSocketIntfName))
+                {
+                    continue;
+                }
+
+                const auto& properties =
+                    interfaces.at(unixSocketIntfName);
+                type = std::get<size_t>(properties.at("Type"));
+                protocol =
+                    std::get<size_t>(properties.at("Protocol"));
+                address = std::get<std::vector<uint8_t>>(
+                    properties.at("Address"));
+                if (address.empty() || !type)
+                {
+                    address.clear();
+                    return {0, 0, address};
+                }
+                else
+                {
+                    return {type, protocol, address};
                 }
             }
         }
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << e.what() << "\n";
-        address.clear();
-        return {0, 0, address};
     }
 
     return {type, protocol, address};

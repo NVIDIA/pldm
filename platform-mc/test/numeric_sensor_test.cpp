@@ -34,7 +34,8 @@ class NumericSensorTest : public testing::Test
 
 TEST_F(NumericSensorTest, conversionFormula)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -125,7 +126,8 @@ TEST_F(NumericSensorTest, conversionFormula)
 
 TEST_F(NumericSensorTest, checkThreshold)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
@@ -291,7 +293,8 @@ TEST_F(NumericSensorTest, checkThreshold)
 
 TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
 {
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, terminusManager);
+    std::string uuid1("00000000-0000-0000-0000-000000000001");
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,

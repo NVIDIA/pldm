@@ -180,7 +180,7 @@ class StateSetNvlink : public StateSet
         }
         catch (const std::exception& e)
         {
-            instanceNumber = 0xFFFF;
+            return;
         }
 
         std::string endpointName =

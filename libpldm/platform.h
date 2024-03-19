@@ -46,6 +46,7 @@ extern "C" {
 #define PLDM_GET_PDR_REPOSITORY_INFO_RESP_BYTES 41
 #define PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_OMITTED_RESP_BYTES 4
 #define PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_MIN_RESP_BYTES 14
+#define PLDM_GET_TERMINUS_UID_RESP_BYTES 17
 
 /* Minimum length for PLDM PlatformEventMessage request */
 #define PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES 3
@@ -161,6 +162,7 @@ enum pldm_effecter_event_message_enable {
 };
 
 enum pldm_platform_commands {
+	PLDM_GET_TERMINUS_UID = 0x03,
 	PLDM_SET_EVENT_RECEIVER = 0x04,
 	PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE = 0x0B,
 	PLDM_EVENT_MESSAGE_SUPPORTED = 0x0C,
@@ -2330,6 +2332,36 @@ int decode_event_message_supported_resp(
     uint8_t *synchrony_configuration,
     uint8_t *synchrony_configuration_supported,
     uint8_t *number_event_class_returned, uint8_t **eventClass);
+
+/** @brief Encode the getTerminusUID request message
+ *
+ * @param[in] instance_id - Message's instance id.
+ * @param[out] msg - Argument to capture the Message.
+ * @return pldm_completion_codes
+ */
+int encode_get_terminus_uid_req(uint8_t instance_id, struct pldm_msg *msg);
+
+
+/** @struct pldm_get_terminus_uid_resp
+ *
+ *  Structure representing GetTerminusUID response packet
+ */
+struct pldm_get_terminus_uid_resp {
+	uint8_t completion_code;
+	uint8_t uuidValue[16];
+} __attribute__((packed));
+
+/** @brief Decode the getTerminusUID response message
+ *
+ *  @param[in] msg - Response message.
+ *  @param[in] payload_length - Length of response message payload.
+ *  @param[out] completion_code - PLDM completion code.
+ *  @param[out] UUID - The pointer of array for 16 bytes Terminus UID
+ *  @return pldm_completion_codes.
+ */
+int decode_get_terminus_UID_resp(const struct pldm_msg *msg,
+				 size_t payload_length,
+				 uint8_t *completion_code, uint8_t *uuid);
 
 #ifdef __cplusplus
 }

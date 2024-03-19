@@ -326,12 +326,29 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
             "EID", eid, "RC", rc);
         return response;
     }
-    if (offset == 0 && !reqFwDataTimer)
+    if (!reqFwDataTimer)
     {
+        if (offset != 0)
+        {
+            lg2::warning("First data request is not at offset 0");
+        }
+
         // create timer for first request
         createRequestFwDataTimer();
     }
-    reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds), false);
+
+    if (reqFwDataTimer)
+    {
+        reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds),
+                              false);
+    }
+    else
+    {
+        lg2::error(
+            "Failed to start timer for handling RequestFirmwareData, EID={EID}, RC={RC}",
+            "EID", eid, "RC", rc);
+    }
+
     return response;
 }
 

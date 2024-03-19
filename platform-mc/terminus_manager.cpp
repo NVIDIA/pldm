@@ -2,6 +2,8 @@
 
 #include "manager.hpp"
 
+#include <stdio.h>
+
 namespace pldm
 {
 namespace platform_mc
@@ -326,7 +328,15 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         co_return PLDM_ERROR;
     }
 
-    termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, *this);
+    UUID uuid = std::get<1>(mctpInfo);
+    rc = co_await getTerminusUID(tid, uuid);
+    if (rc)
+    {
+        lg2::info("getTerminusUID failed, TID={TID} rc={RC}.", "TID", tid, "RC",
+                  rc);
+    }
+
+    termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, uuid, *this);
     co_return PLDM_SUCCESS;
 }
 
@@ -445,6 +455,48 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
                    tid, "RC", rc);
         co_return rc;
     }
+    co_return completionCode;
+}
+
+requester::Coroutine TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
+{
+    Request request(sizeof(pldm_msg_hdr));
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_get_terminus_uid_req(0, requestMsg);
+    if (rc)
+    {
+        lg2::error("encode_get_terminus_uid_req failed, tid={TID} rc={RC}.",
+                   "TID", tid, "RC", rc);
+        co_return rc;
+    }
+
+    const pldm_msg* responseMsg = NULL;
+    size_t responseLen = 0;
+
+    rc = co_await SendRecvPldmMsg(tid, request, &responseMsg, &responseLen);
+    if (rc)
+    {
+        co_return rc;
+    }
+
+    uint8_t completionCode = 0;
+    uint8_t buf[16];
+    rc = decode_get_terminus_UID_resp(responseMsg, responseLen, &completionCode,
+                                      buf);
+    if (rc)
+    {
+        lg2::error("decode_get_terminus_UID_resp failed, tid={TID} rc={RC}.",
+                   "TID", tid, "RC", rc);
+        co_return rc;
+    }
+
+    uuid.resize(37, 0);
+    snprintf(
+        uuid.data(), uuid.size(),
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
+        buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
+
     co_return completionCode;
 }
 
