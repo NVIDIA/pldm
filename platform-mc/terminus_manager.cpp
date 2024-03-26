@@ -329,11 +329,14 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
 
     UUID uuid = std::get<1>(mctpInfo);
-    rc = co_await getTerminusUID(tid, uuid);
-    if (rc)
+    if (supportedTypes & (1 << PLDM_PLATFORM))
     {
-        lg2::info("getTerminusUID failed, TID={TID} rc={RC}.", "TID", tid, "RC",
-                  rc);
+        rc = co_await getTerminusUID(tid, uuid);
+        if (rc)
+        {
+            lg2::info("getTerminusUID failed, TID={TID} rc={RC}.", "TID", tid,
+                      "RC", rc);
+        }
     }
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, uuid, *this);
