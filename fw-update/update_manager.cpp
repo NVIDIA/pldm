@@ -59,6 +59,7 @@ UpdateManager::UpdateManager(
         }
     }
     progressTimer = nullptr;
+    forceUpdate = false;
 }
 
 UpdateManager::~UpdateManager() = default;
