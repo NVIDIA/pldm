@@ -393,9 +393,11 @@ std::shared_ptr<SensorAuxiliaryNames>
     Terminus::parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData)
 {
     constexpr uint8_t NullTerminator = 0;
+    size_t parseLen = 0;
     auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
         pdrData.data());
     const uint8_t* ptr = pdr->names;
+    parseLen += sizeof(pldm_sensor_auxiliary_names_pdr);
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
         sensorAuxNames{};
     try
@@ -404,16 +406,21 @@ std::shared_ptr<SensorAuxiliaryNames>
         {
             const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
             ptr += sizeof(uint8_t);
+            parseLen += sizeof(uint8_t);
             std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
             for (int j = 0; j < nameStringCount; j++)
             {
                 std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
                                             0, PLDM_STR_UTF_8_MAX_LEN);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
+                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
+                std::vector<uint8_t> u16NameStringVec(pdrData.begin()+parseLen-1, pdrData.end());
                 std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(ptr), 0,
+                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()), 0,
                     PLDM_STR_UTF_16_MAX_LEN);
                 ptr += (u16NameString.size() + sizeof(NullTerminator)) *
+                       sizeof(uint16_t);
+                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
                        sizeof(uint16_t);
                 std::transform(u16NameString.cbegin(), u16NameString.cend(),
                                u16NameString.begin(),
@@ -595,7 +602,7 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
                    "PDRSIZE", pdr.size());
         return nullptr;
     }
-
+    
     switch (parsedPdr->sensor_data_size)
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
@@ -605,14 +612,23 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT16:
         case PLDM_SENSOR_DATA_SIZE_SINT16:
-            parsedPdr->hysteresis.value_u16 = le16toh(*((uint16_t*)ptr));
+        {
+            //hysValue =  *((uint16_t*)ptr);
+            uint16_t hysValue = 0;
+            memcpy(&hysValue, ptr, sizeof(uint16_t));
+            parsedPdr->hysteresis.value_u16 = le16toh(hysValue);
             ptr += sizeof(parsedPdr->hysteresis.value_u16);
             break;
+        }
         case PLDM_SENSOR_DATA_SIZE_UINT32:
         case PLDM_SENSOR_DATA_SIZE_SINT32:
-            parsedPdr->hysteresis.value_u32 = le32toh(*((uint32_t*)ptr));
+        {
+            uint32_t hysValue = 0;
+            memcpy(&hysValue, ptr, sizeof(uint32_t));
+            parsedPdr->hysteresis.value_u32 = le32toh(hysValue);
             ptr += sizeof(parsedPdr->hysteresis.value_u32);
             break;
+        }
         default:
             break;
     }
@@ -633,18 +649,30 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT16:
         case PLDM_SENSOR_DATA_SIZE_SINT16:
-            parsedPdr->max_readable.value_u16 = le16toh(*((uint16_t*)ptr));
+        {
+            uint16_t maxReadableValue = 0;
+            memcpy(&maxReadableValue, ptr, sizeof(uint16_t));
+            parsedPdr->max_readable.value_u16 = le16toh(maxReadableValue);
             ptr += sizeof(parsedPdr->max_readable.value_u16);
-            parsedPdr->min_readable.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t minReadableValue = 0;
+            memcpy(&minReadableValue, ptr, sizeof(uint16_t));
+            parsedPdr->min_readable.value_u16 = le16toh(minReadableValue);
             ptr += sizeof(parsedPdr->min_readable.value_u16);
             break;
+        }
         case PLDM_SENSOR_DATA_SIZE_UINT32:
         case PLDM_SENSOR_DATA_SIZE_SINT32:
-            parsedPdr->max_readable.value_u32 = le32toh(*((uint32_t*)ptr));
+        {
+            uint32_t maxReadableValue = 0;
+            memcpy(&maxReadableValue, ptr, sizeof(uint32_t));
+            parsedPdr->max_readable.value_u32 = le32toh(maxReadableValue);
             ptr += sizeof(parsedPdr->max_readable.value_u32);
-            parsedPdr->min_readable.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t minReadableValue = 0;
+            memcpy(&minReadableValue, ptr, sizeof(uint32_t));
+            parsedPdr->min_readable.value_u32 = le32toh(minReadableValue);
             ptr += sizeof(parsedPdr->min_readable.value_u32);
             break;
+        }
         default:
             break;
     }
@@ -679,47 +707,87 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
             break;
         case PLDM_RANGE_FIELD_FORMAT_UINT16:
         case PLDM_RANGE_FIELD_FORMAT_SINT16:
-            parsedPdr->nominal_value.value_u16 = le16toh(*((uint16_t*)ptr));
+        {
+            uint16_t nominalValue = 0;
+            memcpy(&nominalValue, ptr, sizeof(uint16_t));
+            parsedPdr->nominal_value.value_u16 = le16toh(nominalValue);
             ptr += sizeof(parsedPdr->nominal_value.value_u16);
-            parsedPdr->normal_max.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t normalMaxValue = 0;
+            memcpy(&normalMaxValue, ptr, sizeof(uint16_t));
+            parsedPdr->normal_max.value_u16 = le16toh(normalMaxValue);
             ptr += sizeof(parsedPdr->normal_max.value_u16);
-            parsedPdr->normal_min.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t normalMinValue = 0;
+            memcpy(&normalMinValue, ptr, sizeof(uint16_t));
+            parsedPdr->normal_min.value_u16 = le16toh(normalMinValue);
             ptr += sizeof(parsedPdr->normal_min.value_u16);
-            parsedPdr->warning_high.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t warningHighValue = 0;
+            memcpy(&warningHighValue, ptr, sizeof(uint16_t));
+            parsedPdr->warning_high.value_u16 = le16toh(warningHighValue);
             ptr += sizeof(parsedPdr->warning_high.value_u16);
-            parsedPdr->warning_low.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t warninglowValue = 0;
+            memcpy(&warninglowValue, ptr, sizeof(uint16_t));
+            parsedPdr->warning_low.value_u16 = le16toh(warninglowValue);
             ptr += sizeof(parsedPdr->warning_low.value_u16);
-            parsedPdr->critical_high.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t criticalHighValue = 0;
+            memcpy(&criticalHighValue, ptr, sizeof(uint16_t));
+            parsedPdr->critical_high.value_u16 = le16toh(criticalHighValue);
             ptr += sizeof(parsedPdr->critical_high.value_u16);
-            parsedPdr->critical_low.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t criticalLowValue = 0;
+            memcpy(&criticalLowValue, ptr, sizeof(uint16_t));
+            parsedPdr->critical_low.value_u16 = le16toh(criticalLowValue);
             ptr += sizeof(parsedPdr->critical_low.value_u16);
-            parsedPdr->fatal_high.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t fatalHighValue = 0;
+            memcpy(&fatalHighValue, ptr, sizeof(uint16_t));
+            parsedPdr->fatal_high.value_u16 = le16toh(fatalHighValue);
             ptr += sizeof(parsedPdr->fatal_high.value_u16);
-            parsedPdr->fatal_low.value_u16 = le16toh(*((uint16_t*)ptr));
+            uint16_t fatalLowValue = 0;
+            memcpy(&fatalLowValue, ptr, sizeof(uint16_t));
+            parsedPdr->fatal_low.value_u16 = le16toh(fatalLowValue);
             ptr += sizeof(parsedPdr->fatal_low.value_u16);
             break;
+        }
         case PLDM_RANGE_FIELD_FORMAT_UINT32:
         case PLDM_RANGE_FIELD_FORMAT_SINT32:
         case PLDM_RANGE_FIELD_FORMAT_REAL32:
-            parsedPdr->nominal_value.value_u32 = le32toh(*((uint32_t*)ptr));
+        {
+            uint32_t nominalValue = 0;
+            memcpy(&nominalValue, ptr, sizeof(uint32_t));
+            parsedPdr->nominal_value.value_u32 = le32toh(nominalValue);
             ptr += sizeof(parsedPdr->nominal_value.value_u32);
-            parsedPdr->normal_max.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t normalMaxValue = 0;
+            memcpy(&normalMaxValue, ptr, sizeof(uint32_t));
+            parsedPdr->normal_max.value_u32 = le32toh(normalMaxValue);
             ptr += sizeof(parsedPdr->normal_max.value_u32);
-            parsedPdr->normal_min.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t normalMinValue = 0;
+            memcpy(&normalMinValue, ptr, sizeof(uint32_t));
+            parsedPdr->normal_min.value_u32 = le32toh(normalMinValue);
             ptr += sizeof(parsedPdr->normal_min.value_u32);
-            parsedPdr->warning_high.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t warningHighValue = 0;
+            memcpy(&warningHighValue, ptr, sizeof(uint32_t));
+            parsedPdr->warning_high.value_u32 = le32toh(warningHighValue);
             ptr += sizeof(parsedPdr->warning_high.value_u32);
-            parsedPdr->warning_low.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t warningLowValue = 0;
+            memcpy(&warningLowValue, ptr, sizeof(uint32_t));
+            parsedPdr->warning_low.value_u32 = le32toh(warningLowValue);
             ptr += sizeof(parsedPdr->warning_low.value_u32);
-            parsedPdr->critical_high.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t criticalHighValue = 0;
+            memcpy(&criticalHighValue, ptr, sizeof(uint32_t));
+            parsedPdr->critical_high.value_u32 = le32toh(criticalHighValue);
             ptr += sizeof(parsedPdr->critical_high.value_u32);
-            parsedPdr->critical_low.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t criticalLowValue = 0;
+            memcpy(&criticalLowValue, ptr, sizeof(uint32_t));
+            parsedPdr->critical_low.value_u32 = le32toh(criticalLowValue);
             ptr += sizeof(parsedPdr->critical_low.value_u32);
-            parsedPdr->fatal_high.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t fatalHighValue = 0;
+            memcpy(&fatalHighValue, ptr, sizeof(uint32_t));
+            parsedPdr->fatal_high.value_u32 = le32toh(fatalHighValue);
             ptr += sizeof(parsedPdr->fatal_high.value_u32);
-            parsedPdr->fatal_low.value_u32 = le32toh(*((uint32_t*)ptr));
+            uint32_t fatalLowValue = 0;
+            memcpy(&fatalLowValue, ptr, sizeof(uint32_t));
+            parsedPdr->fatal_low.value_u32 = le32toh(fatalLowValue);
             ptr += sizeof(parsedPdr->fatal_low.value_u32);
             break;
+        }
         default:
             break;
     }
