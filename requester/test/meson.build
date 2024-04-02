@@ -1,9 +1,11 @@
 test_src = declare_dependency(
           sources: [
             '../../pldmd/dbus_impl_requester.cpp',
+            '../../pldmd/socket_manager.hpp',
             '../../pldmd/instance_id.cpp',
             '../mctp_endpoint_discovery.cpp',
             '../../pldmd/socket_handler.cpp',
+            '../../pldmd/dbus_impl_requester.cpp',
             '../../common/utils.cpp',
             '../../fw-update/inventory_manager.cpp',
             '../../fw-update/package_parser.cpp',
