@@ -1,6 +1,6 @@
 tests = [
   'libpldm_base_test',
- # 'libpldm_platform_test',
+  'libpldm_platform_test',
   'libpldm_bios_test',
   'libpldm_bios_table_test',
   'libpldm_fru_test',

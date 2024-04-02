@@ -398,6 +398,8 @@ std::shared_ptr<SensorAuxiliaryNames>
         pdrData.data());
     const uint8_t* ptr = pdr->names;
     parseLen += sizeof(pldm_sensor_auxiliary_names_pdr);
+    //reducing by 1 byte because the length of pdr->names (names[1]) is not pared yet at the moment.
+    parseLen -= sizeof(pdr->names);
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
         sensorAuxNames{};
     try
@@ -414,7 +416,7 @@ std::shared_ptr<SensorAuxiliaryNames>
                                             0, PLDM_STR_UTF_8_MAX_LEN);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
                 parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(pdrData.begin()+parseLen-1, pdrData.end());
+                std::vector<uint8_t> u16NameStringVec(pdrData.begin()+parseLen, pdrData.end());
                 std::u16string u16NameString(
                     reinterpret_cast<const char16_t*>(u16NameStringVec.data()), 0,
                     PLDM_STR_UTF_16_MAX_LEN);

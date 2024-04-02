@@ -1737,16 +1737,19 @@ TEST(GetNumericEffecterValue, testGoodEncodeResponse)
         reinterpret_cast<struct pldm_get_numeric_effecter_value_resp*>(
             response->payload);
 
-    uint32_t* val_pending = (uint32_t*)(&resp->pending_and_present_values[0]);
-    *val_pending = le32toh(*val_pending);
-    uint32_t* val_present = (uint32_t*)(&resp->pending_and_present_values[4]);
-    *val_present = le32toh(*val_present);
+
+    uint32_t valPending = 0;
+    memcpy(&valPending, &resp->pending_and_present_values[0], sizeof(uint32_t));
+    valPending = le32toh(valPending);
+    uint32_t valPresent = 0;
+    memcpy(&valPresent, &resp->pending_and_present_values[4], sizeof(uint32_t));
+    valPresent = le32toh(valPresent);
 
     EXPECT_EQ(rc, PLDM_SUCCESS);
     EXPECT_EQ(effecter_dataSize, resp->effecter_data_size);
     EXPECT_EQ(effecter_operState, resp->effecter_oper_state);
-    EXPECT_EQ(pendingValue, *val_pending);
-    EXPECT_EQ(presentValue, *val_present);
+    EXPECT_EQ(pendingValue, valPending);
+    EXPECT_EQ(presentValue, valPresent);
 }
 
 TEST(GetNumericEffecterValue, testBadEncodeResponse)
