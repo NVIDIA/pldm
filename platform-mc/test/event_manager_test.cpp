@@ -6,6 +6,17 @@
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
 #include "fw-update/manager.hpp"
+#include "fw-update/component_updater.hpp"
+#include "fw-update/device_updater.hpp"
+#include "fw-update/other_device_update_manager.hpp"
+#include "fw-update/update_manager.hpp"
+#include "fw-update/config.hpp"
+#include "fw-update/firmware_inventory.hpp"
+#include "fw-update/package_parser.hpp"
+#include "fw-update/watch.hpp"
+#include "fw-update/device_inventory.hpp"
+#include "fw-update/inventory_manager.hpp"
+#include "fw-update/package_signature.hpp"
 
 #include <gtest/gtest.h>
 
@@ -27,7 +38,9 @@ class EventManagerTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        eventManager(*(static_cast<TerminusManager*>(nullptr)), termini, *(static_cast<pldm::fw_update::Manager*>(nullptr)))
+        fwUpdateManager(event, reqHandler, dbusImplRequester, "", nullptr, false),
+
+        eventManager(terminusManager, termini, fwUpdateManager)
     {}
 
     sdbusplus::bus::bus& bus;
@@ -36,6 +49,7 @@ class EventManagerTest : public testing::Test
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
+    pldm::fw_update::Manager fwUpdateManager;
     MockEventManager eventManager;
     std::map<pldm::tid_t, std::shared_ptr<Terminus>> termini{};
 };
