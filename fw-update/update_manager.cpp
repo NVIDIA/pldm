@@ -406,12 +406,15 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         auto search = componentInfoMap.find(deviceUpdaterInfo.first);
         auto compIdNameInfoSearch =
             componentNameMap.find(deviceUpdaterInfo.first);
-        deviceUpdaterMap.emplace(
-            deviceUpdaterInfo.first,
-            std::make_unique<DeviceUpdater>(
-                deviceUpdaterInfo.first, package, fwDeviceIDRecord,
-                compImageInfos, search->second, compIdNameInfoSearch->second,
-                MAXIMUM_TRANSFER_SIZE, this, fwDebug));
+        if (compIdNameInfoSearch != componentNameMap.end())
+        {
+            deviceUpdaterMap.emplace(
+                deviceUpdaterInfo.first,
+                std::make_unique<DeviceUpdater>(
+                    deviceUpdaterInfo.first, package, fwDeviceIDRecord,
+                    compImageInfos, search->second, compIdNameInfoSearch->second,
+                    MAXIMUM_TRANSFER_SIZE, this, fwDebug));
+        }
     }
 
     // delay activation object creation if there are non-pldm updates
