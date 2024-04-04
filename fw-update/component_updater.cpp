@@ -605,7 +605,8 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
 void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
 {
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
-                                         applyFailed);
+                                         applyFailed, "", PLDM_APPLY_COMPLETE,
+                                         applyResult);
     lg2::error("Component apply failed, EID={EID}, ComponentIndex="
                "{COMPONENT_INDEX}, APPLY_RESULT={APPLY_RESULT}",
                "EID", eid, "COMPONENT_INDEX", componentIndex, "APPLY_RESULT",

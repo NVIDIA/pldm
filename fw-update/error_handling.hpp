@@ -36,6 +36,7 @@ ErrorCode constexpr metadataAuthFailure = 0x91;
 ErrorCode constexpr secVersionCheckFailure = 0x93;
 ErrorCode constexpr secKeysReovked = 0x94;
 ErrorCode constexpr skuMismatch = 0x97;
+ErrorCode constexpr applyAuthFailure = 0xB0;
 #endif
 
 /* request update error mapping */
@@ -118,7 +119,16 @@ static ErrorMapping verifyCompleteMapping{
 /* apply complete command error mapping */
 static ErrorMapping applyCompleteMapping{
     {COMMAND_TIMEOUT,
-     {"Complete Commands Timeout", "Retry firmware update operation."}}};
+     {"Complete Commands Timeout", "Retry firmware update operation."}},
+    {PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE,
+     {"Applying the image failed due to write operation failure",
+      "Retry firmware update operation."}},
+#ifdef OEM_NVIDIA
+    {applyAuthFailure,
+     {"Authentication failed after applying the image",
+      "Retry firmware update operation."}}
+#endif
+};
 
 /* activate firmware error mapping */
 static ErrorMapping activateFirmwareMapping{
