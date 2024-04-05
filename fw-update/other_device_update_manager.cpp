@@ -41,6 +41,7 @@
 #include <map>
 #include <tuple>
 #include <unordered_set>
+#include <unistd.h>
 
 #define SW_PATH_OTHER "/xyz/openbmc_project/software/other"
 
@@ -349,6 +350,95 @@ std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
     return {uuid, sku};
 }
 
+
+TransferPackageState OtherDeviceUpdateManager::txComponentImage(const std::string& filePath, const ComponentImageInfo& componentImageInfo,
+        std::istream& package)
+{
+    // Presence of DeadComponent triggers the Debug Token Install during Update
+    // This component needs to be skipped since its handled by DebugTokenInstaller
+    if (std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompIdentifierPos)>(
+            componentImageInfo) == deadComponent)
+    {
+        return TransferPackageState::SKIPPED;
+    }
+
+    auto compOffset = std::get<5>(componentImageInfo);
+    auto compSize = std::get<6>(componentImageInfo);
+    package.seekg(0, std::ios::end);
+    uintmax_t packageSize = package.tellg();
+
+    // An enhancement designed to safeguard the package against
+    // damage in the event of a truncated component. An attempt to
+    // read such a component from the package may lead to an effort
+    // to read a set of bytes beyond the package's boundaries,
+    // triggering the state of the package to be set to
+    // std::ios::failbit. This, in turn, could potentially block the
+    // ability to read other components from the package.
+    if (packageSize < static_cast<uintmax_t>(compOffset) +
+                          static_cast<uintmax_t>(compSize))
+    {
+        lg2::error(
+            "Failed to extract non pldm device component image");
+        return TransferPackageState::FAILED;
+    }
+
+
+    package.seekg(compOffset); // SEEK to image offset
+    std::vector<uint8_t> buffer(compSize);
+    package.read(reinterpret_cast<char*>(buffer.data()),
+                 buffer.size());
+
+    const auto& version = std::get<7>(componentImageInfo);
+    lg2::info("Extracting {VERSION} to filePath : {FILENAME}",
+              "VERSION", version, "FILENAME", filePath);
+
+    std::ofstream outfile(filePath, std::ofstream::binary);
+    outfile.write(reinterpret_cast<const char*>(&buffer[0]),
+                  buffer.size() *
+                      sizeof(uint8_t)); // Write to image offset
+    outfile.close();
+    return TransferPackageState::SUCCESS;
+
+}
+
+
+TransferPackageState OtherDeviceUpdateManager::txSingleComponent(const std::string& dirPath, const ComponentImageInfo& componentImageInfo,
+        std::istream& package, const std::string& objPath, const UUID& uuid)
+{
+    const std::string destinationFilePath = dirPath + "/" + boost::uuids::to_string(
+                          boost::uuids::random_generator()())
+                          .substr(0, 8);
+
+    const auto& version = std::get<7>(componentImageInfo);
+    uuidMappings[uuid] = {version, std::filesystem::path(objPath).filename()};
+
+    return txComponentImage(destinationFilePath, componentImageInfo, package);
+}
+
+TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(const std::string& dirPath, const ApplicableComponents& applicableCompVec,
+        const ComponentImageInfos& componentImageInfos, std::istream& package, const std::string& objPath, const UUID& uuid)
+{
+    for (const auto& component: applicableCompVec)
+    {
+        const auto& componentImageInfo =
+            componentImageInfos[component];
+        const auto compIdentifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(componentImageInfo);
+
+        const auto& compIdString = std::to_string(compIdentifier);
+        const std::string destinationDir = dirPath + "/" + compIdString;
+
+        const auto transferState = txSingleComponent(destinationDir, componentImageInfo, package, objPath, uuid);
+        if (transferState == TransferPackageState::FAILED or
+                transferState == TransferPackageState::SKIPPED)
+        {
+            return TransferPackageState::FAILED;
+        }
+    }
+    return TransferPackageState::SUCCESS;
+}
+
 size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
     const ComponentImageInfos& componentImageInfos, std::istream& package)
@@ -386,70 +476,45 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
             continue;
         }
 
-        const auto& componentImageInfo =
-            componentImageInfos[applicableCompVec[0]];
-        if (std::get<static_cast<size_t>(
-                ComponentImageInfoPos::CompIdentifierPos)>(
-                componentImageInfo) == deadComponent)
+        auto [directoryName, objPath] = getFilePath(uuid, sku);
+
+        if (directoryName == "")
         {
-            continue;
-        }
-        const auto& version = std::get<7>(componentImageInfo);
-        std::string fileName = "";
-        std::string objPath;
-        try
-        {
-            // get File PATH and object path
-            std::tie(fileName, objPath) = getFilePath(uuid, sku);
-        }
-        catch (const sdbusplus::exception::SdBusError& e)
-        {
-            lg2::error("failed to get filename. {ERROR}", "ERROR", e);
-            continue;
-        }
-        lg2::info("Got Filename {FILENAME}", "FILENAME", fileName);
-        if (fileName == "")
-        {
+            lg2::error("Got empty path from {OBJPATH}", "OBJPATH", objPath);
             continue;
         }
 
-        auto compOffset = std::get<5>(componentImageInfo);
-        auto compSize = std::get<6>(componentImageInfo);
-        package.seekg(0, std::ios::end);
-        uintmax_t packageSize = package.tellg();
 
-        // An enhancement designed to safeguard the package against
-        // damage in the event of a truncated component. An attempt to
-        // read such a component from the package may lead to an effort
-        // to read a set of bytes beyond the package's boundaries,
-        // triggering the state of the package to be set to
-        // std::ios::failbit. This, in turn, could potentially block the
-        // ability to read other components from the package.
-        if (packageSize < static_cast<uintmax_t>(compOffset) +
-                              static_cast<uintmax_t>(compSize))
+        if (applicableCompVec.size() == 1)
         {
-            lg2::error("Failed to extract non pldm device component image");
-            return 0;
+            const auto& componentImageInfo =
+                componentImageInfos[applicableCompVec[0]];
+
+            const auto transferState = txSingleComponent(directoryName, componentImageInfo,
+                    package, objPath, uuid);
+            if (transferState == TransferPackageState::FAILED)
+            {
+                return 0;
+            }
+            if (transferState == TransferPackageState::SKIPPED)
+            {
+                continue;
+            }
+
+        }
+        else
+        {
+            const auto transferState = txMultipleComponents(directoryName, applicableCompVec, componentImageInfos,
+                    package, objPath, uuid);
+            if (transferState == TransferPackageState::FAILED)
+            {
+                return 0;
+            }
         }
 
-        package.seekg(compOffset); // SEEK to image offset
-        std::vector<uint8_t> buffer(compSize);
-        package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
-
-        fileName +=
-            "/" + boost::uuids::to_string(boost::uuids::random_generator()())
-                      .substr(0, 8);
-        lg2::info("Extracting {VERSION} to fileName : {FILENAME}", "VERSION",
-                  version, "FILENAME", fileName);
-
-        std::ofstream outfile(fileName, std::ofstream::binary);
-        outfile.write(reinterpret_cast<const char*>(&buffer[0]),
-                      buffer.size() * sizeof(uint8_t)); // Write to image offset
-        outfile.close();
         totalNumImages++;
         isImageFileProcessed[uuid] = false;
-        uuidMappings[uuid] = {version,
-                              std::filesystem::path(objPath).filename()};
+
     }
     startTimer(totalNumImages * UPDATER_ACTIVATION_WAIT_PER_IMAGE_SEC);
     return totalNumImages;
@@ -507,9 +572,9 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-bool OtherDeviceUpdateManager::validateDescriptor(
-    const dbus::ObjectPath& objPath, std::string descriptor,
-    const char* descriptorName, const char* dbusInterface)
+bool OtherDeviceUpdateManager::validateDescriptor(const dbus::ObjectPath& objPath,
+        std::string descriptor,
+        const char* descriptorName, const char* dbusInterface) const noexcept
 {
     static auto dbusHandler = pldm::utils::DBusHandler();
     std::string tmpDescriptor{};
@@ -535,7 +600,7 @@ bool OtherDeviceUpdateManager::validateDescriptor(
 
 std::pair<std::string, std::string>
     OtherDeviceUpdateManager::getFilePath(const UUID& uuid,
-                                          const SKU& packageSKU)
+            const SKU& packageSKU) const noexcept
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
@@ -557,9 +622,7 @@ std::pair<std::string, std::string>
                                    sdbusplus::xyz::openbmc_project::Inventory::
                                        Decorator::server::Asset::interface))
             {
-                lg2::info(fmt::format("Found object {} with matching SKU {}",
-                                      obj, packageSKU)
-                              .c_str());
+                lg2::info("Found object {OBJ} with matching SKU {SKU}", "OBJ", obj, "SKU", packageSKU);
             }
             else
             {
@@ -567,13 +630,24 @@ std::pair<std::string, std::string>
             }
         }
 
-        auto p = dbusHandler.getDbusProperty<std::string>(
-            obj.c_str(), "Path",
-            sdbusplus::xyz::openbmc_project::Common::server::FilePath::
-                interface);
-        if (!p.empty())
+        std::string path{};
+        try
         {
-            return {std::filesystem::path(p).parent_path(), obj};
+            path = dbusHandler.getDbusProperty<std::string>(
+                obj.c_str(), "Path",
+                sdbusplus::xyz::openbmc_project::Common::server::FilePath::
+                    interface);
+        }
+        catch (const sdbusplus::exception::SdBusError& e)
+        {
+            lg2::error("failed to fetch path from D-Bus object. {ERROR}",
+                    "ERROR", e.what());
+            continue;
+        }
+
+        if (!path.empty())
+        {
+            return {std::filesystem::path(path).parent_path(), obj};
         }
     }
     return {};
@@ -615,7 +689,7 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
     }
 }
 
-void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string>& paths)
+void OtherDeviceUpdateManager::getValidPaths(std::vector<std::string>& paths) const
 {
 #ifndef NON_PLDM
     (void)paths; // suppress unused warning
