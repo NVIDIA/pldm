@@ -48,11 +48,15 @@ using CommandToCompCompatibilityMap =
 ErrorCode constexpr unableToInitiateUpdate = 0x8A;
 ErrorCode constexpr reqGrantError = 0x70;
 ErrorCode constexpr writeProtectEnabled = 0x71;
+ErrorCode constexpr internalError = 0x72;
 ErrorCode constexpr imageIdentical = 0x90;
 ErrorCode constexpr metadataAuthFailure = 0x91;
 ErrorCode constexpr secVersionCheckFailure = 0x93;
 ErrorCode constexpr secKeysReovked = 0x94;
+ErrorCode constexpr imageAuthFailure = 0x95;
 ErrorCode constexpr skuMismatch = 0x97;
+ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
+ErrorCode constexpr apReqGrantOnHold = 0x99;
 ErrorCode constexpr applyAuthFailure = 0xB0;
 ErrorCode constexpr stageImageDowngrade = 0x9C;
 #endif
@@ -62,6 +66,8 @@ static ErrorMapping requestUpdateMapping{
     {COMMAND_TIMEOUT,
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_ALREADY_IN_UPDATE_MODE,
+     {"Device is already in update mode", "Retry firmware update operation"}},
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}},
@@ -77,6 +83,8 @@ static ErrorMapping passComponentTblMapping{
     {COMMAND_TIMEOUT,
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_NOT_IN_UPDATE_MODE,
+     {"Device is not in update mode", "Retry firmware update operation"}},
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}}};
@@ -85,8 +93,13 @@ static ErrorMapping updateComponentMapping{
     {COMMAND_TIMEOUT,
      {"Initiating component update timed out",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_NOT_IN_UPDATE_MODE,
+     {"Device is not in update mode", "Retry firmware update operation"}},
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating component update",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_BUSY_IN_BACKGROUND,
+     {"Cannot execute command because device performing other critical tasks",
       "Retry firmware update operation"}}};
 
 /* request firmware data error mapping */
@@ -109,6 +122,7 @@ static ErrorMapping transferCompleteMapping{
      {"Write Protect Enabled",
       "Disable write protect on the device and retry the firmware update"
       " operation."}},
+    {internalError, {"Internal Error", "Retry firmware update operation"}},
 #endif
 };
 
@@ -130,7 +144,15 @@ static ErrorMapping verifyCompleteMapping{
       "Verify the contents of the FW package"}},
     {secKeysReovked,
      {"Security keys revoked", "Verify the contents of the FW package"}},
+    {imageAuthFailure,
+     {"Component image authentication check failed",
+      "Verify the contents of the FW package"}},
     {skuMismatch, {"SKU mismatch", "Verify the contents of the FW package"}},
+    {firmwarePackageSizeFailure,
+     {"Firmware image size is incorrect",
+      "Verify the contents of the FW package"}},
+    {apReqGrantOnHold,
+     {"AP request grant on hold", "Retry firmware update operation"}},
     {stageImageDowngrade,
      {"Component comparison stamp is lower than that of the staged firmware",
       "Retry firmware update staging operation with the force flag"}}

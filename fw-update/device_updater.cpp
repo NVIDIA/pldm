@@ -378,8 +378,7 @@ requester::Coroutine DeviceUpdater::processPassCompTableResponse(
             " EID={EID}, CC={CC}",
             "EID", eid, "CC", completionCode);
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(PLDM_PASS_COMPONENT_TABLE,
-                          PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE, completionCode);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(

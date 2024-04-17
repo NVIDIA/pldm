@@ -179,7 +179,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
             "CCRC", compCompatibilityRespCode);
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, PLDM_FWUP_INVALID_STATE_FOR_COMMAND);
+            PLDM_UPDATE_COMPONENT, completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
