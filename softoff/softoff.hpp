@@ -136,7 +136,7 @@ class SoftPowerOff
     sdbusplus::bus::bus& bus;
 
     /** @brief Reference to Timer object */
-    phosphor::Timer timer;
+    sdbusplus::Timer timer;
 
     /** @brief Used to subscribe to dbus pldm StateSensorEvent signal
      * When the host soft off is complete, it sends an platform event message

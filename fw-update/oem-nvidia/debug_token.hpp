@@ -88,7 +88,7 @@ class DebugToken
      * @brief Timer for debug token install or erase
      *
      */
-    std::unique_ptr<phosphor::Timer> timer;
+    std::unique_ptr<sdbusplus::Timer> timer;
 
     /* contains install or erase completion status */
     bool tokenStatus;

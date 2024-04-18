@@ -467,7 +467,7 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 
 void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
 {
-    timer = std::make_unique<phosphor::Timer>([this]() {
+    timer = std::make_unique<sdbusplus::Timer>([this]() {
         if (this->interfaceAddedMatch != nullptr)
         {
             this->interfaceAddedMatch = nullptr;

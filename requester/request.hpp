@@ -99,7 +99,7 @@ class RequestRetryTimer
     uint8_t numRetries;        //!< number of request retries
     std::chrono::milliseconds
         timeout;           //!< time to wait between each retry in milliseconds
-    phosphor::Timer timer; //!< manages starting timers and handling timeouts
+    sdbusplus::Timer timer; //!< manages starting timers and handling timeouts
 
     /** @brief Sends the PLDM request message
      *
