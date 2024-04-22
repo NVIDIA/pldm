@@ -252,14 +252,13 @@ TEST(Manager, NoMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    const std::string emptyString{};
     dbus::MctpInterfaces mctpInterfaces;
     const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
     // Non-matching MCTP UUID, not present in the mctp end point interface entry
-    EXPECT_EQ(manager.createEntry(eid1, uuid2, mctpInterfaces), emptyString);
+    EXPECT_FALSE(manager.createEntry(eid1, uuid2, mctpInterfaces).has_value());
     // Non-matching for "match" condition in device inventory info
     mctpInterfaces = {{uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
-    EXPECT_EQ(manager.createEntry(eid1, uuid1, mctpInterfaces), emptyString);
+    EXPECT_FALSE(manager.createEntry(eid1, uuid1, mctpInterfaces).has_value());
 
 }
 
@@ -285,9 +284,9 @@ TEST(Manager, MultiPropertyNoMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
-    const std::string emptyString{};
     //No match for wrong property value
     dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(17)}}}}}};
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), emptyString);
+    EXPECT_FALSE(manager.createEntry(eid, uuid, mctpInterfaces).has_value());
+
 
 }

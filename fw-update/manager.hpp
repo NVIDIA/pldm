@@ -132,7 +132,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     void createInventory(EID eid, UUID uuid, dbus::MctpInterfaces& mctpInterfaces)
     {
-        (void) deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
+        deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);

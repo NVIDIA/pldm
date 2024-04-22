@@ -51,16 +51,18 @@ Manager::Manager(sdbusplus::bus::bus& bus,
     descriptorMap(descriptorMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 
-sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
-                                                     const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
+std::optional<sdbusplus::message::object_path>
+    Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
+                         dbus::MctpInterfaces& mctpInterfaces)
 {
-    sdbusplus::message::object_path deviceObjPath{};
+    std::optional<sdbusplus::message::object_path> deviceObjPath{};
 
     DeviceInfo deviceInfo;
 
-    if (mctpInterfaces.find(uuid) != mctpInterfaces.end()
-                && deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid], deviceInfo)
-                && descriptorMap.contains(eid))
+    if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
+        deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                deviceInfo) &&
+        descriptorMap.contains(eid))
     {
         const auto& objPath =
             std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
@@ -90,10 +92,13 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
                 }
             }
         }
-
-        deviceEntryMap.emplace(
-            uuid, std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
-        deviceObjPath = objPath;
+        if (!objPath.empty())
+        {
+            deviceEntryMap.emplace(
+                uuid,
+                std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
+            deviceObjPath = objPath;
+        }
 
         const auto& updateObjPath = std::get<UpdateDeviceInfo>(deviceInfo);
 
@@ -107,7 +112,6 @@ sdbusplus::message::object_path Manager::createEntry(pldm::EID eid,
         // Skip if UUID is not present or device inventory information from
         // firmware update config JSON is empty
     }
-
     return deviceObjPath;
 }
 

@@ -117,11 +117,11 @@ class Manager
      *
      *  @param[in] eid - MCTP endpointID
      *  @param[in] uuid - MCTP UUID of the device
-     *
-     *  @return Object path of the device inventory object
+     * 
+     *  @return Object path of the device inventory object, std::nullopt if object path is empty
      */
-    sdbusplus::message::object_path createEntry(pldm::EID eid,
-                                                const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces);
+    std::optional<sdbusplus::message::object_path> createEntry(pldm::EID eid, const pldm::UUID& uuid,
+                     dbus::MctpInterfaces& mctpInterfaces);
 
   private:
     sdbusplus::bus::bus& bus;
