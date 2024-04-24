@@ -262,7 +262,7 @@ class OtherDeviceUpdateManager
      * @brief Timer to wait for interface addition
      *
      */
-    std::unique_ptr<sdbusplus::Timer> timer;
+    std::unique_ptr<phosphor::Timer> timer;
     /**
      * @brief Software object path matcher for interface addition
      *

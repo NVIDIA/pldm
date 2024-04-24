@@ -85,7 +85,7 @@ TEST_F(RequestIntfTest, 9Retries100msTimeoutRequestStoppedAfter1sec)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     auto requestStopCallback = [&](void) { request.stop(); };
-    sdbusplus::Timer timer(event.get(), requestStopCallback);
+    phosphor::Timer timer(event.get(), requestStopCallback);
     timer.start(duration_cast<microseconds>(seconds(1)));
 
     waitEventExpiry(milliseconds(500));

@@ -159,7 +159,7 @@ void SensorManager::startPolling()
 
         if (sensorPollTimers.find(tid) == sensorPollTimers.end())
         {
-            sensorPollTimers[tid] = std::make_unique<sdbusplus::Timer>(
+            sensorPollTimers[tid] = std::make_unique<phosphor::Timer>(
                 event.get(),
                 std::bind_front(&SensorManager::doSensorPolling, this, tid));
         }

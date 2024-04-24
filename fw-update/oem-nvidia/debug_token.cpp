@@ -270,7 +270,7 @@ void DebugToken::getValidPaths(std::vector<std::string>& paths)
 
 void DebugToken::startTimer(auto timerExpiryTime)
 {
-    timer = std::make_unique<sdbusplus::Timer>([this]() {
+    timer = std::make_unique<phosphor::Timer>([this]() {
         if (!tokenStatus)
         {
             createLogEntry(transferFailed,

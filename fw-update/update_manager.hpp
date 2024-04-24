@@ -431,7 +431,7 @@ class UpdateManager
      * @brief timer to update progress percent
      *
      */
-    std::unique_ptr<sdbusplus::Timer> progressTimer;
+    std::unique_ptr<phosphor::Timer> progressTimer;
     /**
      * @brief Counter to keep track of update progress interval
      *

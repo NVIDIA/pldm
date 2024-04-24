@@ -404,7 +404,7 @@ class ComponentUpdater
      * @brief timer to handle RequestFirmwareData timeout(UA_T2)
      *
      */
-    std::unique_ptr<sdbusplus::Timer> reqFwDataTimer;
+    std::unique_ptr<phosphor::Timer> reqFwDataTimer;
 
     /* cancel component update coroutine handler */
     std::coroutine_handle<> cancelCompUpdateHandle = nullptr;
@@ -450,7 +450,7 @@ class ComponentUpdater
      * @brief UA_T6 complete command timout timer
      *
      */
-    std::unique_ptr<sdbusplus::Timer> completeCommandsTimeoutTimer;
+    std::unique_ptr<phosphor::Timer> completeCommandsTimeoutTimer;
 };
 
 } // namespace fw_update
