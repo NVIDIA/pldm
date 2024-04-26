@@ -24,7 +24,13 @@ namespace pldm
 class MctpDiscoveryHandlerIntf
 {
   public:
-    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces) = 0;
+    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos,
+                                     dbus::MctpInterfaces& mctpInterfaces) = 0;
+
+    virtual void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid)
+    {}
+    virtual void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid)
+    {}
     virtual ~MctpDiscoveryHandlerIntf()
     {}
 };
@@ -59,10 +65,28 @@ class MctpDiscovery
     /** @brief Used to watch for new MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointAddedSignal;
 
+    /** @brief handler for mctpEndpointAddedSignal */
+    void discoverEndpoints(sdbusplus::message::message& msg);
+
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
-    void discoverEndpoints(sdbusplus::message::message& msg);
+    /** @brief handler for mctpEndpointRemovedSignal */
+    void cleanEndpoints(sdbusplus::message::message& msg);
+
+    /**
+     * @brief matcher rule for property changes of
+     * xyz.openbmc_project.Object.Enable dbus object
+     */
+    std::vector<sdbusplus::bus::match_t> enableMatches;
+
+    /**
+     * @brief A callback for propertiesChanges signal enabledMatches matcher
+     * rule to invoke registered handlers.
+     * e.g. the platform-mc manager handler is registered for update sensor
+     * state accordingly.
+     */
+    void refreshEndpoints(sdbusplus::message::message& msg);
 
     /** @brief Process the D-Bus MCTP endpoint info and prepare data to be used
      *         for PLDM discovery.
@@ -71,7 +95,8 @@ class MctpDiscovery
      *  @param[out] mctpInfos - MCTP info for PLDM discovery
      */
     void populateMctpInfo(const dbus::InterfaceMap& interfaces,
-                          MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces);
+                          MctpInfos& mctpInfos,
+                          dbus::MctpInterfaces& mctpInterfaces);
 
     static constexpr uint8_t mctpTypePLDM = 1;
 
@@ -97,7 +122,8 @@ class MctpDiscovery
      *
      *  @param[in] mctpInfos - information of discovered MCTP endpoints
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces);
+    void handleMctpEndpoints(const MctpInfos& mctpInfos,
+                             dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Loading the static MCTP endpoints to mctpInfos.
      *

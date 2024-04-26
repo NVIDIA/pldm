@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,18 @@
  */
 #include "libpldm/entity.h"
 
+#include "mock_terminus_manager.hpp"
+#include "platform-mc/platform_manager.hpp"
+#include "platform-mc/sensor_manager.hpp"
 #include "platform-mc/terminus.hpp"
-#include "platform-mc/terminus_manager.hpp"
 
+#include <sdeventplus/event.hpp>
+
+#include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 
 using namespace pldm::platform_mc;
-
+const uint8_t localEid = 0x08;
 class TerminusTest : public testing::Test
 {
   protected:
@@ -32,16 +37,201 @@ class TerminusTest : public testing::Test
         dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
         reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
-                        nullptr)
+        terminusManager(event, reqHandler, dbusImplRequester, termini, localEid,
+                        nullptr),
+        sensorManager(event, terminusManager, termini, nullptr),
+        platformManager(terminusManager, termini)
     {}
+
+    void runEventLoopForMilliseconds(uint64_t msec)
+    {
+        uint64_t t0 = 0;
+        uint64_t t1 = 0;
+        uint64_t usec = msec * 1000;
+        uint64_t elapsed = 0;
+        sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
+        do
+        {
+            sd_event_run(event.get(), usec - elapsed);
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+            elapsed = t1 - t0;
+        } while (elapsed < usec);
+    }
+
+    void setupResponsesForDiscoverTerminus()
+    {
+        auto rc = terminusManager.clearQueuedResponses();
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> getTidResp0{0x00, PLDM_BASE, PLDM_GET_TID,
+                                         PLDM_SUCCESS, 0x00};
+        rc = terminusManager.enqueueResponse(getTidResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> setTidResp0{0x00, PLDM_BASE, PLDM_SET_TID,
+                                         PLDM_SUCCESS};
+        rc = terminusManager.enqueueResponse(setTidResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        // support pldm type0 and type2
+        std::vector<uint8_t> getPldmTypesResp0{0x00, PLDM_BASE, 0x04, 0x00,
+                                               0x05, 0x00,      0x00, 0x00,
+                                               0x00, 0x00,      0x00, 0x00};
+        rc = terminusManager.enqueueResponse(getPldmTypesResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> getTerminusUidResp0{
+            0x00, PLDM_PLATFORM, PLDM_GET_TERMINUS_UID,
+            PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
+        rc = terminusManager.enqueueResponse(getTerminusUidResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+    }
+
+    void setupResponsesForInitTerminus()
+    {
+        auto rc = terminusManager.clearQueuedResponses();
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> eventMessageBufferSizeResp0{
+            0x00, PLDM_PLATFORM, PLDM_EVENT_MESSAGE_BUFFER_SIZE,
+            PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
+        rc = terminusManager.enqueueResponse(eventMessageBufferSizeResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> eventMessageSupportedResp0{
+            0x00, PLDM_PLATFORM, PLDM_EVENT_MESSAGE_SUPPORTED,
+            PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
+        rc = terminusManager.enqueueResponse(eventMessageSupportedResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> getPDRRepositoryInfoResp0{
+            0x00, PLDM_PLATFORM, PLDM_EVENT_MESSAGE_SUPPORTED,
+            PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
+        rc = terminusManager.enqueueResponse(getPDRRepositoryInfoResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> getPdrResp0{
+            0x00,
+            PLDM_PLATFORM,
+            PLDM_GET_PDR,
+            PLDM_SUCCESS,
+            0x00,
+            0x00,
+            0x00,
+            0x00, // nextRecordHandle
+            0x00,
+            0x00,
+            0x00,
+            0x00, // nextDataTransferHandle
+            0x05, // startAndEnd
+            69,
+            0, // responseCount
+            0x00,
+            0x00,
+            0x00,
+            0x01,                    // record handle
+            0x01,                    // PDRHeaderVersion
+            PLDM_NUMERIC_SENSOR_PDR, // PDRType
+            0x00,
+            0x00, // recordChangeNumber
+            34,
+            0, // dataLength
+            0x00,
+            0x00, // PLDMTerminusHandle
+            0x01,
+            0x00, // sensorID=1
+            PLDM_ENTITY_POWER_SUPPLY,
+            0, // entityType=Power Supply(120)
+            1,
+            0, // entityInstanceNumber
+            0x1,
+            0x0,                         // containerID=1
+            PLDM_NO_INIT,                // sensorInit
+            false,                       // sensorAuxiliaryNamesPDR
+            PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
+            0,                           // unitModifier = 0
+            0,                           // rateUnit
+            0,                           // baseOEMUnitHandle
+            0,                           // auxUnit
+            0,                           // auxUnitModifier
+            0,                           // auxRateUnit
+            0,                           // rel
+            0,                           // auxOEMUnitHandle
+            true,                        // isLinear
+            PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
+            0,
+            0,
+            0xc0,
+            0x3f, // resolution=1.5
+            0,
+            0,
+            0x80,
+            0x3f, // offset=1.0
+            0,
+            0, // accuracy
+            0, // plusTolerance
+            0, // minusTolerance
+            2, // hysteresis
+            0, // supportedThresholds
+            0, // thresholdAndHysteresisVolatility
+            0,
+            0,
+            0x80,
+            0x3f, // stateTransistionInterval=1.0
+            0,
+            0,
+            0x80,
+            0x3f,                          // updateInverval=1.0
+            255,                           // maxReadable
+            0,                             // minReadable
+            PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
+            0,                             // rangeFieldsupport
+            0,                             // nominalValue
+            0,                             // normalMax
+            0,                             // normalMin
+            0,                             // warningHigh
+            0,                             // warningLow
+            0,                             // criticalHigh
+            0,                             // criticalLow
+            0,                             // fatalHigh
+            0                              // fatalLow
+        };
+        rc = terminusManager.enqueueResponse(getPdrResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+    }
+
+    void setupResponsesForStartPolling()
+    {
+        auto rc = terminusManager.clearQueuedResponses();
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+
+        std::vector<uint8_t> getSensorReadingResp0{0x00,
+                                                   PLDM_PLATFORM,
+                                                   PLDM_GET_SENSOR_READING,
+                                                   PLDM_SUCCESS,
+                                                   PLDM_SENSOR_DATA_SIZE_UINT8,
+                                                   PLDM_SENSOR_ENABLED,
+                                                   PLDM_NO_EVENT_GENERATION,
+                                                   PLDM_SENSOR_NORMAL,
+                                                   PLDM_SENSOR_NORMAL,
+                                                   PLDM_SENSOR_NORMAL,
+                                                   0x12};
+        rc = terminusManager.enqueueResponse(getSensorReadingResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+        rc = terminusManager.enqueueResponse(getSensorReadingResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+        rc = terminusManager.enqueueResponse(getSensorReadingResp0);
+        EXPECT_EQ(rc, PLDM_SUCCESS);
+    }
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     pldm::dbus_api::Requester dbusImplRequester;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    pldm::platform_mc::TerminusManager terminusManager;
+    pldm::platform_mc::MockTerminusManager terminusManager;
+    pldm::platform_mc::SensorManager sensorManager;
+    pldm::platform_mc::PlatformManager platformManager;
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
 };
 
@@ -82,8 +272,8 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        21, // dataLength
+        21,
+        0, // dataLength
         0,
         0x0, // PLDMTerminusHandle
         0x1,
@@ -114,8 +304,8 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        21, // dataLength
+        21,
+        0, // dataLength
         0,
         0x0, // PLDMTerminusHandle
         0x2,
@@ -177,8 +367,8 @@ TEST_F(TerminusTest, addNumericSensorTest)
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        21, // dataLength
+        21,
+        0, // dataLength
         0,
         0x0, // PLDMTerminusHandle
         0x1,
@@ -211,8 +401,8 @@ TEST_F(TerminusTest, addNumericSensorTest)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -296,8 +486,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrTest)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -402,8 +592,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -508,8 +698,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -627,8 +817,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -746,8 +936,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -889,8 +1079,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -1032,8 +1222,8 @@ TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        56,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -1176,8 +1366,8 @@ TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
         PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
         0x0, // recordChangeNumber
-        0x0,
-        56, // dataLength
+        34,
+        0, // dataLength
         0,
         0, // PLDMTerminusHandle
         0x1,
@@ -1218,4 +1408,54 @@ TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
     auto rc = t1.parsePDRs();
     EXPECT_EQ(true, rc);
     EXPECT_EQ(0, t1.numericSensorPdrs.size());
+}
+
+TEST_F(TerminusTest, TerminusOnOffLineTest)
+{
+    pldm::UUID uuidBad{"f72d6f90-5675-11ed-9b6a-0242ac120003"};
+    pldm::UUID uuid{"f72d6f90-5675-11ed-9b6a-0242ac120002"};
+    pldm::MctpInfos mctpInfos{pldm::MctpInfo(
+        12, uuid, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe")};
+
+    /* 1. test discoverMctpTerminus(): check if terminus is discovered
+     * successfully by mock responses */
+    setupResponsesForDiscoverTerminus();
+    terminusManager.discoverMctpTerminus(mctpInfos);
+    EXPECT_EQ(1, termini.size());
+
+    /* 2. test getTerminus(): check if terminus can be found by uuid */
+    auto terminus = terminusManager.getTerminus(uuidBad);
+    EXPECT_EQ(nullptr, terminus);
+
+    terminus = terminusManager.getTerminus(uuid);
+    EXPECT_NE(nullptr, terminus);
+    EXPECT_EQ(uuid, terminus->getUuid());
+
+    /* 3. test initTerminus(): check if sensor is created successfully by mock
+     * response */
+    setupResponsesForInitTerminus();
+    platformManager.initTerminus();
+    EXPECT_EQ(1, terminus->numericSensorPdrs.size());
+
+    /* 4. test updateReading(): check if sensor PDIs are good */
+    auto numericSensor = terminus->numericSensors[0];
+    numericSensor->updateReading(true, true, 10);
+    EXPECT_EQ(true, numericSensor->availabilityIntf->available());
+    EXPECT_EQ(true, numericSensor->operationalStatusIntf->functional());
+    // raw = 10, converted value= 10*1.5 + 1 = 16
+    EXPECT_EQ(16, numericSensor->valueIntf->value());
+
+    /* 5. test setOffline(): check if sensor PDIs are in offline state*/
+    sensorManager.setOffline(terminus->getTid());
+    EXPECT_EQ(false, numericSensor->operationalStatusIntf->functional());
+    EXPECT_THAT(numericSensor->valueIntf->value(), testing::IsNan());
+
+    /* 6. test setOnline(): check if sensor PDIs are in online state */
+    setupResponsesForStartPolling();
+    sensorManager.setOnline(terminus->getTid());
+    runEventLoopForMilliseconds(2000);
+    EXPECT_EQ(true, numericSensor->operationalStatusIntf->functional());
+    // raw = 18, converted value= 18*1.5 + 1 = 28
+    EXPECT_EQ(28, numericSensor->valueIntf->value());
 }

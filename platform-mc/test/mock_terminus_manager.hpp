@@ -50,12 +50,25 @@ class MockTerminusManager : public TerminusManager
             co_return PLDM_ERROR;
         }
 
-        *responseMsg = responseMsgs.front();
+        *responseMsg = (pldm_msg*)responseMsgs.front();
         *responseLen = responseLens.front() - sizeof(pldm_msg_hdr);
 
         responseMsgs.pop();
         responseLens.pop();
         co_return PLDM_SUCCESS;
+    }
+
+    int enqueueResponse(std::vector<uint8_t>& response)
+    {
+        if (response.size() <= sizeof(pldm_msg_hdr))
+        {
+            return PLDM_ERROR_INVALID_LENGTH;
+        }
+
+        responses.push(response);
+        responseMsgs.push(responses.back().data());
+        responseLens.push(response.size());
+        return PLDM_SUCCESS;
     }
 
     int enqueueResponse(pldm_msg* responseMsg, size_t responseLen)
@@ -70,9 +83,9 @@ class MockTerminusManager : public TerminusManager
             return PLDM_ERROR_INVALID_LENGTH;
         }
 
-        responseMsgs.push(responseMsg);
-        responseLens.push(responseLen);
-        return PLDM_SUCCESS;
+        uint8_t* ptr = (uint8_t*)responseMsg;
+        std::vector<uint8_t> response(ptr, ptr + responseLen);
+        return enqueueResponse(response);
     }
 
     int clearQueuedResponses()
@@ -81,12 +94,14 @@ class MockTerminusManager : public TerminusManager
         {
             responseMsgs.pop();
             responseLens.pop();
+            responses.pop();
         }
         return PLDM_SUCCESS;
     }
 
-    std::queue<pldm_msg*> responseMsgs;
+    std::queue<uint8_t*> responseMsgs;
     std::queue<size_t> responseLens;
+    std::queue<std::vector<uint8_t>> responses;
 };
 
 } // namespace platform_mc

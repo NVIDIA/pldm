@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -509,13 +509,16 @@ requester::Coroutine TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
         co_return rc;
     }
 
-    uuid.resize(37, 0);
-    snprintf(
-        uuid.data(), uuid.size(),
-        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
-        buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
-
+    if (completionCode == PLDM_SUCCESS)
+    {
+        uuid.resize(37, 0);
+        snprintf(
+            uuid.data(), uuid.size(),
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+            buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14],
+            buf[15]);
+    }
     co_return completionCode;
 }
 
@@ -547,6 +550,21 @@ requester::Coroutine
         lg2::error("SendRecvPldmMsg: tid:{TID} not found.", "TID", tid);
         co_return PLDM_ERROR;
     }
+}
+
+std::shared_ptr<Terminus> TerminusManager::getTerminus(const UUID& uuid)
+{
+    for (auto& [tid, terminus] : termini)
+    {
+        if (terminus->getUuid() == uuid)
+        {
+            lg2::info("getTerminus: terminus found for uuid:{UUID}", "UUID",
+                      uuid);
+            return terminus;
+        }
+    }
+    lg2::info("getTerminus: no terminus found for uuid:{UUID}", "UUID", uuid);
+    return nullptr;
 }
 
 } // namespace platform_mc

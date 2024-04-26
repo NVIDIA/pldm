@@ -1410,5 +1410,33 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
     return PhysicalContextType::SystemBoard;
 }
 
+void Terminus::setOnline()
+{
+    //placeholder
+}
+
+void Terminus::setOffline()
+{
+    for (auto numericSensor : numericSensors)
+    {
+        numericSensor->handleErrGetSensorReading();
+    }
+
+    for(auto numericEffecter : numericEffecters)
+    {
+        numericEffecter->handleErrGetNumericEffecterValue();
+    }
+
+    for(auto stateSensor : stateSensors)
+    {
+        stateSensor->handleErrGetSensorReading();
+    }
+
+    for(auto stateEffecter : stateEffecters)
+    {
+        stateEffecter->handleErrGetStateEffecterStates();
+    }
+}
+
 } // namespace platform_mc
 } // namespace pldm

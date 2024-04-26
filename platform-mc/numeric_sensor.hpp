@@ -273,13 +273,6 @@ class NumericSensor
      * sdbusplus object as extra attribute */
     std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
 
-  private:
-    /**
-     * @brief Check sensor reading if any threshold has been crossed and update
-     * Threshold interfaces accordingly
-     */
-    void updateThresholds();
-
     std::unique_ptr<ValueIntf> valueIntf = nullptr;
     std::unique_ptr<ThresholdWarningIntf> thresholdWarningIntf = nullptr;
     std::unique_ptr<ThresholdCriticalIntf> thresholdCriticalIntf = nullptr;
@@ -289,6 +282,13 @@ class NumericSensor
         nullptr;
     std::unique_ptr<InventoryDecoratorAreaIntf> inventoryDecoratorAreaIntf =
         nullptr;
+
+  private:
+    /**
+     * @brief Check sensor reading if any threshold has been crossed and update
+     * Threshold interfaces accordingly
+     */
+    void updateThresholds();
 
     /** @brief Amount of hysteresis associated with the sensor thresholds */
     double hysteresis;
@@ -308,7 +308,7 @@ class NumericSensor
 
     /** @brief raw value of numeric sensor */
     double rawValue;
-    
+
     /** @brief indicates if we are using PLDM Type-2 command or PLDM OEM Type 
      * command for polling */
     uint8_t pollingIndicator;

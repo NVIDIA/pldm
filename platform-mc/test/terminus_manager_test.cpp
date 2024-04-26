@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -204,18 +204,20 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp0{
-        0x00, 0x02, 0x02, 0x00, 0x00};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x00};
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp0.data(),
                                              sizeof(getTidResp0));
     EXPECT_EQ(rc, PLDM_SUCCESS);
     std::array<uint8_t, sizeof(pldm_msg_hdr) + setTidRespLen> setTidResp0{
-        0x00, 0x02, 0x01, 0x00};
+        0x00, PLDM_BASE, PLDM_SET_TID, 0x00};
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)setTidResp0.data(),
                                              sizeof(setTidResp0));
     EXPECT_EQ(rc, PLDM_SUCCESS);
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getPldmTypesRespLen>
-        getPldmTypesResp0{0x00, 0x02, 0x04, 0x00, 0x01, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        getPldmTypesResp0{0x00, PLDM_BASE, PLDM_GET_PLDM_TYPES,
+                          0x00, 0x01,      0x00,
+                          0x00, 0x00,      0x00,
+                          0x00, 0x00,      0x00};
     rc = mockTerminusManager.enqueueResponse(
         (pldm_msg*)getPldmTypesResp0.data(), sizeof(getPldmTypesResp0));
     EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -230,7 +232,7 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp1{
-        0x00, 0x02, 0x02, 0x00, 0x01};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x01};
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp1.data(),
                                              sizeof(getTidResp1));
     EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -253,7 +255,7 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
 
     // 0.terminus returns reserved tid
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp0{
-        0x00, 0x02, 0x02, 0x00, PLDM_TID_RESERVED};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, PLDM_TID_RESERVED};
     auto rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp0.data(),
                                                   sizeof(getTidResp0));
     EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -265,9 +267,9 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
 
     // 1.terminus return cc=pldm_error for set tid
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp1{
-        0x00, 0x02, 0x02, 0x00, 0x00};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x00};
     std::array<uint8_t, sizeof(pldm_msg_hdr) + setTidRespLen> setTidResp1{
-        0x00, 0x02, 0x01, PLDM_ERROR};
+        0x00, PLDM_BASE, PLDM_SET_TID, PLDM_ERROR};
 
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp1.data(),
                                              sizeof(getTidResp1));
@@ -281,12 +283,14 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
     // 2.terminus return cc=unsupported_pldm_cmd for set tid cmd and return
     // cc=pldm_error for get pldm types cmd
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp2{
-        0x00, 0x02, 0x02, 0x00, 0x00};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x00};
     std::array<uint8_t, sizeof(pldm_msg_hdr) + setTidRespLen> setTidResp2{
-        0x00, 0x02, 0x01, PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
+        0x00, PLDM_BASE, PLDM_SET_TID, PLDM_ERROR_UNSUPPORTED_PLDM_CMD};
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getPldmTypesRespLen>
-        getPldmTypesResp2{0x00, 0x02, 0x04, PLDM_ERROR, 0x01, 0x00,
-                          0x00, 0x00, 0x00, 0x00,       0x00, 0x00};
+        getPldmTypesResp2{0x00,       PLDM_BASE, PLDM_GET_PLDM_TYPES,
+                          PLDM_ERROR, 0x01,      0x00,
+                          0x00,       0x00,      0x00,
+                          0x00,       0x00,      0x00};
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp2.data(),
                                              sizeof(getTidResp2));
     EXPECT_EQ(rc, PLDM_SUCCESS);

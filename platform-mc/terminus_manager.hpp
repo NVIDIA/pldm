@@ -110,6 +110,10 @@ class TerminusManager
         return localEid;
     }
 
+    /** @brief return terminus by uuid
+     */
+    std::shared_ptr<Terminus> getTerminus(const UUID& uuid);
+
   private:
     /** @brief The coroutine task execute by discoverMctpTerminus()
      *

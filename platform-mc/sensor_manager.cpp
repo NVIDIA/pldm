@@ -129,63 +129,83 @@ bool SensorManager::inSensorMetrics(std::shared_ptr<NumericSensor> sensor)
             aggregationSensorNameSpaces.end());
 }
 
+void SensorManager::startPolling(tid_t tid)
+{
+    if (termini.find(tid) == termini.end())
+    {
+        return;
+    }
+
+    auto terminus = termini[tid];
+    // clear and initialize prioritySensors and roundRobinSensors list
+    prioritySensors[tid].clear();
+    std::queue<std::variant<std::shared_ptr<NumericSensor>,
+                            std::shared_ptr<StateSensor>>>
+        empty;
+    std::swap(roundRobinSensors[tid], empty);
+
+    // numeric sensor
+    for (auto& sensor : terminus->numericSensors)
+    {
+        if (isPriority(sensor))
+        {
+            sensor->isPriority = true;
+            prioritySensors[tid].emplace_back(sensor);
+        }
+        else
+        {
+            sensor->isPriority = false;
+            roundRobinSensors[tid].push(sensor);
+        }
+
+        if (inSensorMetrics(sensor))
+        {
+            sensor->inSensorMetrics = true;
+        }
+        else
+        {
+            sensor->inSensorMetrics = false;
+        }
+    }
+
+    // state sensor
+    for (auto& sensor : terminus->stateSensors)
+    {
+        if (!sensor->async)
+        {
+            roundRobinSensors[tid].push(sensor);
+        }
+    }
+
+    if (sensorPollTimers.find(tid) == sensorPollTimers.end())
+    {
+        sensorPollTimers[tid] = std::make_unique<sdbusplus::Timer>(
+            event.get(),
+            std::bind_front(&SensorManager::doSensorPolling, this, tid));
+    }
+
+    if (!sensorPollTimers[tid]->isRunning())
+    {
+        sensorPollTimers[tid]->start(
+            duration_cast<std::chrono::milliseconds>(milliseconds(pollingTime)),
+            true);
+    }
+}
+
+void SensorManager::stopPolling(tid_t tid)
+{
+    if (sensorPollTimers.find(tid) != sensorPollTimers.end())
+    {
+        sensorPollTimers[tid]->stop();
+    }
+}
+
 void SensorManager::startPolling()
 {
     // initialize prioritySensors and roundRobinSensors list
     for (const auto& [tid, terminus] : termini)
     {
-        if (!terminus->doesSupport(PLDM_PLATFORM))
-        {
-            continue;
-        }
-
-        // numeric sensor
-        for (auto& sensor : terminus->numericSensors)
-        {
-            if (isPriority(sensor))
-            {
-                sensor->isPriority = true;
-                prioritySensors[tid].emplace_back(sensor);
-            }
-            else
-            {
-                sensor->isPriority = false;
-                roundRobinSensors[tid].push(sensor);
-            }
-
-            if (inSensorMetrics(sensor))
-            {
-                sensor->inSensorMetrics = true;
-            }
-            else
-            {
-                sensor->inSensorMetrics = false;
-            }
-        }
-
-        // state sensor
-        for (auto& sensor : terminus->stateSensors)
-        {
-            if (!sensor->async)
-            {
-                roundRobinSensors[tid].push(sensor);
-            }
-        }
-
-        if (sensorPollTimers.find(tid) == sensorPollTimers.end())
-        {
-            sensorPollTimers[tid] = std::make_unique<sdbusplus::Timer>(
-                event.get(),
-                std::bind_front(&SensorManager::doSensorPolling, this, tid));
-        }
-
-        if (!sensorPollTimers[tid]->isRunning())
-        {
-            sensorPollTimers[tid]->start(
-                duration_cast<std::chrono::milliseconds>(
-                    milliseconds(pollingTime)),
-                true);
-        }
+        startPolling(tid);
     }
 
     enableIntf->EnableIntf::enabled(true, false);
@@ -193,15 +213,9 @@ void SensorManager::startPolling()
 
 void SensorManager::stopPolling()
 {
-    prioritySensors.clear();
-    roundRobinSensors.clear();
-
     for (const auto& [tid, terminus] : termini)
     {
-        if (sensorPollTimers[tid])
-        {
-            sensorPollTimers[tid]->stop();
-        }
+        stopPolling(tid);
     }
 
     enableIntf->EnableIntf::enabled(false, false);

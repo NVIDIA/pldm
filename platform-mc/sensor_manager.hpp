@@ -85,13 +85,41 @@ class SensorManager
         bool verbose = false,
         const std::filesystem::path& configJson = PLDM_T2_CONFIG_JSON);
 
-    /** @brief starting sensor polling task
+    /** @brief starting all termini sensor polling task
      */
     void startPolling();
 
-    /** @brief stopping sensor polling task
+    /** @brief stopping all termini sensor polling task
      */
     void stopPolling();
+
+    /** @brief starting terminus sensor polling task
+     */
+    void startPolling(tid_t tid);
+
+    /** @brief stopping terminus sensor polling task
+     */
+    void stopPolling(tid_t tid);
+
+    /** @brief set terminus sensor online and resume polling timer
+     */
+    void setOnline(tid_t tid)
+    {
+        if(termini.find(tid)!= termini.end()) {
+            termini[tid]->setOnline();
+            startPolling(tid);
+        }
+    }
+
+    /** @brief set terminus sensor offline and stop polling timer
+     */
+    void setOffline(tid_t tid)
+    {
+        if(termini.find(tid)!= termini.end()) {
+            termini[tid]->setOffline();
+            stopPolling(tid);
+        }
+    }
 
   protected:
     /** @brief start a coroutine for polling all sensors.

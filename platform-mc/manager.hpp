@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,10 +74,29 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return rc;
     }
 
-    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos,
+                             dbus::MctpInterfaces& mctpInterfaces)
     {
         (void)mctpInterfaces;
         terminusManager.discoverMctpTerminus(mctpInfos);
+    }
+
+    void onlineMctpEndpoint(const UUID& uuid) override
+    {
+        auto terminus = terminusManager.getTerminus(uuid);
+        if (terminus)
+        {
+            sensorManager.setOnline(terminus->getTid());
+        }
+    }
+
+    void offlineMctpEndpoint(const UUID& uuid) override
+    {
+        auto terminus = terminusManager.getTerminus(uuid);
+        if (terminus)
+        {
+            sensorManager.setOffline(terminus->getTid());
+        }
     }
 
     void startSensorPolling()

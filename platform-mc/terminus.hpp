@@ -34,9 +34,9 @@
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
-#include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
 
 #include <coroutine>
 
@@ -233,6 +233,16 @@ class Terminus
     /** @brief This value indicates the event messaging styles supported by the
      * terminus */
     uint8_t synchronyConfigurationSupported;
+
+    /** @brief set the terminus to online state */
+    void setOnline();
+
+    /** @brief set the terminus to offline state */
+    void setOffline();
+
+    const UUID& getUuid() {
+        return uuid;
+    }
 
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr>
