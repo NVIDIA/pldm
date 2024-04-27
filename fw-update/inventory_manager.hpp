@@ -52,12 +52,12 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority = {
  * @brief MCTP Binding Type priority table ordering by bandwidth
  */
 static std::unordered_map<MctpBinding, Priority> bindingPriority = {
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", 0},
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.USB", 1},
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SPI", 2},
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.KCS", 3},
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial", 4},
-    {"xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SMBus", 5}};
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
 struct MctpEidInfo
 {
@@ -68,11 +68,15 @@ struct MctpEidInfo
     friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
     {
         if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
-            return bindingPriority.at(lhs.binding) >
-                   bindingPriority.at(rhs.binding);
+        {
+            return (bindingPriority.at(lhs.binding) >
+                    bindingPriority.at(rhs.binding));
+        }
         else
-            return mediumPriority.at(lhs.medium) >
-                   mediumPriority.at(rhs.medium);
+        {
+            return (mediumPriority.at(lhs.medium) >
+                    mediumPriority.at(rhs.medium));
+        }
     }
 };
 

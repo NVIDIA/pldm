@@ -497,50 +497,62 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     // The default policy is to pick the MCTP endpoint where the outgoing
     // physical medium is the fastest. Skip firmware/device inventory for the
     // next endpoints after discovering the first endpoint associated with the
-    // UUID.
-    // The logic to calculate fastest EID to the PLDM FD is not
+    // UUID. The logic to calculate fastest EID to the PLDM FD is not
     // needed when FW versions are refreshed.
     if (mctpEidMap.contains(eid) && !refreshFWVersionOnly)
     {
         const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
+        // This condition is met, if an additional eid is discovered for a
+        // device(same UUID) that is already discovered.
         if (mctpInfoMap.contains(uuid))
         {
             auto search = mctpInfoMap.find(uuid);
-            const auto& prevTop = search->second.top();
-            auto prevTopEid = prevTop.eid;
-            for (auto& mctpInfo : search->second)
+
+            const auto& curTop = search->second.top();
+            auto curFastestEid = curTop.eid;
+            // Check if eid is already the fastest, this can happen on a
+            // rediscovery of the MCTP endpoint
+            if (curFastestEid == eid)
             {
-                if (mctpInfo.eid == eid)
-                {
-                    if (prevTopEid == eid)
-                    {
-                        lg2::info("Top EID in the queue matches with current "
-                                  "EID. Skip erasing the map for EID={EID}",
-                                  "EID", eid);
-                    }
-                    else
-                    {
-                        lg2::info("Top EID does not match with current EID."
-                                  " Erasing descriptor map for EID={EID}",
-                                  "EID", eid);
-                        descriptorMap.erase(eid);
-                        componentInfoMap.erase(eid);
-                    }
-                    co_return PLDM_SUCCESS;
-                }
+                lg2::info(
+                    "Fastest path to UUID={UUID} is already set to EID={EID}",
+                    "UUID", uuid, "EID", eid);
+                co_return PLDM_SUCCESS;
             }
+
+            // Insert eid into priority queue, to identify the new fastest EID
             search->second.push({eid, mediumType, bindingType});
-            const auto& top = search->second.top();
-            if (prevTopEid == top.eid)
+
+            const auto& newTop = search->second.top();
+            auto newFastestEid = newTop.eid;
+            // Check if eid is the fastest eid after comparison
+            if (eid != newFastestEid)
             {
+                lg2::info(
+                    "Fastest path to UUID={UUID} is set to EID={EID}, removed DELETED_EID={DELETED_EID}",
+                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID", eid);
                 descriptorMap.erase(eid);
                 componentInfoMap.erase(eid);
             }
-            else if (eid == top.eid)
+            else if (eid == newFastestEid)
             {
-                descriptorMap.erase(prevTopEid);
-                componentInfoMap.erase(prevTopEid);
+                lg2::info(
+                    "Fastest path to UUID={UUID} is set to EID={EID}, DELETED_EID={DELETED_EID}",
+                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID",
+                    curFastestEid);
+                descriptorMap.erase(curFastestEid);
+                componentInfoMap.erase(curFastestEid);
             }
+
+            // Trim priority queue to have only the fastest eid, remove the
+            // second entry.
+            const auto& currTop = search->second.top();
+            auto topEID = currTop.eid;
+            auto topMediumType = currTop.medium;
+            auto topBindingType = currTop.binding;
+            search->second.pop();
+            search->second.pop();
+            search->second.push({topEID, topMediumType, topBindingType});
         }
         else
         {
