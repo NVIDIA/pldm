@@ -54,7 +54,7 @@ TEST_F(TerminusManagerTest, mapTidTest)
     pldm::MctpInfo mctpInfo1(
         1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
 
     // look up a unmapped mctpInfo, returned tid should be null
     auto tid1 = terminusManager.toTid(mctpInfo1);
@@ -82,19 +82,19 @@ TEST_F(TerminusManagerTest, preferredMediumAndBindingTest)
     pldm::MctpInfo mctpInfo1(
         1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 0,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SMBus");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus");
     pldm::MctpInfo mctpInfo1_Faster(
         2, "f72d6f90-5675-11ed-9b6a-0242ac120002",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
     pldm::MctpInfo mctpInfo1_Slower(
         3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 0,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial");
     pldm::MctpInfo mctpInfo1_SameMediumSlowerBinding(
         3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.Serial");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial");
 
     // assign tid to mctpInfo, the returned tid should not be null
     auto tid1 = terminusManager.mapTid(mctpInfo1);
