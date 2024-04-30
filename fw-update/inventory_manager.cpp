@@ -32,9 +32,11 @@ namespace pldm
 namespace fw_update
 {
 
-void InventoryManager::discoverFDs(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
+void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
+                                   dbus::MctpInterfaces& mctpInterfaces)
 {
-    for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
+    for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
+         mctpInfos)
     {
         mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
         auto co = startFirmwareDiscoveryFlow(eid, mctpInterfaces);
@@ -51,7 +53,8 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos, dbus::MctpInterfa
     }
 }
 
-requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
+requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
+    mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
 {
     uint8_t rc = 0;
     uint8_t queryDeviceIdentifiersAttempts = numAttempts;
@@ -62,8 +65,7 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid
 
     while (queryDeviceIdentifiersAttempts--)
     {
-        rc = co_await queryDeviceIdentifiers(eid, messageError,
-                                             resolution);
+        rc = co_await queryDeviceIdentifiers(eid, messageError, resolution);
 
         if (rc == PLDM_SUCCESS)
         {
@@ -85,14 +87,16 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid
             "EID", eid, "RC", rc);
         if (!messageError.empty() && !resolution.empty())
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution, mctpInterfaces);
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
         }
         co_return rc;
     }
 
     while (getFirmwareParametersAttempts--)
     {
-        rc = co_await getFirmwareParameters(eid, messageError, resolution, mctpInterfaces);
+        rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                            mctpInterfaces);
 
         if (rc == PLDM_SUCCESS)
         {
@@ -114,7 +118,8 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid
             "EID", eid, "RC", rc);
         if (!messageError.empty() && !resolution.empty())
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution, mctpInterfaces);
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
         }
     }
 
@@ -192,15 +197,13 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
     descriptorMap.erase(eid);
 }
 
-requester::Coroutine
-    InventoryManager::queryDeviceIdentifiers(mctp_eid_t eid,
-                                             std::string& messageError,
-                                             std::string& resolution)
+requester::Coroutine InventoryManager::queryDeviceIdentifiers(
+    mctp_eid_t eid, std::string& messageError, std::string& resolution)
 {
 
     auto instanceId = requester.getInstanceId(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
-                        PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
+                       PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto rc = encode_query_device_identifiers_req(
         instanceId, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, request);
@@ -217,7 +220,7 @@ requester::Coroutine
     size_t responseLen = 0;
 
     rc = co_await SendRecvPldmMsgOverMctp(handler, eid, requestMsg,
-                                               &responseMsg, &responseLen);
+                                          &responseMsg, &responseLen);
 
     if (rc)
     {
@@ -378,7 +381,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     size_t responseLen = 0;
 
     rc = co_await SendRecvPldmMsgOverMctp(handler, eid, requestMsg,
-                                         &responseMsg, &responseLen);
+                                          &responseMsg, &responseLen);
 
     if (rc)
     {
@@ -388,14 +391,14 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
         co_return rc;
     }
 
-    rc = co_await parseGetFWParametersResponse(eid, responseMsg, responseLen,
-                                                 messageError, resolution, mctpInterfaces, refreshFWVersionOnly);
+    rc = co_await parseGetFWParametersResponse(
+        eid, responseMsg, responseLen, messageError, resolution, mctpInterfaces,
+        refreshFWVersionOnly);
 
     if (rc)
     {
-        lg2::error(
-            "parseGetFWParametersResponse failed, EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
+        lg2::error("parseGetFWParametersResponse failed, EID={EID}, RC={RC} ",
+                   "EID", eid, "RC", rc);
     }
 
     co_return rc;
@@ -403,7 +406,8 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
 
 requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
-    std::string& messageError, std::string& resolution, dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
+    std::string& messageError, std::string& resolution,
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -428,7 +432,8 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
             "Decoding GetFirmwareParameters response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-        messageError = "Failed to discover: decoding GetFirmwareParameters response failed";
+        messageError =
+            "Failed to discover: decoding GetFirmwareParameters response failed";
         resolution = "Reset the baseboard and retry the operation.";
         co_return PLDM_ERROR;
     }
@@ -560,10 +565,11 @@ void InventoryManager::logDiscoveryFailedMessage(
     {
         const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
         DeviceInfo deviceInfo;
-        if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid], deviceInfo))
+        if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                    deviceInfo))
         {
-            const auto& deviceObjPath = std::get<DeviceObjPath>(
-                std::get<CreateDeviceInfo>(deviceInfo));
+            const auto& deviceObjPath =
+                std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
             std::string compName =
                 std::filesystem::path(deviceObjPath).filename();
             createLogEntry(resourceErrorDetected, compName, messageError,
