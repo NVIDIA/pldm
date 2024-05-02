@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,15 +25,16 @@
 #include "update_manager.hpp"
 #include "watch.hpp"
 
+#include <fmt/format.h>
+
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <fmt/format.h>
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -127,20 +128,23 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(
         {
 
             /*
-             * Conditions to add awaitToActivate message for Non PLDM Components in Summary Log:
-             * Condition 1:
-             *          Targets vector is empty implying that no target filtering is done.
-             *          In this case, the Active state is from an update to the component
-             * Condition 2:
-             *          Check if any Non PLDM components are part of the target filtering list.
+             * Conditions to add awaitToActivate message for Non PLDM Components
+             * in Summary Log: Condition 1: Targets vector is empty implying
+             * that no target filtering is done. In this case, the Active state
+             * is from an update to the component Condition 2: Check if any Non
+             * PLDM components are part of the target filtering list.
              * */
             if (targets.empty() ||
-                    std::find_if(targets.begin(), targets.end(), [&](const std::string& target) {
-                           const std::string targetBaseName = target.substr(target.rfind('/')+1);
-                           const std::string objBaseName = objPath.substr(objPath.rfind('/')+1);
+                std::find_if(targets.begin(), targets.end(),
+                             [&](const std::string& target) {
+                                 const std::string targetBaseName =
+                                     target.substr(target.rfind('/') + 1);
+                                 const std::string objBaseName =
+                                     objPath.substr(objPath.rfind('/') + 1);
 
-                           return (targetBaseName.find(objBaseName) != std::string::npos);
-                        }) != targets.end())
+                                 return (targetBaseName.find(objBaseName) !=
+                                         std::string::npos);
+                             }) != targets.end())
             {
                 updateManager->updateOtherDeviceCompletion(
                     otherDevices[objPath]->uuid, true,
@@ -321,14 +325,14 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
 }
 
-    std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
-        const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
+    const FirmwareDeviceIDRecord& fwDeviceIDRecord)
 {
-    const auto& deviceIDDescriptors =
-        std::get<Descriptors>(fwDeviceIDRecord);
+    const auto& deviceIDDescriptors = std::get<Descriptors>(fwDeviceIDRecord);
     UUID uuid{};
     SKU sku{};
-    for (const auto& [descriptorType, descriptorValue] : deviceIDDescriptors) // For each Descriptors
+    for (const auto& [descriptorType, descriptorValue] :
+         deviceIDDescriptors) // For each Descriptors
     {
         if (descriptorType == PLDM_FWUP_UUID) // Check UUID
         {
@@ -350,12 +354,10 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
             if (vendorDescTitle == "APSKU")
             {
                 sku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
-                                    vendorDescData[0], vendorDescData[1],
-                                    vendorDescData[2], vendorDescData[3]);
-
+                                  vendorDescData[0], vendorDescData[1],
+                                  vendorDescData[2], vendorDescData[3]);
             }
         }
-
     }
 
     return {uuid, sku};
@@ -384,10 +386,12 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 
         if (sku.empty())
         {
-            lg2::warning("No Sku descriptor found in package for UUID {UUID}", "UUID", uuid);
+            lg2::warning("No Sku descriptor found in package for UUID {UUID}",
+                         "UUID", uuid);
         }
 
-        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID", uuid, "SKU", sku);
+        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID",
+                  uuid, "SKU", sku);
 
         const auto& applicableCompVec =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -439,31 +443,28 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
         if (packageSize < static_cast<uintmax_t>(compOffset) +
                               static_cast<uintmax_t>(compSize))
         {
-            lg2::error(
-                "Failed to extract non pldm device component image");
+            lg2::error("Failed to extract non pldm device component image");
             return 0;
         }
 
         package.seekg(compOffset); // SEEK to image offset
         std::vector<uint8_t> buffer(compSize);
-        package.read(reinterpret_cast<char*>(buffer.data()),
-                     buffer.size());
+        package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
 
-        fileName += "/" + boost::uuids::to_string(
-                              boost::uuids::random_generator()())
-                              .substr(0, 8);
-        lg2::info("Extracting {VERSION} to fileName : {FILENAME}",
-                  "VERSION", version, "FILENAME", fileName);
+        fileName +=
+            "/" + boost::uuids::to_string(boost::uuids::random_generator()())
+                      .substr(0, 8);
+        lg2::info("Extracting {VERSION} to fileName : {FILENAME}", "VERSION",
+                  version, "FILENAME", fileName);
 
         std::ofstream outfile(fileName, std::ofstream::binary);
         outfile.write(reinterpret_cast<const char*>(&buffer[0]),
-                      buffer.size() *
-                          sizeof(uint8_t)); // Write to image offset
+                      buffer.size() * sizeof(uint8_t)); // Write to image offset
         outfile.close();
         totalNumImages++;
         isImageFileProcessed[uuid] = false;
-        uuidMappings[uuid] = {
-            version, std::filesystem::path(objPath).filename()};
+        uuidMappings[uuid] = {version,
+                              std::filesystem::path(objPath).filename()};
 
         const auto& compOptions = std::get<static_cast<size_t>(
             ComponentImageInfoPos::CompOptionsPos)>(componentImageInfo);
@@ -532,9 +533,9 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-bool OtherDeviceUpdateManager::validateDescriptor(const dbus::ObjectPath& objPath,
-        std::string descriptor,
-        const char* descriptorName, const char* dbusInterface)
+bool OtherDeviceUpdateManager::validateDescriptor(
+    const dbus::ObjectPath& objPath, std::string descriptor,
+    const char* descriptorName, const char* dbusInterface)
 {
     static auto dbusHandler = pldm::utils::DBusHandler();
     std::string tmpDescriptor{};
@@ -545,20 +546,22 @@ bool OtherDeviceUpdateManager::validateDescriptor(const dbus::ObjectPath& objPat
     }
     catch (const std::exception&)
     {
-        lg2::warning(fmt::format("Object {} does not have descriptor {}", objPath,
-                    descriptorName).c_str());
+        lg2::warning(fmt::format("Object {} does not have descriptor {}",
+                                 objPath, descriptorName)
+                         .c_str());
         return false;
     }
 
-    std::transform(descriptor.begin(), descriptor.end(),
-            descriptor.begin(), ::toupper);
+    std::transform(descriptor.begin(), descriptor.end(), descriptor.begin(),
+                   ::toupper);
     std::transform(tmpDescriptor.begin(), tmpDescriptor.end(),
-            tmpDescriptor.begin(), ::toupper);
+                   tmpDescriptor.begin(), ::toupper);
     return (descriptor == tmpDescriptor);
 }
 
 std::pair<std::string, std::string>
-    OtherDeviceUpdateManager::getFilePath(const UUID& uuid, const SKU& packageSKU)
+    OtherDeviceUpdateManager::getFilePath(const UUID& uuid,
+                                          const SKU& packageSKU)
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
@@ -568,7 +571,8 @@ std::pair<std::string, std::string>
     {
 
         if (!validateDescriptor(obj, uuid, "UUID",
-                sdbusplus::xyz::openbmc_project::Common::server::UUID::interface))
+                                sdbusplus::xyz::openbmc_project::Common::
+                                    server::UUID::interface))
         {
             continue;
         }
@@ -576,10 +580,12 @@ std::pair<std::string, std::string>
         if (!packageSKU.empty())
         {
             if (validateDescriptor(obj, packageSKU, "SKU",
-                    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset::interface))
+                                   sdbusplus::xyz::openbmc_project::Inventory::
+                                       Decorator::server::Asset::interface))
             {
-                lg2::info(fmt::format("Found object {} with matching SKU {}", obj, packageSKU).c_str());
-
+                lg2::info(fmt::format("Found object {} with matching SKU {}",
+                                      obj, packageSKU)
+                              .c_str());
             }
             else
             {

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 #include "common/utils.hpp"
 
 #include <sdbusplus/timer.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 
 #include <unordered_map>
 
@@ -62,7 +62,8 @@ struct ComponentMap
     std::string componentName;
 };
 
-constexpr const uint8_t forceUpdateBit = 0; // force update bit in component option
+constexpr const uint8_t forceUpdateBit =
+    0; // force update bit in component option
 
 class UpdateManager;
 
@@ -200,12 +201,13 @@ class OtherDeviceUpdateManager
      * @brief Get file path based on UUID
      *
      * @param UUID UUID to find file path for
-     * @param sku Optional descriptor to match descriptor published by ItemUpdater
-     *            Skips validation if an empty string is passed
+     * @param sku Optional descriptor to match descriptor published by
+     * ItemUpdater Skips validation if an empty string is passed
      * @return pair with filepath and object path, returns {} on no match
      *
      */
-    std::pair<std::string, std::string> getFilePath(const std::string& uuid, const std::string& sku);
+    std::pair<std::string, std::string> getFilePath(const std::string& uuid,
+                                                    const std::string& sku);
 
     /**
      * @brief Get the Valid Paths that may contain UUIDs
@@ -231,7 +233,8 @@ class OtherDeviceUpdateManager
      *
      */
     bool validateDescriptor(const std::string& objPath, std::string descriptor,
-         const char* descriptorName, const char* dbusInterface);
+                            const char* descriptorName,
+                            const char* dbusInterface);
     /**
      * @brief Fetches UUID and SKU from the package
      *
@@ -303,7 +306,7 @@ class OtherDeviceUpdateManager
 
     /**
      * @brief map to match object path with their force update flag.
-     * This will keep track of the force update flags for all the components in 
+     * This will keep track of the force update flags for all the components in
      * the package
      */
     std::map<dbus::ObjectPath, bool> forceUpdateMappings;
@@ -312,4 +315,3 @@ class OtherDeviceUpdateManager
 } // namespace fw_update
 
 } // namespace pldm
-

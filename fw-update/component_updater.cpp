@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,10 +67,13 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
         compClassificationIndex = std::get<0>(search->second);
     }
 
-    const auto& compOptions = std::get<static_cast<size_t>(ComponentImageInfoPos::CompOptionsPos)>(comp);
+    const auto& compOptions =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompOptionsPos)>(
+            comp);
     // UpdateOptionFlags
     bitfield32_t updateOptionFlags = {0};
-    updateOptionFlags.bits.bit0 = updateManager->forceUpdate || compOptions.test(forceUpdateBit);
+    updateOptionFlags.bits.bit0 =
+        updateManager->forceUpdate || compOptions.test(forceUpdateBit);
     // ComponentVersion
     const auto& compVersion = std::get<7>(comp);
     variable_field compVerStrInfo{};
@@ -138,7 +141,8 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
         return PLDM_ERROR;
     }
 
@@ -179,7 +183,8 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateFailed));
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
         return PLDM_ERROR;
     }
     if (compCompatibilityResp)
@@ -190,7 +195,8 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
             compCompatibilityResp, "CCRC", compCompatibilityRespCode);
 
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, compCompatibilityRespCode);
+            getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
+                                        compCompatibilityRespCode);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(
@@ -662,7 +668,8 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
         updateManager->getActivationMethod(compActivationModification));
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,
-        std::bind(&ComponentUpdater::updateComponentComplete, this, ComponentUpdateStatus::UpdateComplete));
+        std::bind(&ComponentUpdater::updateComponentComplete, this,
+                  ComponentUpdateStatus::UpdateComplete));
     if (completeCommandsTimeoutTimer)
     {
         completeCommandsTimeoutTimer->stop();
@@ -739,8 +746,8 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
         auto validateApplyStatusSuccess = [this, applyResult, compVersion,
-                                         compActivationModification](
-                                            uint8_t currentFDState) {
+                                           compActivationModification](
+                                              uint8_t currentFDState) {
             if (currentFDState == PLDM_FD_STATE_READY_XFER)
             {
                 applyCompleteSucceededStatusHandler(compVersion,
@@ -753,7 +760,8 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
         };
 
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event, [this, validateApplyStatusSuccess](EventBase&) {
+            updateManager->event,
+            [this, validateApplyStatusSuccess](EventBase&) {
                 GetStatus(validateApplyStatusSuccess);
             });
     }
@@ -876,8 +884,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         co_return rc;
     }
-    rc = processCancelUpdateComponentResponse(eid, response,
-                                                       respMsgLen);
+    rc = processCancelUpdateComponentResponse(eid, response, respMsgLen);
     if (rc)
     {
         lg2::error("Error while processing cancel update response."
@@ -984,8 +991,8 @@ requester::Coroutine
                    "EID", eid, "COMPONENTINDEX", componentIndex);
         co_return rc;
     }
-    rc = processGetStatusResponse(eid, response, respMsgLen,
-                                           currentFDState, progressPercent);
+    rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,
+                                  progressPercent);
     if (rc)
     {
         lg2::error("Error while processing get request response."

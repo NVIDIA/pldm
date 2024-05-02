@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,6 @@ SensorManager::SensorManager(
 
     aggregationIntf =
         std::make_unique<AggregationIntf>(bus, aggregationDataPath);
-
 
     // default priority sensor name spaces
     prioritySensorNameSpaces.emplace_back(
@@ -403,7 +402,6 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         } while ((t1 - t0) < pollingTimeInUsec);
 
-
         if (verbose)
         {
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
@@ -430,40 +428,46 @@ requester::Coroutine
 
     if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
-        Request request(sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
+        Request request(sizeof(pldm_msg_hdr) +
+                        PLDM_GET_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
         rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
         if (rc)
         {
-            lg2::error("encode_get_sensor_reading_req failed, tid={TID}, rc={RC}.",
-                    "TID", tid, "RC", rc);
+            lg2::error(
+                "encode_get_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                "TID", tid, "RC", rc);
             co_return rc;
         }
-        rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
-                                                &responseLen);
+        rc = co_await terminusManager.SendRecvPldmMsg(
+            tid, request, &responseMsg, &responseLen);
     }
 #ifdef OEM_NVIDIA
     else if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM)
     {
-        Request request(sizeof(pldm_msg_hdr) + PLDM_GET_OEM_ENERGYCOUNT_SENSOR_READING_REQ_BYTES);
+        Request request(sizeof(pldm_msg_hdr) +
+                        PLDM_GET_OEM_ENERGYCOUNT_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
-        rc = encode_get_oem_enegy_count_sensor_reading_req(0, sensorId, requestMsg);
+        rc = encode_get_oem_enegy_count_sensor_reading_req(0, sensorId,
+                                                           requestMsg);
         if (rc)
         {
-            lg2::error("encode_get_oem_enegycount_sensor_reading_req failed, tid={TID}, rc={RC}.",
-                    "TID", tid, "RC", rc);
+            lg2::error(
+                "encode_get_oem_enegycount_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                "TID", tid, "RC", rc);
             co_return rc;
         }
-        rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
-                                                &responseLen);
+        rc = co_await terminusManager.SendRecvPldmMsg(
+            tid, request, &responseMsg, &responseLen);
     }
 #endif
     else
     {
-        lg2::error("Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
-                    "INDICATOR", pollingIndicator);
+        lg2::error(
+            "Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
+            "INDICATOR", pollingIndicator);
         co_return PLDM_ERROR;
     }
 
@@ -512,7 +516,8 @@ requester::Coroutine
         sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT64;
         rc = decode_get_oem_energy_count_sensor_reading_resp(
             responseMsg, responseLen, &completionCode, &sensorDataSize,
-            &sensorOperationalState, reinterpret_cast<uint8_t*>(&presentReading));
+            &sensorOperationalState,
+            reinterpret_cast<uint8_t*>(&presentReading));
 
         if (rc)
         {
@@ -526,8 +531,9 @@ requester::Coroutine
 #endif
     else
     {
-        lg2::error("Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
-                    "INDICATOR", pollingIndicator);
+        lg2::error(
+            "Incorrect PLDM polling type [Type2 or OEM type are valid], PldmType={INDICATOR}.",
+            "INDICATOR", pollingIndicator);
         co_return PLDM_ERROR;
     }
 
@@ -583,7 +589,7 @@ requester::Coroutine
             value = std::numeric_limits<double>::quiet_NaN();
             break;
     }
-    
+
     sensor->updateReading(true, true, value);
     co_return completionCode;
 }

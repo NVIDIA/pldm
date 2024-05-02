@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -229,7 +229,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activationProgress->progress(0);
         targets = updatePolicyStaged->targets();
         forceUpdate = updatePolicyStaged->forceUpdate();
-
     }
     else
     {
@@ -424,12 +423,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             componentNameMap.find(deviceUpdaterInfo.first);
         if (compIdNameInfoSearch != componentNameMap.end())
         {
-            deviceUpdaterMap.emplace(
-                deviceUpdaterInfo.first,
-                std::make_unique<DeviceUpdater>(
-                    deviceUpdaterInfo.first, package, fwDeviceIDRecord,
-                    compImageInfos, search->second, compIdNameInfoSearch->second,
-                    MAXIMUM_TRANSFER_SIZE, this, fwDebug));
+            deviceUpdaterMap.emplace(deviceUpdaterInfo.first,
+                                     std::make_unique<DeviceUpdater>(
+                                         deviceUpdaterInfo.first, package,
+                                         fwDeviceIDRecord, compImageInfos,
+                                         search->second,
+                                         compIdNameInfoSearch->second,
+                                         MAXIMUM_TRANSFER_SIZE, this, fwDebug));
         }
     }
 
@@ -440,7 +440,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     return 0;
 }
-
 
 bool UpdateManager::performSecurityChecks()
 {
@@ -515,8 +514,7 @@ bool UpdateManager::verifyPackage()
         try
         {
             packageSignatureParser =
-                PackageSignature::createPackageSignatureParser(
-                    pkgSignHdrData);
+                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
 
             if (packageSignatureParser == nullptr)
             {
@@ -549,8 +547,8 @@ bool UpdateManager::verifyPackage()
         uintmax_t sizeOfSignedData =
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
 
-        bool isSignedProperly =
-            packageSignatureParser->verify(package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData);
+        bool isSignedProperly = packageSignatureParser->verify(
+            package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData);
 
         if (!isSignedProperly)
         {
@@ -1139,7 +1137,7 @@ void UpdateManager::createProgressUpdateTimer()
         if (fwDebug)
         {
             lg2::info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
-                       progressPercent);
+                      progressPercent);
         }
         activationProgress->progress(progressPercent);
         // percent update should always be less than 100 when task is
@@ -1198,7 +1196,8 @@ void UpdateManager::updateStagedPackageProperties(
     }
     catch (const std::exception& e)
     {
-        lg2::error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR", e.what());
+        lg2::error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR",
+                   e.what());
         packageVerificationStatus = false;
     }
     std::filesystem::file_time_type packageTimeStamp =

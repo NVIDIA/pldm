@@ -288,12 +288,12 @@ class Handler
     pldm::dbus_api::Requester& requester; //!< reference to Requester object
     pldm::mctp_socket::Manager& sockManager;
 
-    bool verbose;                 //!< verbose tracing flag
+    bool verbose; //!< verbose tracing flag
     std::chrono::seconds
         instanceIdExpiryInterval; //!< Instance ID expiration interval
     uint8_t numRetries;           //!< number of request retries
     std::chrono::milliseconds
-        responseTimeOut;          //!< time to wait between each retry
+        responseTimeOut; //!< time to wait between each retry
 
     /** @brief Container for storing the details of the PLDM request
      *         message, handler for the corresponding PLDM response, the
