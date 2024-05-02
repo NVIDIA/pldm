@@ -182,7 +182,7 @@ class Handler
         auto request = std::make_unique<RequestInterface>(
             sockManager.getSocket(eid), eid, event, std::move(requestMsg),
             numRetries, responseTimeOut, verbose);
-        auto timer = std::make_unique<phosphor::Timer>(
+        auto timer = std::make_unique<sdbusplus::Timer>(
             event.get(), instanceIdExpiryCallBack);
 
         handlers[eid].emplace(
@@ -301,7 +301,7 @@ class Handler
      */
     using RequestValue =
         std::tuple<std::unique_ptr<RequestInterface>, ResponseHandler,
-                   std::unique_ptr<phosphor::Timer>, RequestKey>;
+                   std::unique_ptr<sdbusplus::Timer>, RequestKey>;
     using RequestQueue = std::queue<RequestValue>;
 
     /** @brief Container for storing the PLDM request entries */

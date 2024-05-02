@@ -791,7 +791,7 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
 
 void ComponentUpdater::createRequestFwDataTimer()
 {
-    reqFwDataTimer = std::make_unique<phosphor::Timer>([this]() -> void {
+    reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
         if (updateManager->fwDebug)
         {
             lg2::error("RequestUpdate timeout EID={EID}, "
@@ -821,7 +821,7 @@ void ComponentUpdater::createRequestFwDataTimer()
 void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 {
     completeCommandsTimeoutTimer =
-        std::make_unique<phosphor::Timer>([this]() -> void {
+        std::make_unique<sdbusplus::Timer>([this]() -> void {
             if (updateManager->fwDebug)
             {
                 lg2::error("Complete Commands Timeout. EID={EID}, "

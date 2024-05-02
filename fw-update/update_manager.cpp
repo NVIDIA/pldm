@@ -1130,7 +1130,7 @@ ComponentName UpdateManager::getComponentName(
 void UpdateManager::createProgressUpdateTimer()
 {
     updateInterval = 0;
-    progressTimer = std::make_unique<phosphor::Timer>([this]() {
+    progressTimer = std::make_unique<sdbusplus::Timer>([this]() {
         updateInterval += 1;
         auto progressPercent = static_cast<uint8_t>(
             std::floor((100 * updateInterval) / totalInterval));

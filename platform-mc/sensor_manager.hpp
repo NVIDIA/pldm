@@ -144,7 +144,7 @@ class SensorManager
     uint32_t pollingTime;
 
     /** @brief sensor polling timers */
-    std::map<tid_t, std::unique_ptr<phosphor::Timer>> sensorPollTimers;
+    std::map<tid_t, std::unique_ptr<sdbusplus::Timer>> sensorPollTimers;
 
     /** @brief coroutine handle of doSensorPollingTasks */
     std::map<tid_t, std::coroutine_handle<>> doSensorPollingTaskHandles;
