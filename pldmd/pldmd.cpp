@@ -242,6 +242,15 @@ int main(int argc, char** argv)
                      request, payloadLength, formatVersion, tid,
                      eventDataOffset, platformEventStatus);
              }}},
+            {PLDM_OEM_EVENT_CLASS_0xFC,
+             {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                                 uint8_t formatVersion, uint8_t tid,
+                                 size_t eventDataOffset,
+                                 uint8_t& platformEventStatus) {
+                 return platformManager->handleSmbiosEvent(
+                     request, payloadLength, formatVersion, tid,
+                     eventDataOffset, platformEventStatus);
+             }}},
             {PLDM_MESSAGE_POLL_EVENT,
              {[&platformManager](const pldm_msg* request, size_t payloadLength,
                                  uint8_t formatVersion, uint8_t tid,

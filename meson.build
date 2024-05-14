@@ -289,6 +289,7 @@ source_files = [
   'platform-mc/state_set.cpp',
   'platform-mc/state_effecter.cpp',
   'platform-mc/state_set.cpp',
+  'platform-mc/smbios_mdr.cpp',
   'requester/mctp_endpoint_discovery.cpp',
 ]
 

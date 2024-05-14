@@ -8,6 +8,7 @@ dep_src_files = [
   '../state_effecter.cpp',
   '../state_set.cpp',
   '../event_manager.cpp',
+  '../smbios_mdr.cpp',
   '../state_effecter.cpp',
   '../numeric_effecter.cpp',
   '../state_sensor.cpp',

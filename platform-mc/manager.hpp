@@ -152,6 +152,21 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return PLDM_SUCCESS;
     }
 
+    int handleSmbiosEvent(const pldm_msg* request,
+                                         size_t payloadLength,
+                                         uint8_t /* formatVersion */,
+                                         uint8_t tid, size_t eventDataOffset,
+                                         uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFC,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
     int handlePldmMessagePollEvent(const pldm_msg* request,
                                    size_t payloadLength,
                                    uint8_t /* formatVersion */, uint8_t tid,

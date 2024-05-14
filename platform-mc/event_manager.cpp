@@ -22,6 +22,8 @@
 #include "fw-update/manager.hpp"
 #include "terminus_manager.hpp"
 
+#include "smbios_mdr.hpp"
+
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
@@ -172,6 +174,34 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         {
             lg2::error("Failed to save CPER to {FILENAME}, {ERROR}.",
                        "FILENAME", fileName, "ERROR", e);
+            return PLDM_ERROR;
+        }
+    }
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFC)
+    {
+        uint8_t formatVersion;
+        uint16_t smbiosEventDataLength;
+        uint8_t* smbiosEventData;
+        auto rc = decode_pldm_smbios_event_data(
+            eventData, eventDataSize, &formatVersion, &smbiosEventDataLength, &smbiosEventData);
+
+        if (rc)
+        {
+            lg2::error("Failed to decode SMBIOS Type 4 event data, rc={RC}", "RC", rc);
+            return rc;
+        }
+
+        // save event data to file
+        if (!mdr::saveSmbiosData(smbiosEventDataLength, smbiosEventData))
+        {
+            lg2::error("Failed to save SMBIOS data to file");
+            return PLDM_ERROR;
+        }
+
+	// trigger SMBIOS MDR sync
+        if (!mdr::syncSmbiosData())
+        {
+            lg2::error("Failed to trigger SMBIOS MDR sync");
             return PLDM_ERROR;
         }
     }

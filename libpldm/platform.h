@@ -77,6 +77,9 @@ extern "C" {
 /* Minumum length of pldm cper event data */
 #define PLDM_CPER_EVENT_DATA_MIN_LENGTH 4
 
+/* Minumum length of pldm smbios event data */
+#define PLDM_SMBIOS_EVENT_DATA_MIN_LENGTH 4
+
 /* Minimum length of numeric sensor PDR */
 #define PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH 57
 #define PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH 12
@@ -253,7 +256,9 @@ enum pldm_event_types {
 	PLDM_HEARTBEAT_TIMER_ELAPSED_EVENT = 0x06,
 	PLDM_OEM_EVENT_CLASS_0xFA = 0xFA,
 	// OEM platform event for FW version change
-	PLDM_OEM_EVENT_CLASS_0xFB = 0xFB
+	PLDM_OEM_EVENT_CLASS_0xFB = 0xFB,
+	// OEM platform event for UEFI telemetry (SMBIOS Type 4)
+	PLDM_OEM_EVENT_CLASS_0xFC = 0xFC
 };
 
 /** @brief PLDM cperEventClass formatType
@@ -1104,6 +1109,16 @@ struct pldm_cper_event_data {
 	uint8_t event_data[1];
 } __attribute__((packed));
 
+/** @struct pldm_smbios_event
+ *
+ *  structure representing SMBIOSEvent
+ */
+struct pldm_smbios_event_data {
+	uint8_t format_version;
+	uint16_t event_data_length;
+	uint8_t event_data[1];
+} __attribute__((packed));
+
 /** @struct pldm_state_sensor_state
  *
  *  structure representing sensorEventClass for stateSensorState
@@ -1935,6 +1950,24 @@ int decode_pldm_cper_event_data(const uint8_t *event_data,
 				uint8_t *format_version, uint8_t *format_type,
 				uint16_t *cper_event_data_length,
 				uint8_t **cper_event_data);
+
+/** @brief Decode smbiosEvent response data
+ *
+ *  @param[in] event_data - event data from the response message
+ *  @param[in] event_data_length - length of the event data
+ *  @param[out] format_version - version of the event format
+ *  @param[out] smbios_event_data_length - length in bytes of smbios_event_data
+ *  @param[out] smbios_event_data - the pointer to where smbios data is in
+ * event_data array
+ *  @return pldm_completion_codes
+ *  @note  Caller is responsible for memory alloc and dealloc of param
+ *         'event_data'
+ */
+int decode_pldm_smbios_event_data(const uint8_t *event_data,
+				  size_t event_data_length,
+				  uint8_t *format_version,
+				  uint16_t *smbios_event_data_length,
+				  uint8_t **smbios_event_data);
 
 /** @brief Decode stateSensorState response data
  *

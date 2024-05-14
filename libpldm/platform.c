@@ -1126,6 +1126,30 @@ int decode_pldm_cper_event_data(const uint8_t *event_data,
 	return PLDM_SUCCESS;
 }
 
+int decode_pldm_smbios_event_data(const uint8_t *event_data,
+				size_t event_data_length,
+				uint8_t *format_version,
+				uint16_t *smbios_event_data_length,
+				uint8_t **smbios_event_data)
+{
+	if (event_data == NULL || format_version == NULL ||
+	    smbios_event_data_length == NULL || smbios_event_data == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (event_data_length < PLDM_SMBIOS_EVENT_DATA_MIN_LENGTH) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	struct pldm_smbios_event_data *pldm_smbios_event =
+	    (struct pldm_smbios_event_data *)event_data;
+	*format_version = pldm_smbios_event->format_version;
+	*smbios_event_data_length = le16toh(pldm_smbios_event->event_data_length);
+	*smbios_event_data = pldm_smbios_event->event_data;
+
+	return PLDM_SUCCESS;
+}
+
 int decode_sensor_op_data(const uint8_t *sensor_data, size_t sensor_data_length,
 			  uint8_t *present_op_state, uint8_t *previous_op_state)
 {
