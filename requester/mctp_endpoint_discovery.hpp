@@ -27,9 +27,11 @@ class MctpDiscoveryHandlerIntf
     virtual void handleMctpEndpoints(const MctpInfos& mctpInfos,
                                      dbus::MctpInterfaces& mctpInterfaces) = 0;
 
-    virtual void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid)
+    virtual void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
+                                    [[maybe_unused]] const EID& eid)
     {}
-    virtual void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid)
+    virtual void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
+                                     [[maybe_unused]] const EID& eid)
     {}
     virtual ~MctpDiscoveryHandlerIntf()
     {}

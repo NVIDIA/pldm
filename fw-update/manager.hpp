@@ -182,6 +182,16 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return updateManager.handleRequest(eid, command, request, reqMsgLen);
     }
 
+    void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid, [[maybe_unused]] const EID& eid) override
+    {
+        this->updateFWInventory(eid);  
+    }
+
+    void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid, [[maybe_unused]] const EID& eid) override
+    {
+        //placeholder
+    }
+
   private:
     /** @brief Descriptor information of all the discovered MCTP endpoints */
     DescriptorMap descriptorMap;

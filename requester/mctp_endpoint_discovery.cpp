@@ -265,13 +265,18 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
                         objPath.c_str(), "UUID",
                         "xyz.openbmc_project.Common.UUID");
 
+                const auto eid =
+                    pldm::utils::DBusHandler().getDbusProperty<uint32_t>(
+                        objPath.c_str(), "EID",
+                        "xyz.openbmc_project.MCTP.Endpoint");
+
                 if (enabled)
                 {
-                    handler->onlineMctpEndpoint(uuid);
+                    handler->onlineMctpEndpoint(uuid, eid);
                 }
                 else
                 {
-                    handler->offlineMctpEndpoint(uuid);
+                    handler->offlineMctpEndpoint(uuid, eid);
                 }
             }
             catch (const std::exception& e)

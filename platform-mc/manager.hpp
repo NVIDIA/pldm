@@ -81,7 +81,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
-    void onlineMctpEndpoint(const UUID& uuid) override
+    void onlineMctpEndpoint(const UUID& uuid,
+                            [[maybe_unused]] const EID& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
         if (terminus)
@@ -90,7 +91,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
-    void offlineMctpEndpoint(const UUID& uuid) override
+    void offlineMctpEndpoint(const UUID& uuid,
+                             [[maybe_unused]] const EID& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
         if (terminus)
