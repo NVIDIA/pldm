@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <algorithm>
 
 namespace pldm
 {
@@ -153,16 +154,81 @@ struct MatchEntryInfo
 
     T infos;
 
-    bool matchInventoryEntry(dbus::InterfaceMap interfaceMap, U& entry) const
+    /**
+     * @brief Method to compare whether config and D-Bus properties are direct
+     * match.
+     *
+     * @param[in] interfaceMap - D-Bus properties
+     * @param[in] cfgIntfName - config interface from json
+     * @param[in] cfgProperty - config property from json
+     * @return true
+     * @return false
+     */
+    bool isDirectMatch(const dbus::InterfaceMap& interfaceMap,
+                       const dbus::Interface& cfgIntfName,
+                       const dbus::PropertyMap& cfgProperty) const
     {
-        for(uint16_t i = 0; i < infos.size(); i++)
+        auto interfaceProp = interfaceMap.find(cfgIntfName);
+        if (interfaceProp == interfaceMap.end())
         {
-            auto match = std::get<0>(infos[i]);
+            return false;
+        }
+        return interfaceProp->second == cfgProperty;
+    }
 
-            if(interfaceMap.contains(match.first) && interfaceMap[match.first] == match.second)
+    /**
+     * @brief Method to compare individual property from json are matching with
+     * D-Bus property.
+     *
+     * @param[in] interfaceMap - D-Bus properties
+     * @param[in] cfgProperty - config property from jso
+     * @param[in] cfgIntfName - config interface from json
+     * @return true
+     * @return false
+     */
+    bool isPropertyMatch(
+        const dbus::InterfaceMap& interfaceMap,
+        const std::pair<dbus::Property, dbus::Value>& cfgProperty,
+        const dbus::Interface& cfgIntfName) const
+    {
+        const auto& [cfgPropertyName, cfgPropertyValue] = cfgProperty;
+        auto interfaceProp = interfaceMap.find(cfgIntfName);
+        if (interfaceProp == interfaceMap.end())
+        {
+            return false;
+        }
+        return std::any_of(interfaceProp->second.begin(),
+                           interfaceProp->second.end(),
+                           [&](const auto& dBusProp) {
+                               return cfgPropertyName == dBusProp.first &&
+                                      cfgPropertyValue == dBusProp.second;
+                           });
+    }
+
+    bool matchInventoryEntry(const dbus::InterfaceMap& interfaceMap,
+                             U& entry) const
+    {
+        for (uint16_t i = 0; i < infos.size(); i++)
+        {
+            const auto& [cfgIntfName, cfgProps] = std::get<0>(infos[i]);
+
+            if (isDirectMatch(interfaceMap, cfgIntfName, cfgProps))
             {
                 entry = std::get<1>(infos[i]);
                 return true;
+            }
+
+            if (interfaceMap.contains(cfgIntfName))
+            {
+                if (std::any_of(cfgProps.begin(), cfgProps.end(),
+                                [&](const auto& cfgProperty) {
+                                    return isPropertyMatch(
+                                        interfaceMap, cfgProperty, cfgIntfName);
+                                }))
+                {
+                    entry = std::get<1>(infos[i]);
+                    return true;
+                }
             }
         }
         return false;

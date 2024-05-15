@@ -285,8 +285,6 @@ TEST(Manager, MultiPropertyNoMatch)
     MockdBusHandler dbusHandler;
     Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
     //No match for wrong property value
-    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(0)}, {"Bus", uint32_t(17)}}}}}};
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice", {{"Address", uint32_t(1)}, {"Bus", uint32_t(17)}}}}}};
     EXPECT_FALSE(manager.createEntry(eid, uuid, mctpInterfaces).has_value());
-
-
 }
