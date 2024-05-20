@@ -208,6 +208,15 @@ class InventoryManager
     void initiateGetActiveFirmwareVersion(
         mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
+    /** @brief Send getPLDMTypes command to destination EID and then return the
+     *         value of supportedTypes.
+     *
+     *  @param[in] eid - Destination EID
+     *  @param[out] supportedTypes - Supported Types returned from EID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    requester::Coroutine getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
+
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
      * message handlers */

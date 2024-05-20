@@ -53,10 +53,64 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
     }
 }
 
+requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
+                                                    uint64_t& supportedTypes)
+{
+    auto instanceId = requester.getInstanceId(eid);
+    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_TYPES_REQ_BYTES);
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto rc = encode_get_types_req(instanceId, requestMsg);
+    if (rc)
+    {
+        lg2::error("encode_get_types_req failed, eid={EID} rc={RC}.", "EID",
+                   eid, "RC", rc);
+        co_return rc;
+    }
+
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    rc = co_await SendRecvPldmMsgOverMctp(handler, eid, request, &responseMsg,
+                                          &responseLen);
+    if (rc)
+    {
+        lg2::error("Failed to send GetPLDMTypes request, EID={EID}, RC={RC} ",
+                   "EID", eid, "RC", rc);
+        co_return rc;
+    }
+
+    uint8_t completionCode = PLDM_SUCCESS;
+    bitfield8_t* types = reinterpret_cast<bitfield8_t*>(&supportedTypes);
+    rc =
+        decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
+    if (rc)
+    {
+        lg2::error("decode_get_types_resp failed, eid={EID} rc={RC}.", "EID",
+                   eid, "RC", rc);
+        co_return rc;
+    }
+    co_return completionCode;
+}
+
 requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
     mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
 {
     uint8_t rc = 0;
+    uint64_t supportedTypes = 0;
+    rc = co_await getPLDMTypes(eid, supportedTypes);
+    if (rc)
+    {
+        lg2::error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC",
+                   rc);
+        co_return PLDM_ERROR;
+    }
+
+    auto isType5Supported = supportedTypes & (1 << PLDM_FWUP);
+    if (!isType5Supported)
+    {
+        co_return PLDM_SUCCESS;
+    }
+
     uint8_t queryDeviceIdentifiersAttempts = numAttempts;
     uint8_t getFirmwareParametersAttempts = numAttempts;
 
