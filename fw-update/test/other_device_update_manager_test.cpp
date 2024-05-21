@@ -167,8 +167,7 @@ TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
     size_t result = otherDeviceUpdateManager.extractOtherDevicePkgs(
         fwDeviceIDRecords,
         compImageInfos,
-        dummyStream,
-        updatePolicy.forceUpdate()
+        dummyStream
         );
 
     EXPECT_EQ(result, expectedResult);

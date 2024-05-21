@@ -394,7 +394,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     size_t otherDevicesImageCount =
         otherDeviceUpdateManager->extractOtherDevicePkgs(
             parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
-            package, forceUpdate);
+            package);
     totalNumComponentUpdates += otherDevicesImageCount;
 
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)
