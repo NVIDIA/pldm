@@ -30,8 +30,7 @@ TerminusManager::TerminusManager(
     dbus_api::Requester& requester,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, mctp_eid_t localEid,
     Manager* manager) :
-    event(event),
-    handler(handler), requester(requester), termini(termini),
+    event(event), handler(handler), requester(requester), termini(termini),
     localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
 {
     // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
@@ -511,13 +510,15 @@ requester::Coroutine TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
 
     if (completionCode == PLDM_SUCCESS)
     {
-        uuid.resize(37, 0);
+#define UUID_STR_LEN 36
+        uuid.resize(UUID_STR_LEN + 1, 0);
         snprintf(
             uuid.data(), uuid.size(),
             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
             buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14],
             buf[15]);
+        uuid.resize(UUID_STR_LEN);
     }
     co_return completionCode;
 }
