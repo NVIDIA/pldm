@@ -57,9 +57,8 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
         if (rc)
         {
             lg2::error("Error while sending CancelUpdate.");
-            updateManager->updateDeviceCompletion(eid, false);
-            co_return PLDM_ERROR;
         }
+        updateManager->updateDeviceCompletion(eid, false);
         co_return PLDM_ERROR;
     }
     for (size_t compIndex = 0; compIndex < numComponents; compIndex++)
@@ -72,9 +71,8 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
             if (rc)
             {
                 lg2::error("Error while sending CancelUpdate.");
-                updateManager->updateDeviceCompletion(eid, false);
-                co_return PLDM_ERROR;
             }
+            updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
         }
     }
@@ -277,6 +275,13 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
         updateManager->requester.markFree(eid, instanceId);
         lg2::error(
             "Error: Unable to find the specified component in ComponentInfo");
+        auto errorMsg =
+            "The component information in the firmware package does not match with the device";
+        auto resolution =
+            "Verify the FW package has devices that are listed in the Redfish FW Inventory.";
+        updateManager->createMessageRegistryResourceErrors(
+            eid, fwDeviceIDRecord, componentIndex, resourceErrorDetected,
+            errorMsg, resolution);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
