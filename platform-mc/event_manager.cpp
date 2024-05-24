@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <cerrno>
+#include <variant>
 
 namespace pldm
 {
@@ -364,29 +365,32 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
 void EventManager::createCperDumpEntry(const std::string& dataType,
                                        const std::string& dataPath)
 {
-    auto createDump = [](std::map<std::string, std::string>& addData) {
-        static constexpr auto dumpObjPath =
-            "/xyz/openbmc_project/dump/faultlog";
-        static constexpr auto dumpInterface = "xyz.openbmc_project.Dump.Create";
-        auto& bus = pldm::utils::DBusHandler::getBus();
+    auto createDump =
+        [](std::map<std::string, std::variant<std::string, uint64_t>>&
+               addData) {
+            static constexpr auto dumpObjPath =
+                "/xyz/openbmc_project/dump/faultlog";
+            static constexpr auto dumpInterface =
+                "xyz.openbmc_project.Dump.Create";
+            auto& bus = pldm::utils::DBusHandler::getBus();
 
-        try
-        {
-            auto service = pldm::utils::DBusHandler().getService(dumpObjPath,
-                                                                 dumpInterface);
-            auto method = bus.new_method_call(service.c_str(), dumpObjPath,
-                                              dumpInterface, "CreateDump");
-            method.append(addData);
-            bus.call_noreply(method);
-        }
-        catch (const std::exception& e)
-        {
-            lg2::error("Failed to create D-Bus Dump entry, {ERROR}.", "ERROR",
-                       e);
-        }
-    };
+            try
+            {
+                auto service = pldm::utils::DBusHandler().getService(
+                    dumpObjPath, dumpInterface);
+                auto method = bus.new_method_call(service.c_str(), dumpObjPath,
+                                                  dumpInterface, "CreateDump");
+                method.append(addData);
+                bus.call_noreply(method);
+            }
+            catch (const std::exception& e)
+            {
+                lg2::error("Failed to create D-Bus Dump entry, {ERROR}.",
+                           "ERROR", e);
+            }
+        };
 
-    std::map<std::string, std::string> addData;
+    std::map<std::string, std::variant<std::string, uint64_t>> addData;
     addData["CPER_TYPE"] = dataType;
     addData["CPER_PATH"] = dataPath;
     createDump(addData);
