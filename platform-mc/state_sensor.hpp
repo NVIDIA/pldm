@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,9 +55,7 @@ class StateSensor
   public:
     StateSensor(const uint8_t tid, const bool sensorDisabled,
                 const uint16_t sensorId, StateSetInfo sensorInfo,
-                std::vector<std::vector<std::pair<std::string, std::string>>>*
-                    sensorNames,
-                std::string& associationPath);
+                AuxiliaryNames* sensorNames, std::string& associationPath);
     ~StateSensor(){};
 
     /** @brief The function called by Sensor Manager to set sensor to
@@ -122,10 +120,14 @@ class StateSensor
     /** @brief indicate the sensor updated asynchronously */
     bool async;
 
+    /** @brief  getter of associationEntityId */
     std::string getAssociationEntityId()
     {
         return associationEntityId;
     }
+
+    /** @brief  update sensorName to sensor PDIs*/
+    void updateSensorNames(AuxiliaryNames& auxNames);
 
     StateSets stateSets;
 
@@ -133,6 +135,7 @@ class StateSensor
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::string associationEntityId;
+    std::string path;
 };
 } // namespace platform_mc
 } // namespace pldm

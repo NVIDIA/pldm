@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,17 +46,7 @@ namespace pldm
 {
 namespace platform_mc
 {
-using SensorCnt = uint8_t;
-using EffecterCnt = SensorCnt;
-using NameLanguageTag = std::string;
-using SensorName = std::string;
-using EffecterName = SensorName;
-using AuxiliaryNames =
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>;
-using SensorAuxiliaryNames = std::tuple<SensorID, SensorCnt, AuxiliaryNames>;
-using EffecterAuxiliaryNames = SensorAuxiliaryNames;
-using EnitityAssociations =
-    std::map<ContainerID, std::pair<EntityInfo, std::set<EntityInfo>>>;
+
 using PhysicalContextType = sdbusplus::xyz::openbmc_project::Inventory::
     Decorator::server::Area::PhysicalContextType;
 using InventoryDecoratorAreaIntf = sdbusplus::server::object_t<
@@ -143,6 +133,20 @@ class Terminus
     std::vector<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
         numericSensorPdrs{};
 
+    /** @brief priority sensor list */
+    std::vector<std::shared_ptr<NumericSensor>> prioritySensors;
+
+    /** @brief round robin sensor list */
+    std::queue<std::variant<std::shared_ptr<NumericSensor>,
+                            std::shared_ptr<StateSensor>>>
+        roundRobinSensors;
+
+    /** @brief sensor polling timer */
+    std::unique_ptr<sdbusplus::Timer> sensorPollTimer;
+
+    /** @brief coroutine handle of doSensorPollingTask */
+    std::coroutine_handle<> doSensorPollingTaskHandle;
+
 #ifdef OEM_NVIDIA
     /** @brief A list of parsed OEM energyCount numeric sensor PDRs */
     std::vector<std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>>
@@ -215,6 +219,8 @@ class Terminus
     /** @brief maximum buffer size the terminus can send and receive */
     uint16_t maxBufferSize;
 
+    /** @brief callback when received interfaceAdded signal from
+     * /xyz/openbmc_project/inventory */
     void interfaceAdded(sdbusplus::message::message& m);
 
     /** @brief check if device inventory belong to the terminus
@@ -260,7 +266,8 @@ class Terminus
     /** @brief set the terminus to offline state */
     void setOffline();
 
-    const UUID& getUuid() {
+    const UUID& getUuid()
+    {
         return uuid;
     }
 
@@ -295,6 +302,8 @@ class Terminus
      *  @return PhysicalContextType
      */
     PhysicalContextType toPhysicalContextType(const EntityType entityType);
+
+    std::optional<std::string> getAuxNameForNumericSensor(SensorID id);
 
     tid_t tid;
 

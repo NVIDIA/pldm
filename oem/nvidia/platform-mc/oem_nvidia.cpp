@@ -51,7 +51,7 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
             ((pdr->oem_effecter_powercap ==
              static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_TDP_NONVOLATILE))
             ||
-            (pdr->oem_effecter_powercap ==
+             (pdr->oem_effecter_powercap ==
              static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE)))
                 ? true
                 : false;
@@ -206,30 +206,6 @@ void nvidiaInitTerminus(Terminus& terminus)
             remoteDebugStateSensor = sensor;
             break;
         }
-
-        auto sensorPortInfo = terminus.getSensorPortInfo(sensor->sensorId);
-        if (sensorPortInfo != NULL &&
-            std::get<1>(entityInfo) == PLDM_ENTITY_ETHERNET)
-        {
-            for (auto& stateSet : sensor->stateSets)
-            {
-                if (stateSet->getStateSetId() == PLDM_STATESET_ID_LINKSTATE)
-                {
-                    StateSetEthernetPortLinkState* ptr =
-                        dynamic_cast<StateSetEthernetPortLinkState*>(
-                            stateSet.get());
-
-                    ptr->setPortTypeValue(get<0>(*sensorPortInfo));
-
-                    // convert MBps to Gbps then assign to maxSpeed
-                    double maxSpeedInGbps =
-                        (double)((get<1>(*sensorPortInfo) / 1000.0) * 8);
-                    ptr->setMaxSpeedValue(maxSpeedInGbps);
-
-                    ptr->addAssociation(get<2>(*sensorPortInfo));
-                }
-            }
-        }
     }
 
     if (remoteDebugStateEffecter != nullptr ||
@@ -320,12 +296,12 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     if (vendorData.size() < expectedPDRSize)
     {
         lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
-                   "PDRSIZE", vendorData.size());
+            "PDRSIZE", vendorData.size());
         return nullptr;
     }
 
     size_t count = (uint8_t*)(&parsedPdr->max_readable.value_u8) -
-            (uint8_t*)(&parsedPdr->terminus_handle);
+                   (uint8_t*)(&parsedPdr->terminus_handle);
     memcpy(&parsedPdr->terminus_handle, ptr, count);
     ptr += count;
 
@@ -355,7 +331,7 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     if (vendorData.size() < expectedPDRSize)
     {
         lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
-                   "PDRSIZE", vendorData.size());
+            "PDRSIZE", vendorData.size());
         return nullptr;
     }
 
@@ -394,6 +370,37 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     }
 
     return parsedPdr;
+}
+
+void nvidiaUpdateAssociations(Terminus& terminus)
+{
+    for (auto sensor : terminus.stateSensors)
+    {
+        auto& [entityInfo, stateSets] = sensor->sensorInfo;
+        auto sensorPortInfo = terminus.getSensorPortInfo(sensor->sensorId);
+        if (sensorPortInfo != NULL &&
+            std::get<1>(entityInfo) == PLDM_ENTITY_ETHERNET)
+        {
+            for (auto& stateSet : sensor->stateSets)
+            {
+                if (stateSet->getStateSetId() == PLDM_STATESET_ID_LINKSTATE)
+                {
+                    StateSetEthernetPortLinkState* ptr =
+                        dynamic_cast<StateSetEthernetPortLinkState*>(
+                            stateSet.get());
+
+                    ptr->setPortTypeValue(get<0>(*sensorPortInfo));
+
+                    // convert MBps to Gbps then assign to maxSpeed
+                    double maxSpeedInGbps =
+                        (double)((get<1>(*sensorPortInfo) / 1000.0) * 8);
+                    ptr->setMaxSpeedValue(maxSpeedInGbps);
+
+                    ptr->addAssociation(get<2>(*sensorPortInfo));
+                }
+            }
+        }
+    }
 }
 
 } // namespace nvidia

@@ -48,16 +48,10 @@ SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
     bool verbose, const std::filesystem::path& configJson) :
-    event(event),
-    terminusManager(terminusManager), termini(termini),
+    event(event), terminusManager(terminusManager), termini(termini),
     pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
-
     enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);
-
-    aggregationIntf =
-        std::make_unique<AggregationIntf>(bus, aggregationDataPath);
 
     // default priority sensor name spaces
     prioritySensorNameSpaces.emplace_back(
@@ -65,14 +59,6 @@ SensorManager::SensorManager(
     prioritySensorNameSpaces.emplace_back(
         "/xyz/openbmc_project/sensors/power/");
     prioritySensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/energy/");
-
-    // default aggregation sensor name spaces
-    aggregationSensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/temperature/");
-    aggregationSensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/power/");
-    aggregationSensorNameSpaces.emplace_back(
         "/xyz/openbmc_project/sensors/energy/");
 
     if (!std::filesystem::exists(configJson))
@@ -100,33 +86,14 @@ SensorManager::SensorManager(
             prioritySensorNameSpaces.emplace_back(nameSpace);
         }
     }
-
-    // load aggregation sensor name spaces
-    nameSpaces = data.value("AggregationSensorNameSpaces", emptyStringArray);
-    if (nameSpaces.size() > 0)
-    {
-        aggregationSensorNameSpaces.clear();
-        for (const auto& nameSpace : nameSpaces)
-        {
-            aggregationSensorNameSpaces.emplace_back(nameSpace);
-        }
-    }
 }
 
 bool SensorManager::isPriority(std::shared_ptr<NumericSensor> sensor)
 {
     return (std::find(prioritySensorNameSpaces.begin(),
                       prioritySensorNameSpaces.end(),
-                      sensor->sensorNameSpace) !=
+                      sensor->getSensorNameSpace()) !=
             prioritySensorNameSpaces.end());
-}
-
-bool SensorManager::inSensorMetrics(std::shared_ptr<NumericSensor> sensor)
-{
-    return (std::find(aggregationSensorNameSpaces.begin(),
-                      aggregationSensorNameSpaces.end(),
-                      sensor->sensorNameSpace) !=
-            aggregationSensorNameSpaces.end());
 }
 
 void SensorManager::startPolling(tid_t tid)
@@ -138,11 +105,11 @@ void SensorManager::startPolling(tid_t tid)
 
     auto terminus = termini[tid];
     // clear and initialize prioritySensors and roundRobinSensors list
-    prioritySensors[tid].clear();
+    terminus->prioritySensors.clear();
     std::queue<std::variant<std::shared_ptr<NumericSensor>,
                             std::shared_ptr<StateSensor>>>
         empty;
-    std::swap(roundRobinSensors[tid], empty);
+    std::swap(terminus->roundRobinSensors, empty);
 
     // numeric sensor
     for (auto& sensor : terminus->numericSensors)
@@ -150,21 +117,12 @@ void SensorManager::startPolling(tid_t tid)
         if (isPriority(sensor))
         {
             sensor->isPriority = true;
-            prioritySensors[tid].emplace_back(sensor);
+            terminus->prioritySensors.emplace_back(sensor);
         }
         else
         {
             sensor->isPriority = false;
-            roundRobinSensors[tid].push(sensor);
-        }
-
-        if (inSensorMetrics(sensor))
-        {
-            sensor->inSensorMetrics = true;
-        }
-        else
-        {
-            sensor->inSensorMetrics = false;
+            terminus->roundRobinSensors.push(sensor);
         }
     }
 
@@ -173,20 +131,20 @@ void SensorManager::startPolling(tid_t tid)
     {
         if (!sensor->async)
         {
-            roundRobinSensors[tid].push(sensor);
+            terminus->roundRobinSensors.push(sensor);
         }
     }
 
-    if (sensorPollTimers.find(tid) == sensorPollTimers.end())
+    if (!terminus->sensorPollTimer)
     {
-        sensorPollTimers[tid] = std::make_unique<sdbusplus::Timer>(
+        terminus->sensorPollTimer = std::make_unique<sdbusplus::Timer>(
             event.get(),
             std::bind_front(&SensorManager::doSensorPolling, this, tid));
     }
 
-    if (!sensorPollTimers[tid]->isRunning())
+    if (!terminus->sensorPollTimer->isRunning())
     {
-        sensorPollTimers[tid]->start(
+        terminus->sensorPollTimer->start(
             duration_cast<std::chrono::milliseconds>(milliseconds(pollingTime)),
             true);
     }
@@ -194,9 +152,15 @@ void SensorManager::startPolling(tid_t tid)
 
 void SensorManager::stopPolling(tid_t tid)
 {
-    if (sensorPollTimers.find(tid) != sensorPollTimers.end())
+    if (termini.find(tid) == termini.end())
     {
-        sensorPollTimers[tid]->stop();
+        return;
+    }
+
+    auto terminus = termini[tid];
+    if (terminus->sensorPollTimer)
+    {
+        terminus->sensorPollTimer->stop();
     }
 }
 
@@ -223,26 +187,32 @@ void SensorManager::stopPolling()
 
 void SensorManager::doSensorPolling(tid_t tid)
 {
-    if (doSensorPollingTaskHandles[tid])
+    if (termini.find(tid) == termini.end())
     {
-        if (doSensorPollingTaskHandles[tid].done())
+        return;
+    }
+
+    auto terminus = termini[tid];
+    if (terminus->doSensorPollingTaskHandle)
+    {
+        if (terminus->doSensorPollingTaskHandle.done())
         {
-            doSensorPollingTaskHandles[tid].destroy();
+            terminus->doSensorPollingTaskHandle.destroy();
             auto co = doSensorPollingTask(tid);
-            doSensorPollingTaskHandles[tid] = co.handle;
-            if (doSensorPollingTaskHandles[tid].done())
+            terminus->doSensorPollingTaskHandle = co.handle;
+            if (terminus->doSensorPollingTaskHandle.done())
             {
-                doSensorPollingTaskHandles[tid] = nullptr;
+                terminus->doSensorPollingTaskHandle = nullptr;
             }
         }
     }
     else
     {
         auto co = doSensorPollingTask(tid);
-        doSensorPollingTaskHandles[tid] = co.handle;
-        if (doSensorPollingTaskHandles[tid].done())
+        terminus->doSensorPollingTaskHandle = co.handle;
+        if (terminus->doSensorPollingTaskHandle.done())
         {
-            doSensorPollingTaskHandles[tid] = nullptr;
+            terminus->doSensorPollingTaskHandle = nullptr;
         }
     }
 }
@@ -286,8 +256,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             if (effector->needUpdate)
             {
                 co_await effector->getNumericEffecterValue();
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -306,8 +276,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             if (effector->isUpdatePending())
             {
                 co_await effector->getStateEffecterStates();
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -326,8 +296,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             if (sensor->needUpdate)
             {
                 co_await getStateSensorReadings(sensor);
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -336,7 +306,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         }
 
         // poll priority Sensors
-        for (auto& sensor : prioritySensors[tid])
+        for (auto& sensor : terminus->prioritySensors)
         {
             if (manager && terminus->pollEvent)
             {
@@ -354,8 +324,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             if (sensor->elapsedTime >= sensor->updateTime)
             {
                 co_await getSensorReading(sensor);
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -373,7 +343,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         // poll roundRobin Sensors
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-        auto toBeUpdated = roundRobinSensors[tid].size();
+        auto toBeUpdated = terminus->roundRobinSensors.size();
 
         do
         {
@@ -387,17 +357,17 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                 co_return PLDM_ERROR;
             }
 
-            auto sensor = roundRobinSensors[tid].front();
-            roundRobinSensors[tid].pop();
-            roundRobinSensors[tid].push(sensor);
+            auto sensor = terminus->roundRobinSensors.front();
+            terminus->roundRobinSensors.pop();
+            terminus->roundRobinSensors.push(sensor);
             toBeUpdated--;
 
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
                 co_await getSensorReading(
                     std::get<std::shared_ptr<NumericSensor>>(sensor));
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -407,8 +377,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             {
                 co_await getStateSensorReadings(
                     std::get<std::shared_ptr<StateSensor>>(sensor));
-                if (sensorPollTimers[tid] &&
-                    !sensorPollTimers[tid]->isRunning())
+                if (terminus->sensorPollTimer &&
+                    !terminus->sensorPollTimer->isRunning())
                 {
                     co_return PLDM_ERROR;
                 }
@@ -493,7 +463,13 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning())
+    if (termini.find(tid) == termini.end())
+    {
+        co_return PLDM_ERROR;
+    }
+
+    auto terminus = termini[tid];
+    if (terminus->sensorPollTimer && !terminus->sensorPollTimer->isRunning())
     {
         co_return PLDM_ERROR;
     }
@@ -641,7 +617,13 @@ requester::Coroutine
         co_return rc;
     }
 
-    if (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning())
+    if (termini.find(tid) == termini.end())
+    {
+        co_return PLDM_ERROR;
+    }
+
+    auto terminus = termini[tid];
+    if (terminus->sensorPollTimer && !terminus->sensorPollTimer->isRunning())
     {
         co_return PLDM_ERROR;
     }

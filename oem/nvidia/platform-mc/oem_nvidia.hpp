@@ -109,6 +109,8 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
         parseOEMEnergyCountNumericSensorPDR(
                         const std::vector<uint8_t>& pdrData);
 
+void nvidiaUpdateAssociations(Terminus& terminus);
+
 } // namespace nvidia
 } // namespace platform_mc
 } // namespace pldm

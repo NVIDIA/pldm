@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,12 +35,11 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
                              std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
                              std::string& sensorName,
                              std::string& associationPath) :
-    tid(tid),
-    sensorId(pdr->sensor_id),
+    tid(tid), sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
-    sensorName(sensorName), inSensorMetrics(false), isPriority(false),
-    baseUnit(pdr->base_unit)
+    inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit),
+    sensorName(sensorName)
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
     bool hasValueIntf = true;
@@ -319,12 +318,11 @@ NumericSensor::NumericSensor(
     std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
     std::string& sensorName, std::string& associationPath,
     uint8_t oemIndicator) :
-    tid(tid),
-    sensorId(pdr->sensor_id),
+    tid(tid), sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
-    sensorName(sensorName), inSensorMetrics(false), isPriority(false),
-    baseUnit(pdr->base_unit), pollingIndicator(oemIndicator)
+    inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit),
+    pollingIndicator(oemIndicator), sensorName(sensorName)
 {
     SensorUnit sensorUnit = SensorUnit::DegreesC;
     bool hasValueIntf = true;
@@ -512,7 +510,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     std::memcpy(rawSmbpbiData.data(), &convertVal, sizeof(double));
 
     DbusVariantType propValue = value;
-    
+
     std::string endpoint{};
     auto definitions = associationDefinitionsIntf->associations();
     if (definitions.size() > 0)
@@ -520,12 +518,11 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         endpoint = std::get<2>(definitions[0]);
         if (endpoint.size() > 0)
         {
-	    tal::TelemetryAggregator::updateTelemetry(
-		objPath, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode, propValue, endpoint);
+            tal::TelemetryAggregator::updateTelemetry(
+                objPath, ifaceName, propertyName, rawSmbpbiData,
+                steadyTimeStamp, retCode, propValue, endpoint);
         }
-
     }
-
 }
 
 void NumericSensor::handleErrGetSensorReading()
@@ -652,5 +649,84 @@ void NumericSensor::updateThresholds()
         }
     }
 }
+
+void NumericSensor::updateSensorName(std::string name)
+{
+    if (sensorName == name)
+    {
+        return;
+    }
+
+    sensorName = name;
+    path = sensorNameSpace + sensorName;
+    path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
+
+    auto& bus = pldm::utils::DBusHandler::getBus();
+
+    // update new object path to D-Bus
+    if (associationDefinitionsIntf)
+    {
+        auto associations = associationDefinitionsIntf->associations();
+        associationDefinitionsIntf =
+            std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
+        associationDefinitionsIntf->associations(associations);
+    }
+
+    if (valueIntf)
+    {
+        auto maxValue = valueIntf->maxValue();
+        auto minValue = valueIntf->minValue();
+        auto unit = valueIntf->unit();
+        valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
+        valueIntf->maxValue(maxValue);
+        valueIntf->minValue(minValue);
+        valueIntf->unit(unit);
+    }
+
+    if (availabilityIntf)
+    {
+        auto available = availabilityIntf->available();
+        availabilityIntf =
+            std::make_unique<AvailabilityIntf>(bus, path.c_str());
+        availabilityIntf->available(available);
+    }
+
+    if (operationalStatusIntf)
+    {
+        auto functional = operationalStatusIntf->functional();
+        operationalStatusIntf =
+            std::make_unique<OperationalStatusIntf>(bus, path.c_str());
+        operationalStatusIntf->functional(functional);
+    }
+
+    if (thresholdWarningIntf)
+    {
+        auto warningHigh = thresholdWarningIntf->warningHigh();
+        auto warningLow = thresholdWarningIntf->warningLow();
+        thresholdWarningIntf =
+            std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
+        thresholdWarningIntf->warningHigh(warningHigh);
+        thresholdWarningIntf->warningLow(warningLow);
+    }
+
+    if (thresholdCriticalIntf)
+    {
+        auto criticalHigh = thresholdCriticalIntf->criticalHigh();
+        auto criticalLow = thresholdCriticalIntf->criticalLow();
+        thresholdCriticalIntf =
+            std::make_unique<ThresholdCriticalIntf>(bus, path.c_str());
+        thresholdCriticalIntf->criticalHigh(criticalHigh);
+        thresholdCriticalIntf->criticalLow(criticalLow);
+    }
+
+    if (inventoryDecoratorAreaIntf)
+    {
+        auto physicalContext = inventoryDecoratorAreaIntf->physicalContext();
+        inventoryDecoratorAreaIntf =
+            std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
+        inventoryDecoratorAreaIntf->physicalContext(physicalContext);
+    }
+}
+
 } // namespace platform_mc
 } // namespace pldm

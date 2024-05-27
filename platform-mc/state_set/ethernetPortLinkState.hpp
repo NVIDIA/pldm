@@ -25,6 +25,8 @@
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
 
+#include <regex>
+
 namespace pldm
 {
 namespace platform_mc
@@ -52,8 +54,7 @@ class StateSetEthernetPortLinkState : public StateSet
     StateSetEthernetPortLinkState(uint16_t stateSetId, uint8_t compId,
                                   std::string& objectPath,
                                   dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId), objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -73,6 +74,7 @@ class StateSetEthernetPortLinkState : public StateSet
 
     void setValue(uint8_t value) override
     {
+        presentState = value;
         switch (value)
         {
             case PLDM_STATESET_LINK_STATE_DISCONNECTED:
@@ -176,6 +178,46 @@ class StateSetEthernetPortLinkState : public StateSet
         associationDefinitionsIntf->associations(associationsList);
     }
 
+    virtual void updateSensorName([[maybe_unused]] std::string name) override
+    {
+        if (name == objectPath.filename())
+        {
+            return;
+        }
+        objectPath = objectPath.parent_path() / name;
+
+        // update new object path to D-Bus
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        auto path = std::regex_replace(objectPath.string(),
+                                       std::regex("[^a-zA-Z0-9_/]+"), "_");
+        if (associationDefinitionsIntf)
+        {
+            auto associations = associationDefinitionsIntf->associations();
+            associationDefinitionsIntf =
+                std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
+            associationDefinitionsIntf->associations(associations);
+        }
+
+        if (ValuePortIntf)
+        {
+            ValuePortIntf = std::make_unique<PortIntf>(bus, path.c_str());
+        }
+
+        if (ValuePortInfoIntf)
+        {
+            ValuePortInfoIntf =
+                std::make_unique<PortInfoIntf>(bus, path.c_str());
+        }
+
+        if (ValuePortStateIntf)
+        {
+            ValuePortStateIntf =
+                std::make_unique<PortStateIntf>(bus, path.c_str());
+        }
+        setDefaultValue();
+        setValue(presentState);
+    }
+
   private:
     std::unique_ptr<PortIntf> ValuePortIntf = nullptr;
     std::unique_ptr<PortInfoIntf> ValuePortInfoIntf = nullptr;
@@ -184,6 +226,8 @@ class StateSetEthernetPortLinkState : public StateSet
         nullptr;
     uint8_t compId = 0;
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
+    std::filesystem::path objectPath;
+    uint8_t presentState;
 };
 
 } // namespace platform_mc

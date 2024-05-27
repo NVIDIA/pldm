@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,16 +36,15 @@ namespace platform_mc
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
 using Level = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 
-StateSensor::StateSensor(
-    const uint8_t tid, const bool sensorDisabled, const uint16_t sensorId,
-    StateSetInfo sensorInfo,
-    std::vector<std::vector<std::pair<std::string, std::string>>>* sensorNames,
-    std::string& associationPath) :
-    tid(tid),
-    sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true), async(false)
+StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
+                         const uint16_t sensorId, StateSetInfo sensorInfo,
+                         AuxiliaryNames* sensorNames,
+                         std::string& associationPath) :
+    tid(tid), sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true),
+    async(false)
 {
-    std::string path = "/xyz/openbmc_project/state/PLDM_Sensor_" +
-                       std::to_string(sensorId) + "_" + std::to_string(tid);
+    path = "/xyz/openbmc_project/state/PLDM_Sensor_" +
+           std::to_string(sensorId) + "_" + std::to_string(tid);
 
     auto& bus = pldm::utils::DBusHandler::getBus();
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
@@ -63,7 +62,8 @@ StateSensor::StateSensor(
         dbus::PathAssociation association = {"chassis", "all_states",
                                              associationPath};
         auto compositeSensorId = stateSets.size();
-        std::string compositeSensorName = "Id_" + std::to_string(compositeSensorId);
+        std::string compositeSensorName =
+            "Id_" + std::to_string(compositeSensorId);
         // pick first en langTag sensor aux name
         if (sensorNames && sensorNames->size() > compositeSensorId)
         {
@@ -79,8 +79,8 @@ StateSensor::StateSensor(
         std::string objPath = path + "/" + compositeSensorName;
         objPath =
             std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
-        auto stateSet = StateSetCreator::createSensor(stateSetId, idx++,
-                                                      objPath, association, this);
+        auto stateSet = StateSetCreator::createSensor(
+            stateSetId, idx++, objPath, association, this);
         if (stateSet != nullptr)
         {
             stateSets.emplace_back(std::move(stateSet));
@@ -174,6 +174,28 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
     addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
     createLog(addData, level);
     return;
+}
+
+void StateSensor::updateSensorNames(AuxiliaryNames& auxNames)
+{
+    // update composite sensor PDIs
+    uint8_t idx = 0;
+    for (auto& stateSet : stateSets)
+    {
+        std::string sensorName = "Id_" + std::to_string(idx);
+        if (auxNames.size() > idx)
+        {
+            for (const auto& [tag, auxName] : auxNames.at(idx))
+            {
+                if (tag == "en")
+                {
+                    sensorName = auxName;
+                }
+            }
+        }
+        stateSet->updateSensorName(sensorName);
+        idx++;
+    }
 }
 
 } // namespace platform_mc

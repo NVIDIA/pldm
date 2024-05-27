@@ -138,7 +138,7 @@ using ComponentNameMap = std::unordered_map<EID, ComponentIdNameMap>;
 
 /** @struct MatchEntryInfo
  *  @brief the template struct to find the matched configured info for an dbus interface from mctp endpoint
-*/
+ */
 template <typename T, typename U>
 struct MatchEntryInfo
 {
@@ -171,15 +171,15 @@ struct MatchEntryInfo
 
 /** @struct DeviceInventoryInfo
  *  @brief the Device inventory infor parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
-*/
+ */
 using DeviceInventoryInfo = MatchEntryInfo<MatchDeviceInfo, DeviceInfo>;
 /** @struct FirmwareInventoryInfo
  *  @brief the Firmware inventory info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
-*/
+ */
 using FirmwareInventoryInfo = MatchEntryInfo<MatchFirmwareInfo, FirmwareInfo>;
 /** @struct ComponentNameMapInfo
  *  @brief the Component name info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
-*/
+ */
 using ComponentNameMapInfo = MatchEntryInfo<MatchComponentNameMapInfo, ComponentIdNameMap>;
 
 enum class ComponentImageInfoPos : size_t
@@ -253,7 +253,21 @@ using DbusVariantType = std::variant<
     std::vector<std::tuple<uint8_t, std::string>>, std::tuple<size_t, bool>,
     std::tuple<bool, uint32_t>, std::map<std::string, uint64_t>,
     std::tuple<std::string, std::string, std::string, uint64_t>>;
-
 } // namespace pdr
+
+namespace platform_mc
+{
+using SensorCnt = uint8_t;
+using EffecterCnt = SensorCnt;
+using NameLanguageTag = std::string;
+using SensorName = std::string;
+using EffecterName = SensorName;
+using AuxiliaryNames =
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>;
+using SensorAuxiliaryNames = std::tuple<pdr::SensorID, SensorCnt, AuxiliaryNames>;
+using EffecterAuxiliaryNames = SensorAuxiliaryNames;
+using EnitityAssociations =
+    std::map<pdr::ContainerID, std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
+} // namespace platform_mc
 
 } // namespace pldm

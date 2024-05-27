@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,8 @@ using sensorMap = std::map<
                             uint32_t, uint64_t, double, bool>,
                uint64_t, sdbusplus::message::object_path>>;
 
-enum polling_method_indicator {
+enum polling_method_indicator
+{
     POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO,
     POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM
 };
@@ -83,9 +84,11 @@ class NumericSensor
                   std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
                   std::string& sensorName, std::string& associationPath);
 #ifdef OEM_NVIDIA
-    NumericSensor(const tid_t tid, const bool sensorDisabled,
-                  std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
-                  std::string& sensorName, std::string& associationPath, uint8_t oemIndicator);
+    NumericSensor(
+        const tid_t tid, const bool sensorDisabled,
+        std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr,
+        std::string& sensorName, std::string& associationPath,
+        uint8_t oemIndicator);
 #endif
     ~NumericSensor(){};
 
@@ -257,11 +260,20 @@ class NumericSensor
     /** @brief  The time of sensor update interval in usec */
     uint64_t updateTime;
 
-    /** @brief  sensorName */
-    std::string sensorName;
+    /** @brief  getter of sensorName */
+    std::string getSensorName()
+    {
+        return sensorName;
+    }
 
-    /** @brief  sensorNameSpace */
-    std::string sensorNameSpace;
+    /** @brief  update sensorName to sensor PDIs*/
+    void updateSensorName(std::string name);
+
+    /** @brief  getter of sensorNameSpace */
+    std::string getSensorNameSpace()
+    {
+        return sensorNameSpace;
+    }
 
     /** @brief indicate that the sensor should be included in sensorMetrics */
     bool inSensorMetrics;
@@ -309,9 +321,15 @@ class NumericSensor
     /** @brief raw value of numeric sensor */
     double rawValue;
 
-    /** @brief indicates if we are using PLDM Type-2 command or PLDM OEM Type 
+    /** @brief indicates if we are using PLDM Type-2 command or PLDM OEM Type
      * command for polling */
     uint8_t pollingIndicator;
+
+    /** @brief  sensorName */
+    std::string sensorName;
+
+    /** @brief  sensorNameSpace */
+    std::string sensorNameSpace;
 };
 } // namespace platform_mc
 } // namespace pldm

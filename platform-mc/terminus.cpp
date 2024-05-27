@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,9 +29,9 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
-    initalized(false),
-    pollEvent(false), synchronyConfigurationSupported(0), tid(tid),
-    supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
+    initalized(false), pollEvent(false), synchronyConfigurationSupported(0),
+    tid(tid), supportedTypes(supportedTypes), uuid(uuid),
+    terminusManager(terminusManager)
 
 {
     maxBufferSize = 256;
@@ -65,7 +65,12 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         {
             needRefresh = true;
         }
-
+#ifdef OEM_NVIDIA
+        if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
+        {
+            needRefresh = true;
+        }
+#endif
         if (needRefresh)
         {
             break;
@@ -135,10 +140,12 @@ bool Terminus::checkI2CDeviceInventory(uint8_t bus, uint8_t addr)
 
 bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 {
-    if (nsmUuid.substr(0, 36) == uuid.substr(0, 36)) {
+    if (nsmUuid.substr(0, 36) == uuid.substr(0, 36))
+    {
         return true;
     }
-    else {
+    else
+    {
         return false;
     }
 }
@@ -182,9 +189,10 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
                         interface ==
                         "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
                     {
-                        auto nsmUuid = utils::DBusHandler().getDbusProperty<std::string>(
-                            objectPath.c_str(), "UUID",
-                            "xyz.openbmc_project.Configuration.NsmDeviceAssociation");
+                        auto nsmUuid =
+                            utils::DBusHandler().getDbusProperty<std::string>(
+                                objectPath.c_str(), "UUID",
+                                "xyz.openbmc_project.Configuration.NsmDeviceAssociation");
                         found = checkNsmDeviceInventory(nsmUuid);
                     }
 
@@ -470,13 +478,15 @@ bool Terminus::parsePDRs()
 
     updateAssociations();
 
-    interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
-        utils::DBusHandler().getBus(),
-        sdbusplus::bus::match::rules::interfacesAdded(
-            "/xyz/openbmc_project/inventory"),
-        std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
-                  std::placeholders::_1));
-
+    if (!interfaceAddedMatch)
+    {
+        interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
+            utils::DBusHandler().getBus(),
+            sdbusplus::bus::match::rules::interfacesAdded(
+                "/xyz/openbmc_project/inventory"),
+            std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
+                      std::placeholders::_1));
+    }
     return rc;
 }
 
@@ -538,7 +548,8 @@ std::shared_ptr<SensorAuxiliaryNames>
         pdrData.data());
     const uint8_t* ptr = pdr->names;
     parseLen += sizeof(pldm_sensor_auxiliary_names_pdr);
-    //reducing by 1 byte because the length of pdr->names (names[1]) is not pared yet at the moment.
+    // reducing by 1 byte because the length of pdr->names (names[1]) is not
+    // pared yet at the moment.
     parseLen -= sizeof(pdr->names);
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
         sensorAuxNames{};
@@ -556,14 +567,15 @@ std::shared_ptr<SensorAuxiliaryNames>
                                             0, PLDM_STR_UTF_8_MAX_LEN);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
                 parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(pdrData.begin()+parseLen, pdrData.end());
+                std::vector<uint8_t> u16NameStringVec(
+                    pdrData.begin() + parseLen, pdrData.end());
                 std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()), 0,
-                    PLDM_STR_UTF_16_MAX_LEN);
+                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
+                    0, PLDM_STR_UTF_16_MAX_LEN);
                 ptr += (u16NameString.size() + sizeof(NullTerminator)) *
                        sizeof(uint16_t);
                 parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
-                       sizeof(uint16_t);
+                            sizeof(uint16_t);
                 std::transform(u16NameString.cbegin(), u16NameString.cend(),
                                u16NameString.begin(),
                                [](uint16_t utf16) { return be16toh(utf16); });
@@ -744,7 +756,7 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
                    "PDRSIZE", pdr.size());
         return nullptr;
     }
-    
+
     switch (parsedPdr->sensor_data_size)
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
@@ -755,7 +767,7 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
         case PLDM_SENSOR_DATA_SIZE_UINT16:
         case PLDM_SENSOR_DATA_SIZE_SINT16:
         {
-            //hysValue =  *((uint16_t*)ptr);
+            // hysValue =  *((uint16_t*)ptr);
             uint16_t hysValue = 0;
             memcpy(&hysValue, ptr, sizeof(uint16_t));
             parsedPdr->hysteresis.value_u16 = le16toh(hysValue);
@@ -1218,6 +1230,12 @@ void Terminus::updateAssociations()
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
+
+        auto name = getAuxNameForNumericSensor(ptr->sensorId);
+        if (name)
+        {
+            ptr->updateSensorName(*name);
+        }
     }
 
     for (const auto& ptr : numericEffecters)
@@ -1236,6 +1254,13 @@ void Terminus::updateAssociations()
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPath(inventoryPath);
         ptr->associateNumericSensor(numericSensors);
+
+        auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
+        if (sensorAuxiliaryNames)
+        {
+            auto&[id, count, auxNames] = *sensorAuxiliaryNames;
+            ptr->updateSensorNames(auxNames);
+        }
     }
 
     for (const auto& ptr : stateEffecters)
@@ -1244,6 +1269,10 @@ void Terminus::updateAssociations()
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPath(inventoryPath);
     }
+
+#ifdef OEM_NVIDIA
+    nvidia::nvidiaUpdateAssociations(*this);
+#endif
 }
 
 std::string Terminus::findInventory(const EntityInfo entityInfo,
@@ -1344,23 +1373,12 @@ std::string Terminus::findInventory(const ContainerID containerId,
 void Terminus::addNumericSensor(
     const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr)
 {
-    std::string sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) +
-                             "_" + std::to_string(tid);
-
-    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
-    if (sensorAuxiliaryNames)
+    auto sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) + "_" +
+                      std::to_string(tid);
+    auto auxName = getAuxNameForNumericSensor(pdr->sensor_id);
+    if (auxName)
     {
-        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
-        if (sensorCnt == 1 && sensorNames.size() > 0)
-        {
-            for (const auto& [languageTag, name] : sensorNames[0])
-            {
-                if (languageTag == "en")
-                {
-                    sensorName = name;
-                }
-            }
-        }
+        sensorName = *auxName;
     }
 
     try
@@ -1380,23 +1398,12 @@ void Terminus::addNumericSensor(
 void Terminus::addOEMEnergyCountNumericSensor(
     const std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> pdr)
 {
-    std::string sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) +
-                             "_" + std::to_string(tid);
-
-    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(pdr->sensor_id);
-    if (sensorAuxiliaryNames)
+    auto sensorName = "PLDM_Sensor_" + std::to_string(pdr->sensor_id) + "_" +
+                      std::to_string(tid);
+    auto auxName = getAuxNameForNumericSensor(pdr->sensor_id);
+    if (auxName)
     {
-        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
-        if (sensorCnt == 1 && sensorNames.size() > 0)
-        {
-            for (const auto& [languageTag, name] : sensorNames[0])
-            {
-                if (languageTag == "en")
-                {
-                    sensorName = name;
-                }
-            }
-        }
+        sensorName = *auxName;
     }
 
     try
@@ -1462,8 +1469,7 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         "PLDM_Sensor_" + std::to_string(sId) + "_" + std::to_string(tid);
 
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>*
-        sensorNames = nullptr;
+    AuxiliaryNames* sensorNames = nullptr;
     if (sensorAuxiliaryNames)
     {
         sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
@@ -1536,7 +1542,7 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
 
 void Terminus::setOnline()
 {
-    //placeholder
+    // placeholder
 }
 
 void Terminus::setOffline()
@@ -1546,20 +1552,40 @@ void Terminus::setOffline()
         numericSensor->handleErrGetSensorReading();
     }
 
-    for(auto numericEffecter : numericEffecters)
+    for (auto numericEffecter : numericEffecters)
     {
         numericEffecter->handleErrGetNumericEffecterValue();
     }
 
-    for(auto stateSensor : stateSensors)
+    for (auto stateSensor : stateSensors)
     {
         stateSensor->handleErrGetSensorReading();
     }
 
-    for(auto stateEffecter : stateEffecters)
+    for (auto stateEffecter : stateEffecters)
     {
         stateEffecter->handleErrGetStateEffecterStates();
     }
+}
+
+std::optional<std::string> Terminus::getAuxNameForNumericSensor(SensorID id)
+{
+    auto sensorAuxiliaryNames = getSensorAuxiliaryNames(id);
+    if (sensorAuxiliaryNames)
+    {
+        const auto& [sensorId, sensorCnt, sensorNames] = *sensorAuxiliaryNames;
+        if (sensorCnt == 1 && sensorNames.size() > 0)
+        {
+            for (const auto& [languageTag, name] : sensorNames[0])
+            {
+                if (languageTag == "en")
+                {
+                    return name;
+                }
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace platform_mc

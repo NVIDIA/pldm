@@ -548,7 +548,7 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
                     break;
             }
             createSensorThresholdLogEntry(
-                messageId, sensor->sensorName,
+                messageId, sensor->getSensorName(),
                 sensor->unitModifier(sensor->conversionFormula(reading)),
                 threshold);
         }
