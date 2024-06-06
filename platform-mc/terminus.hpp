@@ -108,11 +108,11 @@ class Terminus
 
     /** @brief Look for the inventory which this entity should associate
      * with */
-    std::string findInventory(EntityInfo entityInfo, bool findClosest = true);
+    std::vector<std::string> findInventory(EntityInfo entityInfo, bool findClosest = true);
 
     /** @brief Find the EntityInfo from the Container ID, and pass it to
      * findInventory(EntityInfo) */
-    std::string findInventory(ContainerID contianerId, bool findClosest = true);
+    std::vector<std::string> findInventory(ContainerID contianerId, bool findClosest = true);
 
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};

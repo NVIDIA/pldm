@@ -51,6 +51,7 @@ tests = [
   'terminus_test',
   'sensor_manager_test',
   'numeric_sensor_test',
+  'numeric_effecter_test',
   'event_manager_test',
   'state_effecter_test',
   'state_sensor_test',

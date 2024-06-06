@@ -41,7 +41,8 @@ class TerminusManager;
 using namespace std::chrono;
 using namespace pldm::pdr;
 using SensorUnit = sdbusplus::xyz::openbmc_project::Sensor::server::Value::Unit;
-
+using Associations =
+    std::vector<std::tuple<std::string, std::string, std::string>>;
 using StateType = sdbusplus::xyz::openbmc_project::State::Decorator::server::
     OperationalStatus::StateType;
 using ValueIntf = sdbusplus::server::object_t<
@@ -168,17 +169,29 @@ class NumericEffecter
     /** @brief Updating the association to D-Bus interface
      *  @param[in] inventoryPath - inventory path of the entity
      */
-    inline void setInventoryPath(const std::string& inventoryPath)
+    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath)
     {
         if (associationDefinitionsIntf)
         {
+            std::map<std::pair<std::string, std::string>, bool> assocMap;
+            Associations assocs{};
+
             auto associations = associationDefinitionsIntf->associations();
             for (auto& association : associations)
             {
                 auto& [forward, reverse, objectPath] = association;
-                objectPath = inventoryPath;
+                auto iter = assocMap.find(std::make_pair(forward, reverse));
+                if (iter == assocMap.end())
+                {
+                    for (const auto& path : inventoryPath)
+                    {
+                        assocs.emplace_back(std::make_tuple(
+                            forward.c_str(), reverse.c_str(), path.c_str()));
+                    }
+                    assocMap[{forward, reverse}] = true;
+                }
             }
-            associationDefinitionsIntf->associations(std::move(associations));
+            associationDefinitionsIntf->associations(assocs);
         }
     }
 
@@ -209,6 +222,12 @@ class NumericEffecter
         {
             inventoryDecoratorAreaIntf->physicalContext(type);
         }
+    }
+
+    /** @brief get the association */
+    auto getAssociation() const
+    {
+        return associationDefinitionsIntf->associations();
     }
 
     /** @brief Terminus ID which the sensor belongs to */

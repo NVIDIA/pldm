@@ -41,67 +41,31 @@ using AssociationsType =
 class Entity
 {
   public:
-    Entity(std::string& inventory, std::string& ContainerInventory) :
-        inventory(inventory), ContainerInventory(ContainerInventory)
+    Entity(std::vector<std::string>& inventories, std::vector<std::string>& ContainerInventories) :
+        inventories(inventories), ContainerInventories(ContainerInventories)
     {}
 
-    auto getInventory()
+    auto getInventories()
     {
-        return inventory;
+        return inventories;
     }
 
-    auto getClosestInventory()
+    auto getClosestInventories()
     {
-        if (inventory.size())
+        if (inventories.size())
         {
-            return inventory;
+            return inventories;
         }
         else
         {
-            return ContainerInventory;
+            return ContainerInventories;
         }
     }
 
   private:
-    void createAssociation()
-    {
-        if (inventory.size() == 0 || ContainerInventory.size() == 0)
-        {
-            inventoryAssociationInft.reset();
-            return;
-        }
 
-        AssociationsType associations = {
-            {"parent_chassis", "all_chassis", ContainerInventory.c_str()}};
-        if (inventoryAssociationInft == nullptr)
-        {
-            try
-            {
-                inventoryAssociationInft =
-                    std::make_unique<AssociationDefinitionsIntf>(
-                        utils::DBusHandler::getBus(), inventory.c_str());
-            }
-            catch (const std::exception& e)
-            {
-                lg2::error(
-                    "Failed to create AssociationDefinitionsIntf to {INVENTORY}.",
-                    "INVENTORY", inventory, "ERROR", e);
-            }
-            if (inventoryAssociationInft == nullptr)
-            {
-                return;
-            }
-        }
-
-        inventoryAssociationInft->associations(associations);
-
-        return;
-    }
-
-    std::string inventory;
-    std::string ContainerInventory;
-    std::unique_ptr<AssociationDefinitionsIntf> inventoryAssociationInft =
-        nullptr;
+    std::vector<std::string> inventories;
+    std::vector<std::string> ContainerInventories;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -43,6 +43,8 @@ namespace platform_mc
 using namespace std::chrono;
 using namespace pldm::pdr;
 using SensorUnit = sdbusplus::xyz::openbmc_project::Sensor::server::Value::Unit;
+using Associations =
+    std::vector<std::tuple<std::string, std::string, std::string>>;
 using ValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::server::Value>;
 using ThresholdWarningIntf = sdbusplus::server::object_t<
@@ -143,12 +145,18 @@ class NumericSensor
     /** @brief Updating the association to D-Bus interface
      *  @param[in] inventoryPath - inventory path of the entity
      */
-    inline void setInventoryPath(const std::string& inventoryPath)
+    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath)
     {
         if (associationDefinitionsIntf)
         {
-            associationDefinitionsIntf->associations(
-                {{"chassis", "all_sensors", inventoryPath.c_str()}});
+            Associations assocs{};
+
+            for (const std::string& path : inventoryPath)
+            {
+                assocs.emplace_back(
+                    std::make_tuple("chassis", "all_sensors", path.c_str()));
+            }
+            associationDefinitionsIntf->associations(assocs);
         }
     }
 

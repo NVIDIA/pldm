@@ -35,6 +35,8 @@ class StateSet;
 
 using StateSets = std::vector<std::shared_ptr<StateSet>>;
 using namespace sdbusplus;
+using Associations =
+    std::vector<std::tuple<std::string, std::string, std::string>>;
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 
@@ -52,17 +54,22 @@ class StateSet
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) = 0;
     virtual void setDefaultValue() = 0;
-    virtual void setAssociation(dbus::PathAssociation& stateAssociation)
+    virtual void setAssociation(std::vector<dbus::PathAssociation>& stateAssociations)
     {
         if (!associationDefinitionsIntf)
         {
             return;
         }
+        Associations assocs{};
 
-        associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
+        for (const auto& assoc : stateAssociations)
+        {
+
+            assocs.emplace_back(
+                std::make_tuple(assoc.forward.c_str(), assoc.reverse.c_str(), assoc.path.c_str()));
+        }
+        associationDefinitionsIntf->associations(assocs);
+
     }
 
     virtual void associateNumericSensor(

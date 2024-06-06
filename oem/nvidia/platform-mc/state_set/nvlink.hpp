@@ -164,16 +164,50 @@ class StateSetNvlink : public StateSet
         return std::string("NVLink");
     }
 
-    virtual void setAssociation(dbus::PathAssociation& stateAssociation)
+    virtual void setAssociation(std::vector<dbus::PathAssociation> & stateAssociations)
     {
         if (!associationDefinitionsIntf)
         {
             return;
         }
 
-        if (stateAssociation.path.empty())
+        if (stateAssociations.empty())
         {
             return;
+        }
+        auto stateAssociation = stateAssociations[0];
+
+        try
+        {
+            std::string path =
+                std::filesystem::path(stateAssociation.path).parent_path();
+            auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+                path, 0, {"xyz.openbmc_project.Inventory.Item.Chassis"});
+
+            std::string chassisCpuPath;
+            if (getSubTreeResponse.size() != 0)
+            {
+                for (const auto& [objectPath, serviceMap] : getSubTreeResponse)
+                {
+                    chassisCpuPath = objectPath;
+                }
+            }
+
+            // only look for Dbus path for System processors
+            for (auto& assoc : stateAssociations)
+            {
+                // filter out the Dbus objects with Chassis interface which is
+                // for Chassis CPU instead of system processors.
+                if (assoc.path != chassisCpuPath)
+                {
+                    stateAssociation = assoc;
+                    break;
+                }
+            }
+        }
+        catch (const sdbusplus::exception::SdBusError& e)
+        {
+            lg2::error("Failed to query Dbus for CPU: {ERROR}", "ERROR", e);
         }
 
         associationDefinitionsIntf->associations(

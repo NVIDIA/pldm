@@ -78,13 +78,19 @@ class StateSensor
     /** @brief Updating the association to D-Bus interface
      *  @param[in] inventoryPath - inventory path of the entity
      */
-    inline void setInventoryPath(const std::string& inventoryPath)
+    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath)
     {
         for (auto& stateSet : stateSets)
         {
-            dbus::PathAssociation association = {"chassis", "all_states",
-                                                 inventoryPath.c_str()};
-            stateSet->setAssociation(association);
+            std::vector<dbus::PathAssociation> assocs;
+
+            for (const auto& path : inventoryPath)
+            {
+                dbus::PathAssociation assoc = {"chassis", "all_states",
+                                               path.c_str()};
+                assocs.emplace_back(assoc);
+            }
+            stateSet->setAssociation(assocs);
         }
     }
 

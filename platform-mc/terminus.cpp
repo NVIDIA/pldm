@@ -1230,7 +1230,7 @@ void Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPath(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1246,7 +1246,7 @@ void Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPath(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1256,7 +1256,7 @@ void Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPath(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
@@ -1271,15 +1271,14 @@ void Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPath(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath);
     }
 
 #ifdef OEM_NVIDIA
     nvidia::nvidiaUpdateAssociations(*this);
 #endif
 }
-
-std::string Terminus::findInventory(const EntityInfo entityInfo,
+std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
                                     const bool findClosest)
 {
     // Search from stored result first
@@ -1289,16 +1288,16 @@ std::string Terminus::findInventory(const EntityInfo entityInfo,
         auto& entity = itr->second;
         if (findClosest)
         {
-            return entity.getClosestInventory();
+            return entity.getClosestInventories();
         }
         else
         {
-            return entity.getInventory();
+            return entity.getInventories();
         }
     }
 
     const auto& [containerId, entityType, entityInstance] = entityInfo;
-    auto ContainerInventoryPath = findInventory(containerId);
+    auto ContainerInventoryPaths = findInventory(containerId);
 
     // Search for possible inventory paths
     std::vector<std::string> candidates;
@@ -1312,55 +1311,58 @@ std::string Terminus::findInventory(const EntityInfo entityInfo,
         }
     }
 
-    std::string inventoryPath;
+    std::vector<std::string> inventoryPaths;
     if (candidates.empty())
     {
-        inventoryPath.clear();
-    }
-    else if (candidates.size() == 1)
-    {
-        inventoryPath = candidates[0];
+        inventoryPaths.clear();
     }
     else
     {
-        // default path if no one under parent path
-        inventoryPath = candidates[0];
-
         // multiple inventories matched, find the one under parent path
         for (const auto& candidate : candidates)
         {
-            if (candidate.starts_with(ContainerInventoryPath))
+            for (const auto& containerPath: ContainerInventoryPaths)
             {
-                inventoryPath = candidate;
-                break;
+                if (candidate.starts_with(containerPath))
+                {
+                    inventoryPaths.emplace_back(candidate);
+                }
             }
+        }
+        // default path if no one under parent path
+        if (inventoryPaths.empty())
+        {
+            inventoryPaths.emplace_back(candidates[0]);
         }
     }
 
     // Store the result, and also create parent_chassis/all_chassis
     // association
-    entities.emplace(entityInfo, Entity{inventoryPath, ContainerInventoryPath});
+    entities.emplace(entityInfo,
+                     Entity{inventoryPaths, ContainerInventoryPaths});
 
-    if (inventoryPath.size())
+    if (inventoryPaths.size())
     {
-        return inventoryPath;
+        return inventoryPaths;
     }
     else if (findClosest)
     {
-        return ContainerInventoryPath;
+        return ContainerInventoryPaths;
     }
     else // empty inventoryPath
     {
-        return inventoryPath;
+        return inventoryPaths;
     }
 }
 
-std::string Terminus::findInventory(const ContainerID containerId,
+std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
                                     const bool findClosest)
 {
+    std::vector<std::string> inventoryPath;
+    inventoryPath.emplace_back(systemInventoryPath);
     if (containerId == overallSystemCotainerId)
     {
-        return systemInventoryPath;
+        return inventoryPath;
     }
 
     auto itr = entityAssociations.find(containerId);
@@ -1368,7 +1370,7 @@ std::string Terminus::findInventory(const ContainerID containerId,
     {
         lg2::error("cannot find containerId:{CONTAINERID}", "CONTAINERID",
                    containerId);
-        return systemInventoryPath;
+        return inventoryPath;
     }
     const auto& [containerEntity, containedEntities] = itr->second;
     return findInventory(containerEntity, findClosest);
