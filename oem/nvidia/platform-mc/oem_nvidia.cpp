@@ -383,6 +383,11 @@ void nvidiaUpdateAssociations(Terminus& terminus)
         {
             for (auto& stateSet : sensor->stateSets)
             {
+                if (stateSet == nullptr)
+                {
+                    continue;
+                }
+
                 if (stateSet->getStateSetId() == PLDM_STATESET_ID_LINKSTATE)
                 {
                     StateSetEthernetPortLinkState* ptr =

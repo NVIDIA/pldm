@@ -81,10 +81,7 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
             std::regex_replace(objPath, std::regex("[^a-zA-Z0-9_/]+"), "_");
         auto stateSet = StateSetCreator::createSensor(
             stateSetId, idx++, objPath, association, this);
-        if (stateSet != nullptr)
-        {
-            stateSets.emplace_back(std::move(stateSet));
-        }
+        stateSets.emplace_back(std::move(stateSet));
     }
     sdbusplus::message::object_path entityPath(associationPath);
     associationEntityId = entityPath.filename();
@@ -97,7 +94,10 @@ void StateSensor::handleErrGetSensorReading()
     operationalStatusIntf->functional(false);
     for (auto& stateSet : stateSets)
     {
-        stateSet->setDefaultValue();
+        if (stateSet)
+        {
+            stateSet->setDefaultValue();
+        }
     }
 }
 
@@ -109,13 +109,16 @@ void StateSensor::updateReading(bool available, bool functional,
 
     if (compSensorIndex < stateSets.size())
     {
-        stateSets[compSensorIndex]->setValue(value);
+        if (stateSets[compSensorIndex])
+        {
+            stateSets[compSensorIndex]->setValue(value);
+        }
     }
     else
     {
         lg2::error(
-            "State Sensor id:{SENSORID} updateReading index out of range",
-            "SENSORID", sensorId);
+            "State Sensor id:{SENSORID} composite sensor ID:{COMPSENSORID} updateReading index out of range",
+            "SENSORID", sensorId, "COMPSENSORID", compSensorIndex);
     }
 }
 
@@ -123,17 +126,21 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
 {
     if (sensorOffset < stateSets.size())
     {
-        stateSets[sensorOffset]->setValue(eventState);
-        std::string arg1 = getAssociationEntityId() + " " +
-                           stateSets[sensorOffset]->getStringStateType();
-        auto [messageID, arg2] = stateSets[sensorOffset]->getEventData();
-        std::string resolution = "None";
-        createLogEntry(messageID, arg1, arg2, resolution);
+        if (stateSets[sensorOffset])
+        {
+            stateSets[sensorOffset]->setValue(eventState);
+            std::string arg1 = getAssociationEntityId() + " " +
+                               stateSets[sensorOffset]->getStringStateType();
+            auto [messageID, arg2] = stateSets[sensorOffset]->getEventData();
+            std::string resolution = "None";
+            createLogEntry(messageID, arg1, arg2, resolution);
+        }
     }
     else
     {
-        lg2::error("State Sensor id:{SENSORID} event offset out of range",
-                   "SENSORID", sensorId);
+        lg2::error(
+            "State Sensor id:{SENSORID} event offset:{OFFSET} out of range",
+            "SENSORID", sensorId, "OFFSET", sensorOffset);
     }
 }
 
@@ -182,6 +189,11 @@ void StateSensor::updateSensorNames(AuxiliaryNames& auxNames)
     uint8_t idx = 0;
     for (auto& stateSet : stateSets)
     {
+        if (stateSet == nullptr)
+        {
+            continue;
+        }
+
         std::string sensorName = "Id_" + std::to_string(idx);
         if (auxNames.size() > idx)
         {

@@ -82,6 +82,11 @@ class StateSensor
     {
         for (auto& stateSet : stateSets)
         {
+            if (stateSet == nullptr)
+            {
+                continue;
+            }
+
             std::vector<dbus::PathAssociation> assocs;
 
             for (const auto& path : inventoryPath)
@@ -102,7 +107,11 @@ class StateSensor
     {
         for (auto& stateSet : stateSets)
         {
-            stateSet->associateNumericSensor(getEntityInfo(), numericSensors);
+            if (stateSet)
+            {
+                stateSet->associateNumericSensor(getEntityInfo(),
+                                                 numericSensors);
+            }
         }
     }
 
