@@ -30,6 +30,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Critical/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
+#include <xyz/openbmc_project/Sensor/Threshold/HardShutdown/server.hpp>
 #include <xyz/openbmc_project/Sensor/Value/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/Availability/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>
@@ -48,6 +49,8 @@ using ThresholdWarningIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::Threshold::server::Warning>;
 using ThresholdCriticalIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::Threshold::server::Critical>;
+using ThresholdFatalIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Sensor::Threshold::server::HardShutdown>;
 using OperationalStatusIntf =
     sdbusplus::server::object_t<sdbusplus::xyz::openbmc_project::State::
                                     Decorator::server::OperationalStatus>;
@@ -288,6 +291,7 @@ class NumericSensor
     std::unique_ptr<ValueIntf> valueIntf = nullptr;
     std::unique_ptr<ThresholdWarningIntf> thresholdWarningIntf = nullptr;
     std::unique_ptr<ThresholdCriticalIntf> thresholdCriticalIntf = nullptr;
+    std::unique_ptr<ThresholdFatalIntf> thresholdFatalIntf = nullptr;
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =

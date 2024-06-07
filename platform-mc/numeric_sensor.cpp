@@ -139,6 +139,9 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 
     bool hasWarningThresholds = false;
     bool hasCriticalThresholds = false;
+    bool hasFatalThresholds = false;
+    double fatalHigh = std::numeric_limits<double>::quiet_NaN();
+    double fatalLow = std::numeric_limits<double>::quiet_NaN();
     double criticalHigh = std::numeric_limits<double>::quiet_NaN();
     double criticalLow = std::numeric_limits<double>::quiet_NaN();
     double warningHigh = std::numeric_limits<double>::quiet_NaN();
@@ -262,6 +265,66 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         }
     }
 
+    if (pdr->range_field_support.bits.bit5 &&
+        pdr->supported_thresholds.bits.bit2)
+    {
+        hasFatalThresholds = true;
+        switch (pdr->range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                fatalHigh = pdr->fatal_high.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                fatalHigh = pdr->fatal_high.value_s8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                fatalHigh = pdr->fatal_high.value_u16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                fatalHigh = pdr->fatal_high.value_s16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                fatalHigh = pdr->fatal_high.value_u32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                fatalHigh = pdr->fatal_high.value_s32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                fatalHigh = pdr->fatal_high.value_f32;
+                break;
+        }
+    }
+
+    if (pdr->range_field_support.bits.bit6 &&
+        pdr->supported_thresholds.bits.bit5)
+    {
+        hasFatalThresholds = true;
+        switch (pdr->range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                fatalLow = pdr->fatal_low.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                fatalLow = pdr->fatal_low.value_s8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                fatalLow = pdr->fatal_low.value_u16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                fatalLow = pdr->fatal_low.value_s16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                fatalLow = pdr->fatal_low.value_u32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                fatalLow = pdr->fatal_low.value_s32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                fatalLow = pdr->fatal_low.value_f32;
+                break;
+        }
+    }
+
     resolution = pdr->resolution;
     offset = pdr->offset;
     baseUnitModifier = pdr->unit_modifier;
@@ -304,6 +367,14 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
             std::make_unique<ThresholdCriticalIntf>(bus, path.c_str());
         thresholdCriticalIntf->criticalHigh(unitModifier(criticalHigh));
         thresholdCriticalIntf->criticalLow(unitModifier(criticalLow));
+    }
+
+    if (hasFatalThresholds)
+    {
+        thresholdFatalIntf =
+            std::make_unique<ThresholdFatalIntf>(bus, path.c_str());
+        thresholdFatalIntf->hardShutdownHigh(unitModifier(fatalHigh));
+        thresholdFatalIntf->hardShutdownLow(unitModifier(fatalLow));
     }
 
     inventoryDecoratorAreaIntf =
