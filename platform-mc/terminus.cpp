@@ -476,8 +476,6 @@ bool Terminus::parsePDRs()
     nvidia::nvidiaInitTerminus(*this);
 #endif
 
-    updateAssociations();
-
     if (!interfaceAddedMatch)
     {
         interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
@@ -487,6 +485,12 @@ bool Terminus::parsePDRs()
             std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
                       std::placeholders::_1));
     }
+
+    // look for Platform Configuration PDIs like SensorAuxName etc.
+    scanInventories();
+    // update Sensor Objects with infos from Platform Configuration PDIs
+    updateAssociations();
+
     return rc;
 }
 

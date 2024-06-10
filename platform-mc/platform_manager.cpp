@@ -63,6 +63,7 @@ requester::Coroutine PlatformManager::initTerminus()
             if (!rc)
             {
                 terminus->parsePDRs();
+                terminus->initalized = true;
             }
 
             if (terminus->synchronyConfigurationSupported &
