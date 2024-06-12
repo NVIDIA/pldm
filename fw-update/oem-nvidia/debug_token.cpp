@@ -289,6 +289,7 @@ void DebugToken::startTimer(auto timerExpiryTime)
     timer = std::make_unique<sdbusplus::Timer>([this]() {
         if (!tokenStatus)
         {
+            activationMatches.clear();
             createLogEntry(transferFailed,
                            std::filesystem::path(tokenPath).filename(),
                            tokenVersion, transferFailedResolution);
