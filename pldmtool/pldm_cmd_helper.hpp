@@ -4,6 +4,7 @@
 #include "libpldm/bios.h"
 #include "libpldm/fru.h"
 #include "libpldm/platform.h"
+#include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
 

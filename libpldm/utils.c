@@ -1,6 +1,9 @@
 #include "utils.h"
 #include "base.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 /** CRC32 code derived from work by Gary S. Brown.
  *  http://web.mit.edu/freebsd/head/sys/libkern/crc32.c
@@ -142,6 +145,76 @@ int ver2str(const ver32_t *version, char *buffer, size_t buffer_size)
 		POINTER_MOVE(rc, buffer, buffer_size, original_size);
 	}
 	return original_size - buffer_size;
+}
+
+static void parse_version_field(char *str_ver_part, uint8_t *value)
+{
+	if (str_ver_part == NULL || *str_ver_part == '\0') {
+		*value = 0xff;
+	}
+
+	char *eptr;
+	long num = strtol(str_ver_part, &eptr, 10);
+
+	if (num < 0 || num > 255) {
+		*value = 0xff;
+		return;
+	}
+
+	*value = (uint8_t)(num);
+	if (*value == 0) {
+		*value = 0xf0;
+	} else if ((*value < 0x0a) && (*str_ver_part != '0')) {
+		*value = *value | 0xf0;
+	} else {
+		*value = ((*value / 10) << 4) | (*value % 10);
+	}
+}
+
+int str2ver(const char *version_str, ver32_t *version)
+{
+	version->major = 0xff;
+	version->minor = 0xff;
+	version->update = 0xff;
+	version->alpha = 0x00;
+
+	if (version_str == NULL || *version_str == '\0') {
+		return -1;
+	}
+
+	char *str = strdup(version_str);
+	if (str == NULL) {
+		return -1;
+	}
+
+	char *token = strtok(str, ".");
+	if (token != NULL) {
+		parse_version_field(token, &(version->major));
+		token = strtok(NULL, ".");
+	}
+
+	if (token != NULL) {
+		parse_version_field(token, &(version->minor));
+
+		char *next = strtok(NULL, ".");
+
+		if (next == NULL) {
+			if (isalpha(token[strlen(token) - 1])) {
+				version->alpha =
+				    (uint8_t)(token[strlen(token) - 1]);
+			}
+		} else {
+			token = next;
+			parse_version_field(token, &(version->update));
+			if (isalpha(token[strlen(token) - 1])) {
+				version->alpha =
+				    (uint8_t)(token[strlen(token) - 1]);
+			}
+		}
+	}
+
+	free(str);
+	return 0;
 }
 
 uint8_t bcd2dec8(uint8_t bcd)

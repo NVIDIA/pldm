@@ -32,6 +32,7 @@ const std::map<const char*, pldm_supported_types> pldmTypes{
 };
 
 const std::map<const char*, pldm_supported_commands> pldmBaseCmds{
+    {"SetTID", PLDM_SET_TID},
     {"GetTID", PLDM_GET_TID},
     {"GetPLDMVersion", PLDM_GET_PLDM_VERSION},
     {"GetPLDMTypes", PLDM_GET_PLDM_TYPES},
@@ -60,6 +61,21 @@ const std::map<const char*, pldm_fru_commands> pldmFruCmds{
     {"GetFRURecordTableMetadata", PLDM_GET_FRU_RECORD_TABLE_METADATA},
     {"GetFRURecordTable", PLDM_GET_FRU_RECORD_TABLE},
     {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION}};
+
+const std::map<const char*, pldm_firmware_update_commands> pldmFwUpdateCmds{
+    {"QueryDeviceIdentifiers", PLDM_QUERY_DEVICE_IDENTIFIERS},
+    {"GetFirmwareParameters", PLDM_GET_FIRMWARE_PARAMETERS},
+    {"RequestUpdate", PLDM_REQUEST_UPDATE},
+    {"PassComponentTable", PLDM_PASS_COMPONENT_TABLE},
+    {"UpdateComponent", PLDM_UPDATE_COMPONENT},
+    {"RequestFirmwareData", PLDM_REQUEST_FIRMWARE_DATA},
+    {"TransferComplete", PLDM_TRANSFER_COMPLETE},
+    {"VerifyComplete", PLDM_VERIFY_COMPLETE},
+    {"ApplyComplete", PLDM_APPLY_COMPLETE},
+    {"ActivateFirmware", PLDM_ACTIVATE_FIRMWARE},
+    {"GetStatus", PLDM_GET_STATUS},
+    {"CancelUpdateComponent", PLDM_CANCEL_UPDATE_COMPONENT},
+    {"CancelUpdate", PLDM_CANCEL_UPDATE}};
 
 #ifdef OEM_IBM
 const std::map<const char*, pldm_host_commands> pldmIBMHostCmds{
@@ -331,6 +347,8 @@ class GetPLDMCommands : public CommandInterface
         app->add_option("-t,--type", pldmType, "pldm supported type")
             ->required()
             ->transform(CLI::CheckedTransformer(pldmTypes, CLI::ignore_case));
+        app->add_option("--version", pldmTypeVer,
+                        "version for the specified PLDM Type.");
     }
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
@@ -339,6 +357,9 @@ class GetPLDMCommands : public CommandInterface
                                         PLDM_GET_COMMANDS_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
         ver32_t version{0xFF, 0xFF, 0xFF, 0xFF};
+
+        str2ver(pldmTypeVer.data(), &version);
+
         auto rc =
             encode_get_commands_req(instanceId, pldmType, version, request);
         return {rc, requestMsg};
@@ -369,6 +390,7 @@ class GetPLDMCommands : public CommandInterface
 
   private:
     pldm_supported_types pldmType;
+    std::string pldmTypeVer;
 
     template <typename CommandMap>
     void printCommand(CommandMap& commandMap, int i, ordered_json& jarray)
@@ -408,6 +430,9 @@ class GetPLDMCommands : public CommandInterface
                     case PLDM_FRU:
                         printCommand(pldmFruCmds, i, cmdinfo);
                         break;
+                    case PLDM_FWUP:
+                        printCommand(pldmFwUpdateCmds, i, cmdinfo);
+                        break;
                     case PLDM_OEM:
 #ifdef OEM_IBM
                         printCommand(pldmIBMHostCmds, i, cmdinfo);
@@ -417,7 +442,11 @@ class GetPLDMCommands : public CommandInterface
                     default:
                         break;
                 }
-                pldmCommands.emplace_back(cmdinfo);
+
+                if (!cmdinfo.empty())
+                {
+                    pldmCommands.emplace_back(cmdinfo);
+                }
             }
         }
         data["PLDMCommands"] = pldmCommands;
