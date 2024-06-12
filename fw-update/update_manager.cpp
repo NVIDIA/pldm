@@ -504,6 +504,8 @@ bool UpdateManager::verifyPackage()
     catch (const std::exception& e)
     {
         lg2::error("Failed to get signature header.");
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
         return false;
     }
     if (pkgSignHdrData.size())
@@ -598,6 +600,8 @@ bool UpdateManager::packageIntegrityCheck()
     catch (const std::exception& e)
     {
         lg2::error("Failed to get signature header.");
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
         return false;
     }
 
