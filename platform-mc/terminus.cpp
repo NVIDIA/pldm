@@ -1190,8 +1190,36 @@ bool Terminus::scanInventories()
             }
             if (checkDeviceInventory(objPath))
             {
-
                 inventories.emplace_back(objPath, type, instanceNumber);
+                if (type != (PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC))
+                {
+                    continue;
+                }
+                try
+                {
+                    const auto assocs =
+                        utils::DBusHandler()
+                            .getDbusProperty<std::vector<std::tuple<
+                                std::string, std::string, std::string>>>(
+                                objPath.c_str(), "Associations",
+                                "xyz.openbmc_project.Association.Definitions");
+
+                    for (const auto& assoc : assocs)
+                    {
+                        std::string assocPath = std::get<2>(assoc);
+                        if (std::get<1>(assoc) != "all_processors" ||
+                            assocPath == objPath)
+                        {
+                            continue;
+                        }
+                        inventories.emplace_back(assocPath, type,
+                                                 instanceNumber);
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    lg2::error("failed to query chassis cpu: {P} Error: {ERR}", "P", objPath,"ERR" ,e);
+                }
             }
         }
     }
