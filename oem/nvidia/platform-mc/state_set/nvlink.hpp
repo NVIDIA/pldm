@@ -210,15 +210,15 @@ class StateSetNvlink : public StateSet
             lg2::error("Failed to query Dbus for CPU: {ERROR}", "ERROR", e);
         }
 
-        associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
-
         if (stateAssociation.path.empty())
         {
             return;
         }
+
+        associationDefinitionsIntf->associations(
+            {{stateAssociation.forward.c_str(),
+              stateAssociation.reverse.c_str(),
+              stateAssociation.path.c_str()}});
 
         pldm::pdr::EntityInstance instanceNumber = 0;
         constexpr auto instanceInterface =
@@ -240,6 +240,7 @@ class StateSetNvlink : public StateSet
         }
         catch (const std::exception& e)
         {
+            lg2::error("Failed to query instanceId Dbus, {ERROR}", "ERROR", e);
             return;
         }
 
@@ -250,27 +251,35 @@ class StateSetNvlink : public StateSet
             std::to_string(instanceNumber) + "/Endpoints/" + endpointName;
 
         auto& bus = pldm::utils::DBusHandler::getBus();
-
-        if (!endpointIntf)
+        try
         {
-            endpointIntf =
-                std::make_unique<EndpointIntf>(bus, endpointObjectPath.c_str());
-        }
-
-        if (!endpointInstanceIntf)
-        {
-            endpointInstanceIntf =
-                std::make_unique<InstanceIntf>(bus, endpointObjectPath.c_str());
-            endpointInstanceIntf->instanceNumber(instanceNumber);
-        }
-
-        if (!endpointAssociationDefinitionsIntf)
-        {
-            endpointAssociationDefinitionsIntf =
-                std::make_unique<AssociationDefinitionsInft>(
+            if (!endpointIntf)
+            {
+                endpointIntf = std::make_unique<EndpointIntf>(
                     bus, endpointObjectPath.c_str());
-            endpointAssociationDefinitionsIntf->associations(
-                {{"entity_link", "", stateAssociation.path.c_str()}});
+            }
+
+            if (!endpointInstanceIntf)
+            {
+                endpointInstanceIntf = std::make_unique<InstanceIntf>(
+                    bus, endpointObjectPath.c_str());
+                endpointInstanceIntf->instanceNumber(instanceNumber);
+            }
+
+            if (!endpointAssociationDefinitionsIntf)
+            {
+                endpointAssociationDefinitionsIntf =
+                    std::make_unique<AssociationDefinitionsInft>(
+                        bus, endpointObjectPath.c_str());
+                endpointAssociationDefinitionsIntf->associations(
+                    {{"entity_link", "", stateAssociation.path.c_str()}});
+            }
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Failed to create PDIs at {OBJPATH}, {ERROR}", "OBJPATH",
+                       endpointObjectPath, "ERROR", e);
+            return;
         }
     }
 };
