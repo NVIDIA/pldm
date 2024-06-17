@@ -580,7 +580,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     std::vector<uint8_t> rawSmbpbiData(sizeof(double));
     std::memcpy(rawSmbpbiData.data(), &convertVal, sizeof(double));
 
-    DbusVariantType propValue = value;
+    DbusVariantType propValue = convertVal;
 
     std::string endpoint{};
     auto definitions = associationDefinitionsIntf->associations();
