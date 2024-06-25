@@ -58,6 +58,10 @@ using AssociationDefinitionsIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 using PortType =
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
+using PortProtocol =
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
+using PortInfoIntf = sdbusplus::server::object_t<
+    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
 
 class TerminusManager;
 
@@ -190,7 +194,7 @@ class Terminus
      *  @param[in] id - sensor ID
      *  @return sensor port types
      */
-    std::shared_ptr<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>
+    std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>
         getSensorPortInfo(SensorID id);
 #endif
 
@@ -323,7 +327,7 @@ class Terminus
 #ifdef OEM_NVIDIA
     /** @brief The Port information from EntityManager configuration PDI */
     std::map<SensorID,
-             std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>
+             std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>
         sensorPortInfoOverwriteTbl{};
 #endif
 

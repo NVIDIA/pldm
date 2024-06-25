@@ -256,50 +256,6 @@ void Terminus::getSensorAuxNameFromEM(const std::string& objPath)
 }
 
 #ifdef OEM_NVIDIA
-static PortType getPortTypeValue(const std::string& type)
-{
-    if (type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.BidirectionalPort")
-    {
-        return (PortType::BidirectionalPort);
-    }
-    else if (
-        type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.DownstreamPort")
-    {
-        return (PortType::DownstreamPort);
-    }
-    else if (
-        type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.InterswitchPort")
-    {
-        return (PortType::InterswitchPort);
-    }
-    else if (
-        type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.ManagementPort")
-    {
-        return (PortType::ManagementPort);
-    }
-    else if (
-        type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.UnconfiguredPort")
-    {
-        return (PortType::UnconfiguredPort);
-    }
-    else if (
-        type ==
-        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType.UpstreamPort")
-    {
-        return (PortType::UpstreamPort);
-    }
-    else
-    {
-        // default value
-        return (PortType::BidirectionalPort);
-    }
-}
-
 void Terminus::getPortInfoFromEM(const std::string& objPath)
 {
     try
@@ -328,6 +284,10 @@ void Terminus::getPortInfoFromEM(const std::string& objPath)
                 pldm::utils::DBusHandler().getDbusProperty<std::string>(
                     path.c_str(), "PortType",
                     "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto portProtocol =
+                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                    path.c_str(), "PortProtocol",
+                    "xyz.openbmc_project.Configuration.SensorPortInfo");
             auto associationsEM =
                 pldm::utils::DBusHandler()
                     .getDbusProperty<std::vector<std::string>>(
@@ -354,7 +314,9 @@ void Terminus::getPortInfoFromEM(const std::string& objPath)
             }
 
             sensorPortInfoOverwriteTbl[sensorId] = std::make_tuple(
-                getPortTypeValue(portType), maxSpeed, associations);
+                PortInfoIntf::convertPortTypeFromString(portType),
+                PortInfoIntf::convertPortProtocolFromString(portProtocol),
+                maxSpeed, associations);
         }
     }
     catch (const std::exception& e)
@@ -518,11 +480,11 @@ std::shared_ptr<SensorAuxiliaryNames>
 }
 
 #ifdef OEM_NVIDIA
-std::shared_ptr<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>> Terminus::getSensorPortInfo(SensorID id)
+std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>> Terminus::getSensorPortInfo(SensorID id)
 {
     if (sensorPortInfoOverwriteTbl.find(id) != sensorPortInfoOverwriteTbl.end())
     {
-        return std::make_shared<std::tuple<PortType, uint64_t, std::vector<dbus::PathAssociation>>>(sensorPortInfoOverwriteTbl[id]);
+        return std::make_shared<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>(sensorPortInfoOverwriteTbl[id]);
     }
     return nullptr;
 }

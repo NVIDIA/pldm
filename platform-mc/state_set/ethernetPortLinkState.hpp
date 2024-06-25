@@ -161,6 +161,11 @@ class StateSetEthernetPortLinkState : public StateSet
         ValuePortInfoIntf->type(type);
     }
 
+    void setPortProtocolValue(const PortProtocol& protocol)
+    {
+        ValuePortInfoIntf->protocol(protocol);
+    }
+
     void setMaxSpeedValue(const double value)
     {
         ValuePortInfoIntf->maxSpeed(value);

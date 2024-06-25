@@ -395,13 +395,14 @@ void nvidiaUpdateAssociations(Terminus& terminus)
                             stateSet.get());
 
                     ptr->setPortTypeValue(get<0>(*sensorPortInfo));
+                    ptr->setPortProtocolValue(get<1>(*sensorPortInfo));
 
                     // convert MBps to Gbps then assign to maxSpeed
                     double maxSpeedInGbps =
-                        (double)((get<1>(*sensorPortInfo) / 1000.0) * 8);
+                        (double)((get<2>(*sensorPortInfo) / 1000.0) * 8);
                     ptr->setMaxSpeedValue(maxSpeedInGbps);
 
-                    ptr->addAssociation(get<2>(*sensorPortInfo));
+                    ptr->addAssociation(get<3>(*sensorPortInfo));
                 }
             }
         }
