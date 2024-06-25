@@ -72,7 +72,7 @@ TEST(error_handling, getOemMessage_unknown_error_code)
 
 TEST(error_handling, getCompCompatibilityMessage_update_component_identical_comp_stamp)
 {
-    const std::string oemMessageId = "OpenBMC.0.4.ComponentUpdateSkipped";
+    const std::string oemMessageId = "NvidiaUpdate.1.0.ComponentUpdateSkipped";
     const std::string oemMessageError = "Component image is identical";
     const std::string oemResolution = "Retry firmware update operation with the force flag";
     const bool oemMessageStatus = true;

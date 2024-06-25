@@ -36,7 +36,7 @@ const std::string activateFailed{"Update.1.0.ActivateFailed"};
 const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
-const std::string componentUpdateSkipped{"OpenBMC.0.4.ComponentUpdateSkipped"};
+const std::string componentUpdateSkipped{"NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 
 /**
  * @brief Get the D-Bus service using mapper lookup

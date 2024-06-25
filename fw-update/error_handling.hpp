@@ -153,7 +153,7 @@ static ErrorMapping activateFirmwareMapping{
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
     {PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL,
-     {"OpenBMC.0.4.ComponentUpdateSkipped",
+     {"NvidiaUpdate.1.0.ComponentUpdateSkipped",
       "Component image is identical",
       "Retry firmware update operation with the force flag"}},
     {PLDM_CRC_COMP_COMPARISON_STAMP_LOWER,
