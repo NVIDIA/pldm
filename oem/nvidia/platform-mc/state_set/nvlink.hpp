@@ -220,6 +220,7 @@ class StateSetNvlink : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
 
+#ifdef NVLINK_C2C_FABRIC_OBJECT
         pldm::pdr::EntityInstance instanceNumber = 0;
         constexpr auto instanceInterface =
             "xyz.openbmc_project.Inventory.Decorator.Instance";
@@ -281,6 +282,7 @@ class StateSetNvlink : public StateSet
                        endpointObjectPath, "ERROR", e);
             return;
         }
+#endif
     }
 };
 
