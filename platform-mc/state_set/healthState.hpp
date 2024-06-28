@@ -19,6 +19,7 @@
 #include "../state_set.hpp"
 
 #include <xyz/openbmc_project/State/Decorator/Health/server.hpp>
+#include <regex>
 
 namespace pldm
 {
@@ -35,13 +36,13 @@ class StateSetHealthState : public StateSet
   private:
     std::unique_ptr<HealthIntf> ValueIntf = nullptr;
     uint8_t compId = 0;
+    std::filesystem::path objectPath;
 
   public:
     StateSetHealthState(uint16_t stateSetId, uint8_t compId,
                         std::string& objectPath,
                         dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId), objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -112,6 +113,34 @@ class StateSetHealthState : public StateSet
     std::string getStringStateType() const override
     {
         return std::string("Health");
+    }
+
+    virtual void updateSensorName([[maybe_unused]] std::string name) override
+    {
+        if (name == objectPath.filename())
+        {
+            return;
+        }
+        objectPath = objectPath.parent_path() / name;
+
+        // update new object path to D-Bus
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        auto path = std::regex_replace(objectPath.string(),
+                                       std::regex("[^a-zA-Z0-9_/]+"), "_");
+        if (associationDefinitionsIntf)
+        {
+            auto associations = associationDefinitionsIntf->associations();
+            associationDefinitionsIntf =
+                std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
+            associationDefinitionsIntf->associations(associations);
+        }
+
+        if (ValueIntf)
+        {
+            auto savedHealth = ValueIntf->health();
+            ValueIntf = std::make_unique<HealthIntf>(bus, path.c_str());
+            ValueIntf->health(savedHealth);
+        }
     }
 };
 
