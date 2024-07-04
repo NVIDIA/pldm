@@ -223,6 +223,28 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return PLDM_SUCCESS;
     }
 
+    requester::Coroutine resumeTerminus(tid_t tid)
+    {
+        auto it = termini.find(tid);
+        if (it != termini.end())
+        {
+            auto& terminus = it->second;
+            auto rc = co_await terminusManager.resumeTid(tid);
+            if (rc != PLDM_SUCCESS)
+            {
+                co_return rc;
+            }
+
+            rc = co_await platformManager.initEventReceiver(tid);
+            if (rc != PLDM_SUCCESS)
+            {
+                co_return rc;
+            }
+            terminus->resumed = true;
+        }
+        co_return PLDM_SUCCESS;
+    }
+
   private:
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>> termini{};

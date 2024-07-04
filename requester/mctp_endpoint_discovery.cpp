@@ -80,11 +80,20 @@ MctpDiscovery::MctpDiscovery(
 
                 // watch PropertiesChanged signal from
                 // xyz.openbmc_project.Object.Enable PDI
-                enableMatches.emplace_back(
-                    bus,
-                    sdbusplus::bus::match::rules::propertiesChanged(
-                        objectPath.str, "xyz.openbmc_project.Object.Enable"),
-                    std::bind_front(&MctpDiscovery::refreshEndpoints, this));
+                if (enableMatches.find(objectPath.str) == enableMatches.end())
+                {
+                    lg2::info("register match_t objectPath:{OBJPATH}",
+                              "OBJPATH", objectPath.str);
+                    enableMatches.emplace(
+                        objectPath.str,
+                        sdbusplus::bus::match_t(
+                            bus,
+                            sdbusplus::bus::match::rules::propertiesChanged(
+                                objectPath.str,
+                                "xyz.openbmc_project.Object.Enable"),
+                            std::bind_front(&MctpDiscovery::refreshEndpoints,
+                                            this)));
+                }
             }
         }
         catch (const std::exception& e)
@@ -182,11 +191,18 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
     populateMctpInfo(interfaces, mctpInfos, mctpInterfaces);
 
     // watch PropertiesChanged signal from xyz.openbmc_project.Object.Enable PDI
-    enableMatches.emplace_back(
-        bus,
-        sdbusplus::bus::match::rules::propertiesChanged(
-            objPath.str, "xyz.openbmc_project.Object.Enable"),
-        std::bind_front(&MctpDiscovery::refreshEndpoints, this));
+    if (enableMatches.find(objPath.str) == enableMatches.end())
+    {
+        lg2::info("register match_t objectPath:{OBJPATH}", "OBJPATH",
+                  objPath.str);
+        enableMatches.emplace(
+            objPath.str,
+            sdbusplus::bus::match_t(
+                bus,
+                sdbusplus::bus::match::rules::propertiesChanged(
+                    objPath.str, "xyz.openbmc_project.Object.Enable"),
+                std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
+    }
 
     loadStaticEndpoints(mctpInfos);
     handleMctpEndpoints(mctpInfos, mctpInterfaces);
@@ -293,6 +309,11 @@ void MctpDiscovery::cleanEndpoints(
 {
     // place holder: implement the function once mctp-ctrl service support the
     // InterfacesRemoved signal
+    sdbusplus::message::object_path objPath;
+    dbus::InterfaceMap interfaces;
+    msg.read(objPath, interfaces);
+
+    lg2::info("cleanEndpoints objectPath:{OBJPATH}", "OBJPATH", objPath);
 }
 
 } // namespace pldm

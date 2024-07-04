@@ -253,6 +253,7 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                      {PLDM_NO_CHANGE, 0});
     stateField[cmpId] = {PLDM_REQUEST_SET, value};
     rc = co_await setStateEffecterStates(stateField);
+    needUpdate = true;
 
     co_return rc;
 }

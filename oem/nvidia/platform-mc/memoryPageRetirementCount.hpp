@@ -48,14 +48,14 @@ class OemMemoryPageRetirementCountInft :
     OemMemoryPageRetirementCountInft(std::shared_ptr<NumericSensor> sensor,
                                      bus::bus& bus, const char* path) :
         MemoryPageRetirementCountInft(bus, path),
-        sensor(sensor)
+        sensor(*sensor)
     {}
 
     virtual ~OemMemoryPageRetirementCountInft() = default;
 
     uint32_t memoryPageRetirementCount() const override
     {
-        auto value = sensor->getReading();
+        auto value = sensor.getReading();
         if (std::isnan(value))
         {
             return 0;
@@ -64,7 +64,7 @@ class OemMemoryPageRetirementCountInft :
     }
 
   private:
-    std::shared_ptr<NumericSensor> sensor;
+    NumericSensor& sensor;
 };
 
 } // namespace platform_mc

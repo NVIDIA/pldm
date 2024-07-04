@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,8 +49,7 @@ class StateSetDebugState : public StateSet
                        [[maybe_unused]] std::string& objectPath,
                        [[maybe_unused]] dbus::PathAssociation& stateAssociation,
                        [[maybe_unused]] StateEffecter* effecter) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         setDefaultValue();
@@ -128,9 +127,8 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                        std::shared_ptr<StateEffecter> stateEffecter,
                        std::shared_ptr<NumericEffecter> numericEffecter,
                        std::shared_ptr<StateSensor> stateSensor) :
-        RemoteDebugIntf(bus, path),
-        stateEffecter(stateEffecter), numericEffecter(numericEffecter),
-        stateSensor(stateSensor)
+        RemoteDebugIntf(bus, path), stateEffecter(*stateEffecter),
+        numericEffecter(*numericEffecter), stateSensor(*stateSensor)
     {}
 
     DebugState jtagDebug() const override
@@ -166,20 +164,20 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     uint32_t timeout(uint32_t value, bool skipSignal)
     {
         numericEffecter
-            ->setNumericEffecterValue(numericEffecter->baseToRaw(value))
+            .setNumericEffecterValue(numericEffecter.baseToRaw(value))
             .detach();
         return RemoteDebugIntf::timeout(value, skipSignal);
     }
 
     uint32_t timeout() const override
     {
-        numericEffecter->getNumericEffecterValue().detach();
-        return numericEffecter->rawToBase(numericEffecter->getValue());
+        numericEffecter.getNumericEffecterValue().detach();
+        return numericEffecter.rawToBase(numericEffecter.getValue());
     }
 
     void enable(std::vector<DebugPolicy> debugPolicy) override
     {
-        uint8_t cmpEffCnt = stateEffecter->stateSets.size();
+        uint8_t cmpEffCnt = stateEffecter.stateSets.size();
         std::vector<set_effecter_state_field> stateField(cmpEffCnt,
                                                          {PLDM_NO_CHANGE, 0});
         for (auto& v : debugPolicy)
@@ -191,7 +189,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            if (stateSensor->stateSets[compId]->getValue() ==
+            if (stateSensor.stateSets[compId]->getValue() ==
                 PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
@@ -201,12 +199,12 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_ENABLED};
         }
 
-        stateEffecter->setStateEffecterStates(stateField).detach();
+        stateEffecter.setStateEffecterStates(stateField).detach();
     }
 
     void disable(std::vector<DebugPolicy> debugPolicy) override
     {
-        uint8_t cmpEffCnt = stateEffecter->stateSets.size();
+        uint8_t cmpEffCnt = stateEffecter.stateSets.size();
         std::vector<set_effecter_state_field> stateField(cmpEffCnt,
                                                          {PLDM_NO_CHANGE, 0});
 
@@ -219,7 +217,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            if (stateSensor->stateSets[compId]->getValue() ==
+            if (stateSensor.stateSets[compId]->getValue() ==
                 PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
@@ -229,7 +227,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_DISABLED};
         }
 
-        stateEffecter->setStateEffecterStates(stateField).detach();
+        stateEffecter.setStateEffecterStates(stateField).detach();
     }
 
     uint8_t toCompId(DebugPolicy value)
@@ -270,18 +268,18 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     DebugState getDebugState(uint8_t compositeId) const
     {
-        if (stateEffecter->stateSets[compositeId]->getOpState() ==
+        if (stateEffecter.stateSets[compositeId]->getOpState() ==
             EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING)
         {
             return DebugState::Pending;
         }
-        return toDebugState(stateSensor->stateSets[compositeId]->getValue());
+        return toDebugState(stateSensor.stateSets[compositeId]->getValue());
     }
 
   private:
-    std::shared_ptr<StateEffecter> stateEffecter;
-    std::shared_ptr<NumericEffecter> numericEffecter;
-    std::shared_ptr<StateSensor> stateSensor;
+    StateEffecter& stateEffecter;
+    NumericEffecter& numericEffecter;
+    StateSensor& stateSensor;
 };
 
 } // namespace oem_nvidia

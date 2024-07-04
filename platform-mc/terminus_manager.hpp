@@ -114,6 +114,13 @@ class TerminusManager
      */
     std::shared_ptr<Terminus> getTerminus(const UUID& uuid);
 
+    /** @brief resume Terminus's ID by send setTID command again
+     *
+     *  @param[in] tid - Terminus ID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    requester::Coroutine resumeTid(tid_t tid);
+
   private:
     /** @brief The coroutine task execute by discoverMctpTerminus()
      *

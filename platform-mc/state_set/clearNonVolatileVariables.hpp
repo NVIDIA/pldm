@@ -84,7 +84,6 @@ class ClearNonVolatileVariablesEffecterIntf :
      */
     bool clear() const override
     {
-        effecter.getStateEffecterStates().detach();
         return ClearNonVolatileVariablesIntf::clear();
     }
 

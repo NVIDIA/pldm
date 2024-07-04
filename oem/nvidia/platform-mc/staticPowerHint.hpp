@@ -59,64 +59,64 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         std::shared_ptr<NumericEffecter> effecterPowerEstimation,
         bool verbose = false) :
         StaticPowerHintInft(bus, path),
-        effecterCpuClockFrequency(effecterCpuClockFrequency),
-        effecterTemperature(effecterTemperature),
-        effecterWorkloadFactor(effecterWorkloadFactor),
-        effecterPowerEstimation(effecterPowerEstimation), verbose(verbose)
+        effecterCpuClockFrequency(*effecterCpuClockFrequency),
+        effecterTemperature(*effecterTemperature),
+        effecterWorkloadFactor(*effecterWorkloadFactor),
+        effecterPowerEstimation(*effecterPowerEstimation), verbose(verbose)
     {}
 
     virtual ~OemStaticPowerHintInft() = default;
 
     double maxCpuClockFrequency() const override
     {
-        if (effecterCpuClockFrequency && effecterCpuClockFrequency->unitIntf)
+        if (effecterCpuClockFrequency.unitIntf)
         {
-            return effecterCpuClockFrequency->unitIntf->pdrMaxSettable();
+            return effecterCpuClockFrequency.unitIntf->pdrMaxSettable();
         }
         return 0;
     }
 
     double minCpuClockFrequency() const override
     {
-        if (effecterCpuClockFrequency && effecterCpuClockFrequency->unitIntf)
+        if (effecterCpuClockFrequency.unitIntf)
         {
-            return effecterCpuClockFrequency->unitIntf->pdrMinSettable();
+            return effecterCpuClockFrequency.unitIntf->pdrMinSettable();
         }
         return 0;
     }
 
     double maxTemperature() const override
     {
-        if (effecterTemperature && effecterTemperature->unitIntf)
+        if (effecterTemperature.unitIntf)
         {
-            return effecterTemperature->unitIntf->pdrMaxSettable();
+            return effecterTemperature.unitIntf->pdrMaxSettable();
         }
         return 0;
     }
 
     double minTemperature() const override
     {
-        if (effecterTemperature && effecterTemperature->unitIntf)
+        if (effecterTemperature.unitIntf)
         {
-            return effecterTemperature->unitIntf->pdrMinSettable();
+            return effecterTemperature.unitIntf->pdrMinSettable();
         }
         return 0;
     }
 
     double maxWorkloadFactor() const override
     {
-        if (effecterWorkloadFactor && effecterWorkloadFactor->unitIntf)
+        if (effecterWorkloadFactor.unitIntf)
         {
-            return effecterWorkloadFactor->unitIntf->pdrMaxSettable();
+            return effecterWorkloadFactor.unitIntf->pdrMaxSettable();
         }
         return 0;
     }
 
     double minWorkloadFactor() const override
     {
-        if (effecterWorkloadFactor && effecterWorkloadFactor->unitIntf)
+        if (effecterWorkloadFactor.unitIntf)
         {
-            return effecterWorkloadFactor->unitIntf->pdrMinSettable();
+            return effecterWorkloadFactor.unitIntf->pdrMinSettable();
         }
         return 0;
     }
@@ -195,8 +195,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
         }
 
-        auto rc = co_await effecterCpuClockFrequency->setNumericEffecterValue(
-            effecterCpuClockFrequency->baseToRaw(cpuClockFrequency));
+        auto rc = co_await effecterCpuClockFrequency.setNumericEffecterValue(
+            effecterCpuClockFrequency.baseToRaw(cpuClockFrequency));
         if (rc)
         {
             StaticPowerHintInft::stateOfLastEstimatePower(
@@ -204,8 +204,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             co_return PLDM_ERROR;
         }
 
-        rc = co_await effecterWorkloadFactor->setNumericEffecterValue(
-            effecterWorkloadFactor->baseToRaw(workloadFactor));
+        rc = co_await effecterWorkloadFactor.setNumericEffecterValue(
+            effecterWorkloadFactor.baseToRaw(workloadFactor));
         if (rc)
         {
             StaticPowerHintInft::stateOfLastEstimatePower(
@@ -213,8 +213,8 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             co_return PLDM_ERROR;
         }
 
-        rc = co_await effecterTemperature->setNumericEffecterValue(
-            effecterTemperature->baseToRaw(temperature));
+        rc = co_await effecterTemperature.setNumericEffecterValue(
+            effecterTemperature.baseToRaw(temperature));
         if (rc)
         {
             StaticPowerHintInft::stateOfLastEstimatePower(
@@ -222,7 +222,7 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             co_return PLDM_ERROR;
         }
 
-        rc = co_await effecterPowerEstimation->getNumericEffecterValue();
+        rc = co_await effecterPowerEstimation.getNumericEffecterValue();
         if (rc)
         {
             StaticPowerHintInft::stateOfLastEstimatePower(
@@ -240,16 +240,16 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         StaticPowerHintInft::stateOfLastEstimatePower(
             StateOfEstimatePower::Completed);
         StaticPowerHintInft::powerEstimate(
-            effecterPowerEstimation->rawToBase(
-                effecterPowerEstimation->getValue()),
+            effecterPowerEstimation.rawToBase(
+                effecterPowerEstimation.getValue()),
             false);
         co_return PLDM_SUCCESS;
     }
 
-    std::shared_ptr<NumericEffecter> effecterCpuClockFrequency;
-    std::shared_ptr<NumericEffecter> effecterTemperature;
-    std::shared_ptr<NumericEffecter> effecterWorkloadFactor;
-    std::shared_ptr<NumericEffecter> effecterPowerEstimation;
+    NumericEffecter& effecterCpuClockFrequency;
+    NumericEffecter& effecterTemperature;
+    NumericEffecter& effecterWorkloadFactor;
+    NumericEffecter& effecterPowerEstimation;
 
     std::coroutine_handle<> estimationTaskHandle;
     bool verbose;

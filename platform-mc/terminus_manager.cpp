@@ -247,34 +247,6 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
         }
 
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
-        // remove existing terminus with the same EID and UUID
-        for (auto it = termini.begin(); it != termini.end();)
-        {
-            bool found = false;
-            for (auto& mctpInfo : mctpInfos)
-            {
-                auto terminusMctpInfo = toMctpInfo(it->first);
-                if (terminusMctpInfo &&
-                    (std::get<0>(terminusMctpInfo.value()) ==
-                     std::get<0>(mctpInfo)) &&
-                    (std::get<1>(terminusMctpInfo.value()) ==
-                     std::get<1>(mctpInfo)))
-                {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (found)
-            {
-                unmapTid(it->first);
-                termini.erase(it++);
-            }
-            else
-            {
-                it++;
-            }
-        }
         for (auto& mctpInfo : mctpInfos)
         {
             co_await initMctpTerminus(mctpInfo);
@@ -566,6 +538,20 @@ std::shared_ptr<Terminus> TerminusManager::getTerminus(const UUID& uuid)
     }
     lg2::info("getTerminus: no terminus found for uuid:{UUID}", "UUID", uuid);
     return nullptr;
+}
+
+requester::Coroutine TerminusManager::resumeTid(tid_t tid)
+{
+    auto mctpInfo = toMctpInfo(tid);
+    if (!mctpInfo)
+    {
+        lg2::error("resumeTid: cannot find eid for tid:{TID}.", "TID", tid);
+        co_return PLDM_ERROR;
+    }
+
+    auto eid = std::get<0>(mctpInfo.value());
+    auto rc = co_await setTidOverMctp(eid, tid);
+    co_return rc;
 }
 
 } // namespace platform_mc

@@ -166,6 +166,12 @@ class SensorManager
      */
     bool isPriority(std::shared_ptr<NumericSensor> sensor);
 
+    /** @brief initialize priority and round robin sensor list
+     *
+     *  @param[in] tid - terminus ID needs to initialize the list
+     */
+    void initSensorList(tid_t tid);
+
     sdeventplus::Event& event;
 
     /** @brief reference of terminusManager */

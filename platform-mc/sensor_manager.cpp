@@ -106,35 +106,6 @@ void SensorManager::startPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
-    // clear and initialize prioritySensors and roundRobinSensors list
-    terminus->prioritySensors.clear();
-    std::queue<SensorVariant> empty;
-    std::swap(terminus->roundRobinSensors, empty);
-
-    // numeric sensor
-    for (auto& sensor : terminus->numericSensors)
-    {
-        if (isPriority(sensor))
-        {
-            sensor->isPriority = true;
-            terminus->prioritySensors.emplace_back(sensor);
-        }
-        else
-        {
-            sensor->isPriority = false;
-            terminus->roundRobinSensors.push(sensor);
-        }
-    }
-
-    // state sensor
-    for (auto& sensor : terminus->stateSensors)
-    {
-        if (!sensor->async)
-        {
-            terminus->roundRobinSensors.push(sensor);
-        }
-    }
-
     if (!terminus->sensorPollTimer)
     {
         terminus->sensorPollTimer = std::make_unique<sdbusplus::Timer>(
@@ -166,7 +137,6 @@ void SensorManager::stopPolling(tid_t tid)
 
 void SensorManager::startPolling()
 {
-    // initialize prioritySensors and roundRobinSensors list
     for (const auto& [tid, terminus] : termini)
     {
         startPolling(tid);
@@ -223,6 +193,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
     uint64_t t1 = 0;
     uint64_t elapsed = 0;
     uint64_t pollingTimeInUsec = pollingTime * 1000;
+    uint8_t rc = PLDM_SUCCESS;
 
     do
     {
@@ -240,6 +211,11 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         auto& terminus = termini[tid];
 
+        if (manager && !terminus->resumed)
+        {
+            co_await manager->resumeTerminus(tid);
+        }
+
         if (manager && terminus->pollEvent)
         {
             co_await manager->pollForPlatformEvent(tid);
@@ -255,9 +231,9 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             // Get numeric effector if we haven't sync.
             if (effector->needUpdate)
             {
-                co_await effector->getNumericEffecterValue();
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                rc = co_await effector->getNumericEffecterValue();
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
@@ -272,12 +248,13 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                 co_return PLDM_ERROR;
             }
 
-            // Get state effector if effecter is updatePending
-            if (effector->isUpdatePending())
+            // Get state effector if it haven't been synced or it is
+            // updatePending
+            if (effector->needUpdate || effector->isUpdatePending())
             {
-                co_await effector->getStateEffecterStates();
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                rc = co_await effector->getStateEffecterStates();
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
@@ -295,14 +272,19 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             // Get State sensor if we haven't sync.
             if (sensor->needUpdate)
             {
-                co_await getStateSensorReadings(sensor);
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                rc = co_await getStateSensorReadings(sensor);
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
                 sensor->needUpdate = false;
             }
+        }
+
+        if(terminus->initSensorList)
+        {
+            initSensorList(tid);
         }
 
         // poll priority Sensors
@@ -323,9 +305,9 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             sensor->elapsedTime += (pollingTimeInUsec + elapsed);
             if (sensor->elapsedTime >= sensor->updateTime)
             {
-                co_await getSensorReading(sensor);
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                rc = co_await getSensorReading(sensor);
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
@@ -398,10 +380,10 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
-                co_await getSensorReading(
+                rc = co_await getSensorReading(
                     std::get<std::shared_ptr<NumericSensor>>(sensor));
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
@@ -409,10 +391,10 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             else if (std::holds_alternative<std::shared_ptr<StateSensor>>(
                          sensor))
             {
-                co_await getStateSensorReadings(
+                rc = co_await getStateSensorReadings(
                     std::get<std::shared_ptr<StateSensor>>(sensor));
-                if (terminus->sensorPollTimer &&
-                    !terminus->sensorPollTimer->isRunning())
+                if (rc || (terminus->sensorPollTimer &&
+                           !terminus->sensorPollTimer->isRunning()))
                 {
                     co_return PLDM_ERROR;
                 }
@@ -710,5 +692,47 @@ requester::Coroutine
 
     co_return completionCode;
 }
+
+void SensorManager::initSensorList(tid_t tid)
+{
+   if (termini.find(tid) == termini.end())
+    {
+        return;
+    }
+
+    auto terminus = termini[tid];
+    // clear and initialize prioritySensors and roundRobinSensors list
+    terminus->prioritySensors.clear();
+    std::queue<std::variant<std::shared_ptr<NumericSensor>,
+                            std::shared_ptr<StateSensor>>>
+        empty;
+    std::swap(terminus->roundRobinSensors, empty);
+
+    // numeric sensor
+    for (auto& sensor : terminus->numericSensors)
+    {
+        if (isPriority(sensor))
+        {
+            sensor->isPriority = true;
+            terminus->prioritySensors.emplace_back(sensor);
+        }
+        else
+        {
+            sensor->isPriority = false;
+            terminus->roundRobinSensors.push(sensor);
+        }
+    }
+
+    // state sensor
+    for (auto& sensor : terminus->stateSensors)
+    {
+        if (!sensor->async)
+        {
+            terminus->roundRobinSensors.push(sensor);
+        }
+    }
+    terminus->initSensorList = false;
+}
+
 } // namespace platform_mc
 } // namespace pldm

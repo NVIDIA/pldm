@@ -80,7 +80,7 @@ class MctpDiscovery
      * @brief matcher rule for property changes of
      * xyz.openbmc_project.Object.Enable dbus object
      */
-    std::vector<sdbusplus::bus::match_t> enableMatches;
+    std::map<std::string, sdbusplus::bus::match_t> enableMatches;
 
     /**
      * @brief A callback for propertiesChanges signal enabledMatches matcher

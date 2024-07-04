@@ -272,6 +272,12 @@ class Terminus
      * terminus */
     uint8_t synchronyConfigurationSupported;
 
+    /** @brief This value indicates if the terminus is resumed successfully */
+    bool resumed;
+
+    /** @brief This value indicates if polling sensor list need to be initialized */
+    bool initSensorList;
+
     /** @brief set the terminus to online state */
     void setOnline();
 

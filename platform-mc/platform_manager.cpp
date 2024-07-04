@@ -29,11 +29,6 @@ requester::Coroutine PlatformManager::initTerminus()
 {
     for (auto& [tid, terminus] : termini)
     {
-        if (terminus->initalized)
-        {
-            continue;
-        }
-
         if (terminus->doesSupport(PLDM_PLATFORM))
         {
             uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
@@ -59,43 +54,57 @@ requester::Coroutine PlatformManager::initTerminus()
                 terminus->synchronyConfigurationSupported = 0;
             }
 
-            rc = co_await getPDRs(terminus);
-            if (!rc)
+            if (!terminus->initalized)
             {
-                terminus->parsePDRs();
-                terminus->initalized = true;
-            }
-
-            if (terminus->synchronyConfigurationSupported &
-                (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
-            {
-                rc = co_await setEventReceiver(
-                    tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
-                    terminusManager.getLocalEid());
-                if (rc)
+                rc = co_await getPDRs(terminus);
+                if (!rc)
                 {
-                    auto mctpInfo = terminusManager.toMctpInfo(tid);
-                    if (!mctpInfo)
-                    {
-                        lg2::error(
-                            "Failed to send setEventReceiver to tid:{TID}, rc={RC}. "
-                            "No match for tid:{TID} in mctpInfo.",
-                            "TID", tid, "RC", rc);
-                    }
-                    else
-                    {
-                        auto destEid = std::get<0>(mctpInfo.value());
-                        lg2::error(
-                            "failed to send setEventReceiver to tid:{TID}, rc={RC}, localEid:{EID}, destEid:{DESTEID}",
-                            "TID", tid, "RC", rc, "EID",
-                            terminusManager.getLocalEid(), "DESTEID", destEid);
-                    }
+                    terminus->parsePDRs();
+                    terminus->initalized = true;
                 }
             }
+            co_await initEventReceiver(tid);
         }
-        terminus->initalized = true;
     }
     co_return PLDM_SUCCESS;
+}
+
+requester::Coroutine PlatformManager::initEventReceiver(tid_t tid)
+{
+    if (termini.find(tid) == termini.end())
+    {
+        co_return PLDM_SUCCESS;
+    }
+
+    auto& terminus = termini[tid];
+    uint8_t rc = PLDM_SUCCESS;
+    if (terminus->synchronyConfigurationSupported &
+        (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
+    {
+        rc = co_await setEventReceiver(tid,
+                                       PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
+                                       terminusManager.getLocalEid());
+        if (rc)
+        {
+            auto mctpInfo = terminusManager.toMctpInfo(tid);
+            if (!mctpInfo)
+            {
+                lg2::error(
+                    "Failed to send setEventReceiver to tid:{TID}, rc={RC}. "
+                    "No match for tid:{TID} in mctpInfo.",
+                    "TID", tid, "RC", rc);
+            }
+            else
+            {
+                auto destEid = std::get<0>(mctpInfo.value());
+                lg2::error(
+                    "failed to send setEventReceiver to tid:{TID}, rc={RC}, localEid:{EID}, destEid:{DESTEID}",
+                    "TID", tid, "RC", rc, "EID", terminusManager.getLocalEid(),
+                    "DESTEID", destEid);
+            }
+        }
+    }
+    co_return rc;
 }
 
 requester::Coroutine

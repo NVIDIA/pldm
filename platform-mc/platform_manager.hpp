@@ -56,6 +56,12 @@ class PlatformManager
      */
     requester::Coroutine initTerminus();
 
+    /** @brief Initialize terminus Event Receiver setting
+     *  @param[in] tid - Terminus ID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    requester::Coroutine initEventReceiver(tid_t tid);
+
   private:
     /** @brief Fetch all PDRs from terminus.
      *
