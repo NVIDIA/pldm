@@ -151,6 +151,7 @@ static void parse_version_field(char *str_ver_part, uint8_t *value)
 {
 	if (str_ver_part == NULL || *str_ver_part == '\0') {
 		*value = 0xff;
+		return;
 	}
 
 	char *eptr;
