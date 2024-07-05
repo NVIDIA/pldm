@@ -260,6 +260,10 @@ class Terminus
      * PollForPlatformEvent command */
     bool pollEvent;
 
+    /** @brief The flag indicates that the terminus is ready ( i.e All of it's
+     * round robin sensors were checked at least once ) */
+    bool ready;
+
     /** @brief This value indicates the event messaging styles supported by the
      * terminus */
     uint8_t synchronyConfigurationSupported;

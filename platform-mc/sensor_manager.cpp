@@ -25,6 +25,8 @@ namespace platform_mc
 {
 
 using namespace std::chrono;
+using SensorVariant =
+    std::variant<std::shared_ptr<NumericSensor>, std::shared_ptr<StateSensor>>;
 
 SensorPollingEnableIntf::SensorPollingEnableIntf(SensorManager& parent) :
     EnableIntf(pldm::utils::DBusHandler::getBus(), sensorPollingControlPath),
@@ -106,9 +108,7 @@ void SensorManager::startPolling(tid_t tid)
     auto terminus = termini[tid];
     // clear and initialize prioritySensors and roundRobinSensors list
     terminus->prioritySensors.clear();
-    std::queue<std::variant<std::shared_ptr<NumericSensor>,
-                            std::shared_ptr<StateSensor>>>
-        empty;
+    std::queue<SensorVariant> empty;
     std::swap(terminus->roundRobinSensors, empty);
 
     // numeric sensor
@@ -347,8 +347,16 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
         do
         {
-            if (toBeUpdated == 0)
+            if (!toBeUpdated)
             {
+                if (!terminus->ready)
+                {
+                    // Either we were able to succesfully update all sensors in
+                    // one iteration or there are no sensors in the queue. Mark
+                    // ready in both cases.
+                    terminus->ready = true;
+                    checkAllTerminiReady();
+                }
                 break;
             }
 
@@ -361,6 +369,32 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             terminus->roundRobinSensors.pop();
             terminus->roundRobinSensors.push(sensor);
             toBeUpdated--;
+
+            // ServiceReady Logic:
+            // The round-robin queue is circular hence encountering the first
+            // refreshed sensor marks a "complete iteration" of the queue.
+            std::visit(
+                [&terminus, this](auto&& sensor) {
+                    using T = std::decay_t<decltype(sensor)>;
+                    if constexpr (std::is_same_v<
+                                      T, std::shared_ptr<NumericSensor>> ||
+                                  std::is_same_v<T,
+                                                 std::shared_ptr<StateSensor>>)
+                    {
+                        if (!terminus->ready && sensor->isRefreshed())
+                        {
+                            // The terminus isn't ready but we have found our
+                            // first refreshed sensor. Mark the device ready.
+                            terminus->ready = true;
+                            checkAllTerminiReady();
+                        }
+                    }
+                    else
+                    {
+                        assert(false && "Unhandled sensor type encountered");
+                    }
+                },
+                sensor);
 
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
@@ -383,6 +417,24 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                     co_return PLDM_ERROR;
                 }
             }
+
+            std::visit(
+                [](auto&& sensor) {
+                    using T = std::decay_t<decltype(sensor)>;
+                    if constexpr (std::is_same_v<
+                                      T, std::shared_ptr<NumericSensor>> ||
+                                  std::is_same_v<T,
+                                                 std::shared_ptr<StateSensor>>)
+                    {
+                        sensor->setRefreshed(true);
+                    }
+                    else
+                    {
+                        assert(false && "Unhandled sensor type encountered");
+                    }
+                },
+                sensor);
+
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         } while ((t1 - t0) < pollingTimeInUsec);
 

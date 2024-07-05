@@ -29,7 +29,8 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
-    initalized(false), pollEvent(false), synchronyConfigurationSupported(0),
+    initalized(false),
+    pollEvent(false), ready(false), synchronyConfigurationSupported(0),
     tid(tid), supportedTypes(supportedTypes), uuid(uuid),
     terminusManager(terminusManager)
 

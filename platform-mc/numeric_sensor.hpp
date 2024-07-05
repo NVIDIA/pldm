@@ -292,6 +292,16 @@ class NumericSensor
     /** @brief indicate if sensor is polled in priority */
     bool isPriority;
 
+    void setRefreshed(bool r)
+    {
+        refreshed = r;
+    }
+
+    inline bool isRefreshed()
+    {
+        return refreshed;
+    }
+
     /** @brief  A container to store OemIntf, it allows us to add additional OEM
      * sdbusplus object as extra attribute */
     std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
@@ -342,6 +352,9 @@ class NumericSensor
 
     /** @brief  sensorNameSpace */
     std::string sensorNameSpace;
+
+    /** @brief indicate if sensor is refreshed or not*/
+    bool refreshed = false;
 };
 } // namespace platform_mc
 } // namespace pldm

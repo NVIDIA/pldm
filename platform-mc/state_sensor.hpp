@@ -146,11 +146,22 @@ class StateSensor
 
     StateSets stateSets;
 
+    void setRefreshed(bool r)
+    {
+        refreshed = r;
+    }
+
+    inline bool isRefreshed()
+    {
+        return refreshed;
+    }
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::string associationEntityId;
     std::string path;
+    bool refreshed = false;
 };
 } // namespace platform_mc
 } // namespace pldm

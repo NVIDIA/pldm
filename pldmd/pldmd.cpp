@@ -9,6 +9,7 @@
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
 #include "platform-mc/manager.hpp"
+#include "platform-mc/pldmServiceReadyInterface.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "requester/request.hpp"
@@ -131,6 +132,7 @@ int main(int argc, char** argv)
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
     sdbusplus::server::manager::manager objManager(bus, "/");
+    PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
     sdbusplus::server::manager::manager sensorsObjManager(
         bus, "/xyz/openbmc_project/sensors");
     dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");

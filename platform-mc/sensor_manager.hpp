@@ -27,6 +27,7 @@
 
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
+#include "pldmServiceReadyInterface.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "terminus.hpp"
@@ -119,7 +120,22 @@ class SensorManager
         }
     }
 
-  //protected:
+    void checkAllTerminiReady()
+    {
+        for (auto entry : termini)
+        {
+            auto terminus = entry.second;
+            if (terminus->initalized && !terminus->ready)
+            {
+                return;
+            }
+        }
+        lg2::info(
+            "Every Terminus Checked and Ready. Setting ServiceReady.State to enabled.");
+        PldmServiceReadyIntf::getInstance().setStateEnabled();
+    }
+
+    // protected:
     /** @brief start a coroutine for polling all sensors.
      */
     virtual void doSensorPolling(tid_t tid);
