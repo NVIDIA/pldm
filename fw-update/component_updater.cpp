@@ -655,17 +655,28 @@ void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
     const std::string& compVersion, bitfield16_t compActivationModification)
 {
-    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
-                                         updateSuccessful);
+    if (!updateManager->isStageOnlyUpdate)
+    {
+        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
+                                             componentIndex, updateSuccessful);
+    }
+    else
+    {
+        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
+                                             componentIndex, stageSuccessful);
+    }
     if (updateManager->fwDebug)
     {
         lg2::info("Component apply complete, EID={EID}, "
                   "COMPONENT_VERSION={COMPONENT_VERSION}",
                   "EID", eid, "COMPONENT_VERSION", compVersion);
     }
-    updateManager->createMessageRegistry(
-        eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
-        updateManager->getActivationMethod(compActivationModification));
+    if (!updateManager->isStageOnlyUpdate)
+    {
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
+            updateManager->getActivationMethod(compActivationModification));
+    }
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,
         std::bind(&ComponentUpdater::updateComponentComplete, this,

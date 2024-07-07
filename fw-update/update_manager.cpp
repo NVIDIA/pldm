@@ -76,6 +76,7 @@ UpdateManager::UpdateManager(
     }
     progressTimer = nullptr;
     forceUpdate = false;
+    isStageOnlyUpdate = false;
 }
 
 UpdateManager::~UpdateManager() = default;
@@ -229,6 +230,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         activationProgress->progress(0);
         targets = updatePolicyStaged->targets();
         forceUpdate = updatePolicyStaged->forceUpdate();
+        isStageOnlyUpdate = false;
     }
     else
     {
@@ -236,7 +238,20 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         objPath = swRootPath + std::to_string(versionHash);
         targets = updatePolicy->targets();
         forceUpdate = updatePolicy->forceUpdate();
+        if (updatePolicy->updateOption() ==
+            software::UpdatePolicy::UpdateOptionSupport::StageOnly)
+        {
+            isStageOnlyUpdate = true;
+        }
+
+        else
+        {
+            isStageOnlyUpdate = false;
+        }
     }
+    lg2::info(
+        "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
+        "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
     fwPackageFilePath = packageFilePath;
 
     // create the device updater
@@ -391,10 +406,19 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
 
     // get non-pldm components, add to total component count
-    size_t otherDevicesImageCount =
-        otherDeviceUpdateManager->extractOtherDevicePkgs(
-            parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
-            package);
+    size_t otherDevicesImageCount = 0;
+    if (!isStageOnlyUpdate)
+    {
+        otherDevicesImageCount =
+            otherDeviceUpdateManager->extractOtherDevicePkgs(
+                parser->getFwDeviceIDRecords(),
+                parser->getComponentImageInfos(), package);
+    }
+    else
+    {
+        lg2::info(
+            "Non-PLDM device updates are skipped as they do not support firmware staging.");
+    }
     totalNumComponentUpdates += otherDevicesImageCount;
 
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)

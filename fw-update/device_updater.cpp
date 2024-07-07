@@ -607,11 +607,30 @@ requester::Coroutine DeviceUpdater::updateComponentCompletion(
             // Activate firmware if atleast one component update is success.
             if (compUpdater.second.second == true)
             {
-                auto rc = co_await sendActivateFirmwareRequest();
-                if (rc)
+                if (updateManager->isStageOnlyUpdate)
                 {
-                    lg2::error("Error while sending ActivateFirmware.");
-                    co_return PLDM_ERROR;
+                    updateModeIdleTimer = std::make_unique<
+                        sdbusplus::Timer>([this]() {
+                        lg2::info(
+                            "Firmware images are successfully staged, EID={EID}",
+                            "EID", eid);
+                        updateManager->updateDeviceCompletion(eid, true,
+                                                              successCompNames);
+                        deviceUpdaterState.nextState(deviceUpdaterState.current,
+                                                     componentIndex,
+                                                     numComponents);
+                    });
+                    updateModeIdleTimer->start(
+                        std::chrono::seconds(UPDATE_MODE_IDLE_TIMEOUT), false);
+                }
+                else
+                {
+                    auto rc = co_await sendActivateFirmwareRequest();
+                    if (rc)
+                    {
+                        lg2::error("Error while sending ActivateFirmware.");
+                        co_return PLDM_ERROR;
+                    }
                 }
                 co_return PLDM_SUCCESS;
             }

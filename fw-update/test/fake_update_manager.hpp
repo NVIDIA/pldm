@@ -36,6 +36,7 @@ class FakeUpdateManager
 {
     public:
     bool fwDebug = true;
+    bool isStageOnlyUpdate = false;
 
     software::Activation::Activations activatePackage()
     {

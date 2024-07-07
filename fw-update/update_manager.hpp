@@ -302,6 +302,12 @@ class UpdateManager
      */
     bool forceUpdate;
 
+    /**
+     * @brief Indicates if the update is only for staging the firmware
+     *
+     */
+    bool isStageOnlyUpdate;
+
     bool fwDebug;
     /**
      * @brief start pldm firmware update

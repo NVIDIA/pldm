@@ -343,8 +343,16 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
     {
         if (updateManager->fwDebug)
         {
-            lg2::info(
-                "Activating PLDM firmware update package - BMC reboots are re-enabled.");
+            if (updateManager->isStageOnlyUpdate)
+            {
+                lg2::info(
+                    "PLDM firmware update package is staged - BMC reboots are re-enabled.");
+            }
+            else
+            {
+                lg2::info(
+                    "Activating PLDM firmware update package - BMC reboots are re-enabled.");
+            }
         }
         try
         {

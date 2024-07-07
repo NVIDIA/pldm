@@ -390,6 +390,12 @@ class DeviceUpdater
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
 
+    /**
+     * @brief Timer to handle Update mode idle timeout
+     *
+     */
+    std::unique_ptr<sdbusplus::Timer> updateModeIdleTimer;
+
     /** @brief File stream for firmware update package */
     std::ifstream& package;
 

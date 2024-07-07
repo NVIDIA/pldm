@@ -37,6 +37,7 @@ const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
 const std::string componentUpdateSkipped{"NvidiaUpdate.1.0.ComponentUpdateSkipped"};
+const std::string stageSuccessful{"NvidiaUpdate.1.0.StageSuccessful"};
 
 /**
  * @brief Get the D-Bus service using mapper lookup
@@ -103,7 +104,9 @@ inline void createLogEntry(const std::string& messageID,
     addData["REDFISH_MESSAGE_ID"] = messageID;
     Level level = Level::Informational;
 
-    if (messageID == targetDetermined || messageID == updateSuccessful || messageID == componentUpdateSkipped)
+    if (messageID == targetDetermined || messageID == updateSuccessful ||
+        messageID == componentUpdateSkipped ||
+        messageID == stageSuccessful)
     {
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }
