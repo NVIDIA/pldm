@@ -719,6 +719,48 @@ void NumericSensor::updateThresholds()
             }
         }
     }
+
+    if (thresholdFatalIntf &&
+        !std::isnan(thresholdFatalIntf->hardShutdownHigh()))
+    {
+        auto threshold = thresholdFatalIntf->hardShutdownHigh();
+        auto alarm = thresholdFatalIntf->hardShutdownAlarmHigh();
+        auto newAlarm =
+            checkThreshold(alarm, true, value, threshold, hysteresis);
+        if (alarm != newAlarm)
+        {
+            thresholdFatalIntf->hardShutdownAlarmHigh(newAlarm);
+            if (newAlarm)
+            {
+                thresholdFatalIntf->hardShutdownHighAlarmAsserted(value);
+            }
+            else
+            {
+                thresholdFatalIntf->hardShutdownHighAlarmDeasserted(value);
+            }
+        }
+    }
+
+    if (thresholdFatalIntf &&
+        !std::isnan(thresholdFatalIntf->hardShutdownLow()))
+    {
+        auto threshold = thresholdFatalIntf->hardShutdownLow();
+        auto alarm = thresholdFatalIntf->hardShutdownAlarmLow();
+        auto newAlarm =
+            checkThreshold(alarm, false, value, threshold, hysteresis);
+        if (alarm != newAlarm)
+        {
+            thresholdFatalIntf->hardShutdownAlarmLow(newAlarm);
+            if (newAlarm)
+            {
+                thresholdFatalIntf->hardShutdownLowAlarmAsserted(value);
+            }
+            else
+            {
+                thresholdFatalIntf->hardShutdownLowAlarmDeasserted(value);
+            }
+        }
+    }
 }
 
 void NumericSensor::updateSensorName(std::string name)
@@ -788,6 +830,16 @@ void NumericSensor::updateSensorName(std::string name)
             std::make_unique<ThresholdCriticalIntf>(bus, path.c_str());
         thresholdCriticalIntf->criticalHigh(criticalHigh);
         thresholdCriticalIntf->criticalLow(criticalLow);
+    }
+
+    if (thresholdFatalIntf)
+    {
+        auto fatalHigh = thresholdFatalIntf->hardShutdownHigh();
+        auto fatalLow = thresholdFatalIntf->hardShutdownLow();
+        thresholdFatalIntf =
+            std::make_unique<ThresholdFatalIntf>(bus, path.c_str());
+        thresholdFatalIntf->hardShutdownHigh(fatalHigh);
+        thresholdFatalIntf->hardShutdownLow(fatalLow);
     }
 
     if (inventoryDecoratorAreaIntf)
