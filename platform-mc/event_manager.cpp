@@ -161,14 +161,6 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
             platformEventStatus = PLDM_EVENT_ACCEPTED_FOR_LOGGING;
             ofs.open(fileName);
             ofs.write(reinterpret_cast<const char*>(eventData), eventDataSize);
-            if (formatType == PLDM_FORMAT_TYPE_CPER)
-            {
-                createCperDumpEntry("CPER", fileName);
-            }
-            else
-            {
-                createCperDumpEntry("CPERSection", fileName);
-            }
             ofs.close();
         }
         catch (const std::exception& e)
@@ -177,6 +169,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
                        "FILENAME", fileName, "ERROR", e);
             return PLDM_ERROR;
         }
+
+        notifyCPERLogger(fileName);
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFC)
     {
@@ -199,7 +193,7 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
             return PLDM_ERROR;
         }
 
-	// trigger SMBIOS MDR sync
+        // trigger SMBIOS MDR sync
         if (!mdr::syncSmbiosData())
         {
             lg2::error("Failed to trigger SMBIOS MDR sync");
@@ -362,38 +356,32 @@ requester::Coroutine EventManager::pollForPlatformEventMessage(
     co_return completionCode;
 }
 
-void EventManager::createCperDumpEntry(const std::string& dataType,
-                                       const std::string& dataPath)
+auto asioCallback = [](const boost::system::error_code& ec,
+                       sdbusplus::message::message& msg) {
+    if (ec)
+    {
+        lg2::error("Error notifying CPER Logger, {ERROR}.",
+            "ERROR", msg.get_errno());
+    }
+};
+
+void EventManager::notifyCPERLogger(const std::string& dataPath)
 {
-    auto createDump =
-        [](std::map<std::string, std::variant<std::string, uint64_t>>&
-               addData) {
-            static constexpr auto dumpObjPath =
-                "/xyz/openbmc_project/dump/faultlog";
-            static constexpr auto dumpInterface =
-                "xyz.openbmc_project.Dump.Create";
-            auto& bus = pldm::utils::DBusHandler::getBus();
+    static constexpr auto loggerObj = "/xyz/openbmc_project/cperlogger";
+    static constexpr auto loggerIntf = "xyz.openbmc_project.CPER";
+    auto& conn = pldm::utils::DBusHandler::getAsioConnection();
 
-            try
-            {
-                auto service = pldm::utils::DBusHandler().getService(
-                    dumpObjPath, dumpInterface);
-                auto method = bus.new_method_call(service.c_str(), dumpObjPath,
-                                                  dumpInterface, "CreateDump");
-                method.append(addData);
-                bus.call_noreply(method);
-            }
-            catch (const std::exception& e)
-            {
-                lg2::error("Failed to create D-Bus Dump entry, {ERROR}.",
-                           "ERROR", e);
-            }
-        };
-
-    std::map<std::string, std::variant<std::string, uint64_t>> addData;
-    addData["CPER_TYPE"] = dataType;
-    addData["CPER_PATH"] = dataPath;
-    createDump(addData);
+    try
+    {
+        auto service =
+            pldm::utils::DBusHandler().getService(loggerObj, loggerIntf);
+        conn->async_method_call(asioCallback, service.c_str(), loggerObj,
+                                loggerIntf, "CreateLog", dataPath);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to notify CPER Logger, {ERROR}.", "ERROR", e);
+    }
     return;
 }
 

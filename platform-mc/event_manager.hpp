@@ -126,8 +126,7 @@ class EventManager
         uint8_t& transferFlag, uint8_t& eventClass, uint32_t& eventDataSize,
         std::vector<uint8_t>& eventData, uint32_t& eventDataIntegrityChecksum);
 
-    void createCperDumpEntry(const std::string& dataType,
-                             const std::string& dataPath);
+    void notifyCPERLogger(const std::string& dataPath);
 
     void processDeferredPldmMessagePollEvent(uint8_t tid);
 
