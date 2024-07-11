@@ -176,6 +176,10 @@ class DBusHandlerInterface
     virtual PropertyValue
         getDbusPropertyVariant(const char* objPath, const char* dbusProp,
                                const char* dbusInterface) const = 0;
+
+    virtual bool
+        checkDbusPropertyVariant(const char* objPath, const char* dbusProp,
+                               const char* dbusInterface) const = 0;
 };
 
 /**
@@ -282,6 +286,9 @@ class DBusHandler : public DBusHandlerInterface
      */
     void setDbusProperty(const DBusMapping& dBusMap,
                          const PropertyValue& value) const override;
+
+    bool checkDbusPropertyVariant(const char* objPath, const char* dbusProp,
+                         const char* dbusInterface) const override;
 };
 
 /** @brief Fetch parent D-Bus object based on pathname

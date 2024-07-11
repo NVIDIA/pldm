@@ -173,11 +173,11 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
             {
                 for (const auto& interface : interfaces)
                 {
+                    uint64_t bus = 0;
+                    uint64_t addr = 0;
                     if (interface ==
                         "xyz.openbmc_project.Configuration.I2CDeviceAssociation")
                     {
-                        uint64_t bus = 0;
-                        uint64_t addr = 0;
                         bus = utils::DBusHandler().getDbusProperty<uint64_t>(
                             objectPath.c_str(), "Bus",
                             "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
@@ -199,7 +199,7 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
 
                     if (found)
                     {
-                        getSensorAuxNameFromEM(objPath);
+                        getSensorAuxNameFromEM(bus, addr, objPath);
 #ifdef OEM_NVIDIA
                         getPortInfoFromEM(objPath);
 #endif
@@ -219,7 +219,7 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
     return false;
 }
 
-void Terminus::getSensorAuxNameFromEM(const std::string& objPath)
+void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::string& objPath)
 {
     try
     {
@@ -245,6 +245,31 @@ void Terminus::getSensorAuxNameFromEM(const std::string& objPath)
                     "xyz.openbmc_project.Configuration.SensorAuxName");
             for (auto auxName : auxNames)
             {
+                // Check Bus/Address property if they exist
+                if((utils::DBusHandler().checkDbusPropertyVariant(path.c_str(), "Bus",
+                "xyz.openbmc_project.Configuration.SensorAuxName")) &&
+                (utils::DBusHandler().checkDbusPropertyVariant(path.c_str(), "Address",
+                "xyz.openbmc_project.Configuration.SensorAuxName")))
+                {
+                    auto mctpI2cBus =
+                        utils::DBusHandler().getDbusProperty<uint64_t>(
+                        path.c_str(), "Bus",
+                        "xyz.openbmc_project.Configuration.SensorAuxName");
+                    if (mctpI2cBus != bus)
+                    {
+                        continue;
+                    }
+
+                    auto mctpI2cAddr =
+                        utils::DBusHandler().getDbusProperty<uint64_t>(
+                        path.c_str(), "Address",
+                        "xyz.openbmc_project.Configuration.SensorAuxName");
+                    if (mctpI2cAddr != addr)
+                    {
+                        continue;
+                    }
+                }
+
                 sensorAuxNameOverwriteTbl[sensorId] = {{{"en", auxName}}};
             }
         }

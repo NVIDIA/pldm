@@ -241,7 +241,7 @@ class Terminus
      *
      *  @param[in] objPath - device inventory path
      */
-    void getSensorAuxNameFromEM(const std::string& objPath);
+    void getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::string& objPath);
 
 #ifdef OEM_NVIDIA
      /** @brief get sensor Port information from EM configuration PDI
