@@ -183,6 +183,11 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
 void InventoryManager::initiateGetActiveFirmwareVersion(
     mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
+    if (!mctpEidMap.contains(eid))
+    {
+        return;
+    }
+
     dbus::MctpInterfaces mctpInterfaces;
     auto co =
         getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
