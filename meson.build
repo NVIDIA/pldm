@@ -298,7 +298,8 @@ source_files = [
 
 if get_option('oem-nvidia').enabled()
   source_files += [
-    'oem/nvidia/platform-mc/oem_nvidia.cpp'
+    'oem/nvidia/platform-mc/oem_nvidia.cpp',
+    'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp'
   ]
 endif
 

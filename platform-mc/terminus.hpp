@@ -21,6 +21,7 @@
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #endif
 
 #include "common/types.hpp"
@@ -196,6 +197,8 @@ class Terminus
      */
     std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>
         getSensorPortInfo(SensorID id);
+
+    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor = nullptr;
 #endif
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
@@ -249,6 +252,7 @@ class Terminus
      *  @param[in] objPath - device inventory path
      */
     void getPortInfoFromEM(const std::string& objPath);
+    void getInfoForNVSwitch(const std::string& objPath);
 #endif
 
     /** @brief The flag indicates whether the terminus has been initialized

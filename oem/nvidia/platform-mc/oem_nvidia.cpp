@@ -403,6 +403,13 @@ void nvidiaUpdateAssociations(Terminus& terminus)
                     ptr->setMaxSpeedValue(maxSpeedInGbps);
 
                     ptr->addAssociation(get<3>(*sensorPortInfo));
+
+                    if (terminus.switchBandwidthSensor && !ptr->isDerivedSensorAssociated())
+                    {
+                        ptr->associateDerivedSensor(terminus.switchBandwidthSensor);
+                        terminus.switchBandwidthSensor->updateMaxBandwidth(maxSpeedInGbps);
+                        terminus.switchBandwidthSensor->addAssociatedSensorID(sensor->sensorId);
+                    }
                 }
             }
         }

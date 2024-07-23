@@ -202,6 +202,7 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
                         getSensorAuxNameFromEM(bus, addr, objPath);
 #ifdef OEM_NVIDIA
                         getPortInfoFromEM(objPath);
+                        getInfoForNVSwitch(objPath);
 #endif
                         return true;
                     }
@@ -348,6 +349,75 @@ void Terminus::getPortInfoFromEM(const std::string& objPath)
     catch (const std::exception& e)
     {
         lg2::info("no Configuration.SensorPortInfo Error: {ERROR} path:{PATH}",
+                  "ERROR", e, "PATH", objPath);
+    }
+}
+
+void Terminus::getInfoForNVSwitch(const std::string& objPath)
+{
+    if (switchBandwidthSensor)
+    {
+        return;
+    }
+
+    try
+    {
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            objPath, 0,
+            {"xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch"});
+
+        if (getSubTreeResponse.size() == 0)
+        {
+            return;
+        }
+
+        for (auto& [path, mapperServiceMap] : getSubTreeResponse)
+        {
+            auto name = pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                path.c_str(), "Name",
+                "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+            auto switchType =
+                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                    path.c_str(), "SwitchType",
+                    "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+            auto switchSupportedProtocols =
+                pldm::utils::DBusHandler()
+                    .getDbusProperty<std::vector<std::string>>(
+                        path.c_str(), "SwitchSupportedProtocols",
+                        "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+            auto associationsEM =
+                pldm::utils::DBusHandler()
+                    .getDbusProperty<std::vector<std::string>>(
+                        path.c_str(), "Association",
+                        "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+
+            std::vector<dbus::PathAssociation> associations;
+            if (associationsEM.size() % 3 != 0)
+            {
+                lg2::error(
+                    "Association in switch info must follow (fwd, bck, Path) for {OBJ}",
+                    "OBJ", path);
+                return;
+            }
+
+            for (uint8_t it = 0; it < associationsEM.size(); it += 3)
+            {
+                associations.push_back({});
+                auto& tmp = associations.back();
+
+                tmp.forward = associationsEM[it];
+                tmp.reverse = associationsEM[it + 1];
+                tmp.path = associationsEM[it + 2];
+            }
+
+            switchBandwidthSensor = std::make_shared<oem_nvidia::SwitchBandwidthSensor>(
+                tid, name, switchType, switchSupportedProtocols,
+                associations);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::info("no Configuration.NSM_NVSwitch Error: {ERROR} path:{PATH}",
                   "ERROR", e, "PATH", objPath);
     }
 }

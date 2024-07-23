@@ -20,6 +20,10 @@
 #include "platform-mc/state_set.hpp"
 #include "libpldm/entity.h"
 
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
+#endif
+
 #include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
@@ -93,7 +97,17 @@ class StateSetEthernetPortLinkState : public StateSet
 
         if (linkSpeedSensor)
         {
+#ifdef OEM_NVIDIA
+            auto oldValue = ValuePortInfoIntf->currentSpeed();
+#endif
             ValuePortInfoIntf->currentSpeed(linkSpeedSensor->getReading());
+#ifdef OEM_NVIDIA
+            auto newValue = ValuePortInfoIntf->currentSpeed();
+            if (switchBandwidthSensor && (oldValue != newValue))
+            {
+                switchBandwidthSensor->updateCurrentBandwidth(oldValue, newValue);
+            }
+#endif
         }
     }
 
@@ -171,6 +185,25 @@ class StateSetEthernetPortLinkState : public StateSet
         ValuePortInfoIntf->maxSpeed(value);
     }
 
+#ifdef OEM_NVIDIA
+    void associateDerivedSensor(std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> sensor)
+    {
+        switchBandwidthSensor = sensor;
+    }
+
+    bool isDerivedSensorAssociated()
+    {
+        if(switchBandwidthSensor)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+#endif
+
     void addAssociation(const std::vector<dbus::PathAssociation>& associations)
     {
         std::vector<std::tuple<std::string, std::string, std::string>>
@@ -231,6 +264,9 @@ class StateSetEthernetPortLinkState : public StateSet
         nullptr;
     uint8_t compId = 0;
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
+#ifdef OEM_NVIDIA
+    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor = nullptr;
+#endif
     std::filesystem::path objectPath;
     uint8_t presentState;
 };

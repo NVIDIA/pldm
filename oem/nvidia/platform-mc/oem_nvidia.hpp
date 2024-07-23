@@ -19,6 +19,7 @@
 #include "common/types.hpp"
 #include "platform-mc/oem_base.hpp"
 #include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
