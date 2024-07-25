@@ -154,9 +154,7 @@ class Handler
                             "Failed to stop the instance ID expiry timer. RC={RC}",
                             "RC", rc);
                     }
-                    // Call response handler with an empty response to indicate
-                    // no response
-                    responseHandler(key.eid, nullptr, 0);
+
                     this->removeRequestContainer.emplace(
                         key, std::make_unique<sdeventplus::source::Defer>(
                                  event, std::bind(&Handler::removeRequestEntry,
@@ -264,9 +262,12 @@ class Handler
                 // Call responseHandler after erase it from the handlers to
                 // avoid starting it again in runRegisteredRequest()
                 auto unique_handler = std::move(responseHandler);
-                requester.markFree(eid, instanceId);
                 handlers[eid].pop();
                 unique_handler(eid, response, respMsgLen);
+
+                // Free InstanceId after calling handler so two consequent
+                // requests do not have same Instance Id
+                requester.markFree(eid, instanceId);
                 responseHandled = true;
             }
         }
@@ -323,14 +324,19 @@ class Handler
         if (removeRequestContainer.contains(key))
         {
             removeRequestContainer[key].reset();
-            requester.markFree(key.eid, key.instanceId);
             if (!handlers[key.eid].empty())
             {
                 auto& [request, responseHandler, timerInstance, requestKey] =
                     handlers[key.eid].front();
                 if (key == requestKey)
                 {
+                    auto unique_handler = std::move(responseHandler);
                     handlers[key.eid].pop();
+
+                    // Call response handler with an empty response to indicate
+                    // no response only if request is removed from the queue
+                    unique_handler(key.eid, nullptr, 0);
+                    requester.markFree(key.eid, key.instanceId);
                 }
             }
             removeRequestContainer.erase(key);
