@@ -20,9 +20,8 @@
 #include "platform.h"
 
 #include "fw-update/manager.hpp"
-#include "terminus_manager.hpp"
-
 #include "smbios_mdr.hpp"
+#include "terminus_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
@@ -178,11 +177,13 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         uint16_t smbiosEventDataLength;
         uint8_t* smbiosEventData;
         auto rc = decode_pldm_smbios_event_data(
-            eventData, eventDataSize, &formatVersion, &smbiosEventDataLength, &smbiosEventData);
+            eventData, eventDataSize, &formatVersion, &smbiosEventDataLength,
+            &smbiosEventData);
 
         if (rc)
         {
-            lg2::error("Failed to decode SMBIOS Type 4 event data, rc={RC}", "RC", rc);
+            lg2::error("Failed to decode SMBIOS Type 4 event data, rc={RC}",
+                       "RC", rc);
             return rc;
         }
 
@@ -360,8 +361,8 @@ auto asioCallback = [](const boost::system::error_code& ec,
                        sdbusplus::message::message& msg) {
     if (ec)
     {
-        lg2::error("Error notifying CPER Logger, {ERROR}.",
-            "ERROR", msg.get_errno());
+        lg2::error("Error notifying CPER Logger, {ERROR}.", "ERROR",
+                   msg.get_errno());
     }
 };
 
