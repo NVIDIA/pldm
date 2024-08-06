@@ -866,6 +866,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
                    "ComponentIndex={COMPONENTINDEX}, RC={RC}",
                    "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
         co_return PLDM_ERROR;
     }
 
@@ -882,6 +883,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
                    " EID={EID}, ComponentIndex={COMPONENTINDEX}",
                    "EID", eid, "COMPONENTINDEX", componentIndex);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
         co_return rc;
     }
     rc = processCancelUpdateComponentResponse(eid, response, respMsgLen);
