@@ -32,6 +32,7 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 constexpr bool Tx = true;
 constexpr bool Rx = false;
+constexpr double BPS_TO_GBPS = 1.0e-9; // Conversion factor: 1 Gbps = 1e9 bps
 
 /** @struct CustomFD
  *

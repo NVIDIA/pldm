@@ -100,12 +100,17 @@ class StateSetEthernetPortLinkState : public StateSet
 #ifdef OEM_NVIDIA
             auto oldValue = ValuePortInfoIntf->currentSpeed();
 #endif
-            ValuePortInfoIntf->currentSpeed(linkSpeedSensor->getReading());
+            // after unitmodifier the numeric sensor is in bps (bits per sec)
+            // convert bps to Gbps
+            auto sensorSpeedGbps =
+                linkSpeedSensor->getReading() * pldm::utils::BPS_TO_GBPS;
+            ValuePortInfoIntf->currentSpeed(sensorSpeedGbps);
 #ifdef OEM_NVIDIA
             auto newValue = ValuePortInfoIntf->currentSpeed();
             if (switchBandwidthSensor && (oldValue != newValue))
             {
-                switchBandwidthSensor->updateCurrentBandwidth(oldValue, newValue);
+                switchBandwidthSensor->updateCurrentBandwidth(oldValue,
+                                                              newValue);
             }
 #endif
         }
