@@ -20,6 +20,10 @@
 
 #include <com/nvidia/MemorySpareChannel/server.hpp>
 
+#ifdef OEM_NVIDIA
+#include <tal.hpp>
+#endif
+
 namespace pldm
 {
 namespace platform_mc
@@ -32,13 +36,13 @@ class StateSetMemorySpareChannel : public StateSet
 {
   private:
     uint8_t compId = 0;
+    std::string objPath;
 
   public:
     StateSetMemorySpareChannel(uint16_t stateSetId, uint8_t compId,
                                std::string& objectPath,
                                dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId), objPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -55,6 +59,39 @@ class StateSetMemorySpareChannel : public StateSet
 
     ~StateSetMemorySpareChannel() = default;
 
+#ifdef OEM_NVIDIA
+    void updateShmemReading(const std::string& propName)
+    {
+        std::string propertyName = propName;
+        std::string ifaceName = ValueIntf->interface;
+        uint16_t retCode = 0;
+        std::vector<uint8_t> rawPropValue = {};
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+
+        DbusVariantType propValue{ValueIntf->memorySpareChannelPresence()};
+
+        std::string endpoint{};
+        auto definitions = associationDefinitionsIntf->associations();
+        for (const auto& assoc : definitions)
+        {
+            std::string forward{std::get<0>(assoc)};
+            std::string reverse{std::get<1>(assoc)};
+            if (forward == "chassis" && reverse == "all_states")
+            {
+                endpoint = std::get<2>(assoc);
+                if (endpoint.size() > 0)
+                {
+                    tal::TelemetryAggregator::updateTelemetry(
+                        objPath, ifaceName, propertyName, rawPropValue,
+                        steadyTimeStamp, retCode, propValue, endpoint);
+                }
+            }
+        }
+    }
+#endif
     void setValue(uint8_t value) override
     {
         switch (value)
@@ -67,6 +104,9 @@ class StateSetMemorySpareChannel : public StateSet
                 ValueIntf->memorySpareChannelPresence(false);
                 break;
         }
+#ifdef OEM_NVIDIA
+        updateShmemReading("MemorySpareChannelPresence");
+#endif
     }
 
     void setDefaultValue() override

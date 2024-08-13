@@ -32,6 +32,10 @@
 
 #include <filesystem>
 
+#ifdef OEM_NVIDIA
+#include <tal.hpp>
+#endif
+
 namespace pldm
 {
 namespace platform_mc
@@ -70,6 +74,7 @@ class StateSetNvlink : public StateSet
     std::unique_ptr<AssociationDefinitionsInft>
         endpointAssociationDefinitionsIntf = nullptr;
     std::unique_ptr<InstanceIntf> endpointInstanceIntf = nullptr;
+    std::string objPath;
 
     // C2CLink fabric prefix
     const std::string fabricsObjectPath =
@@ -83,7 +88,7 @@ class StateSetNvlink : public StateSet
   public:
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
                    dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId)
+        StateSet(stateSetId), objPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -102,6 +107,40 @@ class StateSetNvlink : public StateSet
 
     ~StateSetNvlink() = default;
 
+#ifdef OEM_NVIDIA
+    void updateShmemReading(const std::string& propName)
+    {
+        std::string propertyName = propName;
+        std::string ifaceName = ValuePortStateIntf->interface;
+        uint16_t retCode = 0;
+        std::vector<uint8_t> rawPropValue = {};
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+
+        DbusVariantType propValue{PortStateIntf::convertLinkStatesToString(
+            ValuePortStateIntf->linkState())};
+
+        std::string endpoint{};
+        auto definitions = associationDefinitionsIntf->associations();
+        for (const auto& assoc : definitions)
+        {
+            std::string forward{std::get<0>(assoc)};
+            std::string reverse{std::get<1>(assoc)};
+            if (forward == "chassis" && reverse == "all_states")
+            {
+                endpoint = std::get<2>(assoc);
+                if (endpoint.size() > 0)
+                {
+                    tal::TelemetryAggregator::updateTelemetry(
+                        objPath, ifaceName, propertyName, rawPropValue,
+                        steadyTimeStamp, retCode, propValue, endpoint);
+                }
+            }
+        }
+    }
+#endif
     void setValue(uint8_t value) override
     {
         switch (value)
@@ -123,6 +162,9 @@ class StateSetNvlink : public StateSet
                 ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
                 break;
         }
+#ifdef OEM_NVIDIA
+        updateShmemReading("LinkState");
+#endif
     }
 
     void setDefaultValue() override
@@ -164,7 +206,8 @@ class StateSetNvlink : public StateSet
         return std::string("NVLink");
     }
 
-    virtual void setAssociation(std::vector<dbus::PathAssociation> & stateAssociations)
+    virtual void
+        setAssociation(std::vector<dbus::PathAssociation>& stateAssociations)
     {
         if (!associationDefinitionsIntf)
         {
@@ -273,7 +316,9 @@ class StateSetNvlink : public StateSet
                     std::make_unique<AssociationDefinitionsInft>(
                         bus, endpointObjectPath.c_str());
                 endpointAssociationDefinitionsIntf->associations(
-                    {{"entity_link", "", stateAssociation.path.c_str()}});
+                    {{ "entity_link",
+                       "",
+                       stateAssociation.path.c_str() }});
             }
         }
         catch (const std::exception& e)

@@ -33,12 +33,14 @@ using ProcessorPerformanceStates = sdbusplus::xyz::openbmc_project::State::
 
 class StateSetPerformance : public StateSet
 {
+  private:
+    std::string objPath;
+
   public:
     StateSetPerformance(uint16_t stateSetId, uint8_t compId,
                         std::string& objectPath,
                         dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), objPath(objectPath), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -55,6 +57,42 @@ class StateSetPerformance : public StateSet
 
     ~StateSetPerformance() = default;
 
+#ifdef OEM_NVIDIA
+    void updateShmemReading(const std::string& propName)
+    {
+        std::string propertyName = propName;
+        std::string ifaceName = ValueIntf->interface;
+        uint16_t retCode = 0;
+        std::vector<uint8_t> rawPropValue = {};
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+
+        DbusVariantType propValue{
+            ProcessorPerformanceIntf::convertPerformanceStatesToString(
+                ValueIntf->value())};
+
+        std::string endpoint{};
+        auto definitions = associationDefinitionsIntf->associations();
+        for (const auto& assoc : definitions)
+        {
+            std::string forward{std::get<0>(assoc)};
+            std::string reverse{std::get<1>(assoc)};
+            if (forward == "chassis" && reverse == "all_states")
+            {
+                endpoint = std::get<2>(assoc);
+                if (endpoint.size() > 0)
+                {
+                    tal::TelemetryAggregator::updateTelemetry(
+                        objPath, ifaceName, propertyName, rawPropValue,
+                        steadyTimeStamp, retCode, propValue, endpoint);
+                }
+            }
+        }
+    }
+#endif
+
     void setValue(uint8_t value) override
     {
         switch (value)
@@ -69,6 +107,9 @@ class StateSetPerformance : public StateSet
                 ValueIntf->value(ProcessorPerformanceStates::Unknown);
                 break;
         }
+#ifdef OEM_NVIDIA
+        updateShmemReading("Value");
+#endif
     }
 
     void setDefaultValue() override

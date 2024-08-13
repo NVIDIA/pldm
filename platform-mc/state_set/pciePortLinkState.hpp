@@ -46,12 +46,14 @@ using PortLinkStatus =
 
 class StateSetPciePortLinkState : public StateSet
 {
+  private:
+    std::string objPath;
+
   public:
     StateSetPciePortLinkState(uint16_t stateSetId, uint8_t compId,
-                      std::string& objectPath,
-                      dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+                              std::string& objectPath,
+                              dbus::PathAssociation& stateAssociation) :
+        StateSet(stateSetId), objPath(objectPath), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -68,6 +70,41 @@ class StateSetPciePortLinkState : public StateSet
     }
 
     ~StateSetPciePortLinkState() = default;
+
+#ifdef OEM_NVIDIA
+    void updateShmemReading(const std::string& propName)
+    {
+        std::string propertyName = propName;
+        std::string ifaceName = ValuePortStateIntf->interface;
+        uint16_t retCode = 0;
+        std::vector<uint8_t> rawPropValue = {};
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+
+        DbusVariantType propValue{PortStateIntf::convertLinkStatesToString(
+            ValuePortStateIntf->linkState())};
+
+        std::string endpoint{};
+        auto definitions = associationDefinitionsIntf->associations();
+        for (const auto& assoc : definitions)
+        {
+            std::string forward{std::get<0>(assoc)};
+            std::string reverse{std::get<1>(assoc)};
+            if (forward == "chassis" && reverse == "all_states")
+            {
+                endpoint = std::get<2>(assoc);
+                if (endpoint.size() > 0)
+                {
+                    tal::TelemetryAggregator::updateTelemetry(
+                        objPath, ifaceName, propertyName, rawPropValue,
+                        steadyTimeStamp, retCode, propValue, endpoint);
+                }
+            }
+        }
+    }
+#endif
 
     void setValue(uint8_t value) override
     {
@@ -86,6 +123,9 @@ class StateSetPciePortLinkState : public StateSet
                 ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
                 break;
         }
+#ifdef OEM_NVIDIA
+        updateShmemReading("LinkState");
+#endif
     }
 
     void setDefaultValue() override
