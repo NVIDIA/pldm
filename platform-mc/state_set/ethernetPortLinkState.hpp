@@ -28,6 +28,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
+#include <tal.hpp>
 
 #include <regex>
 
@@ -112,6 +113,7 @@ class StateSetEthernetPortLinkState : public StateSet
                 switchBandwidthSensor->updateCurrentBandwidth(oldValue,
                                                               newValue);
             }
+            updateSharedMemory();
 #endif
         }
     }
@@ -122,6 +124,9 @@ class StateSetEthernetPortLinkState : public StateSet
         ValuePortInfoIntf->protocol(PortProtocol::Ethernet);
         ValuePortStateIntf->linkState(PortLinkStates::Unknown);
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
+
+        ValuePortInfoIntf->currentSpeed(0.0);
+        ValuePortInfoIntf->maxSpeed(0.0);
     }
 
     std::tuple<std::string, std::string> getEventData() const override
@@ -207,6 +212,44 @@ class StateSetEthernetPortLinkState : public StateSet
             return false;
         }
     }
+
+    void addSharedMemObjectPath(std::string objPath)
+    {
+        sharedMemObjectPath = objPath;
+    }
+
+    void updateSharedMemory()
+    {
+        // add values in tal
+        uint64_t steadyTimeStamp = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+        uint16_t retCode = 0;
+        std::vector<uint8_t> rawSmbpbiData = {};
+        auto ifaceName = std::string(ValuePortInfoIntf->interface);
+
+        DbusVariantType variantCS{ValuePortInfoIntf->currentSpeed()};
+        std::string propertyName = "CurrentSpeed";
+        tal::TelemetryAggregator::updateTelemetry(
+            sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
+            steadyTimeStamp, retCode, variantCS);
+
+        DbusVariantType variantMS{ValuePortInfoIntf->maxSpeed()};
+        propertyName = "MaxSpeed";
+        tal::TelemetryAggregator::updateTelemetry(
+            sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
+            steadyTimeStamp, retCode, variantMS);
+
+        DbusVariantType variantLS{
+            ValuePortStateIntf->convertLinkStatusTypeToString(
+                ValuePortStateIntf->linkStatus())};
+        ifaceName = std::string(ValuePortStateIntf->interface);
+        propertyName = "LinkStatus";
+        tal::TelemetryAggregator::updateTelemetry(
+            sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
+            steadyTimeStamp, retCode, variantLS);
+    }
 #endif
 
     void addAssociation(const std::vector<dbus::PathAssociation>& associations)
@@ -271,6 +314,7 @@ class StateSetEthernetPortLinkState : public StateSet
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
 #ifdef OEM_NVIDIA
     std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor = nullptr;
+    std::filesystem::path sharedMemObjectPath;
 #endif
     std::filesystem::path objectPath;
     uint8_t presentState;

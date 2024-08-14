@@ -402,7 +402,17 @@ void nvidiaUpdateAssociations(Terminus& terminus)
                         (double)((get<2>(*sensorPortInfo) / 1000.0) * 8);
                     ptr->setMaxSpeedValue(maxSpeedInGbps);
 
-                    ptr->addAssociation(get<3>(*sensorPortInfo));
+                    std::vector<dbus::PathAssociation> associations = get<3>(*sensorPortInfo);
+                    ptr->addAssociation(associations);
+
+                    for (const auto& association : associations)
+                    {
+                        if (association.forward == "associated_port" && association.reverse == "associated_port")
+                        {
+                            ptr->addSharedMemObjectPath(association.path);
+                            break;
+                        }
+                    }
 
                     if (terminus.switchBandwidthSensor && !ptr->isDerivedSensorAssociated())
                     {
