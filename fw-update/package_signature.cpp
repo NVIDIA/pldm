@@ -339,7 +339,7 @@ std::vector<unsigned char>
             chunkNumber++;
             package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
 
-            if ((chunkNumber * buffer.size()) <= lengthOfSignedData)
+            if ((static_cast<uintmax_t>(chunkNumber) * buffer.size()) <= lengthOfSignedData)
             {
                 currentChunkSize = buffer.size();
             }

@@ -327,7 +327,7 @@ class NumericSensor
     void updateThresholds();
 
     /** @brief Amount of hysteresis associated with the sensor thresholds */
-    double hysteresis;
+    double hysteresis{};
 
     /** @brief The resolution of sensor in Units */
     double resolution;

@@ -196,8 +196,7 @@ class GetStatus : public CommandInterface
                 data["AuxStateStatus"] = fdAuxStateStatus.at(auxStateStatus);
             }
             data["ProgressPercent"] = progressPercent;
-            if (reasonCode >= PLDM_FD_STATUS_VENDOR_DEFINED_MIN &&
-                reasonCode <= PLDM_FD_STATUS_VENDOR_DEFINED_MAX)
+            if (reasonCode >= PLDM_FD_STATUS_VENDOR_DEFINED_MIN)
             {
                 data["ReasonCode"] = reasonCode;
             }

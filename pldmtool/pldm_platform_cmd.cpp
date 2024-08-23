@@ -1072,17 +1072,13 @@ class GetPDR : public CommandInterface
     {
         if (data == NULL)
         {
+            std::cerr << "Failed to get the FRU record set PDR" << std::endl;
             return;
         }
 
         data += sizeof(pldm_pdr_hdr);
         pldm_pdr_fru_record_set* pdr =
             reinterpret_cast<pldm_pdr_fru_record_set*>(data);
-        if (!pdr)
-        {
-            std::cerr << "Failed to get the FRU record set PDR" << std::endl;
-            return;
-        }
 
         output["PLDMTerminusHandle"] = unsigned(pdr->terminus_handle);
         output["FRURecordSetIdentifier"] = unsigned(pdr->fru_rsi);

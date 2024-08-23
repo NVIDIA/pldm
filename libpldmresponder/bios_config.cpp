@@ -288,6 +288,10 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                                    const Table& table) -> std::string {
                     auto stringEntry = pldm_bios_table_string_find_by_handle(
                         table.data(), table.size(), handle);
+                    if (stringEntry == nullptr)
+                    {
+                        return {};
+                    }
 
                     auto strLength =
                         pldm_bios_table_string_entry_decode_string_length(
@@ -312,10 +316,15 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                 // get possible_value
                 for (size_t i = 0; i < pvHandls.size(); i++)
                 {
+                    auto currentValue = getValue(pvHandls[i], *stringTable);
+                    if (currentValue.empty())
+                    {
+                        return PLDM_INVALID_BIOS_ATTR_HANDLE;
+                    }
                     options.push_back(
                         std::make_tuple("xyz.openbmc_project.BIOSConfig."
                                         "Manager.BoundType.OneOf",
-                                        getValue(pvHandls[i], *stringTable)));
+                                        currentValue));
                 }
 
                 auto count =

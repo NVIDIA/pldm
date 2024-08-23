@@ -98,8 +98,14 @@ int setStateEffecterStatesHandler(
             uint8_t bitfieldIndex = stateField[currState].effecter_state / 8;
             uint8_t bit =
                 stateField[currState].effecter_state - (8 * bitfieldIndex);
+
+            uint8_t stateValue{0};
+            if (states->possible_states_size > bitfieldIndex)
+            {
+                stateValue = states->states[bitfieldIndex].byte;
+            }
             if (states->possible_states_size < bitfieldIndex ||
-                !(states->states[bitfieldIndex].byte & (1 << bit)))
+                !(stateValue & (1 << bit)))
             {
                 std::cerr << "Invalid state set value, EFFECTER_ID="
                           << effecterId
