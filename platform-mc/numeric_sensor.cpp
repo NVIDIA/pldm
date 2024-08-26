@@ -41,8 +41,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit),
     sensorName(sensorName)
 {
-    SensorUnit sensorUnit = SensorUnit::DegreesC;
-    bool hasValueIntf = true;
+    sensorUnit = SensorUnit::DegreesC;
+    hasValueIntf = true;
     pollingIndicator = POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO;
     switch (baseUnit)
     {
@@ -100,8 +100,8 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     associationDefinitionsIntf->associations(
         {{"chassis", "all_sensors", associationPath.c_str()}});
 
-    double maxValue = std::numeric_limits<double>::quiet_NaN();
-    double minValue = std::numeric_limits<double>::quiet_NaN();
+    maxValue = std::numeric_limits<double>::quiet_NaN();
+    minValue = std::numeric_limits<double>::quiet_NaN();
 
     switch (pdr->sensor_data_size)
     {
@@ -339,8 +339,10 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     if (hasValueIntf)
     {
         valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
-        valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
-        valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+        maxValue = unitModifier(conversionFormula(maxValue));
+        valueIntf->maxValue(maxValue);
+        minValue = unitModifier(conversionFormula(minValue));
+        valueIntf->minValue(minValue);
         valueIntf->unit(sensorUnit);
     }
 
@@ -395,8 +397,8 @@ NumericSensor::NumericSensor(
     inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit),
     pollingIndicator(oemIndicator), sensorName(sensorName)
 {
-    SensorUnit sensorUnit = SensorUnit::DegreesC;
-    bool hasValueIntf = true;
+    sensorUnit = SensorUnit::DegreesC;
+    hasValueIntf = true;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -453,8 +455,8 @@ NumericSensor::NumericSensor(
     associationDefinitionsIntf->associations(
         {{"chassis", "all_sensors", associationPath.c_str()}});
 
-    double maxValue = std::numeric_limits<double>::quiet_NaN();
-    double minValue = std::numeric_limits<double>::quiet_NaN();
+    maxValue = std::numeric_limits<double>::quiet_NaN();
+    minValue = std::numeric_limits<double>::quiet_NaN();
 
     switch (pdr->sensor_data_size)
     {
@@ -512,8 +514,10 @@ NumericSensor::NumericSensor(
     if (hasValueIntf)
     {
         valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
-        valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
-        valueIntf->minValue(unitModifier(conversionFormula(minValue)));
+        maxValue = unitModifier(conversionFormula(maxValue));
+        valueIntf->maxValue(maxValue);
+        minValue = unitModifier(conversionFormula(minValue));
+        valueIntf->minValue(minValue);
         valueIntf->unit(sensorUnit);
     }
 
@@ -777,23 +781,18 @@ void NumericSensor::updateSensorName(std::string name)
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     // update new object path to D-Bus
-    if (associationDefinitionsIntf)
+    if (hasValueIntf)
     {
-        auto associations = associationDefinitionsIntf->associations();
         associationDefinitionsIntf =
             std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-        associationDefinitionsIntf->associations(associations);
     }
 
-    if (valueIntf)
+    if (hasValueIntf)
     {
-        auto maxValue = valueIntf->maxValue();
-        auto minValue = valueIntf->minValue();
-        auto unit = valueIntf->unit();
         valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
         valueIntf->maxValue(maxValue);
         valueIntf->minValue(minValue);
-        valueIntf->unit(unit);
+        valueIntf->unit(sensorUnit);
     }
 
     if (availabilityIntf)
@@ -849,6 +848,12 @@ void NumericSensor::updateSensorName(std::string name)
             std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
         inventoryDecoratorAreaIntf->physicalContext(physicalContext);
     }
+}
+
+void NumericSensor::removeValueIntf()
+{
+    valueIntf = nullptr;
+    associationDefinitionsIntf = nullptr;
 }
 
 } // namespace platform_mc

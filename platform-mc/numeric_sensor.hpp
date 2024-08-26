@@ -292,6 +292,8 @@ class NumericSensor
     /** @brief indicate if sensor is polled in priority */
     bool isPriority;
 
+    void removeValueIntf();
+
     void setRefreshed(bool r)
     {
         refreshed = r;
@@ -355,6 +357,18 @@ class NumericSensor
 
     /** @brief indicate if sensor is refreshed or not*/
     bool refreshed = false;
+
+    /** @brief unit of the sensor reading */
+    SensorUnit sensorUnit;
+
+    /** @brief does sensor have valid value interface */
+    bool hasValueIntf;
+
+    /** @brief sensor upper value range */
+    double maxValue;
+
+    /** @brief sensor lower value range */
+    double minValue;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -35,7 +35,8 @@ class MockTerminusManager : public TerminusManager
                         dbus_api::Requester& requester,
                         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
                         mctp_eid_t localEid, Manager* manager) :
-        TerminusManager(event, handler, requester, termini, localEid, manager)
+        TerminusManager(event, handler, requester, termini, localEid, manager,
+                        true)
     {}
 
     requester::Coroutine SendRecvPldmMsgOverMctp(mctp_eid_t /*eid*/,

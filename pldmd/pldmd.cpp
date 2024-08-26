@@ -88,6 +88,10 @@ void optionUsage(void)
     std::cerr
         << "  --verbose=<0/1>  0 - Disable verbosity, 1 - Enable verbosity\n";
     std::cerr << "  --fw-debug Optional flag to enable firmware update logs\n";
+#ifdef PLDM_TYPE2
+    std::cerr
+        << "  --num-sens-wo-aux-name Optional flag to enable Numeric Sensors without Auxillary Names\n";
+#endif
     std::cerr << "Defaulted settings:  --verbose=0 \n";
 }
 
@@ -96,14 +100,25 @@ int main(int argc, char** argv)
 
     bool verbose = false;
     bool fwDebug = false;
+#ifdef PLDM_TYPE2
+    bool numericSensorsWithoutAuxName = false;
+#endif
     int argflag;
     static struct option long_options[] = {
         {"verbose", required_argument, 0, 'v'},
         {"fw-debug", no_argument, 0, 'd'},
+#ifdef PLDM_TYPE2
+        {"num-sens-wo-aux-name", no_argument, 0, 'u'},
+#endif
         {0, 0, 0, 0}};
 
+#ifdef PLDM_TYPE2
+    while ((argflag = getopt_long(argc, argv, "v:du", long_options, nullptr)) >=
+           0)
+#else
     while ((argflag = getopt_long(argc, argv, "v:d", long_options, nullptr)) >=
            0)
+#endif
     {
         switch (argflag)
         {
@@ -123,6 +138,11 @@ int main(int argc, char** argv)
                 break;
             case 'd':
                 fwDebug = true;
+                break;
+            case 'u':
+#ifdef PLDM_TYPE2
+                numericSensorsWithoutAuxName = true;
+#endif
                 break;
             default:
                 exit(EXIT_FAILURE);
@@ -153,7 +173,8 @@ int main(int argc, char** argv)
 #ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
         std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
-                                               *(fwManager.get()), verbose);
+                                               *(fwManager.get()), verbose,
+                                               numericSensorsWithoutAuxName);
 
     // Initializing telemetry for pldmd
     if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,"pldmd")){

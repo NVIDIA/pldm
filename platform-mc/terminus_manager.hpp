@@ -62,7 +62,8 @@ class TerminusManager
         requester::Handler<requester::Request>& handler,
         dbus_api::Requester& requester,
         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
-        mctp_eid_t localEid, Manager* manager);
+        mctp_eid_t localEid, Manager* manager,
+        bool numericSensorsWithoutAuxName = false);
 
     /** @brief start a coroutine to discover terminus
      *
@@ -120,6 +121,9 @@ class TerminusManager
      *  @return coroutine return_value - PLDM completion code
      */
     requester::Coroutine resumeTid(tid_t tid);
+
+    /** @brief Show Numeric Sensors without Aux Names **/
+    bool numericSensorsWithoutAuxName;
 
   private:
     /** @brief The coroutine task execute by discoverMctpTerminus()

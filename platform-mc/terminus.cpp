@@ -1313,18 +1313,26 @@ void Terminus::updateAssociations()
 
     for (const auto& ptr : numericSensors)
     {
+        auto name = getAuxNameForNumericSensor(ptr->sensorId);
+        if (name)
+        {
+            ptr->updateSensorName(*name);
+        }
+        else
+        {
+            if (!terminusManager.numericSensorsWithoutAuxName)
+            {
+                ptr->removeValueIntf();
+                continue;
+            }
+        }
+
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
         ptr->setInventoryPaths(inventoryPath);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
-
-        auto name = getAuxNameForNumericSensor(ptr->sensorId);
-        if (name)
-        {
-            ptr->updateSensorName(*name);
-        }
     }
 
     for (const auto& ptr : numericEffecters)
