@@ -53,11 +53,6 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
     if (rc)
     {
         lg2::error("Error while sending RequestUpdate.");
-        auto rc = co_await sendCancelUpdateRequest();
-        if (rc)
-        {
-            lg2::error("Error while sending CancelUpdate.");
-        }
         updateManager->updateDeviceCompletion(eid, false);
         co_return PLDM_ERROR;
     }
