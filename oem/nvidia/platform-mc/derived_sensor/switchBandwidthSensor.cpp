@@ -119,6 +119,12 @@ void SwitchBandwidthSensor::updateOnSharedMemory()
     tal::TelemetryAggregator::updateTelemetry(
         path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp,
         retCode, variantCB);
+
+    DbusVariantType variantMB{switchIntf->maxBandwidth()};
+    propertyName = "MaxBandwidth";
+    tal::TelemetryAggregator::updateTelemetry(
+        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp,
+        retCode, variantMB);
 }
 
 } // namespace oem_nvidia
