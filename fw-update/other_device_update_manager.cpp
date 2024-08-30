@@ -465,9 +465,6 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                          "UUID", uuid);
         }
 
-        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID",
-                  uuid, "SKU", sku);
-
         const auto& applicableCompVec =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         if (applicableCompVec.size() == 0)
@@ -480,10 +477,14 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 
         if (directoryName == "")
         {
-            lg2::error("Got empty path from {OBJPATH}", "OBJPATH", objPath);
             continue;
         }
 
+        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID",
+                  uuid, "SKU", sku);
+
+        lg2::info("Got Non PLDM directory path {DIR} from {OBJPATH}",
+                "DIR", directoryName, "OBJPATH", objPath);
 
         if (applicableCompVec.size() == 1)
         {
