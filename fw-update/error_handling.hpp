@@ -53,6 +53,7 @@ ErrorCode constexpr secVersionCheckFailure = 0x93;
 ErrorCode constexpr secKeysReovked = 0x94;
 ErrorCode constexpr skuMismatch = 0x97;
 ErrorCode constexpr applyAuthFailure = 0xB0;
+ErrorCode constexpr stageImageDowngrade = 0x9C;
 #endif
 
 /* request update error mapping */
@@ -129,6 +130,9 @@ static ErrorMapping verifyCompleteMapping{
     {secKeysReovked,
      {"Security keys revoked", "Verify the contents of the FW package"}},
     {skuMismatch, {"SKU mismatch", "Verify the contents of the FW package"}},
+    {stageImageDowngrade,
+     {"Component comparison stamp is lower than that of the staged firmware",
+      "Retry firmware update staging operation with the force flag"}}
 #endif
 };
 
