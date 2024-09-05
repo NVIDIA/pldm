@@ -431,9 +431,11 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         }
         return response;
     }
-    reqFwDataTimer->stop();
-    reqFwDataTimer.reset();
-
+    if (reqFwDataTimer)
+    {
+        reqFwDataTimer->stop();
+        reqFwDataTimer.reset();
+    }
     // create and start UA_T6 timer
     lg2::info("Progress percent is not supported. Starting UA_T6 timer");
     createCompleteCommandsTimeoutTimer();
