@@ -46,6 +46,7 @@ option('nvlink-c2c-fabric-object', type: 'feature', description: 'expose enpoint
 
 option('non-pldm', type: 'feature', description: 'Support for non pldm devices', value: 'enabled')
 option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')
+option('omit-heartbeat', type: 'feature', description: 'Omit heart beat from set event receiver messages other than enable async keep alive', value: 'disabled')
 option('debug-token', type: 'feature', description: 'Enable Debug Token')
 option('fw-update-skip-package-size-check', type: 'feature', description: 'Skip PLDM package size check')
 option('pldm-package-verification-must-be-signed', type: 'feature', description: 'Allow to update only signed PLDM package', value: 'disabled')

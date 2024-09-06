@@ -325,7 +325,16 @@ requester::Coroutine PlatformManager::setEventReceiver(
     tid_t tid, pldm_event_message_global_enable eventMessageGlobalEnable,
     mctp_eid_t eventReceiverEid)
 {
-    Request request(sizeof(pldm_msg_hdr) + PLDM_SET_EVENT_RECEIVER_REQ_BYTES);
+    auto requestSize = sizeof(pldm_msg_hdr) + PLDM_SET_EVENT_RECEIVER_REQ_BYTES;
+#ifdef OMIT_HEARTBEAT
+    if (eventMessageGlobalEnable !=
+        PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE)
+    {
+        requestSize -= PLDM_HEARTBEAT_BYTES;
+    }
+#endif
+    Request request(requestSize);
+
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_event_receiver_req(0, eventMessageGlobalEnable, 0x0,
                                             eventReceiverEid, 0x0, requestMsg);
