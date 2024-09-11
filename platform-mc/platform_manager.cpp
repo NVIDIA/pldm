@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -331,8 +331,9 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                             eventReceiverEid, 0x0, requestMsg);
     if (rc)
     {
-        lg2::error("failed to encode_set_event_receiver_req. tid:{TID}, rc={RC}.",
-                    "TID", tid, "RC", rc);
+        lg2::error(
+            "failed to encode_set_event_receiver_req. tid:{TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
@@ -342,8 +343,8 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                                   &responseLen);
     if (rc)
     {
-        lg2::error("failed to SendRecvPldmMsg to tid:{TID}, rc={RC}.",
-                    "TID", tid, "RC", rc);
+        lg2::error("failed to SendRecvPldmMsg to tid:{TID}, rc={RC}.", "TID",
+                   tid, "RC", rc);
         co_return rc;
     }
 
@@ -352,8 +353,9 @@ requester::Coroutine PlatformManager::setEventReceiver(
                                         &completionCode);
     if (rc)
     {
-        lg2::error("failed to decode_set_event_receiver_resp. tid:{TID}, rc={RC}.",
-                    "TID", tid, "RC", rc);
+        lg2::error(
+            "failed to decode_set_event_receiver_resp. tid:{TID}, rc={RC}.",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
     co_return completionCode;

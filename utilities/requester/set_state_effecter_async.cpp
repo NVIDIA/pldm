@@ -34,8 +34,8 @@ int main(int argc, char** argv)
             requestMsg{};
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
         set_effecter_state_field stateField{PLDM_REQUEST_SET, state};
-        auto rc = encode_set_state_effecter_states_req(0, effecterId, effecterCount,
-                                                    &stateField, request);
+        auto rc = encode_set_state_effecter_states_req(
+            0, effecterId, effecterCount, &stateField, request);
         if (rc != PLDM_SUCCESS)
         {
             std::ostringstream tempStream;
@@ -50,7 +50,7 @@ int main(int argc, char** argv)
         if (-1 == fd)
         {
             std::cerr << "Failed to init mctp"
-                    << "\n";
+                      << "\n";
             return -1;
         }
 
@@ -64,16 +64,17 @@ int main(int argc, char** argv)
 
             uint8_t* responseMsg = nullptr;
             size_t responseMsgSize{};
-            auto rc = pldm_recv(mctpEid, fd, request->hdr.instance_id, &responseMsg,
-                                &responseMsgSize);
+            auto rc = pldm_recv(mctpEid, fd, request->hdr.instance_id,
+                                &responseMsg, &responseMsgSize);
             if (!rc)
             {
-                // We've got the response meant for the PLDM request msg that was
-                // sent out
+                // We've got the response meant for the PLDM request msg that
+                // was sent out
                 io.set_enabled(Enabled::Off);
                 pldm_msg* response = reinterpret_cast<pldm_msg*>(responseMsg);
                 std::ostringstream tempStream;
-                tempStream << std::setfill('0') << std::setw(2) << std::hex << rc;
+                tempStream << std::setfill('0') << std::setw(2) << std::hex
+                           << rc;
                 std::cout << "Done. PLDM RC = " << tempStream.str()
                           << static_cast<uint16_t>(response->payload[0])
                           << std::endl;
@@ -88,7 +89,7 @@ int main(int argc, char** argv)
         if (0 > rc)
         {
             std::cerr << "Failed to send message/receive response. RC = " << rc
-                    << ", errno = " << errno << "\n";
+                      << ", errno = " << errno << "\n";
             return -1;
         }
 

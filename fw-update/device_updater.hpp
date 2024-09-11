@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -304,8 +304,9 @@ class DeviceUpdater
      * @param[in] compIndex - component index
      * @param[in] compStatus - component status
      */
-    requester::Coroutine updateComponentCompletion(const size_t compIndex,
-                                                   const ComponentUpdateStatus compStatus);
+    requester::Coroutine
+        updateComponentCompletion(const size_t compIndex,
+                                  const ComponentUpdateStatus compStatus);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device

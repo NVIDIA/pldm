@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,7 +105,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos, dbus::MctpInterfaces& mctpInterfaces)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos,
+                             dbus::MctpInterfaces& mctpInterfaces)
     {
         std::vector<mctp_eid_t> eids;
         for (auto& mctpInfo : mctpInfos)
@@ -114,10 +115,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
-        for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
+             mctpInfos)
         {
             ComponentIdNameMap componentIdNameMap;
-            if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid], componentIdNameMap))
+            if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                         componentIdNameMap))
             {
                 componentNameMap[eid] = componentIdNameMap;
             }
@@ -130,7 +133,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
      */
-    void createInventory(EID eid, UUID uuid, dbus::MctpInterfaces& mctpInterfaces)
+    void createInventory(EID eid, UUID uuid,
+                         dbus::MctpInterfaces& mctpInterfaces)
     {
         deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
@@ -182,14 +186,16 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return updateManager.handleRequest(eid, command, request, reqMsgLen);
     }
 
-    void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid, [[maybe_unused]] const EID& eid) override
+    void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
+                            [[maybe_unused]] const EID& eid) override
     {
-        this->updateFWInventory(eid);  
+        this->updateFWInventory(eid);
     }
 
-    void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid, [[maybe_unused]] const EID& eid) override
+    void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
+                             [[maybe_unused]] const EID& eid) override
     {
-        //placeholder
+        // placeholder
     }
 
   private:

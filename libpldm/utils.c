@@ -1,9 +1,9 @@
 #include "utils.h"
 #include "base.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 /** CRC32 code derived from work by Gary S. Brown.
  *  http://web.mit.edu/freebsd/head/sys/libkern/crc32.c
@@ -247,7 +247,8 @@ uint32_t bcd2dec32(uint32_t bcd)
 
 uint32_t dec2bcd32(uint32_t dec)
 {
-	return dec2bcd16(dec % 10000) | ((uint32_t)(dec2bcd16(dec / 10000)) << 16);
+	return dec2bcd16(dec % 10000) |
+	       ((uint32_t)(dec2bcd16(dec / 10000)) << 16);
 }
 
 bool is_time_legal(uint8_t seconds, uint8_t minutes, uint8_t hours, uint8_t day,

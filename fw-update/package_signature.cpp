@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -339,7 +339,8 @@ std::vector<unsigned char>
             chunkNumber++;
             package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
 
-            if ((static_cast<uintmax_t>(chunkNumber) * buffer.size()) <= lengthOfSignedData)
+            if ((static_cast<uintmax_t>(chunkNumber) * buffer.size()) <=
+                lengthOfSignedData)
             {
                 currentChunkSize = buffer.size();
             }

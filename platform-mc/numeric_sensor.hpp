@@ -29,8 +29,8 @@
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Critical/server.hpp>
-#include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/HardShutdown/server.hpp>
+#include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
 #include <xyz/openbmc_project/Sensor/Value/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/Availability/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>

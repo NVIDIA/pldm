@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,8 @@ class MockEventManager : public EventManager
 {
   public:
     MockEventManager(TerminusManager& terminusManager,
-                     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini, pldm::fw_update::Manager& fwUpdateManager) :
+                     std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
+                     pldm::fw_update::Manager& fwUpdateManager) :
         EventManager(terminusManager, termini, fwUpdateManager){};
 
     MOCK_METHOD(void, createSensorThresholdLogEntry,

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ class TestNumericEffecter : public ::testing::Test
         terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
                         nullptr)
     {}
-
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
@@ -132,7 +131,7 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
     std::string inventoryPath{
         "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
     NumericEffecter sensor(0x01, true, numericEffecterPdr, sensorName,
-                          inventoryPath, terminusManager);
+                           inventoryPath, terminusManager);
 
     std::vector<std::string> paths{
         "/xyz/openbmc_project/inventory/system/board/cpu0"};
@@ -158,7 +157,7 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
     {
         auto& [forward, reverse, objectPath] = assoc;
         EXPECT_EQ("power_controls", reverse);
-        for (auto& p: paths)
+        for (auto& p : paths)
         {
             if (p == objectPath)
             {

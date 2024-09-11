@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -154,7 +154,8 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp1.data());
     dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg1, respPayloadLength1, messageError, resolution, mctpInterfaces);
+        1, responseMsg1, respPayloadLength1, messageError, resolution,
+        mctpInterfaces);
 
     ComponentInfoMap componentInfoMap1{
         {1,
@@ -185,7 +186,8 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     auto responseMsg2 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp2.data());
     inventoryManager.parseGetFWParametersResponse(
-        2, responseMsg2, respPayloadLength2, messageError, resolution, mctpInterfaces);
+        2, responseMsg2, respPayloadLength2, messageError, resolution,
+        mctpInterfaces);
 
     ComponentInfoMap componentInfoMap2{
         {1,
@@ -209,7 +211,8 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponseErrorCC)
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
     dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg, respPayloadLength, messageError, resolution, mctpInterfaces);
+        1, responseMsg, respPayloadLength, messageError, resolution,
+        mctpInterfaces);
     EXPECT_EQ(outComponentInfoMap.size(), 0);
 }
 
@@ -227,8 +230,8 @@ TEST_F(InventoryManagerTest, MultipleIdSameTypeIdentifiers)
             0x53, 0x4B, 0x55, 0x01, 0x03};
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp1.data());
-    inventoryManager.parseQueryDeviceIdentifiersResponse(1, responseMsg1,
-                                            respPayloadLength1, messageError, resolution);
+    inventoryManager.parseQueryDeviceIdentifiersResponse(
+        1, responseMsg1, respPayloadLength1, messageError, resolution);
 
     DescriptorMap descriptorMap1{
         {0x01,
@@ -261,8 +264,8 @@ TEST_F(InventoryManagerTest, MultipleIdSameTypeInvalidIdentifiers)
             0x70, 0x65, 0x6e, 0x42, 0x4d, 0x43, 0x01, 0x02};
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp1.data());
-    inventoryManager.parseQueryDeviceIdentifiersResponse(1, responseMsg1,
-                                            respPayloadLength1, messageError, resolution);
+    inventoryManager.parseQueryDeviceIdentifiersResponse(
+        1, responseMsg1, respPayloadLength1, messageError, resolution);
 
     DescriptorMap descriptorMap1{
         {0x01,
@@ -288,8 +291,8 @@ TEST_F(InventoryManagerTest, MultipleIdSameTypeInvalidIdentifiers)
             0x43, 0x98, 0x00, 0xA0, 0x2F, 0x59, 0x9A, 0xCA, 0x02};
     auto responseMsg2 =
         reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp2.data());
-    inventoryManager.parseQueryDeviceIdentifiersResponse(2, responseMsg2,
-                                            respPayloadLength2, messageError, resolution);
+    inventoryManager.parseQueryDeviceIdentifiersResponse(
+        2, responseMsg2, respPayloadLength2, messageError, resolution);
     DescriptorMap descriptorMap2{
         {0x01,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,

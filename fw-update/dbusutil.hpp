@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,8 @@ const std::string activateFailed{"Update.1.0.ActivateFailed"};
 const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
-const std::string componentUpdateSkipped{"NvidiaUpdate.1.0.ComponentUpdateSkipped"};
+const std::string componentUpdateSkipped{
+    "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 const std::string stageSuccessful{"NvidiaUpdate.1.0.StageSuccessful"};
 
 /**
@@ -105,8 +106,7 @@ inline void createLogEntry(const std::string& messageID,
     Level level = Level::Informational;
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
-        messageID == componentUpdateSkipped ||
-        messageID == stageSuccessful)
+        messageID == componentUpdateSkipped || messageID == stageSuccessful)
     {
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }

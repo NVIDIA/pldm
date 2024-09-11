@@ -43,9 +43,10 @@ const uint16_t deadComponent = 0xDEAD;
  *
  * @brief Enumeration to represent the state of the last known image transfer
  *
- * @var FAILED indicates that the transfer of the package failed either due to a truncated component
- *              or due to one of the component transfer image being skipped or failing
- * @var SKIPPED indicates that the transfer of the package was skipped when the 
+ * @var FAILED indicates that the transfer of the package failed either due to a
+ * truncated component or due to one of the component transfer image being
+ * skipped or failing
+ * @var SKIPPED indicates that the transfer of the package was skipped when the
  *              component is labelled as a deadcomponent
  * @var SUCCESS indicates the successful transfer of a package
  *
@@ -219,13 +220,14 @@ class OtherDeviceUpdateManager
      * @brief Get file path based on UUID and optionally APSKU
      *
      * @param UUID UUID to find file path for
-     * @param sku Optional descriptor to match descriptor published by ItemUpdater
-     *            Skips validation if an empty string is passed
+     * @param sku Optional descriptor to match descriptor published by
+     * ItemUpdater Skips validation if an empty string is passed
      *
      * @return pair with filepath and object path, returns {} on no match
      */
-    std::pair<std::string, std::string> getFilePath(const std::string& uuid,
-            const std::string& sku) const noexcept;
+    std::pair<std::string, std::string>
+        getFilePath(const std::string& uuid,
+                    const std::string& sku) const noexcept;
 
     /**
      * @brief Get the Valid Paths that may contain UUIDs
@@ -251,7 +253,8 @@ class OtherDeviceUpdateManager
      *
      */
     bool validateDescriptor(const std::string& objPath, std::string descriptor,
-         const char* descriptorName, const char* dbusInterface) const noexcept;
+                            const char* descriptorName,
+                            const char* dbusInterface) const noexcept;
 
     /**
      * @brief Fetches UUID and SKU from the package
@@ -268,8 +271,10 @@ class OtherDeviceUpdateManager
      * @param componentImageInfo - Image info of the component to transfer
      * @param package - input stream of the package
      */
-    TransferPackageState txComponentImage(const std::string& filePath, const ComponentImageInfo& componentImageInfo,
-        std::istream& package);
+    TransferPackageState
+        txComponentImage(const std::string& filePath,
+                         const ComponentImageInfo& componentImageInfo,
+                         std::istream& package);
 
     /**
      * @brief Handles the transfers of a single component
@@ -280,21 +285,30 @@ class OtherDeviceUpdateManager
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
-    TransferPackageState txSingleComponent(const std::string& dirPath, const ComponentImageInfo& componentImageInfo,
-        std::istream& package, const std::string& objPath, const UUID& uuid);
+    TransferPackageState
+        txSingleComponent(const std::string& dirPath,
+                          const ComponentImageInfo& componentImageInfo,
+                          std::istream& package, const std::string& objPath,
+                          const UUID& uuid);
 
     /**
      * @brief Handles the transfers of multiple components
      *
-     * @param dirPath - Path to the directory destination of the component images
+     * @param dirPath - Path to the directory destination of the component
+     * images
      * @param applicableCompVec - Vector of components to transfer
-     * @param componentImageInfos - Vector of Image info of the components to transfer
+     * @param componentImageInfos - Vector of Image info of the components to
+     * transfer
      * @param package - input stream of the package
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
-    TransferPackageState txMultipleComponents(const std::string& dirPath, const ApplicableComponents& applicableCompVec,
-        const ComponentImageInfos& componentImageInfos, std::istream& package, const std::string& objPath, const UUID& uuid);
+    TransferPackageState
+        txMultipleComponents(const std::string& dirPath,
+                             const ApplicableComponents& applicableCompVec,
+                             const ComponentImageInfos& componentImageInfos,
+                             std::istream& package, const std::string& objPath,
+                             const UUID& uuid);
 
     UpdateManager* updateManager;
 

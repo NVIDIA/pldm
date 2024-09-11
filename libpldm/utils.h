@@ -45,7 +45,8 @@ uint32_t crc32(const void *data, size_t size);
 int ver2str(const ver32_t *version, char *buffer, size_t buffer_size);
 
 /** @brief Convert string to ver32_t
- *  @param[in] version_str - The null-terminated string representing the version.
+ *  @param[in] version_str - The null-terminated string representing the
+ * version.
  *  @param[out] version - Pointer to ver32_t
  *  @return The number of characters(excluding the null byte) or negative if
  * error is encountered

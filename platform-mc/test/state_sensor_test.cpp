@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,11 +36,13 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
     std::string uuid1("00000000-0000-0000-0000-000000000001");
     sdbusplus::bus::bus& bus(pldm::utils::DBusHandler::getBus());
     sdeventplus::Event event(sdeventplus::Event::get_default());
-    dbus_api::Requester dbusImplRequester(bus,  "/xyz/openbmc_project/pldm");
+    dbus_api::Requester dbusImplRequester(bus, "/xyz/openbmc_project/pldm");
     mctp_socket::Manager sockManager;
-    requester::Handler<requester::Request> reqHandler(event, dbusImplRequester, sockManager, false);
+    requester::Handler<requester::Request> reqHandler(event, dbusImplRequester,
+                                                      sockManager, false);
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-    TerminusManager terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8, nullptr);
+    TerminusManager terminusManager(event, reqHandler, dbusImplRequester,
+                                    termini, 0x8, nullptr);
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
                        terminusManager);
     std::vector<uint8_t> pdr1{

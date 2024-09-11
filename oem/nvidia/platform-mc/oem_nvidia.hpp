@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
  */
 #pragma once
 
-#include "common/types.hpp"
-#include "platform-mc/oem_base.hpp"
 #include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+
+#include "common/types.hpp"
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
+#include "platform-mc/oem_base.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
@@ -54,7 +55,7 @@ struct nvidia_oem_pdr
 } __attribute__((packed));
 
 enum class OemPowerCapPersistence : uint8_t
-{ 
+{
     OEM_POWERCAP_TDP_VOLATILE,
     OEM_POWERCAP_TDP_NONVOLATILE,
     OEM_POWERCAP_EDPP_VOLATILE,
@@ -107,8 +108,7 @@ class OemStorageIntf : public OemIntf, public SecureStateIntf
 void nvidiaInitTerminus(Terminus& terminus);
 
 std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
-        parseOEMEnergyCountNumericSensorPDR(
-                        const std::vector<uint8_t>& pdrData);
+    parseOEMEnergyCountNumericSensorPDR(const std::vector<uint8_t>& pdrData);
 
 void nvidiaUpdateAssociations(Terminus& terminus);
 

@@ -1,7 +1,7 @@
 #include "pldm_cmd_helper.hpp"
 
-#include "libpldm/requester/pldm.h"
 #include "libpldm/firmware_update.h"
+#include "libpldm/requester/pldm.h"
 
 #include "xyz/openbmc_project/Common/error.hpp"
 
@@ -184,7 +184,8 @@ int mctpSockSendRecv(std::string socketName,
             if (peekedLength <= -1)
             {
                 returnCode = -errno;
-                std::cerr << "recv() system call failed : RC = " << returnCode << "\n";
+                std::cerr << "recv() system call failed : RC = " << returnCode
+                          << "\n";
                 return returnCode;
             }
             responseMsg.resize(peekedLength);
@@ -284,12 +285,11 @@ std::set<pldm::dbus::Service> CommandInterface::getMctpServices() const
     {
         getSubTreeResponse = pldm::utils::DBusHandler().getSubtree(
             "/xyz/openbmc_project/mctp", 0, ifaceList);
-
     }
     catch (const std::exception& e)
     {
         std::cerr << "D-Bus error calling Subtrees method on ObjectMapper: "
-            << e.what() << '\n';
+                  << e.what() << '\n';
     }
 
     for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
@@ -303,15 +303,17 @@ std::set<pldm::dbus::Service> CommandInterface::getMctpServices() const
     return mctpCtrlServices;
 }
 
-pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(const std::string& service) const noexcept
+pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(
+    const std::string& service) const noexcept
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::dbus::ObjectValueTree objects{};
     try
     {
         pldm::dbus::ObjectValueTree tmpObjects{};
-        auto method = bus.new_method_call(service.c_str(), "/xyz/openbmc_project/mctp",
-                "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+        auto method = bus.new_method_call(
+            service.c_str(), "/xyz/openbmc_project/mctp",
+            "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
         auto reply = bus.call(method);
         reply.read(tmpObjects);
         objects.insert(tmpObjects.begin(), tmpObjects.end());
@@ -319,11 +321,11 @@ pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(const std::s
     catch (const std::exception& e)
     {
         std::cerr << "D-Bus error while fetching MCTP managed objects for: "
-            << service << '\n' << e.what() << '\n';
+                  << service << '\n'
+                  << e.what() << '\n';
     }
     return objects;
 }
-
 
 std::tuple<int, int, std::vector<uint8_t>>
     CommandInterface::getMctpSockInfo(uint8_t remoteEID)
@@ -355,13 +357,11 @@ std::tuple<int, int, std::vector<uint8_t>>
                     continue;
                 }
 
-                const auto& properties =
-                    interfaces.at(unixSocketIntfName);
+                const auto& properties = interfaces.at(unixSocketIntfName);
                 type = std::get<size_t>(properties.at("Type"));
-                protocol =
-                    std::get<size_t>(properties.at("Protocol"));
-                address = std::get<std::vector<uint8_t>>(
-                    properties.at("Address"));
+                protocol = std::get<size_t>(properties.at("Protocol"));
+                address =
+                    std::get<std::vector<uint8_t>>(properties.at("Address"));
                 if (address.empty() || !type)
                 {
                     address.clear();

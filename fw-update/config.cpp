@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,8 +53,7 @@ void parseConfig(const fs::path& jsonPath,
     auto entries = data.value("entries", emptyJson);
     for (const auto& entry : entries.items())
     {
-        auto match =
-            entry.value()["match"];
+        auto match = entry.value()["match"];
         auto intf = match["Interface"].get<std::string>();
         auto props = match["Properties"];
         dbus::PropertyMap propMap;
@@ -63,11 +62,11 @@ void parseConfig(const fs::path& jsonPath,
             auto name = prop.value()["Name"].get<std::string>();
             auto type = prop.value()["Type"].get<std::string>();
             dbus::Value value;
-            if(type == "s")
+            if (type == "s")
             {
                 value = prop.value()["Value"].get<std::string>();
             }
-            else if(type == "u")
+            else if (type == "u")
             {
                 value = prop.value()["Value"].get<uint32_t>();
             }
@@ -109,26 +108,29 @@ void parseConfig(const fs::path& jsonPath,
                 }
             }
 
-            deviceInventoryInfo.infos.push_back(std::make_tuple(toMatch, std::make_tuple(
-                std::make_tuple(std::move(createObjPath), std::move(assocs)),
-                std::move(updateObjPath))));
+            deviceInventoryInfo.infos.push_back(std::make_tuple(
+                toMatch,
+                std::make_tuple(std::make_tuple(std::move(createObjPath),
+                                                std::move(assocs)),
+                                std::move(updateObjPath))));
         }
 
         if (entry.value().contains("firmware_inventory"))
         {
             CreateComponentIdNameMap createcomponentIdNameMap{};
             UpdateComponentIdNameMap updatecomponentIdNameMap{};
-            
+
             if (entry.value()["firmware_inventory"].contains("create"))
             {
-                for (const auto& createObject : 
-                        entry.value()["firmware_inventory"]["create"].items())
+                for (const auto& createObject :
+                     entry.value()["firmware_inventory"]["create"].items())
                 {
                     Associations assocs{};
-                    
-                    if (createObject.value().contains( "associations"))
+
+                    if (createObject.value().contains("associations"))
                     {
-                        auto associations = createObject.value()["associations"];
+                        auto associations =
+                            createObject.value()["associations"];
                         for (const auto& assocEntry : associations.items())
                         {
                             auto forward = assocEntry.value()["forward"];
@@ -138,12 +140,13 @@ void parseConfig(const fs::path& jsonPath,
                                 std::make_tuple(forward, reverse, endpoint));
                         }
                     }
-                    
+
                     if (createObject.value().contains("component_id"))
                     {
                         auto componentID = createObject.value()["component_id"];
                         auto componentName = createObject.key();
-                        createcomponentIdNameMap[componentID] = { componentName, assocs };
+                        createcomponentIdNameMap[componentID] = {componentName,
+                                                                 assocs};
                     }
                 }
             }
@@ -156,9 +159,9 @@ void parseConfig(const fs::path& jsonPath,
                 }
             }
 
-            fwInventoryInfo.infos.push_back(
-                std::make_tuple(toMatch, std::make_tuple(std::move(createcomponentIdNameMap),
-                                std::move(updatecomponentIdNameMap))));
+            fwInventoryInfo.infos.push_back(std::make_tuple(
+                toMatch, std::make_tuple(std::move(createcomponentIdNameMap),
+                                         std::move(updatecomponentIdNameMap))));
         }
 
         if (entry.value().contains("component_info"))
@@ -171,8 +174,8 @@ void parseConfig(const fs::path& jsonPath,
             }
             if (componentIdNameMap.size())
             {
-                componentNameMapInfo.infos.push_back(
-                    std::make_tuple(std::move(toMatch), std::move(componentIdNameMap)));
+                componentNameMapInfo.infos.push_back(std::make_tuple(
+                    std::move(toMatch), std::move(componentIdNameMap)));
             }
         }
     }

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,20 @@
  */
 #pragma once
 
+#include "libpldm/entity.h"
+
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/state_set.hpp"
-#include "libpldm/entity.h"
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #endif
 
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
+#include <tal.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
-#include <tal.hpp>
 
 #include <regex>
 
@@ -44,14 +45,14 @@ using PortInfoIntf = sdbusplus::server::object_t<
 using PortStateIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState>;
 
-using PortType =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
-using PortProtocol =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
-using PortLinkStates =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStates;
-using PortLinkStatus =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStatusType;
+using PortType = sdbusplus::server::xyz::openbmc_project::inventory::decorator::
+    PortInfo::PortType;
+using PortProtocol = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortInfo::PortProtocol;
+using PortLinkStates = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStates;
+using PortLinkStatus = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStatusType;
 
 class StateSetEthernetPortLinkState : public StateSet
 {
@@ -59,7 +60,8 @@ class StateSetEthernetPortLinkState : public StateSet
     StateSetEthernetPortLinkState(uint16_t stateSetId, uint8_t compId,
                                   std::string& objectPath,
                                   dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), compId(compId), objectPath(objectPath)
+        StateSet(stateSetId),
+        compId(compId), objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -70,8 +72,10 @@ class StateSetEthernetPortLinkState : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
         ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
-        ValuePortInfoIntf = std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
-        ValuePortStateIntf = std::make_unique<PortStateIntf>(bus, objectPath.c_str());
+        ValuePortInfoIntf =
+            std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
+        ValuePortStateIntf =
+            std::make_unique<PortStateIntf>(bus, objectPath.c_str());
         setDefaultValue();
     }
 
@@ -196,14 +200,15 @@ class StateSetEthernetPortLinkState : public StateSet
     }
 
 #ifdef OEM_NVIDIA
-    void associateDerivedSensor(std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> sensor)
+    void associateDerivedSensor(
+        std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> sensor)
     {
         switchBandwidthSensor = sensor;
     }
 
     bool isDerivedSensorAssociated()
     {
-        if(switchBandwidthSensor)
+        if (switchBandwidthSensor)
         {
             return true;
         }
@@ -313,7 +318,8 @@ class StateSetEthernetPortLinkState : public StateSet
     uint8_t compId = 0;
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
 #ifdef OEM_NVIDIA
-    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor = nullptr;
+    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor =
+        nullptr;
     std::filesystem::path sharedMemObjectPath;
 #endif
     std::filesystem::path objectPath;

@@ -14,14 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "event_manager.hpp"
 #include "smbios_mdr.hpp"
+
+#include "event_manager.hpp"
 
 namespace mdr
 {
 namespace fs = std::filesystem;
 
-bool saveSmbiosData(uint16_t smbiosEventDataLength, uint8_t* smbiosEventData) {
+bool saveSmbiosData(uint16_t smbiosEventDataLength, uint8_t* smbiosEventData)
+{
     std::string defaultDir =
         std::filesystem::path(mdr::defaultFile).parent_path();
     mdr::MDRSMBIOSHeader mdrHdr;
@@ -64,7 +66,8 @@ bool saveSmbiosData(uint16_t smbiosEventDataLength, uint8_t* smbiosEventData) {
     }
     catch (const std::ofstream::failure& e)
     {
-        lg2::error("Failed to write SMBIOS data, error={ERROR}", "ERROR", e.what());
+        lg2::error("Failed to write SMBIOS data, error={ERROR}", "ERROR",
+                   e.what());
         return false;
     }
 
@@ -78,9 +81,9 @@ bool syncSmbiosData()
 
     try
     {
-        auto method = bus.new_method_call(
-            mdr::service, mdr::objectPath,
-            mdr::interface, "AgentSynchronizeData");
+        auto method =
+            bus.new_method_call(mdr::service, mdr::objectPath, mdr::interface,
+                                "AgentSynchronizeData");
         auto reply = bus.call(method);
         reply.read(status);
     }
@@ -88,7 +91,8 @@ bool syncSmbiosData()
     {
         lg2::error("Error Sync data with service"
                    " ERROR={ERROR}, SERVICE={SERVICE}, PATH={PATH}",
-                   "ERROR", e.what(), "SERVICE", mdr::service, "PATH", mdr::objectPath);
+                   "ERROR", e.what(), "SERVICE", mdr::service, "PATH",
+                   mdr::objectPath);
         return false;
     }
 

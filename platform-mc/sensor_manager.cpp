@@ -50,7 +50,8 @@ SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
     bool verbose, const std::filesystem::path& configJson) :
-    event(event), terminusManager(terminusManager), termini(termini),
+    event(event),
+    terminusManager(terminusManager), termini(termini),
     pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
 {
     enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);
@@ -282,7 +283,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
-        if(terminus->initSensorList)
+        if (terminus->initSensorList)
         {
             initSensorList(tid);
         }
@@ -701,7 +702,7 @@ requester::Coroutine
 
 void SensorManager::initSensorList(tid_t tid)
 {
-   if (termini.find(tid) == termini.end())
+    if (termini.find(tid) == termini.end())
     {
         return;
     }

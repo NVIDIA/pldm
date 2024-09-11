@@ -26,7 +26,8 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus::bus& bus, mctp_socket::Handler& handler,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
-    bus(bus), handler(handler),
+    bus(bus),
+    handler(handler),
     mctpEndpointAddedSignal(
         bus,
         sdbusplus::bus::match::rules::interfacesAdded(

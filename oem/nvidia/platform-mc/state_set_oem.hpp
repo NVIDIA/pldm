@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 
 #include "platform-mc/state_set.hpp"
 
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 
 namespace pldm
 {
@@ -38,14 +38,14 @@ using PortInfoIntf = sdbusplus::server::object_t<
 using PortStateIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState>;
 
-using PortType =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
-using PortProtocol =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
-using PortLinkStates =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStates;
-using PortLinkStatus =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStatusType;
+using PortType = sdbusplus::server::xyz::openbmc_project::inventory::decorator::
+    PortInfo::PortType;
+using PortProtocol = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortInfo::PortProtocol;
+using PortLinkStates = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStates;
+using PortLinkStatus = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStatusType;
 
 class StateSetNvlink : public StateSet
 {
@@ -68,8 +68,10 @@ class StateSetNvlink : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
         ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
-        ValuePortInfoIntf = std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
-        ValuePortStateIntf = std::make_unique<PortStateIntf>(bus, objectPath.c_str());
+        ValuePortInfoIntf =
+            std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
+        ValuePortStateIntf =
+            std::make_unique<PortStateIntf>(bus, objectPath.c_str());
         setDefaultValue();
     }
     ~StateSetNvlink() = default;

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,10 @@ using AssociationsType =
 class Entity
 {
   public:
-    Entity(std::vector<std::string>& inventories, std::vector<std::string>& ContainerInventories) :
-        inventories(inventories), ContainerInventories(ContainerInventories)
+    Entity(std::vector<std::string>& inventories,
+           std::vector<std::string>& ContainerInventories) :
+        inventories(inventories),
+        ContainerInventories(ContainerInventories)
     {}
 
     auto getInventories()
@@ -63,7 +65,6 @@ class Entity
     }
 
   private:
-
     std::vector<std::string> inventories;
     std::vector<std::string> ContainerInventories;
 };

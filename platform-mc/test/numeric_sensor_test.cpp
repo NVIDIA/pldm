@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,26 +51,27 @@ class NumericSensorTest : public testing::Test
 TEST_F(NumericSensorTest, conversionFormula)
 {
     std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
+        0x1,                     // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x0,                         // recordChangeNumber
+        0x0, // recordChangeNumber
         0x0,
-        56,                          // dataLength
+        56, // dataLength
         0,
-        0,                           // PLDMTerminusHandle
+        0, // PLDMTerminusHandle
         0x1,
-        0x0,                         // sensorID=1
+        0x0, // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0,                           // entityType=Power Supply(120)
+        0, // entityType=Power Supply(120)
         1,
-        0,                           // entityInstanceNumber
+        0, // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -95,12 +96,12 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x80,
         0x3f, // offset=1.0
         0,
-        0,    // accuracy
-        0,    // plusTolerance
-        0,    // minusTolerance
-        2,    // hysteresis
-        0,    // supportedThresholds
-        0,    // thresholdAndHysteresisVolatility
+        0, // accuracy
+        0, // plusTolerance
+        0, // minusTolerance
+        2, // hysteresis
+        0, // supportedThresholds
+        0, // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -143,26 +144,27 @@ TEST_F(NumericSensorTest, conversionFormula)
 TEST_F(NumericSensorTest, checkThreshold)
 {
     std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
+        0x1,                     // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x0,                         // recordChangeNumber
+        0x0, // recordChangeNumber
         0x0,
-        56,                          // dataLength
+        56, // dataLength
         0,
-        0,                           // PLDMTerminusHandle
+        0, // PLDMTerminusHandle
         0x1,
-        0x0,                         // sensorID=1
+        0x0, // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0,                           // entityType=Power Supply(120)
+        0, // entityType=Power Supply(120)
         1,
-        0,                           // entityInstanceNumber
+        0, // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -187,12 +189,12 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x80,
         0x3f, // offset=1.0
         0,
-        0,    // accuracy
-        0,    // plusTolerance
-        0,    // minusTolerance
-        2,    // hysteresis
-        0,    // supportedThresholds
-        0,    // thresholdAndHysteresisVolatility
+        0, // accuracy
+        0, // plusTolerance
+        0, // minusTolerance
+        2, // hysteresis
+        0, // supportedThresholds
+        0, // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -310,26 +312,27 @@ TEST_F(NumericSensorTest, checkThreshold)
 TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
 {
     std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
+    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                       terminusManager);
     std::vector<uint8_t> pdr1{
         0x0,
         0x0,
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
+        0x1,                     // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x0,                         // recordChangeNumber
+        0x0, // recordChangeNumber
         0x0,
-        56,                          // dataLength
+        56, // dataLength
         0,
-        0,                           // PLDMTerminusHandle
+        0, // PLDMTerminusHandle
         0x1,
-        0x0,                         // sensorID=1
+        0x0, // sensorID=1
         PLDM_ENTITY_MEMORY_CONTROLLER,
-        0,                           // entityType=Memory Controller(143)
+        0, // entityType=Memory Controller(143)
         1,
-        0,                           // entityInstanceNumber
+        0, // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -401,7 +404,7 @@ TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
     EXPECT_EQ(10, memoryPageRetirementCount->memoryPageRetirementCount());
 
     // Should be zero for nan value
-    numericSensor->updateReading(
-        true, true, std::numeric_limits<double>::quiet_NaN());
+    numericSensor->updateReading(true, true,
+                                 std::numeric_limits<double>::quiet_NaN());
     EXPECT_EQ(0, memoryPageRetirementCount->memoryPageRetirementCount());
 }

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "../state_set.hpp"
 
 #include <xyz/openbmc_project/State/Decorator/Health/server.hpp>
+
 #include <regex>
 
 namespace pldm
@@ -42,7 +43,8 @@ class StateSetHealthState : public StateSet
     StateSetHealthState(uint16_t stateSetId, uint8_t compId,
                         std::string& objectPath,
                         dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), compId(compId), objectPath(objectPath)
+        StateSet(stateSetId),
+        compId(compId), objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

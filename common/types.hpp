@@ -4,6 +4,7 @@
 
 #include <sdbusplus/message/types.hpp>
 
+#include <algorithm>
 #include <bitset>
 #include <map>
 #include <set>
@@ -11,7 +12,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <algorithm>
 
 namespace pldm
 {
@@ -128,17 +128,21 @@ using MatchDeviceInfo = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>;
 using ComponentName = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
 using ComponentObject = std::tuple<ComponentName, Associations>;
-using CreateComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentObject>;
+using CreateComponentIdNameMap =
+    std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;
-using FirmwareInfo = std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>;
+using FirmwareInfo =
+    std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>;
 using MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>;
 
 // ComponentInformation
-using MatchComponentNameMapInfo = std::vector<std::tuple<DBusIntfMatch, ComponentIdNameMap>>;
+using MatchComponentNameMapInfo =
+    std::vector<std::tuple<DBusIntfMatch, ComponentIdNameMap>>;
 using ComponentNameMap = std::unordered_map<EID, ComponentIdNameMap>;
 
 /** @struct MatchEntryInfo
- *  @brief the template struct to find the matched configured info for an dbus interface from mctp endpoint
+ *  @brief the template struct to find the matched configured info for an dbus
+ * interface from mctp endpoint
  */
 template <typename T, typename U>
 struct MatchEntryInfo
@@ -148,9 +152,12 @@ struct MatchEntryInfo
     MatchEntryInfo(MatchEntryInfo&&) = delete;
     MatchEntryInfo& operator=(MatchEntryInfo&&) = delete;
 
-    MatchEntryInfo(const T &i) : infos(i){}
-    MatchEntryInfo(){}
-    ~MatchEntryInfo(){}
+    MatchEntryInfo(const T& i) : infos(i)
+    {}
+    MatchEntryInfo()
+    {}
+    ~MatchEntryInfo()
+    {}
 
     T infos;
 
@@ -236,17 +243,21 @@ struct MatchEntryInfo
 };
 
 /** @struct DeviceInventoryInfo
- *  @brief the Device inventory infor parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+ *  @brief the Device inventory infor parsed from config file and find the
+ * matched configured info for an dbus interface from mctp endpoint
  */
 using DeviceInventoryInfo = MatchEntryInfo<MatchDeviceInfo, DeviceInfo>;
 /** @struct FirmwareInventoryInfo
- *  @brief the Firmware inventory info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+ *  @brief the Firmware inventory info parsed from config file and find the
+ * matched configured info for an dbus interface from mctp endpoint
  */
 using FirmwareInventoryInfo = MatchEntryInfo<MatchFirmwareInfo, FirmwareInfo>;
 /** @struct ComponentNameMapInfo
- *  @brief the Component name info parsed from config file and find the matched configured info for an dbus interface from mctp endpoint
+ *  @brief the Component name info parsed from config file and find the matched
+ * configured info for an dbus interface from mctp endpoint
  */
-using ComponentNameMapInfo = MatchEntryInfo<MatchComponentNameMapInfo, ComponentIdNameMap>;
+using ComponentNameMapInfo =
+    MatchEntryInfo<MatchComponentNameMapInfo, ComponentIdNameMap>;
 
 enum class ComponentImageInfoPos : size_t
 {
@@ -330,10 +341,12 @@ using SensorName = std::string;
 using EffecterName = SensorName;
 using AuxiliaryNames =
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>;
-using SensorAuxiliaryNames = std::tuple<pdr::SensorID, SensorCnt, AuxiliaryNames>;
+using SensorAuxiliaryNames =
+    std::tuple<pdr::SensorID, SensorCnt, AuxiliaryNames>;
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
-    std::map<pdr::ContainerID, std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
+    std::map<pdr::ContainerID,
+             std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
 } // namespace platform_mc
 
 } // namespace pldm

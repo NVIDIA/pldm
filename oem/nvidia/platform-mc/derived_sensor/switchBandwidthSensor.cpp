@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 
 #include "libpldm/platform.h"
 
-#include "common/utils.hpp"
 #include "common/types.hpp"
+#include "common/utils.hpp"
 
 #include <math.h>
 
@@ -39,7 +39,8 @@ SwitchBandwidthSensor::SwitchBandwidthSensor(
     const tid_t tid, std::string sName, std::string& switchType,
     std::vector<std::string>& switchProtocols,
     const std::vector<dbus::PathAssociation>& associations) :
-    tid(tid), sensorName(sName)
+    tid(tid),
+    sensorName(sName)
 {
     path = "/xyz/openbmc_project/sensor/PLDM_Id_" + std::to_string(tid) + "/" +
            sName;
@@ -116,15 +117,15 @@ void SwitchBandwidthSensor::updateOnSharedMemory()
 
     DbusVariantType variantCB{switchIntf->currentBandwidth()};
     std::string propertyName = "CurrentBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(
-        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp,
-        retCode, variantCB);
+    tal::TelemetryAggregator::updateTelemetry(path, ifaceName, propertyName,
+                                              rawSmbpbiData, steadyTimeStamp,
+                                              retCode, variantCB);
 
     DbusVariantType variantMB{switchIntf->maxBandwidth()};
     propertyName = "MaxBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(
-        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp,
-        retCode, variantMB);
+    tal::TelemetryAggregator::updateTelemetry(path, ifaceName, propertyName,
+                                              rawSmbpbiData, steadyTimeStamp,
+                                              retCode, variantMB);
 }
 
 } // namespace oem_nvidia

@@ -259,7 +259,7 @@ int FruImpl::getFRURecordByOption(std::vector<uint8_t>& fruData,
                                   uint16_t recordSetIdentifer,
                                   uint8_t recordType, uint8_t fieldType)
 {
-     // FRU table is built lazily, build if not done.
+    // FRU table is built lazily, build if not done.
     buildFRUTable();
 
     /* 7 is sizeof(checksum,4) + padBytesMax(3)
@@ -283,8 +283,7 @@ int FruImpl::getFRURecordByOption(std::vector<uint8_t>& fruData,
     auto sum = crc32(fruData.data(), recordTableSize + pads);
 
     auto iter = fruData.begin() + recordTableSize + pads;
-    std::copy_n(reinterpret_cast<const uint8_t*>(&sum), sizeof(sum),
-                iter);
+    std::copy_n(reinterpret_cast<const uint8_t*>(&sum), sizeof(sum), iter);
     fruData.resize(recordTableSize + pads + sizeof(sum));
 
     return PLDM_SUCCESS;

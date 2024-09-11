@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,8 @@ class StateSet
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) = 0;
     virtual void setDefaultValue() = 0;
-    virtual void setAssociation(std::vector<dbus::PathAssociation>& stateAssociations)
+    virtual void
+        setAssociation(std::vector<dbus::PathAssociation>& stateAssociations)
     {
         if (!associationDefinitionsIntf)
         {
@@ -65,11 +66,11 @@ class StateSet
         for (const auto& assoc : stateAssociations)
         {
 
-            assocs.emplace_back(
-                std::make_tuple(assoc.forward.c_str(), assoc.reverse.c_str(), assoc.path.c_str()));
+            assocs.emplace_back(std::make_tuple(assoc.forward.c_str(),
+                                                assoc.reverse.c_str(),
+                                                assoc.path.c_str()));
         }
         associationDefinitionsIntf->associations(assocs);
-
     }
 
     virtual void associateNumericSensor(
@@ -98,7 +99,7 @@ class StateSet
     }
     virtual std::string getStringStateType() const = 0;
     virtual std::tuple<std::string, std::string> getEventData() const = 0;
-    virtual void updateSensorName([[maybe_unused]] std::string name) {};
+    virtual void updateSensorName([[maybe_unused]] std::string name){};
 };
 
 class StateSetCreator

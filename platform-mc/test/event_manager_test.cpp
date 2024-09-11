@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,20 +19,20 @@
 #include "libpldm/platform.h"
 
 #include "common/types.hpp"
+#include "fw-update/component_updater.hpp"
+#include "fw-update/config.hpp"
+#include "fw-update/device_inventory.hpp"
+#include "fw-update/device_updater.hpp"
+#include "fw-update/firmware_inventory.hpp"
+#include "fw-update/inventory_manager.hpp"
+#include "fw-update/manager.hpp"
+#include "fw-update/other_device_update_manager.hpp"
+#include "fw-update/package_parser.hpp"
+#include "fw-update/package_signature.hpp"
+#include "fw-update/update_manager.hpp"
+#include "fw-update/watch.hpp"
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
-#include "fw-update/manager.hpp"
-#include "fw-update/component_updater.hpp"
-#include "fw-update/device_updater.hpp"
-#include "fw-update/other_device_update_manager.hpp"
-#include "fw-update/update_manager.hpp"
-#include "fw-update/config.hpp"
-#include "fw-update/firmware_inventory.hpp"
-#include "fw-update/package_parser.hpp"
-#include "fw-update/watch.hpp"
-#include "fw-update/device_inventory.hpp"
-#include "fw-update/inventory_manager.hpp"
-#include "fw-update/package_signature.hpp"
 
 #include <gtest/gtest.h>
 
@@ -54,7 +54,8 @@ class EventManagerTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, dbusImplRequester, "", nullptr, false),
+        fwUpdateManager(event, reqHandler, dbusImplRequester, "", nullptr,
+                        false),
 
         eventManager(terminusManager, termini, fwUpdateManager)
     {}
@@ -121,12 +122,12 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0,
         0, // offset=1.0
         0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
+        0,  // accuracy
+        0,  // plusTolerance
+        0,  // minusTolerance
+        2,  // hysteresis
         63, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
+        0,  // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,

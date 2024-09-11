@@ -177,7 +177,9 @@ int main(int argc, char** argv)
                                                numericSensorsWithoutAuxName);
 
     // Initializing telemetry for pldmd
-    if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,"pldmd")){
+    if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,
+                                                "pldmd"))
+    {
         lg2::info("Initialized tal from pldmd");
     }
 #endif

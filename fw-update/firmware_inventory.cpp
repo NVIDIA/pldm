@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,13 +47,13 @@ void Entry::createUpdateableAssociation(const std::string& swObjPath)
     associations(assocs);
 }
 
-void Entry::createAssociation(const std::string fwdAssociation, 
-                            const std::string revAssociation,
-                            const std::string& objPath)
+void Entry::createAssociation(const std::string fwdAssociation,
+                              const std::string revAssociation,
+                              const std::string& objPath)
 {
     auto assocs = associations();
     assocs.emplace_back(
-         std::make_tuple(fwdAssociation, revAssociation, objPath));
+        std::make_tuple(fwdAssociation, revAssociation, objPath));
 
     associations(assocs);
 }
@@ -72,10 +72,14 @@ Manager::Manager(sdbusplus::bus::bus& bus,
     componentInfoMap(componentInfoMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 
-void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
+void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
+                          dbus::MctpInterfaces& mctpInterfaces)
 {
     FirmwareInfo fwInfoSearch;
-    if (mctpInterfaces.find(uuid) != mctpInterfaces.end() && firmwareInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid], fwInfoSearch) && componentInfoMap.contains(eid))
+    if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
+        firmwareInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                  fwInfoSearch) &&
+        componentInfoMap.contains(eid))
     {
         auto compInfoSearch = componentInfoMap.find(eid);
 
@@ -85,7 +89,9 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInter
             {
                 auto componentObject =
                     (std::get<0>(fwInfoSearch)).find(compKey.second);
-                std::string objPath = swBasePath + "/" + std::get<ComponentName>(componentObject->second);
+                std::string objPath =
+                    swBasePath + "/" +
+                    std::get<ComponentName>(componentObject->second);
 
                 auto swId = fmt::format("0x{:04X}", compKey.second);
                 auto entry = std::make_unique<Entry>(
@@ -95,14 +101,14 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInter
                 const auto& assocs =
                     std::get<Associations>(componentObject->second);
 
-                for (auto& assoc : assocs){
+                for (auto& assoc : assocs)
+                {
                     std::string fwdAssociation = std::get<0>(assoc);
                     std::string revAssociation = std::get<1>(assoc);
                     std::string objectPathAssociation = std::get<2>(assoc);
 
-                    entry->createAssociation(fwdAssociation, 
-                        revAssociation, 
-                        objectPathAssociation);
+                    entry->createAssociation(fwdAssociation, revAssociation,
+                                             objectPathAssociation);
                 }
 
                 firmwareInventoryMap.emplace(

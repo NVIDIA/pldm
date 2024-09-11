@@ -361,8 +361,9 @@ PropertyValue DBusHandler::getDbusPropertyVariant(
     return value;
 }
 
-bool DBusHandler::checkDbusPropertyVariant(
-    const char* objPath, const char* dbusProp, const char* dbusInterface) const
+bool DBusHandler::checkDbusPropertyVariant(const char* objPath,
+                                           const char* dbusProp,
+                                           const char* dbusInterface) const
 {
     auto& bus = DBusHandler::getBus();
     auto service = getService(objPath, dbusInterface);
@@ -370,10 +371,9 @@ bool DBusHandler::checkDbusPropertyVariant(
         bus.new_method_call(service.c_str(), objPath, dbusProperties, "GetAll");
     method.append(dbusInterface);
 
-    std::unordered_map<
-                std::string,
-                std::variant<std::string, std::vector<std::string>>>
-                getAll;
+    std::unordered_map<std::string,
+                       std::variant<std::string, std::vector<std::string>>>
+        getAll;
     try
     {
         auto data = bus.call(method);

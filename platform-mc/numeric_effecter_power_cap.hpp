@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 #include "libpldm/platform.h"
 
 #include "common/types.hpp"
-#include "platform-mc/numeric_effecter_base_unit.hpp"
 #include "platform-mc/errors.hpp"
+#include "platform-mc/numeric_effecter_base_unit.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Control/Power/Cap/server.hpp>
@@ -101,8 +101,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         if (value > PowerCapInft::maxPowerCapValue() ||
             value < PowerCapInft::minPowerCapValue())
         {
-            throw errors::InvalidArgument("PowerCap",
-                                          "Out of range");
+            throw errors::InvalidArgument("PowerCap", "Out of range");
         }
 
         double newValue = value;

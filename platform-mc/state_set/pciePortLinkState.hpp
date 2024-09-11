@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@
 
 #include "platform-mc/state_set.hpp"
 
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
 
 namespace pldm
@@ -35,14 +35,14 @@ using PortInfoIntf = sdbusplus::server::object_t<
 using PortStateIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState>;
 
-using PortType =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
-using PortProtocol =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
-using PortLinkStates =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStates;
-using PortLinkStatus =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState::LinkStatusType;
+using PortType = sdbusplus::server::xyz::openbmc_project::inventory::decorator::
+    PortInfo::PortType;
+using PortProtocol = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortInfo::PortProtocol;
+using PortLinkStates = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStates;
+using PortLinkStatus = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortState::LinkStatusType;
 
 class StateSetPciePortLinkState : public StateSet
 {
@@ -53,7 +53,8 @@ class StateSetPciePortLinkState : public StateSet
     StateSetPciePortLinkState(uint16_t stateSetId, uint8_t compId,
                               std::string& objectPath,
                               dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), objPath(objectPath), compId(compId)
+        StateSet(stateSetId),
+        objPath(objectPath), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -64,8 +65,10 @@ class StateSetPciePortLinkState : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
         ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
-        ValuePortInfoIntf = std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
-        ValuePortStateIntf = std::make_unique<PortStateIntf>(bus, objectPath.c_str());
+        ValuePortInfoIntf =
+            std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
+        ValuePortStateIntf =
+            std::make_unique<PortStateIntf>(bus, objectPath.c_str());
         setDefaultValue();
     }
 
@@ -157,9 +160,8 @@ class StateSetPciePortLinkState : public StateSet
         }
         else
         {
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                std::string("Unknown")};
+            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
+                    std::string("Unknown")};
         }
     }
 

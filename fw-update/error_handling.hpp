@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,8 @@ using CompCompatibilityMessage = std::string;
 using CompCompatibilityResolution = std::string;
 using MessageMapping = std::pair<OemMessage, OemResolution>;
 using ComponentCompatibilityMessageMapping =
-    std::tuple<CompCompatibilityMessageId, CompCompatibilityMessage, CompCompatibilityResolution>;
+    std::tuple<CompCompatibilityMessageId, CompCompatibilityMessage,
+               CompCompatibilityResolution>;
 using ErrorMapping = std::unordered_map<ErrorCode, MessageMapping>;
 using CompCompatibilityMapping =
     std::unordered_map<ErrorCode, ComponentCompatibilityMessageMapping>;
@@ -157,8 +158,7 @@ static ErrorMapping activateFirmwareMapping{
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
     {PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL,
-     {"NvidiaUpdate.1.0.ComponentUpdateSkipped",
-      "Component image is identical",
+     {"NvidiaUpdate.1.0.ComponentUpdateSkipped", "Component image is identical",
       "Retry firmware update operation with the force flag"}},
     {PLDM_CRC_COMP_COMPARISON_STAMP_LOWER,
      {"ResourceEvent.1.0.ResourceErrorsDetected",

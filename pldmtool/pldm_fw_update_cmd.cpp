@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1298,13 +1298,13 @@ void registerCommand(CLI::App& app)
     commands.push_back(std::make_unique<CancelUpdateComponent>(
         "fw_update", "CancelUpdateComponent", cancelUpdateComp));
 
-    auto cancelUpdate = fwUpdate->add_subcommand(
-        "CancelUpdate", "To cancel update");
+    auto cancelUpdate =
+        fwUpdate->add_subcommand("CancelUpdate", "To cancel update");
     commands.push_back(std::make_unique<CancelUpdate>(
         "fw_update", "CancelUpdate", cancelUpdate));
 
-    auto activateFirmware = fwUpdate->add_subcommand(
-        "ActivateFirmware", "To activate firmware");
+    auto activateFirmware =
+        fwUpdate->add_subcommand("ActivateFirmware", "To activate firmware");
     commands.push_back(std::make_unique<ActivateFirmware>(
         "fw_update", "ActivateFirmware", activateFirmware));
 

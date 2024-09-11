@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -117,11 +117,13 @@ class Manager
      *
      *  @param[in] eid - MCTP endpointID
      *  @param[in] uuid - MCTP UUID of the device
-     * 
-     *  @return Object path of the device inventory object, std::nullopt if object path is empty
+     *
+     *  @return Object path of the device inventory object, std::nullopt if
+     * object path is empty
      */
-    std::optional<sdbusplus::message::object_path> createEntry(pldm::EID eid, const pldm::UUID& uuid,
-                     dbus::MctpInterfaces& mctpInterfaces);
+    std::optional<sdbusplus::message::object_path>
+        createEntry(pldm::EID eid, const pldm::UUID& uuid,
+                    dbus::MctpInterfaces& mctpInterfaces);
 
   private:
     sdbusplus::bus::bus& bus;

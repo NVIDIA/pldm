@@ -1737,7 +1737,6 @@ TEST(GetNumericEffecterValue, testGoodEncodeResponse)
         reinterpret_cast<struct pldm_get_numeric_effecter_value_resp*>(
             response->payload);
 
-
     uint32_t valPending = 0;
     memcpy(&valPending, &resp->pending_and_present_values[0], sizeof(uint32_t));
     valPending = le32toh(valPending);

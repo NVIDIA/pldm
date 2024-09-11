@@ -2,9 +2,9 @@
 
 #include "libpldm/base.h"
 #include "libpldm/bios.h"
+#include "libpldm/firmware_update.h"
 #include "libpldm/fru.h"
 #include "libpldm/platform.h"
-#include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
 
@@ -30,7 +30,8 @@ namespace helper
 constexpr static uint8_t PLDM_ENTITY_ID = 8;
 constexpr static uint8_t MCTP_MSG_TYPE_PLDM = 1;
 constexpr static auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
-constexpr static auto unixSocketIntfName{"xyz.openbmc_project.Common.UnixSocket"};
+constexpr static auto unixSocketIntfName{
+    "xyz.openbmc_project.Common.UnixSocket"};
 using ordered_json = nlohmann::ordered_json;
 
 /** @brief print the input message if pldmverbose is enabled
@@ -128,7 +129,6 @@ class CommandInterface
     }
 
   private:
-
     /** @brief Get Managed Objects for an MCTP service
      *
      *  @param[in]  service - Service to fetch objects for
@@ -136,11 +136,12 @@ class CommandInterface
      *  @return On success return the objects managed by the service
      *          on error return empty
      */
-    pldm::dbus::ObjectValueTree getMctpManagedObjects(const std::string& service) const noexcept;
+    pldm::dbus::ObjectValueTree
+        getMctpManagedObjects(const std::string& service) const noexcept;
 
-    /** @brief Get set of MCTP services 
+    /** @brief Get set of MCTP services
      *
-     * getmctpservices does an objectmapper for objects implementing 
+     * getmctpservices does an objectmapper for objects implementing
      * mctp remote endpoint and collects the service names from the objects
      *
      *

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,13 +28,13 @@ using namespace pldm;
 using namespace pldm::fw_update;
 using namespace pldm::fw_update::fw_inventory;
 
+using ::testing::_;
+using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::IsNull;
 using ::testing::NotNull;
-using ::testing::StrEq;
 using ::testing::Return;
-using ::testing::DoAll;
-using ::testing::_;
+using ::testing::StrEq;
 
 TEST(Entry, Basic)
 {
@@ -61,10 +61,11 @@ TEST(Entry, BasicEntryCreateAssociation)
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string version{"MAJOR.MINOR.PATCH"};
     const std::string swId{"0x0001"};
-    
+
     const std::string fwdAssociation{"inventory"};
     const std::string revAssociation{"activation"};
-    const std::string swObjectPath1{"/xyz/openbmc_project/software/ComponentName1"};
+    const std::string swObjectPath1{
+        "/xyz/openbmc_project/software/ComponentName1"};
     const std::string swObjectPath2{"/xyz/openbmc_project/software"};
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
@@ -110,12 +111,13 @@ TEST(Manager, SingleMatch)
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string compName1{"CompName1"};
-    const Associations associations = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
+    const Associations associations = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject = {compName1, associations};
 
-    FirmwareInventoryInfo fwInventoryInfo({
-        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
-            {{{compIdentifier1, componentObject}}, {}}}});
+    FirmwareInventoryInfo fwInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{{compIdentifier1, componentObject}}, {}}}});
     const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
@@ -134,7 +136,8 @@ TEST(Manager, SingleMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
-    dbus::MctpInterfaces mctpInterfaces = {{uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    dbus::MctpInterfaces mctpInterfaces = {
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
     manager.createEntry(eid, uuid, mctpInterfaces);
 }
@@ -162,16 +165,21 @@ TEST(Manager, SingleMatchTwoComponents)
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string compName1{"CompName1"};
-    const Associations associations1 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
+    const Associations associations1 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1};
 
     const std::string compName2{"CompName2"};
-    const Associations associations2 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
+    const Associations associations2 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2};
     DBusIntfMatch m;
 
-    FirmwareInventoryInfo fwInventoryInfo({
-        {m, {{{compIdentifier1, componentObject1}, {compIdentifier2, componentObject2}}, {}}}});
+    FirmwareInventoryInfo fwInventoryInfo(
+        {{m,
+          {{{compIdentifier1, componentObject1},
+            {compIdentifier2, componentObject2}},
+           {}}}});
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
@@ -215,22 +223,27 @@ TEST(Manager, MulipleMatch)
     const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
 
     const std::string compName1{"CompName1"};
-    const Associations associations1 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
+    const Associations associations1 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1};
 
     const std::string compName2{"CompName2"};
-    const Associations associations2 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
+    const Associations associations2 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2};
 
     const std::string compName3{"CompName3"};
-    const Associations associations3 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName3"}};
+    const Associations associations3 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName3"}};
     const ComponentObject componentObject3 = {compName3, associations3};
 
-    FirmwareInventoryInfo fwInventoryInfo({
-        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
-            {{{compIdentifier1, componentObject1}, {compIdentifier2, componentObject2}}, {}}},
-        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}, 
-            {{{compIdentifier3, componentObject3}}, {}}}});
+    FirmwareInventoryInfo fwInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
+          {{{compIdentifier1, componentObject1},
+            {compIdentifier2, componentObject2}},
+           {}}},
+         {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}},
+          {{{compIdentifier3, componentObject3}}, {}}}});
     const std::string objPath1 = "/xyz/openbmc_project/software/" + compName1;
     const std::string objPath2 = "/xyz/openbmc_project/software/" + compName2;
     const std::string objPath3 = "/xyz/openbmc_project/software/" + compName3;
@@ -277,8 +290,9 @@ TEST(Manager, MulipleMatch)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
-    dbus::MctpInterfaces mctpInterfaces{{uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}},
-                                        {uuid2, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}},
+        {uuid2, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
 
     manager.createEntry(eid1, uuid1, mctpInterfaces);
     manager.createEntry(eid2, uuid2, mctpInterfaces);
@@ -308,25 +322,26 @@ TEST(Manager, test_private_method_updateSwId)
            std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
 
     const std::string compName1{"CompName1"};
-    const Associations associations1 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
+    const Associations associations1 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1};
 
     const std::string compName2{"CompName2"};
-    const Associations associations2 = {{"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
+    const Associations associations2 = {
+        {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2};
-    
-    FirmwareInventoryInfo fwInventoryInfo({
-        {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
-            {{{compIdentifier1, componentObject1}, {compIdentifier2, componentObject2}}, {}}}});
-    const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
 
+    FirmwareInventoryInfo fwInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{{compIdentifier1, componentObject1},
+            {compIdentifier2, componentObject2}},
+           {}}}});
+    const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
-    
-    EXPECT_NO_THROW({
-        manager.updateSwId(objPath, compName1);
-    });
+
+    EXPECT_NO_THROW({ manager.updateSwId(objPath, compName1); });
 }
 
 TEST(Manager, test_private_method_updateSwId_emptyObjPath)
@@ -343,8 +358,6 @@ TEST(Manager, test_private_method_updateSwId_emptyObjPath)
 
     MockdBusHandler dbusHandler;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
-    
-    EXPECT_NO_THROW({
-        manager.updateSwId(emptyObjPath, compName1);
-    });
+
+    EXPECT_NO_THROW({ manager.updateSwId(emptyObjPath, compName1); });
 }

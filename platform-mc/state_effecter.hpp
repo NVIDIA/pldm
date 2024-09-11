@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@ using OperationalStatusIntf =
                                     Decorator::server::OperationalStatus>;
 using AvailabilityIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Availability>;
-
 
 using StateType = sdbusplus::xyz::openbmc_project::State::Decorator::server::
     OperationalStatus::StateType;
@@ -119,7 +118,8 @@ class StateEffecter
     /** @brief Sending setStateEffecterStates command for the effecter
      *
      */
-    requester::Coroutine setStateEffecterStates(std::vector<set_effecter_state_field>& stateField);
+    requester::Coroutine setStateEffecterStates(
+        std::vector<set_effecter_state_field>& stateField);
 
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */
     uint8_t tid;
@@ -157,6 +157,7 @@ class StateEffecter
 
     /** @brief flag to update the value once */
     bool needUpdate;
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;

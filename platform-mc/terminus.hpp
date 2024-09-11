@@ -21,6 +21,7 @@
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #endif
 
@@ -57,10 +58,10 @@ using VendorSpecificData = std::vector<uint8_t>;
 using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
 using AssociationDefinitionsIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
-using PortType =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortType;
-using PortProtocol =
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo::PortProtocol;
+using PortType = sdbusplus::server::xyz::openbmc_project::inventory::decorator::
+    PortInfo::PortType;
+using PortProtocol = sdbusplus::server::xyz::openbmc_project::inventory::
+    decorator::PortInfo::PortProtocol;
 using PortInfoIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
 
@@ -113,11 +114,13 @@ class Terminus
 
     /** @brief Look for the inventory which this entity should associate
      * with */
-    std::vector<std::string> findInventory(EntityInfo entityInfo, bool findClosest = true);
+    std::vector<std::string> findInventory(EntityInfo entityInfo,
+                                           bool findClosest = true);
 
     /** @brief Find the EntityInfo from the Container ID, and pass it to
      * findInventory(EntityInfo) */
-    std::vector<std::string> findInventory(ContainerID contianerId, bool findClosest = true);
+    std::vector<std::string> findInventory(ContainerID contianerId,
+                                           bool findClosest = true);
 
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
@@ -195,10 +198,12 @@ class Terminus
      *  @param[in] id - sensor ID
      *  @return sensor port types
      */
-    std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>
+    std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t,
+                               std::vector<dbus::PathAssociation>>>
         getSensorPortInfo(SensorID id);
 
-    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor = nullptr;
+    std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor =
+        nullptr;
 #endif
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
@@ -244,10 +249,11 @@ class Terminus
      *
      *  @param[in] objPath - device inventory path
      */
-    void getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::string& objPath);
+    void getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
+                                const std::string& objPath);
 
 #ifdef OEM_NVIDIA
-     /** @brief get sensor Port information from EM configuration PDI
+    /** @brief get sensor Port information from EM configuration PDI
      *
      *  @param[in] objPath - device inventory path
      */
@@ -275,7 +281,8 @@ class Terminus
     /** @brief This value indicates if the terminus is resumed successfully */
     bool resumed;
 
-    /** @brief This value indicates if polling sensor list need to be initialized */
+    /** @brief This value indicates if polling sensor list need to be
+     * initialized */
     bool initSensorList;
 
     /** @brief set the terminus to online state */
@@ -340,8 +347,8 @@ class Terminus
 
 #ifdef OEM_NVIDIA
     /** @brief The Port information from EntityManager configuration PDI */
-    std::map<SensorID,
-             std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>
+    std::map<SensorID, std::tuple<PortType, PortProtocol, uint64_t,
+                                  std::vector<dbus::PathAssociation>>>
         sensorPortInfoOverwriteTbl{};
 #endif
 

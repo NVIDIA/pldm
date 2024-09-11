@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@
 #include "state_effecter.hpp"
 #include "state_sensor.hpp"
 #include "state_set/clearNonVolatileVariables.hpp"
+#include "state_set/ethernetPortLinkState.hpp"
 #include "state_set/healthState.hpp"
 #include "state_set/pciePortLinkState.hpp"
-#include "state_set/ethernetPortLinkState.hpp"
 #include "state_set/performance.hpp"
 #include "state_set/powerSupplyInput.hpp"
 #include "state_set/presenceState.hpp"

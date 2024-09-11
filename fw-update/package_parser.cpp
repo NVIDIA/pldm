@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 #include "package_parser.hpp"
-#include "package_signature.hpp"
 
 #include "libpldm/firmware_update.h"
 #include "libpldm/utils.h"
 
 #include "common/utils.hpp"
+#include "package_signature.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
@@ -230,13 +230,15 @@ uintmax_t PackageParser::calculatePackageSize()
 void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
 {
     uintmax_t calcPkgSize = calculatePackageSize();
-    
-    //The package can be signed or not signed.
-    //For not signed package, the real size of package must be equal with calculated size.
-    //For signed package, the real size is 1K higher than the calculated size.
-    //The FW Update Package Signature is padding to 1 KB (1024 bytes)
 
-    if ((calcPkgSize != pkgSize) && (calcPkgSize + pldmFwupSignaturePackageSize != pkgSize))
+    // The package can be signed or not signed.
+    // For not signed package, the real size of package must be equal with
+    // calculated size. For signed package, the real size is 1K higher than the
+    // calculated size. The FW Update Package Signature is padding to 1 KB (1024
+    // bytes)
+
+    if ((calcPkgSize != pkgSize) &&
+        (calcPkgSize + pldmFwupSignaturePackageSize != pkgSize))
     {
         lg2::error(
             "Package size does not match calculated package size, PKG_SIZE={PKG_SIZE} ,CALC_PKG_SIZE={CALC_PKG_SIZE}",
@@ -316,11 +318,11 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
         throw InternalFailure();
     }
 
-    #ifndef SKIP_PACKAGE_SIZE_CHECK
+#ifndef SKIP_PACKAGE_SIZE_CHECK
 
     validatePkgTotalSize(pkgSize);
 
-    #endif
+#endif
 }
 
 std::unique_ptr<PackageParser> parsePkgHeader(std::vector<uint8_t>& pkgData)

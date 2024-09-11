@@ -29,10 +29,10 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
-    initalized(false), pollEvent(false), ready(false),
-    synchronyConfigurationSupported(0), resumed(true), initSensorList(true),
-    tid(tid), supportedTypes(supportedTypes), uuid(uuid),
-    terminusManager(terminusManager)
+    initalized(false),
+    pollEvent(false), ready(false), synchronyConfigurationSupported(0),
+    resumed(true), initSensorList(true), tid(tid),
+    supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
 {
     maxBufferSize = 256;
     scanInventories();
@@ -219,7 +219,8 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
     return false;
 }
 
-void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::string& objPath)
+void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
+                                      const std::string& objPath)
 {
     try
     {
@@ -246,15 +247,17 @@ void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::stri
             for (auto auxName : auxNames)
             {
                 // Check Bus/Address property if they exist
-                if((utils::DBusHandler().checkDbusPropertyVariant(path.c_str(), "Bus",
-                "xyz.openbmc_project.Configuration.SensorAuxName")) &&
-                (utils::DBusHandler().checkDbusPropertyVariant(path.c_str(), "Address",
-                "xyz.openbmc_project.Configuration.SensorAuxName")))
+                if ((utils::DBusHandler().checkDbusPropertyVariant(
+                        path.c_str(), "Bus",
+                        "xyz.openbmc_project.Configuration.SensorAuxName")) &&
+                    (utils::DBusHandler().checkDbusPropertyVariant(
+                        path.c_str(), "Address",
+                        "xyz.openbmc_project.Configuration.SensorAuxName")))
                 {
                     auto mctpI2cBus =
                         utils::DBusHandler().getDbusProperty<uint64_t>(
-                        path.c_str(), "Bus",
-                        "xyz.openbmc_project.Configuration.SensorAuxName");
+                            path.c_str(), "Bus",
+                            "xyz.openbmc_project.Configuration.SensorAuxName");
                     if (mctpI2cBus != bus)
                     {
                         continue;
@@ -262,8 +265,8 @@ void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr, const std::stri
 
                     auto mctpI2cAddr =
                         utils::DBusHandler().getDbusProperty<uint64_t>(
-                        path.c_str(), "Address",
-                        "xyz.openbmc_project.Configuration.SensorAuxName");
+                            path.c_str(), "Address",
+                            "xyz.openbmc_project.Configuration.SensorAuxName");
                     if (mctpI2cAddr != addr)
                     {
                         continue;
@@ -409,9 +412,10 @@ void Terminus::getInfoForNVSwitch(const std::string& objPath)
                 tmp.path = associationsEM[it + 2];
             }
 
-            switchBandwidthSensor = std::make_shared<oem_nvidia::SwitchBandwidthSensor>(
-                tid, name, switchType, switchSupportedProtocols,
-                associations);
+            switchBandwidthSensor =
+                std::make_shared<oem_nvidia::SwitchBandwidthSensor>(
+                    tid, name, switchType, switchSupportedProtocols,
+                    associations);
         }
     }
     catch (const std::exception& e)
@@ -575,11 +579,15 @@ std::shared_ptr<SensorAuxiliaryNames>
 }
 
 #ifdef OEM_NVIDIA
-std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>> Terminus::getSensorPortInfo(SensorID id)
+std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t,
+                           std::vector<dbus::PathAssociation>>>
+    Terminus::getSensorPortInfo(SensorID id)
 {
     if (sensorPortInfoOverwriteTbl.find(id) != sensorPortInfoOverwriteTbl.end())
     {
-        return std::make_shared<std::tuple<PortType, PortProtocol, uint64_t, std::vector<dbus::PathAssociation>>>(sensorPortInfoOverwriteTbl[id]);
+        return std::make_shared<std::tuple<PortType, PortProtocol, uint64_t,
+                                           std::vector<dbus::PathAssociation>>>(
+            sensorPortInfoOverwriteTbl[id]);
     }
     return nullptr;
 }
@@ -1275,7 +1283,8 @@ bool Terminus::scanInventories()
                 }
                 catch (const std::exception& e)
                 {
-                    lg2::error("failed to query chassis cpu: {P} Error: {ERR}", "P", objPath,"ERR" ,e);
+                    lg2::error("failed to query chassis cpu: {P} Error: {ERR}",
+                               "P", objPath, "ERR", e);
                 }
             }
         }
@@ -1355,7 +1364,7 @@ void Terminus::updateAssociations()
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
         if (sensorAuxiliaryNames)
         {
-            auto&[id, count, auxNames] = *sensorAuxiliaryNames;
+            auto& [id, count, auxNames] = *sensorAuxiliaryNames;
             ptr->updateSensorNames(auxNames);
         }
     }
@@ -1372,7 +1381,7 @@ void Terminus::updateAssociations()
 #endif
 }
 std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
-                                    const bool findClosest)
+                                                 const bool findClosest)
 {
     // Search from stored result first
     auto itr = entities.find(entityInfo);
@@ -1414,7 +1423,7 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
         // multiple inventories matched, find the one under parent path
         for (const auto& candidate : candidates)
         {
-            for (const auto& containerPath: ContainerInventoryPaths)
+            for (const auto& containerPath : ContainerInventoryPaths)
             {
                 if (candidate.starts_with(containerPath))
                 {
@@ -1449,7 +1458,7 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
 }
 
 std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
-                                    const bool findClosest)
+                                                 const bool findClosest)
 {
     std::vector<std::string> inventoryPath;
     inventoryPath.emplace_back(systemInventoryPath);

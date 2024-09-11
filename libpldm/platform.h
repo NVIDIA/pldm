@@ -2374,7 +2374,6 @@ int decode_event_message_supported_resp(
  */
 int encode_get_terminus_uid_req(uint8_t instance_id, struct pldm_msg *msg);
 
-
 /** @struct pldm_get_terminus_uid_resp
  *
  *  Structure representing GetTerminusUID response packet

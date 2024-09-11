@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class Entry : public Ifaces
      */
     explicit Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
                    const std::string& versionStr, const std::string& swId);
-                   
+
     /** @brief Create association {"software_version", "updateable"} between
      * software version object and "/xyz/openbmc_project/software"
      *
@@ -82,12 +82,11 @@ class Entry : public Ifaces
      *  @param[in] revAssociation - Association reverse
      *  @param[in] objPath - D-Bus object path
      */
-    void createAssociation(const std::string fwdAssociation, 
-                            const std::string revAssociation,
-                            const std::string& objPath);
+    void createAssociation(const std::string fwdAssociation,
+                           const std::string revAssociation,
+                           const std::string& objPath);
 
-    
-    /** @brief Update Active Firmware version 
+    /** @brief Update Active Firmware version
      *
      *  @param[in] version - Version string
      */
@@ -125,7 +124,8 @@ class Manager
      *  @param[in] uuid - MCTP UUID
      *  @param[in] deviceObjPath - Object path of the device inventory object
      */
-    void createEntry(pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces);
+    void createEntry(pldm::EID eid, const pldm::UUID& uuid,
+                     dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Update firmware version
      *

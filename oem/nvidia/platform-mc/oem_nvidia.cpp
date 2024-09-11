@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,10 +49,11 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
             utils::DBusHandler().getBus(), effecter->path.c_str());
         bool persistence =
             ((pdr->oem_effecter_powercap ==
-             static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_TDP_NONVOLATILE))
-            ||
+              static_cast<uint8_t>(
+                  OemPowerCapPersistence::OEM_POWERCAP_TDP_NONVOLATILE)) ||
              (pdr->oem_effecter_powercap ==
-             static_cast<uint8_t>(OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE)))
+              static_cast<uint8_t>(
+                  OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE)))
                 ? true
                 : false;
         persistenceIntf->persistent(persistence);
@@ -290,12 +291,15 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     parseOEMEnergyCountNumericSensorPDR(const std::vector<uint8_t>& vendorData)
 {
     const uint8_t* ptr = vendorData.data();
-    auto parsedPdr = std::make_shared<pldm_oem_energycount_numeric_sensor_value_pdr>();
+    auto parsedPdr =
+        std::make_shared<pldm_oem_energycount_numeric_sensor_value_pdr>();
 
-    size_t expectedPDRSize = PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_MIN_LENGTH;
+    size_t expectedPDRSize =
+        PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_MIN_LENGTH;
     if (vendorData.size() < expectedPDRSize)
     {
-        lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+        lg2::error(
+            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
             "PDRSIZE", vendorData.size());
         return nullptr;
     }
@@ -305,7 +309,8 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     memcpy(&parsedPdr->terminus_handle, ptr, count);
     ptr += count;
 
-    expectedPDRSize -= PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH;
+    expectedPDRSize -=
+        PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH;
     switch (parsedPdr->sensor_data_size)
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
@@ -330,7 +335,8 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
 
     if (vendorData.size() < expectedPDRSize)
     {
-        lg2::error("parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
+        lg2::error(
+            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
             "PDRSIZE", vendorData.size());
         return nullptr;
     }
@@ -402,23 +408,29 @@ void nvidiaUpdateAssociations(Terminus& terminus)
                         (double)((get<2>(*sensorPortInfo) / 1000.0) * 8);
                     ptr->setMaxSpeedValue(maxSpeedInGbps);
 
-                    std::vector<dbus::PathAssociation> associations = get<3>(*sensorPortInfo);
+                    std::vector<dbus::PathAssociation> associations =
+                        get<3>(*sensorPortInfo);
                     ptr->addAssociation(associations);
 
                     for (const auto& association : associations)
                     {
-                        if (association.forward == "associated_port" && association.reverse == "associated_port")
+                        if (association.forward == "associated_port" &&
+                            association.reverse == "associated_port")
                         {
                             ptr->addSharedMemObjectPath(association.path);
                             break;
                         }
                     }
 
-                    if (terminus.switchBandwidthSensor && !ptr->isDerivedSensorAssociated())
+                    if (terminus.switchBandwidthSensor &&
+                        !ptr->isDerivedSensorAssociated())
                     {
-                        ptr->associateDerivedSensor(terminus.switchBandwidthSensor);
-                        terminus.switchBandwidthSensor->updateMaxBandwidth(maxSpeedInGbps);
-                        terminus.switchBandwidthSensor->addAssociatedSensorID(sensor->sensorId);
+                        ptr->associateDerivedSensor(
+                            terminus.switchBandwidthSensor);
+                        terminus.switchBandwidthSensor->updateMaxBandwidth(
+                            maxSpeedInGbps);
+                        terminus.switchBandwidthSensor->addAssociatedSensorID(
+                            sensor->sensorId);
                     }
                 }
             }

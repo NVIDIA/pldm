@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 #pragma once
 
 #include "libpldm/firmware_update.h"
-#include "common/utils.hpp"
-#include "common/types.hpp"
 
+#include "common/types.hpp"
+#include "common/utils.hpp"
 #include "fw-update/device_updater.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
@@ -29,12 +29,12 @@ namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 namespace testing
 {
 
-software::Activation::Activations updateManagerActivatePackageResult = 
+software::Activation::Activations updateManagerActivatePackageResult =
     software::Activation::Activations::Active;
 
 class FakeUpdateManager
 {
-    public:
+  public:
     bool fwDebug = true;
     bool isStageOnlyUpdate = false;
 
@@ -50,19 +50,19 @@ class FakeUpdateManager
 
     void resetActivationBlocksTransition()
     {
-        return;      
+        return;
     }
-    
+
     void clearFirmwareUpdatePackage()
     {
-        return;    
+        return;
     }
     void clearStagedPackage()
     {
         return;
     }
-    int processPackage([
-        [maybe_unused]] const std::filesystem::path& packageFilePath)
+    int processPackage(
+        [[maybe_unused]] const std::filesystem::path& packageFilePath)
     {
         return 0;
     }
@@ -81,6 +81,6 @@ class FakeUpdateManager
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
 };
-}//namespace testing
+} // namespace testing
 
 #define UpdateManager testing::FakeUpdateManager
