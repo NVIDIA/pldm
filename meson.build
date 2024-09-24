@@ -131,6 +131,7 @@ endif
 if get_option('nvlink-c2c-fabric-object').enabled()
   add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language : ['c','cpp'])
 endif
+conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
 
 configure_file(output: 'config.h',
   configuration: conf_data

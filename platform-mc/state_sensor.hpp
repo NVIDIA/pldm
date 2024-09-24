@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include "config.h"
+
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
 
@@ -154,6 +156,24 @@ class StateSensor
     inline bool isRefreshed()
     {
         return refreshed;
+    }
+
+    /** @brief  The time since last getStateSensorReadings command in usec */
+    uint64_t lastUpdatedTimeStampInUsec;
+
+    /** @brief  The refresh limit in usec */
+    uint64_t refreshLimitInUsec = DEFAULT_RR_REFRESH_LIMIT_IN_MS * 1000;
+
+    inline void setLastUpdatedTimeStamp(const uint64_t currentTimestampInUsec)
+    {
+        lastUpdatedTimeStampInUsec = currentTimestampInUsec;
+    }
+
+    inline bool needsUpdate(const uint64_t currentTimestampInUsec)
+    {
+        const uint64_t deltaInUsec =
+            currentTimestampInUsec - lastUpdatedTimeStampInUsec;
+        return (deltaInUsec > refreshLimitInUsec);
     }
 
   private:

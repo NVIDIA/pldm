@@ -330,7 +330,6 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     offset = pdr->offset;
     baseUnitModifier = pdr->unit_modifier;
 
-    elapsedTime = 0;
     updateTime = std::numeric_limits<uint64_t>::max();
     if (!std::isnan(pdr->update_interval))
     {
@@ -506,7 +505,6 @@ NumericSensor::NumericSensor(
     offset = 0;
     baseUnitModifier = pdr->unit_modifier;
 
-    elapsedTime = 0;
     updateTime = std::numeric_limits<uint64_t>::max();
     if (!std::isnan(pdr->update_interval))
     {

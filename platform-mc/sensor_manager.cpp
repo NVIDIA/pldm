@@ -192,7 +192,6 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 {
     uint64_t t0 = 0;
     uint64_t t1 = 0;
-    uint64_t elapsed = 0;
     uint64_t pollingTimeInUsec = pollingTime * 1000;
     uint8_t rc = PLDM_SUCCESS;
 
@@ -302,9 +301,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             }
 
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-            elapsed = t1 - t0;
-            sensor->elapsedTime += (pollingTimeInUsec + elapsed);
-            if (sensor->elapsedTime >= sensor->updateTime)
+            if (sensor->needsUpdate(t1))
             {
                 rc = co_await getSensorReading(sensor);
                 if (rc || (terminus->sensorPollTimer &&
@@ -312,7 +309,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                 {
                     co_return PLDM_ERROR;
                 }
-                sensor->elapsedTime = 0;
+                sensor->setLastUpdatedTimeStamp(t1);
             }
         }
 
@@ -379,25 +376,36 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                 },
                 sensor);
 
+            sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
-                rc = co_await getSensorReading(
-                    std::get<std::shared_ptr<NumericSensor>>(sensor));
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                auto numericSesnor =
+                    std::get<std::shared_ptr<NumericSensor>>(sensor);
+                if (numericSesnor->needsUpdate(t1))
                 {
-                    co_return PLDM_ERROR;
+                    rc = co_await getSensorReading(numericSesnor);
+                    if (rc || (terminus->sensorPollTimer &&
+                               !terminus->sensorPollTimer->isRunning()))
+                    {
+                        co_return PLDM_ERROR;
+                    }
+                    numericSesnor->setLastUpdatedTimeStamp(t1);
                 }
             }
             else if (std::holds_alternative<std::shared_ptr<StateSensor>>(
                          sensor))
             {
-                rc = co_await getStateSensorReadings(
-                    std::get<std::shared_ptr<StateSensor>>(sensor));
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                auto stateSesnor =
+                    std::get<std::shared_ptr<StateSensor>>(sensor);
+                if (stateSesnor->needsUpdate(t1))
                 {
-                    co_return PLDM_ERROR;
+                    rc = co_await getStateSensorReadings(stateSesnor);
+                    if (rc || (terminus->sensorPollTimer &&
+                               !terminus->sensorPollTimer->isRunning()))
+                    {
+                        co_return PLDM_ERROR;
+                    }
+                    stateSesnor->setLastUpdatedTimeStamp(t1);
                 }
             }
 

@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include "config.h"
+
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
 #ifdef OEM_NVIDIA
@@ -265,9 +267,6 @@ class NumericSensor
     /** @brief  The DBus path of sensor */
     std::string path;
 
-    /** @brief  The time since last getSensorReading command in usec */
-    uint64_t elapsedTime;
-
     /** @brief  The time of sensor update interval in usec */
     uint64_t updateTime;
 
@@ -302,6 +301,31 @@ class NumericSensor
     inline bool isRefreshed()
     {
         return refreshed;
+    }
+
+    /** @brief  The time since last getSensorReading command in usec */
+    uint64_t lastUpdatedTimeStampInUsec;
+
+    /** @brief  The refresh limit in usec */
+    uint64_t refreshLimitInUsec = DEFAULT_RR_REFRESH_LIMIT_IN_MS * 1000;
+
+    inline void setLastUpdatedTimeStamp(const uint64_t currentTimestampInUsec)
+    {
+        lastUpdatedTimeStampInUsec = currentTimestampInUsec;
+    }
+
+    inline bool needsUpdate(const uint64_t currentTimestampInUsec)
+    {
+        const uint64_t deltaInUsec =
+            currentTimestampInUsec - lastUpdatedTimeStampInUsec;
+        if (updateTime > deltaInUsec)
+        {
+            return false;
+        }
+
+        return (
+            isPriority // We don't want to throttle if it's a priority sensor
+            || (deltaInUsec > refreshLimitInUsec));
     }
 
     /** @brief  A container to store OemIntf, it allows us to add additional OEM
