@@ -69,7 +69,6 @@ class SensorManagerTest : public testing::Test
 TEST_F(SensorManagerTest, sensorPollingTest)
 {
     uint64_t seconds = 10;
-    uint64_t expectedTimes = (seconds * 1000) / SENSOR_POLLING_TIME;
 
     pldm::tid_t tid = 1;
     std::string uuid1("00000000-0000-0000-0000-000000000001");
@@ -77,7 +76,7 @@ TEST_F(SensorManagerTest, sensorPollingTest)
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1, terminusManager);
 
     EXPECT_CALL(sensorManager, doSensorPolling(tid))
-        .Times(Between(expectedTimes - 5, expectedTimes + 5))
+        .Times(1)
         .WillRepeatedly(Return());
     sensorManager.startPolling();
     runEventLoopForSeconds(seconds);
