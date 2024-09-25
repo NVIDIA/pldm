@@ -149,8 +149,7 @@ class Terminus
                             std::shared_ptr<StateSensor>>>
         roundRobinSensors;
 
-    /** @brief sensor polling timer */
-    std::unique_ptr<sdbusplus::Timer> sensorPollTimer;
+    bool stopPolling = false;
 
     /** @brief coroutine handle of doSensorPollingTask */
     std::coroutine_handle<> doSensorPollingTaskHandle;

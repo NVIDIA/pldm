@@ -14,8 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "config.h"
+
 #include "sensor_manager.hpp"
 
+#include "common/sleep.hpp"
 #include "manager.hpp"
 #include "terminus_manager.hpp"
 
@@ -107,19 +110,8 @@ void SensorManager::startPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
-    if (!terminus->sensorPollTimer)
-    {
-        terminus->sensorPollTimer = std::make_unique<sdbusplus::Timer>(
-            event.get(),
-            std::bind_front(&SensorManager::doSensorPolling, this, tid));
-    }
-
-    if (!terminus->sensorPollTimer->isRunning())
-    {
-        terminus->sensorPollTimer->start(
-            duration_cast<std::chrono::milliseconds>(milliseconds(pollingTime)),
-            true);
-    }
+    terminus->stopPolling = false;
+    doSensorPolling(tid);
 }
 
 void SensorManager::stopPolling(tid_t tid)
@@ -130,10 +122,7 @@ void SensorManager::stopPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
-    if (terminus->sensorPollTimer)
-    {
-        terminus->sensorPollTimer->stop();
-    }
+    terminus->stopPolling = true;
 }
 
 void SensorManager::startPolling()
@@ -192,12 +181,13 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 {
     uint64_t t0 = 0;
     uint64_t t1 = 0;
+    uint64_t allowedBufferInUsec = 50 * 1000;
     uint64_t pollingTimeInUsec = pollingTime * 1000;
-    uint8_t rc = PLDM_SUCCESS;
 
     do
     {
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
+
         if (verbose)
         {
             lg2::info("TID:{TID} start sensor polling at {NOW}.", "TID", tid,
@@ -225,15 +215,14 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                co_return PLDM_ERROR;
+                continue;
             }
 
             // Get numeric effector if we haven't sync.
             if (effector->needUpdate)
             {
-                rc = co_await effector->getNumericEffecterValue();
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                co_await effector->getNumericEffecterValue();
+                if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
                 }
@@ -245,16 +234,15 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                co_return PLDM_ERROR;
+                continue;
             }
 
             // Get state effector if it haven't been synced or it is
             // updatePending
             if (effector->needUpdate || effector->isUpdatePending())
             {
-                rc = co_await effector->getStateEffecterStates();
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                co_await effector->getStateEffecterStates();
+                if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
                 }
@@ -266,15 +254,14 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                co_return PLDM_ERROR;
+                continue;
             }
 
             // Get State sensor if we haven't sync.
             if (sensor->needUpdate)
             {
-                rc = co_await getStateSensorReadings(sensor);
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                co_await getStateSensorReadings(sensor);
+                if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
                 }
@@ -292,7 +279,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                co_return PLDM_ERROR;
+                continue;
             }
 
             if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
@@ -303,9 +290,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             if (sensor->needsUpdate(t1))
             {
-                rc = co_await getSensorReading(sensor);
-                if (rc || (terminus->sensorPollTimer &&
-                           !terminus->sensorPollTimer->isRunning()))
+                co_await getSensorReading(sensor);
+                if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
                 }
@@ -342,7 +328,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
             if (manager && terminus->pollEvent)
             {
-                co_return PLDM_ERROR;
+                continue;
             }
 
             auto sensor = terminus->roundRobinSensors.front();
@@ -383,9 +369,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                     std::get<std::shared_ptr<NumericSensor>>(sensor);
                 if (numericSesnor->needsUpdate(t1))
                 {
-                    rc = co_await getSensorReading(numericSesnor);
-                    if (rc || (terminus->sensorPollTimer &&
-                               !terminus->sensorPollTimer->isRunning()))
+                    co_await getSensorReading(numericSesnor);
+                    if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
                     }
@@ -399,9 +384,8 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
                     std::get<std::shared_ptr<StateSensor>>(sensor);
                 if (stateSesnor->needsUpdate(t1))
                 {
-                    rc = co_await getStateSensorReadings(stateSesnor);
-                    if (rc || (terminus->sensorPollTimer &&
-                               !terminus->sensorPollTimer->isRunning()))
+                    co_await getStateSensorReadings(stateSesnor);
+                    if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
                     }
@@ -438,7 +422,25 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         }
 
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
-    } while ((t1 - t0) >= pollingTimeInUsec);
+
+        uint64_t diff = t1 - t0;
+        if (diff > pollingTimeInUsec)
+        {
+            // We have already crossed the polling interval. Don't sleep
+            continue;
+        }
+
+        uint64_t sleepDeltaInUsec = pollingTimeInUsec - diff;
+        if (sleepDeltaInUsec < allowedBufferInUsec)
+        {
+            // If the delta is within the allowed buffer, we can skip sleeping
+            // and continue polling.
+            continue;
+        }
+
+        co_await timer::Sleep(event, sleepDeltaInUsec, timer::Priority);
+
+    } while (true);
 
     co_return PLDM_SUCCESS;
 }
@@ -518,7 +520,7 @@ requester::Coroutine
     }
 
     auto terminus = termini[tid];
-    if (terminus->sensorPollTimer && !terminus->sensorPollTimer->isRunning())
+    if (terminus->stopPolling)
     {
         co_return PLDM_ERROR;
     }
@@ -672,7 +674,7 @@ requester::Coroutine
     }
 
     auto terminus = termini[tid];
-    if (terminus->sensorPollTimer && !terminus->sensorPollTimer->isRunning())
+    if (terminus->stopPolling)
     {
         co_return PLDM_ERROR;
     }
