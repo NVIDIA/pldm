@@ -215,7 +215,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                continue;
+                break;
             }
 
             // Get numeric effector if we haven't sync.
@@ -234,7 +234,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                continue;
+                break;
             }
 
             // Get state effector if it haven't been synced or it is
@@ -254,7 +254,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                continue;
+                break;
             }
 
             // Get State sensor if we haven't sync.
@@ -279,7 +279,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
         {
             if (manager && terminus->pollEvent)
             {
-                continue;
+                break;
             }
 
             if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
@@ -328,7 +328,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 
             if (manager && terminus->pollEvent)
             {
-                continue;
+                break;
             }
 
             auto sensor = terminus->roundRobinSensors.front();
