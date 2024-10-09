@@ -171,8 +171,9 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
         return mapTid(mctpInfo, tid);
     }
 
-    auto tidPoolIterator = std::find(tidPool.begin(), tidPool.end(), false);
-    if (tidPoolIterator == tidPool.end())
+    // directly assigning TID to the value of EID
+    tid_t tid = std::get<0>(mctpInfo);
+    if (tidPool[tid])
     {
         // cannot find a free tid to assign
         lg2::error("failed to assign a TID to Terminus eid={EID}.", "EID",
@@ -180,7 +181,6 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
         return std::nullopt;
     }
 
-    tid_t tid = std::distance(tidPool.begin(), tidPoolIterator);
     return mapTid(mctpInfo, tid);
 }
 

@@ -166,18 +166,22 @@ TEST_F(TerminusManagerTest, negativeMapTidTest)
     // look up an unmapped TID
     mappedEid = terminusManager.toMctpInfo(1);
     EXPECT_EQ(mappedEid, std::nullopt);
+    /* disabled the test case since this is an invald test case on nvidia
+       platforms.
+        // map two mctpInfo with same EID but different UUID and network Id
+        pldm::MctpInfo m3(12, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+                          "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+       1,
+                          "");
+        pldm::MctpInfo m4(12, "f72d6f90-5675-11ed-9b6a-0242ac120012",
+                          "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+       2,
+                          "");
 
-    // map two mctpInfo with same EID but different UUID and network Id
-    pldm::MctpInfo m3(12, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-                      "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1,
-                      "");
-    pldm::MctpInfo m4(12, "f72d6f90-5675-11ed-9b6a-0242ac120012",
-                      "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 2,
-                      "");
-    auto mappedTid3 = terminusManager.mapTid(m3);
-    auto mappedTid4 = terminusManager.mapTid(m4);
-    EXPECT_NE(mappedTid3.value(), mappedTid4.value());
-
+        auto mappedTid3 = terminusManager.mapTid(m3);
+        auto mappedTid4 = terminusManager.mapTid(m4);
+        EXPECT_NE(mappedTid3.value(), mappedTid4.value());
+    */
     // map same mctpInfo twice
     pldm::MctpInfo m5(13, "f72d6f90-5675-11ed-9b6a-0242ac120013",
                       "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 3,
