@@ -223,44 +223,29 @@ requester::Coroutine InventoryManager::getActiveFirmwareVersion(
     mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
     UpdateFWVersionCallBack updateFWVersionCallback)
 {
-    uint8_t rc = 0;
-    uint8_t getFirmwareParametersAttempts = numAttempts;
-
     std::string messageError{};
     std::string resolution{};
 
-    while (getFirmwareParametersAttempts--)
-    {
-        rc = co_await getFirmwareParameters(eid, messageError, resolution,
-                                            mctpInterfaces, true);
+    auto rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                             mctpInterfaces, true);
 
-        if (rc == PLDM_SUCCESS)
+    if (rc == PLDM_SUCCESS)
+    {
+        if (updateFWVersionCallback)
         {
-            if (updateFWVersionCallback)
-            {
-                updateFWVersionCallback(eid);
-            }
-            break;
+            updateFWVersionCallback(eid);
         }
-        else
-        {
-            lg2::error(
-                "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
-                "EID", eid, "RC", rc);
-        }
+        co_return rc;
     }
 
-    if (rc)
+    cleanUpResources(eid);
+    lg2::error(
+        "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
+        "EID", eid, "RC", rc);
+    if (!messageError.empty() && !resolution.empty())
     {
-        cleanUpResources(eid);
-        lg2::error(
-            "Failed to execute the 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
-        if (!messageError.empty() && !resolution.empty())
-        {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces);
-        }
+        logDiscoveryFailedMessage(eid, messageError, resolution,
+                                  mctpInterfaces);
     }
 
     co_return rc;
