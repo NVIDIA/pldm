@@ -205,7 +205,7 @@ class InventoryManager
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
-    void initiateGetActiveFirmwareVersion(
+    requester::Coroutine initiateGetActiveFirmwareVersion(
         mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Send getPLDMTypes command to destination EID and then return the

@@ -180,12 +180,27 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
     co_return rc;
 }
 
-void InventoryManager::initiateGetActiveFirmwareVersion(
+requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
     mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
+    uint64_t supportedTypes = 0;
+    auto rc = co_await getPLDMTypes(eid, supportedTypes);
+    if (rc)
+    {
+        lg2::error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC",
+                   rc);
+        co_return PLDM_ERROR;
+    }
+
+    auto isType5Supported = supportedTypes & (1 << PLDM_FWUP);
+    if (!isType5Supported)
+    {
+        co_return PLDM_SUCCESS;
+    }
+
     if (!mctpEidMap.contains(eid))
     {
-        return;
+        co_return PLDM_SUCCESS;
     }
 
     dbus::MctpInterfaces mctpInterfaces;
@@ -201,6 +216,7 @@ void InventoryManager::initiateGetActiveFirmwareVersion(
     {
         inventoryCoRoutineHandlers.emplace(eid, co.handle);
     }
+    co_return PLDM_SUCCESS;
 }
 
 requester::Coroutine InventoryManager::getActiveFirmwareVersion(
