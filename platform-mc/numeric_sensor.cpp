@@ -44,6 +44,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 {
     sensorUnit = SensorUnit::DegreesC;
     hasValueIntf = true;
+    skipPolling = false;
     pollingIndicator = POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO;
     switch (baseUnit)
     {
@@ -852,7 +853,11 @@ void NumericSensor::updateSensorName(std::string name)
 
 void NumericSensor::removeValueIntf()
 {
-    valueIntf = nullptr;
+    if (hasValueIntf)
+    {
+        skipPolling = true;
+        valueIntf = nullptr;
+    }
     associationDefinitionsIntf = nullptr;
 }
 
