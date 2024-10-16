@@ -448,12 +448,6 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
 requester::Coroutine
     SensorManager::getSensorReading(std::shared_ptr<NumericSensor> sensor)
 {
-    // Do not get sensor reading if sensor does not have a Value Interface
-    if (!sensor->valueIntf)
-    {
-        co_return PLDM_SUCCESS;
-    }
-
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
     auto pollingIndicator = sensor->getPollingIndicator();

@@ -316,6 +316,10 @@ class NumericSensor
 
     inline bool needsUpdate(const uint64_t currentTimestampInUsec)
     {
+        if (skipPolling)
+        {
+            return false;
+        }
         const uint64_t deltaInUsec =
             currentTimestampInUsec - lastUpdatedTimeStampInUsec;
         if (updateTime > deltaInUsec)
@@ -393,6 +397,9 @@ class NumericSensor
 
     /** @brief sensor lower value range */
     double minValue;
+
+    /** @brief flag to skip polling */
+    bool skipPolling;
 };
 } // namespace platform_mc
 } // namespace pldm
