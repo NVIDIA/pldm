@@ -137,30 +137,32 @@ class StateSetEthernetPortLinkState : public StateSet
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Active")};
+            return {std::string("ResourceEvent.1.0.ResourceErrorsCorrected"),
+                    std::string("LinkUp")};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Inactive")};
+            return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
+                    std::string("LinkDown")};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error")};
+            return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
+                    std::string("Error")};
         }
         else
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
+            return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
                     std::string("Unknown")};
         }
     }
 
     std::string getStringStateType() const override
     {
+        if (!objectName.empty())
+        {
+            return objectName;
+        }
         return std::string("Ethernet");
     }
 
@@ -271,6 +273,7 @@ class StateSetEthernetPortLinkState : public StateSet
 
     virtual void updateSensorName([[maybe_unused]] std::string name) override
     {
+        objectName = name;
         if (name == objectPath.filename())
         {
             return;
@@ -323,6 +326,7 @@ class StateSetEthernetPortLinkState : public StateSet
     std::filesystem::path sharedMemObjectPath;
 #endif
     std::filesystem::path objectPath;
+    std::string objectName;
     uint8_t presentState;
 };
 

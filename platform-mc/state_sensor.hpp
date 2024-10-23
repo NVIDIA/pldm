@@ -90,14 +90,21 @@ class StateSensor
             }
 
             std::vector<dbus::PathAssociation> assocs;
+            std::string associatedEntityPath;
 
             for (const auto& path : inventoryPath)
             {
                 dbus::PathAssociation assoc = {"chassis", "all_states",
                                                path.c_str()};
                 assocs.emplace_back(assoc);
+                associatedEntityPath = path;
             }
             stateSet->setAssociation(assocs);
+
+            sdbusplus::message::object_path entityPath(associatedEntityPath);
+            associationEntityId = entityPath.filename();
+            transform(associationEntityId.begin(), associationEntityId.end(),
+                      associationEntityId.begin(), ::toupper);
         }
     }
 

@@ -174,8 +174,7 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
     };
 
     std::map<std::string, std::string> addData;
-    addData["REDFISH_MESSAGE_ID"] =
-        "ResourceEvent.1.0.ResourceStatusChangedWarning";
+    addData["REDFISH_MESSAGE_ID"] = messageID;
     Level level = Level::Informational;
     addData["REDFISH_MESSAGE_ARGS"] = arg1 + "," + arg2;
     addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
