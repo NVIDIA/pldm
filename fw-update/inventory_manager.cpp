@@ -349,6 +349,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
     }
 
     Descriptors descriptors{};
+    std::ostringstream descriptorLog;
     while (descriptorCount-- && (deviceIdentifiersLen > 0))
     {
         uint16_t descriptorType = 0;
@@ -370,6 +371,15 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
         {
             std::vector<uint8_t> descData(
                 descriptorData.ptr, descriptorData.ptr + descriptorData.length);
+            std::ostringstream descValueStream;
+            for (const auto& byte : descData)
+            {
+                descValueStream << std::hex << std::setw(2) << std::setfill('0')
+                                << static_cast<int>(byte);
+            }
+            descriptorLog << "{Type: " << descriptorType
+                          << ", Value: " << descValueStream.str() << "}, ";
+
             descriptors.emplace(descriptorType, std::move(descData));
         }
         else
@@ -400,6 +410,15 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
             descriptors.emplace(descriptorType,
                                 std::make_tuple(vendorDefinedDescriptorTitleStr,
                                                 vendorDescData));
+            std::ostringstream descValueStream;
+            for (const auto& byte : vendorDescData)
+            {
+                descValueStream << std::hex << std::setw(2) << std::setfill('0')
+                                << static_cast<int>(byte);
+            }
+            descriptorLog << "{Type: " << descriptorType << ", Value: {"
+                          << vendorDefinedDescriptorTitleStr << ": "
+                          << descValueStream.str() << "}}, ";
         }
         auto nextDescriptorOffset =
             sizeof(pldm_descriptor_tlv().descriptor_type) +
@@ -413,6 +432,8 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
     {
         descriptorMap.erase(eid);
     }
+    lg2::info("EID={EID} Descriptors=[{DESC}]", "EID", eid, "DESC",
+              descriptorLog.str());
     descriptorMap.emplace(eid, std::move(descriptors));
 
     co_return PLDM_SUCCESS;
