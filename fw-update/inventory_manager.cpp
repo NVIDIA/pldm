@@ -349,7 +349,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
     }
 
     Descriptors descriptors{};
-    std::ostringstream descriptorLog;
+    std::ostringstream descriptorLog{};
     while (descriptorCount-- && (deviceIdentifiersLen > 0))
     {
         uint16_t descriptorType = 0;
@@ -371,7 +371,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
         {
             std::vector<uint8_t> descData(
                 descriptorData.ptr, descriptorData.ptr + descriptorData.length);
-            std::ostringstream descValueStream;
+            std::ostringstream descValueStream{};
             for (const auto& byte : descData)
             {
                 descValueStream << std::hex << std::setw(2) << std::setfill('0')
@@ -410,7 +410,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
             descriptors.emplace(descriptorType,
                                 std::make_tuple(vendorDefinedDescriptorTitleStr,
                                                 vendorDescData));
-            std::ostringstream descValueStream;
+            std::ostringstream descValueStream{};
             for (const auto& byte : vendorDescData)
             {
                 descValueStream << std::hex << std::setw(2) << std::setfill('0')
