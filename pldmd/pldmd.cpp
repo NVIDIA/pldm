@@ -249,6 +249,16 @@ int main(int argc, char** argv)
 
 #ifdef PLDM_TYPE2
         pldm::responder::platform::EventMap addOnEventHandlers{
+            {PLDM_CPER_MESSAGE_EVENT,
+             {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                                 uint8_t formatVersion, uint8_t tid,
+                                 size_t eventDataOffset,
+                                 uint8_t& platformEventStatus) {
+                 return platformManager->handleCperEvent(
+                     request, payloadLength, formatVersion, tid,
+                     eventDataOffset, platformEventStatus,
+                     PLDM_CPER_MESSAGE_EVENT);
+             }}},
             {PLDM_OEM_EVENT_CLASS_0xFA,
              {[&platformManager](const pldm_msg* request, size_t payloadLength,
                                  uint8_t formatVersion, uint8_t tid,
@@ -256,7 +266,8 @@ int main(int argc, char** argv)
                                  uint8_t& platformEventStatus) {
                  return platformManager->handleCperEvent(
                      request, payloadLength, formatVersion, tid,
-                     eventDataOffset, platformEventStatus);
+                     eventDataOffset, platformEventStatus,
+                     PLDM_OEM_EVENT_CLASS_0xFA);
              }}},
             {PLDM_OEM_EVENT_CLASS_0xFB,
              {[&platformManager](const pldm_msg* request, size_t payloadLength,

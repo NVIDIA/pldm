@@ -114,14 +114,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     int handleCperEvent(const pldm_msg* request, size_t payloadLength,
                         uint8_t /* formatVersion */, uint8_t tid,
-                        size_t eventDataOffset, uint8_t& platformEventStatus)
+                        size_t eventDataOffset, uint8_t& platformEventStatus,
+                        uint8_t eventClass)
     {
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
-        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFA,
-                                         eventData, eventDataSize,
-                                         platformEventStatus);
+        eventManager.handlePlatformEvent(tid, eventClass, eventData,
+                                         eventDataSize, platformEventStatus);
         return PLDM_SUCCESS;
     }
 

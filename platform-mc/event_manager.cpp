@@ -108,7 +108,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         auto eid = std::get<0>(mctpInfo.value());
         fwUpdateManager.updateFWInventory(eid);
     }
-    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA)
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA ||
+             eventClass == PLDM_CPER_MESSAGE_EVENT)
     {
         uint8_t formatVersion;
         uint8_t formatType;
