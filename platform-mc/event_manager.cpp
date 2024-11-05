@@ -271,7 +271,15 @@ requester::Coroutine
         }
         else
         {
-            if (transferFlag == PLDM_START || transferFlag == PLDM_MIDDLE)
+            /*
+             * Check if transferFlag represents either a START or MIDDLE state.
+             * For backward compatibility, handle values from both transfer flag
+             * enums: PLATFORM_EVENT and PLDM. Note: PLATFORM_EVENT_MIDDLE and
+             * PLDM_START both have the value 1.
+             */
+            if (transferFlag == PLATFORM_EVENT_START ||
+                transferFlag == PLATFORM_EVENT_MIDDLE ||
+                transferFlag == PLDM_MIDDLE)
             {
                 transferOperationFlag = PLDM_GET_NEXTPART;
                 dataTransferHandle = nextDataTransferHandle;
@@ -280,13 +288,13 @@ requester::Coroutine
             else
             {
                 uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
-                if (transferFlag == PLDM_START_AND_END)
+                if (transferFlag == PLATFORM_EVENT_START_AND_END)
                 {
                     handlePlatformEvent(
                         eventTid, eventClass, eventMessage.data(),
                         eventMessage.size(), platformEventStatus);
                 }
-                else if (transferFlag == PLDM_END)
+                else if (transferFlag == PLATFORM_EVENT_END)
                 {
                     if (eventDataIntegrityChecksum ==
                         crc32(eventMessage.data(), eventMessage.size()))

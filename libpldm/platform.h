@@ -165,6 +165,13 @@ enum pldm_effecter_event_message_enable {
 	EFFECTER_EVENT_NO_CHANGE = 0xFF
 };
 
+enum pldm_event_transfer_resp_flag {
+	PLATFORM_EVENT_START = 0x00,
+	PLATFORM_EVENT_MIDDLE = 0x01,
+	PLATFORM_EVENT_END = 0x04,
+	PLATFORM_EVENT_START_AND_END = 0x05,
+};
+
 enum pldm_platform_commands {
 	PLDM_GET_TERMINUS_UID = 0x03,
 	PLDM_SET_EVENT_RECEIVER = 0x04,

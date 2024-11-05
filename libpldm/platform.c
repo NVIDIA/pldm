@@ -2086,7 +2086,7 @@ int decode_poll_for_platform_event_message_resp(
 		       response->event_data_size);
 	}
 
-	if (*transfer_flag == PLDM_END) {
+	if (*transfer_flag == PLATFORM_EVENT_END) {
 		*eventDataIntegrityChecksum = *((
 		    uint32_t
 			*)(msg->payload +
