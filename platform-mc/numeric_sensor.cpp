@@ -790,6 +790,7 @@ void NumericSensor::updateSensorName(std::string name)
 
     if (hasValueIntf)
     {
+        skipPolling = false;
         valueIntf = std::make_unique<ValueIntf>(bus, path.c_str());
         valueIntf->maxValue(maxValue);
         valueIntf->minValue(minValue);
