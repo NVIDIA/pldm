@@ -290,9 +290,22 @@ void DebugToken::startTimer(auto timerExpiryTime)
         if (!tokenStatus)
         {
             activationMatches.clear();
-            createLogEntry(transferFailed,
-                           std::filesystem::path(tokenPath).filename(),
-                           tokenVersion, transferFailedResolution);
+            auto componentName = std::filesystem::path(tokenPath).filename();
+            if (componentName == "HGX_FW_Debug_Token_Erase")
+            {
+                auto eraseMessage = "Operation timed out.";
+                auto eraseResolution =
+                    "No action required. If there are other"
+                    " component failures in task, retry the firmware update"
+                    " operation and if issue still persists reset the baseboard.";
+                createLogEntry(debugTokenEraseFailed, componentName,
+                               eraseMessage, eraseResolution);
+            }
+            else
+            {
+                createLogEntry(transferFailed, componentName, tokenVersion,
+                               transferFailedResolution);
+            }
             lg2::error("Activation Timer expired for install debug token");
             startUpdate();
         }

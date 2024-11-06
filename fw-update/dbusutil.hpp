@@ -39,7 +39,8 @@ const std::string resourceErrorDetected{
 const std::string componentUpdateSkipped{
     "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 const std::string stageSuccessful{"NvidiaUpdate.1.0.StageSuccessful"};
-
+const std::string debugTokenEraseFailed{
+    "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -128,9 +129,9 @@ inline void createLogEntry(const std::string& messageID,
     }
     else
     {
-        lg2::error("Message Registry messageID is not recognised", "MESSAGEID",
-                   messageID);
-        return;
+        lg2::info("Generic message ID using default ordering for args",
+                  "MESSAGEID", messageID);
+        addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }
 
     if (!resolution.empty())
