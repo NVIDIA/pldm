@@ -603,11 +603,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
 
 void NumericSensor::handleErrGetSensorReading()
 {
-    operationalStatusIntf->functional(false);
-    if (valueIntf)
-    {
-        valueIntf->value(std::numeric_limits<double>::quiet_NaN());
-    }
+    updateReading(true, false, std::numeric_limits<double>::quiet_NaN());
 }
 
 bool NumericSensor::checkThreshold(bool alarm, bool direction, double value,
