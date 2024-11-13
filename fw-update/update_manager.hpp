@@ -17,7 +17,6 @@
 #pragma once
 
 #include "libpldm/base.h"
-#include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
 #include "device_updater.hpp"
@@ -27,6 +26,8 @@
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
+
+#include <libpldm/pldm.h>
 
 #include <chrono>
 #include <filesystem>

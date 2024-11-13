@@ -112,9 +112,7 @@ endif
 conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-staging-dir-mount-service'))
 conf_data.set_quoted('FIRMWARE_PACKAGE_SPLIT_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-split-staging-dir-mount-service'))
 conf_data.set('PROGRESS_UPDATE_INTERVAL', get_option('progress-percent-updater-interval'))
-if get_option('libpldm-only').disabled()
-  conf_data.set_quoted('HOST_EID_PATH', join_paths(package_datadir, 'host_eid'))
-endif
+conf_data.set_quoted('HOST_EID_PATH', join_paths(package_datadir, 'host_eid'))
 conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
 conf_data.set('UPDATE_MODE_IDLE_TIMEOUT', get_option('update-mode-idle-timeout'))
 conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
@@ -139,49 +137,53 @@ configure_file(output: 'config.h',
 
 cpp = meson.get_compiler('cpp')
 
-if get_option('libpldm-only').disabled()
-  phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
-  sdbusplus = dependency('sdbusplus')
-  sdeventplus = dependency('sdeventplus')
-  phosphor_logging = dependency('phosphor-logging')
+libpldm_dep = dependency(
+    'libpldm',
+    fallback: ['libpldm', 'libpldm_dep'],
+    include_type: 'system',
+)
 
-  if cpp.has_header('nlohmann/json.hpp')
-    nlohmann_json = declare_dependency()
-  else
-    nlohmann_json = dependency('nlohmann_json')
-  endif
+phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
+sdbusplus = dependency('sdbusplus')
+sdeventplus = dependency('sdeventplus')
+phosphor_logging = dependency('phosphor-logging')
 
-  if cpp.has_header('CLI/CLI.hpp')
-    CLI11_dep = declare_dependency()
-  else
-    CLI11_dep = dependency('CLI11')
-  endif
+if cpp.has_header('nlohmann/json.hpp')
+  nlohmann_json = declare_dependency()
+else
+  nlohmann_json = dependency('nlohmann_json')
+endif
 
-  if cpp.has_header_symbol('function2/function2.hpp', 'fu2::unique_function')
-    function2_dep = declare_dependency()
-  else
-    subproject('function2')
-    function2_dep = declare_dependency(
-      include_directories: [
-        'subprojects/function2/include/function2'
-      ]
-    )
-  endif
+if cpp.has_header('CLI/CLI.hpp')
+  CLI11_dep = declare_dependency()
+else
+  CLI11_dep = dependency('CLI11')
+endif
 
-  fmt_dep = dependency('fmt', required: false)
-  if not fmt_dep.found()
-    fmt_opts = import('cmake').subproject_options()
-    fmt_opts.add_cmake_defines({
-      'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
-      'MASTER_PROJECT': 'OFF',
-    })
-    fmt_proj = import('cmake').subproject(
-      'fmt',
-      options: fmt_opts,
-      required: false)
-    assert(fmt_proj.found(), 'fmtlib is required')
-    fmt_dep = fmt_proj.dependency('fmt')
-  endif
+if cpp.has_header_symbol('function2/function2.hpp', 'fu2::unique_function')
+  function2_dep = declare_dependency()
+else
+  subproject('function2')
+  function2_dep = declare_dependency(
+    include_directories: [
+      'subprojects/function2/include/function2'
+    ]
+  )
+endif
+
+fmt_dep = dependency('fmt', required: false)
+if not fmt_dep.found()
+  fmt_opts = import('cmake').subproject_options()
+  fmt_opts.add_cmake_defines({
+    'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
+    'MASTER_PROJECT': 'OFF',
+  })
+  fmt_proj = import('cmake').subproject(
+    'fmt',
+    options: fmt_opts,
+    required: false)
+  assert(fmt_proj.found(), 'fmtlib is required')
+  fmt_dep = fmt_proj.dependency('fmt')
 endif
 
 if get_option('oe-sdk').enabled()
@@ -222,9 +224,6 @@ if get_option('tests').enabled()
     endif
 endif
 
-subdir('libpldm')
-
-if get_option('libpldm-only').disabled()
 
 openssl = dependency('openssl', required : true)
 
@@ -368,5 +367,3 @@ if get_option('tests').enabled()
   subdir('platform-mc/test')
   subdir('test')
 endif
-
-endif # pldm-only

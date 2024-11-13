@@ -1,12 +1,12 @@
 #pragma once
 
 #include "libpldm/base.h"
-#include "libpldm/requester/pldm.h"
 
 #include "common/flight_recorder.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <libpldm/pldm.h>
 #include <sys/socket.h>
 
 #include <phosphor-logging/lg2.hpp>

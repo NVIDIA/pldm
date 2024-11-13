@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "libpldm/requester/pldm.h"
-
 #include "activation.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
@@ -30,6 +28,8 @@
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
+
+#include <libpldm/pldm.h>
 
 #include <phosphor-logging/lg2.hpp>
 

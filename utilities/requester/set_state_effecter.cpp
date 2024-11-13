@@ -1,5 +1,6 @@
 #include "libpldm/platform.h"
-#include "libpldm/requester/pldm.h"
+
+#include <libpldm/pldm.h>
 
 #include <CLI/CLI.hpp>
 

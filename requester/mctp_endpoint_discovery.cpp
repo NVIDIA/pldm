@@ -2,10 +2,10 @@
 
 #include "mctp_endpoint_discovery.hpp"
 
-#include "libpldm/requester/pldm.h"
-
 #include "common/types.hpp"
 #include "common/utils.hpp"
+
+#include <libpldm/pldm.h>
 
 #include <nlohmann/json.hpp>
 #include <phosphor-logging/lg2.hpp>

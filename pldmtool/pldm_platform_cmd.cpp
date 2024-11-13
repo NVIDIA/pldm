@@ -466,8 +466,8 @@ class GetPDR : public CommandInterface
          "Primary Processor Initialization"}};
 
     static inline const std::map<uint8_t, std::string> setOpFaultStatus{
-        {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_NORMAL, "Normal"},
-        {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_STRESSED, "Stressed"}};
+        {PLDM_STATE_SET_OPERATIONAL_STRESS_STATUS_NORMAL, "Normal"},
+        {PLDM_STATE_SET_OPERATIONAL_STRESS_STATUS_STRESSED, "Stressed"}};
 
     static inline const std::map<uint8_t, std::string> setSysPowerState{
         {PLDM_STATE_SET_SYS_POWER_STATE_OFF_SOFT_GRACEFUL,
@@ -1153,7 +1153,7 @@ class GetPDR : public CommandInterface
         }
         struct pldm_numeric_effecter_value_pdr pdr;
         size_t count =
-            (uint8_t*)(&pdr.max_set_table.value_u8) - (uint8_t*)(&pdr.hdr);
+            (uint8_t*)(&pdr.max_settable.value_u8) - (uint8_t*)(&pdr.hdr);
 
         memcpy(&pdr.hdr, data, count);
         data += count;
@@ -1189,52 +1189,52 @@ class GetPDR : public CommandInterface
         switch (pdr.effecter_data_size)
         {
             case PLDM_EFFECTER_DATA_SIZE_UINT8:
-                pdr.max_set_table.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.max_set_table.value_u8);
-                output["maxSettable"] = unsigned(pdr.max_set_table.value_u8);
-                pdr.min_set_table.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.min_set_table.value_u8);
-                output["minSettable"] = unsigned(pdr.min_set_table.value_u8);
+                pdr.max_settable.value_u8 = *((uint8_t*)data);
+                data += sizeof(pdr.max_settable.value_u8);
+                output["maxSettable"] = unsigned(pdr.max_settable.value_u8);
+                pdr.min_settable.value_u8 = *((uint8_t*)data);
+                data += sizeof(pdr.min_settable.value_u8);
+                output["minSettable"] = unsigned(pdr.min_settable.value_u8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT8:
-                pdr.max_set_table.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.max_set_table.value_s8);
-                output["maxSettable"] = signed(pdr.max_set_table.value_s8);
-                pdr.min_set_table.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.min_set_table.value_s8);
-                output["minSettable"] = signed(pdr.min_set_table.value_s8);
+                pdr.max_settable.value_s8 = *((int8_t*)data);
+                data += sizeof(pdr.max_settable.value_s8);
+                output["maxSettable"] = signed(pdr.max_settable.value_s8);
+                pdr.min_settable.value_s8 = *((int8_t*)data);
+                data += sizeof(pdr.min_settable.value_s8);
+                output["minSettable"] = signed(pdr.min_settable.value_s8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT16:
-                pdr.max_set_table.value_u16 = *((uint16_t*)data);
-                data += sizeof(pdr.max_set_table.value_u16);
-                output["maxSettable"] = unsigned(pdr.max_set_table.value_u16);
-                pdr.min_set_table.value_u16 = *((uint16_t*)data);
-                data += sizeof(pdr.min_set_table.value_u16);
-                output["minSettable"] = unsigned(pdr.min_set_table.value_u16);
+                pdr.max_settable.value_u16 = *((uint16_t*)data);
+                data += sizeof(pdr.max_settable.value_u16);
+                output["maxSettable"] = unsigned(pdr.max_settable.value_u16);
+                pdr.min_settable.value_u16 = *((uint16_t*)data);
+                data += sizeof(pdr.min_settable.value_u16);
+                output["minSettable"] = unsigned(pdr.min_settable.value_u16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT16:
-                pdr.max_set_table.value_s16 = *((int16_t*)data);
-                data += sizeof(pdr.max_set_table.value_s16);
-                output["maxSettable"] = signed(pdr.max_set_table.value_s16);
-                pdr.min_set_table.value_s16 = *((int16_t*)data);
-                data += sizeof(pdr.min_set_table.value_s16);
-                output["minSettable"] = signed(pdr.min_set_table.value_s16);
+                pdr.max_settable.value_s16 = *((int16_t*)data);
+                data += sizeof(pdr.max_settable.value_s16);
+                output["maxSettable"] = signed(pdr.max_settable.value_s16);
+                pdr.min_settable.value_s16 = *((int16_t*)data);
+                data += sizeof(pdr.min_settable.value_s16);
+                output["minSettable"] = signed(pdr.min_settable.value_s16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT32:
-                pdr.max_set_table.value_u32 = *((uint32_t*)data);
-                data += sizeof(pdr.max_set_table.value_u32);
-                output["maxSettable"] = unsigned(pdr.max_set_table.value_u32);
-                pdr.min_set_table.value_u32 = *((uint32_t*)data);
-                data += sizeof(pdr.min_set_table.value_u32);
-                output["minSettable"] = unsigned(pdr.min_set_table.value_u32);
+                pdr.max_settable.value_u32 = *((uint32_t*)data);
+                data += sizeof(pdr.max_settable.value_u32);
+                output["maxSettable"] = unsigned(pdr.max_settable.value_u32);
+                pdr.min_settable.value_u32 = *((uint32_t*)data);
+                data += sizeof(pdr.min_settable.value_u32);
+                output["minSettable"] = unsigned(pdr.min_settable.value_u32);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT32:
-                pdr.max_set_table.value_s32 = *((int32_t*)data);
-                data += sizeof(pdr.max_set_table.value_s32);
-                output["maxSettable"] = signed(pdr.max_set_table.value_s32);
-                pdr.min_set_table.value_s32 = *((int32_t*)data);
-                data += sizeof(pdr.min_set_table.value_s32);
-                output["minSettable"] = signed(pdr.min_set_table.value_s32);
+                pdr.max_settable.value_s32 = *((int32_t*)data);
+                data += sizeof(pdr.max_settable.value_s32);
+                output["maxSettable"] = signed(pdr.max_settable.value_s32);
+                pdr.min_settable.value_s32 = *((int32_t*)data);
+                data += sizeof(pdr.min_settable.value_s32);
+                output["minSettable"] = signed(pdr.min_settable.value_s32);
                 break;
             default:
                 break;

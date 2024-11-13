@@ -3,12 +3,13 @@
 #include "config.h"
 
 #include "libpldm/base.h"
-#include "libpldm/requester/pldm.h"
 
 #include "common/types.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "pldmd/socket_manager.hpp"
 #include "request.hpp"
+
+#include <libpldm/pldm.h>
 
 #include <function2/function2.hpp>
 #include <phosphor-logging/lg2.hpp>
