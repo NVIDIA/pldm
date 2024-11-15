@@ -122,6 +122,9 @@ static int print_version_field(uint8_t bcd, char *buffer, size_t buffer_size)
 			return original_size - 1;                              \
 		buffer += rc;                                                  \
 		buffer_size -= rc;                                             \
+		if (buffer_size > original_size) {                             \
+			return -1;                                             \
+		}                                                              \
 	} while (0)
 
 int ver2str(const ver32_t *version, char *buffer, size_t buffer_size)
