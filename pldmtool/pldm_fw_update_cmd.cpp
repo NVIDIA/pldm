@@ -362,7 +362,7 @@ class GetFwParams : public CommandInterface
             variable_field pendingCompVerStr{};
             ordered_json compDataEntries;
 
-            while (fwParams.comp_count-- && (compParamTableLen > 0))
+            while ((compParamTableLen > 0) && (fwParams.comp_count--))
             {
                 ordered_json compData;
                 auto rc = decode_get_firmware_parameters_resp_comp_entry(
@@ -649,7 +649,7 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
     ordered_json data;
     data["EID"] = eid;
     ordered_json descriptors;
-    while (descriptorCount-- && (deviceIdentifiersLen > 0))
+    while ((deviceIdentifiersLen > 0) && (descriptorCount--))
     {
         DescriptorType descriptorType = 0;
         variable_field descriptorData{};

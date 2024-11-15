@@ -255,7 +255,13 @@ class GetPLDMVersion : public CommandInterface
         if (cc == PLDM_SUCCESS)
         {
             char buffer[16] = {0};
-            ver2str(&version, buffer, sizeof(buffer));
+            int ret = ver2str(&version, buffer, sizeof(buffer));
+
+            if (ret < 0)
+            {
+                std::cerr << "Failed to convert version to string\n";
+                return;
+            }
 
             auto it = std::find_if(pldmTypes.begin(), pldmTypes.end(),
                                    [&](const auto& typePair) {
