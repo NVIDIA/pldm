@@ -807,9 +807,11 @@ void ComponentUpdater::createRequestFwDataTimer()
     reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
         if (updateManager->fwDebug)
         {
-            lg2::error("RequestUpdate timeout EID={EID}, "
-                       "ComponentIndex={COMPONENTINDEX}",
-                       "EID", eid, "COMPONENTINDEX", componentIndex);
+            lg2::error(
+                "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
+                "ComponentIndex={COMPONENTINDEX}",
+                "EID", eid, "COMPONENTINDEX", componentIndex, "EXPECTEDTIME",
+                updateTimeoutSeconds);
         }
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
