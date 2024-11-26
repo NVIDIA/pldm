@@ -286,6 +286,11 @@ source_files = [
   'fw-update/device_inventory.cpp',
   'fw-update/firmware_inventory.cpp',
   'fw-update/package_signature.cpp',
+  'requester/mctp_endpoint_discovery.cpp',
+]
+
+if get_option('libpldmresponder').enabled()
+  source_files += [
   'platform-mc/terminus_manager.cpp',
   'platform-mc/terminus.cpp',
   'platform-mc/platform_manager.cpp',
@@ -298,14 +303,13 @@ source_files = [
   'platform-mc/state_effecter.cpp',
   'platform-mc/state_set.cpp',
   'platform-mc/smbios_mdr.cpp',
-  'requester/mctp_endpoint_discovery.cpp',
-]
-
+  ]
 if get_option('oem-nvidia').enabled()
   source_files += [
     'oem/nvidia/platform-mc/oem_nvidia.cpp',
     'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp'
   ]
+endif
 endif
 
 if get_option('debug-token').enabled()
@@ -362,8 +366,10 @@ endif
 if get_option('tests').enabled()
   subdir('common/test')
   subdir('fw-update/test')
-  subdir('host-bmc/test')
   subdir('requester/test')
-  subdir('platform-mc/test')
+  if get_option('libpldmresponder').enabled()
+    subdir('host-bmc/test')
+    subdir('platform-mc/test')
+  endif
   subdir('test')
 endif

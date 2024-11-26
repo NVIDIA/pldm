@@ -8,7 +8,6 @@
 #include "dbus_impl_requester.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
-#include "platform-mc/manager.hpp"
 #include "platform-mc/pldmServiceReadyInterface.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -44,6 +43,10 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#ifdef PLDM_TYP2
+#include "platform-mc/manager.hpp"
+#endif
 
 #ifdef LIBPLDMRESPONDER
 #include "dbus_impl_pdr.hpp"
