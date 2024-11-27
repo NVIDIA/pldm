@@ -59,6 +59,7 @@ ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
 ErrorCode constexpr apReqGrantOnHold = 0x99;
 ErrorCode constexpr applyAuthFailure = 0xB0;
 ErrorCode constexpr stageImageDowngrade = 0x9C;
+ErrorCode constexpr fwUpdateBlocked = 0xD0;
 #endif
 
 /* request update error mapping */
@@ -186,6 +187,12 @@ static CompCompatibilityMapping updateComponentResponseCodeMapping{
      {"ResourceEvent.1.0.ResourceErrorsDetected",
       "Component comparison stamp is lower than the firmware component comparison stamp in the FD",
       "Retry firmware update operation with the force flag"}},
+#ifdef OEM_NVIDIA
+    {fwUpdateBlocked,
+     {"ResourceEvent.1.0.ResourceErrorsDetected",
+      "FW update blocked to preserve valid firmware on atleast one slot since background copy operation failed.",
+      "Reset AP to complete background copy operation and retry firmware update."}}
+#endif
 };
 
 /* Error mapping table for each pldm command */
