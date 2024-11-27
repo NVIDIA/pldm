@@ -401,6 +401,7 @@ NumericSensor::NumericSensor(
 {
     sensorUnit = SensorUnit::DegreesC;
     hasValueIntf = true;
+    skipPolling = false;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
