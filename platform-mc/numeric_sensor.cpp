@@ -552,6 +552,16 @@ double NumericSensor::unitModifier(double value)
 
 void NumericSensor::updateReading(bool available, bool functional, double value)
 {
+    if (available != availabilityIntf->available())
+        lg2::error("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
+                   sensorName, "OLD", availabilityIntf->available(), "NEW",
+                   available);
+
+    if (functional != operationalStatusIntf->functional())
+        lg2::error("Functionality of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
+                   sensorName, "OLD", operationalStatusIntf->functional(),
+                   "NEW", functional);
+
     rawValue = value;
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
