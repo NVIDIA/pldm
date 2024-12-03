@@ -104,13 +104,9 @@ TEST_F(ActivationTest,
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
 
-    testing::updateManagerActivatePackageResult =
-        software::Activation::Activations::Active;
-
-    Server::Activation::Activations resultState =
-        _activation.activation(activationState);
-
-    EXPECT_EQ(resultState, Server::Activation::Activations::Active);
+    _activation.activation(activationState);
+    EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
+              Server::Activation::Activations::Active);
 }
 
 TEST_F(ActivationTest,
@@ -152,13 +148,10 @@ TEST_F(ActivationTest,
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
 
-    testing::updateManagerActivatePackageResult =
-        software::Activation::Activations::Failed;
-
-    Server::Activation::Activations resultState =
-        _activation.activation(activationState);
-
-    EXPECT_EQ(resultState, Server::Activation::Activations::Failed);
+    testing::securityChecksStatus = false;
+    _activation.activation(activationState);
+    EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
+              Server::Activation::Activations::Failed);
 }
 
 TEST_F(ActivationTest, RequestedActivation_status_active)

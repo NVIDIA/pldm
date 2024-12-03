@@ -31,6 +31,9 @@ namespace testing
 
 software::Activation::Activations updateManagerActivatePackageResult =
     software::Activation::Activations::Active;
+software::Activation::Activations resultPerformSecurityChecksOnComplete =
+    software::Activation::Activations::NotReady;
+bool securityChecksStatus = true;
 
 class FakeUpdateManager
 {
@@ -74,12 +77,30 @@ class FakeUpdateManager
     {
         return;
     }
-    bool performSecurityChecks()
+    void performSecurityChecksAsync(
+        std::function<void(bool)> onComplete,
+        [[maybe_unused]] std::function<void(const std::string& errorMsg)>
+            onError)
     {
-        return true;
+        onComplete = this->performSecurityChecksOnComplete;
+        onComplete(securityChecksStatus);
     }
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
+
+    std::function<void(bool)> performSecurityChecksOnComplete =
+        [](bool result) {
+            if (result)
+            {
+                resultPerformSecurityChecksOnComplete =
+                    software::Activation::Activations::Active;
+            }
+            else
+            {
+                resultPerformSecurityChecksOnComplete =
+                    software::Activation::Activations::Failed;
+            }
+        };
 };
 } // namespace testing
 

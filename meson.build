@@ -80,6 +80,8 @@ if(get_option('pldm-package-verification') == 'integrity')
     add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language : ['c','cpp'])
 endif
 
+conf_data.set('CALCULATE_DIGEST_CHUNK_SIZE', get_option('pldm-package-verification-calculate-digest-chunk-size'))
+
 if get_option('pldm-type2').enabled()
   add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
 endif
