@@ -15,9 +15,19 @@
  * limitations under the License.
  */
 #pragma once
+#include "config.h"
+
 #include "libpldm/firmware_update.h"
 
 #include "common/types.hpp"
+#include "common/utils.hpp"
+
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+
+#include <phosphor-logging/lg2.hpp>
+#include <sdeventplus/event.hpp>
+#include <sdeventplus/source/event.hpp>
 
 #include <array>
 #include <fstream>
@@ -93,9 +103,37 @@ struct PackageSignatureShaBase
         calculateDigest(std::istream& package,
                         uintmax_t lengthOfSignedData) = 0;
 
+    /** @brief Asynchronously calculate digest based on a concrete SHA
+     * algorithm.
+     *
+     *  This function performs the digest calculation asynchronously, allowing
+     *  for non-blocking operations.
+     *
+     *  @param[in] package - package to generate digest
+     *  @param[in] lengthOfSignedData - size of the signed part of the package
+     *  @param[in] onComplete - callback to invoke upon successful digest
+     * calculation, with the resulting digest as the argument
+     *  @param[in] onError - callback to invoke if an error occurs during
+     * calculation, with an exception message
+     */
+    virtual void calculateDigestAsync(
+        std::istream& package, uintmax_t lengthOfSignedData,
+        std::function<void(std::vector<unsigned char>)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError) = 0;
+
   protected:
     std::string digestName;
-    size_t chunkSize = 256;
+    size_t chunkSize = CALCULATE_DIGEST_CHUNK_SIZE;
+    std::istream* package;
+    std::shared_ptr<std::vector<unsigned char>> hash;
+    int chunkNumber;
+    std::shared_ptr<EVP_MD_CTX> ctxMdctxPtr;
+    uintmax_t lengthOfSignedData;
+    std::function<void(std::vector<unsigned char>)> onComplete;
+    std::function<void(const std::string& errorMsg)> onError;
+
+    /** @brief To send a request to handle chunk calculation */
+    std::unique_ptr<sdeventplus::source::Defer> requestChunkCalculation;
 };
 
 /** @struct PackageSignatureSha384
@@ -105,10 +143,27 @@ struct PackageSignatureShaBase
 struct PackageSignatureSha384 : public PackageSignatureShaBase
 {
   public:
-    PackageSignatureSha384();
+    PackageSignatureSha384()
+    {
+        minimumSignatureSize = minimumSignatureSizeSha384;
+        maximumSignatureSize = maximumSignatureSizeSha384;
+
+        digestLength = SHA384_DIGEST_LENGTH;
+        digestName = packageSignatureSha384Name;
+        useChunks = true;
+    }
+
     std::vector<unsigned char>
         calculateDigest(std::istream& package,
                         uintmax_t lengthOfSignedData) override;
+
+    void calculateDigestAsync(
+        std::istream& package, uintmax_t lengthOfSignedData,
+        std::function<void(std::vector<unsigned char>)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError) override;
+
+    void handleChunkProcessing(sd_event_source* source,
+                               PackageSignatureShaBase* ctx);
 };
 
 /** @class PackageSignature
@@ -149,6 +204,28 @@ class PackageSignature
     virtual bool verify(std::istream& package, const std::string& publicKey,
                         uintmax_t lengthOfSignedData);
 
+    /** @brief Asynchronous package signature verification function.
+     *
+     *  This function performs the signature verification asynchronously,
+     *  enabling non-blocking operations. The function invokes a callback
+     *  upon completion or error, providing the result of the verification.
+     *
+     *  @param[in] package - The input stream containing the package to verify.
+     *  @param[in] publicKey - The public key to use for signature verification.
+     *  @param[in] lengthOfSignedData - The size of the signed portion of the
+     * package.
+     *  @param[in] onComplete - Callback to invoke with the verification result
+     *                          (true if successful, false otherwise).
+     *  @param[in] onError - Callback to invoke if an error occurs during
+     * verification, providing an exception pointer for detailed error
+     * information.
+     */
+    virtual void
+        verifyAsync(std::istream& package, const std::string& publicKey,
+                    uintmax_t lengthOfSignedData,
+                    std::function<void(bool)> onComplete,
+                    std::function<void(const std::string& errorMsg)> onError);
+
     /** @brief Package signature integrity check function.
      *         Verify package using public key and signature stored
      *         in section Package Signature Header
@@ -160,6 +237,27 @@ class PackageSignature
      */
     virtual bool integrityCheck(std::istream& package,
                                 uintmax_t lengthOfSignedData);
+
+    /** @brief Asynchronous package signature integrity check function.
+     *
+     *  This function performs an integrity check on a package asynchronously.
+     *  The operation validates the package's signature stored in the "Package
+     *  Signature Header" section, ensuring content authenticity and integrity.
+     *  The function uses callbacks to report the result or errors.
+     *
+     *  @param[in] package - The input stream containing the package to verify.
+     *  @param[in] lengthOfSignedData - The size of the signed portion of the
+     * package.
+     *  @param[in] onComplete - Callback to invoke with the result of the
+     * integrity check (true if successful, false otherwise).
+     *  @param[in] onError - Callback to invoke if an error occurs during the
+     * integrity check, providing an exception pointer for detailed error
+     *                       information.
+     */
+    virtual void integrityCheckAsync(
+        std::istream& package, uintmax_t lengthOfSignedData,
+        std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
 
     /** @brief Calculate size of signed data
      *         The size contains size of package without size of signature
@@ -215,7 +313,6 @@ class PackageSignature
     /** @brief Create parser for concrete Version of Package Signature Format
      *
      *  @param[in] pkgSignData - Package Signature Header
-     *  @param[in] publicKey - Public Key
      *
      *  @return Concrete package signature parser
      */
