@@ -42,7 +42,7 @@ dep_src_headers = [
   '../../oem/nvidia',
 ]
 
-test_cpp_args = ['-DOEM_NVIDIA']
+test_cpp_args = ['-DOEM_NVIDIA', '-DMOCK_DBUS_ASYNC_UTILS']
 
 test_src = declare_dependency(sources: dep_src_files,
                               include_directories: dep_src_headers)
