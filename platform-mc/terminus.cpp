@@ -20,6 +20,8 @@
 #include "oem/nvidia/platform-mc/oem_nvidia.hpp"
 #endif
 
+#include "common/dBusAsyncUtils.hpp"
+#include "terminus.hpp"
 #include "terminus_manager.hpp"
 
 namespace pldm
@@ -35,7 +37,7 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
 {
     maxBufferSize = 256;
-    scanInventories();
+    needRefresh = false;
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
@@ -50,7 +52,6 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     m.read(objPath, interfaces);
 
     // if any interested interface added, refresh the associations
-    bool needRefresh = false;
     for (const auto& [intf, properties] : interfaces)
     {
         for (const auto& [entitytype, entityIface] : entityInterfaces)
@@ -79,24 +80,21 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
 
     if (needRefresh)
     {
-        auto ret = scanInventories();
-        if (ret)
-        {
-            updateAssociations();
-        }
+        refreshAssociations();
     }
 }
 
-bool Terminus::checkI2CDeviceInventory(uint8_t bus, uint8_t addr)
+requester::Coroutine Terminus::checkI2CDeviceInventory(uint8_t bus,
+                                                       uint8_t addr)
 {
     auto mctpInfo = terminusManager.toMctpInfo(tid);
     if (!mctpInfo)
     {
-        return false;
+        co_return PLDM_FAILED;
     }
 
     auto eid = std::get<0>(mctpInfo.value());
-    auto mctpEndpoints = utils::DBusHandler().getSubtree(
+    auto mctpEndpoints = co_await utils::coGetSubTree(
         "/xyz/openbmc_project/mctp", 0, {"xyz.openbmc_project.MCTP.Endpoint"});
 
     for (const auto& [endPointPath, mapperServiceMap] : mctpEndpoints)
@@ -107,35 +105,41 @@ bool Terminus::checkI2CDeviceInventory(uint8_t bus, uint8_t addr)
             continue;
         }
 
-        auto binding = pldm::utils::DBusHandler().getDbusProperty<std::string>(
-            endPointPath.c_str(), "BindingType",
-            "xyz.openbmc_project.MCTP.Binding");
-        if (binding != "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus")
+        for (const auto& [serviceName, interfaces] : mapperServiceMap)
         {
-            continue;
+            auto binding = co_await utils::coGetDbusProperty<std::string>(
+                endPointPath.c_str(), "BindingType",
+                "xyz.openbmc_project.MCTP.Binding", serviceName);
+            if (binding !=
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus")
+            {
+                continue;
+            }
+
+            auto mctpI2cBus = co_await utils::coGetDbusProperty<size_t>(
+                endPointPath.c_str(), "Bus",
+                "xyz.openbmc_project.Inventory.Decorator.I2CDevice",
+                serviceName);
+            if (mctpI2cBus != bus)
+            {
+                continue;
+            }
+
+            auto mctpI2cAddr = co_await utils::coGetDbusProperty<size_t>(
+                endPointPath.c_str(), "Address",
+                "xyz.openbmc_project.Inventory.Decorator.I2CDevice",
+                serviceName);
+
+            if (mctpI2cAddr != addr)
+            {
+                continue;
+            }
+            // found the inventory
+            co_return PLDM_SUCCESS;
         }
-
-        auto mctpI2cBus = pldm::utils::DBusHandler().getDbusProperty<size_t>(
-            endPointPath.c_str(), "Bus",
-            "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
-        if (mctpI2cBus != bus)
-        {
-            continue;
-        }
-
-        auto mctpI2cAddr = pldm::utils::DBusHandler().getDbusProperty<size_t>(
-            endPointPath.c_str(), "Address",
-            "xyz.openbmc_project.Inventory.Decorator.I2CDevice");
-
-        if (mctpI2cAddr != addr)
-        {
-            continue;
-        }
-
-        return true;
     }
 
-    return false;
+    co_return PLDM_FAILED;
 }
 
 bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
@@ -150,18 +154,18 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
     }
 }
 
-bool Terminus::checkDeviceInventory(const std::string& objPath)
+requester::Coroutine Terminus::checkDeviceInventory(const std::string& objPath)
 {
     try
     {
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
             objPath, 0,
             {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
              "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
 
         if (getSubTreeResponse.size() == 0)
         {
-            return true;
+            co_return PLDM_SUCCESS;
         }
 
         bool found = false;
@@ -177,33 +181,40 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
                     if (interface ==
                         "xyz.openbmc_project.Configuration.I2CDeviceAssociation")
                     {
-                        bus = utils::DBusHandler().getDbusProperty<uint64_t>(
+                        bus = co_await utils::coGetDbusProperty<uint64_t>(
                             objectPath.c_str(), "Bus",
-                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
-                        addr = utils::DBusHandler().getDbusProperty<uint64_t>(
+                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
+                            serviceName);
+                        addr = co_await utils::coGetDbusProperty<uint64_t>(
                             objectPath.c_str(), "Address",
-                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation");
-                        found = checkI2CDeviceInventory(bus, addr);
+                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
+                            serviceName);
+                        auto rc = co_await checkI2CDeviceInventory(bus, addr);
+                        if (rc == PLDM_SUCCESS)
+                        {
+                            found = true;
+                        }
                     }
                     else if (
                         interface ==
                         "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
                     {
-                        auto nsmUuid =
-                            utils::DBusHandler().getDbusProperty<std::string>(
-                                objectPath.c_str(), "UUID",
-                                "xyz.openbmc_project.Configuration.NsmDeviceAssociation");
+                        auto nsmUuid = co_await utils::coGetDbusProperty<
+                            std::string>(
+                            objectPath.c_str(), "UUID",
+                            "xyz.openbmc_project.Configuration.NsmDeviceAssociation",
+                            serviceName);
                         found = checkNsmDeviceInventory(nsmUuid);
                     }
 
                     if (found)
                     {
-                        getSensorAuxNameFromEM(bus, addr, objPath);
+                        co_await getSensorAuxNameFromEM(bus, addr, objPath);
 #ifdef OEM_NVIDIA
-                        getPortInfoFromEM(objPath);
-                        getInfoForNVSwitch(objPath);
+                        co_await getPortInfoFromEM(objPath);
+                        co_await getInfoForNVSwitchFromEM(objPath);
 #endif
-                        return true;
+                        co_return PLDM_SUCCESS;
                     }
                 }
             }
@@ -216,64 +227,58 @@ bool Terminus::checkDeviceInventory(const std::string& objPath)
             "ERROR", e, "PATH", objPath);
     }
 
-    return false;
+    co_return PLDM_FAILED;
 }
 
-void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
-                                      const std::string& objPath)
+requester::Coroutine
+    Terminus::getSensorAuxNameFromEM([[maybe_unused]] uint8_t bus,
+                                     [[maybe_unused]] uint8_t addr,
+                                     const std::string& objPath)
 {
     try
     {
         sensorAuxNameOverwriteTbl.clear();
 
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
             objPath, 0, {"xyz.openbmc_project.Configuration.SensorAuxName"});
 
         if (getSubTreeResponse.size() == 0)
         {
-            return;
+            co_return PLDM_SUCCESS;
         }
 
         for (auto& [path, mapperServiceMap] : getSubTreeResponse)
         {
-            auto sensorId = utils::DBusHandler().getDbusProperty<uint64_t>(
+            auto sensorId = co_await utils::coGetDbusProperty<uint64_t>(
                 path.c_str(), "SensorId",
                 "xyz.openbmc_project.Configuration.SensorAuxName");
 
             auto auxNames =
-                utils::DBusHandler().getDbusProperty<std::vector<std::string>>(
+                co_await utils::coGetDbusProperty<std::vector<std::string>>(
                     path.c_str(), "AuxNames",
                     "xyz.openbmc_project.Configuration.SensorAuxName");
+
+            // Check Bus/Address property if they exist
+            auto mctpI2cBus = co_await utils::coGetDbusProperty<uint64_t>(
+                path.c_str(), "Bus",
+                "xyz.openbmc_project.Configuration.SensorAuxName");
+            if (mctpI2cBus != 0 && mctpI2cBus != bus)
+            {
+                continue;
+            }
+
+            auto mctpI2cAddr = co_await utils::coGetDbusProperty<uint64_t>(
+                path.c_str(), "Address",
+                "xyz.openbmc_project.Configuration.SensorAuxName");
+            if (mctpI2cAddr != 0 && mctpI2cAddr != addr)
+            {
+                continue;
+            }
+
+            auto& auxNameTbl = sensorAuxNameOverwriteTbl[sensorId];
             for (auto auxName : auxNames)
             {
-                // Check Bus/Address property if they exist
-                if ((utils::DBusHandler().checkDbusPropertyVariant(
-                        path.c_str(), "Bus",
-                        "xyz.openbmc_project.Configuration.SensorAuxName")) &&
-                    (utils::DBusHandler().checkDbusPropertyVariant(
-                        path.c_str(), "Address",
-                        "xyz.openbmc_project.Configuration.SensorAuxName")))
-                {
-                    auto mctpI2cBus =
-                        utils::DBusHandler().getDbusProperty<uint64_t>(
-                            path.c_str(), "Bus",
-                            "xyz.openbmc_project.Configuration.SensorAuxName");
-                    if (mctpI2cBus != bus)
-                    {
-                        continue;
-                    }
-
-                    auto mctpI2cAddr =
-                        utils::DBusHandler().getDbusProperty<uint64_t>(
-                            path.c_str(), "Address",
-                            "xyz.openbmc_project.Configuration.SensorAuxName");
-                    if (mctpI2cAddr != addr)
-                    {
-                        continue;
-                    }
-                }
-
-                sensorAuxNameOverwriteTbl[sensorId] = {{{"en", auxName}}};
+                auxNameTbl.push_back({{"en", auxName}});
             }
         }
     }
@@ -282,46 +287,44 @@ void Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
         lg2::info("no Configuration.SensorAuxName Error: {ERROR} path:{PATH}",
                   "ERROR", e, "PATH", objPath);
     }
+    co_return PLDM_SUCCESS;
 }
 
 #ifdef OEM_NVIDIA
-void Terminus::getPortInfoFromEM(const std::string& objPath)
+requester::Coroutine Terminus::getPortInfoFromEM(const std::string& objPath)
 {
     try
     {
         sensorPortInfoOverwriteTbl.clear();
 
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
             objPath, 0, {"xyz.openbmc_project.Configuration.SensorPortInfo"});
 
         if (getSubTreeResponse.size() == 0)
         {
-            return;
+            co_return PLDM_FAILED;
         }
 
         for (auto& [path, mapperServiceMap] : getSubTreeResponse)
         {
-            auto sensorId =
-                pldm::utils::DBusHandler().getDbusProperty<uint64_t>(
-                    path.c_str(), "SensorId",
-                    "xyz.openbmc_project.Configuration.SensorPortInfo");
-            auto maxSpeed =
-                pldm::utils::DBusHandler().getDbusProperty<uint64_t>(
-                    path.c_str(), "MaxSpeedMBps",
-                    "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto sensorId = co_await pldm::utils::coGetDbusProperty<uint64_t>(
+                path.c_str(), "SensorId",
+                "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto maxSpeed = co_await pldm::utils::coGetDbusProperty<uint64_t>(
+                path.c_str(), "MaxSpeedMBps",
+                "xyz.openbmc_project.Configuration.SensorPortInfo");
             auto portType =
-                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                co_await pldm::utils::coGetDbusProperty<std::string>(
                     path.c_str(), "PortType",
                     "xyz.openbmc_project.Configuration.SensorPortInfo");
             auto portProtocol =
-                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                co_await pldm::utils::coGetDbusProperty<std::string>(
                     path.c_str(), "PortProtocol",
                     "xyz.openbmc_project.Configuration.SensorPortInfo");
-            auto associationsEM =
-                pldm::utils::DBusHandler()
-                    .getDbusProperty<std::vector<std::string>>(
-                        path.c_str(), "Association",
-                        "xyz.openbmc_project.Configuration.SensorPortInfo");
+            auto associationsEM = co_await pldm::utils::coGetDbusProperty<
+                std::vector<std::string>>(
+                path.c_str(), "Association",
+                "xyz.openbmc_project.Configuration.SensorPortInfo");
 
             std::vector<dbus::PathAssociation> associations;
             if (associationsEM.size() % 3 != 0)
@@ -329,7 +332,7 @@ void Terminus::getPortInfoFromEM(const std::string& objPath)
                 lg2::error(
                     "Association in port info must follow (fwd, bck, Path) for {OBJ}",
                     "OBJ", path);
-                return;
+                co_return PLDM_FAILED;
             }
 
             for (uint8_t it = 0; it < associationsEM.size(); it += 3)
@@ -353,45 +356,46 @@ void Terminus::getPortInfoFromEM(const std::string& objPath)
         lg2::info("no Configuration.SensorPortInfo Error: {ERROR} path:{PATH}",
                   "ERROR", e, "PATH", objPath);
     }
+    co_return PLDM_SUCCESS;
 }
 
-void Terminus::getInfoForNVSwitch(const std::string& objPath)
+requester::Coroutine
+    Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
 {
     if (switchBandwidthSensor)
     {
-        return;
+        co_return PLDM_SUCCESS;
     }
 
     try
     {
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
             objPath, 0,
             {"xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch"});
 
         if (getSubTreeResponse.size() == 0)
         {
-            return;
+            co_return PLDM_FAILED;
         }
 
         for (auto& [path, mapperServiceMap] : getSubTreeResponse)
         {
-            auto name = pldm::utils::DBusHandler().getDbusProperty<std::string>(
+            auto name = co_await pldm::utils::coGetDbusProperty<std::string>(
                 path.c_str(), "Name",
                 "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
             auto switchType =
-                pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                co_await pldm::utils::coGetDbusProperty<std::string>(
                     path.c_str(), "SwitchType",
                     "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
             auto switchSupportedProtocols =
-                pldm::utils::DBusHandler()
-                    .getDbusProperty<std::vector<std::string>>(
-                        path.c_str(), "SwitchSupportedProtocols",
-                        "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
-            auto associationsEM =
-                pldm::utils::DBusHandler()
-                    .getDbusProperty<std::vector<std::string>>(
-                        path.c_str(), "Association",
-                        "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+                co_await pldm::utils::coGetDbusProperty<
+                    std::vector<std::string>>(
+                    path.c_str(), "SwitchSupportedProtocols",
+                    "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
+            auto associationsEM = co_await pldm::utils::coGetDbusProperty<
+                std::vector<std::string>>(
+                path.c_str(), "Association",
+                "xyz.openbmc_project.Configuration.NSM_NVSwitch.Switch");
 
             std::vector<dbus::PathAssociation> associations;
             if (associationsEM.size() % 3 != 0)
@@ -399,7 +403,7 @@ void Terminus::getInfoForNVSwitch(const std::string& objPath)
                 lg2::error(
                     "Association in switch info must follow (fwd, bck, Path) for {OBJ}",
                     "OBJ", path);
-                return;
+                co_return PLDM_FAILED;
             }
 
             for (uint8_t it = 0; it < associationsEM.size(); it += 3)
@@ -423,6 +427,7 @@ void Terminus::getInfoForNVSwitch(const std::string& objPath)
         lg2::info("no Configuration.NSM_NVSwitch Error: {ERROR} path:{PATH}",
                   "ERROR", e, "PATH", objPath);
     }
+    co_return PLDM_SUCCESS;
 }
 #endif
 
@@ -546,12 +551,6 @@ bool Terminus::parsePDRs()
             std::bind(std::mem_fn(&Terminus::interfaceAdded), this,
                       std::placeholders::_1));
     }
-
-    // look for Platform Configuration PDIs like SensorAuxName etc.
-    scanInventories();
-    // update Sensor Objects with infos from Platform Configuration PDIs
-    updateAssociations();
-
     return rc;
 }
 
@@ -1196,7 +1195,7 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
                            std::move(data));
 }
 
-bool Terminus::scanInventories()
+requester::Coroutine Terminus::scanInventories()
 {
     std::vector<std::string> interestedInterfaces;
     interestedInterfaces.emplace_back(overallSystemInterface);
@@ -1207,7 +1206,7 @@ bool Terminus::scanInventories()
 
     try
     {
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
             "/xyz/openbmc_project/inventory", 0, interestedInterfaces);
         // default system inventory object path
         systemInventoryPath =
@@ -1237,9 +1236,9 @@ bool Terminus::scanInventories()
                     if (interface == instanceInterface)
                     {
                         instanceNumber =
-                            utils::DBusHandler().getDbusProperty<uint64_t>(
+                            co_await utils::coGetDbusProperty<uint64_t>(
                                 objPath.c_str(), instanceProperty,
-                                instanceInterface);
+                                instanceInterface, serviceName);
                         continue;
                     }
                     for (const auto& [entitytype, entityIface] :
@@ -1253,7 +1252,9 @@ bool Terminus::scanInventories()
                     }
                 }
             }
-            if (checkDeviceInventory(objPath))
+
+            auto rc = co_await checkDeviceInventory(objPath);
+            if (rc == PLDM_SUCCESS)
             {
                 inventories.emplace_back(objPath, type, instanceNumber);
                 if (type != (PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC))
@@ -1262,12 +1263,20 @@ bool Terminus::scanInventories()
                 }
                 try
                 {
+                    auto mapperServiceMap = co_await utils::coGetServiceMap(
+                        objPath,
+                        {"xyz.openbmc_project.Association.Definitions"});
+
+                    if (mapperServiceMap.empty())
+                    {
+                        continue;
+                    }
                     const auto assocs =
-                        utils::DBusHandler()
-                            .getDbusProperty<std::vector<std::tuple<
-                                std::string, std::string, std::string>>>(
-                                objPath.c_str(), "Associations",
-                                "xyz.openbmc_project.Association.Definitions");
+                        co_await utils::coGetDbusProperty<std::vector<
+                            std::tuple<std::string, std::string, std::string>>>(
+                            objPath.c_str(), "Associations",
+                            "xyz.openbmc_project.Association.Definitions",
+                            mapperServiceMap.begin()->first);
 
                     for (const auto& assoc : assocs)
                     {
@@ -1292,9 +1301,9 @@ bool Terminus::scanInventories()
     catch (const std::exception& e)
     {
         lg2::error("Failed to scan inventories Error: {ERROR}", "ERROR", e);
-        return false;
+        co_return PLDM_FAILED;
     }
-    return true;
+    co_return PLDM_SUCCESS;
 }
 
 void Terminus::updateAssociations()
@@ -1695,6 +1704,38 @@ std::optional<std::string> Terminus::getAuxNameForNumericSensor(SensorID id)
         }
     }
     return std::nullopt;
+}
+
+void Terminus::refreshAssociations()
+{
+    if (refreshAssociationsTaskHandle)
+    {
+        if (!refreshAssociationsTaskHandle.done())
+        {
+            return;
+        }
+        refreshAssociationsTaskHandle.destroy();
+    }
+
+    auto co = refreshAssociationsTask();
+    refreshAssociationsTaskHandle = co.handle;
+    if (refreshAssociationsTaskHandle.done())
+    {
+        refreshAssociationsTaskHandle = nullptr;
+    }
+}
+
+requester::Coroutine Terminus::refreshAssociationsTask()
+{
+    while (needRefresh)
+    {
+        needRefresh = false;
+        // Update inventory list
+        co_await scanInventories();
+        // Update Sensor PDIs
+        updateAssociations();
+    }
+    co_return PLDM_SUCCESS;
 }
 
 } // namespace platform_mc

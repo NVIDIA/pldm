@@ -60,6 +60,12 @@ requester::Coroutine PlatformManager::initTerminus()
                 if (!rc)
                 {
                     terminus->parsePDRs();
+                    // look for Platform Configuration PDIs like SensorAuxName
+                    // etc.
+                    co_await terminus->scanInventories();
+                    // update Sensor Objects with information from Platform
+                    // Configuration PDIs
+                    terminus->updateAssociations();
                     terminus->initalized = true;
                 }
             }

@@ -207,7 +207,7 @@ class Terminus
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
-    bool scanInventories();
+    requester::Coroutine scanInventories();
 
     void updateAssociations();
 
@@ -240,24 +240,24 @@ class Terminus
      *  @return true  - the device inventory might belong to the terminus
      *          false - the device inventory doesn't belong to the terminus
      */
-    bool checkDeviceInventory(const std::string& objPath);
-    bool checkI2CDeviceInventory(uint8_t bus, uint8_t addr);
+    requester::Coroutine checkDeviceInventory(const std::string& objPath);
+    requester::Coroutine checkI2CDeviceInventory(uint8_t bus, uint8_t addr);
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI
      *
      *  @param[in] objPath - device inventory path
      */
-    void getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
-                                const std::string& objPath);
+    requester::Coroutine getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
+                                                const std::string& objPath);
 
 #ifdef OEM_NVIDIA
     /** @brief get sensor Port information from EM configuration PDI
      *
      *  @param[in] objPath - device inventory path
      */
-    void getPortInfoFromEM(const std::string& objPath);
-    void getInfoForNVSwitch(const std::string& objPath);
+    requester::Coroutine getPortInfoFromEM(const std::string& objPath);
+    requester::Coroutine getInfoForNVSwitchFromEM(const std::string& objPath);
 #endif
 
     /** @brief The flag indicates whether the terminus has been initialized
@@ -361,6 +361,11 @@ class Terminus
     EnitityAssociations entityAssociations;
 
     TerminusManager& terminusManager;
+
+    std::coroutine_handle<> refreshAssociationsTaskHandle;
+    void refreshAssociations();
+    requester::Coroutine refreshAssociationsTask();
+    bool needRefresh;
 };
 } // namespace platform_mc
 } // namespace pldm
