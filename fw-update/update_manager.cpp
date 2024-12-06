@@ -465,63 +465,47 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     return 0;
 }
 
-void UpdateManager::performSecurityChecksAsync(
-    std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
+bool UpdateManager::performSecurityChecks()
 {
-
-    SecurityCheckType securityCheckType = SecurityCheckType::Disabled;
+    bool securityChecksPassed = true;
 
 #ifdef PLDM_PACKAGE_INTEGRITY_CHECK
 
-    securityCheckType = SecurityCheckType::Integrity;
     // Perform integrity check on the firmware package
-    packageIntegrityCheckAsync(
-        [onComplete](bool integrityCheck) {
-            if (integrityCheck)
-            {
-                lg2::info(
-                    "Firmware package integrity check completed successfully");
-                onComplete(true);
-            }
-            else
-            {
-                lg2::error("Firmware package integrity check failed");
-                onComplete(false);
-            }
-        },
-        onError);
+    bool integrityCheck = packageIntegrityCheck();
+
+    if (integrityCheck)
+    {
+        lg2::info("Firmware package integrity check completed successfully");
+    }
+    else
+    {
+        lg2::error("Firmware package integrity check failed");
+        securityChecksPassed = false;
+    }
 
 #endif
 
 #ifdef PLDM_PACKAGE_VERIFICATION
-    securityCheckType = SecurityCheckType::Authentication;
+
     try
     {
         // Verify the signature of the firmware package
         if (!verifyPackage())
         {
-            onComplete(false);
-        }
-        else
-        {
-            onComplete(true);
+            securityChecksPassed = false;
         }
     }
     catch (const std::exception& e)
     {
         lg2::error("Invalid PLDM package signature");
-        onError(std::string("Package verification failed with exception: ") +
-                e.what());
+        securityChecksPassed = false;
     }
 
 #endif
 
     // Return the overall result of security checks
-    if (securityCheckType == SecurityCheckType::Disabled)
-    {
-        onComplete(true);
-    }
+    return securityChecksPassed;
 }
 
 bool UpdateManager::verifyPackage()
@@ -550,6 +534,9 @@ bool UpdateManager::verifyPackage()
     }
     if (pkgSignHdrData.size())
     {
+
+        std::unique_ptr<PackageSignature> packageSignatureParser;
+
         try
         {
             packageSignatureParser =
@@ -618,97 +605,6 @@ bool UpdateManager::verifyPackage()
     return true;
 }
 
-void UpdateManager::packageIntegrityCheckAsync(
-    std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
-{
-    const static std::string compName = "Firmware Update Service";
-    const static std::string messageError =
-        "Integrity check failed for FW Package";
-    const static std::string messageErrorParseSignatureHeader =
-        "Failed to parse FW Package signature header";
-    const static std::string resolution =
-        "Retry firmware update using a valid package.";
-
-    const auto calcPkgSize = parser->calculatePackageSize();
-    std::vector<uint8_t> pkgSignHdrData;
-
-    try
-    {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
-        onComplete(false);
-        return;
-    }
-
-    if (pkgSignHdrData.size())
-    {
-        try
-        {
-            packageSignatureParser =
-                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
-        }
-        catch (const std::exception& e)
-        {
-            lg2::info("Failed to create signature header parser.");
-
-            onComplete(true);
-            return;
-        }
-
-        try
-        {
-            packageSignatureParser->parseHeader();
-        }
-        catch (const std::exception& e)
-        {
-            lg2::error("Failed to parse signature header.", "ERROR", e);
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorParseSignatureHeader, resolution);
-
-            onComplete(false);
-            return;
-        }
-
-        auto sizeOfSignedData =
-            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
-        packageSignatureParser->integrityCheckAsync(
-            package, sizeOfSignedData,
-            [onComplete](bool integritycheckResult) {
-                if (integritycheckResult)
-                {
-                    lg2::info("Integrity check successful for FW Package");
-                    onComplete(true);
-                }
-                else
-                {
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
-                    onComplete(false);
-                }
-            },
-            onError);
-
-        return;
-    }
-    else
-    {
-        lg2::info("FW package does not contain signature header");
-        onComplete(true);
-        return;
-    }
-
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-
-    onComplete(false);
-}
-
 bool UpdateManager::packageIntegrityCheck()
 {
     std::string compName = "Firmware Update Service";
@@ -735,6 +631,8 @@ bool UpdateManager::packageIntegrityCheck()
 
     if (pkgSignHdrData.size())
     {
+        std::unique_ptr<PackageSignature> packageSignatureParser;
+
         try
         {
             packageSignatureParser =

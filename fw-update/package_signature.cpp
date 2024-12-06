@@ -37,6 +37,16 @@ namespace fw_update
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
+PackageSignatureSha384::PackageSignatureSha384()
+{
+    minimumSignatureSize = minimumSignatureSizeSha384;
+    maximumSignatureSize = maximumSignatureSizeSha384;
+
+    digestLength = SHA384_DIGEST_LENGTH;
+    digestName = packageSignatureSha384Name;
+    useChunks = true;
+}
+
 std::vector<uint8_t>
     PackageSignature::getSignatureHeader(std::istream& package,
                                          uintmax_t sizeOfPkgWithoutSignHdr)
@@ -100,90 +110,6 @@ std::unique_ptr<PackageSignature>
     }
 
     return nullptr;
-}
-
-void PackageSignature::verifyAsync(
-    std::istream& package, const std::string& publicKey,
-    uintmax_t lengthOfSignedData, std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
-{
-    signatureSha->calculateDigestAsync(
-        package, lengthOfSignedData,
-        [&, publicKey, onComplete,
-         onError](std::vector<unsigned char> digestVector) {
-            try
-            {
-                int verificationErrorCode;
-                bool result = true;
-                EVP_PKEY_CTX* verctx = nullptr;
-                EVP_PKEY* vkey = nullptr;
-                BIGNUM* input = nullptr;
-                BIO* bo = nullptr;
-
-                input = BN_new();
-                std::unique_ptr<BIGNUM, decltype(&::BN_free)> ctxInputPtr{
-                    input, &::BN_free};
-
-                int inputLength = BN_hex2bn(&input, publicKey.c_str());
-                inputLength = (inputLength + 1) / 2;
-
-                std::vector<uint8_t> publicKeyBuffer(inputLength);
-                BN_bn2bin(input, publicKeyBuffer.data());
-
-                bo = BIO_new(BIO_s_mem());
-                std::unique_ptr<BIO, decltype(&::BIO_free)> ctxBoPtr{
-                    bo, &::BIO_free};
-
-                BIO_write(bo, publicKeyBuffer.data(), inputLength);
-                vkey = PEM_read_bio_PUBKEY(bo, &vkey, nullptr, nullptr);
-                std::unique_ptr<EVP_PKEY, decltype(&::EVP_PKEY_free)>
-                    ctxVkeyPtr{vkey, &::EVP_PKEY_free};
-
-                verctx = EVP_PKEY_CTX_new(vkey, nullptr);
-                if (!verctx)
-                {
-                    lg2::error(
-                        "Verifying signature failed, cannot create a verify context");
-                    result = false;
-
-                    onComplete(result);
-                    return;
-                }
-
-                std::unique_ptr<EVP_PKEY_CTX, decltype(&::EVP_PKEY_CTX_free)>
-                    ctxVerctxPtr{verctx, &::EVP_PKEY_CTX_free};
-
-                if (EVP_PKEY_verify_init(verctx) <= 0)
-                {
-                    lg2::error(
-                        "Verifying signature failed, cannot initialize a verify context");
-                    result = false;
-
-                    onComplete(result);
-                    return;
-                }
-
-                verificationErrorCode = EVP_PKEY_verify(
-                    verctx, signature.data(), signature.size(),
-                    digestVector.data(), signatureSha->digestLength);
-
-                if (verificationErrorCode != 1)
-                {
-                    lg2::error(
-                        "Verifying signature failed, EVP_PKEY_verify error {VERIFICATION_ERR_CODE}",
-                        "VERIFICATION_ERR_CODE", verificationErrorCode);
-
-                    result = false;
-                }
-
-                onComplete(result);
-            }
-            catch (const std::exception& e)
-            {
-                onError(std::string("Digest calculation failed: ") + e.what());
-            }
-        },
-        [onError](const std::string& errorMsg) { onError(errorMsg); });
 }
 
 bool PackageSignature::verify(std::istream& package,
@@ -351,41 +277,6 @@ uintmax_t PackageSignatureV3::calculateSizeOfSignedData(
            pldmFwupPublicKeySizeLength + publicKeySize;
 }
 
-void PackageSignature::integrityCheckAsync(
-    std::istream& package, uintmax_t lengthOfSignedData,
-    std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
-{
-    try
-    {
-        std::string publicKeyString(publicKeyData.begin(), publicKeyData.end());
-
-        if (publicKeyString.empty())
-        {
-            onError(
-                "Public key data is empty, unable to perform integrity check.");
-            return;
-        }
-
-        std::stringstream publicKeyStream;
-
-        publicKeyStream << std::hex << std::setfill('0');
-        for (size_t i = 0; publicKeyString.length() > i; ++i)
-        {
-            publicKeyStream
-                << std::setw(2)
-                << static_cast<unsigned int>(
-                       static_cast<unsigned char>(publicKeyString[i]));
-        }
-        verifyAsync(package, publicKeyStream.str(), lengthOfSignedData,
-                    onComplete, onError);
-    }
-    catch (const std::exception& e)
-    {
-        onError(std::string("Exception during integrity check: ") + e.what());
-    }
-}
-
 bool PackageSignature::integrityCheck(std::istream& package,
                                       uintmax_t lengthOfSignedData)
 {
@@ -402,162 +293,6 @@ bool PackageSignature::integrityCheck(std::istream& package,
     }
 
     return verify(package, publicKeyStream.str(), lengthOfSignedData);
-}
-
-void PackageSignatureSha384::calculateDigestAsync(
-    std::istream& package, uintmax_t lengthOfSignedData,
-    std::function<void(std::vector<unsigned char>)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
-{
-    package.seekg(0);
-
-    if (useChunks)
-    {
-        lg2::info(
-            "Package Signature: Calculating digest with chunk size of {CHUNKSIZE} bytes",
-            "CHUNKSIZE", chunkSize);
-        const EVP_MD* md = EVP_get_digestbyname(digestName.c_str());
-        if (md == nullptr)
-        {
-            onError("Failed to retrieve digest algorithm: " + digestName);
-            return;
-        }
-
-        std::shared_ptr<EVP_MD_CTX> ctxMdctxPtr{EVP_MD_CTX_new(),
-                                                ::EVP_MD_CTX_free};
-
-        if (!EVP_DigestInit_ex(ctxMdctxPtr.get(), md, nullptr))
-        {
-            onError("Failed to initialize the digest context for algorithm: " +
-                    digestName);
-            return;
-        }
-        auto event = sdeventplus::Event::get_default();
-
-        // Initialize all data required to perform digest calculations using
-        // chunks
-        this->package = &package;
-        this->hash = std::make_shared<std::vector<unsigned char>>(digestLength);
-        this->chunkNumber = 0;
-        this->ctxMdctxPtr = ctxMdctxPtr;
-        this->lengthOfSignedData = lengthOfSignedData;
-        this->onComplete = onComplete;
-        this->onError = onError;
-
-        try
-        {
-            this->requestChunkCalculation =
-                std::make_unique<sdeventplus::source::Defer>(
-                    event,
-                    std::bind(&PackageSignatureSha384::handleChunkProcessing,
-                              this, nullptr, this));
-        }
-        catch (const std::exception& e)
-        {
-            onError(
-                std::string("Failed to add chunk processing to event loop: ") +
-                e.what());
-            this->requestChunkCalculation.reset();
-        }
-    }
-    else
-    {
-        try
-        {
-            std::vector<uint8_t> packageVector(lengthOfSignedData);
-            package.read(reinterpret_cast<char*>(packageVector.data()),
-                         lengthOfSignedData);
-
-            std::vector<unsigned char> buffer(digestLength);
-            unsigned char* digest =
-                SHA384(packageVector.data(), lengthOfSignedData, buffer.data());
-
-            std::vector<unsigned char> hash(digest, digest + digestLength);
-            onComplete(hash);
-        }
-        catch (...)
-        {
-            onError("Failed to compute SHA-384 hash");
-        }
-    }
-}
-
-void PackageSignatureSha384::handleChunkProcessing(sd_event_source* /*source*/,
-                                                   PackageSignatureShaBase* ctx)
-{
-    try
-    {
-        uintmax_t processedLength = this->chunkNumber * chunkSize;
-
-        if (processedLength >= this->lengthOfSignedData)
-        {
-            unsigned int mdLength = 0;
-            if (!EVP_DigestFinal(this->ctxMdctxPtr.get(), this->hash->data(),
-                                 &mdLength))
-            {
-                lg2::error("Error in EVP_DigestFinal");
-                this->onError("Failed to finalize the digest");
-                this->requestChunkCalculation.reset();
-                return;
-            }
-
-            this->onComplete(*this->hash);
-            this->requestChunkCalculation.reset();
-            return;
-        }
-
-        std::vector<uint8_t> buffer(chunkSize, 0);
-        size_t currentChunkSize;
-
-        this->package->read(reinterpret_cast<char*>(buffer.data()),
-                            buffer.size());
-        size_t bytesRead = this->package->gcount();
-        if ((this->chunkNumber * buffer.size()) + bytesRead >
-            this->lengthOfSignedData)
-        {
-            currentChunkSize = this->lengthOfSignedData - processedLength;
-        }
-        else
-        {
-            currentChunkSize = bytesRead;
-        }
-
-        if (!EVP_DigestUpdate(this->ctxMdctxPtr.get(), buffer.data(),
-                              currentChunkSize))
-        {
-            this->onError("Failed to update the digest with current chunk");
-            return;
-        }
-
-        this->chunkNumber++;
-
-        auto event = sdeventplus::Event::get_default();
-
-        try
-        {
-            this->requestChunkCalculation =
-                std::make_unique<sdeventplus::source::Defer>(
-                    event,
-                    std::bind(&PackageSignatureSha384::handleChunkProcessing,
-                              this, nullptr, ctx));
-        }
-        catch (const std::exception& e)
-        {
-            lg2::error("Failed to re-add chunk processing: {ERR}", "ERR",
-                       e.what());
-            this->onError(
-                "Failed to re-add chunk processing to the event loop");
-            this->requestChunkCalculation.reset();
-        }
-    }
-    catch (const std::exception& e)
-    {
-        this->onError(
-            std::string("Exception occurred during chunk processing: ") +
-            e.what());
-        this->requestChunkCalculation.reset();
-        return;
-    }
 }
 
 std::vector<unsigned char>
