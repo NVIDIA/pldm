@@ -149,11 +149,6 @@ class Activation : public ActivationIntf
     {
         if (value == Activations::Activating)
         {
-            std::string compName = "Firmware Update Service";
-            std::string messageError = "Invalid FW Package";
-            std::string resolution =
-                "Retry firmware update operation with valid FW package.";
-
             deleteImpl.reset();
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
@@ -165,7 +160,10 @@ class Activation : public ActivationIntf
                     lg2::error("Invalid Staged PLDM Package.");
                     deleteImpl =
                         std::make_unique<Delete>(bus, objPath, updateManager);
-
+                    std::string compName = "Firmware Update Service";
+                    std::string messageError = "Invalid FW Package";
+                    std::string resolution =
+                        "Retry firmware update operation with valid FW package.";
                     createLogEntry(resourceErrorDetected, compName,
                                    messageError, resolution);
                     updateManager->closePackage();
@@ -173,60 +171,34 @@ class Activation : public ActivationIntf
                     return ActivationIntf::activation(Activations::Failed);
                 }
             }
-            updateManager->performSecurityChecksAsync(
-                [this, updateManager(updateManager), compName, messageError,
-                 resolution](bool securityCheck) {
-                    if (!securityCheck)
-                    {
-                        lg2::error(
-                            "Security checks failed setting activation to fail");
-                        updateManager->resetActivationBlocksTransition();
-                        updateManager->clearFirmwareUpdatePackage();
-                        updateManager->restoreStagedPackageActivationObjects();
 
-                        createLogEntry(resourceErrorDetected, compName,
-                                       messageError, resolution);
-                        ActivationIntf::activation(
-                            software::Activation::Activations::Failed);
-                    }
-                    else
-                    {
-                        auto state = updateManager->activatePackage();
+            if (!updateManager->performSecurityChecks())
+            {
+                lg2::error("Security checks failed setting activation to fail");
+                updateManager->resetActivationBlocksTransition();
+                updateManager->clearFirmwareUpdatePackage();
+                updateManager->restoreStagedPackageActivationObjects();
 
-                        if (state == Activations::Failed)
-                        {
-                            lg2::error(
-                                "Activation failed setting activation to fail");
-                            updateManager->resetActivationBlocksTransition();
-                            updateManager->clearFirmwareUpdatePackage();
-                            updateManager
-                                ->restoreStagedPackageActivationObjects();
-                        }
-                        else if (state == Activations::Active)
-                        {
-                            lg2::info("Activation set to active");
-                            updateManager->clearFirmwareUpdatePackage();
-                            updateManager
-                                ->restoreStagedPackageActivationObjects();
-                        }
-                    }
-                },
-                [this, updateManager(updateManager), compName, messageError,
-                 resolution](const std::string& errorMsg) {
-                    lg2::error(
-                        "Security checks failed setting activation to fail");
-                    lg2::error(
-                        "Exception during activation security check: {ERRORMSG}",
-                        "ERRORMSG", errorMsg);
+                value = Activations::Failed;
+            }
+            else
+            {
+                auto state = updateManager->activatePackage();
+                value = state;
+                if (state == Activations::Failed)
+                {
+                    lg2::error("Activation failed setting activation to fail");
                     updateManager->resetActivationBlocksTransition();
                     updateManager->clearFirmwareUpdatePackage();
                     updateManager->restoreStagedPackageActivationObjects();
-
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
-                    ActivationIntf::activation(
-                        software::Activation::Activations::Failed);
-                });
+                }
+                else if (state == Activations::Active)
+                {
+                    lg2::info("Activation set to active");
+                    updateManager->clearFirmwareUpdatePackage();
+                    updateManager->restoreStagedPackageActivationObjects();
+                }
+            }
         }
         else if (value == Activations::Active || value == Activations::Failed)
         {

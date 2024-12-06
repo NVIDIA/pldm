@@ -24,7 +24,6 @@
 #include "error_handling.hpp"
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
-#include "package_signature.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
@@ -63,15 +62,6 @@ class ActivationBlocksTransition;
 class EpochTime;
 class PackageInformation;
 class PackageHash;
-
-/** @enum Enumeration to represent the types of security checks
- */
-enum class SecurityCheckType
-{
-    Disabled,
-    Integrity,
-    Authentication
-};
 
 class UpdateManager
 {
@@ -390,10 +380,6 @@ class UpdateManager
      */
     bool packageIntegrityCheck();
 
-    void packageIntegrityCheckAsync(
-        std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError);
-
     /**
      * @brief perform security checks
      * The function performs two types of security checks:
@@ -404,11 +390,7 @@ class UpdateManager
      *
      * @return True if all security checks pass; False otherwise.
      */
-    void performSecurityChecksAsync(
-        std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError);
-
-    std::unique_ptr<PackageSignature> packageSignatureParser;
+    bool performSecurityChecks();
 
   private:
     /** @brief Device identifiers of the managed FDs */
