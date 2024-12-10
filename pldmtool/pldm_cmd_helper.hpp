@@ -31,8 +31,6 @@ namespace helper
 constexpr static uint8_t PLDM_ENTITY_ID = 8;
 constexpr static uint8_t MCTP_MSG_TYPE_PLDM = 1;
 constexpr static auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
-constexpr static auto unixSocketIntfName{
-    "xyz.openbmc_project.Common.UnixSocket"};
 constexpr static auto objectEnableIntfName{"xyz.openbmc_project.Object.Enable"};
 using ordered_json = nlohmann::ordered_json;
 

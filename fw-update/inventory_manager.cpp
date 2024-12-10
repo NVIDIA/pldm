@@ -33,13 +33,13 @@ namespace pldm
 namespace fw_update
 {
 
-void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
+void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
+                                   dbus::MctpInterfaces& mctpInterfaces)
 {
-    for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
-         mctpInfos)
+    for (const auto& [eid, uuid, networkId] : mctpInfos)
     {
-        mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
-        auto co = startFirmwareDiscoveryFlow(eid);
+        mctpEidMap[eid] = uuid;
+        auto co = startFirmwareDiscoveryFlow(eid, mctpInterfaces);
 
         if (inventoryCoRoutineHandlers.contains(eid))
         {
@@ -92,8 +92,8 @@ requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
     co_return completionCode;
 }
 
-requester::Coroutine
-    InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid)
+requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
+    mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
 {
     uint8_t rc = 0;
     uint64_t supportedTypes = 0;
@@ -144,7 +144,8 @@ requester::Coroutine
 
     while (getFirmwareParametersAttempts--)
     {
-        rc = co_await getFirmwareParameters(eid, messageError, resolution);
+        rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                            mctpInterfaces);
 
         if (rc == PLDM_SUCCESS)
         {
@@ -192,7 +193,9 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
         co_return PLDM_SUCCESS;
     }
 
-    auto co = getActiveFirmwareVersion(eid, updateFWVersionCallback);
+    dbus::MctpInterfaces mctpInterfaces;
+    auto co =
+        getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
 
     if (inventoryCoRoutineHandlers.contains(eid))
     {
@@ -207,13 +210,14 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
 }
 
 requester::Coroutine InventoryManager::getActiveFirmwareVersion(
-    mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
+    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
+    UpdateFWVersionCallBack updateFWVersionCallback)
 {
     std::string messageError{};
     std::string resolution{};
 
-    auto rc =
-        co_await getFirmwareParameters(eid, messageError, resolution, true);
+    auto rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                             mctpInterfaces, true);
 
     if (rc == PLDM_SUCCESS)
     {
@@ -422,7 +426,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
 
 requester::Coroutine InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
-    bool refreshFWVersionOnly)
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
@@ -453,9 +457,9 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
         co_return rc;
     }
 
-    rc = co_await parseGetFWParametersResponse(eid, responseMsg, responseLen,
-                                               messageError, resolution,
-                                               refreshFWVersionOnly);
+    rc = co_await parseGetFWParametersResponse(
+        eid, responseMsg, responseLen, messageError, resolution, mctpInterfaces,
+        refreshFWVersionOnly);
 
     if (rc)
     {
@@ -469,7 +473,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
 requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     std::string& messageError, std::string& resolution,
-    bool refreshFWVersionOnly)
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -553,128 +557,12 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     }
     componentInfoMap.emplace(eid, std::move(componentInfo));
 
-    // If there are multiple endpoints associated with the same device, then
-    // based on a policy one MCTP endpoint is picked for firmware update, the
-    // remaining endpoints are cleared from DescriptorMap and ComponentInfoMap
-    // The default policy is to pick the MCTP endpoint where the outgoing
-    // physical medium is the fastest. Skip firmware/device inventory for the
-    // next endpoints after discovering the first endpoint associated with the
-    // UUID. The logic to calculate fastest EID to the PLDM FD is not
-    // needed when FW versions are refreshed.
     if (mctpEidMap.contains(eid) && !refreshFWVersionOnly)
     {
-        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
-        // This condition is met, if an additional eid is discovered for a
-        // device(same UUID) that is already discovered.
-        if (mctpInfoMap.contains(uuid))
+        const auto& uuid = mctpEidMap[eid];
+        if (createInventoryCallBack)
         {
-            auto search = mctpInfoMap.find(uuid);
-
-            const auto& curTop = search->second.top();
-            auto curFastestEid = curTop.eid;
-            // Check if eid is already the fastest, this can happen on a
-            // rediscovery of the MCTP endpoint
-            if (curFastestEid == eid)
-            {
-                lg2::info(
-                    "Fastest path to UUID={UUID} is already set to EID={EID}",
-                    "UUID", uuid, "EID", eid);
-                co_return PLDM_SUCCESS;
-            }
-
-            // Insert eid into priority queue, to identify the new fastest EID
-            search->second.push({eid, mediumType, bindingType});
-
-            const auto& newTop = search->second.top();
-            auto newFastestEid = newTop.eid;
-            // Check if eid is the fastest eid after comparison
-            if (eid != newFastestEid)
-            {
-                lg2::info(
-                    "Fastest path to UUID={UUID} is set to EID={EID}, removed DELETED_EID={DELETED_EID}",
-                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID", eid);
-                descriptorMap.erase(eid);
-                componentInfoMap.erase(eid);
-            }
-            else if (eid == newFastestEid)
-            {
-                lg2::info(
-                    "Fastest path to UUID={UUID} is set to EID={EID}, DELETED_EID={DELETED_EID}",
-                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID",
-                    curFastestEid);
-                descriptorMap.erase(curFastestEid);
-                componentInfoMap.erase(curFastestEid);
-            }
-
-            // Trim priority queue to have only the fastest eid, remove the
-            // second entry.
-            const auto& currTop = search->second.top();
-            auto topEID = currTop.eid;
-            auto topMediumType = currTop.medium;
-            auto topBindingType = currTop.binding;
-            search->second.pop();
-            search->second.pop();
-            search->second.push({topEID, topMediumType, topBindingType});
-        }
-        else
-        {
-            dbus::ObjectValueTree objects;
-            std::set<dbus::Service> mctpCtrlServices;
-            dbus::MctpInterfaces mctpInterfaces;
-            auto& bus = pldm::utils::DBusHandler::getBus();
-            std::string uuid;
-            const dbus::Interfaces ifaceList{
-                "xyz.openbmc_project.MCTP.Endpoint"};
-            auto getSubTreeResponse = utils::DBusHandler().getSubtree(
-                "/xyz/openbmc_project/mctp", 0, ifaceList);
-            for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
-            {
-                for (const auto& [serviceName, interfaces] : mapperServiceMap)
-                {
-                    mctpCtrlServices.emplace(serviceName);
-                }
-            }
-
-            for (const auto& service : mctpCtrlServices)
-            {
-                auto path = "/xyz/openbmc_project/mctp";
-                auto method = bus.new_method_call(
-                    service.c_str(), path, "org.freedesktop.DBus.ObjectManager",
-                    "GetManagedObjects");
-                try
-                {
-                    auto reply = bus.call(method);
-                    reply.read(objects);
-                }
-                catch (std::exception& e)
-                {
-                    continue;
-                }
-                for (const auto& [objectPath, interfaces] : objects)
-                {
-                    auto path =
-                        "/xyz/openbmc_project/mctp/0/" + std::to_string(eid);
-                    if (objectPath != path)
-                    {
-                        continue;
-                    }
-                    for (const auto& [intfName, properties] : interfaces)
-                    {
-                        if (intfName == uuidEndpointIntfName)
-                        {
-                            uuid = std::get<std::string>(properties.at("UUID"));
-                            mctpInterfaces[uuid] = interfaces;
-                        }
-                    }
-                }
-            }
-            std::priority_queue<MctpEidInfo> mctpEidInfo;
-            mctpEidInfo.push({eid, mediumType, bindingType});
-            mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
-            if (createInventoryCallBack)
-            {
-                createInventoryCallBack(eid, uuid, mctpInterfaces);
-            }
+            createInventoryCallBack(eid, uuid, mctpInterfaces);
         }
     }
 

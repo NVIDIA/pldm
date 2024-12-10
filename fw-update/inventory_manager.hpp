@@ -34,64 +34,7 @@ namespace fw_update
 using CreateInventoryCallBack =
     std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(EID)>;
-using MctpEidMap =
-    std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
-
-using Priority = int;
-
-static std::unordered_map<MctpMedium, Priority> mediumPriority = {
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB", 1},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SPI", 2},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.KCS", 3},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 4},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 5}};
-
-/**
- * @brief MCTP Binding Type priority table ordering by bandwidth
- */
-static std::unordered_map<MctpBinding, Priority> bindingPriority = {
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
-
-struct MctpEidInfo
-{
-    EID eid;
-    MctpMedium medium;
-    MctpBinding binding;
-
-    friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
-    {
-        if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
-        {
-            return (bindingPriority.at(lhs.binding) >
-                    bindingPriority.at(rhs.binding));
-        }
-        else
-        {
-            return (mediumPriority.at(lhs.medium) >
-                    mediumPriority.at(rhs.medium));
-        }
-    }
-};
-
-struct MCTPEidInfoPriorityQueue : std::priority_queue<MctpEidInfo>
-{
-    auto begin() const
-    {
-        return c.begin();
-    }
-    auto end() const
-    {
-        return c.end();
-    }
-};
-
-using MctpInfoMap = std::map<UUID, MCTPEidInfoPriorityQueue>;
+using MctpEidMap = std::unordered_map<EID, UUID>;
 
 /** @class InventoryManager
  *
@@ -161,7 +104,8 @@ class InventoryManager
      *
      *  @param[in] eids - MCTP endpoint ID of the FDs
      */
-    void discoverFDs(const MctpInfos& mctpInfos);
+    void discoverFDs(const MctpInfos& mctpInfos,
+                     dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -195,6 +139,7 @@ class InventoryManager
     requester::Coroutine parseGetFWParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution,
+        dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
     /** @brief Initiate Get Active Firmware Version
@@ -224,17 +169,21 @@ class InventoryManager
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid);
+    requester::Coroutine
+        startFirmwareDiscoveryFlow(mctp_eid_t eid,
+                                   dbus::MctpInterfaces mctpInterfaces);
 
     /** @brief Starts get Active Firmware Version Flow
      *
      *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] mctpInterfaces - Reference to the dbus::MctpInterfaces object
      * for MCTP communication.
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
     requester::Coroutine getActiveFirmwareVersion(
-        mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
+        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
+        UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -263,6 +212,7 @@ class InventoryManager
     requester::Coroutine
         getFirmwareParameters(mctp_eid_t eid, std::string& messageError,
                               std::string& resolution,
+                              dbus::MctpInterfaces& mctpInterfaces,
                               bool refreshFWVersionOnly = false);
 
     /** @brief PLDM request handler */
@@ -285,8 +235,6 @@ class InventoryManager
 
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
-
-    MctpInfoMap mctpInfoMap;
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;

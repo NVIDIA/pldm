@@ -24,9 +24,8 @@ using Response = std::vector<uint8_t>;
 using Command = uint8_t;
 
 using MctpMedium = std::string;
-using MctpBinding = std::string;
-using NetworkId = uint8_t;
-using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId, MctpBinding>;
+using NetworkId = uint32_t;
+using MctpInfo = std::tuple<EID, UUID, NetworkId>;
 using MctpInfos = std::vector<MctpInfo>;
 using tid_t = uint8_t;
 using VendorIANA = uint32_t;

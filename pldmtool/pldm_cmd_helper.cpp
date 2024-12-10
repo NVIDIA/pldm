@@ -138,7 +138,7 @@ std::set<pldm::dbus::Service> CommandInterface::getMctpServices() const
     try
     {
         getSubTreeResponse = pldm::utils::DBusHandler().getSubtree(
-            "/xyz/openbmc_project/mctp", 0, ifaceList);
+            "/au/com/codeconstruct/mctp1/networks/", 0, ifaceList);
     }
     catch (const std::exception& e)
     {
@@ -166,7 +166,7 @@ pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(
     {
         pldm::dbus::ObjectValueTree tmpObjects{};
         auto method = bus.new_method_call(
-            service.c_str(), "/xyz/openbmc_project/mctp",
+            service.c_str(), "/au/com/codeconstruct/mctp1",
             "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
         auto reply = bus.call(method);
         reply.read(tmpObjects);

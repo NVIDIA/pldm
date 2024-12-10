@@ -116,7 +116,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         std::string uuid;
         const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
         auto getSubTreeResponse = utils::DBusHandler().getSubtree(
-            "/xyz/openbmc_project/mctp", 0, ifaceList);
+            "/au/com/codeconstruct/mctp1/networks", 0, ifaceList);
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
             for (const auto& [serviceName, interfaces] : mapperServiceMap)
@@ -127,7 +127,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         for (const auto& service : mctpCtrlServices)
         {
             auto method = bus.new_method_call(
-                service.c_str(), "/xyz/openbmc_project/mctp",
+                service.c_str(), "/au/com/codeconstruct/mctp1",
                 "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
             auto reply = bus.call(method);
             reply.read(objects);
@@ -144,9 +144,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             }
         }
 
-        inventoryMgr.discoverFDs(mctpInfos);
-        for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
-             mctpInfos)
+        inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
+        for (const auto& [eid, uuid, networkId] : mctpInfos)
         {
             ComponentIdNameMap componentIdNameMap;
             if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
