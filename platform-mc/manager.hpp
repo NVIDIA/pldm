@@ -83,7 +83,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                             [[maybe_unused]] const EID& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
-        if (terminus)
+        if (terminus && terminus->doesSupport(PLDM_PLATFORM))
         {
             sensorManager.setOnline(terminus->getTid());
         }
@@ -93,7 +93,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                              [[maybe_unused]] const EID& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
-        if (terminus)
+        if (terminus && terminus->doesSupport(PLDM_PLATFORM))
         {
             sensorManager.setOffline(terminus->getTid());
         }
@@ -225,6 +225,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         if (it != termini.end())
         {
             auto& terminus = it->second;
+            if (!terminus->doesSupport(PLDM_PLATFORM))
+            {
+                terminus->resumed = true;
+                co_return PLDM_SUCCESS;
+            }
+
             auto rc = co_await terminusManager.resumeTid(tid);
             if (rc != PLDM_SUCCESS)
             {
