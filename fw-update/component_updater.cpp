@@ -111,9 +111,17 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
                                           &response, &respMsgLen);
     if (rc)
     {
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
         lg2::error("Error while sending mctp request for ComponentUpdate."
                    " EID={EID}, ComponentIndex={COMPONENTINDEX}",
                    "EID", eid, "COMPONENTINDEX", componentIndex);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
         co_return rc;
     }
     rc = processUpdateComponentResponse(eid, response, respMsgLen);
@@ -1003,9 +1011,19 @@ requester::Coroutine
                                           &response, &respMsgLen);
     if (rc)
     {
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         lg2::error("Error while sending mctp request for ComponentUpdate."
                    " EID={EID}, ComponentIndex={COMPONENTINDEX}",
                    "EID", eid, "COMPONENTINDEX", componentIndex);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        getStatusCallback(currentFDState);
         co_return rc;
     }
     rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,

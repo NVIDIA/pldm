@@ -119,6 +119,12 @@ void UpdateManager::createMessageRegistry(
     const std::string& resolution,
     const pldm_firmware_update_commands commandType, const uint8_t errorCode)
 {
+    if (!parser)
+    {
+        lg2::error(
+            "Parser is not initialized. Cannot create message registry.");
+        return;
+    }
     const auto& compImageInfos = parser->getComponentImageInfos();
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -169,6 +175,12 @@ void UpdateManager::createMessageRegistryResourceErrors(
     size_t compIndex, const std::string& messageID,
     const std::string& messageError, const std::string& resolution)
 {
+    if (!parser)
+    {
+        lg2::error(
+            "Parser is not initialized. Cannot create message registry for resource errors.");
+        return;
+    }
     const auto& compImageInfos = parser->getComponentImageInfos();
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
