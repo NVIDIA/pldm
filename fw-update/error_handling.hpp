@@ -186,6 +186,11 @@ static ErrorMapping activateFirmwareMapping{
     {PLDM_FWUP_TIME_OUT,
      {"Activating firmware timed out", "Retry firmware update operation."}}};
 
+/* apply complete command error mapping */
+static ErrorMapping getStatusMapping{
+    {COMMAND_TIMEOUT,
+     {"Getting device status timed out", "Retry firmware update operation."}}};
+
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
     {PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL,
      {"NvidiaUpdate.1.0.ComponentUpdateSkipped", "Component image is identical",
@@ -211,7 +216,8 @@ static const CommandMapping commandMappingTbl = {
     {PLDM_TRANSFER_COMPLETE, transferCompleteMapping},
     {PLDM_VERIFY_COMPLETE, verifyCompleteMapping},
     {PLDM_APPLY_COMPLETE, applyCompleteMapping},
-    {PLDM_ACTIVATE_FIRMWARE, activateFirmwareMapping}};
+    {PLDM_ACTIVATE_FIRMWARE, activateFirmwareMapping},
+    {PLDM_GET_STATUS, getStatusMapping}};
 
 static const CommandToCompCompatibilityMap CommandToCompCompatibilityTbl = {
     {PLDM_UPDATE_COMPONENT, updateComponentResponseCodeMapping},

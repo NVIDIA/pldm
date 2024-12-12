@@ -162,6 +162,18 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
         error("Failed to send request update for endpoint ID '{EID}', response "
               "code '{RC}'",
               "EID", eid, "RC", rc);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+        }
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return rc;
     }
@@ -346,6 +358,14 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
     if (rc)
     {
         error("Error while sending mctp request for PassCompTable.");
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE, COMMAND_TIMEOUT);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         co_return rc;
     }
 

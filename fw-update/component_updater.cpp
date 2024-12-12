@@ -148,9 +148,17 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
+        updateManager->createMessageRegistry(
+            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
         error("Error while sending mctp request for ComponentUpdate."
-              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-              "EID", eid, "COMPONENTINDEX", componentIndex);
+                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
         co_return rc;
     }
     rc = processUpdateComponentResponse(eid, response, respMsgLen);
@@ -1072,11 +1080,20 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
                            &currentFDState, &progressPercent](int sendRc) {
                 if (sendRc)
                 {
-                    error(
-                        "Error while sending mctp request for ComponentUpdate."
-                        " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                        "EID", eid, "COMPONENTINDEX", componentIndex);
-                    return;
+                    auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                        getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+                    if (messageStatus)
+                    {
+                        this->updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                            oemMessageError, oemResolution);
+                    }
+                    error("Error while sending mctp request for ComponentUpdate."
+                               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                               "EID", eid, "COMPONENTINDEX", componentIndex);
+                    componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+                    getStatusCallback(currentFDState);
+                    return sendRc;
                 }
 
                 auto rc = processGetStatusResponse(
@@ -1086,10 +1103,11 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
                     error("Error while processing get request response."
                           " EID={EID}, ComponentIndex={COMPONENTINDEX}",
                           "EID", eid, "COMPONENTINDEX", componentIndex);
-                    return;
+                    return rc;
                 }
 
                 getStatusCallback(currentFDState);
+                return rc;
             }),
         exec::default_task_context<void>(exec::inline_scheduler{}));
 }
