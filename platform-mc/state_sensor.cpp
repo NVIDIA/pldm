@@ -129,8 +129,23 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
         if (stateSets[sensorOffset])
         {
             stateSets[sensorOffset]->setValue(eventState);
-            std::string arg1 = getAssociationEntityId() + " " +
-                               stateSets[sensorOffset]->getStringStateType();
+
+            const std::string entityName = getAssociationEntityId();
+            const std::string sensorName =
+                stateSets[sensorOffset]->getStringStateType();
+
+            if (entityName.empty() || sensorName.empty())
+            {
+                lg2::info(
+                    "A state sensor event is not logged as either device or state sensor doesn't have an auxiliary name. "
+                    "TID={TD}, SensorId={SID}, SensorOffset={SO}, EventState={ES}.",
+                    "TD", tid, "SID", sensorId, "SO", sensorOffset, "ES",
+                    eventState);
+
+                return;
+            }
+
+            std::string arg1 = entityName + " " + sensorName;
             auto [messageID, arg2] = stateSets[sensorOffset]->getEventData();
             std::string resolution = "None";
             createLogEntry(messageID, arg1, arg2, resolution);
