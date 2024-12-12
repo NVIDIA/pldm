@@ -142,6 +142,18 @@ requester::Coroutine DeviceUpdater::sendRequestUpdate()
                                           &response, &respMsgLen);
     if (rc)
     {
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+        }
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         lg2::error("Error while sending mctp request for RequestUpdate");
         co_return rc;
@@ -317,6 +329,14 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
                                           &response, &respMsgLen);
     if (rc)
     {
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE, COMMAND_TIMEOUT);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         lg2::error("Error while sending mctp request for PassCompTable.");
         co_return rc;
     }
