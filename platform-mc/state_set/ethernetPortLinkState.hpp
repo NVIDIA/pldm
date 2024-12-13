@@ -159,11 +159,7 @@ class StateSetEthernetPortLinkState : public StateSet
 
     std::string getStringStateType() const override
     {
-        if (!objectName.empty())
-        {
-            return objectName;
-        }
-        return std::string("Ethernet");
+        return objectName;
     }
 
     virtual void
