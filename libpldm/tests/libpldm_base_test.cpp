@@ -603,3 +603,33 @@ TEST(SetTID, testBadEncodeRequest)
 
     EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
 }
+
+TEST(SetTID, testGoodDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_SET_TID_REQ_BYTES> requestMsg{};
+    uint8_t expected_tid = 5;
+
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    auto* req = reinterpret_cast<pldm_set_tid_req*>(request->payload);
+    req->tid = expected_tid;
+
+    uint8_t actual_tid;
+    auto rc = decode_set_tid_req(request, PLDM_SET_TID_REQ_BYTES, &actual_tid);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(expected_tid, actual_tid);
+}
+
+TEST(SetTID, testBadDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_SET_TID_REQ_BYTES> requestMsg{};
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    uint8_t tid;
+
+    auto rc = decode_set_tid_req(nullptr, PLDM_SET_TID_REQ_BYTES, &tid);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = decode_set_tid_req(request, PLDM_SET_TID_REQ_BYTES - 1, &tid);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}

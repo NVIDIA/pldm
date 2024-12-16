@@ -81,6 +81,7 @@ typedef enum {
 #define PLDM_MAX_CMDS_PER_TYPE 256
 
 /* Message payload lengths */
+#define PLDM_SET_TID_REQ_BYTES 1
 #define PLDM_GET_COMMANDS_REQ_BYTES 5
 #define PLDM_GET_VERSION_REQ_BYTES 6
 #define PLDM_GET_TYPES_REQ_BYTES 0
@@ -496,6 +497,16 @@ int encode_get_tid_resp(uint8_t instance_id, uint8_t completion_code,
  *         'msg.payload'
  */
 int encode_set_tid_req(uint8_t instance_id, uint8_t tid, struct pldm_msg *msg);
+
+/** @brief Decode PLDM SetTID request message
+ *
+ *  @param[in] msg - Request message
+ *  @param[in] payload_length - length of request message payload
+ *  @param[out] tid - Terminus ID
+ *  @return pldm_completion_codes
+ */
+int decode_set_tid_req(const struct pldm_msg *msg, size_t payload_length,
+		       uint8_t *tid);
 
 /** @brief Create a PLDM response message containing only cc
  *

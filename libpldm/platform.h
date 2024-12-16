@@ -25,12 +25,15 @@ extern "C" {
 #define PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_REQ_BYTES 8
 #define PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES 1
 #define PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES 2
+#define PLDM_SET_NUMERIC_SENSOR_ENABLE_REQ_BYTES 4
 
 /* Response lengths are inclusive of completion code */
 #define PLDM_SET_STATE_EFFECTER_STATES_RESP_BYTES 1
 #define PLDM_SET_STATE_EFFECTER_ENABLES_RESP_BYTES 1
 
+#define PLDM_SET_NUMERIC_SENSOR_ENABLE_RESP_BYTES 1
 #define PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES 1
+#define PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES 4
 
 #define PLDM_GET_PDR_REQ_BYTES 13
 
@@ -99,6 +102,10 @@ extern "C" {
 /* Maxium and Minium composite effecter count for state effecter */
 #define PLDM_COMPOSITE_EFFECTER_MAX_COUNT 8
 #define PLDM_COMPOSITE_EFFECTER_MIN_COUNT 1
+
+/* Maxium and Minium composite sensor count for state sensor */
+#define PLDM_COMPOSITE_SENSOR_MAX_COUNT 8
+#define PLDM_COMPOSITE_SENSOR_MIN_COUNT 1
 
 enum pldm_effecter_data_size {
 	PLDM_EFFECTER_DATA_SIZE_UINT8,
@@ -178,6 +185,7 @@ enum pldm_platform_commands {
 	PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE = 0x0B,
 	PLDM_EVENT_MESSAGE_SUPPORTED = 0x0C,
 	PLDM_EVENT_MESSAGE_BUFFER_SIZE = 0x0D,
+	PLDM_SET_NUMERIC_SENSOR_ENABLE = 0x10,
 	PLDM_GET_SENSOR_READING = 0x11,
 	PLDM_GET_STATE_SENSOR_READINGS = 0x21,
 	PLDM_SET_NUMERIC_EFFECTER_ENABLE = 0x30,
@@ -224,7 +232,7 @@ enum pldm_effecter_init {
 	PLDM_NO_INIT,
 	PLDM_USE_INIT_PDR,
 	PLDM_ENABLE_EFFECTER,
-	PLDM_DISABLE_EFECTER
+	PLDM_DISABLE_EFFECTER
 };
 
 /** @brief PLDM Platform M&C completion codes
@@ -875,6 +883,36 @@ int encode_get_state_effecter_states_req(uint8_t instance_id,
 					 uint16_t effecter_id,
 					 struct pldm_msg *msg);
 
+/** @brief Decode GetStateEffecterState request data
+ *
+ *  @param[in] msg - Request message
+ *  @param[in] payload_length - Length of request message payload
+ *  @param[out] effecter_id - used to identify and access the effecter
+ *  @return pldm_completion_codes
+ */
+int decode_get_state_effecter_states_req(const struct pldm_msg *msg,
+					 size_t payload_length,
+					 uint16_t *effecter_id);
+
+/** @brief Encode GetStateEffecterState response data
+ *
+ *  @param[in] instance_id - Message's instance id
+ *  @param[in] completion_code - PLDM completion code
+ *  @param[in] comp_effecter_count - The number of individual sets of effecter
+ *         information that this command accesses
+ *  @param[in] field - Each stateField is an instance of a stateField structure
+ *         that is used to return the present operational state setting and the
+ *         present state and event state for a particular set of effecter
+ *         information contained within the state effecter
+ *  @param[out] msg - Message will be written to this
+ *  @return pldm_completion_codes
+ */
+int encode_get_state_effecter_states_resp(uint8_t instance_id,
+					  uint8_t completion_code,
+					  uint8_t comp_effecter_count,
+					  get_effecter_state_field *field,
+					  struct pldm_msg *msg);
+
 /** @brief Create a PLDM response message for GetStateEffecterStates
  *
  *  @param[in] msg - Request message
@@ -1258,7 +1296,7 @@ struct pldm_event_message_supported_resp {
 	uint8_t completion_code;
 	uint8_t synchrony_configuration;
 	uint8_t synchrony_configuration_supported;
-	uint8_t numer_event_class_returned;
+	uint8_t number_event_class_returned;
 	uint8_t event_class[1];
 } __attribute__((packed));
 
@@ -1303,6 +1341,16 @@ struct pldm_poll_for_platform_event_message_resp {
 	uint8_t event_class;
 	uint32_t event_data_size;
 	uint8_t event_data[1];
+} __attribute__((packed));
+
+/** @struct pldm_set_numeric_sensor_enable_req
+ *
+ *  Structure representing PLDM set numeric sensor enable request
+ */
+struct pldm_set_numeric_sensor_enable_req {
+	uint16_t sensor_id;
+	uint8_t sensor_operational_state;
+	uint8_t sensor_event_message_enable;
 } __attribute__((packed));
 
 /* Responder */
@@ -2274,6 +2322,35 @@ int decode_set_event_receiver_req(const struct pldm_msg *msg,
 int encode_set_event_receiver_resp(uint8_t instance_id, uint8_t completion_code,
 				   struct pldm_msg *msg);
 
+/** @brief Encode the EventMessageSupported response message
+ *
+ *  @param[in] instance_id - PLDM instance ID.
+ *  @param[in] completion_code - PLDM completion code.
+ *  @param[in] synchrony_configuration - Current synchrony configuration.
+ *  @param[in] synchrony_configuration_supported - Supported synchrony
+ * configurations.
+ *  @param[in] number_event_class_returned - Number of event classes returned.
+ *  @param[in] event_classes - Array of supported event classes.
+ *  @param[out] msg - PLDM message for the response.
+ *  @return pldm_completion_codes.
+ */
+int encode_event_message_supported_resp(
+    uint8_t instance_id, uint8_t completion_code,
+    uint8_t synchrony_configuration, uint8_t synchrony_configuration_supported,
+    uint8_t number_event_class_returned, uint8_t *event_classes,
+    struct pldm_msg *msg);
+
+/** @brief Decode the EventMessageSupported request message
+ *
+ *  @param[in] msg - PLDM request message.
+ *  @param[in] payload_length - Length of the request message payload.
+ *  @param[out] formatVersion - Version of the event format
+ *  @return pldm_completion_codes.
+ */
+int decode_event_message_supported_req(const struct pldm_msg *msg,
+				       size_t payloadLength,
+				       uint8_t *formatVersion);
+
 /** @brief Encode the EventMessageBufferSize request message
  *
  *  @param[in] event_receiver_max_buffer_size - maximum buffer to hold an event
@@ -2296,6 +2373,32 @@ int decode_event_message_buffer_size_resp(const struct pldm_msg *msg,
 					  size_t payload_length,
 					  uint8_t *completion_code,
 					  uint16_t *terminus_max_buffer_size);
+
+/** @brief Decode the EventMessageBufferSize request message
+ *
+ *  @param[in] msg - PLDM request message.
+ *  @param[in] payload_length - Length of the request message payload.
+ *  @param[out] event_receiver_max_buffer_size - Maximum buffer size for the
+ * event receiver.
+ *  @return pldm_completion_codes.
+ */
+int decode_event_message_buffer_size_req(
+    const struct pldm_msg *msg, size_t payload_length,
+    uint16_t *event_receiver_max_buffer_size);
+
+/** @brief Encode the EventMessageBufferSize response message
+ *
+ *  @param[in] instance_id - PLDM instance ID.
+ *  @param[in] completion_code - Completion code for response.
+ *  @param[in] terminus_max_buffer_size - Maximum buffer size for the terminus
+ * in bytes.
+ *  @param[out] msg - Encoded PLDM response message.
+ *  @return pldm_completion_codes.
+ */
+int encode_event_message_buffer_size_resp(uint8_t instance_id,
+					  uint8_t completion_code,
+					  uint16_t terminus_max_buffer_size,
+					  struct pldm_msg *msg);
 
 /** @brief Encode the PollForPlatformEventMessage request message
  *
@@ -2403,6 +2506,20 @@ struct pldm_get_terminus_uid_resp {
 int decode_get_terminus_UID_resp(const struct pldm_msg *msg,
 				 size_t payload_length,
 				 uint8_t *completion_code, uint8_t *uuid);
+
+/** @brief Encode the GetTerminusUID response message
+ *
+ *  @param[in] instance_id - PLDM instance ID.
+ *  @param[in] completion_code - Completion code for response.
+ *  @param[in] uuidValue - Pointer to a 16-byte array containing the terminus
+ * UUID.
+ *  @param[in] uuidLength - Length of uuid data
+ *  @param[out] msg - Encoded PLDM response message.
+ *  @return pldm_completion_codes.
+ */
+int encode_get_terminus_uid_resp(uint8_t instance_id, uint8_t completion_code,
+				 const uint8_t *uuidValue, size_t uuidLength,
+				 struct pldm_msg *msg);
 
 #ifdef __cplusplus
 }

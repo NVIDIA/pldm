@@ -324,6 +324,10 @@ executable(
   install: true,
   install_dir: get_option('bindir'))
 
+if get_option('mockup-responder').enabled()
+  subdir('mockup-responder')
+endif
+
 if get_option('systemd').enabled()
   systemd_system_unit_dir = dependency('systemd').get_variable(
           pkgconfig: 'systemdsystemunitdir')
@@ -367,6 +371,7 @@ if get_option('tests').enabled()
   subdir('requester/test')
   subdir('platform-mc/test')
   subdir('test')
+  subdir('mockup-responder/test')
 endif
 
 endif # pldm-only

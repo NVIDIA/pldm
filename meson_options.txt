@@ -49,6 +49,7 @@ option('non-pldm', type: 'feature', description: 'Support for non pldm devices',
 option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')
 option('omit-heartbeat', type: 'feature', description: 'Omit heart beat from set event receiver messages other than enable async keep alive', value: 'disabled')
 option('debug-token', type: 'feature', description: 'Enable Debug Token')
+option('mockup-responder', type: 'feature', description: 'Enable Mockup Responder', value: 'disabled')
 option('fw-update-skip-package-size-check', type: 'feature', description: 'Skip PLDM package size check')
 option('pldm-package-verification-must-be-signed', type: 'feature', description: 'Allow to update only signed PLDM package', value: 'disabled')
 option('pldm-package-verification', type: 'combo', choices : ['disabled', 'authentication', 'integrity'], description: 'Enable PLDM package signature verification. There are two possible types of verification: authentication and integrity. Authentication verification uses a public key delivered via a receipt, while integrity verification uses a public key included in the package.', value : 'disabled')

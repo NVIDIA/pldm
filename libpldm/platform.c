@@ -739,7 +739,8 @@ int encode_get_state_sensor_readings_resp(uint8_t instance_id,
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	if (comp_sensor_count < 0x1 || comp_sensor_count > 0x8) {
+	if (comp_sensor_count < PLDM_COMPOSITE_SENSOR_MIN_COUNT ||
+	    comp_sensor_count > PLDM_COMPOSITE_SENSOR_MAX_COUNT) {
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
@@ -814,8 +815,8 @@ int decode_get_state_sensor_readings_resp(const struct pldm_msg *msg,
 	struct pldm_get_state_sensor_readings_resp *response =
 	    (struct pldm_get_state_sensor_readings_resp *)msg->payload;
 
-	if (response->comp_sensor_count < 0x1 ||
-	    response->comp_sensor_count > 0x8) {
+	if (response->comp_sensor_count < PLDM_COMPOSITE_SENSOR_MIN_COUNT ||
+	    response->comp_sensor_count > PLDM_COMPOSITE_SENSOR_MAX_COUNT) {
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
@@ -1634,6 +1635,7 @@ int decode_get_sensor_reading_resp(
 	if (response->sensor_data_size > PLDM_SENSOR_DATA_SIZE_SINT32) {
 		return PLDM_ERROR_INVALID_DATA;
 	}
+
 	if (response->sensor_data_size > *sensor_data_size) {
 		return PLDM_ERROR_INVALID_LENGTH;
 	}
@@ -1842,23 +1844,29 @@ int decode_set_event_receiver_req(const struct pldm_msg *msg,
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	if (payload_length != PLDM_SET_EVENT_RECEIVER_REQ_BYTES) {
+	if ((payload_length !=
+	     PLDM_SET_EVENT_RECEIVER_REQ_BYTES - PLDM_HEARTBEAT_BYTES) &&
+	    (payload_length != PLDM_SET_EVENT_RECEIVER_REQ_BYTES)) {
 		return PLDM_ERROR_INVALID_LENGTH;
 	}
 
 	struct pldm_set_event_receiver_req *request =
 	    (struct pldm_set_event_receiver_req *)msg->payload;
 
-	if ((*event_message_global_enable ==
+	if ((request->event_message_global_enable ==
 	     PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE) &&
-	    (*heartbeat_timer == 0)) {
+	    (le16toh(request->heartbeat_timer) == 0)) {
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	*event_message_global_enable = request->event_message_global_enable,
-	*transport_protocol_type = request->transport_protocol_type,
-	*event_receiver_address_info = request->event_receiver_address_info,
-	*heartbeat_timer = le16toh(request->heartbeat_timer);
+	*event_message_global_enable = request->event_message_global_enable;
+	*transport_protocol_type = request->transport_protocol_type;
+	*event_receiver_address_info = request->event_receiver_address_info;
+
+	if (request->event_message_global_enable ==
+	    PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE) {
+		*heartbeat_timer = le16toh(request->heartbeat_timer);
+	}
 
 	return PLDM_SUCCESS;
 }
@@ -1913,6 +1921,31 @@ int encode_event_message_supported_req(uint8_t instance_id,
 	return PLDM_SUCCESS;
 }
 
+int decode_event_message_supported_req(const struct pldm_msg *msg,
+				       size_t payloadLength,
+				       uint8_t *formatVersion)
+{
+	if (msg == NULL || formatVersion == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (payloadLength != PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	const struct pldm_event_message_supported_req *request =
+	    (const struct pldm_event_message_supported_req *)msg->payload;
+
+	*formatVersion = request->format_version;
+
+	// Validate the format version
+	if (*formatVersion != 0x01) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	return PLDM_SUCCESS;
+}
+
 int decode_event_message_supported_resp(
     const struct pldm_msg *msg, size_t payload_length, uint8_t *completion_code,
     uint8_t *synchrony_configuration,
@@ -1926,13 +1959,15 @@ int decode_event_message_supported_resp(
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	if (payload_length < PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES) {
-		return PLDM_ERROR_INVALID_LENGTH;
+	if (payload_length >= PLDM_CC_ONLY_RESP_BYTES) {
+		*completion_code = msg->payload[0];
+		if (PLDM_SUCCESS != *completion_code) {
+			return PLDM_SUCCESS;
+		}
 	}
 
-	*completion_code = msg->payload[0];
-	if (PLDM_SUCCESS != *completion_code) {
-		return PLDM_SUCCESS;
+	if (payload_length < PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
 	}
 
 	struct pldm_event_message_supported_resp *response =
@@ -1940,7 +1975,7 @@ int decode_event_message_supported_resp(
 	*synchrony_configuration = response->synchrony_configuration;
 	*synchrony_configuration_supported =
 	    response->synchrony_configuration_supported;
-	*number_event_class_returned = response->numer_event_class_returned;
+	*number_event_class_returned = response->number_event_class_returned;
 
 	if (payload_length < PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES +
 				 (size_t)*number_event_class_returned) {
@@ -1948,6 +1983,46 @@ int decode_event_message_supported_resp(
 	}
 
 	*eventClass = response->event_class;
+
+	return PLDM_SUCCESS;
+}
+
+int encode_event_message_supported_resp(
+    uint8_t instance_id, uint8_t completion_code,
+    uint8_t synchrony_configuration, uint8_t synchrony_configuration_supported,
+    uint8_t number_event_class_returned, uint8_t *event_classes,
+    struct pldm_msg *msg)
+{
+	if (msg == NULL ||
+	    (number_event_class_returned > 0 && event_classes == NULL)) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	// Setup the header
+	struct pldm_header_info header = {0};
+	header.msg_type = PLDM_RESPONSE;
+	header.instance = instance_id;
+	header.pldm_type = PLDM_PLATFORM;
+	header.command = PLDM_EVENT_MESSAGE_SUPPORTED;
+	uint8_t rc = pack_pldm_header(&header, &(msg->hdr));
+	if (rc != PLDM_SUCCESS) {
+		return rc;
+	}
+
+	// Prepare the response structure
+	struct pldm_event_message_supported_resp *resp =
+	    (struct pldm_event_message_supported_resp *)msg->payload;
+	resp->completion_code = completion_code;
+	resp->synchrony_configuration = synchrony_configuration;
+	resp->synchrony_configuration_supported =
+	    synchrony_configuration_supported;
+	resp->number_event_class_returned = number_event_class_returned;
+
+	// Copy event class list if any classes are provided
+	if (number_event_class_returned > 0 && event_classes != NULL) {
+		memcpy(resp->event_class, event_classes,
+		       number_event_class_returned);
+	}
 
 	return PLDM_SUCCESS;
 }
@@ -1989,18 +2064,68 @@ int decode_event_message_buffer_size_resp(const struct pldm_msg *msg,
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	if (payload_length != PLDM_EVENT_MESSAGE_BUFFER_SIZE_RESP_BYTES) {
-		return PLDM_ERROR_INVALID_LENGTH;
+	if (payload_length >= PLDM_CC_ONLY_RESP_BYTES) {
+		*completion_code = msg->payload[0];
+		if (PLDM_SUCCESS != *completion_code) {
+			return PLDM_SUCCESS;
+		}
 	}
 
-	*completion_code = msg->payload[0];
-	if (PLDM_SUCCESS != *completion_code) {
-		return PLDM_SUCCESS;
+	if (payload_length != PLDM_EVENT_MESSAGE_BUFFER_SIZE_RESP_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
 	}
 
 	struct pldm_event_message_buffer_size_resp *response =
 	    (struct pldm_event_message_buffer_size_resp *)msg->payload;
 	*terminus_max_buffer_size = response->terminus_max_buffer_size;
+
+	return PLDM_SUCCESS;
+}
+
+int decode_event_message_buffer_size_req(
+    const struct pldm_msg *msg, size_t payload_length,
+    uint16_t *event_receiver_max_buffer_size)
+{
+	if (msg == NULL || event_receiver_max_buffer_size == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (payload_length != PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	const struct pldm_event_message_buffer_size_req *request =
+	    (const struct pldm_event_message_buffer_size_req *)msg->payload;
+
+	*event_receiver_max_buffer_size =
+	    le16toh(request->event_receiver_max_buffer_size);
+
+	return PLDM_SUCCESS;
+}
+
+int encode_event_message_buffer_size_resp(uint8_t instance_id,
+					  uint8_t completion_code,
+					  uint16_t terminus_max_buffer_size,
+					  struct pldm_msg *msg)
+{
+	if (msg == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	struct pldm_header_info header = {0};
+	header.msg_type = PLDM_RESPONSE;
+	header.instance = instance_id;
+	header.pldm_type = PLDM_PLATFORM;
+	header.command = PLDM_EVENT_MESSAGE_BUFFER_SIZE;
+	uint8_t rc = pack_pldm_header(&header, &(msg->hdr));
+	if (rc != PLDM_SUCCESS) {
+		return rc;
+	}
+
+	struct pldm_event_message_buffer_size_resp *resp =
+	    (struct pldm_event_message_buffer_size_resp *)msg->payload;
+	resp->completion_code = completion_code;
+	resp->terminus_max_buffer_size = htole16(terminus_max_buffer_size);
 
 	return PLDM_SUCCESS;
 }
@@ -2123,6 +2248,63 @@ int encode_get_state_effecter_states_req(uint8_t instance_id,
 	return PLDM_SUCCESS;
 }
 
+int decode_get_state_effecter_states_req(const struct pldm_msg *msg,
+					 size_t payload_length,
+					 uint16_t *effecter_id)
+{
+	if (msg == NULL || effecter_id == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (payload_length != PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	struct pldm_get_state_effecter_states_req *request =
+	    (struct pldm_get_state_effecter_states_req *)msg->payload;
+
+	*effecter_id = le16toh(request->effecter_id);
+
+	return PLDM_SUCCESS;
+}
+
+int encode_get_state_effecter_states_resp(uint8_t instance_id,
+					  uint8_t completion_code,
+					  uint8_t comp_effecter_count,
+					  get_effecter_state_field *field,
+					  struct pldm_msg *msg)
+{
+	if (msg == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (comp_effecter_count < PLDM_COMPOSITE_EFFECTER_MIN_COUNT ||
+	    comp_effecter_count > PLDM_COMPOSITE_EFFECTER_MAX_COUNT) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	struct pldm_header_info header = {0};
+	header.msg_type = PLDM_RESPONSE;
+	header.instance = instance_id;
+	header.pldm_type = PLDM_PLATFORM;
+	header.command = PLDM_GET_STATE_EFFECTER_STATES;
+
+	uint8_t rc = pack_pldm_header(&header, &(msg->hdr));
+	if (rc != PLDM_SUCCESS) {
+		return rc;
+	}
+
+	struct pldm_get_state_effecter_states_resp *response =
+	    (struct pldm_get_state_effecter_states_resp *)msg->payload;
+
+	response->completion_code = completion_code;
+	response->comp_effecter_count = comp_effecter_count;
+	memcpy(response->field, field,
+	       sizeof(get_effecter_state_field) * comp_effecter_count);
+
+	return PLDM_SUCCESS;
+}
+
 int decode_get_state_effecter_states_resp(
     const struct pldm_msg *msg, size_t payload_length, uint8_t *completion_code,
     uint8_t *comp_effecter_count, get_effecter_state_field *state_fields)
@@ -2132,9 +2314,11 @@ int decode_get_state_effecter_states_resp(
 		return PLDM_ERROR_INVALID_DATA;
 	}
 
-	*completion_code = msg->payload[0];
-	if (PLDM_SUCCESS != *completion_code) {
-		return PLDM_SUCCESS;
+	if (payload_length >= PLDM_CC_ONLY_RESP_BYTES) {
+		*completion_code = msg->payload[0];
+		if (PLDM_SUCCESS != *completion_code) {
+			return PLDM_SUCCESS;
+		}
 	}
 
 	struct pldm_get_state_effecter_states_resp *response =
@@ -2154,7 +2338,7 @@ int decode_get_state_effecter_states_resp(
 	*comp_effecter_count = response->comp_effecter_count;
 
 	memcpy(state_fields, response->field,
-	       (sizeof(get_sensor_state_field) * (*comp_effecter_count)));
+	       (sizeof(get_effecter_state_field) * (*comp_effecter_count)));
 
 	return PLDM_SUCCESS;
 }
@@ -2195,6 +2379,39 @@ int decode_get_terminus_UID_resp(const struct pldm_msg *msg,
 	}
 
 	memcpy(uuid, response->uuidValue, 16);
+
+	return PLDM_SUCCESS;
+}
+
+int encode_get_terminus_uid_resp(uint8_t instance_id, uint8_t completion_code,
+				 const uint8_t *uuidValue, size_t uuidLength,
+				 struct pldm_msg *msg)
+{
+	if (msg == NULL || uuidValue == NULL) {
+		return PLDM_ERROR_INVALID_DATA;
+	}
+
+	if (uuidLength != 16) {
+		return PLDM_ERROR_INVALID_LENGTH;
+	}
+
+	struct pldm_header_info header = {0};
+	header.msg_type = PLDM_RESPONSE;
+	header.instance = instance_id;
+	header.pldm_type = PLDM_PLATFORM;
+	header.command = PLDM_GET_TERMINUS_UID;
+
+	uint8_t rc = pack_pldm_header(&header, &(msg->hdr));
+	if (rc != PLDM_SUCCESS) {
+		return rc;
+	}
+
+	struct pldm_get_terminus_uid_resp *response =
+	    (struct pldm_get_terminus_uid_resp *)msg->payload;
+
+	memcpy(response->uuidValue, uuidValue, 16);
+
+	response->completion_code = completion_code;
 
 	return PLDM_SUCCESS;
 }

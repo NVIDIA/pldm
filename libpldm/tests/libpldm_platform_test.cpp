@@ -77,6 +77,26 @@ TEST(GetStateEffecterStates, testGoodDecodeResponse)
               ret_stateField[0].effecter_op_state);
     EXPECT_EQ(stateField.pending_state, ret_stateField[0].pending_state);
     EXPECT_EQ(stateField.present_state, ret_stateField[0].present_state);
+
+    std::array<uint8_t, hdrSize + PLDM_CC_ONLY_RESP_BYTES> responseMsg2{};
+
+    auto response2 = reinterpret_cast<pldm_msg*>(responseMsg2.data());
+    struct pldm_get_state_effecter_states_resp* resp2 =
+        reinterpret_cast<struct pldm_get_state_effecter_states_resp*>(
+            response2->payload);
+
+    completionCode = PLDM_ERROR;
+
+    resp2->completion_code = completionCode;
+
+    ret_completionCode = 0;
+
+    rc = decode_get_state_effecter_states_resp(
+        response2, responseMsg2.size() - hdrSize, &ret_completionCode,
+        &ret_compEffecterCount, ret_stateField.data());
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(completionCode, ret_completionCode);
 }
 
 TEST(GetStateEffecterStates, testBadDecodeResponse)
@@ -2391,6 +2411,36 @@ TEST(SetEventReceiver, testGoodDecodeRequest)
     EXPECT_EQ(transportProtocolType, rettransportProtocolType);
     EXPECT_EQ(eventReceiverAddressInfo, reteventReceiverAddressInfo);
     EXPECT_EQ(heartbeatTimer, retheartbeatTimer);
+
+    std::array<uint8_t, hdrSize + PLDM_SET_EVENT_RECEIVER_REQ_BYTES>
+        requestMsg2{};
+
+    eventMessageGlobalEnable = PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC;
+    transportProtocolType = PLDM_TRANSPORT_PROTOCOL_TYPE_MCTP;
+    eventReceiverAddressInfo = 0x08;
+    heartbeatTimer = 0x10;
+
+    auto request2 = reinterpret_cast<pldm_msg*>(requestMsg2.data());
+    struct pldm_set_event_receiver_req* req2 =
+        reinterpret_cast<struct pldm_set_event_receiver_req*>(
+            request2->payload);
+
+    req2->event_message_global_enable = eventMessageGlobalEnable;
+    req2->transport_protocol_type = transportProtocolType;
+    req2->event_receiver_address_info = eventReceiverAddressInfo;
+    req2->heartbeat_timer = htole16(heartbeatTimer);
+
+    rc = decode_set_event_receiver_req(
+        request2, requestMsg2.size() - hdrSize, &reteventMessageGlobalEnable,
+        &rettransportProtocolType, &reteventReceiverAddressInfo,
+        &retheartbeatTimer);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(eventMessageGlobalEnable, reteventMessageGlobalEnable);
+    EXPECT_EQ(transportProtocolType, rettransportProtocolType);
+    EXPECT_EQ(eventReceiverAddressInfo, reteventReceiverAddressInfo);
+    // To test heartbeat is not overridden
+    EXPECT_NE(heartbeatTimer, retheartbeatTimer);
 }
 
 TEST(SetEventReceiver, testBadDecodeRequest)
@@ -2474,7 +2524,7 @@ TEST(EventMessageSupported, testGoodDecodeResponse)
     resp->completion_code = completionCode;
     resp->synchrony_configuration = synchronyConfiguration;
     resp->synchrony_configuration_supported = synchronyConfigurationSupported;
-    resp->numer_event_class_returned = numberEventClassReturned;
+    resp->number_event_class_returned = numberEventClassReturned;
     resp->event_class[0] = eventClass0;
     resp->event_class[1] = eventClass1;
 
@@ -2497,6 +2547,28 @@ TEST(EventMessageSupported, testGoodDecodeResponse)
     EXPECT_EQ(numberEventClassReturned, retNumberEventClassReturned);
     EXPECT_EQ(eventClass0, retEventClasses[0]);
     EXPECT_EQ(eventClass1, retEventClasses[1]);
+
+    std::array<uint8_t, hdrSize + PLDM_CC_ONLY_RESP_BYTES> responseMsg2{};
+
+    auto response2 = reinterpret_cast<pldm_msg*>(responseMsg2.data());
+    struct pldm_event_message_supported_resp* resp2 =
+        reinterpret_cast<struct pldm_event_message_supported_resp*>(
+            response2->payload);
+
+    completionCode = PLDM_ERROR;
+
+    resp2->completion_code = completionCode;
+
+    retCompletionCode = 0;
+
+    rc = decode_event_message_supported_resp(
+        response2, responseMsg2.size() - sizeof(pldm_msg_hdr),
+        &retCompletionCode, &retSynchronyConfiguration,
+        &retSynchronyConfigurationSupported, &retNumberEventClassReturned,
+        &retEventClasses);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(completionCode, retCompletionCode);
 }
 
 TEST(EventMessageSupported, testBadDecodeResponse)
@@ -2511,7 +2583,7 @@ TEST(EventMessageSupported, testBadDecodeResponse)
     resp->completion_code = PLDM_SUCCESS;
     resp->synchrony_configuration = 0;
     resp->synchrony_configuration_supported = 0;
-    resp->numer_event_class_returned = 1;
+    resp->number_event_class_returned = 1;
     resp->event_class[0] = PLDM_SENSOR_EVENT;
 
     auto rc = decode_event_message_supported_resp(
@@ -2589,6 +2661,26 @@ TEST(EventMessageBufferSize, testGoodDecodeResponse)
     EXPECT_EQ(rc, PLDM_SUCCESS);
     EXPECT_EQ(completionCode, retCompletionCode);
     EXPECT_EQ(terminusMaxBufferSize, retTerminusMaxBufferSize);
+
+    std::array<uint8_t, hdrSize + PLDM_CC_ONLY_RESP_BYTES> responseMsg2{};
+
+    auto response2 = reinterpret_cast<pldm_msg*>(responseMsg2.data());
+    struct pldm_event_message_buffer_size_resp* resp2 =
+        reinterpret_cast<struct pldm_event_message_buffer_size_resp*>(
+            response2->payload);
+
+    completionCode = PLDM_ERROR;
+
+    resp2->completion_code = completionCode;
+
+    retCompletionCode = 0;
+
+    rc = decode_event_message_buffer_size_resp(
+        response2, responseMsg2.size() - sizeof(pldm_msg_hdr),
+        &retCompletionCode, &retTerminusMaxBufferSize);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(completionCode, retCompletionCode);
 }
 
 TEST(EventMessageBufferSize, testBadDecodeResponse)
@@ -2661,4 +2753,352 @@ TEST(GetTerminusUID, testGoodDecodeResponse)
         }
     }
     EXPECT_EQ(uuidMatched, true);
+}
+
+TEST(GetStateEffecterStates, testGoodDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES>
+        requestMsg{};
+
+    uint16_t effecterId = 0x1234;
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    struct pldm_get_state_effecter_states_req* req =
+        reinterpret_cast<struct pldm_get_state_effecter_states_req*>(
+            request->payload);
+
+    req->effecter_id = htole16(effecterId);
+
+    uint16_t retEffecterId;
+    auto rc = decode_get_state_effecter_states_req(
+        request, requestMsg.size() - hdrSize, &retEffecterId);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(effecterId, retEffecterId);
+}
+
+TEST(GetStateEffecterStates, testBadDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES>
+        requestMsg{};
+
+    auto rc = decode_get_state_effecter_states_req(
+        nullptr, requestMsg.size() - hdrSize, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    uint16_t retEffecterId;
+    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+
+    rc = decode_get_state_effecter_states_req(
+        request, requestMsg.size() - hdrSize, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = decode_get_state_effecter_states_req(
+        request, requestMsg.size() - hdrSize - 1, &retEffecterId);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}
+
+TEST(GetStateEffecterStates, testGoodEncodeResponse)
+{
+    uint8_t instanceId = 0x01;
+    uint8_t completionCode = PLDM_SUCCESS;
+    uint8_t compEffecterCount = 3;
+
+    get_effecter_state_field effecterFields[3] = {
+        {0x01, 0x02, 0x03}, {0x04, 0x05, 0x06}, {0x07, 0x08, 0x09}};
+
+    size_t responseSize =
+        hdrSize + PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES +
+        (compEffecterCount * sizeof(get_effecter_state_field));
+
+    std::vector<uint8_t> responseMsg(responseSize, 0);
+
+    pldm_msg* pldmResponse = new (responseMsg.data()) pldm_msg();
+
+    int rc = encode_get_state_effecter_states_resp(
+        instanceId, completionCode, compEffecterCount, effecterFields,
+        pldmResponse);
+
+    ASSERT_EQ(rc, PLDM_SUCCESS);
+
+    auto* response = reinterpret_cast<pldm_get_state_effecter_states_resp*>(
+        pldmResponse->payload);
+
+    EXPECT_EQ(response->completion_code, completionCode);
+    EXPECT_EQ(response->comp_effecter_count, compEffecterCount);
+
+    for (uint8_t i = 0; i < compEffecterCount; ++i)
+    {
+        EXPECT_EQ(response->field[i].effecter_op_state,
+                  effecterFields[i].effecter_op_state);
+        EXPECT_EQ(response->field[i].pending_state,
+                  effecterFields[i].pending_state);
+        EXPECT_EQ(response->field[i].present_state,
+                  effecterFields[i].present_state);
+    }
+}
+
+TEST(GetStateEffecterStates, testBadEncodeResponse)
+{
+    uint8_t instanceId = 0x01;
+    uint8_t completionCode = PLDM_SUCCESS;
+    get_effecter_state_field effecterFields[PLDM_COMPOSITE_EFFECTER_MAX_COUNT] =
+        {{0x01, 0x02, 0x03}};
+    uint8_t compEffecterCount = 0;
+
+    pldm_msg responseMsg{};
+
+    auto rc = encode_get_state_effecter_states_resp(
+        instanceId, completionCode, compEffecterCount, effecterFields, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_get_state_effecter_states_resp(instanceId, completionCode,
+                                               compEffecterCount,
+                                               effecterFields, &responseMsg);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    compEffecterCount = 9;
+    rc = encode_get_state_effecter_states_resp(instanceId, completionCode,
+                                               compEffecterCount,
+                                               effecterFields, &responseMsg);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
+TEST(EventMessageSupported, testGoodEncodeResponse)
+{
+    uint8_t instance_id = 0x01;
+    uint8_t completion_code = PLDM_SUCCESS;
+    uint8_t synchrony_configuration = 0x00;
+    uint8_t synchrony_configuration_supported = 0x0B;
+    uint8_t number_event_class_returned = 1;
+    uint8_t event_classes[] = {PLDM_SENSOR_EVENT};
+
+    std::vector<uint8_t> response_msg(
+        hdrSize + PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES +
+        (number_event_class_returned * sizeof(uint8_t)));
+    auto response = reinterpret_cast<pldm_msg*>(response_msg.data());
+
+    auto rc = encode_event_message_supported_resp(
+        instance_id, completion_code, synchrony_configuration,
+        synchrony_configuration_supported, number_event_class_returned,
+        event_classes, response);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    auto resp =
+        reinterpret_cast<pldm_event_message_supported_resp*>(response->payload);
+    EXPECT_EQ(resp->completion_code, completion_code);
+    EXPECT_EQ(resp->synchrony_configuration, synchrony_configuration);
+    EXPECT_EQ(resp->synchrony_configuration_supported,
+              synchrony_configuration_supported);
+    EXPECT_EQ(resp->number_event_class_returned, number_event_class_returned);
+    EXPECT_EQ(resp->event_class[0], event_classes[0]);
+}
+
+TEST(EventMessageSupported, testBadEncodeResponse)
+{
+    uint8_t instance_id = 1;
+    uint8_t completion_code = 0;
+    uint8_t synchrony_configuration = 1;
+    uint8_t synchrony_configuration_supported = 1;
+    uint8_t number_event_class_returned = 1;
+    uint8_t event_classes[] = {PLDM_SENSOR_EVENT};
+
+    std::array<uint8_t,
+               hdrSize + PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES + 1>
+        response_msg{};
+    auto response = reinterpret_cast<pldm_msg*>(response_msg.data());
+
+    auto rc = encode_event_message_supported_resp(
+        instance_id, completion_code, synchrony_configuration,
+        synchrony_configuration_supported, number_event_class_returned, nullptr,
+        response);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    rc = encode_event_message_supported_resp(
+        instance_id, completion_code, synchrony_configuration,
+        synchrony_configuration_supported, number_event_class_returned,
+        event_classes, nullptr);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
+TEST(EventMessageBufferSize, testGoodDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES>
+        request_msg{};
+    uint16_t event_receiver_max_buffer_size = 0x200;
+    uint16_t ret_event_receiver_max_buffer_size;
+
+    auto request = reinterpret_cast<pldm_msg*>(request_msg.data());
+
+    auto req =
+        reinterpret_cast<pldm_event_message_buffer_size_req*>(request->payload);
+    req->event_receiver_max_buffer_size =
+        htole16(event_receiver_max_buffer_size);
+
+    auto rc = decode_event_message_buffer_size_req(
+        request, request_msg.size() - hdrSize,
+        &ret_event_receiver_max_buffer_size);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(event_receiver_max_buffer_size,
+              ret_event_receiver_max_buffer_size);
+}
+
+TEST(EventMessageBufferSize, testBadDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES>
+        request_msg{};
+
+    auto rc = decode_event_message_buffer_size_req(
+        nullptr, request_msg.size() - hdrSize, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    uint16_t event_receiver_max_buffer_size = 0x100;
+    uint16_t ret_event_receiver_max_buffer_size;
+
+    auto request = reinterpret_cast<pldm_msg*>(request_msg.data());
+
+    auto req =
+        reinterpret_cast<pldm_event_message_buffer_size_req*>(request->payload);
+    req->event_receiver_max_buffer_size =
+        htole16(event_receiver_max_buffer_size);
+
+    rc = decode_event_message_buffer_size_req(
+        request, request_msg.size() - hdrSize - 1,
+        &ret_event_receiver_max_buffer_size);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}
+
+TEST(EventMessageBufferSize, testGoodEncodeResponse)
+{
+    uint8_t instance_id = 0x01;
+    uint8_t completion_code = PLDM_SUCCESS;
+    uint16_t terminus_max_buffer_size = 0x200;
+
+    std::array<uint8_t, hdrSize + PLDM_EVENT_MESSAGE_BUFFER_SIZE_RESP_BYTES>
+        response_msg{};
+    auto response = reinterpret_cast<pldm_msg*>(response_msg.data());
+
+    auto rc = encode_event_message_buffer_size_resp(
+        instance_id, completion_code, terminus_max_buffer_size, response);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    auto resp = reinterpret_cast<pldm_event_message_buffer_size_resp*>(
+        response->payload);
+    EXPECT_EQ(resp->completion_code, completion_code);
+    EXPECT_EQ(le16toh(resp->terminus_max_buffer_size),
+              terminus_max_buffer_size);
+}
+
+TEST(EventMessageBufferSize, testBadEncodeResponse)
+{
+    uint8_t instance_id = 1;
+    uint8_t completion_code = PLDM_SUCCESS;
+    uint16_t terminus_max_buffer_size = 0x1234;
+
+    auto rc = encode_event_message_buffer_size_resp(
+        instance_id, completion_code, terminus_max_buffer_size, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+}
+
+TEST(GetTerminusUID, testGoodEncodeResponse)
+{
+    uint8_t instance_id = 1;
+    uint8_t completion_code = PLDM_SUCCESS;
+    uint8_t uuid_value[16] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                              0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+    std::array<uint8_t, hdrSize + PLDM_GET_TERMINUS_UID_RESP_BYTES>
+        response_msg{};
+    auto response = reinterpret_cast<pldm_msg*>(response_msg.data());
+
+    auto rc = encode_get_terminus_uid_resp(
+        instance_id, completion_code, uuid_value, sizeof(uuid_value), response);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    auto resp =
+        reinterpret_cast<pldm_get_terminus_uid_resp*>(response->payload);
+    EXPECT_EQ(resp->completion_code, completion_code);
+    EXPECT_EQ(memcmp(resp->uuidValue, uuid_value, 16), 0);
+}
+
+TEST(GetTerminusUID, testBadEncodeResponse)
+{
+    uint8_t instance_id = 1;
+    uint8_t completion_code = PLDM_SUCCESS;
+    uint8_t uuid_value[16] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                              0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+    auto rc = encode_get_terminus_uid_resp(
+        instance_id, completion_code, uuid_value, sizeof(uuid_value), nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    std::array<uint8_t, hdrSize + PLDM_GET_TERMINUS_UID_RESP_BYTES>
+        response_msg{};
+    auto response = reinterpret_cast<pldm_msg*>(response_msg.data());
+    rc = encode_get_terminus_uid_resp(instance_id, completion_code, nullptr,
+                                      sizeof(uuid_value), response);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    uint8_t invalidUuid[15] = {0}; // Only 15 bytes, should fail
+
+    rc = encode_get_terminus_uid_resp(instance_id, completion_code, invalidUuid,
+                                      sizeof(invalidUuid), response);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+}
+
+TEST(EventMessageSupported, testGoodDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES>
+        request_msg{};
+    uint8_t format_version = 0x01;
+    uint8_t ret_format_version = 0;
+
+    auto request = reinterpret_cast<pldm_msg*>(request_msg.data());
+
+    auto req =
+        reinterpret_cast<pldm_event_message_supported_req*>(request->payload);
+    req->format_version = format_version;
+
+    auto rc = decode_event_message_supported_req(
+        request, request_msg.size() - hdrSize, &ret_format_version);
+
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(format_version, ret_format_version);
+}
+
+TEST(EventMessageSupported, testBadDecodeRequest)
+{
+    std::array<uint8_t, hdrSize + PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES>
+        request_msg{};
+
+    auto rc = decode_event_message_supported_req(
+        nullptr, request_msg.size() - hdrSize, nullptr);
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+
+    uint8_t format_version = 0x01;
+    uint8_t ret_format_version = 0;
+
+    auto request = reinterpret_cast<pldm_msg*>(request_msg.data());
+
+    auto req =
+        reinterpret_cast<pldm_event_message_supported_req*>(request->payload);
+    req->format_version = format_version;
+
+    rc = decode_event_message_supported_req(
+        request, request_msg.size() - hdrSize - 1, &ret_format_version);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_LENGTH);
+
+    req->format_version = 0x02; // Unsupported format version
+    rc = decode_event_message_supported_req(
+        request, request_msg.size() - hdrSize, &ret_format_version);
+
+    EXPECT_EQ(rc, PLDM_ERROR_INVALID_DATA);
+    EXPECT_EQ(ret_format_version, 0x02);
 }
