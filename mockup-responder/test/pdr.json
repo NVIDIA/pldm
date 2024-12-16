@@ -1,0 +1,398 @@
+{
+  "numericEffecterPDRs": [
+    {
+      "pdrType": 9,
+      "entries": [
+        {
+          "set": {
+            "id": 2048,
+            "size": 1,
+            "entityType": 135,
+            "entityInstanceNumber": 0,
+            "containerID": 100,
+            "effecterInit": "useInitPDR",
+            "effecterAuxiliaryNamesPDR": true,
+            "baseUnit": 7,
+            "unitModifier": 0,
+            "rateUnit": "None",
+            "base_oem_unit_handle": 0,
+            "aux_unit": 5,
+            "aux_unit_modifier": 10,
+            "aux_rate_unit": "None",
+            "rel": "dividedBy",
+            "aux_oem_unit_handle": 0,
+            "is_linear": true,
+            "effecter_data_size": 0,
+            "resolution": 1,
+            "offset": 0,
+            "accuracy": 4,
+            "plus_tolerance": 2,
+            "minus_tolerance": 0,
+            "hysteresis": 0,
+            "supported_thresholds": {
+              "lowerThresholdFatal": false,
+              "lowerThresholdCritical": false,
+              "lowerThresholdWarning": false,
+              "upperThresholdFatal": false,
+              "upperThresholdCritical": false,
+              "upperThresholdWarning": false
+            },
+            "threshold_and_hysteresis_volatility": {
+              "terminus_returns_to_online_condition": false,
+              "system_warm_resets": false,
+              "systemhard_resets": false,
+              "pldm_subsystem_power_up": false,
+              "initialization_agent_controller_restart": false
+            },
+            "state_transition_interval": 1,
+            "update_interval": 1,
+            "max_readable": 255,
+            "min_readable": 0,
+            "range_field_format": "uint8",
+            "range_field_support": {
+              "fatalLow": false,
+              "fatalHigh": false,
+              "criticalLow": false,
+              "criticalHigh": false,
+              "normalMin": false,
+              "normalMax": false,
+              "nominalValue": false
+            },
+            "nominal_value": 5,
+            "normal_max": 5.25,
+            "normal_min": 4.75,
+            "warning_high": 5.75,
+            "warning_low": 4.75,
+            "critical_high": 5.5,
+            "critical_low": 4.5,
+            "fatal_high": 5.5,
+            "fatal_low": 4.5
+          }
+        }
+      ]
+    }
+  ],
+  "stateEffecterPDRs": [
+    {
+      "pdrType": 11,
+      "entries": [
+        {
+          "set": {
+            "id": 2028,
+            "entityType": 135,
+            "entityInstanceNumber": 0,
+            "containerID": 100,
+            "effecter_semantic_id": 0,
+            "effecter_init": "noInit",
+            "has_description_pdr": false,
+            "composite_effecter_count": 1,
+            "possible_states": [
+              {
+                "state_set_id": 193,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "set": {
+            "id": 2010,
+            "entityType": 135,
+            "entityInstanceNumber": 0,
+            "containerID": 100,
+            "effecter_semantic_id": 0,
+            "effecter_init": "noInit",
+            "has_description_pdr": false,
+            "composite_effecter_count": 2,
+            "possible_states": [
+              {
+                "state_set_id": 193,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "state_set_id": 193,
+                "possible_states_size": 2,
+                "state_values": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "stateSensorPDRs": [
+    {
+      "pdrType": 4,
+      "entries": [
+        {
+          "set": {
+            "id": 528,
+            "entityType": 135,
+            "entityInstanceNumber": 0,
+            "containerID": 100,
+            "sensor_init": "noInit",
+            "sensor_auxiliary_names_pdr": false,
+            "composite_sensor_count": 1,
+            "possible_states": [
+              {
+                "state_set_id": 14,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "set": {
+            "id": 576,
+            "entityType": 81,
+            "entityInstanceNumber": 0,
+            "containerID": 16,
+            "sensor_init": "noInit",
+            "sensor_auxiliary_names_pdr": false,
+            "composite_sensor_count": 5,
+            "possible_states": [
+              {
+                "state_set_id": 14,
+                "possible_states_size": 2,
+                "state_values": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "state_set_id": 1,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "state_set_id": 256,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              },
+              {
+                "state_set_id": 193,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "state_set_id": 256,
+                "possible_states_size": 1,
+                "state_values": [
+                  1,
+                  2
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numericSensorPDRs": [
+    {
+      "pdrType": 2,
+      "entries": [
+        {
+          "set": {
+            "id": 20,
+            "entityType": 135,
+            "entityInstanceNumber": 0,
+            "containerID": 100,
+            "size": 1,
+            "sensorInit": "useInitPDR",
+            "sensorAuxiliaryNamesPDR": false,
+            "baseUnit": 2,
+            "unitModifier": 0,
+            "rateUnit": "None",
+            "base_oem_unit_handle": 0,
+            "aux_unit": 0,
+            "aux_unit_modifier": 0,
+            "aux_rate_unit": "None",
+            "aux_oem_unit_handle": 0,
+            "is_linear": true,
+            "sensor_data_size": 1,
+            "resolution": 1,
+            "offset": 0,
+            "accuracy": 4,
+            "plus_tolerance": 2,
+            "minus_tolerance": 0,
+            "hysteresis": 0,
+            "supported_thresholds": {
+              "lowerThresholdFatal": false,
+              "lowerThresholdCritical": false,
+              "lowerThresholdWarning": false,
+              "upperThresholdFatal": false,
+              "upperThresholdCritical": false,
+              "upperThresholdWarning": false
+            },
+            "threshold_and_hysteresis_volatility": {
+              "terminus_returns_to_online_condition": false,
+              "system_warm_resets": false,
+              "systemhard_resets": false,
+              "pldm_subsystem_power_up": false,
+              "initialization_agent_controller_restart": false
+            },
+            "state_transition_interval": 1,
+            "update_interval": 1,
+            "max_readable": 255,
+            "min_readable": 0,
+            "range_field_format": "uint8",
+            "range_field_support": {
+              "fatalLow": false,
+              "fatalHigh": false,
+              "criticalLow": false,
+              "criticalHigh": false,
+              "normalMin": false,
+              "normalMax": false,
+              "nominalValue": false
+            },
+            "nominal_value": 5,
+            "normal_max": 5.25,
+            "normal_min": 4.75,
+            "warning_high": 5.75,
+            "warning_low": 4.75,
+            "critical_high": 5.5,
+            "critical_low": 4.5,
+            "fatal_high": 5.5,
+            "fatal_low": 4.5
+          }
+        },
+        {
+          "set": {
+            "id": 21,
+            "entityType": 81,
+            "entityInstanceNumber": 0,
+            "containerID": 16,
+            "size": 1,
+            "sensorInit": "useInitPDR",
+            "sensorAuxiliaryNamesPDR": false,
+            "baseUnit": 2,
+            "unitModifier": 0,
+            "rateUnit": "None",
+            "base_oem_unit_handle": 0,
+            "aux_unit": 0,
+            "aux_unit_modifier": 0,
+            "aux_rate_unit": "None",
+            "rel": "dividedBy",
+            "aux_oem_unit_handle": 0,
+            "is_linear": true,
+            "sensor_data_size": 1,
+            "resolution": 1,
+            "offset": 0,
+            "accuracy": 4,
+            "plus_tolerance": 2,
+            "minus_tolerance": 0,
+            "hysteresis": 0,
+            "supported_thresholds": {
+              "lowerThresholdFatal": false,
+              "lowerThresholdCritical": false,
+              "lowerThresholdWarning": false,
+              "upperThresholdFatal": false,
+              "upperThresholdCritical": false,
+              "upperThresholdWarning": false
+            },
+            "threshold_and_hysteresis_volatility": {
+              "terminus_returns_to_online_condition": false,
+              "system_warm_resets": false,
+              "systemhard_resets": false,
+              "pldm_subsystem_power_up": false,
+              "initialization_agent_controller_restart": false
+            },
+            "state_transition_interval": 1,
+            "update_interval": 1,
+            "max_readable": 255,
+            "min_readable": 0,
+            "range_field_format": "uint8",
+            "range_field_support": {
+              "fatalLow": false,
+              "fatalHigh": false,
+              "criticalLow": false,
+              "criticalHigh": false,
+              "normalMin": false,
+              "normalMax": false,
+              "nominalValue": false
+            },
+            "nominal_value": 5,
+            "normal_max": 5.25,
+            "normal_min": 4.75,
+            "warning_high": 5.75,
+            "warning_low": 4.75,
+            "critical_high": 5.5,
+            "critical_low": 4.5,
+            "fatal_high": 5.5,
+            "fatal_low": 4.5
+          }
+        }
+      ]
+    }
+  ],
+  "entityAssociationPDRs": [
+    {
+      "pdrType": 15,
+      "entries": [
+        {
+          "set": {
+            "containerId": 16,
+            "associationType": 0,
+            "containerEntityType": 64,
+            "containerEntityInstanceNumber": 1,
+            "containerEntityContainerId": 0,
+            "containedEntityCount": 1,
+            "containedEntityIdentificationInfo": [
+              {
+                "containedEntityType": 81,
+                "containedEntityInstanceNumber": 0,
+                "containedEntityContainerId": 16
+              }
+            ]
+          }
+        },
+        {
+          "set": {
+            "containerId": 100,
+            "associationType": 0,
+            "containerEntityType": 81,
+            "containerEntityInstanceNumber": 0,
+            "containerEntityContainerId": 16,
+            "containedEntityCount": 1,
+            "containedEntityIdentificationInfo": [
+              {
+                "containedEntityType": 135,
+                "containedEntityInstanceNumber": 0,
+                "containedEntityContainerId": 100
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

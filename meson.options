@@ -396,3 +396,10 @@ option(
     description: 'The size of the chunk (in bytes) used by the method to calculate the digest for integrity and security verification. Note: The minimum value is 256 bytes.',
     value: 1048576
 )
+
+option(
+  'mockup-responder',
+  type: 'feature',
+  description: 'Enable Mockup Responder',
+  value: 'disabled',
+)

@@ -358,6 +358,10 @@ executable(
   install_dir: get_option('bindir'),
   cpp_args: ['-fno-lto'])
 
+if get_option('mockup-responder').enabled()
+  subdir('mockup-responder')
+endif
+
 if get_option('systemd').allowed()
     systemd_system_unit_dir = dependency('systemd').get_variable(
         'systemdsystemunitdir',
@@ -402,4 +406,5 @@ endif
 #     subdir('platform-mc/test')
 #   endif
 #   subdir('test')
+#   subdir('mockup-responder/test')
 # endif
