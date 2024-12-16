@@ -121,7 +121,7 @@ void UpdateManager::createMessageRegistry(
 {
     if (!parser)
     {
-        lg2::error(
+        error(
             "Parser is not initialized. Cannot create message registry.");
         return;
     }
@@ -177,7 +177,7 @@ void UpdateManager::createMessageRegistryResourceErrors(
 {
     if (!parser)
     {
-        lg2::error(
+        error(
             "Parser is not initialized. Cannot create message registry for resource errors.");
         return;
     }
@@ -465,47 +465,63 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     return 0;
 }
 
-bool UpdateManager::performSecurityChecks()
+void UpdateManager::performSecurityChecksAsync(
+    std::function<void(bool)> onComplete,
+    std::function<void(const std::string& errorMsg)> onError)
 {
-    bool securityChecksPassed = true;
+
+    SecurityCheckType securityCheckType = SecurityCheckType::Disabled;
 
 #ifdef PLDM_PACKAGE_INTEGRITY_CHECK
 
+    securityCheckType = SecurityCheckType::Integrity;
     // Perform integrity check on the firmware package
-    bool integrityCheck = packageIntegrityCheck();
-
-    if (integrityCheck)
-    {
-        info("Firmware package integrity check completed successfully");
-    }
-    else
-    {
-        error("Firmware package integrity check failed");
-        securityChecksPassed = false;
-    }
+    packageIntegrityCheckAsync(
+        [onComplete](bool integrityCheck) {
+            if (integrityCheck)
+            {
+                info(
+                    "Firmware package integrity check completed successfully");
+                onComplete(true);
+            }
+            else
+            {
+                error("Firmware package integrity check failed");
+                onComplete(false);
+            }
+        },
+        onError);
 
 #endif
 
 #ifdef PLDM_PACKAGE_VERIFICATION
-
+    securityCheckType = SecurityCheckType::Authentication;
     try
     {
         // Verify the signature of the firmware package
         if (!verifyPackage())
         {
-            securityChecksPassed = false;
+            onComplete(false);
+        }
+        else
+        {
+            onComplete(true);
         }
     }
     catch (const std::exception& e)
     {
         error("Invalid PLDM package signature");
-        securityChecksPassed = false;
+        onError(std::string("Package verification failed with exception: ") +
+                e.what());
     }
 
 #endif
 
     // Return the overall result of security checks
-    return securityChecksPassed;
+    if (securityCheckType == SecurityCheckType::Disabled)
+    {
+        onComplete(true);
+    }
 }
 
 bool UpdateManager::verifyPackage()
@@ -534,9 +550,6 @@ bool UpdateManager::verifyPackage()
     }
     if (pkgSignHdrData.size())
     {
-
-        std::unique_ptr<PackageSignature> packageSignatureParser;
-
         try
         {
             packageSignatureParser =
@@ -605,6 +618,97 @@ bool UpdateManager::verifyPackage()
     return true;
 }
 
+void UpdateManager::packageIntegrityCheckAsync(
+    std::function<void(bool)> onComplete,
+    std::function<void(const std::string& errorMsg)> onError)
+{
+    const static std::string compName = "Firmware Update Service";
+    const static std::string messageError =
+        "Integrity check failed for FW Package";
+    const static std::string messageErrorParseSignatureHeader =
+        "Failed to parse FW Package signature header";
+    const static std::string resolution =
+        "Retry firmware update using a valid package.";
+
+    const auto calcPkgSize = parser->calculatePackageSize();
+    std::vector<uint8_t> pkgSignHdrData;
+
+    try
+    {
+        pkgSignHdrData =
+            PackageSignature::getSignatureHeader(package, calcPkgSize);
+    }
+    catch (const std::exception& e)
+    {
+        error("Failed to get signature header.");
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
+        onComplete(false);
+        return;
+    }
+
+    if (pkgSignHdrData.size())
+    {
+        try
+        {
+            packageSignatureParser =
+                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
+        }
+        catch (const std::exception& e)
+        {
+            info("Failed to create signature header parser.");
+
+            onComplete(true);
+            return;
+        }
+
+        try
+        {
+            packageSignatureParser->parseHeader();
+        }
+        catch (const std::exception& e)
+        {
+            error("Failed to parse signature header.", "ERROR", e);
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorParseSignatureHeader, resolution);
+
+            onComplete(false);
+            return;
+        }
+
+        auto sizeOfSignedData =
+            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
+        packageSignatureParser->integrityCheckAsync(
+            package, sizeOfSignedData,
+            [onComplete](bool integritycheckResult) {
+                if (integritycheckResult)
+                {
+                    info("Integrity check successful for FW Package");
+                    onComplete(true);
+                }
+                else
+                {
+                    createLogEntry(resourceErrorDetected, compName,
+                                   messageError, resolution);
+                    onComplete(false);
+                }
+            },
+            onError);
+
+        return;
+    }
+    else
+    {
+        info("FW package does not contain signature header");
+        onComplete(true);
+        return;
+    }
+
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+
+    onComplete(false);
+}
+
 bool UpdateManager::packageIntegrityCheck()
 {
     std::string compName = "Firmware Update Service";
@@ -631,8 +735,6 @@ bool UpdateManager::packageIntegrityCheck()
 
     if (pkgSignHdrData.size())
     {
-        std::unique_ptr<PackageSignature> packageSignatureParser;
-
         try
         {
             packageSignatureParser =

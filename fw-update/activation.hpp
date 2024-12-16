@@ -150,30 +150,49 @@ class Activation : public ActivationIntf
             deleteImpl.reset();
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
-            if (!updateManager->performSecurityChecks())
-            {
-                error("Security checks failed setting activation to fail");
-                updateManager->resetActivationBlocksTransition();
-                updateManager->clearFirmwareUpdatePackage();
+            updateManager->performSecurityChecksAsync(
+                [this, updateManager(updateManager)](bool securityCheck) {
+                    if (!securityCheck)
+                    {
+                        lg2::error(
+                            "Security checks failed setting activation to fail");
+                        updateManager->resetActivationBlocksTransition();
+                        updateManager->clearFirmwareUpdatePackage();
 
-                value = Activations::Failed;
-            }
-            else
-            {
-                auto state = updateManager->activatePackage();
-                value = state;
-                if (state == Activations::Failed)
-                {
-                    error("Activation failed setting activation to fail");
+                        ActivationIntf::activation(
+                            software::Activation::Activations::Failed);
+                    }
+                    else
+                    {
+                        auto state = updateManager->activatePackage();
+
+                        if (state == Activations::Failed)
+                        {
+                            lg2::error(
+                                "Activation failed setting activation to fail");
+                            updateManager->resetActivationBlocksTransition();
+                            updateManager->clearFirmwareUpdatePackage();
+                        }
+                        else if (state == Activations::Active)
+                        {
+                            lg2::info("Activation set to active");
+                            updateManager->clearFirmwareUpdatePackage();
+                        }
+                    }
+                },
+                [this,
+                 updateManager(updateManager)](const std::string& errorMsg) {
+                    lg2::error(
+                        "Security checks failed setting activation to fail");
+                    lg2::error(
+                        "Exception during activation security check: {ERRORMSG}",
+                        "ERRORMSG", errorMsg);
                     updateManager->resetActivationBlocksTransition();
                     updateManager->clearFirmwareUpdatePackage();
-                }
-                else if (state == Activations::Active)
-                {
-                    info("Activation set to active");
-                    updateManager->clearFirmwareUpdatePackage();
-                }
-            }
+
+                    ActivationIntf::activation(
+                        software::Activation::Activations::Failed);
+                });
         }
         else if (value == Activations::Active || value == Activations::Failed)
         {

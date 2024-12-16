@@ -44,6 +44,31 @@ cpp = meson.get_compiler('cpp')
 if cpp.has_header('poll.h')
     conf_data.set('PLDM_HAS_POLL', 1)
 endif
+
+if(get_option('pldm-package-verification') == 'authentication')
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
+endif
+if get_option('pldm-package-verification-must-be-signed').enabled()
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language : ['c','cpp'])
+endif
+if(get_option('pldm-package-verification') == 'integrity')
+    add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language : ['c','cpp'])
+endif
+
+conf_data.set('CALCULATE_DIGEST_CHUNK_SIZE', get_option('pldm-package-verification-calculate-digest-chunk-size'))
+
+if get_option('pldm-type2').enabled()
+  add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
+endif
+if get_option('oem-nvidia').enabled()
+    add_project_arguments('-DOEM_NVIDIA', language : ['c','cpp'])
+endif
+if get_option('debug-token').enabled()
+    add_project_arguments('-DDEBUG_TOKEN', language : ['c','cpp'])
+endif
+if get_option('fw-debug').enabled()
+  conf_data.set('FWDEBUG', '--fw-debug')
+endif
 conf_data.set('NUMBER_OF_REQUEST_RETRIES', get_option('number-of-request-retries'))
 conf_data.set('NUMBER_OF_COMMAND_ATTEMPTS', get_option('number-of-command-attempts'))
 conf_data.set('INSTANCE_ID_EXPIRATION_INTERVAL',get_option('instance-id-expiration-interval'))

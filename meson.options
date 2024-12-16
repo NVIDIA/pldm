@@ -381,3 +381,11 @@ option(
     value: 'enabled',
     description: 'Support for non pldm devices'
 )
+
+option(
+    'pldm-package-verification-calculate-digest-chunk-size',
+    type: 'integer',
+    min: 256,
+    description: 'The size of the chunk (in bytes) used by the method to calculate the digest for integrity and security verification. Note: The minimum value is 256 bytes.',
+    value: 1048576
+)
