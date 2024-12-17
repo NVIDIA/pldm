@@ -104,24 +104,24 @@ class StateSetNvlink : public StateSet
         ValuePortStateIntf->linkState(PortLinkStates::Unknown);
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
     }
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Active")};
+                    std::string("Active"), Level::Informational};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Inactive")};
+                std::string("Inactive"), Level::Informational};
         }
         else
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error")};
+                std::string("Error"), Level::Informational};
         }
     }
 
