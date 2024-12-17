@@ -36,6 +36,9 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     resumed(true), initSensorList(true), tid(tid),
     supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
 {
+    // default system inventory object path
+    systemInventoryPath =
+        "/xyz/openbmc_project/inventory/system/chassis/Baseboard_0";
     maxBufferSize = 256;
     needRefresh = false;
 }
