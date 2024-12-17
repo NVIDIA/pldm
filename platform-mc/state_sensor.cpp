@@ -34,7 +34,6 @@ namespace platform_mc
 {
 
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
-using Level = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 
 StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
                          const uint16_t sensorId, StateSetInfo sensorInfo,
@@ -146,9 +145,10 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
             }
 
             std::string arg1 = entityName + " " + sensorName;
-            auto [messageID, arg2] = stateSets[sensorOffset]->getEventData();
+            auto [messageID, arg2, level] =
+                stateSets[sensorOffset]->getEventData();
             std::string resolution = "None";
-            createLogEntry(messageID, arg1, arg2, resolution);
+            createLogEntry(messageID, arg1, arg2, resolution, level);
         }
     }
     else
@@ -160,7 +160,8 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
 }
 
 void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
-                                 std::string& arg2, std::string& resolution)
+                                 std::string& arg2, std::string& resolution,
+                                 Level level)
 {
     auto createLog = [&messageID](std::map<std::string, std::string>& addData,
                                   Level& level) {
@@ -190,7 +191,6 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
 
     std::map<std::string, std::string> addData;
     addData["REDFISH_MESSAGE_ID"] = messageID;
-    Level level = Level::Informational;
     addData["REDFISH_MESSAGE_ARGS"] = arg1 + "," + arg2;
     addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
     createLog(addData, level);

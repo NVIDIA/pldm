@@ -133,27 +133,27 @@ class StateSetEthernetPortLinkState : public StateSet
         ValuePortInfoIntf->maxSpeed(0.0);
     }
 
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
             return {std::string("ResourceEvent.1.0.ResourceErrorsCorrected"),
-                    std::string("LinkUp")};
+                    std::string("LinkUp"), Level::Informational};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
             return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    std::string("LinkDown")};
+                    std::string("LinkDown"), Level::Alert};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
             return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    std::string("Error")};
+                    std::string("Error"), Level::Error};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    std::string("Unknown")};
+                    std::string("Unknown"), Level::Error};
         }
     }
 

@@ -117,18 +117,19 @@ class StateSetPowerSupplyInput : public StateSet
         ValueIntf->status(PowerSupplyInputStatus::Unknown);
     }
 
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         if (ValueIntf->status() == PowerSupplyInputStatus::Good)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Normal")};
+                    std::string("Normal"), Level::Informational};
         }
         else
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Current Input out of Range")};
+                std::string("Current Input out of Range"),
+                Level::Informational};
         }
     }
 

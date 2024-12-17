@@ -75,17 +75,17 @@ class StateSetPresenceState : public StateSet
         ValueIntf->presence(false);
     }
 
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         if (ValueIntf->presence())
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("True")};
+                    std::string("True"), Level::Informational};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("False")};
+                    std::string("False"), Level::Informational};
         }
     }
 
