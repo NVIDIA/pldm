@@ -55,13 +55,7 @@ if get_option('firmware-package-staging-dir').endswith('/')
 else
   conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR', get_option('firmware-package-staging-dir'))
 endif
-if get_option('firmware-package-split-staging-dir').endswith('/')
-  conf_data.set_quoted('FIRMWARE_PACKAGE_SPLIT_STAGING_DIR', get_option('firmware-package-split-staging-dir').substring(0, -1))
-else
-  conf_data.set_quoted('FIRMWARE_PACKAGE_SPLIT_STAGING_DIR', get_option('firmware-package-split-staging-dir'))
-endif
 conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-staging-dir-mount-service'))
-conf_data.set_quoted('FIRMWARE_PACKAGE_SPLIT_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-split-staging-dir-mount-service'))
 conf_data.set('PROGRESS_UPDATE_INTERVAL', get_option('progress-percent-updater-interval'))
 if get_option('libpldmresponder').allowed()
     conf_data.set_quoted('BIOS_JSONS_DIR', join_paths(package_datadir, 'bios'))

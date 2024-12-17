@@ -105,10 +105,6 @@ class Delete : public DeleteIntf
     void delete_() override
     {
         updateManager->clearActivationInfo();
-        if (objPath == updateManager->stagedObjPath)
-        {
-            updateManager->clearStagedPackage();
-        }
     }
 
   private:
@@ -154,32 +150,11 @@ class Activation : public ActivationIntf
             deleteImpl.reset();
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
-            if (objPath == updateManager->stagedObjPath)
-            {
-                if (updateManager->processPackage(
-                        updateManager->stagedfwPackageFilePath) != 0)
-                {
-                    lg2::error("Invalid Staged PLDM Package.");
-                    deleteImpl =
-                        std::make_unique<Delete>(bus, objPath, updateManager);
-                    std::string compName = "Firmware Update Service";
-                    std::string messageError = "Invalid FW Package";
-                    std::string resolution =
-                        "Retry firmware update operation with valid FW package.";
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
-                    updateManager->closePackage();
-                    updateManager->restoreStagedPackageActivationObjects();
-                    return ActivationIntf::activation(Activations::Failed);
-                }
-            }
-
             if (!updateManager->performSecurityChecks())
             {
                 error("Security checks failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
                 updateManager->clearFirmwareUpdatePackage();
-                updateManager->restoreStagedPackageActivationObjects();
 
                 value = Activations::Failed;
             }
@@ -192,13 +167,11 @@ class Activation : public ActivationIntf
                     error("Activation failed setting activation to fail");
                     updateManager->resetActivationBlocksTransition();
                     updateManager->clearFirmwareUpdatePackage();
-                    updateManager->restoreStagedPackageActivationObjects();
                 }
                 else if (state == Activations::Active)
                 {
                     info("Activation set to active");
                     updateManager->clearFirmwareUpdatePackage();
-                    updateManager->restoreStagedPackageActivationObjects();
                 }
             }
         }
@@ -237,16 +210,7 @@ class Activation : public ActivationIntf
                 activation(Activations::Activating);
             }
         }
-        // set requested activation to none to support b2b updates
-        if (objPath == updateManager->stagedObjPath)
-        {
-            return ActivationIntf::requestedActivation(
-                RequestedActivations::None);
-        }
-        else
-        {
-            return ActivationIntf::requestedActivation(value);
-        }
+        return ActivationIntf::requestedActivation(value);
     }
 
   private:

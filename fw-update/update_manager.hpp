@@ -93,14 +93,6 @@ class UpdateManager
 
     int processPackage(const std::filesystem::path& packageFilePath);
 
-    /**
-     * @brief Handler to process staged package.
-     *
-     * @param packageFilePath[in] - package file path
-     * @return int
-     */
-    int processStagedPackage(const std::filesystem::path& packageFilePath);
-
     /** @brief Update firmware update completion status of each device
      *
      *  @param[in] eid - Remote MCTP Endpoint ID
@@ -342,26 +334,6 @@ class UpdateManager
                          size_t compIndex);
 
     bool verifyPackage();
-    std::string stagedObjPath;
-    std::filesystem::path stagedfwPackageFilePath;
-
-    /**
-     * @brief clear staged package associated objects
-     *
-     */
-    void clearStagedPackageInfo();
-
-    /**
-     * @brief clear staged package and it's associated objects
-     *
-     */
-    void clearStagedPackage();
-
-    /**
-     * @brief Move staged update activation object to persist states
-     *
-     */
-    void restoreStagedPackageActivationObjects();
 
     /**
      * @brief close file handler of firmware package
@@ -479,8 +451,6 @@ class UpdateManager
      * @param[in] packageVerificationStatus
      * @param[in] packageSize
      */
-    void updateStagedPackageProperties(bool packageVerificationStatus,
-                                       uintmax_t packageSize);
 };
 
 } // namespace fw_update

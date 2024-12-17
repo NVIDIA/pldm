@@ -327,12 +327,6 @@ option(
     description: 'Firmware package staging directory for PLDM packages. This path will be used by bmcweb to copy the firmware update package.'
 )
 option(
-    'firmware-package-split-staging-dir',
-    type: 'string',
-    value: '',
-    description: 'Firmware package split staging and update directory for PLDM packages. This path will be used by bmcweb to copy the firmware update package.'
-)
-option(
     'firmware-package-staging-dir-mount-service',
     type: 'string',
     value: '',

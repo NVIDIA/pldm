@@ -78,8 +78,7 @@ class FakeUpdateManager
     {
         return true;
     }
-    std::string stagedObjPath;
-    std::filesystem::path stagedfwPackageFilePath;
+
 };
 } // namespace testing
 

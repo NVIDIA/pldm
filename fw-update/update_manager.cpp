@@ -51,10 +51,9 @@ UpdateManager::UpdateManager(
     fwDebug(fwDebug), descriptorMap(descriptorMap),
     componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
-          std::bind_front(&UpdateManager::processStagedPackage, this), this)
+          this)
 {
     watch.initImmediateUpdateWatch();
-    watch.initStagedUpdateWatch();
     updatePolicy = std::make_unique<UpdatePolicy>(
         pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
 
@@ -78,7 +77,6 @@ UpdateManager::UpdateManager(
     }
     progressTimer = nullptr;
     forceUpdate = false;
-    isStageOnlyUpdate = false;
 }
 
 UpdateManager::~UpdateManager() = default;
@@ -224,18 +222,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
     std::vector<sdbusplus::message::object_path> targets;
-    if (packageFilePath == stagedfwPackageFilePath)
-    {
-        objPath = stagedObjPath;
-        activation = std::move(activationStaged);
-        activationProgress = std::move(activationProgressStaged);
-        activationProgress->progress(0);
-        targets = updatePolicyStaged->targets();
-        forceUpdate = updatePolicyStaged->forceUpdate();
-        isStageOnlyUpdate = false;
-    }
-    else
-    {
         size_t versionHash = std::hash<std::string>{}(packageFilePath);
         objPath = swRootPath + std::to_string(versionHash);
         targets = updatePolicy->targets();
@@ -250,7 +236,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         {
             isStageOnlyUpdate = false;
         }
-    }
     info(
         "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
         "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
@@ -1043,13 +1028,6 @@ void UpdateManager::updatePackageCompletion()
              std::chrono::duration<double, std::milli>(endTime - startTime)
                  .count());
         activationBlocksTransition.reset();
-        if (fwPackageFilePath == stagedfwPackageFilePath)
-        {
-            // targets should be cleared to avoid previous targets getting
-            // re-used in b2b updates
-            updatePolicyStaged->targets({});
-            restoreStagedPackageActivationObjects();
-        }
         clearFirmwareUpdatePackage();
     }
 }
@@ -1120,19 +1098,13 @@ void UpdateManager::resetActivationBlocksTransition()
 void UpdateManager::clearFirmwareUpdatePackage()
 {
     package.close();
-    // do not remove staged package after update complete, there is a redfish
-    // api to delete and delete intf handler will do that.
-    if (fwPackageFilePath != stagedfwPackageFilePath)
-    {
-        std::filesystem::remove(fwPackageFilePath);
-    }
+    std::filesystem::remove(fwPackageFilePath);
 }
 
 void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
     activation->activation(state);
-    restoreStagedPackageActivationObjects();
 }
 
 ComponentName UpdateManager::getComponentName(
@@ -1186,193 +1158,6 @@ void UpdateManager::createProgressUpdateTimer()
         }
         return;
     });
-}
-
-void UpdateManager::clearStagedPackageInfo()
-{
-    updatePolicyStaged.reset();
-    epochTime.reset();
-    packageHash.reset();
-    packageInfo.reset();
-    activationStaged.reset();
-    activationProgressStaged.reset();
-    stagedObjPath.clear();
-}
-
-void UpdateManager::clearStagedPackage()
-{
-    clearStagedPackageInfo();
-    std::filesystem::remove(stagedfwPackageFilePath);
-    stagedfwPackageFilePath.clear();
-}
-
-void UpdateManager::updateStagedPackageProperties(
-    bool packageVerificationStatus, uintmax_t packageSize)
-{
-    std::string packageVersion;
-    std::string digest;
-    if (packageVerificationStatus)
-    {
-        packageVersion = parser->pkgVersion;
-    }
-    std::unique_ptr<PackageSignatureShaBase> signatureSha =
-        std::make_unique<PackageSignatureSha384>();
-    try
-    {
-        auto digestVector = signatureSha->calculateDigest(package, packageSize);
-        std::ostringstream tempStream;
-        for (int byte : digestVector)
-        {
-            tempStream << std::setfill('0') << std::setw(2) << std::hex << byte;
-        }
-        digest = tempStream.str();
-    }
-    catch (const std::exception& e)
-    {
-        error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR",
-              e.what());
-        packageVerificationStatus = false;
-    }
-    std::filesystem::file_time_type packageTimeStamp =
-        std::filesystem::last_write_time(stagedfwPackageFilePath);
-    const auto packageTimeStampSys =
-        std::chrono::file_clock::to_sys(packageTimeStamp);
-    uint64_t packageTimeStampInEpoch =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            packageTimeStampSys.time_since_epoch())
-            .count();
-    updatePolicyStaged = std::make_unique<UpdatePolicy>(
-        pldm::utils::DBusHandler::getBus(), stagedObjPath);
-    epochTime =
-        std::make_unique<EpochTime>(pldm::utils::DBusHandler::getBus(),
-                                    stagedObjPath, packageTimeStampInEpoch);
-    packageHash = std::make_unique<PackageHash>(
-        pldm::utils::DBusHandler::getBus(), stagedObjPath, digest,
-        packageSignatureSha384Name);
-    packageInfo = std::make_unique<PackageInformation>(
-        pldm::utils::DBusHandler::getBus(), stagedObjPath, packageVersion,
-        packageVerificationStatus);
-    activationStaged = std::make_unique<Activation>(
-        pldm::utils::DBusHandler::getBus(), stagedObjPath,
-        software::Activation::Activations::Ready, this);
-    activationProgressStaged = std::make_unique<ActivationProgress>(
-        pldm::utils::DBusHandler::getBus(), stagedObjPath);
-    package.close();
-}
-
-int UpdateManager::processStagedPackage(
-    const std::filesystem::path& packageFilePath)
-{
-    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-    clearStagedPackageInfo();
-    size_t versionHash = std::hash<std::string>{}(packageFilePath);
-    stagedObjPath = swRootPath + "staged/" + std::to_string(versionHash);
-    stagedfwPackageFilePath = packageFilePath;
-
-    package.open(packageFilePath,
-                 std::ios::binary | std::ios::in | std::ios::ate);
-    uintmax_t packageSize = package.tellg();
-    if (!package.good())
-    {
-        error("Opening the PLDM FW update package failed, ERR={ERRNO}, "
-              "PACKAGEFILEPATH={PACKAGEFILEPATH}",
-              "ERRNO", strerror(errno), "PACKAGEFILEPATH", packageFilePath);
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-    if (packageSize < sizeof(pldm_package_header_information))
-    {
-        error(
-            "PLDM FW update package length less than the length of the package"
-            " header information, PACKAGESIZE={PACKAGESIZE}",
-            "PACKAGESIZE", packageSize);
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-    package.seekg(0);
-    std::vector<uint8_t> packageHeader(sizeof(pldm_package_header_information));
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 sizeof(pldm_package_header_information));
-
-    auto pkgHeaderInfo =
-        reinterpret_cast<const pldm_package_header_information*>(
-            packageHeader.data());
-    auto pkgHeaderInfoSize = sizeof(pldm_package_header_information) +
-                             pkgHeaderInfo->package_version_string_length;
-    packageHeader.clear();
-    packageHeader.resize(pkgHeaderInfoSize);
-    package.seekg(0);
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 pkgHeaderInfoSize);
-
-    parser = parsePkgHeader(packageHeader);
-    if (parser == nullptr)
-    {
-        error("Invalid PLDM package header information");
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-    package.seekg(0);
-    packageHeader.resize(parser->pkgHeaderSize);
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 parser->pkgHeaderSize);
-    try
-    {
-        parser->parse(packageHeader, packageSize);
-    }
-    catch (const std::exception& e)
-    {
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-#ifdef PLDM_PACKAGE_INTEGRITY_CHECK
-
-    bool integrityCheck = packageIntegrityCheck();
-
-    if (!integrityCheck)
-    {
-        error("FW package integrity check failed");
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-#endif
-
-#ifdef PLDM_PACKAGE_VERIFICATION
-
-    try
-    {
-        if (!verifyPackage())
-        {
-            updateStagedPackageProperties(false, packageSize);
-            return -1;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        updateStagedPackageProperties(false, packageSize);
-        return -1;
-    }
-
-#endif
-    updateStagedPackageProperties(true, packageSize);
-    info("Firmware package stage success.");
-    return 0;
-}
-
-void UpdateManager::restoreStagedPackageActivationObjects()
-{
-    if (fwPackageFilePath == stagedfwPackageFilePath)
-    {
-        activationStaged = std::move(activation);
-        activationProgressStaged = std::move(activationProgress);
-        activation = nullptr;
-        activationProgress = nullptr;
-    }
 }
 
 } // namespace fw_update
