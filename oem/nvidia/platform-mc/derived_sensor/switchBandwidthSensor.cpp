@@ -82,8 +82,14 @@ void SwitchBandwidthSensor::updateCurrentBandwidth(double oldValue,
                                                    double newValue)
 {
     auto curBandwidthOnSwitch = switchIntf->currentBandwidth();
-    curBandwidthOnSwitch -= oldValue;
-    curBandwidthOnSwitch += newValue;
+    if (!std::isnan(oldValue))
+    {
+        curBandwidthOnSwitch -= oldValue;
+    }
+    if (!std::isnan(newValue))
+    {
+        curBandwidthOnSwitch += newValue;
+    }
     switchIntf->currentBandwidth(curBandwidthOnSwitch);
     updateOnSharedMemory();
 }
