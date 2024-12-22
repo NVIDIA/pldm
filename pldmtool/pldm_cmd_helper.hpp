@@ -1,11 +1,5 @@
 #pragma once
 
-#include "libpldm/base.h"
-#include "libpldm/bios.h"
-#include "libpldm/firmware_update.h"
-#include "libpldm/fru.h"
-#include "libpldm/platform.h"
-
 #include "common/instance_id.hpp"
 #include "common/utils.hpp"
 
@@ -77,7 +71,6 @@ void fillCompletionCode(uint8_t completionCode, ordered_json& data);
 
 class CommandInterface
 {
-
   public:
     explicit CommandInterface(const char* type, const char* name,
                               CLI::App* app) :
@@ -87,6 +80,8 @@ class CommandInterface
     {
         app->add_option("-m,--mctp_eid", mctp_eid, "MCTP endpoint ID");
         app->add_flag("-v, --verbose", pldmVerbose);
+        app->add_option("-n, --retry-count", numRetries,
+                        "Number of retry when PLDM request message is failed");
         app->callback([&]() { exec(); });
     }
 
@@ -110,6 +105,26 @@ class CommandInterface
     inline uint8_t getMCTPEID()
     {
         return mctp_eid;
+    }
+
+    /**
+     * @brief get PLDM type
+     *
+     * @return pldm type
+     */
+    inline std::string getPLDMType()
+    {
+        return pldmType;
+    }
+
+    /**
+     * @brief get command name
+     *
+     * @return  the command name
+     */
+    inline std::string getCommandName()
+    {
+        return commandName;
     }
 
   private:
@@ -142,6 +157,7 @@ class CommandInterface
   protected:
     uint8_t instanceId;
     pldm::InstanceIdDb instanceIdDb;
+    uint8_t numRetries = 0;
 };
 
 } // namespace helper

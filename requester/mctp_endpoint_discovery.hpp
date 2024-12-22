@@ -18,7 +18,7 @@ const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 constexpr const char* MCTPService = "xyz.openbmc_project.MCTP";
 constexpr const char* MCTPInterface = "xyz.openbmc_project.MCTP.Endpoint";
 constexpr const char* uuidEndpointIntfName = "xyz.openbmc_project.Common.UUID";
-
+constexpr const char* EndpointUUID = "xyz.openbmc_project.Common.UUID";
 constexpr const char* MCTPPath = "/au/com/codeconstruct/mctp1";
 
 /** @class MctpDiscoveryHandlerIntf
@@ -75,6 +75,29 @@ class MctpDiscovery
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
+  public:
+    /** @brief Get MCTP Endpoint D-Bus Properties in the
+     *         `xyz.openbmc_project.MCTP.Endpoint` D-Bus interface
+     *
+     *  @param[in] service - the MCTP service name
+     *  @param[in] path - the MCTP endpoints object path
+     *
+     *  @return tuple of Network Index, Endpoint ID and MCTP message types
+     */
+    MctpEndpointProps getMctpEndpointProps(const std::string& service,
+                                           const std::string& path);
+
+    /** @brief Get Endpoint UUID from `UUID` D-Bus property in the
+     *         `xyz.openbmc_project.Common.UUID` D-Bus interface.
+     *
+     *  @param[in] service - the MCTP service name
+     *  @param[in] path - the MCTP endpoints object path
+     *
+     *  @return Endpoint UUID
+     */
+    UUID getEndpointUUIDProp(const std::string& service,
+                             const std::string& path);
+
     /** @brief List of handlers need to notify when new MCTP
      * Endpoint is Added/Removed */
     std::vector<MctpDiscoveryHandlerIntf*> handlers;
@@ -82,7 +105,7 @@ class MctpDiscovery
     /** @brief The existing MCTP endpoints */
     MctpInfos existingMctpInfos;
 
-    /** @brief Path of static EID table config file */
+    /** @brief Path of static eid table config file */
     std::filesystem::path staticEidTablePath;
     /**
      * @brief matcher rule for property changes of

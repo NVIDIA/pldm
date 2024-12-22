@@ -1,7 +1,7 @@
-## Overview
+# Overview
 
-PLDM requester infrastructure enables the requester code in PLDM daemon to
-meet the requirements of PLDM requesters. It provides the following features:
+PLDM requester infrastructure enables the requester code in PLDM daemon to meet
+the requirements of PLDM requesters. It provides the following features:
 
 - Register a PLDM request and the response handler to be invoked on receiving
   the response.
@@ -11,7 +11,7 @@ meet the requirements of PLDM requesters. It provides the following features:
 - Request retries based on the time-out waiting for a response.
 - Instance ID expiration and marking the instance ID free after expiration.
 
-Future enhancements:
+## Future enhancements
 
 - A mechanism to queue multiple outstanding requests to the same responder.
 - Handle ERROR_NOT_READY completion code and retry the PLDM request after 250ms
@@ -22,14 +22,15 @@ request. The destination endpoint ID, instance ID, PLDM type, PLDM command code,
 PLDM request message (PLDM header and payload) and response function handler are
 passed as parameters to the registerRequest API.
 
-```
+```c++
     int registerRequest(mctp_eid_t eid, uint8_t instanceId, uint8_t type,
                         uint8_t command, pldm::Request&& requestMsg,
                         ResponseHandler&& responseHandler)
 ```
 
 The signature of the response function handler:
-```
+
+```c++
 void handler(mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 ```
 

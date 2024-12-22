@@ -34,8 +34,26 @@ namespace pldm
 namespace fw_update
 {
 
+/** @enum Enumeration to represent the PLDM ComponentUpdateStatus
+ */
+enum class ComponentUpdateStatus
+{
+    UpdateFailed,
+    UpdateComplete,
+    UpdateSkipped
+};
+
 class UpdateManager;
 class DeviceUpdater;
+// // {
+// //     public:
+// //     stdexec::sender auto updateComponentCompletion(const size_t compIndex,
+// //                                    const ComponentUpdateStatus
+// compStatus);
+// // };
+// stdexec::sender auto DeviceUpdater::updateComponentCompletion(const size_t
+// compIndex,
+//                                    const ComponentUpdateStatus compStatus);
 
 /** @enum Enumeration to represent the PLDM ComponentUpdater sequence in the
  * firmware update flow
@@ -52,16 +70,6 @@ enum class ComponentUpdaterSequence
     RetryRequest,
     Valid
 };
-
-/** @enum Enumeration to represent the PLDM ComponentUpdateStatus
- */
-enum class ComponentUpdateStatus
-{
-    UpdateFailed,
-    UpdateComplete,
-    UpdateSkipped
-};
-
 /** @class ComponentUpdaterState
  *
  *  To manage the sequence of the PLDM ComponentUpdater as part of the firmware
@@ -246,16 +254,16 @@ class ComponentUpdater
     /**
      * @brief start component updater
      *
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine startComponentUpdater();
+    exec::task<int> startComponentUpdater();
 
     /** @brief Send UpdateComponent command request
      *
      *  @param[in] compOffset - component offset in compImageInfos
-     *  @return requester::Coroutine
+     *  @return exec::task<int>
      */
-    requester::Coroutine sendUpdateComponentRequest(size_t offset);
+    exec::task<int> sendUpdateComponentRequest(size_t offset);
 
     /** @brief Handler for UpdateComponent command response
      *
@@ -310,9 +318,9 @@ class ComponentUpdater
     /**
      * @brief send cancel update component request
      *
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine sendcancelUpdateComponentRequest();
+    exec::task<int> sendcancelUpdateComponentRequest();
     /**
      * @brief cancel update component response handler
      *
@@ -338,10 +346,9 @@ class ComponentUpdater
      *
      * @param[in] getStatusCallback - to handle post transfer, verify and apply
      * complete failures
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine
-        GetStatus(std::function<void(uint8_t)> getStatusCallback);
+    exec::task<int> GetStatus(std::function<void(uint8_t)> getStatusCallback);
 
     /**
      * @brief process get status response
@@ -351,7 +358,7 @@ class ComponentUpdater
      * @param[in] respMsgLen
      * @param[out] currentFDState
      * @param[out] progressPercent
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
     int processGetStatusResponse(mctp_eid_t eid, const pldm_msg* response,
                                  size_t respMsgLen, uint8_t& currentFDState,
@@ -363,6 +370,10 @@ class ComponentUpdater
      * @param getStatusCallback
      */
     void handleComponentUpdateFailure(std::function<void()> failureCallback);
+
+    exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                            const pldm_msg** responseMsg,
+                                            size_t* responseLen);
 
   private:
     /** @brief Endpoint ID of the firmware device */
@@ -425,9 +436,6 @@ class ComponentUpdater
     /* cancel component update coroutine handler */
     std::coroutine_handle<> cancelCompUpdateHandle = nullptr;
 
-    /* cancel component update coroutine handler */
-    std::coroutine_handle<> updateCompletionCoHandle = nullptr;
-
     /**
      * @brief update complete handler
      *
@@ -467,6 +475,17 @@ class ComponentUpdater
      *
      */
     std::unique_ptr<sdbusplus::Timer> completeCommandsTimeoutTimer;
+    /** @brief coroutine handle of getStatusTaskHandle */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        getStatusTaskHandle{};
+
+    /** @brief coroutine handle of discoverTerminusTask */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        discoverMctpTerminusTaskHandle{};
+
+    /** @brief coroutine handle of discoverTerminusTask */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        updateCompletionCoHandle{};
 };
 
 } // namespace fw_update

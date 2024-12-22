@@ -3,7 +3,7 @@
 #include "pldm_cmd_helper.hpp"
 
 #ifdef OEM_IBM
-#include "oem/ibm/libpldm/fru.h"
+#include <libpldm/oem/ibm/fru.h>
 #endif
 
 #include <endian.h>
@@ -35,7 +35,7 @@ class GetFruRecordTableMetadata : public CommandInterface
     GetFruRecordTableMetadata(GetFruRecordTableMetadata&&) = default;
     GetFruRecordTableMetadata&
         operator=(const GetFruRecordTableMetadata&) = delete;
-    GetFruRecordTableMetadata& operator=(GetFruRecordTableMetadata&&) = default;
+    GetFruRecordTableMetadata& operator=(GetFruRecordTableMetadata&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -132,12 +132,15 @@ class FRUTablePrint
                         fruFieldValue =
                             fruFieldParserTimestamp(tlv->value, tlv->length);
                     }
+                    else
+                    {
+                        fruFieldValue =
+                            fruFieldValuestring(tlv->value, tlv->length);
+                    }
 
                     frudata["FRU Field Type"] =
                         typeToString(FruFieldTypeMap, tlv->type);
                     frudata["FRU Field Length"] = (int)(tlv->length);
-                    fruFieldValue =
-                        fruFieldValuestring(tlv->value, tlv->length);
                     frudata["FRU Field Value"] = fruFieldValue;
                     frufielddata.emplace_back(frudata);
                 }
@@ -149,8 +152,7 @@ class FRUTablePrint
                         auto oemIPZValue =
                             fruFieldValuestring(tlv->value, tlv->length);
 
-                        if (populateMaps.find(oemIPZValue) !=
-                            populateMaps.end())
+                        if (populateMaps.contains(oemIPZValue))
                         {
                             const std::map<uint8_t, std::string> IPZTypes =
                                 populateMaps.at(oemIPZValue);
@@ -405,7 +407,7 @@ class GetFruRecordTable : public CommandInterface
     GetFruRecordTable(const GetFruRecordTable&) = delete;
     GetFruRecordTable(GetFruRecordTable&&) = default;
     GetFruRecordTable& operator=(const GetFruRecordTable&) = delete;
-    GetFruRecordTable& operator=(GetFruRecordTable&&) = default;
+    GetFruRecordTable& operator=(GetFruRecordTable&&) = delete;
 
     using CommandInterface::CommandInterface;
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override

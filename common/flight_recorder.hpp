@@ -1,7 +1,5 @@
 #pragma once
 
-#include <config.h>
-
 #include <common/utils.hpp>
 #include <phosphor-logging/lg2.hpp>
 
@@ -9,11 +7,13 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
+
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
 namespace flightrecorder
 {
-
 using ReqOrResponse = bool;
 using FlightRecorderData = std::vector<uint8_t>;
 using FlightRecorderTimeStamp = std::string;
@@ -34,7 +34,6 @@ class FlightRecorder
   private:
     FlightRecorder() : index(0)
     {
-
         flightRecorderPolicy = FLIGHT_RECORDER_MAX_ENTRIES ? true : false;
         if (flightRecorderPolicy)
         {
@@ -62,7 +61,7 @@ class FlightRecorder
 
     /** @brief Add records to the flightRecorder
      *
-     *  @param[in] buffer  - The request/respose byte buffer
+     *  @param[in] buffer  - The request/response byte buffer
      *  @param[in] isRequest - bool that captures if it is a request message or
      *                         a response message
      *
@@ -93,11 +92,8 @@ class FlightRecorder
         if (flightRecorderPolicy)
         {
             std::ofstream recorderOutputFile(flightRecorderDumpPath);
-            lg2::info(
-                "Dumping the flight recorder into : {FLIGHT_RECORDER_DUMPPATH}",
-                "FLIGHT_RECORDER_DUMPPATH",
-                std::string(flightRecorderDumpPath));
-
+            info("Dumping the flight recorder into : {DUMP_PATH}", "DUMP_PATH",
+                 flightRecorderDumpPath);
             for (const auto& message : tapeRecorder)
             {
                 recorderOutputFile << std::get<FlightRecorderTimeStamp>(message)
@@ -121,7 +117,7 @@ class FlightRecorder
         }
         else
         {
-            lg2::error("Fight recorder policy is disabled");
+            error("Fight recorder policy is disabled");
         }
     }
 };

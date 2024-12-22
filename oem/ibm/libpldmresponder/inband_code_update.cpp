@@ -1,18 +1,21 @@
 #include "inband_code_update.hpp"
 
-#include "libpldm/entity.h"
-
 #include "libpldmresponder/pdr.hpp"
 #include "oem_ibm_handler.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
 #include <arpa/inet.h>
+#include <libpldm/entity.h>
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/Dump/NewDump/server.hpp>
 
 #include <exception>
 #include <fstream>
+
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
 using namespace utils;
@@ -76,7 +79,7 @@ int CodeUpdate::setNextBootSide(const std::string& nextSide)
     }
     if (objPath.empty())
     {
-        std::cerr << "no nonRunningVersion present \n";
+        error("no nonRunningVersion present");
         return PLDM_PLATFORM_INVALID_STATE_VALUE;
     }
 
@@ -90,8 +93,8 @@ int CodeUpdate::setNextBootSide(const std::string& nextSide)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "failed to set the next boot side to " << objPath.c_str()
-                  << " ERROR=" << e.what() << "\n";
+        error("Failed to set the next boot side to {PATH} , error - {ERROR}",
+              "PATH", objPath, "ERROR", e);
         return PLDM_ERROR;
     }
     return PLDM_SUCCESS;
@@ -113,8 +116,10 @@ int CodeUpdate::setRequestedApplyTime()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed To set RequestedApplyTime property "
-                  << "ERROR=" << e.what() << std::endl;
+        error(
+            "Failed to set property '{PROPERTY}' at path '{PATH}' and interface '{INTERFACE}', error - {ERROR}",
+            "PATH", dbusMapping.objectPath, "INTERFACE", dbusMapping.interface,
+            "PROPERTY", dbusMapping.propertyName, "ERROR", e);
         rc = PLDM_ERROR;
     }
     return rc;
@@ -136,8 +141,10 @@ int CodeUpdate::setRequestedActivation()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed To set RequestedActivation property"
-                  << "ERROR=" << e.what() << std::endl;
+        error(
+            "Failed to set property {PROPERTY} at path '{PATH}' and interface '{INTERFACE}', error - {ERROR}",
+            "PATH", dbusMapping.objectPath, "INTERFACE", dbusMapping.interface,
+            "PROPERTY", dbusMapping.propertyName, "ERROR", e);
         rc = PLDM_ERROR;
     }
     return rc;
@@ -160,7 +167,7 @@ void CodeUpdate::setVersions()
         method.append("xyz.openbmc_project.Association", "endpoints");
         std::variant<std::vector<std::string>> paths;
 
-        auto reply = bus.call(method);
+        auto reply = bus.call(method, dbusTimeout);
         reply.read(paths);
 
         runningVersion = std::get<std::vector<std::string>>(paths)[0];
@@ -169,7 +176,7 @@ void CodeUpdate::setVersions()
             bus.new_method_call(mapperService, activeObjPath, propIntf, "Get");
         method1.append("xyz.openbmc_project.Association", "endpoints");
 
-        auto reply1 = bus.call(method1);
+        auto reply1 = bus.call(method1, dbusTimeout);
         reply1.read(paths);
         for (const auto& path : std::get<std::vector<std::string>>(paths))
         {
@@ -182,28 +189,28 @@ void CodeUpdate::setVersions()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "failed to make a d-bus call to Object Mapper "
-                     "Association, ERROR="
-                  << e.what() << "\n";
+        error(
+            "Failed to make a d-bus call to Object Mapper Association, error - {ERROR}",
+            "ERROR", e);
         return;
     }
 
     using namespace sdbusplus::bus::match::rules;
     captureNextBootSideChange.push_back(
-        std::make_unique<sdbusplus::bus::match::match>(
+        std::make_unique<sdbusplus::bus::match_t>(
             pldm::utils::DBusHandler::getBus(),
             propertiesChanged(runningVersion, redundancyIntf),
-            [this](sdbusplus::message::message& msg) {
+            [this](sdbusplus::message_t& msg) {
                 DbusChangedProps props;
                 std::string iface;
                 msg.read(iface, props);
                 processPriorityChangeNotification(props);
             }));
-    fwUpdateMatcher.push_back(std::make_unique<sdbusplus::bus::match::match>(
+    fwUpdateMatcher.push_back(std::make_unique<sdbusplus::bus::match_t>(
         pldm::utils::DBusHandler::getBus(),
         "interface='org.freedesktop.DBus.ObjectManager',type='signal',"
         "member='InterfacesAdded',path='/xyz/openbmc_project/software'",
-        [this](sdbusplus::message::message& msg) {
+        [this](sdbusplus::message_t& msg) {
             DBusInterfaceAdded interfaces;
             sdbusplus::message::object_path path;
             msg.read(path, interfaces);
@@ -230,12 +237,12 @@ void CodeUpdate::setVersions()
                             if (!imageActivationMatch)
                             {
                                 imageActivationMatch = std::make_unique<
-                                    sdbusplus::bus::match::match>(
+                                    sdbusplus::bus::match_t>(
                                     pldm::utils::DBusHandler::getBus(),
                                     propertiesChanged(newImageId,
                                                       "xyz.openbmc_project."
                                                       "Software.Activation"),
-                                    [this](sdbusplus::message::message& msg) {
+                                    [this](sdbusplus::message_t& msg) {
                                         DbusChangedProps props;
                                         std::string iface;
                                         msg.read(iface, props);
@@ -293,6 +300,7 @@ void CodeUpdate::setVersions()
                             auto rc = setRequestedActivation();
                             if (rc != PLDM_SUCCESS)
                             {
+                                error("Could not set Requested Activation");
                                 CodeUpdateState state = CodeUpdateState::FAIL;
                                 setCodeUpdateProgress(false);
                                 auto sensorId = getFirmwareUpdateSensor();
@@ -300,15 +308,16 @@ void CodeUpdate::setVersions()
                                     sensorId, PLDM_STATE_SENSOR_STATE, 0,
                                     uint8_t(state),
                                     uint8_t(CodeUpdateState::START));
-                                std::cerr
-                                    << "could not set RequestedActivation \n";
                             }
                             break;
                         }
                     }
-                    catch (const sdbusplus::exception::exception& e)
+                    catch (const sdbusplus::exception_t& e)
                     {
-                        std::cerr << "Error in getting Activation status \n";
+                        error(
+                            "Failed to get activation status for interface '{INTERFACE}' and object path '{PATH}', error - {ERROR}",
+                            "ERROR", e, "INTERFACE", imageInterface, "PATH",
+                            imageObjPath);
                     }
                 }
             }
@@ -337,11 +346,15 @@ void CodeUpdate::setOemPlatformHandler(
 
 void CodeUpdate::clearDirPath(const std::string& dirPath)
 {
-    for (auto& path : fs::directory_iterator(dirPath.c_str()))
+    if (!fs::is_directory(dirPath))
     {
-        fs::remove_all(path);
+        error("The directory '{PATH}' does not exist", "PATH", dirPath);
+        return;
     }
-    return;
+    for (const auto& iter : fs::directory_iterator(dirPath))
+    {
+        fs::remove_all(iter);
+    }
 }
 
 void CodeUpdate::sendStateSensorEvent(
@@ -368,11 +381,13 @@ void CodeUpdate::deleteImage()
     {
         auto method = bus.new_method_call(UPDATER_SERVICE, SW_OBJ_PATH,
                                           DELETE_INTF, "DeleteAll");
-        bus.call_noreply(method);
+        bus.call_noreply(method, dbusTimeout);
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to delete image, ERROR=" << e.what() << "\n";
+        error(
+            "Failed to delete image at path '{PATH}' and interface '{INTERFACE}', error - {ERROR}",
+            "PATH", SW_OBJ_PATH, "INTERFACE", DELETE_INTF, "ERROR", e);
         return;
     }
 }
@@ -427,7 +442,7 @@ int setBootSide(uint16_t entityInstance, uint8_t currState,
 }
 
 template <typename... T>
-int executeCmd(T const&... t)
+int executeCmd(const T&... t)
 {
     std::stringstream cmd;
     ((cmd << t << " "), ...) << std::endl;
@@ -467,7 +482,7 @@ int processCodeUpdateLid(const std::string& filePath)
     std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
     if (!ifs)
     {
-        std::cerr << "ifstream open error: " << filePath << "\n";
+        error("Failed to opening file '{FILE}' ifstream", "PATH", filePath);
         return PLDM_ERROR;
     }
     ifs.seekg(0);
@@ -486,7 +501,7 @@ int processCodeUpdateLid(const std::string& filePath)
     constexpr auto magicNumber = 0x0222;
     if (htons(header.magicNumber) != magicNumber)
     {
-        std::cerr << "Invalid magic number: " << filePath << "\n";
+        error("Invalid magic number for file '{PATH}'", "PATH", filePath);
         ifs.close();
         return PLDM_ERROR;
     }
@@ -539,8 +554,7 @@ int CodeUpdate::assembleCodeUpdateImage()
                                  "-no-recovery");
             if (rc < 0)
             {
-                std::cerr << "Error occurred during the mksqusquashfs call"
-                          << std::endl;
+                error("Error occurred during the mksqusquashfs call");
                 setCodeUpdateProgress(false);
                 auto sensorId = getFirmwareUpdateSensor();
                 sendStateSensorEvent(sensorId, PLDM_STATE_SENSOR_STATE, 0,
@@ -577,9 +591,7 @@ int CodeUpdate::assembleCodeUpdateImage()
                             updateDirPath);
             if (rc < 0)
             {
-                std::cerr
-                    << "Error occurred during the generation of the tarball"
-                    << std::endl;
+                error("Error occurred during the generation of the tarball");
                 setCodeUpdateProgress(false);
                 auto sensorId = getFirmwareUpdateSensor();
                 sendStateSensorEvent(sensorId, PLDM_STATE_SENSOR_STATE, 0,
@@ -602,8 +614,8 @@ int CodeUpdate::assembleCodeUpdateImage()
         }
         else if (nextPid < 0)
         {
-            std::cerr << "Error occurred during fork. ERROR=" << errno
-                      << std::endl;
+            error("Failure occurred during fork, error number - {ERROR_NUM}",
+                  "ERROR_NUM", errno);
             exit(EXIT_FAILURE);
         }
 
@@ -616,21 +628,23 @@ int CodeUpdate::assembleCodeUpdateImage()
         int status;
         if (waitpid(pid, &status, 0) < 0)
         {
-            std::cerr << "Error occurred during waitpid. ERROR=" << errno
-                      << std::endl;
+            error("Error occurred during waitpid, error number - {ERROR_NUM}",
+                  "ERROR_NUM", errno);
+
             return PLDM_ERROR;
         }
         else if (WEXITSTATUS(status) != 0)
         {
-            std::cerr
-                << "Failed to execute the assembling of the image. STATUS="
-                << status << std::endl;
+            error(
+                "Failed to execute the assembling of the image, status is {IMG_STATUS}",
+                "IMG_STATUS", status);
             return PLDM_ERROR;
         }
     }
     else
     {
-        std::cerr << "Error occurred during fork. ERROR=" << errno << std::endl;
+        error("Error occurred during fork, error number - {ERROR_NUM}}",
+              "ERROR_NUM", errno);
         return PLDM_ERROR;
     }
 

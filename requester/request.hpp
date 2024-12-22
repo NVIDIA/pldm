@@ -17,12 +17,12 @@
 #include <functional>
 #include <iostream>
 
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
-
 namespace requester
 {
-
 /** @class RequestRetryTimer
  *
  *  The abstract base class for implementing the PLDM request retry logic. This
@@ -35,9 +35,9 @@ class RequestRetryTimer
   public:
     RequestRetryTimer() = delete;
     RequestRetryTimer(const RequestRetryTimer&) = delete;
-    RequestRetryTimer(RequestRetryTimer&&) = default;
+    RequestRetryTimer(RequestRetryTimer&&) = delete;
     RequestRetryTimer& operator=(const RequestRetryTimer&) = delete;
-    RequestRetryTimer& operator=(RequestRetryTimer&&) = default;
+    RequestRetryTimer& operator=(RequestRetryTimer&&) = delete;
     virtual ~RequestRetryTimer() = default;
 
     /** @brief Constructor
@@ -89,8 +89,8 @@ class RequestRetryTimer
         auto rc = timer.stop();
         if (rc)
         {
-            lg2::error("Failed to stop the request timer. RC={RC}", "RC",
-                       unsigned(rc));
+            error("Failed to stop the request timer, response code '{RC}'",
+                  "RC", rc);
         }
     }
 
@@ -135,9 +135,9 @@ class Request final : public RequestRetryTimer
   public:
     Request() = delete;
     Request(const Request&) = delete;
-    Request(Request&&) = default;
+    Request(Request&&) = delete;
     Request& operator=(const Request&) = delete;
-    Request& operator=(Request&&) = default;
+    Request& operator=(Request&&) = delete;
     ~Request() = default;
 
     /** @brief Constructor
@@ -187,6 +187,7 @@ class Request final : public RequestRetryTimer
 
         if (pldmTransport == nullptr)
         {
+            error("Invalid transport: Unable to send PLDM request");
             return PLDM_ERROR;
         }
 
@@ -194,7 +195,7 @@ class Request final : public RequestRetryTimer
                                          requestMsg.data(), requestMsg.size());
         if (rc < 0)
         {
-            lg2::error(
+            error(
                 "Failed to send pldmTransport message, response code '{RC}' and error - {ERROR}",
                 "RC", rc, "ERROR", errno);
             return PLDM_ERROR;

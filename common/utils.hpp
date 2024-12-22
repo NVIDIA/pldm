@@ -1,15 +1,13 @@
 #pragma once
 
-#include "config.h"
-
-#include "libpldm/base.h"
-#include "libpldm/bios.h"
-#include "libpldm/platform.h"
-#include "libpldm/utils.h"
-
 #include "types.hpp"
 
-#include <stdint.h>
+#include <libpldm/base.h>
+#include <libpldm/bios.h>
+#include <libpldm/entity.h>
+#include <libpldm/pdr.h>
+#include <libpldm/platform.h>
+#include <libpldm/utils.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
@@ -17,10 +15,16 @@
 #include <nlohmann/json.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/server.hpp>
+#include <xyz/openbmc_project/Inventory/Manager/client.hpp>
+#include <xyz/openbmc_project/Logging/Entry/server.hpp>
+#include <xyz/openbmc_project/ObjectMapper/client.hpp>
 
+#include <cstdint>
+#include <deque>
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <string>
 #include <variant>
 #include <vector>
@@ -35,12 +39,43 @@ namespace pldm
 namespace utils
 {
 
+enum class Level
+{
+    WARNING,
+    CRITICAL,
+    PERFORMANCELOSS,
+    SOFTSHUTDOWN,
+    HARDSHUTDOWN,
+    ERROR
+};
+enum class Direction
+{
+    HIGH,
+    LOW,
+    ERROR
+};
+
+const std::set<std::string_view> dbusValueTypeNames = {
+    "bool",    "uint8_t",  "int16_t",         "uint16_t",
+    "int32_t", "uint32_t", "int64_t",         "uint64_t",
+    "double",  "string",   "vector<uint8_t>", "vector<string>"};
+const std::set<std::string_view> dbusValueNumericTypeNames = {
+    "uint8_t",  "int16_t", "uint16_t", "int32_t",
+    "uint32_t", "int64_t", "uint64_t", "double"};
+
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 constexpr bool Tx = true;
 constexpr bool Rx = false;
-constexpr double BPS_TO_GBPS = 1.0e-9; // Conversion factor: 1 Gbps = 1e9 bps
+using ObjectMapper = sdbusplus::client::xyz::openbmc_project::ObjectMapper<>;
+using inventoryManager =
+    sdbusplus::client::xyz::openbmc_project::inventory::Manager<>;
 
+constexpr auto dbusProperties = "org.freedesktop.DBus.Properties";
+constexpr auto mapperService = ObjectMapper::default_service;
+constexpr auto inventoryPath = "/xyz/openbmc_project/inventory";
+constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
+constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
 /** @struct CustomFD
  *
  *  RAII wrapper for file descriptor.
@@ -88,7 +123,7 @@ uint8_t getNumPadBytes(uint32_t data);
  *  @param[out] hour - number of hours in dec
  *  @param[out] min - number of minutes in dec
  *  @param[out] sec - number of seconds in dec
- *  @return true if decode success, false if decode faild
+ *  @return true if decode success, false if decode failed
  */
 bool uintToDate(uint64_t data, uint16_t* year, uint8_t* month, uint8_t* day,
                 uint8_t* hour, uint8_t* min, uint8_t* sec);
@@ -133,11 +168,6 @@ T decimalToBcd(T decimal)
 
     return bcd;
 }
-
-constexpr auto dbusProperties = "org.freedesktop.DBus.Properties";
-constexpr auto mapperService = "xyz.openbmc_project.ObjectMapper";
-constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
-constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
 
 struct DBusMapping
 {
@@ -189,6 +219,10 @@ class DBusHandlerInterface
         getSubtree(const std::string& path, int depth,
                    const std::vector<std::string>& ifaceList) const = 0;
 
+    virtual GetSubTreePathsResponse
+        getSubTreePaths(const std::string& objectPath, int depth,
+                        const std::vector<std::string>& ifaceList) const = 0;
+
     virtual void setDbusProperty(const DBusMapping& dBusMap,
                                  const PropertyValue& value) const = 0;
 
@@ -199,7 +233,6 @@ class DBusHandlerInterface
     virtual PropertyMap
         getDbusPropertiesVariant(const char* serviceName, const char* objPath,
                                  const char* dbusInterface) const = 0;
-
     virtual bool checkDbusPropertyVariant(const char* objPath,
                                           const char* dbusProp,
                                           const char* dbusInterface) const = 0;
@@ -240,7 +273,7 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @return std::string - the dbus service name
      *
-     *  @throw sdbusplus::exception::exception when it fails
+     *  @throw sdbusplus::exception_t when it fails
      */
     std::string getService(const char* path,
                            const char* interface) const override;
@@ -255,11 +288,24 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @return GetSubTreeResponse - the mapper subtree response
      *
-     *  @throw sdbusplus::exception::exception when it fails
+     *  @throw sdbusplus::exception_t when it fails
      */
     GetSubTreeResponse
         getSubtree(const std::string& path, int depth,
                    const std::vector<std::string>& ifaceList) const override;
+
+    /** @brief Get Subtree path response from the mapper
+     *
+     *  @param[in] path - DBUS object path
+     *  @param[in] depth - Search depth
+     *  @param[in] ifaceList - list of the interface that are being
+     *                         queried from the mapper
+     *
+     *  @return std::vector<std::string> vector of subtree paths
+     */
+    GetSubTreePathsResponse getSubTreePaths(
+        const std::string& objectPath, int depth,
+        const std::vector<std::string>& ifaceList) const override;
 
     /** @brief Get property(type: variant) from the requested dbus
      *
@@ -269,7 +315,7 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @return The value of the property(type: variant)
      *
-     *  @throw sdbusplus::exception::exception when it fails
+     *  @throw sdbusplus::exception_t when it fails
      */
     PropertyValue
         getDbusPropertyVariant(const char* objPath, const char* dbusProp,
@@ -300,7 +346,7 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @return The value of the property
      *
-     *  @throw sdbusplus::exception::exception when dbus request fails
+     *  @throw sdbusplus::exception_t when dbus request fails
      *         std::bad_variant_access when \p Property and property on dbus do
      *         not match
      */
@@ -319,13 +365,40 @@ class DBusHandler : public DBusHandlerInterface
      *                       type for the D-Bus object
      *  @param[in] value - The value to be set
      *
-     *  @throw sdbusplus::exception::exception when it fails
+     *  @throw sdbusplus::exception_t when it fails
      */
     void setDbusProperty(const DBusMapping& dBusMap,
                          const PropertyValue& value) const override;
 
     bool checkDbusPropertyVariant(const char* objPath, const char* dbusProp,
                                   const char* dbusInterface) const override;
+    /** @brief This function retrieves the properties of an object managed
+     *         by the specified D-Bus service located at the given object path.
+     *
+     *  @param[in] service - The D-Bus service providing the managed object
+     *  @param[in] value - The object path of the managed object
+     *
+     *  @return A hierarchical structure representing the properties of the
+     *          managed object.
+     *  @throw sdbusplus::exception_t when it fails
+     */
+    static ObjectValueTree getManagedObj(const char* service, const char* path);
+
+    /** @brief Retrieve the inventory objects managed by a specified class.
+     *         The retrieved inventory objects are cached statically
+     *         and returned upon subsequent calls to this function.
+     *
+     *  @tparam ClassType - The class type that manages the inventory objects.
+     *
+     *  @return A reference to the cached inventory objects.
+     */
+    template <typename ClassType>
+    static auto& getInventoryObjects()
+    {
+        static ObjectValueTree object = ClassType::getManagedObj(
+            inventoryManager::interface, inventoryPath);
+        return object;
+    }
 };
 
 /** @brief Fetch parent D-Bus object based on pathname
@@ -345,6 +418,17 @@ inline std::string findParent(const std::string& dbusObj)
  *  @return uint8_t - MCTP EID
  */
 uint8_t readHostEID();
+
+/** @brief Validate the MCTP EID of MCTP endpoint
+ *         In `Table 2 - Special endpoint IDs` of DSP0236. EID 0 is NULL_EID.
+ *         EID from 1 to 7 is reserved EID. EID 0xFF is broadcast EID.
+ *         Those are invalid EID of one MCTP Endpoint.
+ *
+ * @param[in] eid - MCTP EID
+ *
+ * @return true if the MCTP EID is valid otherwise return false.
+ */
+bool isValidEID(EID mctpEid);
 
 /** @brief Convert a value in the JSON to a D-Bus property value
  *
@@ -475,6 +559,50 @@ std::vector<std::string> split(std::string_view srcStr, std::string_view delim,
  *  @return - std::string equivalent of the system time
  */
 std::string getCurrentSystemTime();
+
+/** @brief checks if the FRU is actually present.
+ *  @param[in] objPath - FRU object path.
+ *
+ *  @return bool to indicate presence or absence of FRU.
+ */
+bool checkForFruPresence(const std::string& objPath);
+
+/** @brief Method to check if the logical bit is set
+ *
+ *  @param[containerId] - container id of the entity
+ *
+ *  @return true or false based on the logic bit set
+ */
+bool checkIfLogicalBitSet(const uint16_t& containerId);
+
+/** @brief setting the present property
+ *
+ *  @param[in] objPath - the object path of the fru
+ *  @param[in] present - status to set either true/false
+ */
+void setFruPresence(const std::string& fruObjPath, bool present);
+
+/** @brief Trim `\0` in string and replace ` ` by `_` to use name in D-Bus
+ *         object path
+ *
+ *  @param[in] name - the input string
+ *
+ *  @return the result string
+ */
+std::string_view trimNameForDbus(std::string& name);
+
+/** @brief Convert the number type D-Bus Value to the double
+ *
+ *  @param[in] type - string type should in dbusValueNumericTypeNames list
+ *  @param[in] value - DBus PropertyValue variant
+ *  @param[out] doubleValue - response value
+ *
+ *  @return true if data type is corrected and converting is successful
+ *          otherwise return false.
+ */
+bool dbusPropValuesToDouble(const std::string_view& type,
+                            const pldm::utils::PropertyValue& value,
+                            double* doubleValue);
 
 } // namespace utils
 } // namespace pldm

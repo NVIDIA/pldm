@@ -59,7 +59,7 @@ const std::map<uint8_t, const char*> fdAuxStateStatus{
     {PLDM_FD_AUX_STATE_IN_PROGRESS_OR_SUCCESS,
      "AuxState is In Progress or Success"},
     {PLDM_FD_TIMEOUT, "Timeout occurred while performing action"},
-    {PLDM_FD_GENERIC_ERROR, "Generic Error has occured"}};
+    {PLDM_FD_GENERIC_ERROR, "Generic Error has occurred"}};
 
 const std::map<uint8_t, const char*> fdReasonCode{
     {PLDM_FD_INITIALIZATION, "Initialization of firmware device has occurred"},
@@ -140,7 +140,7 @@ class GetStatus : public CommandInterface
     GetStatus(const GetStatus&) = delete;
     GetStatus(GetStatus&&) = default;
     GetStatus& operator=(const GetStatus&) = delete;
-    GetStatus& operator=(GetStatus&&) = default;
+    GetStatus& operator=(GetStatus&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -236,7 +236,7 @@ class GetFwParams : public CommandInterface
     GetFwParams(const GetFwParams&) = delete;
     GetFwParams(GetFwParams&&) = default;
     GetFwParams& operator=(const GetFwParams&) = delete;
-    GetFwParams& operator=(GetFwParams&&) = default;
+    GetFwParams& operator=(GetFwParams&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -280,57 +280,67 @@ class GetFwParams : public CommandInterface
             {
                 capabilitiesDuringUpdate
                     ["Component Update Failure Recovery Capability"] =
-                        "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer.";
+                        "Device will not revert to previous component image upon "
+                        "failure, timeout or cancellation of the transfer.";
             }
             else
             {
                 capabilitiesDuringUpdate
                     ["Component Update Failure Recovery Capability"] =
-                        "Device will revert to previous component image upon failure, timeout or cancellation of the transfer.";
+                        "Device will revert to previous component image upon failure, "
+                        "timeout or cancellation of the transfer.";
             }
 
             if (fwParams.capabilities_during_update.bits.bit1)
             {
                 capabilitiesDuringUpdate
                     ["Component Update Failure Retry Capability"] =
-                        "Device will not be able to update component again unless it exits update mode and the UA sends a new Request Update command.";
+                        "Device will not be able to update component again unless it exits "
+                        "update mode and the UA sends a new Request Update command.";
             }
             else
             {
                 capabilitiesDuringUpdate
                     ["Component Update Failure Retry Capability"] =
-                        " Device can have component updated again without exiting update mode and restarting transfer via RequestUpdate command.";
+                        " Device can have component updated again without exiting update "
+                        "mode and restarting transfer via RequestUpdate command.";
             }
 
             if (fwParams.capabilities_during_update.bits.bit2)
             {
                 capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                    "Firmware Device can support a partial update, whereby a package which contains a component image set that is a subset of all components currently residing on the FD, can be transferred.";
+                    "Firmware Device can support a partial update, whereby a package "
+                    "which contains a component image set that is a subset of all "
+                    "components currently residing on the FD, can be transferred.";
             }
             else
             {
                 capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                    "Firmware Device cannot accept a partial update and all components present on the FD shall be updated.";
+                    "Firmware Device cannot accept a partial update and all components "
+                    "present on the FD shall be updated.";
             }
 
             if (fwParams.capabilities_during_update.bits.bit3)
             {
                 capabilitiesDuringUpdate
                     ["Firmware Device Host Functionality during Firmware Update"] =
-                        "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer";
+                        "Device will not revert to previous component image upon "
+                        "failure, timeout or cancellation of the transfer";
             }
             else
             {
                 capabilitiesDuringUpdate
                     ["Firmware Device Host Functionality during Firmware Update"] =
-                        "Device will revert to previous component image upon failure, timeout or cancellation of the transfer";
+                        "Device will revert to previous component image upon failure, "
+                        "timeout or cancellation of the transfer";
             }
 
             if (fwParams.capabilities_during_update.bits.bit4)
             {
                 capabilitiesDuringUpdate
                     ["Firmware Device Update Mode Restrictions"] =
-                        "Firmware device unable to enter update mode if host OS environment is active.";
+                        "Firmware device unable to enter update mode if host OS "
+                        "environment is active.";
             }
             else
             {
@@ -461,13 +471,16 @@ class GetFwParams : public CommandInterface
                 {
                     compCapabilitiesDuringUpdate
                         ["Firmware Device apply state functionality"] =
-                            "Firmware Device performs an auto-apply during transfer phase and apply step will be completed immediately.";
+                            "Firmware Device performs an auto-apply during transfer "
+                            "phase and apply step will be completed immediately.";
                 }
                 else
                 {
                     compCapabilitiesDuringUpdate
                         ["Firmware Device apply state functionality"] =
-                            " Firmware Device will execute an operation during the APPLY state which will include migrating the new component image to its final non-volatile storage destination.";
+                            " Firmware Device will execute an operation during the APPLY "
+                            "state which will include migrating the new component image "
+                            "to its final non-volatile storage destination.";
                 }
                 compData["CapabilitiesDuringUpdate"] =
                     compCapabilitiesDuringUpdate;
@@ -500,7 +513,7 @@ class QueryDeviceIdentifiers : public CommandInterface
     QueryDeviceIdentifiers(const QueryDeviceIdentifiers&) = delete;
     QueryDeviceIdentifiers(QueryDeviceIdentifiers&&) = default;
     QueryDeviceIdentifiers& operator=(const QueryDeviceIdentifiers&) = delete;
-    QueryDeviceIdentifiers& operator=(QueryDeviceIdentifiers&&) = default;
+    QueryDeviceIdentifiers& operator=(QueryDeviceIdentifiers&&) = delete;
 
     /**
      * @brief Implementation of createRequestMsg for QueryDeviceIdentifiers
@@ -626,76 +639,72 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
                   << unsigned(eid) << ", RC=" << rc << "\n";
         return;
     }
-
-    ordered_json data;
-
-    fillCompletionCode(completionCode, data);
-
-    data["EID"] = eid;
-
-    if (completionCode == PLDM_SUCCESS)
+    if (completionCode)
     {
-        ordered_json descriptors;
-        while (descriptorCount-- && (deviceIdentifiersLen > 0))
-        {
-            DescriptorType descriptorType = 0;
-            variable_field descriptorData{};
+        std::cerr << "QueryDeviceIdentifiers response failed with error "
+                     "completion code, EID="
+                  << unsigned(eid) << ", CC=" << unsigned(completionCode)
+                  << "\n";
+        return;
+    }
+    ordered_json data;
+    data["EID"] = eid;
+    ordered_json descriptors;
+    while (descriptorCount-- && (deviceIdentifiersLen > 0))
+    {
+        DescriptorType descriptorType = 0;
+        variable_field descriptorData{};
 
-            rc = decode_descriptor_type_length_value(
-                descriptorPtr, deviceIdentifiersLen, &descriptorType,
-                &descriptorData);
+        rc = decode_descriptor_type_length_value(
+            descriptorPtr, deviceIdentifiersLen, &descriptorType,
+            &descriptorData);
+        if (rc)
+        {
+            std::cerr << "Decoding descriptor type, length and value failed,"
+                      << "EID=" << unsigned(eid) << ",RC=" << rc << "\n ";
+            return;
+        }
+
+        if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
+        {
+            std::vector<uint8_t> descData(
+                descriptorData.ptr, descriptorData.ptr + descriptorData.length);
+            updateDescriptor(descriptors, descriptorType, descData);
+        }
+        else
+        {
+            uint8_t descriptorTitleStrType = 0;
+            variable_field descriptorTitleStr{};
+            variable_field vendorDefinedDescriptorData{};
+
+            rc = decode_vendor_defined_descriptor_value(
+                descriptorData.ptr, descriptorData.length,
+                &descriptorTitleStrType, &descriptorTitleStr,
+                &vendorDefinedDescriptorData);
             if (rc)
             {
-                std::cerr
-                    << "Decoding descriptor type, length and value failed,"
-                    << "EID=" << unsigned(eid) << ",RC=" << rc << "\n ";
+                std::cerr << "Decoding Vendor-defined descriptor value"
+                          << "failed EID=" << unsigned(eid) << ", RC=" << rc
+                          << "\n ";
                 return;
             }
 
-            if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
-            {
-                std::vector<uint8_t> descData(descriptorData.ptr,
-                                              descriptorData.ptr +
-                                                  descriptorData.length);
-                updateDescriptor(descriptors, descriptorType, descData);
-            }
-            else
-            {
-                uint8_t descriptorTitleStrType = 0;
-                variable_field descriptorTitleStr{};
-                variable_field vendorDefinedDescriptorData{};
-
-                rc = decode_vendor_defined_descriptor_value(
-                    descriptorData.ptr, descriptorData.length,
-                    &descriptorTitleStrType, &descriptorTitleStr,
-                    &vendorDefinedDescriptorData);
-                if (rc)
-                {
-                    std::cerr << "Decoding Vendor-defined descriptor value"
-                              << "failed EID=" << unsigned(eid) << ", RC=" << rc
-                              << "\n ";
-                    return;
-                }
-
-                auto vendorDescTitle =
-                    pldm::utils::toString(descriptorTitleStr);
-                std::vector<uint8_t> vendorDescData(
-                    vendorDefinedDescriptorData.ptr,
-                    vendorDefinedDescriptorData.ptr +
-                        vendorDefinedDescriptorData.length);
-                updateDescriptor(
-                    descriptors, descriptorType,
-                    std::make_tuple(vendorDescTitle, vendorDescData));
-            }
-            auto nextDescriptorOffset =
-                sizeof(pldm_descriptor_tlv().descriptor_type) +
-                sizeof(pldm_descriptor_tlv().descriptor_length) +
-                descriptorData.length;
-            descriptorPtr += nextDescriptorOffset;
-            deviceIdentifiersLen -= nextDescriptorOffset;
+            auto vendorDescTitle = pldm::utils::toString(descriptorTitleStr);
+            std::vector<uint8_t> vendorDescData(
+                vendorDefinedDescriptorData.ptr,
+                vendorDefinedDescriptorData.ptr +
+                    vendorDefinedDescriptorData.length);
+            updateDescriptor(descriptors, descriptorType,
+                             std::make_tuple(vendorDescTitle, vendorDescData));
         }
-        data["Descriptors"] = descriptors;
+        auto nextDescriptorOffset =
+            sizeof(pldm_descriptor_tlv().descriptor_type) +
+            sizeof(pldm_descriptor_tlv().descriptor_length) +
+            descriptorData.length;
+        descriptorPtr += nextDescriptorOffset;
+        deviceIdentifiersLen -= nextDescriptorOffset;
     }
+    data["Descriptors"] = descriptors;
     pldmtool::helper::DisplayInJson(data);
 }
 
@@ -873,24 +882,32 @@ class RequestUpdate : public CommandInterface
     {
         app->add_option(
                "--max_transfer_size", maxTransferSize,
-               "Specifies the maximum size, in bytes, of the variable payload allowed to\n"
-               "be requested by the FD via the RequestFirmwareData command that is contained\n"
-               "within a PLDM message. This value shall be equal to or greater than firmware update\n"
+               "Specifies the maximum size, in bytes, of the variable "
+               "payload allowed to\n"
+               "be requested by the FD via the RequestFirmwareData "
+               "command that is contained\n"
+               "within a PLDM message. This value shall be equal to or "
+               "greater than firmware update\n"
                "baseline transfer size.")
             ->required();
 
         app->add_option(
                "--num_comps", numComps,
-               "Specifies the number of components that will be passed to the FD during the update.\n"
-               "The FD can use this value to compare against the number of PassComponentTable\n"
+               "Specifies the number of components that will be passed to "
+               "the FD during the update.\n"
+               "The FD can use this value to compare against the number "
+               "of PassComponentTable\n"
                "commands received.")
             ->required();
 
         app->add_option(
                "--max_transfer_reqs", maxTransferReqs,
-               "Specifies the number of outstanding RequestFirmwareData commands that can be\n"
-               "sent by the FD. The minimum required value is '1' which the UA shall support.\n"
-               "It is optional for the UA to support a value higher than '1' for this field.")
+               "Specifies the number of outstanding RequestFirmwareData "
+               "commands that can be\n"
+               "sent by the FD. The minimum required value is '1' which "
+               "the UA shall support.\n"
+               "It is optional for the UA to support a value higher than "
+               "'1' for this field.")
             ->required();
 
         app->add_option(
@@ -906,7 +923,8 @@ class RequestUpdate : public CommandInterface
                "--comp_img_ver_str_type", compImgVerStrType,
                "The type of string used in the ComponentImageSetVersionString\n"
                "field. Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
+               "UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
             ->required();
 
@@ -967,8 +985,10 @@ class RequestUpdate : public CommandInterface
         if (cc == PLDM_SUCCESS)
         {
             data["FirmwareDeviceMetaDataLength"] = fdMetaDataLen;
+            // data["FDWillSendGetPackageDataCommend"] =
+            //     fmt::format("0x{:02X}", fdWillSendPkgData);
             data["FDWillSendGetPackageDataCommend"] =
-                fmt::format("0x{:02X}", fdWillSendPkgData);
+                std::to_string(fdWillSendPkgData);
         }
         pldmtool::helper::DisplayInJson(data);
     }
@@ -1027,9 +1047,12 @@ class PassComponentTable : public CommandInterface
 
         app->add_option(
                "--comp_compare_stamp", compCompareStamp,
-               "FD vendor selected value to use as a comparison value in determining if a firmware\n"
-               "component is down-level or up-level. For the same component identifier,\n"
-               "the greater of two component comparison stamps is considered up-level compared\n"
+               "FD vendor selected value to use as a comparison value in "
+               "determining if a firmware\n"
+               "component is down-level or up-level. For the same component "
+               "identifier,\n"
+               "the greater of two component comparison stamps is considered "
+               "up-level compared\n"
                "to the other when performing an unsigned integer comparison")
             ->required();
 
@@ -1037,7 +1060,8 @@ class PassComponentTable : public CommandInterface
                "--comp_ver_str_type", compVerStrType,
                "The type of strings used in the ComponentVersionString field.\n"
                "Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
+               "UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
             ->required();
 
@@ -1101,8 +1125,9 @@ class PassComponentTable : public CommandInterface
                                             ? "Component may be updateable"
                                             : "Component can be updated";
 
-            data["ComponentResponse"] =
-                fmt::format("0x{:02X}", compResponseCode);
+            // data["ComponentResponse"] =
+            //     fmt::format("0x{:02X}", compResponseCode);
+            data["ComponentResponse"] = std::to_string(compResponseCode);
         }
 
         pldmtool::helper::DisplayInJson(data);
@@ -1134,30 +1159,35 @@ class UpdateComponent : public CommandInterface
         CommandInterface(type, name, app)
     {
 
-        app->add_option(
-               "--comp_classification", compClassification,
-               "Classification value provided by the firmware package header information for\n"
-               "the component to be transferred.\n"
-               "Special values: 0x0000, 0xFFFF = reserved")
+        app->add_option("--comp_classification", compClassification,
+                        "Classification value provided by the firmware package "
+                        "header information for\n"
+                        "the component to be transferred.\n"
+                        "Special values: 0x0000, 0xFFFF = reserved")
             ->required();
 
         app->add_option(
                "--comp_identifier", compIdentifier,
-               "FD vendor selected unique value to distinguish between component images")
+               "FD vendor selected unique value to distinguish between "
+               "component images")
             ->required();
 
-        app->add_option(
-               "--comp_classification_idx", compClassificationIdx,
-               "The component classification index which was obtained from the GetFirmwareParameters\n"
-               "command to indicate which firmware component the information contained within this\n"
-               "command is applicable for")
+        app->add_option("--comp_classification_idx", compClassificationIdx,
+                        "The component classification index which was obtained "
+                        "from the GetFirmwareParameters\n"
+                        "command to indicate which firmware component the "
+                        "information contained within this\n"
+                        "command is applicable for")
             ->required();
 
         app->add_option(
                "--comp_compare_stamp", compCompareStamp,
-               "FD vendor selected value to use as a comparison value in determining if a firmware\n"
-               "component is down-level or up-level. For the same component identifier, the greater\n"
-               "of two component comparison stamps is considered up-level compared to the other\n"
+               "FD vendor selected value to use as a comparison value in "
+               "determining if a firmware\n"
+               "component is down-level or up-level. For the same "
+               "component identifier, the greater\n"
+               "of two component comparison stamps is considered up-level "
+               "compared to the other\n"
                "when performing an unsigned integer comparison")
             ->required();
 
@@ -1167,8 +1197,10 @@ class UpdateComponent : public CommandInterface
 
         app->add_option(
                "--update_option_flags", strUpdateOptionFlags,
-               "32 bits field, where each non-reserved bit represents an update option that can be\n"
-               "requested by the UA to be enabled for the transfer of this component image.\n"
+               "32 bits field, where each non-reserved bit represents an "
+               "update option that can be\n"
+               "requested by the UA to be enabled for the transfer of "
+               "this component image.\n"
                "[0] – Request Force Update of component")
             ->required();
 
@@ -1176,7 +1208,8 @@ class UpdateComponent : public CommandInterface
                "--comp_ver_str_type", compVerStrType,
                "The type of strings used in the ComponentVersionString field\n"
                "Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
+               "UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
             ->required();
 
@@ -1250,8 +1283,10 @@ class UpdateComponent : public CommandInterface
                 compCompatibilityResp ? "Component will not be updated"
                                       : "Component can be updated";
 
+            // data["ComponentCompatibilityResponseCode"] =
+            //     fmt::format("0x{:02X}", compCompatibilityRespCode);
             data["ComponentCompatibilityResponseCode"] =
-                fmt::format("0x{:02X}", compCompatibilityRespCode);
+                std::to_string(compCompatibilityRespCode);
             data["UpdateOptionFlagsEnabled"] =
                 std::to_string(updateOptionFlagsEnabled.value);
             data["EstimatedTimeBeforeSendingRequestFirmwareData"] =

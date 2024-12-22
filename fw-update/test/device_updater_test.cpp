@@ -16,6 +16,7 @@
  */
 #include "libpldm/firmware_update.h"
 
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #define private public
 #include "fw-update/device_updater.hpp"
@@ -46,7 +47,10 @@ class DeviceUpdaterTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, true)
+                      componentInfoMap, componentNameMap, true),
+        deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager,
+                                false)
     {
         fwDeviceIDRecord = {
             1,
@@ -68,6 +72,7 @@ class DeviceUpdaterTest : public testing::Test
     }
 
     std::ifstream package;
+    mctp_eid_t eid{0};
     FirmwareDeviceIDRecord fwDeviceIDRecord;
     ComponentImageInfos compImageInfos;
     ComponentInfo compInfo;
@@ -79,6 +84,7 @@ class DeviceUpdaterTest : public testing::Test
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
     UpdateManager updateManager;
+    DeviceUpdater deviceUpdater;
 };
 
 TEST_F(DeviceUpdaterTest, validatePackage)
@@ -123,11 +129,7 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 
 TEST_F(DeviceUpdaterTest, requestUpdate)
 {
-    mctp_eid_t eid = 0;
 
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -136,26 +138,26 @@ TEST_F(DeviceUpdaterTest, requestUpdate)
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
 
-    deviceUpdater.processRequestUpdateResponse(
-        eid, requestMsg, sizeof(struct pldm_request_update_resp));
+    EXPECT_NO_THROW({
+        auto co = deviceUpdater.processRequestUpdateResponse(
+            eid, requestMsg, sizeof(struct pldm_request_update_resp));
+        stdexec::sync_wait(std::move(co));
+        });
 }
 
 TEST_F(DeviceUpdaterTest,
        private_method_sendPassCompTableRequest_PLDM_START_AND_END)
 {
-    mctp_eid_t eid = 0;
     size_t offset = 0;
 
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
-
-    EXPECT_NO_THROW({ deviceUpdater.sendPassCompTableRequest(offset); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co =
+            deviceUpdater.sendPassCompTableRequest(offset);
+    });
 }
 
 TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START)
 {
-    mctp_eid_t eid = 0;
     size_t offset = 0;
 
     FirmwareDeviceIDRecord fwDeviceIDRecord2;
@@ -169,20 +171,14 @@ TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START)
                                0x75}}},
         {}};
 
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord2, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
-
-    EXPECT_NO_THROW({ deviceUpdater.sendPassCompTableRequest(offset); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co =
+            deviceUpdater.sendPassCompTableRequest(offset);
+    });
 }
 
 TEST_F(DeviceUpdaterTest, passCompTable)
 {
-    mctp_eid_t eid = 0;
-
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -192,29 +188,21 @@ TEST_F(DeviceUpdaterTest, passCompTable)
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
 
     EXPECT_NO_THROW({
-        deviceUpdater.processPassCompTableResponse(
+        [[maybe_unused]] auto co = deviceUpdater.processPassCompTableResponse(
             eid, requestMsg, sizeof(struct pldm_pass_component_table_resp));
     });
 }
 
 TEST_F(DeviceUpdaterTest, sendActivateFirmwareRequest)
 {
-    mctp_eid_t eid = 0;
 
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
-
-    EXPECT_NO_THROW({ deviceUpdater.sendActivateFirmwareRequest(); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co = deviceUpdater.sendActivateFirmwareRequest();
+    });
 }
 
 TEST_F(DeviceUpdaterTest, activateFirmware)
 {
-    mctp_eid_t eid = 0;
-
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_activate_firmware_resp)>
@@ -224,18 +212,14 @@ TEST_F(DeviceUpdaterTest, activateFirmware)
         reinterpret_cast<const pldm_msg*>(activateFirmwareReq.data());
 
     EXPECT_NO_THROW({
-        deviceUpdater.processActivateFirmwareResponse(
-            eid, requestMsg, sizeof(struct pldm_activate_firmware_resp));
+        [[maybe_unused]] auto co =
+            deviceUpdater.processActivateFirmwareResponse(
+                eid, requestMsg, sizeof(struct pldm_activate_firmware_resp));
     });
 }
 
 TEST_F(DeviceUpdaterTest, sendCommandNotExpectedResponse)
 {
-    mctp_eid_t eid = 0;
-
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
     const pldm_msg pldmmsg{};
 
@@ -313,75 +297,59 @@ TEST(DeviceUpdaterSequence, command_RetryRequest)
     EXPECT_EQ(sequence, DeviceUpdaterSequence::RetryRequest);
 }
 
-TEST_F(DeviceUpdaterTest, SendRecvPldmMsgOverMctp)
+TEST_F(DeviceUpdaterTest, sendRecvPldmMsgOverMctp)
 {
-    mctp_eid_t eid = 0;
 
     auto instanceId = updateManager.instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
     size_t respMsgLen = 0;
-
     auto rc = encode_cancel_update_req(instanceId, requestMsg,
                                        PLDM_CANCEL_UPDATE_REQ_BYTES);
     EXPECT_EQ(rc, PLDM_SUCCESS);
     EXPECT_NO_THROW({
-        SendRecvPldmMsgOverMctp(updateManager.handler, eid, request, &response,
-                                &respMsgLen);
+        [[maybe_unused]] auto co = deviceUpdater.sendRecvPldmMsgOverMctp(
+            eid, request, &response, &respMsgLen);
     });
 }
 
 TEST_F(DeviceUpdaterTest, sendcancelUpdateRequest)
 {
-    mctp_eid_t eid = 0;
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
-
-    EXPECT_NO_THROW({ deviceUpdater.sendCancelUpdateRequest(); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co = deviceUpdater.sendCancelUpdateRequest();
+    });
 }
 
 TEST_F(DeviceUpdaterTest, cancelUpdate_empty_response)
 {
-    mctp_eid_t eid = 0;
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
-    EXPECT_NO_THROW(
-        { deviceUpdater.processCancelUpdateResponse(eid, nullptr, 0); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co =
+            deviceUpdater.processCancelUpdateResponse(eid, nullptr, 0);
+    });
 }
 
 TEST_F(DeviceUpdaterTest, cancelUpdate)
 {
-    mctp_eid_t eid = 0;
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
 
     const pldm_msg pldmmsg{};
 
-    EXPECT_NO_THROW(
-        { deviceUpdater.processCancelUpdateResponse(eid, &pldmmsg, 0); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co =
+            deviceUpdater.processCancelUpdateResponse(eid, &pldmmsg, 0);
+    });
 }
 
 TEST_F(DeviceUpdaterTest, sendRequestUpdate)
 {
-    mctp_eid_t eid = 0;
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
-    EXPECT_NO_THROW({ deviceUpdater.sendRequestUpdate(); });
+    EXPECT_NO_THROW(
+        { [[maybe_unused]] auto co = deviceUpdater.sendRequestUpdate(); });
 }
 
 TEST_F(DeviceUpdaterTest, updateComponentCompletion)
 {
-    mctp_eid_t eid = 0;
     size_t componentOffset = 0;
-    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
             eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
@@ -390,7 +358,7 @@ TEST_F(DeviceUpdaterTest, updateComponentCompletion)
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
     EXPECT_NO_THROW({
-        deviceUpdater.updateComponentCompletion(
+        [[maybe_unused]] auto co = deviceUpdater.updateComponentCompletion(
             0, ComponentUpdateStatus::UpdateFailed);
     });
 }

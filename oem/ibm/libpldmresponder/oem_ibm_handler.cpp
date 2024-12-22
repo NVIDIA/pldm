@@ -1,13 +1,18 @@
 #include "oem_ibm_handler.hpp"
 
-#include "libpldm/entity.h"
-#include "libpldm/requester/pldm.h"
-
+#include "collect_slot_vpd.hpp"
 #include "file_io_type_lid.hpp"
 #include "libpldmresponder/file_io.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 
-#include <libpldm/entity_oem_ibm.h>
+#include <libpldm/entity.h>
+#include <libpldm/oem/ibm/entity.h>
+#include <libpldm/pldm.h>
+
+#include <phosphor-logging/lg2.hpp>
+#include <xyz/openbmc_project/State/BMC/client.hpp>
+
+PHOSPHOR_LOG2_USING;
 
 using namespace pldm::pdr;
 using namespace pldm::utils;
@@ -18,13 +23,14 @@ namespace responder
 {
 namespace oem_ibm_platform
 {
-
 int pldm::responder::oem_ibm_platform::Handler::
     getOemStateSensorReadingsHandler(
-        EntityType entityType, EntityInstance entityInstance,
-        StateSetId stateSetId, CompositeCount compSensorCnt,
+        pldm::pdr::EntityType entityType, EntityInstance entityInstance,
+        ContainerID containerId, StateSetId stateSetId,
+        CompositeCount compSensorCnt, uint16_t /*sensorId*/,
         std::vector<get_sensor_state_field>& stateField)
 {
+    auto& entityAssociationMap = getAssociateEntityMap();
     int rc = PLDM_SUCCESS;
     stateField.clear();
 
@@ -35,6 +41,20 @@ int pldm::responder::oem_ibm_platform::Handler::
             stateSetId == PLDM_OEM_IBM_BOOT_STATE)
         {
             sensorOpState = fetchBootSide(entityInstance, codeUpdate);
+        }
+        else if (entityType == PLDM_ENTITY_SLOT &&
+                 stateSetId == PLDM_OEM_IBM_PCIE_SLOT_SENSOR_STATE)
+        {
+            for (const auto& [key, value] : entityAssociationMap)
+            {
+                if (value.entity_type == entityType &&
+                    value.entity_instance_num == entityInstance &&
+                    value.entity_container_id == containerId)
+                {
+                    sensorOpState = slotHandler->fetchSlotSensorState(key);
+                    break;
+                }
+            }
         }
         else
         {
@@ -51,10 +71,10 @@ int pldm::responder::oem_ibm_platform::Handler::
     oemSetStateEffecterStatesHandler(
         uint16_t entityType, uint16_t entityInstance, uint16_t stateSetId,
         uint8_t compEffecterCnt,
-        std::vector<set_effecter_state_field>& stateField,
-        uint16_t /*effecterId*/)
+        std::vector<set_effecter_state_field>& stateField, uint16_t effecterId)
 {
     int rc = PLDM_SUCCESS;
+    auto& entityAssociationMap = getAssociateEntityMap();
 
     for (uint8_t currState = 0; currState < compEffecterCnt; ++currState)
     {
@@ -139,6 +159,11 @@ int pldm::responder::oem_ibm_platform::Handler::
                                       this, std::placeholders::_1));
                 }
             }
+            else if (stateSetId == PLDM_OEM_IBM_PCIE_SLOT_EFFECTER_STATE)
+            {
+                slotHandler->enableSlot(effecterId, entityAssociationMap,
+                                        stateField[currState].effecter_state);
+            }
             else
             {
                 rc = PLDM_PLATFORM_SET_EFFECTER_UNSUPPORTED_SENSORSTATE;
@@ -165,8 +190,9 @@ void buildAllCodeUpdateEffecterPDR(oem_ibm_platform::Handler* platformHandler,
         reinterpret_cast<pldm_state_effecter_pdr*>(entry.data());
     if (!pdr)
     {
-        std::cerr << "Failed to get record by PDR type, ERROR:"
-                  << PLDM_PLATFORM_INVALID_EFFECTER_ID << std::endl;
+        error("Failed to get record by PDR type, error - {ERROR}", "ERROR",
+              lg2::hex,
+              static_cast<unsigned>(PLDM_PLATFORM_INVALID_EFFECTER_ID));
         return;
     }
     pdr->hdr.record_handle = 0;
@@ -203,6 +229,71 @@ void buildAllCodeUpdateEffecterPDR(oem_ibm_platform::Handler* platformHandler,
     repo.addRecord(pdrEntry);
 }
 
+void buildAllSlotEnableEffecterPDR(oem_ibm_platform::Handler* platformHandler,
+                                   pdr_utils::Repo& repo,
+                                   const std::vector<std::string>& slotobjpaths)
+{
+    size_t pdrSize = 0;
+    pdrSize = sizeof(pldm_state_effecter_pdr) +
+              sizeof(state_effecter_possible_states);
+    std::vector<uint8_t> entry{};
+    entry.resize(pdrSize);
+    pldm_state_effecter_pdr* pdr =
+        reinterpret_cast<pldm_state_effecter_pdr*>(entry.data());
+    if (!pdr)
+    {
+        error("Failed to get record by PDR type, ERROR:{ERR}", "ERR", lg2::hex,
+              static_cast<unsigned>(PLDM_PLATFORM_INVALID_EFFECTER_ID));
+        return;
+    }
+
+    auto& associatedEntityMap = platformHandler->getAssociateEntityMap();
+    for (const auto& entity_path : slotobjpaths)
+    {
+        pdr->hdr.record_handle = 0;
+        pdr->hdr.version = 1;
+        pdr->hdr.type = PLDM_STATE_EFFECTER_PDR;
+        pdr->hdr.record_change_num = 0;
+        pdr->hdr.length =
+            sizeof(pldm_state_effecter_pdr) - sizeof(pldm_pdr_hdr);
+        pdr->terminus_handle = TERMINUS_HANDLE;
+        pdr->effecter_id = platformHandler->getNextEffecterId();
+
+        if (entity_path != "" && associatedEntityMap.contains(entity_path))
+        {
+            pdr->entity_type = associatedEntityMap.at(entity_path).entity_type;
+            pdr->entity_instance =
+                associatedEntityMap.at(entity_path).entity_instance_num;
+            pdr->container_id =
+                associatedEntityMap.at(entity_path).entity_container_id;
+            platformHandler->effecterIdToDbusMap[pdr->effecter_id] =
+                entity_path;
+        }
+        else
+        {
+            // the slots are not present, dont create the PDR
+            continue;
+        }
+        pdr->effecter_semantic_id = 0;
+        pdr->effecter_init = PLDM_NO_INIT;
+        pdr->has_description_pdr = false;
+        pdr->composite_effecter_count = 1;
+
+        auto* possibleStatesPtr = pdr->possible_states;
+        auto possibleStates = reinterpret_cast<state_effecter_possible_states*>(
+            possibleStatesPtr);
+        possibleStates->state_set_id = PLDM_OEM_IBM_PCIE_SLOT_EFFECTER_STATE;
+        possibleStates->possible_states_size = 2;
+        auto state =
+            reinterpret_cast<state_effecter_possible_states*>(possibleStates);
+        state->states[0].byte = 14;
+        pldm::responder::pdr_utils::PdrEntry pdrEntry{};
+        pdrEntry.data = entry.data();
+        pdrEntry.size = pdrSize;
+        repo.addRecord(pdrEntry);
+    }
+}
+
 void buildAllCodeUpdateSensorPDR(oem_ibm_platform::Handler* platformHandler,
                                  uint16_t entityType, uint16_t entityInstance,
                                  uint16_t stateSetID, pdr_utils::Repo& repo)
@@ -216,8 +307,8 @@ void buildAllCodeUpdateSensorPDR(oem_ibm_platform::Handler* platformHandler,
         reinterpret_cast<pldm_state_sensor_pdr*>(entry.data());
     if (!pdr)
     {
-        std::cerr << "Failed to get record by PDR type, ERROR:"
-                  << PLDM_PLATFORM_INVALID_SENSOR_ID << std::endl;
+        error("Failed to get record by PDR type, error - {ERROR}", "ERROR",
+              lg2::hex, static_cast<unsigned>(PLDM_PLATFORM_INVALID_SENSOR_ID));
         return;
     }
     pdr->hdr.record_handle = 0;
@@ -252,6 +343,66 @@ void buildAllCodeUpdateSensorPDR(oem_ibm_platform::Handler* platformHandler,
     repo.addRecord(pdrEntry);
 }
 
+void buildAllSlotEnableSensorPDR(oem_ibm_platform::Handler* platformHandler,
+                                 pdr_utils::Repo& repo,
+                                 const std::vector<std::string>& slotobjpaths)
+{
+    size_t pdrSize = 0;
+    pdrSize =
+        sizeof(pldm_state_sensor_pdr) + sizeof(state_sensor_possible_states);
+    std::vector<uint8_t> entry{};
+    entry.resize(pdrSize);
+    pldm_state_sensor_pdr* pdr =
+        reinterpret_cast<pldm_state_sensor_pdr*>(entry.data());
+    if (!pdr)
+    {
+        error("Failed to get record by PDR type, ERROR:{ERR}", "ERR", lg2::hex,
+              static_cast<unsigned>(PLDM_PLATFORM_INVALID_SENSOR_ID));
+        return;
+    }
+    auto& associatedEntityMap = platformHandler->getAssociateEntityMap();
+    for (const auto& entity_path : slotobjpaths)
+    {
+        pdr->hdr.record_handle = 0;
+        pdr->hdr.version = 1;
+        pdr->hdr.type = PLDM_STATE_SENSOR_PDR;
+        pdr->hdr.record_change_num = 0;
+        pdr->hdr.length = sizeof(pldm_state_sensor_pdr) - sizeof(pldm_pdr_hdr);
+        pdr->terminus_handle = TERMINUS_HANDLE;
+        pdr->sensor_id = platformHandler->getNextSensorId();
+        if (entity_path != "" && associatedEntityMap.contains(entity_path))
+        {
+            pdr->entity_type = associatedEntityMap.at(entity_path).entity_type;
+            pdr->entity_instance =
+                associatedEntityMap.at(entity_path).entity_instance_num;
+            pdr->container_id =
+                associatedEntityMap.at(entity_path).entity_container_id;
+        }
+        else
+        {
+            // the slots are not present, dont create the PDR
+            continue;
+        }
+
+        pdr->sensor_init = PLDM_NO_INIT;
+        pdr->sensor_auxiliary_names_pdr = false;
+        pdr->composite_sensor_count = 1;
+
+        auto* possibleStatesPtr = pdr->possible_states;
+        auto possibleStates =
+            reinterpret_cast<state_sensor_possible_states*>(possibleStatesPtr);
+        possibleStates->state_set_id = PLDM_OEM_IBM_PCIE_SLOT_SENSOR_STATE;
+        possibleStates->possible_states_size = 1;
+        auto state =
+            reinterpret_cast<state_sensor_possible_states*>(possibleStates);
+        state->states[0].byte = 15;
+        pldm::responder::pdr_utils::PdrEntry pdrEntry{};
+        pdrEntry.data = entry.data();
+        pdrEntry.size = pdrSize;
+        repo.addRecord(pdrEntry);
+    }
+}
+
 void pldm::responder::oem_ibm_platform::Handler::buildOEMPDR(
     pdr_utils::Repo& repo)
 {
@@ -267,6 +418,13 @@ void pldm::responder::oem_ibm_platform::Handler::buildOEMPDR(
     buildAllCodeUpdateEffecterPDR(this, PLDM_ENTITY_SYSTEM_CHASSIS,
                                   ENTITY_INSTANCE_1,
                                   PLDM_OEM_IBM_SYSTEM_POWER_STATE, repo);
+
+    static constexpr auto objectPath = "/xyz/openbmc_project/inventory/system";
+    const std::vector<std::string> slotInterface = {
+        "xyz.openbmc_project.Inventory.Item.PCIeSlot"};
+    auto slotPaths = dBusIntf->getSubTreePaths(objectPath, 0, slotInterface);
+    buildAllSlotEnableEffecterPDR(this, repo, slotPaths);
+    buildAllSlotEnableSensorPDR(this, repo, slotPaths);
 
     buildAllCodeUpdateSensorPDR(this, PLDM_OEM_IBM_ENTITY_FIRMWARE_UPDATE,
                                 ENTITY_INSTANCE_0, PLDM_OEM_IBM_BOOT_STATE,
@@ -309,27 +467,27 @@ int pldm::responder::oem_ibm_platform::Handler::sendEventToHost(
         }
         std::cout << tempStream.str() << std::endl;
     }
-    auto oemPlatformEventMessageResponseHandler =
-        [](mctp_eid_t /*eid*/, const pldm_msg* response, size_t respMsgLen) {
-            uint8_t completionCode{};
-            uint8_t status{};
-            auto rc = decode_platform_event_message_resp(
-                response, respMsgLen, &completionCode, &status);
-            if (rc || completionCode)
-            {
-                std::cerr << "Failed to decode_platform_event_message_resp: "
-                          << " for code update event rc=" << rc
-                          << ", cc=" << static_cast<unsigned>(completionCode)
-                          << std::endl;
-            }
-        };
+    auto oemPlatformEventMessageResponseHandler = [](mctp_eid_t /*eid*/,
+                                                     const pldm_msg* response,
+                                                     size_t respMsgLen) {
+        uint8_t completionCode{};
+        uint8_t status{};
+        auto rc = decode_platform_event_message_resp(response, respMsgLen,
+                                                     &completionCode, &status);
+        if (rc || completionCode)
+        {
+            error(
+                "Failed to decode platform event message response for code update event with response code '{RC}' and completion code '{CC}'",
+                "RC", rc, "CC", completionCode);
+        }
+    };
     auto rc = handler->registerRequest(
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg),
         std::move(oemPlatformEventMessageResponseHandler));
     if (rc)
     {
-        std::cerr << "Failed to send BIOS attribute change event message \n";
+        error("Failed to send BIOS attribute change event message ");
     }
 
     return rc;
@@ -341,7 +499,7 @@ int encodeEventMsg(uint8_t eventType, const std::vector<uint8_t>& eventDataVec,
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
     auto rc = encode_platform_event_message_req(
-        instanceId, 1 /*formatVersion*/, 0 /*tId*/, eventType,
+        instanceId, 1 /*formatVersion*/, TERMINUS_ID /*tId*/, eventType,
         eventDataVec.data(), eventDataVec.size(), request,
         eventDataVec.size() + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES);
 
@@ -366,7 +524,7 @@ void pldm::responder::oem_ibm_platform::Handler::sendStateSensorEvent(
     eventClass->sensor_offset = sensorOffset;
     eventClass->event_state = eventState;
     eventClass->previous_event_state = prevEventState;
-    auto instanceId = requester.getInstanceId(mctp_eid);
+    auto instanceId = instanceIdDb.next(mctp_eid);
     std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
                                     PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
                                     sensorEventDataVec.size());
@@ -374,16 +532,17 @@ void pldm::responder::oem_ibm_platform::Handler::sendStateSensorEvent(
                              instanceId);
     if (rc != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to encode state sensor event, rc = " << rc
-                  << std::endl;
-        requester.markFree(mctp_eid, instanceId);
+        error("Failed to encode state sensor event with response code '{RC}'",
+              "RC", rc);
+        instanceIdDb.free(mctp_eid, instanceId);
         return;
     }
     rc = sendEventToHost(requestMsg, instanceId);
     if (rc != PLDM_SUCCESS)
     {
-        std::cerr << "Failed to send event to host: "
-                  << "rc=" << rc << std::endl;
+        error(
+            "Failed to send event to remote terminus with response code '{RC}'",
+            "RC", rc);
     }
     return;
 }
@@ -411,12 +570,42 @@ void pldm::responder::oem_ibm_platform::Handler::_processStartUpdate(
     auto rc = codeUpdate->setRequestedApplyTime();
     if (rc != PLDM_SUCCESS)
     {
-        std::cerr << "setRequestedApplyTime failed \n";
+        error("setRequestedApplyTime failed");
         state = CodeUpdateState::FAIL;
     }
     auto sensorId = codeUpdate->getFirmwareUpdateSensor();
     sendStateSensorEvent(sensorId, PLDM_STATE_SENSOR_STATE, 0, uint8_t(state),
                          uint8_t(CodeUpdateState::END));
+}
+
+void pldm::responder::oem_ibm_platform::Handler::updateOemDbusPaths(
+    std::string& dbusPath)
+{
+    std::string toFind("system1/chassis1/motherboard1");
+    if (dbusPath.find(toFind) != std::string::npos)
+    {
+        size_t pos = dbusPath.find(toFind);
+        dbusPath.replace(pos, toFind.length(), "system/chassis/motherboard");
+    }
+    toFind = "system1";
+    if (dbusPath.find(toFind) != std::string::npos)
+    {
+        size_t pos = dbusPath.find(toFind);
+        dbusPath.replace(pos, toFind.length(), "system");
+    }
+    /* below logic to replace path 'motherboard/socket/chassis' to
+       'motherboard/chassis' or 'motherboard/socket123/chassis' to
+       'motherboard/chassis' */
+    toFind = "socket";
+    size_t pos1 = dbusPath.find(toFind);
+    // while loop to detect multiple substring 'socket' in the path
+    while (pos1 != std::string::npos)
+    {
+        size_t pos2 = dbusPath.substr(pos1 + 1).find('/') + 1;
+        // Replacing starting from substring to next occurrence of char '/'
+        dbusPath.replace(pos1, pos2 + 1, "");
+        pos1 = dbusPath.find(toFind);
+    }
 }
 
 void pldm::responder::oem_ibm_platform::Handler::_processSystemReboot(
@@ -433,18 +622,17 @@ void pldm::responder::oem_ibm_platform::Handler::_processSystemReboot(
     }
     catch (const std::exception& e)
     {
-
-        std::cerr << "Chassis State transition to Off failed,"
-                  << "unable to set property RequestedPowerTransition"
-                  << "ERROR=" << e.what() << "\n";
+        error(
+            "Failure in chassis State transition to Off, unable to set property RequestedPowerTransition, error - {ERROR}",
+            "ERROR", e);
     }
 
     using namespace sdbusplus::bus::match::rules;
-    chassisOffMatch = std::make_unique<sdbusplus::bus::match::match>(
+    chassisOffMatch = std::make_unique<sdbusplus::bus::match_t>(
         pldm::utils::DBusHandler::getBus(),
         propertiesChanged("/xyz/openbmc_project/state/chassis0",
                           "xyz.openbmc_project.State.Chassis"),
-        [this](sdbusplus::message::message& msg) {
+        [this](sdbusplus::message_t& msg) {
             DbusChangedProps props{};
             std::string intf;
             msg.read(intf, props);
@@ -469,9 +657,9 @@ void pldm::responder::oem_ibm_platform::Handler::_processSystemReboot(
                     }
                     catch (const std::exception& e)
                     {
-                        std::cerr << "Setting one-time restore policy failed,"
-                                  << "unable to set property PowerRestorePolicy"
-                                  << "ERROR=" << e.what() << "\n";
+                        error(
+                            "Failure in setting one-time restore policy, unable to set property PowerRestorePolicy, error - {ERROR}",
+                            "ERROR", e);
                     }
                     dbusMapping = pldm::utils::DBusMapping{
                         "/xyz/openbmc_project/state/bmc0",
@@ -484,10 +672,9 @@ void pldm::responder::oem_ibm_platform::Handler::_processSystemReboot(
                     }
                     catch (const std::exception& e)
                     {
-                        std::cerr << "BMC state transition to reboot failed,"
-                                  << "unable to set property "
-                                     "RequestedBMCTransition"
-                                  << "ERROR=" << e.what() << "\n";
+                        error(
+                            "Failure in BMC state transition to reboot, unable to set property RequestedBMCTransition , error - {ERROR}",
+                            "ERROR", e);
                     }
                 }
             }
@@ -517,7 +704,7 @@ bool pldm::responder::oem_ibm_platform::Handler::watchDogRunning()
         isWatchDogRunning = pldm::utils::DBusHandler().getDbusProperty<bool>(
             watchDogObjectPath, watchDogEnablePropName, watchDogInterface);
     }
-    catch (const std::exception& e)
+    catch (const std::exception&)
     {
         return false;
     }
@@ -545,12 +732,11 @@ void pldm::responder::oem_ibm_platform::Handler::resetWatchDogTimer()
             bus.new_method_call(watchDogService, watchDogObjectPath,
                                 watchDogInterface, watchDogResetPropName);
         resetMethod.append(true);
-        bus.call_noreply(resetMethod);
+        bus.call_noreply(resetMethod, dbusTimeout);
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed To reset watchdog timer"
-                  << "ERROR=" << e.what() << std::endl;
+        error("Failed to reset watchdog timer, error - {ERROR}", "ERROR", e);
         return;
     }
 }
@@ -573,33 +759,91 @@ void pldm::responder::oem_ibm_platform::Handler::disableWatchDogTimer()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed To disable watchdog timer"
-                  << "ERROR=" << e.what() << "\n";
+        error("Failed to disable watchdog timer, error - {ERROR}", "ERROR", e);
     }
 }
 int pldm::responder::oem_ibm_platform::Handler::checkBMCState()
 {
+    using BMC = sdbusplus::client::xyz::openbmc_project::state::BMC<>;
+    auto bmcPath = sdbusplus::message::object_path(BMC::namespace_path::value) /
+                   BMC::namespace_path::bmc;
     try
     {
         pldm::utils::PropertyValue propertyValue =
             pldm::utils::DBusHandler().getDbusPropertyVariant(
-                "/xyz/openbmc_project/state/bmc0", "CurrentBMCState",
-                "xyz.openbmc_project.State.BMC");
+                bmcPath.str.c_str(), "CurrentBMCState", BMC::interface);
 
         if (std::get<std::string>(propertyValue) ==
             "xyz.openbmc_project.State.BMC.BMCState.NotReady")
         {
-            std::cerr << "GetPDR : PLDM stack is not ready for PDR exchange"
-                      << std::endl;
+            error("GetPDR : PLDM stack is not ready for PDR exchange");
             return PLDM_ERROR_NOT_READY;
         }
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error getting the current BMC state" << std::endl;
+        error("Error getting the current BMC state, error - {ERROR}", "ERROR",
+              e);
         return PLDM_ERROR;
     }
     return PLDM_SUCCESS;
+}
+
+const pldm_pdr_record*
+    pldm::responder::oem_ibm_platform::Handler::fetchLastBMCRecord(
+        const pldm_pdr* repo)
+{
+    return pldm_pdr_find_last_in_range(repo, BMC_PDR_START_RANGE,
+                                       BMC_PDR_END_RANGE);
+}
+
+bool pldm::responder::oem_ibm_platform::Handler::checkRecordHandleInRange(
+    const uint32_t& record_handle)
+{
+    return record_handle >= HOST_PDR_START_RANGE &&
+           record_handle <= HOST_PDR_END_RANGE;
+}
+
+void Handler::processSetEventReceiver()
+{
+    this->setEventReceiver();
+}
+
+void pldm::responder::oem_ibm_platform::Handler::startStopTimer(bool value)
+{
+    if (value)
+    {
+        timer.restart(
+            std::chrono::seconds(HEARTBEAT_TIMEOUT + HEARTBEAT_TIMEOUT_DELTA));
+    }
+    else
+    {
+        timer.setEnabled(value);
+    }
+}
+
+void pldm::responder::oem_ibm_platform::Handler::setSurvTimer(uint8_t tid,
+                                                              bool value)
+{
+    if ((hostOff || hostTransitioningToOff || (tid != HYPERVISOR_TID)) &&
+        timer.isEnabled())
+    {
+        startStopTimer(false);
+        return;
+    }
+    if (value)
+    {
+        startStopTimer(value);
+    }
+    else if (timer.isEnabled())
+    {
+        info(
+            "Failed to stop surveillance timer while remote terminus status is ‘{HOST_TRANST_OFF}’ with Terminus ID ‘{TID}’ ",
+            "HOST_TRANST_OFF", hostTransitioningToOff, "TID", tid);
+        startStopTimer(value);
+        pldm::utils::reportError(
+            "xyz.openbmc_project.PLDM.Error.setSurvTimer.RecvSurveillancePingFail");
+    }
 }
 
 } // namespace oem_ibm_platform

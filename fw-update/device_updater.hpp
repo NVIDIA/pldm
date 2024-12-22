@@ -197,15 +197,16 @@ class DeviceUpdater
     DeviceUpdater(const DeviceUpdater&) = delete;
     DeviceUpdater(DeviceUpdater&&) = default;
     DeviceUpdater& operator=(const DeviceUpdater&) = delete;
-    DeviceUpdater& operator=(DeviceUpdater&&) = default;
+    DeviceUpdater& operator=(DeviceUpdater&&) = delete;
     ~DeviceUpdater()
     {
-        // clear device updater coroutine
-        if (deviceUpdaterHandle && deviceUpdaterHandle.done())
+        auto& [scope, rcOpt] = *deviceUpdaterHandle;
+        if (!rcOpt.has_value())
         {
-            deviceUpdaterHandle.destroy();
+            return;
         }
-        componentUpdaterMap.clear();
+        stdexec::sync_wait(scope.on_empty());
+        deviceUpdaterHandle.reset();
     }
 
     /** @brief Constructor
@@ -304,10 +305,13 @@ class DeviceUpdater
      * @param[in] compIndex - component index
      * @param[in] compStatus - component status
      */
-    requester::Coroutine
+    exec::task<int>
         updateComponentCompletion(const size_t compIndex,
                                   const ComponentUpdateStatus compStatus);
 
+    exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                            const pldm_msg** responseMsg,
+                                            size_t* responseLen);
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device
      */
@@ -318,7 +322,9 @@ class DeviceUpdater
     struct DeviceUpdaterState deviceUpdaterState;
 
   private:
-    std::coroutine_handle<> deviceUpdaterHandle;
+    /** @brief coroutine handle of discoverTerminusTask */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        deviceUpdaterHandle{};
 
     /**
      * @brief device update handler
@@ -329,34 +335,34 @@ class DeviceUpdater
     /**
      * @brief start device updater coroutine
      *
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine startDeviceUpdate();
+    exec::task<int> startDeviceUpdate();
 
     /**
      * @brief send request update
      *
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine sendRequestUpdate();
+    exec::task<int> sendRequestUpdate();
     /**
      * @brief process request update response
      *
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response length
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine processRequestUpdateResponse(mctp_eid_t eid,
-                                                      const pldm_msg* response,
-                                                      size_t respMsgLen);
+    exec::task<int> processRequestUpdateResponse(mctp_eid_t eid,
+                                                 const pldm_msg* response,
+                                                 size_t respMsgLen);
 
     /** @brief Send PassComponentTable command request
      *
      *  @param[in] compOffset - component offset in compImageInfos
-     *  @return requester::Coroutine
+     *  @return exec::task<int>
      */
-    requester::Coroutine sendPassCompTableRequest(size_t offset);
+    exec::task<int> sendPassCompTableRequest(size_t offset);
 
     /**
      * @brief process pass component table response
@@ -364,18 +370,18 @@ class DeviceUpdater
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response length
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine processPassCompTableResponse(mctp_eid_t eid,
-                                                      const pldm_msg* response,
-                                                      size_t respMsgLen);
+    exec::task<int> processPassCompTableResponse(mctp_eid_t eid,
+                                                 const pldm_msg* response,
+                                                 size_t respMsgLen);
 
     /**
      * @brief Send ActivateFirmware command request
      *
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine sendActivateFirmwareRequest();
+    exec::task<int> sendActivateFirmwareRequest();
 
     /**
      * @brief process activate firmware response
@@ -383,10 +389,11 @@ class DeviceUpdater
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response size
-     * @return requester::Coroutine
+     * @return exec::task<int>
      */
-    requester::Coroutine processActivateFirmwareResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+    exec::task<int> processActivateFirmwareResponse(mctp_eid_t eid,
+                                                    const pldm_msg* response,
+                                                    size_t respMsgLen);
 
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
@@ -438,7 +445,7 @@ class DeviceUpdater
      * @brief send cancel update request
      *
      */
-    requester::Coroutine sendCancelUpdateRequest();
+    exec::task<int> sendCancelUpdateRequest();
     /**
      * @brief cancel update response handler
      *
@@ -446,9 +453,9 @@ class DeviceUpdater
      * @param[in] response - cancel update response
      * @param[in] respMsgLen - response length
      */
-    requester::Coroutine processCancelUpdateResponse(mctp_eid_t eid,
-                                                     const pldm_msg* response,
-                                                     size_t respMsgLen);
+    exec::task<int> processCancelUpdateResponse(mctp_eid_t eid,
+                                                const pldm_msg* response,
+                                                size_t respMsgLen);
 
     /**
      * @brief List of components successfully updated

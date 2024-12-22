@@ -5,7 +5,6 @@
 #include <libpldm/transport/mctp-demux.h>
 
 #include <algorithm>
-#include <iostream>
 #include <ranges>
 #include <system_error>
 

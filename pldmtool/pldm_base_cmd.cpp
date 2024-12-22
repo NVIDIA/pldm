@@ -1,12 +1,13 @@
 #include "pldm_base_cmd.hpp"
 
-#include "libpldm/utils.h"
-
 #include "pldm_cmd_helper.hpp"
 
+#include <libpldm/firmware_update.h>
+#include <libpldm/utils.h>
+
 #ifdef OEM_IBM
-#include "libpldm/file_io.h"
-#include "libpldm/host.h"
+#include <libpldm/oem/ibm/file_io.h>
+#include <libpldm/oem/ibm/host.h>
 #endif
 
 #include <string>
@@ -24,8 +25,10 @@ using namespace pldmtool::helper;
 
 std::vector<std::unique_ptr<CommandInterface>> commands;
 const std::map<const char*, pldm_supported_types> pldmTypes{
-    {"base", PLDM_BASE},   {"platform", PLDM_PLATFORM}, {"bios", PLDM_BIOS},
-    {"fru", PLDM_FRU},     {"fw_update", PLDM_FWUP},
+    {"base", PLDM_BASE},
+    {"platform", PLDM_PLATFORM},
+    {"bios", PLDM_BIOS},
+    /* {"fru", PLDM_FRU},      */ {"fw_update", PLDM_FWUP},
 #ifdef OEM_IBM
     {"oem-ibm", PLDM_OEM},
 #endif
@@ -37,6 +40,11 @@ const std::map<const char*, pldm_supported_commands> pldmBaseCmds{
     {"GetPLDMVersion", PLDM_GET_PLDM_VERSION},
     {"GetPLDMTypes", PLDM_GET_PLDM_TYPES},
     {"GetPLDMCommands", PLDM_GET_PLDM_COMMANDS}};
+// {"SelectPLDMVersion", PLDM_SELECT_PLDM_VERSION}};
+// {"NegotiateTransferParameters", PLDM_NEGOTIATE_TRANSFER_PARAMETERS},
+// {"MultipartSend", PLDM_MULTIPART_SEND},
+// {"MultipartReceive", PLDM_MULTIPART_RECEIVE},
+// {"GetMultipartTransferSupport", PLDM_GET_MULTIPART_TRANSFER_SUPPORT}};
 
 const std::map<const char*, pldm_bios_commands> pldmBiosCmds{
     {"GetBIOSTable", PLDM_GET_BIOS_TABLE},
@@ -47,20 +55,50 @@ const std::map<const char*, pldm_bios_commands> pldmBiosCmds{
     {"GetDateTime", PLDM_GET_DATE_TIME},
     {"SetDateTime", PLDM_SET_DATE_TIME}};
 
-const std::map<const char*, pldm_platform_commands> pldmPlatformCmds{
-    {"SetNumericEffecterValue", PLDM_SET_NUMERIC_EFFECTER_VALUE},
-    {"SetStateEffecterStates", PLDM_SET_STATE_EFFECTER_STATES},
-    {"GetPDR", PLDM_GET_PDR},
-    {"GetNumericEffecterValue", PLDM_GET_NUMERIC_EFFECTER_VALUE},
-    {"SetEventReceiver", PLDM_SET_EVENT_RECEIVER},
-    {"GetSensorReading", PLDM_GET_SENSOR_READING},
-    {"GetStateSensorReadings", PLDM_GET_STATE_SENSOR_READINGS},
-    {"PlatformEventMessage", PLDM_PLATFORM_EVENT_MESSAGE}};
+// const std::map<const char*, pldm_platform_commands> pldmPlatformCmds{
+//     {"GetTerminusUID", PLDM_GET_TERMINUS_UID},
+//     {"SetEventReceiver", PLDM_SET_EVENT_RECEIVER},
+//     {"GetEventReceiver", PLDM_GET_EVENT_RECEIVER},
+//     {"PlatformEventMessage", PLDM_PLATFORM_EVENT_MESSAGE},
+//     {"PollForPlatformEventMessage", PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE},
+//     {"EventMessageSupported", PLDM_EVENT_MESSAGE_SUPPORTED},
+//     {"EventMessageBufferSize", PLDM_EVENT_MESSAGE_BUFFER_SIZE},
+//     {"SetNumericSensorEnable", PLDM_SET_NUMERIC_SENSOR_ENABLE},
+//     {"GetSensorReading", PLDM_GET_SENSOR_READING},
+//     {"GetSensorThresholds", PLDM_GET_SENSOR_THRESHOLDS},
+//     {"SetSensorThresholds", PLDM_SET_SENSOR_THRESHOLDS},
+//     {"RestoreSensorThresholds", PLDM_RESTORE_SENSOR_THRESHOLDS},
+//     {"GetSensorHysteresis", PLDM_GET_SENSOR_HYSTERESIS},
+//     {"SetSensorHysteresis", PLDM_SET_SENSOR_HYSTERESIS},
+//     {"InitNumericSensor", PLDM_INIT_NUMERIC_SENSOR},
+//     {"SetStateSensorEnables", PLDM_SET_STATE_SENSOR_ENABLES},
+//     {"GetStateSensorReadings", PLDM_GET_STATE_SENSOR_READINGS},
+//     {"InitStateSensor", PLDM_INIT_STATE_SENSOR},
+//     {"SetNumericEffecterEnable", PLDM_SET_NUMERIC_EFFECTER_ENABLE},
+//     {"SetNumericEffecterValue", PLDM_SET_NUMERIC_EFFECTER_VALUE},
+//     {"GetNumericEffecterValue", PLDM_GET_NUMERIC_EFFECTER_VALUE},
+//     {"SetStateEffecterEnables", PLDM_SET_STATE_EFFECTER_ENABLES},
+//     {"SetStateEffecterStates", PLDM_SET_STATE_EFFECTER_STATES},
+//     {"GetStateEffecterStates", PLDM_GET_STATE_EFFECTER_STATES},
+//     {"GetPLDMEventLogInfo", PLDM_GET_PLDM_EVENT_LOG_INFO},
+//     {"EnablePLDMEventLogging", PLDM_ENABLE_PLDM_EVENT_LOGGING},
+//     {"ClearPLDMEventLog", PLDM_CLEAR_PLDM_EVENT_LOG},
+//     {"GetPLDMEventLogTimestamp", PLDM_GET_PLDM_EVENT_LOG_TIMESTAMP},
+//     {"SetPLDMEventLogTimestamp", PLDM_SET_PLDM_EVENT_LOG_TIMESTAMP},
+//     {"ReadPLDMEventLog", PLDM_READ_PLDM_EVENT_LOG},
+//     {"GetPLDMEventLogPolicyInfo", PLDM_GET_PLDM_EVENT_LOG_POLICY_INFO},
+//     {"SetPLDMEventLogPolicy", PLDM_SET_PLDM_EVENT_LOG_POLICY},
+//     {"FindPLDMEventLogEntry", PLDM_FIND_PLDM_EVENT_LOG_ENTRY},
+//     {"GetPDRRepositoryInfo", PLDM_GET_PDR_REPOSITORY_INFO},
+//     {"GetPDR", PLDM_GET_PDR},
+//     {"FindPDR", PLDM_FIND_PDR},
+//     {"RunInitAgent", PLDM_RUN_INIT_AGENT},
+//     {"GetPDRRepositorySignature", PLDM_GET_PDR_REPOSITORY_SIGNATURE}};
 
-const std::map<const char*, pldm_fru_commands> pldmFruCmds{
-    {"GetFRURecordTableMetadata", PLDM_GET_FRU_RECORD_TABLE_METADATA},
-    {"GetFRURecordTable", PLDM_GET_FRU_RECORD_TABLE},
-    {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION}};
+// const std::map<const char*, pldm_fru_commands> pldmFruCmds{
+//     {"GetFRURecordTableMetadata", PLDM_GET_FRU_RECORD_TABLE_METADATA},
+//     {"GetFRURecordTable", PLDM_GET_FRU_RECORD_TABLE},
+//     {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION}};
 
 const std::map<const char*, pldm_firmware_update_commands> pldmFwUpdateCmds{
     {"QueryDeviceIdentifiers", PLDM_QUERY_DEVICE_IDENTIFIERS},
@@ -105,7 +143,7 @@ class GetPLDMTypes : public CommandInterface
     GetPLDMTypes(const GetPLDMTypes&) = delete;
     GetPLDMTypes(GetPLDMTypes&&) = default;
     GetPLDMTypes& operator=(const GetPLDMTypes&) = delete;
-    GetPLDMTypes& operator=(GetPLDMTypes&&) = default;
+    GetPLDMTypes& operator=(GetPLDMTypes&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -175,7 +213,7 @@ class GetPLDMVersion : public CommandInterface
     GetPLDMVersion(const GetPLDMVersion&) = delete;
     GetPLDMVersion(GetPLDMVersion&&) = default;
     GetPLDMVersion& operator=(const GetPLDMVersion&) = delete;
-    GetPLDMVersion& operator=(GetPLDMVersion&&) = default;
+    GetPLDMVersion& operator=(GetPLDMVersion&&) = delete;
 
     explicit GetPLDMVersion(const char* type, const char* name, CLI::App* app) :
         CommandInterface(type, name, app)
@@ -244,7 +282,7 @@ class GetTID : public CommandInterface
     GetTID(const GetTID&) = delete;
     GetTID(GetTID&&) = default;
     GetTID& operator=(const GetTID&) = delete;
-    GetTID& operator=(GetTID&&) = default;
+    GetTID& operator=(GetTID&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -338,7 +376,7 @@ class GetPLDMCommands : public CommandInterface
     GetPLDMCommands(const GetPLDMCommands&) = delete;
     GetPLDMCommands(GetPLDMCommands&&) = default;
     GetPLDMCommands& operator=(const GetPLDMCommands&) = delete;
-    GetPLDMCommands& operator=(GetPLDMCommands&&) = default;
+    GetPLDMCommands& operator=(GetPLDMCommands&&) = delete;
 
     explicit GetPLDMCommands(const char* type, const char* name,
                              CLI::App* app) :
@@ -425,7 +463,6 @@ class GetPLDMCommands : public CommandInterface
         ordered_json pldmCommands;
         for (int i = 0; i < PLDM_MAX_CMDS_PER_TYPE; i++)
         {
-
             ordered_json cmdinfo;
             bitfield8_t b = cmdTypes[i / 8];
             if (b.byte & (1 << i % 8))
@@ -435,15 +472,15 @@ class GetPLDMCommands : public CommandInterface
                     case PLDM_BASE:
                         printCommand(pldmBaseCmds, i, cmdinfo);
                         break;
-                    case PLDM_PLATFORM:
-                        printCommand(pldmPlatformCmds, i, cmdinfo);
-                        break;
+                    // case PLDM_PLATFORM:
+                    //     printCommand(pldmPlatformCmds, i, cmdinfo);
+                    //     break;
                     case PLDM_BIOS:
                         printCommand(pldmBiosCmds, i, cmdinfo);
                         break;
-                    case PLDM_FRU:
-                        printCommand(pldmFruCmds, i, cmdinfo);
-                        break;
+                    // case PLDM_FRU:
+                    //     printCommand(pldmFruCmds, i, cmdinfo);
+                    //     break;
                     case PLDM_FWUP:
                         printCommand(pldmFwUpdateCmds, i, cmdinfo);
                         break;

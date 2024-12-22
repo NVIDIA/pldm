@@ -18,6 +18,7 @@
 
 #include "activation.hpp"
 #include "common/utils.hpp"
+#include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
 
@@ -30,6 +31,8 @@
 #include <fstream>
 #include <ranges>
 #include <string>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -279,9 +282,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                  std::ios::binary | std::ios::in | std::ios::ate);
     if (!package.good())
     {
-        lg2::error(
-            "Opening the PLDM FW update package failed, ERR={ERRNO}, PACKAGEFILEPATH={PACKAGEFILEPATH}",
-            "ERRNO", strerror(errno), "PACKAGEFILEPATH", packageFilePath);
+        error(
+            "Failed to open the PLDM fw update package file '{FILE}', error - {ERROR}.",
+            "ERROR", errno, "FILE", packageFilePath);
         if (activation)
         {
             activation->activation(software::Activation::Activations::Invalid);
@@ -292,16 +295,18 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
+        package.close();
+        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
     uintmax_t packageSize = package.tellg();
     if (packageSize < sizeof(pldm_package_header_information))
     {
-        lg2::error(
-            "PLDM FW update package length less than the length of the package"
-            " header information, PACKAGESIZE={PACKAGESIZE}",
-            "PACKAGESIZE", packageSize);
+        error(
+            "PLDM fw update package length {SIZE} less than the length of the package header information '{PACKAGE_HEADER_INFO_SIZE}'.",
+            "SIZE", packageSize, "PACKAGE_HEADER_INFO_SIZE",
+            sizeof(pldm_package_header_information));
         if (activation)
         {
             activation->activation(software::Activation::Activations::Invalid);
@@ -312,6 +317,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
+        package.close();
+        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -334,7 +341,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     parser = parsePkgHeader(packageHeader);
     if (parser == nullptr)
     {
-        lg2::error("Invalid PLDM package header information");
+        error("Invalid PLDM package header information");
         if (activation)
         {
             activation->activation(software::Activation::Activations::Invalid);
@@ -345,6 +352,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
+        package.close();
+        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -358,7 +367,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     catch (const std::exception& e)
     {
-        lg2::error("Invalid PLDM package header");
+        error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
         if (activation)
         {
             activation->activation(software::Activation::Activations::Invalid);
@@ -369,6 +378,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
+        package.close();
+        parser.reset();
         return -1;
     }
 
@@ -399,7 +410,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 compIdentifiers += " " + std::to_string(compIdentifier);
             }
         }
-        lg2::info("EID={EID}, RecordOffset={RECORDOFFSET}, ComponentIdentifiers"
+        lg2::info("eid={EID}, RecordOffset={RECORDOFFSET}, ComponentIdentifiers"
                   "={COMPIDENTIFIERS}",
                   "EID", deviceUpdaterInfo.first, "RECORDOFFSET",
                   deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
@@ -423,7 +434,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)
     {
-        lg2::error(
+        error(
             "No matching devices found with the PLDM firmware update package");
         if (activation)
         {
@@ -435,6 +446,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Ready, this);
         }
+        package.close();
+        parser.reset();
         return 0;
     }
 
@@ -859,7 +872,7 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     else
     {
         lg2::error(
-            "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, EID={EID}",
+            "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, eid={EID}",
             "EID", eid);
         auto ptr = reinterpret_cast<pldm_msg*>(response.data());
         auto rc = encode_cc_only_resp(request->hdr.instance_id,
@@ -1375,4 +1388,5 @@ void UpdateManager::restoreStagedPackageActivationObjects()
 }
 
 } // namespace fw_update
+
 } // namespace pldm

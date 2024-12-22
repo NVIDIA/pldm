@@ -48,7 +48,7 @@ class PackageParser
     PackageParser(const PackageParser&) = delete;
     PackageParser(PackageParser&&) = default;
     PackageParser& operator=(const PackageParser&) = delete;
-    PackageParser& operator=(PackageParser&&) = default;
+    PackageParser& operator=(PackageParser&&) = delete;
     virtual ~PackageParser() = default;
 
     /** @brief Constructor
@@ -178,7 +178,7 @@ class PackageParserV1 final : public PackageParser
     PackageParserV1(const PackageParserV1&) = delete;
     PackageParserV1(PackageParserV1&&) = default;
     PackageParserV1& operator=(const PackageParserV1&) = delete;
-    PackageParserV1& operator=(PackageParserV1&&) = default;
+    PackageParserV1& operator=(PackageParserV1&&) = delete;
     ~PackageParserV1() = default;
 
     /** @brief Constructor

@@ -9,7 +9,7 @@ foreach t : tests
                      dependencies: [
                          libpldm_dep,
                          libpldmutils,
-                         nlohmann_json,
+                         nlohmann_json_dep,
                          gtest,
                          test_src]),
        workdir: meson.current_source_dir())

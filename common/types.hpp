@@ -1,11 +1,10 @@
 #pragma once
 
-#include <stdint.h>
-
 #include <sdbusplus/message/types.hpp>
 
 #include <algorithm>
 #include <bitset>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <string>
@@ -16,19 +15,65 @@
 namespace pldm
 {
 
-using EID = uint8_t;
 using UUID = std::string;
 using SKU = std::string;
+using Availability = bool;
+using EID = uint8_t;
+using UUID = std::string;
 using Request = std::vector<uint8_t>;
 using Response = std::vector<uint8_t>;
+using MCTPMsgTypes = std::vector<uint8_t>;
 using Command = uint8_t;
 
-using MctpMedium = std::string;
 using NetworkId = uint32_t;
-using MctpInfo = std::tuple<EID, UUID, NetworkId>;
-using MctpInfos = std::vector<MctpInfo>;
 using tid_t = uint8_t;
 using VendorIANA = uint32_t;
+/** @brief MCTP Endpoint Medium type in string
+ *         Reserved for future purpose
+ */
+
+using MctpMedium = std::string;
+/** @brief Type definition of MCTP Network Index.
+ *         uint32_t is used as defined in MCTP Endpoint D-Bus Interface
+ */
+
+/** @brief Type definition of MCTP interface information between two endpoints.
+ *         EID : Endpoint eid in byte. Defined to match with MCTP D-Bus
+ *               interface
+ *         UUID : Endpoint UUID which is used to different the endpoints
+ *         MctpMedium: Endpoint MCTP Medium info (Resersed)
+ *         NetworkId: MCTP network index
+ */
+using MctpInfo = std::tuple<EID, UUID, UUID>;
+
+/** @brief Type definition of MCTP endpoint D-Bus properties in
+ *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
+ *
+ *         NetworkId: MCTP network index
+ *         EID : Endpoint eid in byte. Defined to match with MCTP D-Bus
+ *               interface
+ *         MCTPMsgTypes: MCTP message types
+ */
+using MctpEndpointProps = std::tuple<NetworkId, EID, MCTPMsgTypes>;
+
+/** @brief Type defined for list of MCTP interface information
+ */
+using MctpInfos = std::vector<MctpInfo>;
+
+/**
+ * In `Table 2 - Special endpoint IDs` of DSP0236.
+ * eid from 1 to 7 is reserved eid. So the start valid eid is 8
+ */
+#define MCTP_START_VALID_EID 8
+constexpr uint8_t BmcMctpEid = 8;
+
+#define PLDM_PLATFORM_GETPDR_MAX_RECORD_BYTES 1024
+/* default the max event message buffer size BMC supported to 4K bytes */
+#define PLDM_PLATFORM_EVENT_MSG_MAX_BUFFER_SIZE 4096
+/* DSP0248 section16.9 EventMessageBufferSize Command, the default message
+ * buffer size is 256 bytes
+ */
+#define PLDM_PLATFORM_DEFAULT_MESSAGE_BUFFER_SIZE 256
 
 namespace dbus
 {
@@ -308,9 +353,8 @@ using PossibleStates = std::set<uint8_t>;
 //!< composite effecter/sensor
 using CompositeSensorStates = std::vector<PossibleStates>;
 using EntityInfo = std::tuple<ContainerID, EntityType, EntityInstance>;
-using SensorInfo = std::tuple<EntityInfo, CompositeSensorStates>;
-using StateSetData = std::tuple<StateSetId, PossibleStates>;
-using StateSetInfo = std::tuple<EntityInfo, std::vector<StateSetData>>;
+using SensorInfo =
+    std::tuple<EntityInfo, CompositeSensorStates, std::vector<StateSetId>>;
 
 using DbusVariantType = std::variant<
     std::vector<std::tuple<std::string, std::string, std::string>>,

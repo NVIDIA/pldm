@@ -1,31 +1,32 @@
 #include "file_table.hpp"
 
-#include "libpldm/utils.h"
+#include <libpldm/utils.h>
+
+#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
-#include <iostream>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
-
 namespace filetable
 {
-
 FileTable::FileTable(const std::string& fileTableConfigPath)
 {
     std::ifstream jsonFile(fileTableConfigPath);
     if (!jsonFile.is_open())
     {
-        std::cerr << "File table config file does not exist, FILE="
-                  << fileTableConfigPath.c_str() << "\n";
+        error("File table config file '{PATH}' does not exist", "PATH",
+              fileTableConfigPath);
         return;
     }
 
     auto data = Json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
-        std::cerr << "Parsing config file failed"
-                  << "\n";
+        error("Failed to parse config file '{PATH}'", "PATH",
+              fileTableConfigPath);
         return;
     }
 
@@ -133,7 +134,7 @@ FileTable& buildFileTable(const std::string& fileTablePath)
     static FileTable table;
     if (table.isEmpty())
     {
-        table = std::move(FileTable(fileTablePath));
+        table = FileTable(fileTablePath);
     }
     return table;
 }

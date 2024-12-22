@@ -16,9 +16,9 @@
  */
 #pragma once
 
-#include "libpldm/firmware_update.h"
-
 #include "common/types.hpp"
+
+#include <libpldm/firmware_update.h>
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -26,7 +26,6 @@ namespace pldm
 {
 namespace fw_update
 {
-
 using ErrorCode = uint8_t;
 using OemMessage = std::string;
 using OemResolution = std::string;

@@ -1,34 +1,34 @@
-
-
 #include "file_io_by_type.hpp"
-
-#include "libpldm/base.h"
-#include "oem/ibm/libpldm/file_io.h"
 
 #include "common/utils.hpp"
 #include "file_io_type_cert.hpp"
 #include "file_io_type_dump.hpp"
 #include "file_io_type_lid.hpp"
+#include "file_io_type_pcie.hpp"
 #include "file_io_type_pel.hpp"
 #include "file_io_type_progress_src.hpp"
+#include "file_io_type_vpd.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
-#include <stdint.h>
+#include <libpldm/base.h>
+#include <libpldm/oem/ibm/file_io.h>
 #include <unistd.h>
 
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <vector>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
 namespace responder
 {
-
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 
 int FileHandler::transferFileData(int32_t fd, bool upstream, uint32_t offset,
@@ -81,15 +81,16 @@ int FileHandler::transferFileData(const fs::path& path, bool upstream,
         fileExists = fs::exists(path);
         if (!fileExists)
         {
-            std::cerr << "File does not exist. PATH=" << path.c_str() << "\n";
+            error("File '{PATH}' does not exist.", "PATH", path);
             return PLDM_INVALID_FILE_HANDLE;
         }
 
         size_t fileSize = fs::file_size(path);
         if (offset >= fileSize)
         {
-            std::cerr << "Offset exceeds file size, OFFSET=" << offset
-                      << " FILE_SIZE=" << fileSize << "\n";
+            error(
+                "Offset '{OFFSET}' exceeds file size '{SIZE}' for file handle {FILE_HANDLE}",
+                "OFFSET", offset, "SIZE", fileSize, "FILE_HANDLE", fileHandle);
             return PLDM_DATA_OUT_OF_RANGE;
         }
         if (offset + length > fileSize)
@@ -114,8 +115,7 @@ int FileHandler::transferFileData(const fs::path& path, bool upstream,
     int file = open(path.string().c_str(), flags);
     if (file == -1)
     {
-        std::cerr << "File does not exist, PATH = " << path.string() << "\n";
-        ;
+        error("File '{PATH}' does not exist.", "PATH", path);
         return PLDM_ERROR;
     }
     utils::CustomFD fd(file);
@@ -161,6 +161,20 @@ std::unique_ptr<FileHandler> getHandlerByType(uint16_t fileType,
         {
             return std::make_unique<ProgressCodeHandler>(fileHandle);
         }
+        case PLDM_FILE_TYPE_LID_RUNNING:
+        {
+            return std::make_unique<LidHandler>(fileHandle, false,
+                                                PLDM_FILE_TYPE_LID_RUNNING);
+        }
+        case PLDM_FILE_TYPE_PSPD_VPD_PDD_KEYWORD:
+        {
+            return std::make_unique<keywordHandler>(fileHandle, fileType);
+        }
+        case PLDM_FILE_TYPE_PCIE_TOPOLOGY:
+        case PLDM_FILE_TYPE_CABLE_INFO:
+        {
+            return std::make_unique<PCIeInfoHandler>(fileHandle, fileType);
+        }
         default:
         {
             throw InternalFailure();
@@ -175,16 +189,17 @@ int FileHandler::readFile(const std::string& filePath, uint32_t offset,
 {
     if (!fs::exists(filePath))
     {
-        std::cerr << "File does not exist, HANDLE=" << fileHandle
-                  << " PATH=" << filePath.c_str() << "\n";
+        error("File '{PATH}' and handle {FILE_HANDLE} does not exist", "PATH",
+              filePath, "FILE_HANDLE", fileHandle);
         return PLDM_INVALID_FILE_HANDLE;
     }
 
     size_t fileSize = fs::file_size(filePath);
     if (offset >= fileSize)
     {
-        std::cerr << "Offset exceeds file size, OFFSET=" << offset
-                  << " FILE_SIZE=" << fileSize << "\n";
+        error(
+            "Offset '{OFFSET}' exceeds file size '{SIZE}' and file handle '{FILE_HANDLE}'",
+            "OFFSET", offset, "SIZE", fileSize, "FILE_HANDLE", fileHandle);
         return PLDM_DATA_OUT_OF_RANGE;
     }
 
@@ -204,7 +219,9 @@ int FileHandler::readFile(const std::string& filePath, uint32_t offset,
         stream.read(filePos, length);
         return PLDM_SUCCESS;
     }
-    std::cerr << "Unable to read file, FILE=" << filePath.c_str() << "\n";
+    error(
+        "Unable to read file '{PATH}' at offset '{OFFSET}' for length '{LENGTH}'",
+        "PATH", filePath, "OFFSET", offset, "LENGTH", length);
     return PLDM_ERROR;
 }
 

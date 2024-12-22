@@ -77,30 +77,6 @@ inline void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen,
     }
 }
 
-/**
- * @brief send and receive pldm message over mctp coroutine
- *
- * @param[in] handle
- * @param[in] eid
- * @param[in] request
- * @param[out] responseMsg
- * @param[out] responseLen
- * @return requester::Coroutine
- */
-inline requester::Coroutine
-    SendRecvPldmMsgOverMctp(RequesterHandler& handle, mctp_eid_t eid,
-                            Request& request, const pldm_msg** responseMsg,
-                            size_t* responseLen)
-{
-    auto rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
-        handle, eid, request, responseMsg, responseLen);
-    if (rc)
-    {
-        lg2::error("sendRecvPldmMsgOverMctp failed. rc={RC}", "RC", rc);
-    }
-    co_return rc;
-}
-
 /** @brief Send COMMAND_NOT_EXPECTED response sent by DeviceUpdater when it
  * receives a command from the FD out of sequence from when it is expected.
  *

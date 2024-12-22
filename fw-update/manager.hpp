@@ -17,6 +17,7 @@
 #pragma once
 
 #include "activation.hpp"
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
@@ -50,7 +51,6 @@ class MctpDiscoveryHandlerIntf;
  */
 class Manager : public pldm::MctpDiscoveryHandlerIntf
 {
-
   public:
     Manager() = delete;
     Manager(const Manager&) = delete;
@@ -172,11 +172,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
-    /** @brief Update Active Firmware Version for the given EID
+    /** @brief Update Active Firmware Version for the given eid
      * This method is called whenever platform event is received for firmware
      * version change.
      *  Data Structure containing active firmware version is updated for all the
-     * components associated with the input EID in the
+     * components associated with the input eid in the
      * initiateGetActiveFirmwareVersion method, and then in updateFWVersion
      * method, for each component, dbus is updated only if there's a change in
      * firmware version
@@ -187,16 +187,28 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     {
         try
         {
-            UpdateFWVersionCallBack updateFWVersionCallback = [this](EID eid) {
-                this->fwInventoryManager.updateFWVersion(eid);
-            };
-            inventoryMgr.initiateGetActiveFirmwareVersion(
-                eid, updateFWVersionCallback);
+            UpdateFWVersionCallBack updateFWVersionCallback =
+                [this](uint8_t eid) {
+                    this->fwInventoryManager.updateFWVersion(eid);
+                };
+            [[maybe_unused]] auto co =
+                inventoryMgr.initiateGetActiveFirmwareVersion(
+                    eid, updateFWVersionCallback);
         }
         catch (const std::exception& e)
         {
             lg2::error("Error while updating Firmware version.", "ERROR", e);
         }
+    }
+
+    /** @brief Helper function to invoke registered handlers for
+     *         the removed MCTP endpoints
+     *
+     *  @param[in] mctpInfos - information of removed MCTP endpoints
+     */
+    void handleRemovedMctpEndpoints(const MctpInfos&)
+    {
+        return;
     }
 
     /** @brief Handle PLDM request for the commands in the FW update

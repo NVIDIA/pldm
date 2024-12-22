@@ -1,9 +1,9 @@
 #include "pldm_base_cmd.hpp"
-#include "pldm_bios_cmd.hpp"
+// #include "pldm_bios_cmd.hpp"
 #include "pldm_cmd_helper.hpp"
-#include "pldm_fru_cmd.hpp"
+// #include "pldm_fru_cmd.hpp"
 #include "pldm_fw_update_cmd.hpp"
-#include "pldm_platform_cmd.hpp"
+// #include "pldm_platform_cmd.hpp"
 #include "pldmtool/oem/ibm/pldm_oem_ibm.hpp"
 
 #include <CLI/CLI.hpp>
@@ -29,7 +29,7 @@ class RawOp : public CommandInterface
     RawOp(const RawOp&) = delete;
     RawOp(RawOp&&) = default;
     RawOp& operator=(const RawOp&) = delete;
-    RawOp& operator=(RawOp&&) = default;
+    RawOp& operator=(RawOp&&) = delete;
 
     explicit RawOp(const char* type, const char* name, CLI::App* app) :
         CommandInterface(type, name, app)
@@ -41,6 +41,7 @@ class RawOp : public CommandInterface
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
 
     {
+        rawData[0] = (rawData[0] & 0xe0) | instanceId;
         return {PLDM_SUCCESS, rawData};
     }
 
@@ -64,27 +65,21 @@ void registerCommand(CLI::App& app)
 
 int main(int argc, char** argv)
 {
-    try
-    {
-        CLI::App app{"PLDM requester tool for OpenBMC"};
-        app.require_subcommand(1)->ignore_case();
+    CLI::App app{"PLDM requester tool for OpenBMC"};
+    app.require_subcommand(1)->ignore_case();
 
-        pldmtool::raw::registerCommand(app);
-        pldmtool::base::registerCommand(app);
-        pldmtool::bios::registerCommand(app);
-        pldmtool::platform::registerCommand(app);
-        pldmtool::fru::registerCommand(app);
-        pldmtool::fw_update::registerCommand(app);
+    pldmtool::raw::registerCommand(app);
+    pldmtool::base::registerCommand(app);
+    // pldmtool::bios::registerCommand(app);
+    // pldmtool::platform::registerCommand(app);
+    // pldmtool::fru::registerCommand(app);
+    pldmtool::fw_update::registerCommand(app);
+
 #ifdef OEM_IBM
-        pldmtool::oem_ibm::registerCommand(app);
+    pldmtool::oem_ibm::registerCommand(app);
 #endif
 
-        CLI11_PARSE(app, argc, argv);
-        return 0;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << e.what() << '\n';
-        return -1;
-    }
+    CLI11_PARSE(app, argc, argv);
+    // pldmtool::platform::parseGetPDROption();
+    return 0;
 }

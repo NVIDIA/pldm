@@ -8,8 +8,8 @@ Restart=always
 Type=dbus
 WatchdogSec=60s
 BusName=xyz.openbmc_project.PLDM
-EnvironmentFile=/etc/default/pldm_verbosity
-ExecStart=/usr/bin/pldmd --verbose $VERBOSE $FWDEBUG
+EnvironmentFile=-/etc/default/pldmd
+ExecStart=/usr/bin/pldmd $PLDMD_ARGS
 
 [Install]
 WantedBy=multi-user.target

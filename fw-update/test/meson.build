@@ -32,8 +32,6 @@ tests = [
   'package_signature_test',
 ]
 
-cc = meson.get_compiler('c')
-libcrypto = cc.find_library('libcrypto', required: true)
 openssl = dependency('openssl', required : true)
 
 foreach t : tests
@@ -46,12 +44,11 @@ foreach t : tests
                          gtest,
                          libpldm_dep,
                          libpldmutils,
-                         nlohmann_json,
+                         nlohmann_json_dep,
                          phosphor_dbus_interfaces,
-                         phosphor_logging,
+                         phosphor_logging_dep,
                          sdbusplus,
                          sdeventplus,
-                         libcrypto,
                          openssl]),
        workdir: meson.current_source_dir())
 endforeach

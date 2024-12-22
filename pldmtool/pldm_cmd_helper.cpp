@@ -1,10 +1,14 @@
 #include "pldm_cmd_helper.hpp"
 
-#include "libpldm/firmware_update.h"
-
+#include "common/transport.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
+#include <libpldm/firmware_update.h>
 #include <libpldm/pldm.h>
+#include <libpldm/transport.h>
+#include <libpldm/transport/af-mctp.h>
+#include <libpldm/transport/mctp-demux.h>
+#include <poll.h>
 #include <systemd/sd-bus.h>
 
 #include <common/transport.hpp>
@@ -17,7 +21,6 @@ using namespace pldm::utils;
 
 namespace pldmtool
 {
-
 namespace helper
 {
 
@@ -184,7 +187,6 @@ pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(
 int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
                                    std::vector<uint8_t>& responseMsg)
 {
-
     // By default enable request/response msgs for pldmtool raw commands.
     if (CommandInterface::pldmType == "raw")
     {
@@ -198,32 +200,45 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
         printBuffer(Tx, requestMsg);
     }
 
-    void* responseMessage = nullptr;
-    size_t responseMessageSize{};
     auto tid = mctp_eid;
     PldmTransport pldmTransport{};
+    uint8_t retry = 0;
+    int rc = PLDM_ERROR;
 
-    int rc =
-        pldmTransport.sendRecvMsg(tid, requestMsg.data(), requestMsg.size(),
-                                  responseMessage, responseMessageSize);
+    while (PLDM_REQUESTER_SUCCESS != rc && retry <= numRetries)
+    {
+        void* responseMessage = nullptr;
+        size_t responseMessageSize{};
+
+        rc =
+            pldmTransport.sendRecvMsg(tid, requestMsg.data(), requestMsg.size(),
+                                      responseMessage, responseMessageSize);
+        if (rc)
+        {
+            std::cerr << "[" << unsigned(retry) << "] pldm_send_recv error rc "
+                      << rc << std::endl;
+            retry++;
+            continue;
+        }
+
+        responseMsg.resize(responseMessageSize);
+        memcpy(responseMsg.data(), responseMessage, responseMsg.size());
+
+        free(responseMessage);
+
+        if (pldmVerbose)
+        {
+            std::cout << "pldmtool: ";
+            printBuffer(Rx, responseMsg);
+        }
+    }
+
     if (rc)
     {
-        std::cerr << "failed to pldm send recv\n";
-        return rc;
+        std::cerr << "failed to pldm send recv error rc " << rc << std::endl;
     }
 
-    responseMsg.resize(responseMessageSize);
-    memcpy(responseMsg.data(), responseMessage, responseMsg.size());
-
-    free(responseMessage);
-
-    if (pldmVerbose)
-    {
-        std::cout << "pldmtool: ";
-        printBuffer(Rx, responseMsg);
-    }
-
-    return PLDM_SUCCESS;
+    return rc;
 }
 } // namespace helper
 } // namespace pldmtool

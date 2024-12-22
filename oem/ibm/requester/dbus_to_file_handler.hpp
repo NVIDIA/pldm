@@ -1,9 +1,9 @@
 #pragma once
 
-#include "libpldm/platform.h"
-
-#include "pldmd/dbus_impl_requester.hpp"
+#include "common/instance_id.hpp"
 #include "requester/handler.hpp"
+
+#include <libpldm/platform.h>
 
 #include <filesystem>
 #include <fstream>
@@ -15,6 +15,7 @@ namespace requester
 {
 namespace oem_ibm
 {
+using ResDumpStatus = std::string;
 
 /** @class DbusToFileHandler
  *  @brief This class can process resource dump parameters and send PLDM
@@ -33,12 +34,12 @@ class DbusToFileHandler
     /** @brief Constructor
      *  @param[in] mctp_fd - fd of MCTP communications socket
      *  @param[in] mctp_eid - MCTP EID of host firmware
-     *  @param[in] requester - pointer to a Requester object
+     *  @param[in] instanceIdDb - pointer to a InstanceIdDb object
      *  @param[in] resDumpCurrentObjPath - resource dump current object path
      *  @param[in] handler - PLDM request handler
      */
     DbusToFileHandler(
-        int mctp_fd, uint8_t mctp_eid, dbus_api::Requester* requester,
+        int mctp_fd, uint8_t mctp_eid, pldm::InstanceIdDb* instanceIdDb,
         sdbusplus::message::object_path resDumpCurrentObjPath,
         pldm::requester::Handler<pldm::requester::Request>* handler);
 
@@ -72,19 +73,18 @@ class DbusToFileHandler
                                     const uint16_t type);
 
     /** @brief report failure that a resource dump has failed
+     *  @param[in] str - Resource dump failure type
      */
-    void reportResourceDumpFailure();
+    void reportResourceDumpFailure(const std::string_view& str);
 
-    /** @brief fd of MCTP communications socket */
-    int mctp_fd;
+    /** @brief method to get the acf file contents */
+    std::string getAcfFileContent();
 
     /** @brief MCTP EID of host firmware */
     uint8_t mctp_eid;
 
-    /** @brief Pointer to a Requester object, primarily used to access API to
-     *  obtain PLDM instance id.
-     */
-    dbus_api::Requester* requester;
+    /** @brief Pointer to an InstanceIdDb used to obtain PLDM instance id. */
+    pldm::InstanceIdDb* instanceIdDb;
 
     /** @brief Hold the current resource dump object path */
     sdbusplus::message::object_path resDumpCurrentObjPath;

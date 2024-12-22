@@ -16,12 +16,15 @@
  */
 #pragma once
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 
 #include <libpldm/pldm.h>
+
+#include <sdeventplus/event.hpp>
 
 #include <queue>
 
@@ -106,6 +109,7 @@ class InventoryManager
      */
     void discoverFDs(const MctpInfos& mctpInfos,
                      dbus::MctpInterfaces& mctpInterfaces);
+    exec::task<int> discoverFDsTask(dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -119,7 +123,7 @@ class InventoryManager
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
      */
-    requester::Coroutine parseQueryDeviceIdentifiersResponse(
+    exec::task<int> parseQueryDeviceIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution);
 
@@ -136,7 +140,7 @@ class InventoryManager
      *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware
      * version after receiving platform event
      */
-    requester::Coroutine parseGetFWParametersResponse(
+    exec::task<int> parseGetFWParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution,
         dbus::MctpInterfaces& mctpInterfaces,
@@ -148,17 +152,17 @@ class InventoryManager
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
-    requester::Coroutine initiateGetActiveFirmwareVersion(
+    exec::task<int> initiateGetActiveFirmwareVersion(
         mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
-    /** @brief Send getPLDMTypes command to destination EID and then return the
+    /** @brief Send getPLDMTypes command to destination eid and then return the
      *         value of supportedTypes.
      *
-     *  @param[in] eid - Destination EID
-     *  @param[out] supportedTypes - Supported Types returned from EID
+     *  @param[in] eid - Destination eid
+     *  @param[out] supportedTypes - Supported Types returned from eid
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
+    exec::task<int> getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
 
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
@@ -169,7 +173,7 @@ class InventoryManager
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    requester::Coroutine
+    exec::task<int>
         startFirmwareDiscoveryFlow(mctp_eid_t eid,
                                    dbus::MctpInterfaces mctpInterfaces);
 
@@ -181,7 +185,7 @@ class InventoryManager
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
-    requester::Coroutine getActiveFirmwareVersion(
+    exec::task<int> getActiveFirmwareVersion(
         mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
         UpdateFWVersionCallBack updateFWVersionCallback);
 
@@ -197,9 +201,9 @@ class InventoryManager
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
      */
-    requester::Coroutine queryDeviceIdentifiers(mctp_eid_t eid,
-                                                std::string& messageError,
-                                                std::string& resolution);
+    exec::task<int> queryDeviceIdentifiers(mctp_eid_t eid,
+                                           std::string& messageError,
+                                           std::string& resolution);
 
     /** @brief Send GetFirmwareParameters command request
      *
@@ -209,12 +213,15 @@ class InventoryManager
      *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware
      * version after receiving platform event
      */
-    requester::Coroutine
-        getFirmwareParameters(mctp_eid_t eid, std::string& messageError,
-                              std::string& resolution,
-                              dbus::MctpInterfaces& mctpInterfaces,
-                              bool refreshFWVersionOnly = false);
+    exec::task<int> getFirmwareParameters(mctp_eid_t eid,
+                                          std::string& messageError,
+                                          std::string& resolution,
+                                          dbus::MctpInterfaces& mctpInterfaces,
+                                          bool refreshFWVersionOnly = false);
 
+    exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                            const pldm_msg** responseMsg,
+                                            size_t* responseLen);
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
 
@@ -238,6 +245,17 @@ class InventoryManager
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;
+
+    /** @brief A queue of MctpInfos to be discovered **/
+    std::queue<MctpInfos> queuedMctpInfos{};
+
+    /** @brief To send a PLDM request after the current command handling */
+    std::unordered_map<EID, std::unique_ptr<sdeventplus::source::Defer>>
+        pldmRequest;
+
+    /** @brief coroutine handle of discoverTerminusTask */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        discoverMctpTerminusTaskHandle{};
 };
 
 } // namespace fw_update

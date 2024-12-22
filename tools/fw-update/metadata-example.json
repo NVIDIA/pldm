@@ -2,19 +2,21 @@
     "PackageHeaderInformation": {
         "PackageHeaderIdentifier": "F018878CCB7D49439800A02F059ACA02",
         "PackageHeaderFormatVersion": 1,
-        "PackageReleaseDateTime": "25/12/2021 00:00:00",
+        "PackageReleaseDateTime": "2021-12-25 00:00:00",
         "PackageVersionString": "VersionString1"
     },
     "FirmwareDeviceIdentificationArea": [
         {
-            "DeviceUpdateOptionFlags": [
-                0
-            ],
+            "DeviceUpdateOptionFlags": [0],
             "ComponentImageSetVersionString": "VersionString2",
+<<<<<<< HEAD
             "ApplicableComponents": [
                 0,
                 1
             ],
+=======
+            "ApplicableComponents": [0, 1],
+>>>>>>> upstream/master
             "Descriptors": [
                 {
                     "DescriptorType": 2,
@@ -32,14 +34,17 @@
             ]
         },
         {
-            "DeviceUpdateOptionFlags": [
-            ],
+            "DeviceUpdateOptionFlags": [],
             "ComponentImageSetVersionString": "VersionString3",
+<<<<<<< HEAD
             "ApplicableComponents": [
                 0,
                 1,
                 2
             ],
+=======
+            "ApplicableComponents": [0, 1, 2],
+>>>>>>> upstream/master
             "Descriptors": [
                 {
                     "DescriptorType": 2,
@@ -48,12 +53,15 @@
             ]
         },
         {
-            "DeviceUpdateOptionFlags": [
-            ],
+            "DeviceUpdateOptionFlags": [],
             "ComponentImageSetVersionString": "VersionString4",
+<<<<<<< HEAD
             "ApplicableComponents": [
                 0
             ],
+=======
+            "ApplicableComponents": [0],
+>>>>>>> upstream/master
             "Descriptors": [
                 {
                     "DescriptorType": 2,
@@ -66,34 +74,32 @@
         {
             "ComponentClassification": 10,
             "ComponentIdentifier": 100,
+<<<<<<< HEAD
             "ComponentOptions": [
                 1
             ],
             "ComponentComparisonStamp" : "0xFFFFFFFE",
             "RequestedComponentActivationMethod": [
             ],
+=======
+            "ComponentOptions": [1],
+            "ComponentComparisonStamp": "0xFFFFFFFE",
+            "RequestedComponentActivationMethod": [],
+>>>>>>> upstream/master
             "ComponentVersionString": "VersionString5"
         },
         {
             "ComponentClassification": 10,
             "ComponentIdentifier": 200,
-            "ComponentOptions": [
-            ],
-            "RequestedComponentActivationMethod": [
-                0
-             ],
+            "ComponentOptions": [],
+            "RequestedComponentActivationMethod": [0],
             "ComponentVersionString": "VersionString6"
         },
         {
             "ComponentClassification": 16,
             "ComponentIdentifier": 300,
-            "ComponentOptions": [
-                0
-            ],
-            "RequestedComponentActivationMethod": [
-                2,
-                3
-            ],
+            "ComponentOptions": [0],
+            "RequestedComponentActivationMethod": [2, 3],
             "ComponentVersionString": "VersionString7"
         }
     ]

@@ -64,8 +64,47 @@ struct RequestKeyHasher
     }
 };
 
-using ResponseHandler = fu2::unique_function<void(
+using ResponseHandler = std::function<void(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)>;
+
+/** @brief The response from SendRecvMsg with coroutine API
+ *
+ *  The response when registers PLDM request message using the SendRecvMsg
+ *  with coroutine API.
+ *  Responded tuple includes <CompleteCode, ResponseMgs, ResponseMsgLength>
+ *  Value: [PLDM_ERROR, _, _] if registerRequest fails.
+ *         [PLDM_ERROR_NOT_READY, nullptr, 0] if timed out.
+ *         [PLDM_SUCCESS, ResponseMsg, ResponseMsgLength] if succeeded
+ */
+using SendRecvCoResp = std::tuple<int, const pldm_msg*, size_t>;
+
+/** @struct RegisteredRequest
+ *
+ *  This struct is used to store the registered request to one endpoint.
+ */
+struct RegisteredRequest
+{
+    RequestKey key;                  //!< Responder MCTP endpoint ID
+    std::vector<uint8_t> reqMsg;     //!< Request messages queue
+    ResponseHandler responseHandler; //!< Waiting for response flag
+};
+
+/** @struct EndpointMessageQueue
+ *
+ *  This struct is used to save the list of request messages of one endpoint and
+ *  the existing of the request message to the endpoint with its' EID.
+ */
+struct EndpointMessageQueue
+{
+    mctp_eid_t eid; //!< Responder MCTP endpoint ID
+    std::deque<std::shared_ptr<RegisteredRequest>> requestQueue; //!< Queue
+    bool activeRequest; //!< Waiting for response flag
+
+    bool operator==(const mctp_eid_t& mctpEid) const
+    {
+        return (eid == mctpEid);
+    }
+};
 
 /** @class Handler
  *
@@ -113,6 +152,103 @@ class Handler
         numRetries(numRetries), responseTimeOut(responseTimeOut)
     {}
 
+    void instanceIdExpiryCallBack(RequestKey key)
+    {
+        auto eid = key.eid;
+        if (this->handlers.contains(key))
+        {
+            info(
+                "Instance ID expiry for EID '{EID}' using InstanceID '{INSTANCEID}'",
+                "EID", key.eid, "INSTANCEID", key.instanceId);
+            auto& [request, responseHandler, timerInstance] =
+                this->handlers[key];
+            request->stop();
+            auto rc = timerInstance->stop();
+            if (rc)
+            {
+                error(
+                    "Failed to stop the instance ID expiry timer, response code '{RC}'",
+                    "RC", rc);
+            }
+            // Call response handler with an empty response to indicate no
+            // response
+            responseHandler(eid, nullptr, 0);
+            this->removeRequestContainer.emplace(
+                key,
+                std::make_unique<sdeventplus::source::Defer>(
+                    event, std::bind(&Handler::removeRequestEntry, this, key)));
+            endpointMessageQueues[eid]->activeRequest = false;
+
+            /* try to send new request if the endpoint is free */
+            pollEndpointQueue(eid);
+        }
+        else
+        {
+            // This condition is not possible, if a response is received
+            // before the instance ID expiry, then the response handler
+            // is executed and the entry will be removed.
+            assert(false);
+        }
+    }
+
+    /** @brief Send the remaining PLDM request messages in endpoint queue
+     *
+     *  @param[in] eid - endpoint ID of the remote MCTP endpoint
+     */
+    int pollEndpointQueue(mctp_eid_t eid)
+    {
+        if (endpointMessageQueues[eid]->activeRequest ||
+            endpointMessageQueues[eid]->requestQueue.empty())
+        {
+            return PLDM_SUCCESS;
+        }
+
+        endpointMessageQueues[eid]->activeRequest = true;
+        auto requestMsg = endpointMessageQueues[eid]->requestQueue.front();
+        endpointMessageQueues[eid]->requestQueue.pop_front();
+
+        auto request = std::make_unique<RequestInterface>(
+            pldmTransport, requestMsg->key.eid, event,
+            std::move(requestMsg->reqMsg), numRetries, responseTimeOut,
+            verbose);
+        auto timer = std::make_unique<sdbusplus::Timer>(
+            event.get(), std::bind(&Handler::instanceIdExpiryCallBack, this,
+                                   requestMsg->key));
+
+        auto rc = request->start();
+        if (rc)
+        {
+            instanceIdDb.free(requestMsg->key.eid, requestMsg->key.instanceId);
+            error(
+                "Failure to send the PLDM request message for polling endpoint "
+                "queue, response code '{RC}'",
+                "RC", rc);
+            endpointMessageQueues[eid]->activeRequest = false;
+            return rc;
+        }
+
+        try
+        {
+            timer->start(duration_cast<std::chrono::microseconds>(
+                instanceIdExpiryInterval));
+        }
+        catch (const std::runtime_error& e)
+        {
+            instanceIdDb.free(requestMsg->key.eid, requestMsg->key.instanceId);
+            error(
+                "Failed to start the instance ID expiry timer, error - {ERROR}",
+                "ERROR", e);
+            endpointMessageQueues[eid]->activeRequest = false;
+            return PLDM_ERROR;
+        }
+
+        handlers.emplace(requestMsg->key,
+                         std::make_tuple(std::move(request),
+                                         std::move(requestMsg->responseHandler),
+                                         std::move(timer)));
+        return PLDM_SUCCESS;
+    }
+
     /** @brief Register a PLDM request message
      *
      *  @param[in] eid - endpoint ID of the remote MCTP endpoint
@@ -130,94 +266,98 @@ class Handler
     {
         RequestKey key{eid, instanceId, type, command};
 
-        auto instanceIdExpiryCallBack = [key, this](void) {
-            if (this->handlers.contains(key.eid) &&
-                !this->handlers[key.eid].empty())
-            {
-                auto& [request, responseHandler, timerInstance, requestKey] =
-                    handlers[key.eid].front();
-                if (key == requestKey)
-                {
-                    lg2::error(
-                        "Response not received for the request, instance ID "
-                        "expired. EID={EID}, INSTANCE_ID={INSTANCE_ID} ,"
-                        "TYPE={TYPE}, COMMAND={COMMAND}",
-                        "EID", key.eid, "INSTANCE_ID", key.instanceId, "TYPE",
-                        key.type, "COMMAND", key.command);
-                    request->stop();
-                    auto rc = timerInstance->stop();
-                    if (rc)
-                    {
-                        lg2::error(
-                            "Failed to stop the instance ID expiry timer. RC={RC}",
-                            "RC", rc);
-                    }
-
-                    this->removeRequestContainer.emplace(
-                        key, std::make_unique<sdeventplus::source::Defer>(
-                                 event, std::bind(&Handler::removeRequestEntry,
-                                                  this, key)));
-                }
-                else
-                {
-                    // This condition is not possible, if a response is received
-                    // before the instance ID expiry, then the response handler
-                    // is executed and the entry will be removed.
-                    assert(false);
-                }
-            }
-        };
-
-        auto request = std::make_unique<RequestInterface>(
-            pldmTransport, eid, event, std::move(requestMsg), numRetries,
-            responseTimeOut, verbose);
-        auto timer = std::make_unique<sdbusplus::Timer>(
-            event.get(), instanceIdExpiryCallBack);
-
-        handlers[eid].emplace(
-            std::make_tuple(std::move(request), std::move(responseHandler),
-                            std::move(timer), std::move(key)));
-        return runRegisteredRequest(eid);
-    }
-
-    int runRegisteredRequest(mctp_eid_t eid)
-    {
-        if (handlers[eid].empty())
+        if (handlers.contains(key))
         {
-            return PLDM_SUCCESS;
-        }
-
-        auto& [request, responseHandler, timerInstance, key] =
-            handlers[eid].front();
-
-        if (timerInstance->isRunning())
-        {
-            // A PLDM request for the EID is running
-            return PLDM_SUCCESS;
-        }
-
-        auto rc = request->start();
-        if (rc)
-        {
-            instanceIdDb.free(eid, key.instanceId);
-            lg2::error("Failure to send the PLDM request message");
-            return rc;
-        }
-
-        try
-        {
-            timerInstance->start(duration_cast<std::chrono::microseconds>(
-                instanceIdExpiryInterval));
-        }
-        catch (const std::runtime_error& e)
-        {
-            instanceIdDb.free(eid, key.instanceId);
-            lg2::error("Failed to start the instance ID expiry timer.", "ERROR",
-                       e);
+            error(
+                "Register request for EID '{EID}' is using InstanceID '{INSTANCEID}'",
+                "EID", eid, "INSTANCEID", instanceId);
             return PLDM_ERROR;
         }
 
+        auto inputRequest = std::make_shared<RegisteredRequest>(
+            key, std::move(requestMsg), std::move(responseHandler));
+        if (endpointMessageQueues.contains(eid))
+        {
+            endpointMessageQueues[eid]->requestQueue.push_back(inputRequest);
+        }
+        else
+        {
+            std::deque<std::shared_ptr<RegisteredRequest>> reqQueue;
+            reqQueue.push_back(inputRequest);
+            endpointMessageQueues[eid] =
+                std::make_shared<EndpointMessageQueue>(eid, reqQueue, false);
+        }
+
+        /* try to send new request if the endpoint is free */
+        pollEndpointQueue(eid);
+
         return PLDM_SUCCESS;
+    }
+
+    /** @brief Unregister a PLDM request message
+     *
+     *  @param[in] eid - endpoint ID of the remote MCTP endpoint
+     *  @param[in] instanceId - instance ID to match request and response
+     *  @param[in] type - PLDM type
+     *  @param[in] command - PLDM command
+     *
+     *  @return return PLDM_SUCCESS on success and PLDM_ERROR otherwise
+     */
+    int unregisterRequest(mctp_eid_t eid, uint8_t instanceId, uint8_t type,
+                          uint8_t command)
+    {
+        RequestKey key{eid, instanceId, type, command};
+
+        /* handlers only contain key when the message is already sent */
+        if (handlers.contains(key))
+        {
+            auto& [request, responseHandler, timerInstance] = handlers[key];
+            request->stop();
+            auto rc = timerInstance->stop();
+            if (rc)
+            {
+                error(
+                    "Failed to stop the instance ID expiry timer, response code '{RC}'",
+                    "RC", static_cast<int>(rc));
+            }
+
+            instanceIdDb.free(key.eid, key.instanceId);
+            handlers.erase(key);
+            endpointMessageQueues[eid]->activeRequest = false;
+            /* try to send new request if the endpoint is free */
+            pollEndpointQueue(eid);
+
+            return PLDM_SUCCESS;
+        }
+        else
+        {
+            if (!endpointMessageQueues.contains(eid))
+            {
+                error("Can't find request for EID '{EID}' is using InstanceID "
+                      "'{INSTANCEID}' in Endpoint message Queue",
+                      "EID", (unsigned)eid, "INSTANCEID", (unsigned)instanceId);
+                return PLDM_ERROR;
+            }
+            auto requestMsg = endpointMessageQueues[eid]->requestQueue;
+            /* Find the registered request in the requestQueue */
+            for (auto it = requestMsg.begin(); it != requestMsg.end();)
+            {
+                auto msg = *it;
+                if (msg->key == key)
+                {
+                    // erase and get the next valid iterator
+                    it = endpointMessageQueues[eid]->requestQueue.erase(it);
+                    instanceIdDb.free(key.eid, key.instanceId);
+                    return PLDM_SUCCESS;
+                }
+                else
+                {
+                    ++it; // increment iterator only if not erasing
+                }
+            }
+        }
+
+        return PLDM_ERROR;
     }
 
     /** @brief Handle PLDM response message
@@ -234,45 +374,43 @@ class Handler
                         size_t respMsgLen)
     {
         RequestKey key{eid, instanceId, type, command};
-        bool responseHandled = false;
-
-        if (handlers.contains(eid) && !handlers[eid].empty())
+        if (handlers.contains(key) && !removeRequestContainer.contains(key))
         {
-            auto& [request, responseHandler, timerInstance, requestKey] =
-                handlers[eid].front();
-            if (key == requestKey)
+            auto& [request, responseHandler, timerInstance] = handlers[key];
+            request->stop();
+            auto rc = timerInstance->stop();
+            if (rc)
             {
-                request->stop();
-                auto rc = timerInstance->stop();
-                if (rc)
-                {
-                    lg2::error(
-                        "Failed to stop the instance ID expiry timer. RC={RC}",
-                        "RC", rc);
-                }
-                // Call responseHandler after erase it from the handlers to
-                // avoid starting it again in runRegisteredRequest()
-                auto unique_handler = std::move(responseHandler);
-                handlers[eid].pop();
-                unique_handler(eid, response, respMsgLen);
-
-                // Free InstanceId after calling handler so two consequent
-                // requests do not have same Instance Id
-                instanceIdDb.free(eid, instanceId);
-                responseHandled = true;
+                error(
+                    "Failed to stop the instance ID expiry timer, response code '{RC}'",
+                    "RC", rc);
             }
-        }
+            responseHandler(eid, response, respMsgLen);
+            instanceIdDb.free(key.eid, key.instanceId);
+            handlers.erase(key);
 
-        if (!responseHandled)
-        {
-            // Got a response for a PLDM request message not registered with
-            // the request handler, so freeing up the instance ID, this can
-            // be other OpenBMC applications relying on PLDM D-Bus apis like
-            // openpower-occ-control and softoff or through pldmtool.
-            instanceIdDb.free(eid, instanceId);
+            endpointMessageQueues[eid]->activeRequest = false;
+            /* try to send new request if the endpoint is free */
+            pollEndpointQueue(eid);
         }
-        runRegisteredRequest(eid);
+        else
+        {
+            // Got a response for a PLDM request message not registered with the
+            // request handler, so freeing up the instance ID, this can be other
+            // OpenBMC applications relying on PLDM D-Bus apis like
+            // openpower-occ-control and softoff
+            instanceIdDb.free(key.eid, key.instanceId);
+        }
     }
+
+    /** @brief Wrap registerRequest with coroutine API.
+     *
+     *  @return Return [PLDM_ERROR, _, _] if registerRequest fails.
+     *          Return [PLDM_ERROR_NOT_READY, nullptr, 0] if timed out.
+     *          Return [PLDM_SUCCESS, resp, len] if succeeded
+     */
+    stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto
+        sendRecvMsg(mctp_eid_t eid, pldm::Request&& request);
 
   private:
     PldmTransport* pldmTransport; //!< PLDM transport object
@@ -291,11 +429,14 @@ class Handler
      */
     using RequestValue =
         std::tuple<std::unique_ptr<RequestInterface>, ResponseHandler,
-                   std::unique_ptr<sdbusplus::Timer>, RequestKey>;
-    using RequestQueue = std::queue<RequestValue>;
+                   std::unique_ptr<sdbusplus::Timer>>;
+
+    // Manage the requests of responders base on MCTP EID
+    std::map<mctp_eid_t, std::shared_ptr<EndpointMessageQueue>>
+        endpointMessageQueues;
 
     /** @brief Container for storing the PLDM request entries */
-    std::unordered_map<mctp_eid_t, RequestQueue> handlers;
+    std::unordered_map<RequestKey, RequestValue, RequestKeyHasher> handlers;
 
     /** @brief Container to store information about the request entries to be
      *         removed after the instance ID timer expires
@@ -313,295 +454,214 @@ class Handler
         if (removeRequestContainer.contains(key))
         {
             removeRequestContainer[key].reset();
-            if (!handlers[key.eid].empty())
-            {
-                auto& [request, responseHandler, timerInstance, requestKey] =
-                    handlers[key.eid].front();
-                if (key == requestKey)
-                {
-                    auto unique_handler = std::move(responseHandler);
-                    handlers[key.eid].pop();
-
-                    // Call response handler with an empty response to indicate
-                    // no response only if request is removed from the queue
-                    unique_handler(key.eid, nullptr, 0);
-                    instanceIdDb.free(key.eid, key.instanceId);
-                }
-            }
+            instanceIdDb.free(key.eid, key.instanceId);
+            handlers.erase(key);
             removeRequestContainer.erase(key);
         }
-        runRegisteredRequest(key.eid);
     }
 };
 
-/** @struct SendRecvPldmMsg
+/** @class SendRecvMsgOperation
  *
- * An awaitable object needed by co_await operator to send/recv PLDM
- * message.
- * e.g.
- * rc = co_await SendRecvPldmMsg<h>(h, eid, req, respMsg, respLen);
+ *  Represents the state and logic for a single send/receive message operation
  *
- * @tparam RequesterHandler - Requester::handler class type
+ * @tparam RequestInterface - Request class type
+ * @tparam stdexec::receiver - Execute receiver
  */
-template <class RequesterHandler>
-struct SendRecvPldmMsg
+template <class RequestInterface, stdexec::receiver R>
+struct SendRecvMsgOperation
 {
-    /** @brief For recording the suspended coroutine where the co_await
-     * operator is. When PLDM response message is received, the resumeHandle()
-     * will be called to continue the next line of co_await operator
-     */
-    std::coroutine_handle<> resumeHandle;
+    SendRecvMsgOperation() = delete;
 
-    /** @brief The RequesterHandler to send/recv PLDM message.
-     */
-    RequesterHandler& handler;
-
-    /** @brief The EID where PLDM message will be sent to.
-     */
-    uint8_t eid;
-
-    /** @brief The PLDM request message.
-     */
-    pldm::Request& request;
-
-    /** @brief The pointer of PLDM response message.
-     */
-    const pldm_msg** responseMsg;
-
-    /** @brief The length of PLDM response message.
-     */
-    size_t* responseLen;
-
-    /** @brief For keeping the return value of RequesterHandler.
-     */
-    uint8_t rc;
-
-    /** @brief Returning false to make await_suspend() to be called.
-     */
-    bool await_ready() noexcept
+    explicit SendRecvMsgOperation(Handler<RequestInterface>& handler,
+                                  mctp_eid_t eid, pldm::Request&& request,
+                                  R&& r) :
+        handler(handler),
+        request(std::move(request)), receiver(std::move(r))
     {
-        return false;
+        auto requestMsg =
+            reinterpret_cast<const pldm_msg*>(this->request.data());
+        requestKey = RequestKey{
+            eid,
+            requestMsg->hdr.instance_id,
+            requestMsg->hdr.type,
+            requestMsg->hdr.command,
+        };
+        response = nullptr;
+        respMsgLen = 0;
     }
 
-    /** @brief Called by co_await operator before suspending coroutine. The
-     * method will send out PLDM request message, register handleResponse() as
-     * call back function for the event when PLDM response message received.
+    /** @brief Checks if the operation has been requested to stop.
+     *         If so, it sets the state to stopped.Registers the request with
+     *         the handler. If registration fails, sets an error on the
+     *         receiver. If stopping is possible, sets up a stop callback.
+     *
+     *  @param[in] op - operation request
+     *
+     *  @return Execute errors
      */
-    bool await_suspend(std::coroutine_handle<> handle) noexcept
+    friend void tag_invoke(stdexec::start_t, SendRecvMsgOperation& op) noexcept
     {
-        if (responseMsg == nullptr || responseLen == nullptr)
+        auto stopToken = stdexec::get_stop_token(stdexec::get_env(op.receiver));
+
+        // operation already cancelled
+        if (stopToken.stop_requested())
         {
-            rc = PLDM_ERROR_INVALID_DATA;
-            return false;
+            return stdexec::set_stopped(std::move(op.receiver));
         }
 
-        auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-        rc = handler.registerRequest(
-            eid, requestMsg->hdr.instance_id, requestMsg->hdr.type,
-            requestMsg->hdr.command, std::move(request),
-            std::move(std::bind_front(&SendRecvPldmMsg::HandleResponse, this)));
+        using namespace std::placeholders;
+        auto rc = op.handler.registerRequest(
+            op.requestKey.eid, op.requestKey.instanceId, op.requestKey.type,
+            op.requestKey.command, std::move(op.request),
+            std::bind(&SendRecvMsgOperation::onComplete, &op, _1, _2, _3));
         if (rc)
         {
-            lg2::error("registerRequest failed, rc={RC}", "RC",
-                       static_cast<unsigned>(rc));
-            return false;
+            return stdexec::set_value(std::move(op.receiver), rc,
+                                      static_cast<const pldm_msg*>(nullptr),
+                                      static_cast<size_t>(0));
         }
 
-        resumeHandle = handle;
-        return true;
+        if (stopToken.stop_possible())
+        {
+            op.stopCallback.emplace(
+                std::move(stopToken),
+                std::bind(&SendRecvMsgOperation::onStop, &op));
+        }
     }
 
-    /** @brief Called by co_await operator to get return value when awaitable
-     * object completed.
+    /** @brief Unregisters the request and sets the state to stopped on the
+     *         receiver.
      */
-    uint8_t await_resume() const noexcept
+    void onStop()
     {
-        return rc;
+        handler.unregisterRequest(requestKey.eid, requestKey.instanceId,
+                                  requestKey.type, requestKey.command);
+        return stdexec::set_stopped(std::move(receiver));
     }
 
-    /** @brief Constructor of awaitable object to initialize necessary member
-     * variables.
+    /** @brief This function resets the stop callback. Validates the response
+     *         and sets either an error or a value on the receiver.
+     *
+     *  @param[in] eid - endpoint ID of the remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - length of the response message
+     *
+     *  @return PLDM completion code
      */
-    SendRecvPldmMsg(RequesterHandler& handler, uint8_t eid,
-                    pldm::Request& request, const pldm_msg** responseMsg,
-                    size_t* responseLen) :
+    void onComplete(mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
+    {
+        stopCallback.reset();
+        assert(eid == this->requestKey.eid);
+        auto rc = PLDM_SUCCESS;
+        if (!response && !respMsgLen)
+        {
+            rc = PLDM_ERROR_NOT_READY;
+        }
+        return stdexec::set_value(std::move(receiver), static_cast<int>(rc),
+                                  response, respMsgLen);
+    }
+
+  private:
+    /** @brief Reference to a Handler object that manages the request/response
+     *         logic.
+     */
+    requester::Handler<RequestInterface>& handler;
+
+    /** @brief Stores information about the request such as eid, instanceId,
+     *         type, and command.
+     */
+    RequestKey requestKey;
+
+    /** @brief The request message to be sent.
+     */
+    pldm::Request request;
+
+    /** @brief The response message for the sent request message.
+     */
+    const pldm_msg* response;
+
+    /** @brief The length of response message for the sent request message.
+     */
+    size_t respMsgLen;
+
+    /** @brief The receiver to be notified with the result of the operation.
+     */
+    R receiver;
+
+    /** @brief An optional callback that handles stopping the operation if
+     *         requested.
+     */
+    std::optional<typename stdexec::stop_token_of_t<
+        stdexec::env_of_t<R>>::template callback_type<std::function<void()>>>
+        stopCallback = std::nullopt;
+};
+
+/** @class SendRecvMsgSender
+ *
+ *  Represents the single message sender
+ *
+ * @tparam RequestInterface - Request class type
+ */
+template <class RequestInterface>
+struct SendRecvMsgSender
+{
+    using is_sender = void;
+
+    SendRecvMsgSender() = delete;
+
+    explicit SendRecvMsgSender(requester::Handler<RequestInterface>& handler,
+                               mctp_eid_t eid, pldm::Request&& request) :
         handler(handler),
-        eid(eid), request(request), responseMsg(responseMsg),
-        responseLen(responseLen), rc(PLDM_ERROR)
+        eid(eid), request(std::move(request))
     {}
 
-    /** @brief The function will be registered by ReqisterHandler for handling
-     * PLDM response message. The copied responseMsg is for preventing that the
-     * response pointer in parameter becomes invalid when coroutine is
-     * resumed.
-     */
-    void HandleResponse(mctp_eid_t eid, const pldm_msg* response, size_t length)
+    friend auto tag_invoke(stdexec::get_completion_signatures_t,
+                           const SendRecvMsgSender&, auto)
+        -> stdexec::completion_signatures<
+            stdexec::set_value_t(int, const pldm_msg*, size_t),
+            stdexec::set_stopped_t()>;
+
+    /** @brief Execute the sending the request message */
+    template <stdexec::receiver R>
+    friend auto tag_invoke(stdexec::connect_t, SendRecvMsgSender&& self, R r)
     {
-        if (response == nullptr || !length)
-        {
-            lg2::error("No response received, EID={EID}", "EID", eid);
-            rc = PLDM_ERROR;
-        }
-        else
-        {
-            *responseMsg = response;
-            *responseLen = length;
-            rc = PLDM_SUCCESS;
-        }
-        resumeHandle();
+        return SendRecvMsgOperation<RequestInterface, R>(
+            self.handler, self.eid, std::move(self.request), std::move(r));
     }
+
+  private:
+    /** @brief Reference to a Handler object that manages the request/response
+     *         logic.
+     */
+    requester::Handler<RequestInterface>& handler;
+
+    /** @brief MCTP Endpoint ID of request message */
+    mctp_eid_t eid;
+
+    /** @brief Request message */
+    pldm::Request request;
 };
 
-/** @struct Coroutine
+/** @brief Wrap registerRequest with coroutine API.
  *
- * A coroutine return_object supports nesting coroutine
+ *  @param[in] eid - endpoint ID of the remote MCTP endpoint
+ *  @param[in] request - PLDM request message
+ *
+ *  @return Return [PLDM_ERROR, _, _] if registerRequest fails.
+ *          Return [PLDM_ERROR_NOT_READY, nullptr, 0] if timed out.
+ *          Return [PLDM_SUCCESS, resp, len] if succeeded
  */
-struct Coroutine
+template <class RequestInterface>
+stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto
+    Handler<RequestInterface>::sendRecvMsg(mctp_eid_t eid,
+                                           pldm::Request&& request)
 {
-    /** @brief The nested struct named 'promise_type' which is needed for
-     * Coroutine struct to be a coroutine return_object.
-     */
-    struct promise_type
-    {
-        /** @brief For keeping the parent coroutine handle if any. For the case
-         * of nesting co_await coroutine, this handle will be used to resume to
-         * continue parent coroutine.
-         */
-        std::coroutine_handle<> parent_handle;
-
-        /** @brief For holding return value of coroutine
-         */
-        uint8_t data;
-
-        bool detached = false;
-
-        /** @brief Get the return object object
-         */
-        Coroutine get_return_object()
-        {
-            return {std::coroutine_handle<promise_type>::from_promise(*this)};
-        }
-
-        /** @brief The method is called before starting a coroutine. Returning
-         * std::suspend_never awaitable to execute coroutine body immediately.
-         */
-        std::suspend_never initial_suspend()
-        {
-            return {};
-        }
-
-        /** @brief The method is called after coroutine completed to return a
-         * customized awaitable object to resume to parent coroutine if any.
-         */
-        auto final_suspend() noexcept
-        {
-            struct awaiter
-            {
-                /** @brief Returning false to make await_suspend to be called.
-                 */
-                bool await_ready() const noexcept
-                {
-                    return false;
-                }
-
-                /** @brief Do nothing here for customized awaitable object.
-                 */
-                void await_resume() const noexcept
-                {}
-
-                /** @brief Returning parent coroutine handle here to continue
-                 * parent corotuine.
-                 */
-                std::coroutine_handle<> await_suspend(
-                    std::coroutine_handle<promise_type> h) noexcept
-                {
-                    auto parent_handle = h.promise().parent_handle;
-                    if (h.promise().detached)
-                    {
-                        h.destroy();
-                    }
-                    if (parent_handle)
-                    {
-                        return parent_handle;
-                    }
-                    return std::noop_coroutine();
-                }
-            };
-            return awaiter{};
-        }
-
-        /** @brief The handler for an exception was thrown in
-         * coroutine body.
-         */
-        void unhandled_exception()
-        {}
-
-        /** @brief Keeping the value returned by co_return operator
-         */
-        void return_value(uint8_t value) noexcept
-        {
-            data = std::move(value);
-        }
-    };
-
-    /** @brief Called by co_await to check if it needs to be
-     * suspened.
-     */
-    bool await_ready() const noexcept
-    {
-        return handle.done();
-    }
-
-    /** @brief Called by co_await operator to get return value when coroutine
-     * finished.
-     */
-    uint8_t await_resume() const noexcept
-    {
-        return std::move(handle.promise().data);
-    }
-
-    /** @brief Called when the coroutine itself is being suspended. The
-     * recording the parent coroutine handle is for await_suspend() in
-     * promise_type::final_suspend to refer.
-     */
-    bool await_suspend(std::coroutine_handle<> coroutine)
-    {
-        handle.promise().parent_handle = coroutine;
-        return true;
-    }
-
-    ~Coroutine()
-    {
-        if (handle && handle.done())
-        {
-            handle.destroy();
-        }
-    }
-
-    void detach()
-    {
-        if (!handle)
-        {
-            return;
-        }
-
-        if (handle.done())
-        {
-            handle.destroy();
-        }
-        else
-        {
-            handle.promise().detached = true;
-        }
-        handle = nullptr;
-    }
-
-    /** @brief Assigned by promise_type::get_return_object to keep coroutine
-     * handle itself.
-     */
-    mutable std::coroutine_handle<promise_type> handle;
-};
+    return SendRecvMsgSender(*this, eid, std::move(request)) |
+           stdexec::then([](int rc, const pldm_msg* resp, size_t respLen) {
+               return std::make_tuple(rc, resp, respLen);
+           });
+}
 
 } // namespace requester
-
 } // namespace pldm

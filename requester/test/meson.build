@@ -2,6 +2,7 @@ test_src = declare_dependency(
           sources: [
             '../mctp_endpoint_discovery.cpp',
             '../../common/utils.cpp',
+            '../../common/transport.cpp',
             '../../fw-update/inventory_manager.cpp',
             '../../fw-update/package_parser.cpp',
             '../../fw-update/component_updater.cpp',
@@ -23,20 +24,26 @@ tests = [
 openssl = dependency('openssl', required : true)
 
 foreach t : tests
-  test(t, executable(t.underscorify(), t + '.cpp',
-                     implicit_include_directories: false,
-                     include_directories: ['../../', '../../pldmd'],
-                     dependencies: [
-                         gtest,
-                         gmock,
-                         libpldm_dep,
-                         libpldmutils,
-                         nlohmann_json,
-                         phosphor_dbus_interfaces,
-                         phosphor_logging,
-                         sdbusplus,
-                         sdeventplus,
-                         test_src,
-                         openssl]),
-       workdir: meson.current_source_dir())
+    test(
+        t,
+        executable(
+            t.underscorify(),
+            t + '.cpp',
+            implicit_include_directories: false,
+            include_directories: ['../../', '../../pldmd'],
+            dependencies: [
+                gtest,
+                gmock,
+                libpldm_dep,
+                nlohmann_json_dep,
+                phosphor_dbus_interfaces,
+                phosphor_logging_dep,
+                sdbusplus,
+                sdeventplus,
+                test_src,
+                openssl,
+            ],
+        ),
+        workdir: meson.current_source_dir(),
+    )
 endforeach

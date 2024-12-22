@@ -20,6 +20,7 @@
 
 #include "common/utils.hpp"
 #include "dbusutil.hpp"
+#include "requester/handler.hpp"
 #include "xyz/openbmc_project/Software/Version/server.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -27,37 +28,87 @@
 #include <chrono>
 #include <functional>
 
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
-
 namespace fw_update
 {
+
+exec::task<int>
+    InventoryManager::sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
+                                              const pldm_msg** responseMsg,
+                                              size_t* responseLen)
+{
+    int rc = 0;
+    try
+    {
+        std::tie(rc, *responseMsg, *responseLen) =
+            co_await handler.sendRecvMsg(eid, std::move(request));
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error(
+            "Send and Receive PLDM message over MCTP throw error - {ERROR}.",
+            "ERROR", e);
+        co_return PLDM_ERROR;
+    }
+    catch (const int& e)
+    {
+        lg2::error(
+            "Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
+            "ERROR", e);
+        co_return PLDM_ERROR;
+    }
+
+    co_return rc;
+}
 
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
                                    dbus::MctpInterfaces& mctpInterfaces)
 {
-    for (const auto& [eid, uuid, networkId] : mctpInfos)
+    queuedMctpInfos.emplace(mctpInfos);
+    if (discoverMctpTerminusTaskHandle.has_value())
     {
-        mctpEidMap[eid] = uuid;
-        auto co = startFirmwareDiscoveryFlow(eid, mctpInterfaces);
-
-        if (inventoryCoRoutineHandlers.contains(eid))
+        auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+        if (!rcOpt.has_value())
         {
-            inventoryCoRoutineHandlers[eid].destroy();
-            inventoryCoRoutineHandlers[eid] = co.handle;
+            return;
         }
-        else
-        {
-            inventoryCoRoutineHandlers.emplace(eid, co.handle);
-        }
+        stdexec::sync_wait(scope.on_empty());
+        discoverMctpTerminusTaskHandle.reset();
     }
+    auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+    scope.spawn(stdexec::just() | stdexec::then([&]() {
+                    [[maybe_unused]] auto _ = discoverFDsTask(mctpInterfaces);
+                    return 0;
+                }) | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
-requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
-                                                    uint64_t& supportedTypes)
+exec::task<int>
+    InventoryManager::discoverFDsTask(dbus::MctpInterfaces& mctpInterfaces)
+{
+    while (!queuedMctpInfos.empty())
+    {
+        const MctpInfos& mctpInfos = queuedMctpInfos.front();
+        for (const auto& [eid, uuid, networkId] : mctpInfos)
+        {
+            lg2::info("Starting discovery flow for eid {EID}", "EID", eid);
+            mctpEidMap[eid] = uuid;
+            co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
+        }
+        queuedMctpInfos.pop();
+    }
+
+    co_return PLDM_SUCCESS;
+}
+
+exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
+                                               uint64_t& supportedTypes)
 {
     auto instanceId = instanceIdDb.next(eid);
-    Request request(sizeof(pldm_msg_hdr));
+    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_TYPES_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_types_req(instanceId, requestMsg);
     if (rc)
@@ -70,7 +121,7 @@ requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
 
-    rc = co_await SendRecvPldmMsgOverMctp(handler, eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
@@ -92,7 +143,7 @@ requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
     co_return completionCode;
 }
 
-requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
+exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
     mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
 {
     uint8_t rc = 0;
@@ -108,6 +159,7 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
     auto isType5Supported = supportedTypes & (1 << PLDM_FWUP);
     if (!isType5Supported)
     {
+        lg2::info("Eid {EID} does not support T5", "EID", eid);
         co_return PLDM_SUCCESS;
     }
 
@@ -154,7 +206,8 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
         else
         {
             lg2::error(
-                "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
+                "Failed to attempt the execute of 'getFirmwareParameters' "
+                "function., EID={EID}, RC={RC} ",
                 "EID", eid, "RC", rc);
         }
     }
@@ -162,15 +215,15 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
     if (rc)
     {
         cleanUpResources(eid);
-        lg2::error(
-            "Failed to execute the 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
+        lg2::error("Failed to execute the 'getFirmwareParameters' function., "
+                   "EID={EID}, RC={RC} ",
+                   "EID", eid, "RC", rc);
     }
 
     co_return rc;
 }
 
-requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
+exec::task<int> InventoryManager::initiateGetActiveFirmwareVersion(
     mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
     uint64_t supportedTypes = 0;
@@ -197,19 +250,10 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
     auto co =
         getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
 
-    if (inventoryCoRoutineHandlers.contains(eid))
-    {
-        inventoryCoRoutineHandlers[eid].destroy();
-        inventoryCoRoutineHandlers[eid] = co.handle;
-    }
-    else
-    {
-        inventoryCoRoutineHandlers.emplace(eid, co.handle);
-    }
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine InventoryManager::getActiveFirmwareVersion(
+exec::task<int> InventoryManager::getActiveFirmwareVersion(
     mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
     UpdateFWVersionCallBack updateFWVersionCallback)
 {
@@ -242,7 +286,7 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
     descriptorMap.erase(eid);
 }
 
-requester::Coroutine InventoryManager::queryDeviceIdentifiers(
+exec::task<int> InventoryManager::queryDeviceIdentifiers(
     mctp_eid_t eid, std::string& messageError, std::string& resolution)
 {
 
@@ -264,8 +308,8 @@ requester::Coroutine InventoryManager::queryDeviceIdentifiers(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await SendRecvPldmMsgOverMctp(handler, eid, requestMsg,
-                                          &responseMsg, &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
+                                          &responseLen);
 
     if (rc)
     {
@@ -289,7 +333,7 @@ requester::Coroutine InventoryManager::queryDeviceIdentifiers(
     co_return rc;
 }
 
-requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
+exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     std::string& messageError, std::string& resolution)
 {
@@ -312,9 +356,11 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
         &descriptorCount, &descriptorPtr);
     if (rc)
     {
-        lg2::error(
-            "Decoding QueryDeviceIdentifiers response failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
+        error(
+            "Failed to decode query device identifiers response for endpoint ID "
+            "'{EID}' and descriptor count '{DESCRIPTOR_COUNT}', response code "
+            "'{RC}'",
+            "EID", eid, "DESCRIPTOR_COUNT", descriptorCount, "RC", rc);
         messageError =
             "Failed to discover: decoding QueryDeviceIdentifiers response failed";
         resolution = "Reset the baseboard and retry the operation.";
@@ -324,9 +370,9 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
 
     if (completionCode)
     {
-        lg2::error(
-            "QueryDeviceIdentifiers response failed with error completion code, EID={EID}, CC={CC}",
-            "EID", eid, "CC", completionCode);
+        error("Failed to query device identifiers response for endpoint ID "
+              "'{EID}', completion code '{CC}'",
+              "EID", eid, "CC", completionCode);
         messageError = "Failed to discover";
         resolution = "Reset the baseboard and retry the operation.";
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
@@ -345,9 +391,11 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
             &descriptorData);
         if (rc)
         {
-            lg2::error(
-                "Decoding descriptor type, length and value failed, EID={EID}, RC={RC} ",
-                "EID", eid, "RC", rc);
+            error(
+                "Failed to decode descriptor type {TYPE}, length {LENGTH} and "
+                "value for endpoint ID '{EID}', response code '{RC}'",
+                "TYPE", descriptorType, "LENGTH", deviceIdentifiersLen, "EID",
+                eid, "RC", rc);
             pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
             co_return PLDM_ERROR;
         }
@@ -379,8 +427,9 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
                 &vendorDefinedDescriptorData);
             if (rc)
             {
-                lg2::error(
-                    "Decoding Vendor-defined descriptor value failed, EID={EID}, RC={RC} ",
+                error(
+                    "Failed to decode vendor-defined descriptor value for endpoint "
+                    "ID '{EID}', response code '{RC}'",
                     "EID", eid, "RC", rc);
                 pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
                 co_return PLDM_ERROR;
@@ -424,7 +473,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine InventoryManager::getFirmwareParameters(
+exec::task<int> InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
@@ -437,23 +486,23 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     if (rc)
     {
         instanceIdDb.free(eid, instanceId);
-        lg2::error(
-            "encode_get_firmware_parameters_req failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
+        error("Failed to encode get firmware parameters req for endpoint ID "
+              "'{EID}', response code '{RC}'",
+              "EID", eid, "RC", rc);
         co_return rc;
     }
 
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await SendRecvPldmMsgOverMctp(handler, eid, requestMsg,
-                                          &responseMsg, &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
+                                          &responseLen);
 
     if (rc)
     {
-        lg2::error(
-            "Failed to send GetFirmwareParameters request, EID={EID}, RC={RC} ",
-            "EID", eid, "RC", rc);
+        error("Failed to send get firmware parameters request for endpoint ID "
+              "'{EID}', response code '{RC}'",
+              "EID", eid, "RC", rc);
         co_return rc;
     }
 
@@ -470,15 +519,17 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     co_return rc;
 }
 
-requester::Coroutine InventoryManager::parseGetFWParametersResponse(
+exec::task<int> InventoryManager::parseGetFWParametersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     std::string& messageError, std::string& resolution,
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     if (response == nullptr || !respMsgLen)
     {
-        lg2::error("No response received for GetFirmwareParameters, EID={EID}",
-                   "EID", eid);
+        error(
+            "No response received for get firmware parameters for endpoint ID "
+            "'{EID}'",
+            "EID", eid);
         messageError = "Discovery Timed Out";
         resolution = "Reset the baseboard and retry the operation.";
         co_return PLDM_ERROR;
@@ -494,21 +545,24 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
         &pendingCompImageSetVerStr, &compParamTable);
     if (rc)
     {
-        lg2::error(
-            "Decoding GetFirmwareParameters response failed, EID={EID}, RC={RC}",
+        error(
+            "Failed to decode get firmware parameters response for endpoint ID "
+            "'{EID}', response code '{RC}'",
             "EID", eid, "RC", rc);
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
         messageError =
             "Failed to discover: decoding GetFirmwareParameters response failed";
         resolution = "Reset the baseboard and retry the operation.";
-        co_return PLDM_ERROR;
+        co_return rc;
     }
 
     if (fwParams.completion_code)
     {
-        lg2::error(
-            "GetFirmwareParameters response failed with error completion code, EID={EID}, CC={CC}",
-            "EID", eid, "CC", fwParams.completion_code);
+        auto fw_param_cc = fwParams.completion_code;
+        error(
+            "Failed to get firmware parameters response for endpoint ID '{EID}', "
+            "completion code '{CC}'",
+            "EID", eid, "CC", fw_param_cc);
         messageError = "Failed to discover";
         resolution = "Reset the baseboard and retry the operation.";
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
@@ -529,8 +583,9 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
             &pendingCompVerStr);
         if (rc)
         {
-            lg2::error(
-                "Decoding component parameter table entry failed, EID={EID}, RC={RC}",
+            error(
+                "Failed to decode component parameter table entry for endpoint ID "
+                "'{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
             messageError =
                 "Failed to discover: decoding component parameter table entry failed";
