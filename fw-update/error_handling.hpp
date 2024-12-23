@@ -144,7 +144,15 @@ static ErrorMapping verifyCompleteMapping{
      {"Security version check failed",
       "Verify the contents of the FW package"}},
     {secKeysReovked,
-     {"Security keys revoked", "Verify the contents of the FW package"}},
+     {"Image authentication failed because security keys used to sign the"
+      " image has been revoked",
+      "Verify the contents of the FW package. In "
+      "production systems, this error suggests that a debug-signed image update"
+      " was attempted without the debug token being installed. To resolve this,"
+      " verify the debug token installation status using the "
+      "LogService.CollectDiagnosticData API with the DebugTokenStatus parameter."
+      " If the tokens are not installed, follow the debug token installation"
+      " steps and retry the update."}},
     {imageAuthFailure,
      {"Component image authentication check failed",
       "Verify the contents of the FW package"}},
