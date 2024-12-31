@@ -126,7 +126,8 @@ class StateSensor
 
     void handleSensorEvent(uint8_t sensorOffset, uint8_t eventState);
     void createLogEntry(std::string& messageID, std::string& arg1,
-                        std::string& arg2, std::string& resolution);
+                        std::string& arg2, std::string& resolution,
+                        Level level = Level::Informational);
 
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to
      */

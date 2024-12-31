@@ -23,12 +23,14 @@
 #include "platform-mc/oem_base.hpp"
 
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 namespace pldm
 {
 namespace platform_mc
 {
 
+using Level = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
 class StateEffecter;
 class StateSensor;
 class StateSet;
@@ -98,7 +100,8 @@ class StateSet
         return id;
     }
     virtual std::string getStringStateType() const = 0;
-    virtual std::tuple<std::string, std::string> getEventData() const = 0;
+    virtual std::tuple<std::string, std::string, Level>
+        getEventData() const = 0;
     virtual void updateSensorName([[maybe_unused]] std::string name){};
 };
 

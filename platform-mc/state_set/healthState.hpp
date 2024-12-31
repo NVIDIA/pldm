@@ -89,25 +89,25 @@ class StateSetHealthState : public StateSet
         ValueIntf->health(HealthType::OK);
     }
 
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         switch (ValueIntf->health())
         {
             case HealthType::Critical:
                 return {std::string(
                             "ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                        std::string("Critical")};
+                        std::string("Critical"), Level::Informational};
                 break;
             case HealthType::Warning:
                 return {std::string(
                             "ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                        std::string("Warning")};
+                        std::string("Warning"), Level::Informational};
                 break;
             case HealthType::OK:
             default:
                 return {
                     std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("OK")};
+                    std::string("OK"), Level::Informational};
                 break;
         }
     }

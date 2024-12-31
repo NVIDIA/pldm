@@ -118,18 +118,18 @@ class StateSetPerformance : public StateSet
         ValueIntf->value(ProcessorPerformanceStates::Unknown);
     }
 
-    std::tuple<std::string, std::string> getEventData() const override
+    std::tuple<std::string, std::string, Level> getEventData() const override
     {
         if (ValueIntf->value() == ProcessorPerformanceStates::Normal)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Normal")};
+                    std::string("Normal"), Level::Informational};
         }
         else
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Throttled")};
+                std::string("Throttled"), Level::Informational};
         }
     }
 
