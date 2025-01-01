@@ -926,13 +926,19 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         progressTimer->stop();
         progressTimer.reset();
         activationProgress->progress(100);
-        std::string compName = "Firmware Update Service";
-        std::string messageError = "No Matching Devices";
-        std::string resolution =
-            "Verify the FW package has devices that are listed in the"
-            " Redfish FW Inventory";
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
+#ifdef OEM_NVIDIA
+        if (!(debugToken->isDebugTokenComponentPresent() &&
+              parser->getComponentImageInfos().size() == 1))
+#endif
+        {
+            std::string compName = "Firmware Update Service";
+            std::string messageError = "No Matching Devices";
+            std::string resolution =
+                "Verify the FW package has devices that are listed in the"
+                " Redfish FW Inventory";
+            createLogEntry(resourceErrorDetected, compName, messageError,
+                           resolution);
+        }
         activationBlocksTransition.reset();
         clearFirmwareUpdatePackage();
         return software::Activation::Activations::Active;

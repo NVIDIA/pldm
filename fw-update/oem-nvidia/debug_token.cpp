@@ -106,7 +106,7 @@ void DebugToken::updateDebugToken(
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
     const ComponentImageInfos& componentImageInfos, std::istream& package)
 {
-    bool installToken = false;
+    installToken = false;
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
         const auto& fwDeviceIDRecord = fwDeviceIDRecords[index];

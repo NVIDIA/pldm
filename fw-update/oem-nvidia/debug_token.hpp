@@ -82,6 +82,15 @@ class DebugToken
                           const ComponentImageInfos& componentImageInfos,
                           std::istream& package);
 
+    /**
+     * @brief Checks if the debug token component is present
+     *
+     */
+    bool isDebugTokenComponentPresent() const
+    {
+        return installToken;
+    }
+
   private:
     UpdateManager* updateManager;
     /* install or erase token path */
@@ -108,6 +117,8 @@ class DebugToken
 
     /* contains install or erase completion status */
     bool tokenStatus;
+
+    bool installToken = false;
 
     /**
      * @brief Async call to monitor the activate change in D-Bus
