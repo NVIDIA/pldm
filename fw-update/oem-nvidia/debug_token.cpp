@@ -306,7 +306,8 @@ void DebugToken::startTimer(auto timerExpiryTime)
                 createLogEntry(transferFailed, componentName, tokenVersion,
                                transferFailedResolution);
             }
-            lg2::error("Activation Timer expired for install debug token");
+            lg2::error(
+                "Activation Timer expired for install/erase debug token");
             startUpdate();
         }
     });
