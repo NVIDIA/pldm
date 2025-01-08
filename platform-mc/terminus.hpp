@@ -209,7 +209,7 @@ class Terminus
 
     requester::Coroutine scanInventories();
 
-    void updateAssociations();
+    requester::Coroutine updateAssociations();
 
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);

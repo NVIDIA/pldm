@@ -16,6 +16,7 @@
  */
 #include "oem_nvidia.hpp"
 
+#include "common/dBusAsyncUtils.hpp"
 #include "memoryPageRetirementCount.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
@@ -378,7 +379,22 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
-void nvidiaUpdateAssociations(Terminus& terminus)
+static std::string cpuNameToMemoryName(const std::string& cpuName)
+{
+    // The sensors are associated to CPU by default based on contained id. Using
+    // it to associate with corresponding Memory.
+    if (cpuName == "HGX_CPU_0" || cpuName == "CPU_0")
+    {
+        return "ProcessorModule_0_Memory_0";
+    }
+    if (cpuName == "HGX_CPU_1" || cpuName == "CPU_1")
+    {
+        return "ProcessorModule_1_Memory_0";
+    }
+    return "";
+}
+
+requester::Coroutine nvidiaUpdateAssociations(Terminus& terminus)
 {
     for (auto sensor : terminus.stateSensors)
     {
@@ -435,7 +451,54 @@ void nvidiaUpdateAssociations(Terminus& terminus)
                 }
             }
         }
+        else if (std::get<1>(entityInfo) == PLDM_ENTITY_MEMORY_CONTROLLER)
+        {
+            for (auto& stateSet : sensor->stateSets)
+            {
+                if (stateSet == nullptr)
+                {
+                    continue;
+                }
+
+                if (stateSet->getStateSetId() == PLDM_STATESET_ID_PERFORMANCE)
+                {
+                    std::vector<std::string> assocPaths;
+                    auto assocEntityId = sensor->getAssociationEntityId();
+                    auto memoryName = cpuNameToMemoryName(assocEntityId);
+                    std::vector<std::string> memoryInventories;
+                    auto getSubTreeResponse = co_await utils::coGetSubTree(
+                        "/xyz/openbmc_project/inventory", 0,
+                        {"xyz.openbmc_project.Inventory.Item.Dimm"});
+                    for (const auto& [objPath, mapperServiceMap] :
+                         getSubTreeResponse)
+                    {
+                        if (objPath.find("ProcessorModule") !=
+                            std::string::npos)
+                        {
+                            memoryInventories.emplace_back(objPath);
+                        }
+                    }
+                    for (const auto& inventory : memoryInventories)
+                    {
+                        sdbusplus::message::object_path path(inventory);
+                        if (memoryName == path.filename())
+                        {
+                            assocPaths.emplace_back(inventory);
+                        }
+                    }
+                    std::vector<dbus::PathAssociation> assocs;
+                    for (const auto& path : assocPaths)
+                    {
+                        dbus::PathAssociation assoc = {"memory", "all_states",
+                                                       path};
+                        assocs.emplace_back(assoc);
+                    }
+                    stateSet->setAssociation(assocs);
+                }
+            }
+        }
     }
+    co_return PLDM_SUCCESS;
 }
 
 } // namespace nvidia

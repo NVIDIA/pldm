@@ -18,6 +18,7 @@
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
+#include "oem/nvidia/platform-mc/state_set/memoryPerformance.hpp"
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
 #include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
 #endif
@@ -70,9 +71,16 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
         return std::make_unique<oem_nvidia::StateSetDebugState>(
             stateSetId, compId, path, stateAssociation, nullptr);
     }
+    else if (stateSetId == PLDM_STATESET_ID_PERFORMANCE &&
+             entityType == PLDM_ENTITY_MEMORY_CONTROLLER)
+    {
+        return std::make_unique<StateSetMemoryPerformance>(
+            stateSetId, compId, path, stateAssociation);
+    }
 #endif
 
-    if (stateSetId == PLDM_STATESET_ID_PERFORMANCE)
+    if (stateSetId == PLDM_STATESET_ID_PERFORMANCE &&
+        entityType == PLDM_ENTITY_PROC)
     {
         return std::make_unique<StateSetPerformance>(stateSetId, compId, path,
                                                      stateAssociation);

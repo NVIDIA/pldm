@@ -21,11 +21,14 @@
 #include "common/types.hpp"
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #include "platform-mc/oem_base.hpp"
+#include "requester/handler.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/State/Decorator/Persistence/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
+
+#include <coroutine>
 
 using namespace pldm::pdr;
 
@@ -110,7 +113,7 @@ void nvidiaInitTerminus(Terminus& terminus);
 std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     parseOEMEnergyCountNumericSensorPDR(const std::vector<uint8_t>& pdrData);
 
-void nvidiaUpdateAssociations(Terminus& terminus);
+requester::Coroutine nvidiaUpdateAssociations(Terminus& terminus);
 
 } // namespace nvidia
 } // namespace platform_mc
