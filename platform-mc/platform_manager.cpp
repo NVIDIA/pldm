@@ -65,7 +65,7 @@ exec::task<int> PlatformManager::initTerminus()
                     co_await terminus->scanInventories();
                     // update Sensor Objects with information from Platform
                     // Configuration PDIs
-                    terminus->updateAssociations();
+                    co_await terminus->updateAssociations();
                     terminus->initalized = true;
                 }
             }

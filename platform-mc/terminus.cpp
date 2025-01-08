@@ -1308,7 +1308,7 @@ exec::task<int> Terminus::scanInventories()
     co_return PLDM_SUCCESS;
 }
 
-void Terminus::updateAssociations()
+exec::task<int> Terminus::updateAssociations()
 {
     entities.clear();
 
@@ -1388,8 +1388,9 @@ void Terminus::updateAssociations()
     }
 
 #ifdef OEM_NVIDIA
-    nvidia::nvidiaUpdateAssociations(*this);
+    co_await nvidia::nvidiaUpdateAssociations(*this);
 #endif
+    co_return PLDM_SUCCESS;
 }
 std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
                                                  const bool findClosest)
@@ -1735,7 +1736,7 @@ exec::task<int> Terminus::refreshAssociationsTask()
         // Update inventory list
         co_await scanInventories();
         // Update Sensor PDIs
-        updateAssociations();
+        co_await updateAssociations();
     }
     co_return PLDM_SUCCESS;
 }

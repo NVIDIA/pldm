@@ -211,7 +211,7 @@ class Terminus
 
     exec::task<int> scanInventories();
 
-    void updateAssociations();
+    exec::task<int> updateAssociations();
 
     void addNumericSensor(
         const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr);
