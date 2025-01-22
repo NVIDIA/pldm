@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #include "libpldm/bios.h"
 #include "libpldm/bios_table.h"
 

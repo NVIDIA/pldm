@@ -30,12 +30,12 @@ openssl = dependency('openssl', required : true)
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
                      implicit_include_directories: false,
-                     link_args: dynamic_linker,
-                     build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
+                     include_directories: ['../../', '../../pldmd'],
                      dependencies: [
                          gtest,
                          gmock,
                          libpldm_dep,
+                         libpldmutils,
                          nlohmann_json,
                          phosphor_dbus_interfaces,
                          phosphor_logging,

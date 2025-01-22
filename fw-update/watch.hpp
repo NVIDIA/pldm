@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "config.h"
-
 #include "common/types.hpp"
 #include "common/utils.hpp"
 

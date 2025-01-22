@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #include "libpldm/base.h"
 #include "oem/ibm/libpldm/file_io.h"
 #include "oem/ibm/libpldm/host.h"

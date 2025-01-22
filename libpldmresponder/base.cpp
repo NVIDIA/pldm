@@ -1,4 +1,4 @@
-#include "config.h"
+
 
 #include "libpldm/base.h"
 

@@ -135,6 +135,12 @@ configure_file(output: 'config.h',
   configuration: conf_data
 )
 
+add_project_arguments(
+    '-include',
+    '@0@'.format(meson.current_build_dir() / 'config.h'),
+    language: 'cpp',
+)
+
 cpp = meson.get_compiler('cpp')
 
 libpldm_dep = dependency(

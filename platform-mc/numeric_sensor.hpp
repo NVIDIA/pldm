@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "config.h"
-
 #include "libpldm/platform.h"
 #include "libpldm/requester/pldm.h"
 #ifdef OEM_NVIDIA

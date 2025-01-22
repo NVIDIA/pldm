@@ -1,4 +1,4 @@
-#include "config.h"
+
 
 #include "common/utils.hpp"
 #include "fw-update/component_updater.hpp"

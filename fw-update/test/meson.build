@@ -11,6 +11,7 @@ fw_update_test_src = declare_dependency(
             '../firmware_inventory.cpp',
             '../package_signature.cpp',
             '../../common/utils.cpp',
+            '../../common/test/mocked_utils.hpp',
             '../../pldmd/dbus_impl_requester.cpp',
             '../../pldmd/instance_id.cpp',
             '../other_device_update_manager.cpp',
@@ -40,13 +41,13 @@ openssl = dependency('openssl', required : true)
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
                      implicit_include_directories: false,
-                     link_args: dynamic_linker,
-                     build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
+                     include_directories: '../../pldmd',
                      dependencies: [
                          fw_update_test_src,
                          gmock,
                          gtest,
                          libpldm_dep,
+                         libpldmutils,
                          nlohmann_json,
                          phosphor_dbus_interfaces,
                          phosphor_logging,

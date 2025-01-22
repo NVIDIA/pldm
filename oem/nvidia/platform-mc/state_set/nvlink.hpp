@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "config.h"
-
 #include "libpldm/state_set_oem_nvidia.h"
 
 #include "common/types.hpp"

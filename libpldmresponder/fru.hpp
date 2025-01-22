@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #include "libpldm/fru.h"
 #include "libpldm/pdr.h"
 

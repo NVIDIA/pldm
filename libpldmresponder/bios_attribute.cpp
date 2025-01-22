@@ -1,4 +1,4 @@
-#include "config.h"
+
 
 #include "bios_attribute.hpp"
 

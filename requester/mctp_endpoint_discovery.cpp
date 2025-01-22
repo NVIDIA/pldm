@@ -1,4 +1,4 @@
-#include "config.h"
+
 
 #include "mctp_endpoint_discovery.hpp"
 

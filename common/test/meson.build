@@ -9,8 +9,6 @@ tests = [
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',
                      implicit_include_directories: false,
-                     link_args: dynamic_linker,
-                     build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
                      dependencies: [
                          common_test_src,
                          gtest,
@@ -18,6 +16,7 @@ foreach t : tests
                          nlohmann_json,
                          phosphor_dbus_interfaces,
                          phosphor_logging,
+                         libpldmutils,
                          sdbusplus]),
        workdir: meson.current_source_dir())
 endforeach
