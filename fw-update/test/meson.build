@@ -1,6 +1,7 @@
 fw_update_test_src = declare_dependency(
           sources: [
             'fake_dbusutil.cpp',
+            '../../test/test_instance_id.hpp',
             '../inventory_manager.cpp',
             '../package_parser.cpp',
             '../component_updater.cpp',
@@ -11,8 +12,6 @@ fw_update_test_src = declare_dependency(
             '../firmware_inventory.cpp',
             '../package_signature.cpp',
             '../../common/utils.cpp',
-            '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp',
             '../other_device_update_manager.cpp',
             '../watch.cpp'])
 

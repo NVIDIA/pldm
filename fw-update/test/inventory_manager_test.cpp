@@ -16,9 +16,11 @@
  */
 #include "libpldm/firmware_update.h"
 
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #include "fw-update/inventory_manager.hpp"
 #include "requester/test/mock_request.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <gtest/gtest.h>
 
@@ -31,17 +33,14 @@ class InventoryManagerTest : public testing::Test
   protected:
     InventoryManagerTest() :
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
-                          "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        inventoryManager(reqHandler, dbusImplRequester, nullptr,
-                         outDescriptorMap, outComponentInfoMap,
-                         deviceInventoryInfo)
+        inventoryManager(reqHandler, instanceIdDb, nullptr, outDescriptorMap,
+                         outComponentInfoMap, deviceInventoryInfo)
     {}
 
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     InventoryManager inventoryManager;

@@ -96,7 +96,7 @@ requester::Coroutine DeviceUpdater::startDeviceUpdate()
 
 requester::Coroutine DeviceUpdater::sendRequestUpdate()
 {
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     // NumberOfComponents
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -128,7 +128,7 @@ requester::Coroutine DeviceUpdater::sendRequestUpdate()
         sizeof(struct pldm_request_update_req) + compImgSetVerStrInfo.length);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_request_update_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
@@ -238,7 +238,7 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
 {
     pldmRequest.reset();
 
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     // TransferFlag
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -279,7 +279,7 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
     }
     else
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error(
             "Error: Unable to find the specified component in ComponentInfo");
         auto errorMsg =
@@ -314,7 +314,7 @@ requester::Coroutine DeviceUpdater::sendPassCompTableRequest(size_t offset)
         sizeof(pldm_pass_component_table_req) + compVerStrInfo.length);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_pass_component_table_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
@@ -479,7 +479,7 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
 requester::Coroutine DeviceUpdater::sendActivateFirmwareRequest()
 {
     pldmRequest.reset();
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr) +
                     sizeof(struct pldm_activate_firmware_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
@@ -491,7 +491,7 @@ requester::Coroutine DeviceUpdater::sendActivateFirmwareRequest()
         sizeof(pldm_activate_firmware_req));
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_activate_firmware_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
         co_return rc;
@@ -677,7 +677,7 @@ requester::Coroutine DeviceUpdater::updateComponentCompletion(
 requester::Coroutine DeviceUpdater::sendCancelUpdateRequest()
 {
     deviceUpdaterState.set(DeviceUpdaterSequence::CancelUpdate);
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
@@ -687,7 +687,7 @@ requester::Coroutine DeviceUpdater::sendCancelUpdateRequest()
                                        PLDM_CANCEL_UPDATE_REQ_BYTES);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_cancel_update_req failed, EID={EID}, RC={RC}", "EID",
                    eid, "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);

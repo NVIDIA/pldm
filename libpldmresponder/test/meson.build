@@ -21,8 +21,7 @@ if get_option('oem-ibm').enabled()
 endif
 
   dep_src_files = [
-  '../../pldmd/instance_id.cpp',
-  '../../pldmd/dbus_impl_requester.cpp'
+  '../../test/test_instance_id.hpp'
   ]
 dep_src = declare_dependency(sources: dep_src_files,include_directories: '../../requester')
 

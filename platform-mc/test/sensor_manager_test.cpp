@@ -16,7 +16,9 @@
  */
 #include "config.h"
 
+#include "common/instance_id.hpp"
 #include "mock_sensor_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdeventplus/event.hpp>
 
@@ -34,10 +36,8 @@ class SensorManagerTest : public testing::Test
     SensorManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false),
-        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
-                        nullptr),
+        reqHandler(event, instanceIdDb, sockManager, false),
+        terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr),
         sensorManager(event, terminusManager, termini, nullptr)
     {
         reqHandler.setSocketHandler(nullptr);
@@ -60,7 +60,7 @@ class SensorManagerTest : public testing::Test
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;

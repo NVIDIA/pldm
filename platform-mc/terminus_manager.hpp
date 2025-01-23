@@ -60,7 +60,7 @@ class TerminusManager
     explicit TerminusManager(
         sdeventplus::Event& event,
         requester::Handler<requester::Request>& handler,
-        dbus_api::Requester& requester,
+        pldm::InstanceIdDb& instanceIdDb,
         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
         mctp_eid_t localEid, Manager* manager,
         bool numericSensorsWithoutAuxName = false);
@@ -175,7 +175,7 @@ class TerminusManager
 
     sdeventplus::Event& event;
     RequesterHandler& handler;
-    dbus_api::Requester& requester;
+    pldm::InstanceIdDb& instanceIdDb;
 
     /** @brief Managed termini list */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;

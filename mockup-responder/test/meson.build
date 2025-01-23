@@ -2,6 +2,7 @@ dep_src_files = [
     '../../fw-update/config.cpp',
     '../../libpldm/requester/pldm.c',
     '../../libpldm/base.c',
+    '../../libpldm/instance-id.c',
     '../../common/utils.cpp',
     '../../libpldmresponder/base.cpp',
     '../../pldmd/handler.hpp',
@@ -11,8 +12,6 @@ dep_src_files = [
     '../mockup_responder.cpp',
     '../pdr_json_parser.cpp',
     '../sensor_to_dbus.cpp',
-    '../../pldmd/dbus_impl_requester.cpp',
-    '../../pldmd/instance_id.cpp'
 ]
 
 dep_src_headers = [

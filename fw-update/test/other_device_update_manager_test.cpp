@@ -14,8 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "common/instance_id.hpp"
 #include "fw-update/activation.hpp"
 #include "fw-update/other_device_update_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <stddef.h>
 #include <systemd/sd-bus.h>
@@ -39,10 +41,9 @@ class OtherDeviceUpdateManagerTest : public testing::Test
         busMock(sdbusplus::get_mocked_new(&sdbusMock)),
         updatePolicy(busMock, "/xyz/openbmc_project/software"),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(busMock, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false,
+        reqHandler(event, instanceIdDb, sockManager, false,
                    std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
-        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+        updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true)
     {}
 
@@ -50,7 +51,7 @@ class OtherDeviceUpdateManagerTest : public testing::Test
     sdbusplus::bus::bus busMock;
     UpdatePolicy updatePolicy;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;

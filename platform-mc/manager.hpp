@@ -18,10 +18,10 @@
 
 #include "libpldm/requester/pldm.h"
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "event_manager.hpp"
 #include "platform_manager.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "sensor_manager.hpp"
@@ -31,7 +31,6 @@ namespace pldm
 {
 namespace platform_mc
 {
-using namespace pldm::dbus_api;
 using namespace pldm::pdr;
 
 /**
@@ -52,12 +51,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
-                     Requester& requester, fw_update::Manager& fwUpdateManager,
-                     bool verbose = false,
+                     InstanceIdDb& instanceIdDb,
+                     fw_update::Manager& fwUpdateManager, bool verbose = false,
                      bool numericSensorsWithoutAuxName = false) :
         fwUpdateManager(fwUpdateManager),
-        terminusManager(event, handler, requester, termini, LOCAL_EID_OVER_I2C,
-                        this, numericSensorsWithoutAuxName),
+        terminusManager(event, handler, instanceIdDb, termini,
+                        LOCAL_EID_OVER_I2C, this, numericSensorsWithoutAuxName),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, this, verbose),
         eventManager(terminusManager, termini, fwUpdateManager, verbose),

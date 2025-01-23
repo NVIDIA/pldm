@@ -25,10 +25,10 @@
 #include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
 #endif
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
 #include "pldmServiceReadyInterface.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "terminus.hpp"
 #include "terminus_manager.hpp"

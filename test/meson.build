@@ -1,11 +1,7 @@
-test_src = declare_dependency(
-          sources: [
-            '../pldmd/instance_id.cpp'])
+pldmd_inc = include_directories('../')
+test_src = declare_dependency(include_directories: pldmd_inc)
 
-tests = [
-  'pldmd_instanceid_test',
-  'pldmd_registration_test',
-]
+tests = ['pldmd_registration_test']
 
 foreach t : tests
   test(t, executable(t.underscorify(), t + '.cpp',

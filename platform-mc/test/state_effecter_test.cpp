@@ -17,9 +17,11 @@
 
 #include "libpldm/entity.h"
 
+#include "common/instance_id.hpp"
 #include "platform-mc/state_effecter.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <gtest/gtest.h>
 
@@ -31,11 +33,9 @@ class TestStateEffecter : public ::testing::Test
     TestStateEffecter() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
-                        nullptr)
+        terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr)
     {
         reqHandler.setSocketHandler(nullptr);
     }
@@ -47,7 +47,7 @@ class TestStateEffecter : public ::testing::Test
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;

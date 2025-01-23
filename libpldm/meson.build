@@ -5,6 +5,7 @@ headers = [
   'bios.h',
   'bios_table.h',
   'entity.h',
+  'instance-id.h',
   'states.h',
   'state_set.h',
   'fru.h',
@@ -18,6 +19,7 @@ sources = [
   'platform.c',
   'bios.c',
   'bios_table.c',
+  'instance-id.c',
   'fru.c',
   'utils.c',
   'pdr.c',
@@ -84,6 +86,10 @@ import('pkgconfig').generate(
   description: 'PLDM protocol encode/decode C lib',
   version: meson.project_version(),
   libraries: libpldm)
+
+install_subdir('instance-db',
+               install_mode: 'r--r--r--',
+               install_dir: get_option('datadir') / meson.project_name())
 
 if get_option('tests').enabled()
   subdir('tests')

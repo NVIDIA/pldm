@@ -12,7 +12,6 @@
 
 #include <vector>
 
-using namespace pldm::dbus_api;
 using namespace pldm::responder;
 
 namespace pldm
@@ -25,11 +24,11 @@ namespace base
 class Handler : public CmdHandler
 {
   public:
-    Handler(uint8_t eid, Requester& requester, sdeventplus::Event& event,
+    Handler(uint8_t eid, InstanceIdDb& instanceIdDb, sdeventplus::Event& event,
             pldm::responder::oem_platform::Handler* oemPlatformHandler,
             pldm::requester::Handler<pldm::requester::Request>* handler) :
         eid(eid),
-        requester(requester), event(event),
+        instanceIdDb(instanceIdDb), event(event),
         oemPlatformHandler(oemPlatformHandler), handler(handler)
     {
         handlers.emplace(PLDM_GET_PLDM_TYPES,
@@ -94,10 +93,10 @@ class Handler : public CmdHandler
     /** @brief MCTP EID of host firmware */
     uint8_t eid;
 
-    /** @brief reference to Requester object, primarily used to access API to
+    /** @brief reference to InstanceIdDb object, primarily used to access API to
      *  obtain PLDM instance id.
      */
-    Requester& requester;
+    InstanceIdDb& instanceIdDb;
 
     /** @brief reference of main event loop of pldmd, primarily used to schedule
      *  work

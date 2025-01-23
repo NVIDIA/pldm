@@ -18,6 +18,7 @@
 
 #include "libpldm/requester/pldm.h"
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
@@ -25,7 +26,6 @@
 #include "device_updater.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
@@ -40,8 +40,6 @@ namespace pldm
 
 namespace fw_update
 {
-
-using namespace pldm::dbus_api;
 
 class MctpDiscoveryHandlerIntf;
 
@@ -65,21 +63,21 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] event - reference to PLDM daemon's main event loop
      *  @param[in] handler - PLDM request handler
-     *  @param[in] requester - Managing instance ID for PLDM requests
+     *  @param[in] instanceIdDb - Managing instance ID for PLDM requests
      *  @param[in] fwUpdateConfigFile - Config file for firmware update
      *  @param[in] dBusHandlerIntf - Interface to make D-Bus client calls
      *  @param[in] fwDebug - Verbosity flag to enable debug traces for fw update
      */
     explicit Manager(Event& event,
                      requester::Handler<requester::Request>& handler,
-                     Requester& requester,
+                     InstanceIdDb& instanceIdDb,
                      const std::filesystem::path& fwUpdateConfigFile,
                      utils::DBusHandlerInterface* dBusHandlerIntf,
                      bool fwDebug) :
-        inventoryMgr(handler, requester,
+        inventoryMgr(handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
                      descriptorMap, componentInfoMap, deviceInventoryInfo),
-        updateManager(event, handler, requester, descriptorMap,
+        updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap,

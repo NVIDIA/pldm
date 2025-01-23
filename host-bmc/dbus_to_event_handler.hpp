@@ -2,8 +2,8 @@
 
 #include "libpldm/platform.h"
 
+#include "common/instance_id.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 
 #include <map>
@@ -37,11 +37,11 @@ class DbusToPLDMEvent
     /** @brief Constructor
      *  @param[in] mctp_fd - fd of MCTP communications socket
      *  @param[in] mctp_eid - MCTP EID of host firmware
-     *  @param[in] requester - reference to Requester object
+     *  @param[in] instanceIdDb - reference to InstanceIdDb object
      *  @param[in] handler - PLDM request handler
      */
     explicit DbusToPLDMEvent(
-        int mctp_fd, uint8_t mctp_eid, pldm::dbus_api::Requester& requester,
+        int mctp_fd, uint8_t mctp_eid, InstanceIdDb& instanceIdDb,
         pldm::requester::Handler<pldm::requester::Request>* handler);
 
   public:
@@ -71,10 +71,10 @@ class DbusToPLDMEvent
     /** @brief MCTP EID of host firmware */
     uint8_t mctp_eid;
 
-    /** @brief reference to Requester object, primarily used to access API to
+    /** @brief reference to InstanceIdDb object, primarily used to access API to
      *  obtain PLDM instance id.
      */
-    pldm::dbus_api::Requester& requester;
+    pldm::InstanceIdDb& instanceIdDb;
 
     /** @brief D-Bus property changed signal match */
     std::vector<std::unique_ptr<sdbusplus::bus::match::match>>

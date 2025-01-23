@@ -5,7 +5,6 @@
 
 #include "common/flight_recorder.hpp"
 #include "common/utils.hpp"
-#include "dbus_impl_requester.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
 #include "platform-mc/manager.hpp"
@@ -155,24 +154,24 @@ int main(int argc, char** argv)
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
     sdbusplus::server::manager::manager sensorsObjManager(
         bus, "/xyz/openbmc_project/sensors");
-    dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");
+    InstanceIdDb instanceIdDb;
 
     event.set_watchdog(true);
 
     Invoker invoker{};
     mctp_socket::Manager sockManager;
-    requester::Handler<requester::Request> reqHandler(event, dbusImplReq,
+    requester::Handler<requester::Request> reqHandler(event, instanceIdDb,
                                                       sockManager, verbose);
     DBusHandler dbusHandler;
 
     std::unique_ptr<fw_update::Manager> fwManager =
-        std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
+        std::make_unique<fw_update::Manager>(event, reqHandler, instanceIdDb,
                                              FW_UPDATE_CONFIG_JSON,
                                              &dbusHandler, fwDebug);
 
 #ifdef PLDM_TYPE2
     std::unique_ptr<platform_mc::Manager> platformManager =
-        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
+        std::make_unique<platform_mc::Manager>(event, reqHandler, instanceIdDb,
                                                *(fwManager.get()), verbose,
                                                numericSensorsWithoutAuxName);
 
@@ -209,7 +208,7 @@ int main(int argc, char** argv)
         {
             hostPDRHandler = std::make_shared<HostPDRHandler>(
                 sockfd, hostEID, event, pdrRepo.get(), EVENTS_JSONS_DIR,
-                entityTree.get(), bmcEntityTree.get(), dbusImplReq,
+                entityTree.get(), bmcEntityTree.get(), instanceIdDb,
                 &reqHandler);
             // HostFirmware interface needs access to hostPDR to know if host
             // is running
@@ -217,10 +216,10 @@ int main(int argc, char** argv)
 
             hostEffecterParser =
                 std::make_unique<pldm::host_effecters::HostEffecterParser>(
-                    &dbusImplReq, sockfd, pdrRepo.get(), &dbusHandler,
+                    &instanceIdDb, sockfd, pdrRepo.get(), &dbusHandler,
                     HOST_JSONS_DIR, &reqHandler);
             dbusToPLDMEventHandler = std::make_unique<DbusToPLDMEvent>(
-                sockfd, hostEID, dbusImplReq, &reqHandler);
+                sockfd, hostEID, instanceIdDb, &reqHandler);
         }
         std::unique_ptr<oem_platform::Handler> oemPlatformHandler{};
 
@@ -229,17 +228,17 @@ int main(int argc, char** argv)
             std::make_unique<pldm::responder::CodeUpdate>(&dbusHandler);
         codeUpdate->clearDirPath(LID_STAGING_DIR);
         oemPlatformHandler = std::make_unique<oem_ibm_platform::Handler>(
-            &dbusHandler, codeUpdate.get(), sockfd, hostEID, dbusImplReq, event,
-            &reqHandler);
+            &dbusHandler, codeUpdate.get(), sockfd, hostEID, instanceIdDb,
+            event, &reqHandler);
         codeUpdate->setOemPlatformHandler(oemPlatformHandler.get());
         invoker.registerHandler(PLDM_OEM,
                                 std::make_unique<oem_ibm::Handler>(
                                     oemPlatformHandler.get(), sockfd, hostEID,
-                                    &dbusImplReq, &reqHandler));
+                                    &instanceIdDb, &reqHandler));
 #endif
         invoker.registerHandler(
             PLDM_BIOS, std::make_unique<bios::Handler>(
-                           sockfd, hostEID, &dbusImplReq, &reqHandler));
+                           sockfd, hostEID, &instanceIdDb, &reqHandler));
         auto fruHandler = std::make_unique<fru::Handler>(
             FRU_JSONS_DIR, FRU_MASTER_JSON, pdrRepo.get(), entityTree.get(),
             bmcEntityTree.get());
@@ -326,7 +325,7 @@ int main(int argc, char** argv)
         invoker.registerHandler(PLDM_PLATFORM, std::move(platformHandler));
         invoker.registerHandler(PLDM_BASE,
                                 std::make_unique<base::Handler>(
-                                    hostEID, dbusImplReq, event,
+                                    hostEID, instanceIdDb, event,
                                     oemPlatformHandler.get(), &reqHandler));
         invoker.registerHandler(PLDM_FRU, std::move(fruHandler));
         dbus_api::Pdr dbusImplPdr(bus, "/xyz/openbmc_project/pldm",

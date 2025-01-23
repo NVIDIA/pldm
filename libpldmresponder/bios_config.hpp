@@ -4,7 +4,6 @@
 
 #include "bios_attribute.hpp"
 #include "bios_table.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 
 #include <nlohmann/json.hpp>
@@ -72,13 +71,13 @@ class BIOSConfig
      *  @param[in] dbusHandler - Dbus Handler
      *  @param[in] fd - socket descriptor to communicate to host
      *  @param[in] eid - MCTP EID of host firmware
-     *  @param[in] requester - pointer to Requester object
+     *  @param[in] instanceIdDb - pointer to InstanceIdDb object
      *  @param[in] handler - PLDM request handler
      */
     explicit BIOSConfig(
         const char* jsonDir, const char* tableDir,
         pldm::utils::DBusHandler* const dbusHandler, int fd, uint8_t eid,
-        dbus_api::Requester* requester,
+        InstanceIdDb* instanceIdDb,
         pldm::requester::Handler<pldm::requester::Request>* handler);
 
     /** @brief Set attribute value on dbus and attribute value table
@@ -143,10 +142,10 @@ class BIOSConfig
     /** @brief MCTP EID of host firmware */
     uint8_t eid;
 
-    /** @brief pointer to Requester object, primarily used to access API to
+    /** @brief pointer to InstanceIdDb object, primarily used to access API to
      *  obtain PLDM instance id.
      */
-    dbus_api::Requester* requester;
+    InstanceIdDb* instanceIdDb;
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>* handler;

@@ -16,11 +16,13 @@
  */
 #include "libpldm/entity.h"
 
+#include "common/instance_id.hpp"
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdeventplus/event.hpp>
 
@@ -34,16 +36,15 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
 {
     uint16_t sensorId = 1;
     std::string uuid1("00000000-0000-0000-0000-000000000001");
-    sdbusplus::bus::bus& bus(pldm::utils::DBusHandler::getBus());
     sdeventplus::Event event(sdeventplus::Event::get_default());
-    dbus_api::Requester dbusImplRequester(bus, "/xyz/openbmc_project/pldm");
+    TestInstanceIdDb instanceIdDb;
     mctp_socket::Manager sockManager;
-    requester::Handler<requester::Request> reqHandler(event, dbusImplRequester,
+    requester::Handler<requester::Request> reqHandler(event, instanceIdDb,
                                                       sockManager, false);
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
     reqHandler.setSocketHandler(nullptr);
-    TerminusManager terminusManager(event, reqHandler, dbusImplRequester,
-                                    termini, 0x8, nullptr);
+    TerminusManager terminusManager(event, reqHandler, instanceIdDb, termini,
+                                    0x8, nullptr);
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
                        terminusManager);
     std::vector<uint8_t> pdr1{

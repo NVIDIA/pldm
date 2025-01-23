@@ -6,6 +6,7 @@
 #include "libpldm/fru.h"
 #include "libpldm/platform.h"
 
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 
 #include <err.h>
@@ -170,6 +171,7 @@ class CommandInterface
 
   protected:
     uint8_t instanceId;
+    pldm::InstanceIdDb instanceIdDb;
     std::optional<std::string> socketName;
 };
 

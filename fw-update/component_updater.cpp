@@ -47,7 +47,7 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
 {
     pldmRequest.reset();
 
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     const auto& comp = compImageInfos[applicableComponents[offset]];
@@ -96,7 +96,7 @@ requester::Coroutine ComponentUpdater::sendUpdateComponentRequest(size_t offset)
         sizeof(pldm_update_component_req) + compVerStrInfo.length);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_update_component_req failed, EID={EID}, RC={RC}",
                    "EID", eid, "RC", rc);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
@@ -871,7 +871,7 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
 {
     pldmRequest.reset();
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
@@ -881,7 +881,7 @@ requester::Coroutine ComponentUpdater::sendcancelUpdateComponentRequest()
         instanceId, requestMsg, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_cancel_update_component_req failed, EID={EID}, "
                    "ComponentIndex={COMPONENTINDEX}, RC={RC}",
                    "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
@@ -983,7 +983,7 @@ requester::Coroutine
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
     pldmRequest.reset();
-    auto instanceId = updateManager->requester.getInstanceId(eid);
+    auto instanceId = updateManager->instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
@@ -993,7 +993,7 @@ requester::Coroutine
                                     PLDM_GET_STATUS_REQ_BYTES);
     if (rc)
     {
-        updateManager->requester.markFree(eid, instanceId);
+        updateManager->instanceIdDb.free(eid, instanceId);
         lg2::error("encode_get_status_req failed, EID={EID}, "
                    "ComponentIndex={COMPONENTINDEX}, RC={RC}",
                    "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);

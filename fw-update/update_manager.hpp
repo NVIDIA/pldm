@@ -19,13 +19,13 @@
 #include "libpldm/base.h"
 #include "libpldm/requester/pldm.h"
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "device_updater.hpp"
 #include "error_handling.hpp"
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
 
@@ -47,7 +47,6 @@ namespace fw_update
 
 using namespace sdeventplus;
 using namespace sdeventplus::source;
-using namespace pldm::dbus_api;
 using namespace pldm;
 namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
@@ -83,7 +82,7 @@ class UpdateManager
     explicit UpdateManager(
         Event& event,
         pldm::requester::Handler<pldm::requester::Request>& handler,
-        Requester& requester, const DescriptorMap& descriptorMap,
+        InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap, bool fwDebug);
 
@@ -215,7 +214,7 @@ class UpdateManager
     Event& event; //!< reference to PLDM daemon's main event loop
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
-    Requester& requester; //!< reference to Requester object
+    InstanceIdDb& instanceIdDb; //!< reference to InstanceIdDb object
 
     /**
      * @brief Create a Activation Object object

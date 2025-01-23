@@ -7,7 +7,7 @@
 
 #include "bios_config.hpp"
 #include "bios_table.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+#include "common/instance_id.hpp"
 #include "pldmd/handler.hpp"
 #include "requester/handler.hpp"
 
@@ -34,10 +34,10 @@ class Handler : public CmdHandler
      *
      *  @param[in] fd - socket descriptor to communicate to host
      *  @param[in] eid - MCTP EID of host firmware
-     *  @param[in] requester - pointer to Requester object
+     *  @param[in] instanceIdDb - pointer to instanceIdDb object
      *  @param[in] handler - PLDM request handler
      */
-    Handler(int fd, uint8_t eid, dbus_api::Requester* requester,
+    Handler(int fd, uint8_t eid, InstanceIdDb* instanceIdDb,
             pldm::requester::Handler<pldm::requester::Request>* handler);
 
     /** @brief Handler for GetDateTime

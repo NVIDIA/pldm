@@ -14,9 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <systemd/sd-event.h>
 
@@ -34,15 +36,14 @@ class UpdateManagerTest : public testing::Test
     UpdateManagerTest() :
         busMock(sdbusplus::get_mocked_new(&sdbusMock)),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(busMock, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false,
+        reqHandler(event, instanceIdDb, sockManager, false,
                    std::chrono::seconds(1), 2, std::chrono::milliseconds(100))
     {}
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     sdbusplus::bus::bus busMock;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
@@ -52,9 +53,8 @@ class UpdateManagerTest : public testing::Test
 
 TEST_F(UpdateManagerTest, getActivationMethod_Automatic)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "Automatic";
 
@@ -68,9 +68,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_Automatic)
 
 TEST_F(UpdateManagerTest, getActivationMethod_SelfContained)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "Self-Contained";
 
@@ -84,9 +83,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_SelfContained)
 
 TEST_F(UpdateManagerTest, getActivationMethod_AutomaticOrSelfContained)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "Automatic or Self-Contained";
 
@@ -100,9 +98,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_AutomaticOrSelfContained)
 
 TEST_F(UpdateManagerTest, getActivationMethod_MediumSpecificReset)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "Medium-specific reset";
 
@@ -116,9 +113,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_MediumSpecificReset)
 
 TEST_F(UpdateManagerTest, getActivationMethod_SystemReboot)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "System reboot";
 
@@ -132,9 +128,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_SystemReboot)
 
 TEST_F(UpdateManagerTest, getActivationMethod_AcPowerCycle)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult = "AC power cycle";
 
@@ -148,9 +143,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_AcPowerCycle)
 
 TEST_F(UpdateManagerTest, getActivationMethod_DcOrAcPowerCycle)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const std::string activationMethodResult =
         "DC power cycle or AC power cycle";
@@ -165,9 +159,8 @@ TEST_F(UpdateManagerTest, getActivationMethod_DcOrAcPowerCycle)
 
 TEST_F(UpdateManagerTest, clearFirmwareUpdatePackage)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.clearFirmwareUpdatePackage(); });
 }
@@ -177,9 +170,8 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion)
     mctp_eid_t eid = 0;
     bool status = true;
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     std::vector<ComponentName> successCompNames = {
         "TestComponentName1", "TestComponentName2", "TestComponentName3"};
@@ -194,9 +186,8 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion_withStatusEqualsFalse)
     mctp_eid_t eid = 0;
     bool status = false;
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.updateDeviceCompletion(eid, status); });
 }
@@ -206,36 +197,32 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion_withoutSuccessCompNames)
     mctp_eid_t eid = 0;
     bool status = true;
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.updateDeviceCompletion(eid, status); });
 }
 
 TEST_F(UpdateManagerTest, updateActivationProgress)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.updateActivationProgress(); });
 }
 
 TEST_F(UpdateManagerTest, clearActivationInfo)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.clearActivationInfo(); });
 }
 
 TEST_F(UpdateManagerTest, activatePackage_throw_exception)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_THROW(updateManager.activatePackage(),
                  sdbusplus::exception::SdBusError);
@@ -243,9 +230,8 @@ TEST_F(UpdateManagerTest, activatePackage_throw_exception)
 
 TEST_F(UpdateManagerTest, processPackage_empty_descriptorMap)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     updateManager.processPackage("./test_pkg");
 }
@@ -264,9 +250,8 @@ TEST_F(UpdateManagerTest, processPackage_no_matching_devices_found)
 
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     updateManager.processPackage("./test_pkg");
 }
@@ -277,8 +262,8 @@ TEST_F(UpdateManagerTest, processPackage_new)
     int expectedResult(0);
 
     requester::Handler<requester::Request> reqHandler2(
-        event, dbusImplRequester, sockManager, false, std::chrono::seconds(1),
-        2, std::chrono::milliseconds(100));
+        event, instanceIdDb, sockManager, false, std::chrono::seconds(1), 2,
+        std::chrono::milliseconds(100));
 
     mctp_eid_t eid = 0x01;
 
@@ -291,7 +276,7 @@ TEST_F(UpdateManagerTest, processPackage_new)
                                 0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6,
                                 0x75}}}}};
 
-    UpdateManager updateManager(event, reqHandler2, dbusImplRequester,
+    UpdateManager updateManager(event, reqHandler2, instanceIdDb,
                                 descriptorMap2, componentInfoMap,
                                 componentNameMap, true);
 
@@ -304,9 +289,8 @@ TEST_F(UpdateManagerTest, handleRequest_empty_descriptorMap)
 {
     uint8_t expectedResult = 0x15;
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     mctp_eid_t eid = 0;
 
@@ -340,9 +324,8 @@ TEST_F(UpdateManagerTest, handleRequest_request_fw_data)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -375,9 +358,8 @@ TEST_F(UpdateManagerTest, handleRequest_transfer_complete)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -411,9 +393,8 @@ TEST_F(UpdateManagerTest, handleRequest_verify_complete)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -447,9 +428,8 @@ TEST_F(UpdateManagerTest, handleRequest_apply_complete)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -483,9 +463,8 @@ TEST_F(UpdateManagerTest, handleRequest_not_supported_command)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap, componentNameMap, true);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -506,9 +485,8 @@ TEST_F(UpdateManagerTest, handleRequest_not_supported_command)
 TEST_F(UpdateManagerTest, setActivationStatus)
 {
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     const Server::Activation::Activations activationState =
         Server::Activation::Activations::Active;
@@ -520,9 +498,8 @@ TEST_F(UpdateManagerTest, setActivationStatus)
 
 TEST_F(UpdateManagerTest, updateOtherDeviceComponents)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     std::unordered_map<std::string, bool> otherDeviceMap = {
         {"device1", true}, {"device2", false}, {"device3", true}};
@@ -534,9 +511,8 @@ TEST_F(UpdateManagerTest, updateOtherDeviceComponents)
 
 TEST_F(UpdateManagerTest, resetActivationBlocksTransition)
 {
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap, componentInfoMap,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true);
 
     EXPECT_NO_THROW({ updateManager.resetActivationBlocksTransition(); });
 }
@@ -575,9 +551,8 @@ TEST_F(UpdateManagerTest, getComponentName)
     ComponentNameMap componentNameMap2{
         {eid, {{compIdentifier1, componentName}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap2,
-                                componentNameMap2, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap2, componentNameMap2, true);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -631,9 +606,8 @@ TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
     ComponentNameMap componentNameMap2{
         {eid, {{compIdentifier1, componentName}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap2,
-                                componentNameMap2, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap2, componentNameMap2, true);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -684,9 +658,8 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
           {PLDM_FWUP_VENDOR_DEFINED,
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
-    UpdateManager updateManager(event, reqHandler, dbusImplRequester,
-                                descriptorMap2, componentInfoMap2,
-                                componentNameMap, true);
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap2, componentNameMap, true);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -712,8 +685,8 @@ TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
     int expectedResult = -1;
 
     requester::Handler<requester::Request> reqHandler2(
-        event, dbusImplRequester, sockManager, false, std::chrono::seconds(1),
-        2, std::chrono::milliseconds(100));
+        event, instanceIdDb, sockManager, false, std::chrono::seconds(1), 2,
+        std::chrono::milliseconds(100));
 
     mctp_eid_t eid = 0x01;
 
@@ -726,7 +699,7 @@ TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
                                 0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6,
                                 0x75}}}}};
 
-    UpdateManager updateManager(event, reqHandler2, dbusImplRequester,
+    UpdateManager updateManager(event, reqHandler2, instanceIdDb,
                                 descriptorMap2, componentInfoMap,
                                 componentNameMap, true);
 

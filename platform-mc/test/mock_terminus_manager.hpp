@@ -32,11 +32,11 @@ class MockTerminusManager : public TerminusManager
   public:
     MockTerminusManager(sdeventplus::Event& event,
                         requester::Handler<requester::Request>& handler,
-                        dbus_api::Requester& requester,
+                        InstanceIdDb& instanceIdDb,
                         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
                         mctp_eid_t localEid, Manager* manager) :
-        TerminusManager(event, handler, requester, termini, localEid, manager,
-                        true)
+        TerminusManager(event, handler, instanceIdDb, termini, localEid,
+                        manager, true)
     {
         handler.setSocketHandler(nullptr);
     }

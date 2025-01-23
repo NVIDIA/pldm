@@ -9,6 +9,7 @@ pldm_headers = [
   '../libpldm',
   '../common',
   '../fw-update',
+  '../test',
   '../libpldmresponder'
 ]
 
@@ -24,6 +25,7 @@ sources_mockup_responder = [
     '../fw-update/config.cpp',
     '../libpldm/requester/pldm.c',
     '../libpldm/base.c',
+    '../libpldm/instance-id.c',
     '../fw-update/../common/utils.cpp',
     '../libpldmresponder/base.cpp',
     '../pldmd/handler.hpp',
@@ -33,8 +35,6 @@ sources_mockup_responder = [
     'mockup_responder.cpp',
     'pdr_json_parser.cpp',
     'sensor_to_dbus.cpp',
-    '../pldmd/dbus_impl_requester.cpp',
-    '../pldmd/instance_id.cpp'
 ]
 
 executable(

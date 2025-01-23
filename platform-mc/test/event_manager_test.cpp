@@ -18,6 +18,7 @@
 #include "libpldm/entity.h"
 #include "libpldm/platform.h"
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "fw-update/component_updater.hpp"
 #include "fw-update/config.hpp"
@@ -33,6 +34,7 @@
 #include "fw-update/watch.hpp"
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <gtest/gtest.h>
 
@@ -49,13 +51,11 @@ class EventManagerTest : public testing::Test
     EventManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        terminusManager(event, reqHandler, dbusImplRequester, termini,
+        terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, dbusImplRequester, "", nullptr,
-                        false),
+        fwUpdateManager(event, reqHandler, instanceIdDb, "", nullptr, false),
 
         eventManager(terminusManager, termini, fwUpdateManager)
     {
@@ -64,7 +64,7 @@ class EventManagerTest : public testing::Test
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;

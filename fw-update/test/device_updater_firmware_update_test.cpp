@@ -16,14 +16,16 @@
  */
 #include "libpldm/firmware_update.h"
 
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #define private public
+#include "common/instance_id.hpp"
 #include "fw-update/device_updater.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mocked_firmware_update_function.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
@@ -42,11 +44,9 @@ class DeviceUpdaterTestWithMockedFirmwareUpdateFunctions : public testing::Test
     DeviceUpdaterTestWithMockedFirmwareUpdateFunctions() :
         package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
-                          "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false,
+        reqHandler(event, instanceIdDb, sockManager, false,
                    std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
-        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+        updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true)
     {
         fwDeviceIDRecord = {
@@ -86,7 +86,7 @@ class DeviceUpdaterTestWithMockedFirmwareUpdateFunctions : public testing::Test
     ComponentInfo compInfo;
     ComponentIdNameMap compIdNameInfo;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
