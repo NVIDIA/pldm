@@ -304,7 +304,7 @@ class NumericSensor
     }
 
     /** @brief  The time since last getSensorReading command in usec */
-    uint64_t lastUpdatedTimeStampInUsec;
+    uint64_t lastUpdatedTimeStampInUsec = 0;
 
     /** @brief  The refresh limit in usec */
     uint64_t refreshLimitInUsec = DEFAULT_RR_REFRESH_LIMIT_IN_MS * 1000;
