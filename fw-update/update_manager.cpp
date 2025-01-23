@@ -41,13 +41,12 @@ namespace fs = std::filesystem;
 
 UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
-    Requester& requester, const DescriptorMap& descriptorMap,
+    InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug) :
-    event(event),
-    handler(handler), requester(requester), fwDebug(fwDebug),
-    descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
-    componentNameMap(componentNameMap),
+    event(event), handler(handler), instanceIdDb(instanceIdDb),
+    fwDebug(fwDebug), descriptorMap(descriptorMap),
+    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
           std::bind_front(&UpdateManager::processStagedPackage, this), this)
 {

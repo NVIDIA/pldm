@@ -5,7 +5,6 @@
 
 #include "common/flight_recorder.hpp"
 #include "common/utils.hpp"
-#include "dbus_impl_requester.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
 #include "platform-mc/pldmServiceReadyInterface.hpp"
@@ -158,7 +157,10 @@ int main(int argc, char** argv)
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
     sdbusplus::server::manager::manager sensorsObjManager(
         bus, "/xyz/openbmc_project/sensors");
-    dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm");
+
+    InstanceIdDb instanceIdDb;
+    dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm",
+                                    instanceIdDb);
 
     event.set_watchdog(true);
 
@@ -169,7 +171,7 @@ int main(int argc, char** argv)
     DBusHandler dbusHandler;
 
     std::unique_ptr<fw_update::Manager> fwManager =
-        std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
+        std::make_unique<fw_update::Manager>(event, reqHandler, instanceIdDb,
                                              FW_UPDATE_CONFIG_JSON,
                                              &dbusHandler, fwDebug);
 

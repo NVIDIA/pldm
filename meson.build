@@ -277,10 +277,7 @@ deps += [
 endif
 source_files = [
   'pldmd/pldmd.cpp',
-  'pldmd/dbus_impl_requester.cpp',
-  'pldmd/instance_id.cpp',
   'pldmd/dbus_impl_pdr.cpp',
-  'pldmd/socket_handler.cpp',
   'fw-update/inventory_manager.cpp',
   'fw-update/package_parser.cpp',
   'fw-update/component_updater.cpp',

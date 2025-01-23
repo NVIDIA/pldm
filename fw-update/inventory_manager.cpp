@@ -56,8 +56,8 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
 requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
                                                     uint64_t& supportedTypes)
 {
-    auto instanceId = requester.getInstanceId(eid);
-    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_TYPES_REQ_BYTES);
+    auto instanceId = instanceIdDb.next(eid);
+    Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_types_req(instanceId, requestMsg);
     if (rc)
@@ -261,7 +261,7 @@ requester::Coroutine InventoryManager::queryDeviceIdentifiers(
     mctp_eid_t eid, std::string& messageError, std::string& resolution)
 {
 
-    auto instanceId = requester.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
                        PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
@@ -269,7 +269,7 @@ requester::Coroutine InventoryManager::queryDeviceIdentifiers(
         instanceId, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, request);
     if (rc)
     {
-        requester.markFree(eid, instanceId);
+        instanceIdDb.free(eid, instanceId);
         lg2::error(
             "encode_query_device_identifiers_req failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
@@ -443,7 +443,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
-    auto instanceId = requester.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
                        PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
@@ -451,7 +451,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
         instanceId, PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES, request);
     if (rc)
     {
-        requester.markFree(eid, instanceId);
+        instanceIdDb.free(eid, instanceId);
         lg2::error(
             "encode_get_firmware_parameters_req failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);

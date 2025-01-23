@@ -18,7 +18,6 @@
 
 #include "common/types.hpp"
 #include "fw_update_utility.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 
@@ -114,7 +113,7 @@ class InventoryManager
     /** @brief Constructor
      *
      *  @param[in] handler - PLDM request handler
-     *  @param[in] requester - Managing instance ID for PLDM requests
+     *  @param[in] instanceIdDb - Managing instance ID for PLDM requests
      *  @param[in] createInventoryCallBack - Optional callback function to
      *                                       create device/firmware inventory
      *  @param[out] descriptorMap - Populate the firmware identifers for the
@@ -127,14 +126,14 @@ class InventoryManager
      */
     explicit InventoryManager(
         pldm::requester::Handler<pldm::requester::Request>& handler,
-        pldm::dbus_api::Requester& requester,
+        InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
         DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap,
         DeviceInventoryInfo& deviceInventoryInfo,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler),
-        requester(requester), createInventoryCallBack(createInventoryCallBack),
+        instanceIdDb(instanceIdDb), createInventoryCallBack(createInventoryCallBack),
         descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
     {}
@@ -268,15 +267,15 @@ class InventoryManager
      */
     requester::Coroutine
         getFirmwareParameters(mctp_eid_t eid, std::string& messageError,
-                              std::string& resolution,
-                              dbus::MctpInterfaces& mctpInterfaces,
+                              std::string& resolution/*,
+                              dbus::MctpInterfaces& mctpInterfaces*/,
                               bool refreshFWVersionOnly = false);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
 
-    /** @brief D-Bus API for managing instance ID*/
-    pldm::dbus_api::Requester& requester;
+    /** @brief Instance ID database for managing instance ID*/
+    InstanceIdDb& instanceIdDb;
 
     /** @brief Optional callback function to create device/firmware inventory*/
     CreateInventoryCallBack createInventoryCallBack;
