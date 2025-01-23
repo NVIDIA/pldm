@@ -1,9 +1,5 @@
-#include "libpldm/base.h"
-#include "libpldm/bios.h"
-#include "libpldm/pdr.h"
-#include "libpldm/platform.h"
-
 #include "common/flight_recorder.hpp"
+#include "common/transport.hpp"
 #include "common/utils.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
@@ -11,11 +7,14 @@
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "requester/request.hpp"
-#include "socket_handler.hpp"
-#include "socket_manager.hpp"
 
 #include <err.h>
 #include <getopt.h>
+#include <libpldm/base.h>
+#include <libpldm/bios.h>
+#include <libpldm/pdr.h>
+#include <libpldm/platform.h>
+#include <libpldm/transport.h>
 #include <poll.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -38,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -82,6 +82,72 @@ void interruptFlightRecorderCallBack(Signal& /*signal*/,
     // obtain the flight recorder instance and dump the recorder
     FlightRecorder::GetInstance().playRecorder();
 }
+
+static std::optional<Response>
+    processRxMsg(const std::vector<uint8_t>& requestMsg, Invoker& invoker,
+                 requester::Handler<requester::Request>& handler,
+                 fw_update::Manager* fwManager, pldm_tid_t tid)
+{
+    uint8_t eid = tid;
+
+    pldm_header_info hdrFields{};
+    auto hdr = reinterpret_cast<const pldm_msg_hdr*>(requestMsg.data());
+    if (PLDM_SUCCESS != unpack_pldm_header(hdr, &hdrFields))
+    {
+        error("Empty PLDM request header");
+        return std::nullopt;
+    }
+
+    if (PLDM_RESPONSE != hdrFields.msg_type)
+    {
+        Response response;
+        auto request = reinterpret_cast<const pldm_msg*>(hdr);
+        size_t requestLen = requestMsg.size() - sizeof(struct pldm_msg_hdr);
+        try
+        {
+            if (hdrFields.pldm_type != PLDM_FWUP)
+            {
+                response =
+                    invoker.handle(tid, hdrFields.pldm_type, hdrFields.command,
+                                   request, requestLen);
+            }
+            else
+            {
+                response = fwManager->handleRequest(eid, hdrFields.command,
+                                                    request, requestLen);
+            }
+        }
+        catch (const std::out_of_range& e)
+        {
+            uint8_t completion_code = PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
+            response.resize(sizeof(pldm_msg_hdr));
+            auto responseHdr = reinterpret_cast<pldm_msg_hdr*>(response.data());
+            pldm_header_info header{};
+            header.msg_type = PLDM_RESPONSE;
+            header.instance = hdrFields.instance;
+            header.pldm_type = hdrFields.pldm_type;
+            header.command = hdrFields.command;
+            if (PLDM_SUCCESS != pack_pldm_header(&header, responseHdr))
+            {
+                error(
+                    "Failed to add response header for processing Rx, error - {ERROR}",
+                    "ERROR", e);
+                return std::nullopt;
+            }
+            response.insert(response.end(), completion_code);
+        }
+        return response;
+    }
+    else if (PLDM_RESPONSE == hdrFields.msg_type)
+    {
+        auto response = reinterpret_cast<const pldm_msg*>(hdr);
+        size_t responseLen = requestMsg.size() - sizeof(struct pldm_msg_hdr);
+        handler.handleResponse(eid, hdrFields.instance, hdrFields.pldm_type,
+                               hdrFields.command, response, responseLen);
+    }
+    return std::nullopt;
+}
+
 
 void optionUsage(void)
 {
@@ -153,21 +219,19 @@ int main(int argc, char** argv)
 
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
+    PldmTransport pldmTransport{};
     sdbusplus::server::manager::manager objManager(bus, "/");
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
     sdbusplus::server::manager::manager sensorsObjManager(
         bus, "/xyz/openbmc_project/sensors");
 
     InstanceIdDb instanceIdDb;
-    dbus_api::Requester dbusImplReq(bus, "/xyz/openbmc_project/pldm",
-                                    instanceIdDb);
 
     event.set_watchdog(true);
 
     Invoker invoker{};
-    mctp_socket::Manager sockManager;
-    requester::Handler<requester::Request> reqHandler(event, dbusImplReq,
-                                                      sockManager, verbose);
+    requester::Handler<requester::Request> reqHandler(&pldmTransport, event,
+                                                      instanceIdDb, verbose);
     DBusHandler dbusHandler;
 
     std::unique_ptr<fw_update::Manager> fwManager =
@@ -189,6 +253,8 @@ int main(int argc, char** argv)
     }
 #endif
 
+        auto hostEID = pldm::utils::readHostEID();
+        pldm_tid_t TID = hostEID;
     try
     {
 #ifdef LIBPLDMRESPONDER
@@ -210,6 +276,7 @@ int main(int argc, char** argv)
             hostEffecterParser;
         std::unique_ptr<DbusToPLDMEvent> dbusToPLDMEventHandler;
         auto hostEID = pldm::utils::readHostEID();
+        pldm_tid_t TID = hostEID;
         if (hostEID)
         {
             hostPDRHandler = std::make_shared<HostPDRHandler>(
@@ -341,13 +408,9 @@ int main(int argc, char** argv)
 
 #endif
 
-        pldm::mctp_socket::Handler sockHandler(event, reqHandler, invoker,
-                                               *(fwManager.get()), sockManager,
-                                               verbose);
-
         std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
             std::make_unique<MctpDiscovery>(
-                bus, sockHandler,
+                bus,
                 // For refreshing the firmware version, it's important to invoke
                 // PLDM type 5 code prior to type 2. The descriptor Map with
                 // firmware version info is maintained in fwManager, so
@@ -359,9 +422,81 @@ int main(int argc, char** argv)
                     platformManager.get()
 #endif
                 });
+        auto callback = [verbose, &invoker, &reqHandler, &fwManager,
+                         &pldmTransport,
+                         TID](IO& io, int fd, uint32_t revents) mutable {
+            if (!(revents & EPOLLIN))
+            {
+                return;
+            }
+            if (fd < 0)
+            {
+                return;
+            }
+
+            int returnCode = 0;
+            void* requestMsg;
+            size_t recvDataLength;
+            returnCode = pldmTransport.recvMsg(TID, requestMsg, recvDataLength);
+
+            if (returnCode == PLDM_REQUESTER_SUCCESS)
+            {
+                std::vector<uint8_t> requestMsgVec(
+                    static_cast<uint8_t*>(requestMsg),
+                    static_cast<uint8_t*>(requestMsg) + recvDataLength);
+                FlightRecorder::GetInstance().saveRecord(requestMsgVec, false);
+                if (verbose)
+                {
+                    printBuffer(Rx, requestMsgVec);
+                }
+                // process message and send response
+                auto response = processRxMsg(requestMsgVec, invoker, reqHandler,
+                                             fwManager.get(), TID);
+                if (response.has_value())
+                {
+                    FlightRecorder::GetInstance().saveRecord(*response, true);
+                    if (verbose)
+                    {
+                        printBuffer(Tx, *response);
+                    }
+
+                    returnCode = pldmTransport.sendMsg(TID, (*response).data(),
+                                                       (*response).size());
+                    if (returnCode != PLDM_REQUESTER_SUCCESS)
+                    {
+                        warning(
+                            "Failed to send pldmTransport message for TID '{TID}', response code '{RETURN_CODE}'",
+                            "TID", TID, "RETURN_CODE", returnCode);
+                    }
+                }
+            }
+            // TODO check that we get here if mctp-demux dies?
+            else if (returnCode == PLDM_REQUESTER_RECV_FAIL)
+            {
+                // MCTP daemon has closed the socket this daemon is connected
+                // to. This may or may not be an error scenario, in either case
+                // the recovery mechanism for this daemon is to restart, and
+                // hence exit the event loop, that will cause this daemon to
+                // exit with a failure code.
+                error(
+                    "MCTP daemon closed the socket, IO exiting with response code '{RC}'",
+                    "RC", returnCode);
+                io.get_event().exit(0);
+            }
+            else
+            {
+                warning(
+                    "Failed to receive PLDM request for pldmTransport, response code '{RETURN_CODE}'",
+                    "RETURN_CODE", returnCode);
+            }
+            /* Free requestMsg after using */
+            free(requestMsg);
+        };
 
         bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
         bus.request_name("xyz.openbmc_project.PLDM");
+        IO io(event, pldmTransport.getEventSource(), EPOLLIN,
+              std::move(callback));
 
 #ifdef LIBPLDMRESPONDER
         if (hostPDRHandler)

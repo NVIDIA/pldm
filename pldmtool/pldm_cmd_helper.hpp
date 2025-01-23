@@ -7,6 +7,7 @@
 #include "libpldm/platform.h"
 
 #include "common/utils.hpp"
+#include "common/instance_id.hpp"
 
 #include <err.h>
 #include <sys/socket.h>
@@ -66,21 +67,6 @@ static inline void DisplayInJson(const ordered_json& data)
     std::cout << data.dump(4) << std::endl;
 }
 
-/** @brief MCTP socket read/recieve
- *
- *  @param[in]  socketName - Socket name
- *  @param[in]  requestMsg - Request message to compare against loopback
- *              message recieved from mctp socket
- *  @param[out] responseMsg - Response buffer recieved from mctp socket
- *  @param[in]  pldmVerbose - verbosity flag - true/false
- *
- *  @return -   0 on success.
- *             -1 or -errno on failure.
- */
-int mctpSockSendRecv(std::string socketName,
-                     const std::vector<uint8_t>& requestMsg,
-                     std::vector<uint8_t>& responseMsg, bool pldmVerbose);
-
 /**
  *  @brief Translate PLDM completion code as human-readable string
  *
@@ -102,7 +88,6 @@ class CommandInterface
         instanceId(0)
     {
         app->add_option("-m,--mctp_eid", mctp_eid, "MCTP endpoint ID");
-        app->add_option("-n,--socket_name", socketName, "Socket Name");
         app->add_flag("-v, --verbose", pldmVerbose);
         app->callback([&]() { exec(); });
     }
@@ -151,18 +136,6 @@ class CommandInterface
      */
     std::set<pldm::dbus::Service> getMctpServices() const;
 
-    /** @brief Get MCTP demux daemon socket address
-     *
-     *  getMctpSockAddr does a D-Bus lookup for MCTP remote endpoint and return
-     *  the unix socket info to be used for Tx/Rx
-     *
-     *  @param[in]  eid - Request MCTP endpoint
-     *
-     *  @return On success return the type, protocol and unit socket address, on
-     *          failure the address will be empty
-     */
-    std::tuple<bool, int, int, std::vector<uint8_t>>
-        getMctpSockInfo(uint8_t remoteEID);
     const std::string pldmType;
     const std::string commandName;
     uint8_t mctp_eid;
@@ -170,7 +143,7 @@ class CommandInterface
 
   protected:
     uint8_t instanceId;
-    std::optional<std::string> socketName;
+    pldm::InstanceIdDb instanceIdDb;
 };
 
 } // namespace helper

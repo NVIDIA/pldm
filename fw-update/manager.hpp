@@ -24,6 +24,7 @@
 #include "device_updater.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
+
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
@@ -103,16 +104,49 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos,
-                             dbus::MctpInterfaces& mctpInterfaces)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos) override
     {
         std::vector<mctp_eid_t> eids;
         for (auto& mctpInfo : mctpInfos)
         {
             eids.emplace_back(std::get<0>(mctpInfo));
         }
+        dbus::ObjectValueTree objects;
+        std::set<dbus::Service> mctpCtrlServices;
+        dbus::MctpInterfaces mctpInterfaces;
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        std::string uuid;
+        const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
+        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/mctp", 0, ifaceList);
+        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+        {
+            for (const auto& [serviceName, interfaces] : mapperServiceMap)
+            {
+                mctpCtrlServices.emplace(serviceName);
+            }
+        }
+        for (const auto& service : mctpCtrlServices)
+        {
+            auto method = bus.new_method_call(
+                service.c_str(), "/xyz/openbmc_project/mctp",
+                "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+            auto reply = bus.call(method);
+            reply.read(objects);
+            for (const auto& [objectPath, interfaces] : objects)
+            {
+                for (const auto& [intfName, properties] : interfaces)
+                {
+                    if (intfName == uuidEndpointIntfName)
+                    {
+                        uuid = std::get<std::string>(properties.at("UUID"));
+                        mctpInterfaces[uuid] = interfaces;
+                    }
+                }
+            }
+        }
 
-        inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
+        inventoryMgr.discoverFDs(mctpInfos);
         for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
              mctpInfos)
         {
@@ -185,13 +219,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                            [[maybe_unused]] const EID& eid) override
+                            [[maybe_unused]] const EID& eid)
     {
         this->updateFWInventory(eid);
     }
 
     void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                             [[maybe_unused]] const EID& eid) override
+                             [[maybe_unused]] const EID& eid)
     {
         // placeholder
     }

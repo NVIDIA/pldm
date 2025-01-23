@@ -22,7 +22,7 @@
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mocked_firmware_update_function.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "requester/handler.hpp"
 
 #include <sdbusplus/bus.hpp>

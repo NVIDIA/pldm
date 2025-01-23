@@ -6,6 +6,7 @@
 #include "libpldm/utils.h"
 
 #include "types.hpp"
+#include "config.h"
 
 #include <stdint.h>
 #include <systemd/sd-bus.h>
@@ -22,6 +23,11 @@
 #include <string>
 #include <variant>
 #include <vector>
+
+constexpr uint64_t dbusTimeout =
+    std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::seconds(DBUS_TIMEOUT))
+        .count();
 
 namespace pldm
 {
@@ -140,22 +146,32 @@ struct DBusMapping
     std::string propertyType; //!< D-Bus property type
 };
 
-using PropertyValue = std::variant<
-    bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-    double, std::string, std::vector<sdbusplus::message::object_path>,
-    std::vector<std::string>,
-    std::vector<std::tuple<std::string, std::string, std::string>>>;
+using PropertyValue =
+    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
+                 uint64_t, double, std::string, std::vector<uint8_t>,
+                 std::vector<std::string>,std::vector<sdbusplus::message::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<
     std::pair<pldm::dbus::Interface,
               std::vector<std::pair<pldm::dbus::Property,
                                     std::variant<pldm::dbus::Property>>>>>;
+
 using ObjectPath = std::string;
+using EntityName = std::string;
+using Entities = std::vector<pldm_entity_node*>;
+using EntityAssociations = std::vector<Entities>;
+using ObjectPathMaps = std::map<fs::path, pldm_entity_node*>;
+using EntityMaps = std::map<pldm::pdr::EntityType, EntityName>;
+
 using ServiceName = std::string;
 using Interfaces = std::vector<std::string>;
 using MapperServiceMap = std::vector<std::pair<ServiceName, Interfaces>>;
 using GetSubTreeResponse = std::vector<std::pair<ObjectPath, MapperServiceMap>>;
+using GetSubTreePathsResponse = std::vector<std::string>;
+using PropertyMap = std::map<std::string, PropertyValue>;
+using InterfaceMap = std::map<std::string, PropertyMap>;
+using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
 
 /**
  * @brief The interface for DBusHandler
@@ -177,6 +193,10 @@ class DBusHandlerInterface
     virtual PropertyValue
         getDbusPropertyVariant(const char* objPath, const char* dbusProp,
                                const char* dbusInterface) const = 0;
+
+    virtual PropertyMap
+        getDbusPropertiesVariant(const char* serviceName, const char* objPath,
+                                 const char* dbusInterface) const = 0;
 
     virtual bool checkDbusPropertyVariant(const char* objPath,
                                           const char* dbusProp,
@@ -252,6 +272,20 @@ class DBusHandler : public DBusHandlerInterface
     PropertyValue
         getDbusPropertyVariant(const char* objPath, const char* dbusProp,
                                const char* dbusInterface) const override;
+
+    /** @brief Get All properties(type: variant) from the requested dbus
+     *
+     *  @param[in] serviceName - The Dbus service name
+     *  @param[in] objPath - The Dbus object path
+     *  @param[in] dbusInterface - The Dbus interface
+     *
+     *  @return The values of the properties(type: variant)
+     *
+     *  @throw sdbusplus::exception_t when it fails
+     */
+    PropertyMap
+        getDbusPropertiesVariant(const char* serviceName, const char* objPath,
+                                 const char* dbusInterface) const override;
 
     /** @brief The template function to get property from the requested dbus
      *         path

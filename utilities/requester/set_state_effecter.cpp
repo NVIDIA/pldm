@@ -1,5 +1,6 @@
-#include "libpldm/platform.h"
+#include "common/transport.hpp"
 
+#include <libpldm/platform.h>
 #include <libpldm/pldm.h>
 
 #include <CLI/CLI.hpp>
@@ -41,19 +42,13 @@ int main(int argc, char** argv)
         }
 
         // Open connection to MCTP socket
-        int fd = pldm_open();
-        if (-1 == fd)
-        {
-            std::cerr << "Failed to init mctp"
-                      << "\n";
-            return -1;
-        }
-
-        uint8_t* responseMsg = nullptr;
+        PldmTransport pldmTransport{};
+        void* responseMsg = nullptr;
         size_t responseMsgSize{};
         // Send PLDM request msg and wait for response
-        rc = pldm_send_recv(mctpEid, fd, requestMsg.data(), requestMsg.size(),
-                            &responseMsg, &responseMsgSize);
+        rc = pldmTransport.sendRecvMsg(mctpEid, requestMsg.data(),
+                                       requestMsg.size(), responseMsg,
+                                       responseMsgSize);
         if (0 > rc)
         {
             std::cerr << "Failed to send message/receive response. RC = " << rc

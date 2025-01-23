@@ -23,6 +23,7 @@
 #include "error_handling.hpp"
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
+
 #include "requester/handler.hpp"
 #include "watch.hpp"
 

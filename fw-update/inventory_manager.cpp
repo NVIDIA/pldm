@@ -24,6 +24,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#include <chrono>
 #include <functional>
 
 namespace pldm
@@ -32,14 +33,13 @@ namespace pldm
 namespace fw_update
 {
 
-void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
-                                   dbus::MctpInterfaces& mctpInterfaces)
+void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
 {
     for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
          mctpInfos)
     {
         mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
-        auto co = startFirmwareDiscoveryFlow(eid, mctpInterfaces);
+        auto co = startFirmwareDiscoveryFlow(eid);
 
         if (inventoryCoRoutineHandlers.contains(eid))
         {
@@ -93,7 +93,7 @@ requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
 }
 
 requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
-    mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
+    mctp_eid_t eid)
 {
     uint8_t rc = 0;
     uint64_t supportedTypes = 0;
@@ -139,18 +139,12 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
         lg2::error(
             "Failed to execute the 'queryDeviceIdentifiers' function., EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
-        if (!messageError.empty() && !resolution.empty())
-        {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces);
-        }
         co_return rc;
     }
 
     while (getFirmwareParametersAttempts--)
     {
-        rc = co_await getFirmwareParameters(eid, messageError, resolution,
-                                            mctpInterfaces);
+        rc = co_await getFirmwareParameters(eid, messageError, resolution);
 
         if (rc == PLDM_SUCCESS)
         {
@@ -170,11 +164,6 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
         lg2::error(
             "Failed to execute the 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
-        if (!messageError.empty() && !resolution.empty())
-        {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces);
-        }
     }
 
     co_return rc;
@@ -203,9 +192,8 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
         co_return PLDM_SUCCESS;
     }
 
-    dbus::MctpInterfaces mctpInterfaces;
-    auto co =
-        getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
+    auto co = getActiveFirmwareVersion(
+        eid, updateFWVersionCallback);
 
     if (inventoryCoRoutineHandlers.contains(eid))
     {
@@ -220,14 +208,12 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
 }
 
 requester::Coroutine InventoryManager::getActiveFirmwareVersion(
-    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
-    UpdateFWVersionCallBack updateFWVersionCallback)
+    mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
     std::string messageError{};
     std::string resolution{};
 
-    auto rc = co_await getFirmwareParameters(eid, messageError, resolution,
-                                             mctpInterfaces, true);
+    auto rc = co_await getFirmwareParameters(eid, messageError, resolution, true);
 
     if (rc == PLDM_SUCCESS)
     {
@@ -242,11 +228,6 @@ requester::Coroutine InventoryManager::getActiveFirmwareVersion(
     lg2::error(
         "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
         "EID", eid, "RC", rc);
-    if (!messageError.empty() && !resolution.empty())
-    {
-        logDiscoveryFailedMessage(eid, messageError, resolution,
-                                  mctpInterfaces);
-    }
 
     co_return rc;
 }
@@ -441,7 +422,7 @@ requester::Coroutine InventoryManager::parseQueryDeviceIdentifiersResponse(
 
 requester::Coroutine InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
-    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
+    bool refreshFWVersionOnly)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(sizeof(pldm_msg_hdr) +
@@ -472,9 +453,9 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
         co_return rc;
     }
 
-    rc = co_await parseGetFWParametersResponse(
-        eid, responseMsg, responseLen, messageError, resolution, mctpInterfaces,
-        refreshFWVersionOnly);
+    rc = co_await parseGetFWParametersResponse(eid, responseMsg, responseLen,
+                                               messageError,
+                                               resolution, refreshFWVersionOnly);
 
     if (rc)
     {
@@ -488,7 +469,7 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
 requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     std::string& messageError, std::string& resolution,
-    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
+    bool refreshFWVersionOnly)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -637,6 +618,56 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
         }
         else
         {
+            dbus::ObjectValueTree objects;
+            std::set<dbus::Service> mctpCtrlServices;
+            dbus::MctpInterfaces mctpInterfaces;
+            auto& bus = pldm::utils::DBusHandler::getBus();
+            std::string uuid;
+            const dbus::Interfaces ifaceList{
+                "xyz.openbmc_project.MCTP.Endpoint"};
+            auto getSubTreeResponse = utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/mctp", 0, ifaceList);
+            for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+            {
+                for (const auto& [serviceName, interfaces] : mapperServiceMap)
+                {
+                    mctpCtrlServices.emplace(serviceName);
+                }
+            }
+
+            for (const auto& service : mctpCtrlServices)
+            {
+                auto path = "/xyz/openbmc_project/mctp";
+                auto method = bus.new_method_call(
+                    service.c_str(), path, "org.freedesktop.DBus.ObjectManager",
+                    "GetManagedObjects");
+                try
+                {
+                    auto reply = bus.call(method);
+                    reply.read(objects);
+                }
+                catch (std::exception& e)
+                {
+                    continue;
+                }
+                for (const auto& [objectPath, interfaces] : objects)
+                {
+                    auto path =
+                        "/xyz/openbmc_project/mctp/0/" + std::to_string(eid);
+                    if (objectPath != path)
+                    {
+                        continue;
+                    }
+                    for (const auto& [intfName, properties] : interfaces)
+                    {
+                        if (intfName == uuidEndpointIntfName)
+                        {
+                            uuid = std::get<std::string>(properties.at("UUID"));
+                            mctpInterfaces[uuid] = interfaces;
+                        }
+                    }
+                }
+            }
             std::priority_queue<MctpEidInfo> mctpEidInfo;
             mctpEidInfo.push({eid, mediumType, bindingType});
             mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
@@ -648,27 +679,6 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     }
 
     co_return PLDM_SUCCESS;
-}
-
-void InventoryManager::logDiscoveryFailedMessage(
-    const mctp_eid_t& eid, const std::string& messageError,
-    const std::string& resolution, dbus::MctpInterfaces mctpInterfaces)
-{
-    if (mctpEidMap.contains(eid))
-    {
-        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
-        DeviceInfo deviceInfo;
-        if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                    deviceInfo))
-        {
-            const auto& deviceObjPath =
-                std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
-            std::string compName =
-                std::filesystem::path(deviceObjPath).filename();
-            createLogEntry(resourceErrorDetected, compName, messageError,
-                           resolution);
-        }
-    }
 }
 
 } // namespace fw_update

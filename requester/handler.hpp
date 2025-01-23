@@ -8,27 +8,30 @@
 #include "request.hpp"
 
 #include <libpldm/pldm.h>
+#include <sys/socket.h>
 
-#include <function2/function2.hpp>
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
 #include <cassert>
 #include <chrono>
-#include <coroutine>
+#include <deque>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <tuple>
 #include <unordered_map>
 
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
-
 namespace requester
 {
-
 /** @struct RequestKey
  *
  *  RequestKey uniquely identifies the PLDM request message to match it with the
@@ -58,9 +61,8 @@ struct RequestKeyHasher
 {
     std::size_t operator()(const RequestKey& key) const
     {
-        size_t requestKeyHash = (key.eid << 24 | key.instanceId << 16 |
-                                 key.type << 8 | key.command);
-        return requestKeyHash;
+        return (key.eid << 24 | key.instanceId << 16 | key.type << 8 |
+                key.command);
     }
 };
 
@@ -81,7 +83,6 @@ using ResponseHandler = fu2::unique_function<void(
 template <class RequestInterface>
 class Handler
 {
-
   public:
     Handler() = delete;
     Handler(const Handler&) = delete;

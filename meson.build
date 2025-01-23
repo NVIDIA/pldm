@@ -27,6 +27,14 @@ package_datadir = join_paths(get_option('prefix'), get_option('datadir'), meson.
 package_localstatedir = join_paths(get_option('prefix'), get_option('localstatedir'), meson.project_name())
 
 conf_data = configuration_data()
+
+cpp = meson.get_compiler('cpp')
+# Enable POSIX poll APIs in libpldm
+if cpp.has_header('poll.h')
+    conf_data.set('PLDM_HAS_POLL', 1)
+endif
+
+conf_data.set('DBUS_TIMEOUT', 5)
 if get_option('libpldmresponder').enabled()
 conf_data.set_quoted('BIOS_JSONS_DIR', join_paths(package_datadir, 'bios'))
 conf_data.set_quoted('BIOS_TABLES_DIR', join_paths(package_localstatedir, 'bios'))
@@ -131,6 +139,12 @@ if get_option('nvlink-c2c-fabric-object').enabled()
 endif
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
 
+if get_option('transport-implementation') == 'mctp-demux'
+    conf_data.set('PLDM_TRANSPORT_WITH_MCTP_DEMUX', 1)
+elif get_option('transport-implementation') == 'af-mctp'
+    conf_data.set('PLDM_TRANSPORT_WITH_AF_MCTP', 1)
+endif
+
 configure_file(output: 'config.h',
   configuration: conf_data
 )
@@ -152,6 +166,7 @@ libpldm_dep = dependency(
 phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
 sdbusplus = dependency('sdbusplus')
 sdeventplus = dependency('sdeventplus')
+stdplus = dependency('stdplus')
 phosphor_logging = dependency('phosphor-logging')
 
 if cpp.has_header('nlohmann/json.hpp')
@@ -236,6 +251,7 @@ openssl = dependency('openssl', required : true)
 libpldmutils_headers = ['.']
 libpldmutils = library(
   'pldmutils',
+  'common/transport.cpp',
   'common/utils.cpp',
   version: meson.project_version(),
   dependencies: [
@@ -292,7 +308,7 @@ source_files = [
   'requester/mctp_endpoint_discovery.cpp',
 ]
 
-if get_option('libpldmresponder').enabled()
+if get_option('pldm-type2').enabled()
   source_files += [
   'platform-mc/terminus_manager.cpp',
   'platform-mc/terminus.cpp',
@@ -307,12 +323,14 @@ if get_option('libpldmresponder').enabled()
   'platform-mc/state_set.cpp',
   'platform-mc/smbios_mdr.cpp',
   ]
-if get_option('oem-nvidia').enabled()
-  source_files += [
-    'oem/nvidia/platform-mc/oem_nvidia.cpp',
-    'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp'
-  ]
-endif
+
+  if get_option('oem-nvidia').enabled()
+    source_files += [
+      'oem/nvidia/platform-mc/oem_nvidia.cpp',
+      'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp'
+    ]
+  endif
+
 endif
 
 if get_option('debug-token').enabled()

@@ -13,7 +13,7 @@
 #include "fw-update/package_signature.hpp"
 #include "fw-update/update_manager.hpp"
 #include "fw-update/watch.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "pldmd/socket_manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/test/mock_mctp_discovery_handler_intf.hpp"

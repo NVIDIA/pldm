@@ -7,7 +7,7 @@
 #include "common/utils.hpp"
 #include "libpldmresponder/event_parser.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "requester/handler.hpp"
 
 #include <sdeventplus/event.hpp>

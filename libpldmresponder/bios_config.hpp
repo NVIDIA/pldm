@@ -4,7 +4,7 @@
 
 #include "bios_attribute.hpp"
 #include "bios_table.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "requester/handler.hpp"
 
 #include <nlohmann/json.hpp>

@@ -18,6 +18,7 @@
 
 #include "common/types.hpp"
 #include "fw_update_utility.hpp"
+
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 
@@ -160,8 +161,7 @@ class InventoryManager
      *
      *  @param[in] eids - MCTP endpoint ID of the FDs
      */
-    void discoverFDs(const MctpInfos& mctpInfos,
-                     dbus::MctpInterfaces& mctpInterfaces);
+    void discoverFDs(const MctpInfos& mctpInfos);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -195,7 +195,6 @@ class InventoryManager
     requester::Coroutine parseGetFWParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution,
-        dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
     /** @brief Initiate Get Active Firmware Version
@@ -226,20 +225,17 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      */
     requester::Coroutine
-        startFirmwareDiscoveryFlow(mctp_eid_t eid,
-                                   dbus::MctpInterfaces mctpInterfaces);
+        startFirmwareDiscoveryFlow(mctp_eid_t eid);
 
     /** @brief Starts get Active Firmware Version Flow
      *
      *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] mctpInterfaces - Reference to the dbus::MctpInterfaces object
      * for MCTP communication.
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
     requester::Coroutine getActiveFirmwareVersion(
-        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
-        UpdateFWVersionCallBack updateFWVersionCallback);
+        mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -267,8 +263,7 @@ class InventoryManager
      */
     requester::Coroutine
         getFirmwareParameters(mctp_eid_t eid, std::string& messageError,
-                              std::string& resolution/*,
-                              dbus::MctpInterfaces& mctpInterfaces*/,
+                              std::string& resolution,
                               bool refreshFWVersionOnly = false);
 
     /** @brief PLDM request handler */
@@ -297,17 +292,6 @@ class InventoryManager
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;
 
-    /**
-     * @brief log devicediscovery failed messages
-     *
-     * @param[in] eid - mctp end point
-     * @param[in] messageError - message error
-     * @param[in] resolution - recommended resolution
-     */
-    void logDiscoveryFailedMessage(const mctp_eid_t& eid,
-                                   const std::string& messageError,
-                                   const std::string& resolution,
-                                   dbus::MctpInterfaces mctpInterfaces);
 };
 
 } // namespace fw_update

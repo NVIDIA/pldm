@@ -18,7 +18,7 @@
 
 #include "common/utils.hpp"
 #include "fw-update/update_manager.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "requester/handler.hpp"
 #include "requester/test/mock_request.hpp"
 

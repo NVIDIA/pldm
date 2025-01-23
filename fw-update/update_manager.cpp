@@ -446,6 +446,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             componentNameMap.find(deviceUpdaterInfo.first);
         if (compIdNameInfoSearch != componentNameMap.end())
         {
+
             deviceUpdaterMap.emplace(deviceUpdaterInfo.first,
                                      std::make_unique<DeviceUpdater>(
                                          deviceUpdaterInfo.first, package,
@@ -995,6 +996,7 @@ bool UpdateManager::createActivationObject()
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
+            lg2::error("Failed to create activation object: {ERROR}", "ERROR", e.what());
             return false;
         }
     }

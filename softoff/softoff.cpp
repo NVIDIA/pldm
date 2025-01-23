@@ -296,6 +296,7 @@ int SoftPowerOff::getSensorInfo()
 int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
 {
     constexpr uint8_t effecterCount = 1;
+    PldmTransport pldmTransport{};
     uint8_t mctpEID;
     uint8_t instanceID;
 
@@ -334,15 +335,6 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
     {
         std::cerr << "Message encode failure. PLDM error code = " << std::hex
                   << std::showbase << rc << "\n";
-        return PLDM_ERROR;
-    }
-
-    // Open connection to MCTP socket
-    int fd = pldm_open();
-    if (-1 == fd)
-    {
-        std::cerr << "Failed to connect to mctp demux daemon"
-                  << "\n";
         return PLDM_ERROR;
     }
 
@@ -416,10 +408,10 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
         }
         return;
     };
-    IO io(event, fd, EPOLLIN, std::move(callback));
+    IO io(event, pldmTransport.getEventSource(), EPOLLIN, std::move(callback));
 
-    // Send PLDM Request message - pldm_send doesn't wait for response
-    rc = pldm_send(mctpEID, fd, requestMsg.data(), requestMsg.size());
+    // Asynchronously send the PLDM request
+    rc = pldmTransport.sendMsg(mctpEID, requestMsg.data(), requestMsg.size());
     if (0 > rc)
     {
         std::cerr << "Failed to send message/receive response. RC = " << rc

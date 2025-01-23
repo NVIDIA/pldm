@@ -1,6 +1,7 @@
-#include "libpldm/base.h"
-#include "libpldm/platform.h"
+#include "common/transport.hpp"
 
+#include <libpldm/base.h>
+#include <libpldm/platform.h>
 #include <libpldm/pldm.h>
 
 #include <CLI/CLI.hpp>
@@ -27,6 +28,8 @@ int main(int argc, char** argv)
         app.add_option("-s,--state", state, "New state value")->required();
         CLI11_PARSE(app, argc, argv);
 
+        pldm_tid_t dstTid = static_cast<pldm_tid_t>(mctpEid);
+
         // Encode PLDM Request message
         uint8_t effecterCount = 1;
         std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(effecterId) +
@@ -46,47 +49,49 @@ int main(int argc, char** argv)
             return -1;
         }
 
-        // Get fd of MCTP socket
-        int fd = pldm_open();
-        if (-1 == fd)
-        {
-            std::cerr << "Failed to init mctp"
-                      << "\n";
-            return -1;
-        }
+        PldmTransport pldmTransport{};
 
         // Create event loop and add a callback to handle EPOLLIN on fd
         auto event = Event::get_default();
-        auto callback = [=](IO& io, int fd, uint32_t revents) {
+        auto callback = [=, &pldmTransport](IO& io, int fd,
+                                            uint32_t revents) mutable {
             if (!(revents & EPOLLIN))
             {
                 return;
             }
 
-            uint8_t* responseMsg = nullptr;
-            size_t responseMsgSize{};
-            auto rc = pldm_recv(mctpEid, fd, request->hdr.instance_id,
-                                &responseMsg, &responseMsgSize);
-            if (!rc)
+            if (pldmTransport.getEventSource() != fd)
             {
-                // We've got the response meant for the PLDM request msg that
-                // was sent out
-                io.set_enabled(Enabled::Off);
-                pldm_msg* response = reinterpret_cast<pldm_msg*>(responseMsg);
-                std::ostringstream tempStream;
-                tempStream << std::setfill('0') << std::setw(2) << std::hex
-                           << rc;
-                std::cout << "Done. PLDM RC = " << tempStream.str()
-                          << static_cast<uint16_t>(response->payload[0])
-                          << std::endl;
-                free(responseMsg);
-                exit(EXIT_SUCCESS);
+                return;
             }
+            size_t responseMsgSize{};
+            void* responseMsg = nullptr;
+            pldm_tid_t srcTid;
+            auto rc =
+                pldmTransport.recvMsg(srcTid, responseMsg, responseMsgSize);
+            pldm_msg* response = reinterpret_cast<pldm_msg*>(responseMsg);
+            if (rc || dstTid != srcTid ||
+                !pldm_msg_hdr_correlate_response(&request->hdr, &response->hdr))
+            {
+                return;
+            }
+            // We've got the response meant for the PLDM request msg
+            // that was sent out
+            io.set_enabled(Enabled::Off);
+            std::ostringstream tempStream;
+            tempStream << std::setfill('0') << std::setw(2) << std::hex << rc;
+            std::cout << "Done. PLDM RC = " << tempStream.str()
+                      << static_cast<uint16_t>(response->payload[0])
+                      << std::endl;
+            free(responseMsg);
+            exit(EXIT_SUCCESS);
         };
-        IO io(event, fd, EPOLLIN, std::move(callback));
+        IO io(event, pldmTransport.getEventSource(), EPOLLIN,
+              std::move(callback));
 
         // Send PLDM Request message - pldm_send doesn't wait for response
-        rc = pldm_send(mctpEid, fd, requestMsg.data(), requestMsg.size());
+        rc =
+            pldmTransport.sendMsg(dstTid, requestMsg.data(), requestMsg.size());
         if (0 > rc)
         {
             std::cerr << "Failed to send message/receive response. RC = " << rc

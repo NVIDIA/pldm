@@ -3,7 +3,7 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "mock_request.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
+
 #include "requester/handler.hpp"
 
 #include <gmock/gmock.h>
