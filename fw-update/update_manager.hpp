@@ -371,13 +371,6 @@ class UpdateManager
 
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
-
-    /**
-     * @brief clear staged package associated objects
-     *
-     */
-    void clearStagedPackageInfo();
-
     /**
      * @brief clear staged package and it's associated objects
      *
@@ -389,41 +382,6 @@ class UpdateManager
      *
      */
     void restoreStagedPackageActivationObjects();
-
-    /**
-     * @brief close file handler of firmware package
-     *
-     */
-    void closePackage()
-    {
-        package.close();
-    }
-
-    /**
-     * @brief integrity check of firmware package
-     *
-     */
-    bool packageIntegrityCheck();
-
-    void packageIntegrityCheckAsync(
-        std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError);
-
-    /**
-     * @brief perform security checks
-     * The function performs two types of security checks:
-     * 1. Package integrity check - using the public key stored in the signature
-     * header of the firmware package.
-     * 2. Package verification - using the public key stored on the machine
-     * in the proper location."
-     *
-     * @return True if all security checks pass; False otherwise.
-     */
-    void performSecurityChecksAsync(
-        std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError);
-
-    std::unique_ptr<PackageSignature> packageSignatureParser;
 
   private:
     /** @brief Device identifiers of the managed FDs */

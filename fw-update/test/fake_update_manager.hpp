@@ -73,10 +73,6 @@ class FakeUpdateManager
     {
         return;
     }
-    void closePackage()
-    {
-        return;
-    }
     void performSecurityChecksAsync(
         std::function<void(bool)> onComplete,
         [[maybe_unused]] std::function<void(const std::string& errorMsg)>

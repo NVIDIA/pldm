@@ -16,23 +16,17 @@
  */
 #pragma once
 
-#include "config.h"
-
-#include "common/types.hpp"
-#include "common/utils.hpp"
-
 #include <systemd/sd-event.h>
 
 #include <functional>
 #include <string>
+#include "config.h"
 
 namespace pldm
 {
 
 namespace fw_update
 {
-
-class UpdateManager;
 
 /** @class Watch
  *
@@ -51,12 +45,10 @@ class Watch
      * the immdidate update image
      *  @param[in] imageCallbackSplitStage - The callback function for
      * processing the split-stage update image
-     *  @param[in] updateManager
      */
     Watch(sd_event* loop,
           std::function<int(std::string&)> imageCallbackImmediate,
-          std::function<int(std::string&)> imageCallbackSplitStage,
-          UpdateManager* updateManager);
+          std::function<int(std::string&)> imageCallbackSplitStage);
 
     Watch(const Watch&) = delete;
     Watch& operator=(const Watch&) = delete;
@@ -66,17 +58,6 @@ class Watch
     /** @brief dtor - remove inotify watch and close fd's
      */
     ~Watch();
-    /**
-     * @brief initialize file watchers for immediate update
-     *
-     */
-    void initImmediateUpdateWatch();
-
-    /**
-     * @brief initialize file watchers for split-stage update
-     *
-     */
-    void initStagedUpdateWatch();
 
   private:
     /** @brief sd-event callback for immediate update
@@ -115,38 +96,19 @@ class Watch
      * image. */
     std::function<int(std::string&)> imageCallbackSplitStage;
 
-    sd_event* loop;
-    /* UpdateManager object to process events related to mount points */
-    UpdateManager* updateManager;
+    /**
+     * @brief initialize file watchers for immediate update
+     *
+     * @param[in] loop - event loop
+     */
+    void initializeImmediateUpdateWatch(sd_event* loop);
 
     /**
-     * @brief add file watch event listener for immediate update
+     * @brief initialize file watchers for split-stage update
      *
+     * @param[in] loop - event loop
      */
-    void addFileEventWatchImmediate();
-
-    /**
-     * @brief add file watch event listener for staged update
-     *
-     */
-    void addFileEventWatchStaged();
-
-    /**
-     * @brief checks if systemd service is completed
-     *
-     * @param[in] serviceName
-     * @return true - if service is completed
-     * @return false - if service is running or failed
-     */
-    bool isServiceCompleted(const std::string& serviceName);
-    /**
-     * @brief subscribe for service stage change events
-     *
-     * @param[in] serviceName
-     */
-    void subscribeToServiceStateChange(const std::string& serviceName);
-    std::unique_ptr<sdbusplus::bus::match_t> immediateUpdateEvent;
-    std::unique_ptr<sdbusplus::bus::match_t> stagedUpdateEvent;
+    void initializeStagedUpdateWatch(sd_event* loop);
 };
 
 } // namespace fw_update

@@ -49,10 +49,8 @@ UpdateManager::UpdateManager(
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
     componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
-          std::bind_front(&UpdateManager::processStagedPackage, this), this)
+          std::bind_front(&UpdateManager::processStagedPackage, this))
 {
-    watch.initImmediateUpdateWatch();
-    watch.initStagedUpdateWatch();
     updatePolicy = std::make_unique<UpdatePolicy>(
         pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
 
@@ -71,6 +69,31 @@ UpdateManager::UpdateManager(
             else
             {
                 std::filesystem::remove_all(entry.path());
+            }
+        }
+    }
+
+    // initiate object paths for staged image
+    if (std::filesystem::exists(FIRMWARE_PACKAGE_SPLIT_STAGING_DIR))
+    {
+        for (const auto& entry : std::filesystem::directory_iterator(
+                 FIRMWARE_PACKAGE_SPLIT_STAGING_DIR))
+        {
+            if (!(entry.is_directory()))
+            {
+                if (processStagedPackage(entry.path()) == 0)
+                {
+                    lg2::info(
+                        "Objects creation success for staged image: {IMAGE_PATH}",
+                        "IMAGE_PATH", entry.path());
+                    break; // only one image supported
+                }
+                else
+                {
+                    lg2::error(
+                        "Objects creation failed for staged image: {IMAGE_PATH}",
+                        "IMAGE_PATH", entry.path());
+                }
             }
         }
     }
@@ -445,7 +468,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         {
             activation = std::make_unique<Activation>(
                 pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Ready, this);
+                software::Activation::Activations::Failed, this);
         }
         return 0;
     }
@@ -1261,6 +1284,9 @@ void UpdateManager::updatePackageCompletion()
         activationBlocksTransition.reset();
         if (fwPackageFilePath == stagedfwPackageFilePath)
         {
+            // set requested activation to none to support b2b updates
+            // activation->requestedActivation(
+            //     software::Activation::RequestedActivations::None);
             // targets should be cleared to avoid previous targets getting
             // re-used in b2b updates
             updatePolicyStaged->targets({});
@@ -1404,7 +1430,7 @@ void UpdateManager::createProgressUpdateTimer()
     });
 }
 
-void UpdateManager::clearStagedPackageInfo()
+void UpdateManager::clearStagedPackage()
 {
     updatePolicyStaged.reset();
     epochTime.reset();
@@ -1413,11 +1439,6 @@ void UpdateManager::clearStagedPackageInfo()
     activationStaged.reset();
     activationProgressStaged.reset();
     stagedObjPath.clear();
-}
-
-void UpdateManager::clearStagedPackage()
-{
-    clearStagedPackageInfo();
     std::filesystem::remove(stagedfwPackageFilePath);
     stagedfwPackageFilePath.clear();
 }
@@ -1480,7 +1501,6 @@ int UpdateManager::processStagedPackage(
     const std::filesystem::path& packageFilePath)
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-    clearStagedPackageInfo();
     size_t versionHash = std::hash<std::string>{}(packageFilePath);
     stagedObjPath = swRootPath + "staged/" + std::to_string(versionHash);
     stagedfwPackageFilePath = packageFilePath;
@@ -1577,7 +1597,6 @@ int UpdateManager::processStagedPackage(
 
 #endif
     updateStagedPackageProperties(true, packageSize);
-    lg2::info("Firmware package stage success.");
     return 0;
 }
 
