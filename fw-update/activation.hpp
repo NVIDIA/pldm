@@ -19,16 +19,13 @@
 #include "dbusutil.hpp"
 #include "fw-update/update_manager.hpp"
 
-#include <com/nvidia/ComputeHash/server.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationBlocksTransition/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
-#include <xyz/openbmc_project/Software/PackageInformation/server.hpp>
 #include <xyz/openbmc_project/Software/UpdatePolicy/server.hpp>
-#include <xyz/openbmc_project/Time/EpochTime/server.hpp>
 
 #include <string>
 constexpr auto systemdBusname = "org.freedesktop.systemd1";
@@ -52,12 +49,6 @@ using UpdatePolicyIntf = sdbusplus::server::object::object<
 using ActivationBlocksTransitionInherit = sdbusplus::server::object::object<
     sdbusplus::xyz::openbmc_project::Software::server::
         ActivationBlocksTransition>;
-using EpochTimeIntf = sdbusplus::server::object::object<
-    sdbusplus::xyz::openbmc_project::Time::server::EpochTime>;
-using PackageInformationIntf = sdbusplus::server::object::object<
-    sdbusplus::xyz::openbmc_project::Software::server::PackageInformation>;
-using PackageHashIntf = sdbusplus::server::object::object<
-    sdbusplus::com::nvidia::server::ComputeHash>;
 
 /** @class ActivationProgress
  *
@@ -103,10 +94,6 @@ class Delete : public DeleteIntf
     void delete_() override
     {
         updateManager->clearActivationInfo();
-        if (objPath == updateManager->stagedObjPath)
-        {
-            updateManager->clearStagedPackage();
-        }
     }
 
   private:
@@ -152,25 +139,6 @@ class Activation : public ActivationIntf
             deleteImpl.reset();
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
-            if (objPath == updateManager->stagedObjPath)
-            {
-                if (updateManager->processPackage(
-                        updateManager->stagedfwPackageFilePath) != 0)
-                {
-                    lg2::error("Invalid Staged PLDM Package.");
-                    deleteImpl =
-                        std::make_unique<Delete>(bus, objPath, updateManager);
-                    std::string compName = "Firmware Update Service";
-                    std::string messageError = "Invalid FW Package";
-                    std::string resolution =
-                        "Retry firmware update operation with valid FW package.";
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
-                    updateManager->closePackage();
-                    updateManager->restoreStagedPackageActivationObjects();
-                    return ActivationIntf::activation(Activations::Failed);
-                }
-            }
             updateManager->performSecurityChecksAsync(
                 [this, updateManager(updateManager)](bool securityCheck) {
                     if (!securityCheck)
@@ -179,7 +147,6 @@ class Activation : public ActivationIntf
                             "Security checks failed setting activation to fail");
                         updateManager->resetActivationBlocksTransition();
                         updateManager->clearFirmwareUpdatePackage();
-                        updateManager->restoreStagedPackageActivationObjects();
 
                         ActivationIntf::activation(
                             software::Activation::Activations::Failed);
@@ -194,15 +161,11 @@ class Activation : public ActivationIntf
                                 "Activation failed setting activation to fail");
                             updateManager->resetActivationBlocksTransition();
                             updateManager->clearFirmwareUpdatePackage();
-                            updateManager
-                                ->restoreStagedPackageActivationObjects();
                         }
                         else if (state == Activations::Active)
                         {
                             lg2::info("Activation set to active");
                             updateManager->clearFirmwareUpdatePackage();
-                            updateManager
-                                ->restoreStagedPackageActivationObjects();
                         }
                     }
                 },
@@ -215,7 +178,6 @@ class Activation : public ActivationIntf
                         "ERRORMSG", errorMsg);
                     updateManager->resetActivationBlocksTransition();
                     updateManager->clearFirmwareUpdatePackage();
-                    updateManager->restoreStagedPackageActivationObjects();
 
                     ActivationIntf::activation(
                         software::Activation::Activations::Failed);
@@ -256,16 +218,7 @@ class Activation : public ActivationIntf
                 activation(Activations::Activating);
             }
         }
-        // set requested activation to none to support b2b updates
-        if (objPath == updateManager->stagedObjPath)
-        {
-            return ActivationIntf::requestedActivation(
-                RequestedActivations::None);
-        }
-        else
-        {
-            return ActivationIntf::requestedActivation(value);
-        }
+        return ActivationIntf::requestedActivation(value);
     }
 
   private:
@@ -386,93 +339,6 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         {
             lg2::error("Error starting service.", "ERROR", e);
         }
-    }
-};
-
-/** @class EpochTime
- *
- *  Concrete implementation of xyz.openbmc_project.Time.EpochTime D-Bus
- *  interface
- */
-class EpochTime : public EpochTimeIntf
-{
-  public:
-    /** @brief Constructor
-     *
-     *  @param[in] bus - Bus to attach to
-     *  @param[in] objPath - D-Bus object path
-     *  @param[in] timeSinceEpoch - epoch time
-     */
-    EpochTime(sdbusplus::bus::bus& bus, const std::string& objPath,
-              uint64_t timeSinceEpoch) :
-        EpochTimeIntf(bus, objPath.c_str(), action::emit_interface_added)
-
-    {
-        elapsed(timeSinceEpoch);
-    }
-};
-
-/** @class PackageInformation
- *
- *  Concrete implementation of xyz.openbmc_project.Software.PackageInformation
- * D-Bus interface
- */
-class PackageInformation : public PackageInformationIntf
-{
-  public:
-    /** @brief Constructor
-     *
-     *  @param[in] bus - Bus to attach to
-     *  @param[in] objPath - D-Bus object path
-     *  @param[in] packageVer - package version string
-     *  @param[in] packageVerificationStatus - package verification status
-     */
-    PackageInformation(sdbusplus::bus::bus& bus, const std::string& objPath,
-                       const std::string& packageVer,
-                       bool packageVerificationStatus) :
-        PackageInformationIntf(bus, objPath.c_str(),
-                               action::emit_interface_added)
-
-    {
-        packageVersion(packageVer);
-        if (packageVerificationStatus)
-        {
-            verificationStatus(PackageVerificationStatus::Valid);
-        }
-        else
-        {
-            verificationStatus(PackageVerificationStatus::Invalid);
-        }
-    }
-};
-
-/** @class PackageHash
- *
- *  Concrete implementation of com.Nvidia.ComputeHash interface
- *  interface
- */
-class PackageHash : public PackageHashIntf
-{
-  public:
-    /** @brief Constructor
-     *
-     *  @param[in] bus - Bus to attach to
-     *  @param[in] objPath - D-Bus object path
-     *  @param[in] hashVal - digest value
-     *  @param[in] hashAlgo - digest algorithm
-     */
-    PackageHash(sdbusplus::bus::bus& bus, const std::string& objPath,
-                const std::string& hashVal, const std::string& hashAlgo) :
-        PackageHashIntf(bus, objPath.c_str(), action::emit_interface_added)
-
-    {
-        digest(hashVal);
-        algorithm(hashAlgo);
-    }
-
-    void getHash([[maybe_unused]] uint16_t id) override
-    {
-        return; // implementation of this method is not required
     }
 };
 
