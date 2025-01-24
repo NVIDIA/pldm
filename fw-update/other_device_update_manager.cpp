@@ -446,6 +446,8 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 #else
     size_t totalNumImages = 0;
     startWatchingInterfaceAddition();
+    buildDeviceDescriptorMap();
+
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
         const auto& fwDeviceIDRecord = fwDeviceIDRecords[index];
@@ -463,18 +465,18 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                          "UUID", uuid);
         }
 
+        auto it = otherDeviceDescriptorMap.find({uuid, sku});
+        if (it == otherDeviceDescriptorMap.end())
+        {
+            continue;
+        }
+        auto& [directoryName, objPath] = it->second;
+
         const auto& applicableCompVec =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         if (applicableCompVec.size() == 0)
         {
             lg2::error("Invalid applicable components");
-            continue;
-        }
-
-        auto [directoryName, objPath] = getFilePath(uuid, sku);
-
-        if (directoryName == "")
-        {
             continue;
         }
 
@@ -570,86 +572,72 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-bool OtherDeviceUpdateManager::validateDescriptor(
-    const dbus::ObjectPath& objPath, std::string descriptor,
-    const char* descriptorName, const char* dbusInterface) const noexcept
+void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
 {
-    static auto dbusHandler = pldm::utils::DBusHandler();
-    std::string tmpDescriptor{};
-    try
-    {
-        tmpDescriptor = dbusHandler.getDbusProperty<std::string>(
-            objPath.c_str(), descriptorName, dbusInterface);
-    }
-    catch (const std::exception&)
-    {
-        lg2::warning(fmt::format("Object {} does not have descriptor {}",
-                                 objPath, descriptorName)
-                         .c_str());
-        return false;
-    }
+    otherDeviceDescriptorMap.clear();
 
-    std::transform(descriptor.begin(), descriptor.end(), descriptor.begin(),
-                   ::toupper);
-    std::transform(tmpDescriptor.begin(), tmpDescriptor.end(),
-                   tmpDescriptor.begin(), ::toupper);
-    return (descriptor == tmpDescriptor);
-}
-
-std::pair<std::string, std::string>
-    OtherDeviceUpdateManager::getFilePath(const UUID& uuid,
-                                          const SKU& packageSKU) const noexcept
-{
     std::vector<std::string> paths;
     getValidPaths(paths);
 
     auto dbusHandler = pldm::utils::DBusHandler();
-    for (auto& obj : paths)
-    {
 
-        if (!validateDescriptor(obj, uuid, "UUID",
-                                sdbusplus::xyz::openbmc_project::Common::
-                                    server::UUID::interface))
+    for (const auto& objPath : paths)
+    {
+        UUID uuid{};
+        try
+        {
+            uuid = dbusHandler.getDbusProperty<std::string>(
+                objPath.c_str(), "UUID",
+                sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                    interface);
+        }
+        catch (const std::exception&)
         {
             continue;
         }
 
-        if (!packageSKU.empty())
-        {
-            if (validateDescriptor(obj, packageSKU, "SKU",
-                                   sdbusplus::xyz::openbmc_project::Inventory::
-                                       Decorator::server::Asset::interface))
-            {
-                lg2::info("Found object {OBJ} with matching SKU {SKU}", "OBJ",
-                          obj, "SKU", packageSKU);
-            }
-            else
-            {
-                continue;
-            }
-        }
+        std::transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
 
-        std::string path{};
+        SKU sku{};
         try
         {
-            path = dbusHandler.getDbusProperty<std::string>(
-                obj.c_str(), "Path",
+            sku = dbusHandler.getDbusProperty<std::string>(
+                objPath.c_str(), "SKU",
+                sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
+                    Asset::interface);
+        }
+        catch (const std::exception&)
+        {
+            // If the SKU property is not present, we default to an empty
+            // string.
+        }
+
+        std::transform(sku.begin(), sku.end(), sku.begin(), ::toupper);
+
+        std::string filePath{};
+        try
+        {
+            filePath = dbusHandler.getDbusProperty<std::string>(
+                objPath.c_str(), "Path",
                 sdbusplus::xyz::openbmc_project::Common::server::FilePath::
                     interface);
         }
-        catch (const sdbusplus::exception::SdBusError& e)
+        catch (const std::exception&)
         {
-            lg2::error("failed to fetch path from D-Bus object. {ERROR}",
-                       "ERROR", e.what());
             continue;
         }
 
-        if (!path.empty())
+        auto dirPath = std::filesystem::path(filePath).parent_path().string();
+
+        otherDeviceDescriptorMap[{uuid, sku}] = {dirPath, objPath};
+
+        // This covers the scenario where the package has no SKU but we still
+        // match on just UUID.
+        if (!sku.empty())
         {
-            return {std::filesystem::path(path).parent_path(), obj};
+            otherDeviceDescriptorMap[{uuid, ""}] = {dirPath, objPath};
         }
     }
-    return {};
 }
 
 size_t OtherDeviceUpdateManager::getValidTargets(void)
