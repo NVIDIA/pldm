@@ -59,9 +59,6 @@ class Activation;
 class ActivationProgress;
 class UpdatePolicy;
 class ActivationBlocksTransition;
-class EpochTime;
-class PackageInformation;
-class PackageHash;
 
 /** @enum Enumeration to represent the types of security checks
  */
@@ -344,8 +341,6 @@ class UpdateManager
                          const FirmwareDeviceIDRecord& fwDeviceIDRecord,
                          size_t compIndex);
 
-    bool verifyPackage();
-
     /**
      * @brief performs package verification checks asynchronously.
      * This function verifies the package using the public key stored
@@ -359,36 +354,6 @@ class UpdateManager
     void verifyPackageAsync(
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
-
-    std::string stagedObjPath;
-    std::filesystem::path stagedfwPackageFilePath;
-
-    /**
-     * @brief clear staged package associated objects
-     *
-     */
-    void clearStagedPackageInfo();
-
-    /**
-     * @brief clear staged package and it's associated objects
-     *
-     */
-    void clearStagedPackage();
-
-    /**
-     * @brief Move staged update activation object to persist states
-     *
-     */
-    void restoreStagedPackageActivationObjects();
-
-    /**
-     * @brief close file handler of firmware package
-     *
-     */
-    void closePackage()
-    {
-        package.close();
-    }
 
     /**
      * @brief integrity check of firmware package
@@ -426,14 +391,8 @@ class UpdateManager
     Watch watch;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;
-    std::unique_ptr<Activation> activationStaged;
-    std::unique_ptr<ActivationProgress> activationProgressStaged;
     std::unique_ptr<ActivationBlocksTransition> activationBlocksTransition;
     std::unique_ptr<UpdatePolicy> updatePolicy;
-    std::unique_ptr<UpdatePolicy> updatePolicyStaged;
-    std::unique_ptr<PackageInformation> packageInfo;
-    std::unique_ptr<PackageHash> packageHash;
-    std::unique_ptr<EpochTime> epochTime;
     std::string objPath;
 
     std::filesystem::path fwPackageFilePath;
@@ -498,13 +457,6 @@ class UpdateManager
      *
      */
     void createProgressUpdateTimer();
-
-    /**
-     * @brief update staged package properties in D-Bus path
-     *
-     * @param[in] packageVerificationStatus
-     * @param[in] packageSize
-     */
 };
 
 } // namespace fw_update

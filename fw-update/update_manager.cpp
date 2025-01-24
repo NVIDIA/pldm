@@ -50,8 +50,7 @@ UpdateManager::UpdateManager(
     event(event), handler(handler), instanceIdDb(instanceIdDb),
     fwDebug(fwDebug), descriptorMap(descriptorMap),
     componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
-    watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
-          this)
+    watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
 {
     watch.initImmediateUpdateWatch();
     updatePolicy = std::make_unique<UpdatePolicy>(
@@ -121,8 +120,7 @@ void UpdateManager::createMessageRegistry(
 {
     if (!parser)
     {
-        error(
-            "Parser is not initialized. Cannot create message registry.");
+        error("Parser is not initialized. Cannot create message registry.");
         return;
     }
     const auto& compImageInfos = parser->getComponentImageInfos();
@@ -226,18 +224,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         }
         clearActivationInfo();
     }
-    else
-    {
-        // clear for staged packages
-        clearActivationInfo();
-    }
 
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-    std::vector<sdbusplus::message::object_path> targets;
+    // Populate object path with the hash of the package file path
     size_t versionHash = std::hash<std::string>{}(packageFilePath);
     objPath = swRootPath + std::to_string(versionHash);
-    targets = updatePolicy->targets();
     forceUpdate = updatePolicy->forceUpdate();
+    auto targets = updatePolicy->targets();
     if (updatePolicy->updateOption() ==
         software::UpdatePolicy::UpdateOptionSupport::StageOnly)
     {
@@ -480,8 +473,7 @@ void UpdateManager::performSecurityChecksAsync(
         [onComplete](bool integrityCheck) {
             if (integrityCheck)
             {
-                info(
-                    "Firmware package integrity check completed successfully");
+                info("Firmware package integrity check completed successfully");
                 onComplete(true);
             }
             else
@@ -520,100 +512,6 @@ void UpdateManager::performSecurityChecksAsync(
     {
         onComplete(true);
     }
-}
-
-bool UpdateManager::verifyPackage()
-{
-    std::string compName = "Firmware Update Service";
-    std::string messageError = "Validating FW Package signature failed";
-    std::string messageErrorUnsupportedVersion =
-        "Unsupported version of package signature";
-    std::string resolution =
-        "Retry firmware update operation with correctly signed FW package.";
-
-    uintmax_t calcPkgSize = parser->calculatePackageSize();
-    std::vector<uint8_t> pkgSignHdrData;
-
-    try
-    {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
-    }
-    catch (const std::exception& e)
-    {
-        error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
-        return false;
-    }
-    if (pkgSignHdrData.size())
-    {
-        try
-        {
-            packageSignatureParser =
-                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
-
-            if (packageSignatureParser == nullptr)
-            {
-                createLogEntry(resourceErrorDetected, compName,
-                               messageErrorUnsupportedVersion, resolution);
-
-                return false;
-            }
-        }
-        catch (const std::exception& e)
-        {
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorUnsupportedVersion, resolution);
-
-            return false;
-        }
-
-        try
-        {
-            packageSignatureParser->parseHeader();
-        }
-        catch (const std::exception& e)
-        {
-            createLogEntry(resourceErrorDetected, compName, messageError,
-                           resolution);
-
-            return false;
-        }
-
-        uintmax_t sizeOfSignedData =
-            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
-
-        bool isSignedProperly = packageSignatureParser->verify(
-            package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData);
-
-        if (!isSignedProperly)
-        {
-            createLogEntry(resourceErrorDetected, compName, messageError,
-                           resolution);
-
-            return false;
-        }
-
-        info("FW package signature was successfully verified");
-    }
-    else
-    {
-
-#ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
-        std::string messageErrorNotContainSignatureHeader =
-            "Package does not contain signature header";
-
-        createLogEntry(resourceErrorDetected, compName,
-                       messageErrorNotContainSignatureHeader, resolution);
-
-        return false;
-#else
-        info("FW package does not contain signature header");
-#endif
-    }
-
-    return true;
 }
 
 void UpdateManager::verifyPackageAsync(
@@ -1191,17 +1089,11 @@ bool UpdateManager::createActivationObject()
         {
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
-            if (activation == nullptr)
-            {
-                activation = std::make_unique<Activation>(
-                    pldm::utils::DBusHandler::getBus(), objPath,
-                    software::Activation::Activations::Ready, this);
-            }
-            if (activationProgress == nullptr)
-            {
-                activationProgress = std::make_unique<ActivationProgress>(
-                    pldm::utils::DBusHandler::getBus(), objPath);
-            }
+            activation = std::make_unique<Activation>(
+                pldm::utils::DBusHandler::getBus(), objPath,
+                software::Activation::Activations::Ready, this);
+            activationProgress = std::make_unique<ActivationProgress>(
+                pldm::utils::DBusHandler::getBus(), objPath);
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {

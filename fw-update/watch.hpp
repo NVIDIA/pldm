@@ -30,8 +30,6 @@ namespace pldm
 namespace fw_update
 {
 
-class UpdateManager;
-
 /** @class Watch
  *
  *  @brief Adds inotify watch on software image upload directory
@@ -47,11 +45,9 @@ class Watch
      *  @param[in] loop - sd-event object
      *  @param[in] imageCallbackImmediate - The callback function for processing
      * the immdidate update image
-     *  @param[in] updateManager
      */
     Watch(sd_event* loop,
-          std::function<int(std::string&)> imageCallbackImmediate,
-          UpdateManager* updateManager);
+          std::function<int(std::string&)> imageCallbackImmediate);
 
     Watch(const Watch&) = delete;
     Watch& operator=(const Watch&) = delete;
@@ -67,9 +63,8 @@ class Watch
      */
     void initImmediateUpdateWatch();
 
-    /* time stamp for immediate and split update to handle duplicate events */
+    /* time stamp for immediate update to handle duplicate events */
     uint64_t stateChangeTimeImmediate = 0;
-    uint64_t stateChangeTimeSplitStage = 0;
 
   private:
     /** @brief sd-event callback for immediate update
@@ -88,14 +83,11 @@ class Watch
 
     /** @brief inotify file descriptor */
     int fdImmediate = -1;
-    int fdSplitStage = -1;
 
     /** @brief The callback function for processing the immediate update. */
     std::function<int(std::string&)> imageCallbackImmediate;
 
     sd_event* loop;
-    /* UpdateManager object to process events related to mount points */
-    UpdateManager* updateManager;
 
     /**
      * @brief add file watch event listener for immediate update

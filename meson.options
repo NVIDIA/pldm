@@ -332,13 +332,6 @@ option(
     value: '',
     description: 'Firmware package staging directory mount service. Before creating file event watch on the directory'
 )
-option(
-    'firmware-package-split-staging-dir-mount-service',
-    type: 'string',
-    value: '',
-    description: 'Firmware package split staging directory mount service. Before creating file event watch on the directory'
-)
-
 
 # Public key to verify signed PLDM package. The default value is public key which is used in the unit tests. Please do not modify.
 option(

@@ -60,20 +60,14 @@ class FakeUpdateManager
     {
         return;
     }
-    void clearStagedPackage()
-    {
-        return;
-    }
     int processPackage(
         [[maybe_unused]] const std::filesystem::path& packageFilePath)
     {
         return 0;
     }
-    void restoreStagedPackageActivationObjects()
-    {
-        return;
-    }
-    void closePackage()
+    bool performSecurityChecks()
+
+        void closePackage()
     {
         return;
     }
@@ -85,6 +79,19 @@ class FakeUpdateManager
         onComplete = this->performSecurityChecksOnComplete;
         onComplete(securityChecksStatus);
     }
+    std::function<void(bool)> performSecurityChecksOnComplete =
+        [](bool result) {
+            if (result)
+            {
+                resultPerformSecurityChecksOnComplete =
+                    software::Activation::Activations::Active;
+            }
+            else
+            {
+                resultPerformSecurityChecksOnComplete =
+                    software::Activation::Activations::Failed;
+            }
+        };
     std::function<void(bool)> performSecurityChecksOnComplete =
         [](bool result) {
             if (result)

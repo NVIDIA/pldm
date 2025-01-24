@@ -41,10 +41,8 @@ using namespace std::string_literals;
 namespace fs = std::filesystem;
 
 Watch::Watch(sd_event* loop,
-             std::function<int(std::string&)> imageCallbackImmediate,
-             UpdateManager* updateManager) :
-    imageCallbackImmediate(imageCallbackImmediate), loop(loop),
-    updateManager(updateManager)
+             std::function<int(std::string&)> imageCallbackImmediate) :
+    imageCallbackImmediate(imageCallbackImmediate), loop(loop)
 {}
 
 Watch::~Watch()
