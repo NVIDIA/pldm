@@ -53,18 +53,18 @@ Watch::~Watch()
 {
     if (-1 != fdImmediate)
     {
-        if (-1 != wdImmediate)
+        if (-1 != wd)
         {
-            inotify_rm_watch(fdImmediate, wdImmediate);
+            inotify_rm_watch(fdImmediate, wd);
         }
         close(fdImmediate);
     }
 
     if (-1 != fdSplitStage)
     {
-        if (-1 != wdSplitStage)
+        if (-1 != wd)
         {
-            inotify_rm_watch(fdSplitStage, wdSplitStage);
+            inotify_rm_watch(fdSplitStage, wd);
         }
         close(fdSplitStage);
     }
@@ -96,9 +96,6 @@ int Watch::callbackImmediate(sd_event_source* /* s */, int fd, uint32_t revents,
         {
             auto tarballPath =
                 std::string{FIRMWARE_PACKAGE_STAGING_DIR} + '/' + event->name;
-            lg2::info("Received event for new file in immediate path "
-                      "{IMMEDIATE_FILE_PATH}",
-                      "IMMEDIATE_FILE_PATH", tarballPath);
             auto rc = static_cast<Watch*>(userdata)->imageCallbackImmediate(
                 tarballPath);
             if (rc < 0)
@@ -195,7 +192,7 @@ void Watch::initImmediateUpdateWatch()
             lg2::info("Mount service {MOUNT_SERVICE} is not completed."
                       " Subscribing to systemd event.",
                       "MOUNT_SERVICE", mountService);
-            subscribeToServiceStateChange(mountService, imgDirPath);
+            subscribeToServiceStateChange(mountService);
         }
     }
 }
@@ -233,7 +230,7 @@ void Watch::initStagedUpdateWatch()
             lg2::info("Mount service {MOUNT_SERVICE} is not completed."
                       " Subscribing to systemd event.",
                       "MOUNT_SERVICE", mountService);
-            subscribeToServiceStateChange(mountService, imgSplitStageDirPath);
+            subscribeToServiceStateChange(mountService);
         }
     }
 }
@@ -250,9 +247,9 @@ void Watch::addFileEventWatchImmediate()
                                  std::strerror(error));
     }
 
-    wdImmediate = inotify_add_watch(fdImmediate, FIRMWARE_PACKAGE_STAGING_DIR,
-                                    IN_CLOSE_WRITE);
-    if (-1 == wdImmediate)
+    wd = inotify_add_watch(fdImmediate, FIRMWARE_PACKAGE_STAGING_DIR,
+                           IN_CLOSE_WRITE);
+    if (-1 == wd)
     {
         auto error = errno;
         close(fdImmediate);
@@ -302,9 +299,9 @@ void Watch::addFileEventWatchStaged()
                                  std::strerror(error));
     }
 
-    wdSplitStage = inotify_add_watch(
-        fdSplitStage, FIRMWARE_PACKAGE_SPLIT_STAGING_DIR, IN_CLOSE_WRITE);
-    if (-1 == wdSplitStage)
+    wd = inotify_add_watch(fdSplitStage, FIRMWARE_PACKAGE_SPLIT_STAGING_DIR,
+                           IN_CLOSE_WRITE);
+    if (-1 == wd)
     {
         auto error = errno;
         close(fdSplitStage);
@@ -348,15 +345,14 @@ bool Watch::isServiceCompleted(const std::string& serviceName)
     return false;
 }
 
-void Watch::subscribeToServiceStateChange(const std::string& serviceName,
-                                          const std::string& imagePath)
+void Watch::subscribeToServiceStateChange(const std::string& serviceName)
 {
     std::string dbusPath = "/org/freedesktop/systemd1/unit/" + serviceName;
     dbusPath = std::regex_replace(dbusPath, std::regex("\\-"), "_2d");
     dbusPath = std::regex_replace(dbusPath, std::regex("\\."), "_2e");
-    if (imagePath == FIRMWARE_PACKAGE_STAGING_DIR)
+    if (serviceName == FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE)
     {
-        auto stateChangeHandler = [this, serviceName, imagePath](
+        auto stateChangeHandler = [this, serviceName](
                                       sdbusplus::message::message& msg) {
             using Interface = std::string;
             Interface interface;
@@ -370,31 +366,10 @@ void Watch::subscribeToServiceStateChange(const std::string& serviceName,
                 auto activeState = std::get<std::string>(prop->second);
                 if (activeState == "active")
                 {
-                    auto stateChangeTimestamp =
-                        properties.find("StateChangeTimestampMonotonic");
-                    if (stateChangeTimestamp != properties.end())
-                    {
-                        auto stateChangeTime =
-                            std::get<uint64_t>(stateChangeTimestamp->second);
-                        if (stateChangeTime != stateChangeTimeImmediate)
-                        {
-                            stateChangeTimeImmediate = stateChangeTime;
-                            lg2::info(
-                                "Received mount service completion signal for "
-                                "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
-                                "MOUNT_SERVICE_NAME", serviceName, "IMAGE_PATH",
-                                imagePath);
-                            if (-1 != fdImmediate)
-                            {
-                                if (-1 != wdImmediate)
-                                {
-                                    inotify_rm_watch(fdImmediate, wdImmediate);
-                                }
-                                close(fdImmediate);
-                            }
-                            this->addFileEventWatchImmediate();
-                        }
-                    }
+                    lg2::info("Received mount service completion signal for "
+                              "{MOUNT_SERVICE_NAME}",
+                              "MOUNT_SERVICE_NAME", serviceName);
+                    this->addFileEventWatchImmediate();
                 }
                 // else -> other task states are activating, deactivating,
                 // reloading which maps to running. Remaining states are,
@@ -405,12 +380,12 @@ void Watch::subscribeToServiceStateChange(const std::string& serviceName,
             pldm::utils::DBusHandler().getBus(),
             "type='signal',interface='org.freedesktop.DBus.Properties',"
             "member='PropertiesChanged',path='" +
-                dbusPath + "',arg0='org.freedesktop.systemd1.Unit'",
+                dbusPath + "'",
             stateChangeHandler);
     }
-    else if (imagePath == FIRMWARE_PACKAGE_SPLIT_STAGING_DIR)
+    else if (serviceName == FIRMWARE_PACKAGE_SPLIT_STAGING_DIR_MOUNT_SERVICE)
     {
-        auto stateChangeHandler = [this, serviceName, imagePath](
+        auto stateChangeHandler = [this, serviceName](
                                       sdbusplus::message::message& msg) {
             using Interface = std::string;
             Interface interface;
@@ -424,32 +399,10 @@ void Watch::subscribeToServiceStateChange(const std::string& serviceName,
                 auto activeState = std::get<std::string>(prop->second);
                 if (activeState == "active")
                 {
-                    auto stateChangeTimestamp =
-                        properties.find("StateChangeTimestampMonotonic");
-                    if (stateChangeTimestamp != properties.end())
-                    {
-                        auto stateChangeTime =
-                            std::get<uint64_t>(stateChangeTimestamp->second);
-                        if (stateChangeTime != this->stateChangeTimeSplitStage)
-                        {
-                            this->stateChangeTimeSplitStage = stateChangeTime;
-                            lg2::info(
-                                "Received mount service completion signal for "
-                                "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
-                                "MOUNT_SERVICE_NAME", serviceName, "IMAGE_PATH",
-                                imagePath);
-                            if (-1 != fdSplitStage)
-                            {
-                                if (-1 != wdSplitStage)
-                                {
-                                    inotify_rm_watch(fdSplitStage,
-                                                     wdSplitStage);
-                                }
-                                close(fdSplitStage);
-                            }
-                            this->addFileEventWatchStaged();
-                        }
-                    }
+                    lg2::info("Received mount service completion signal for"
+                              " {MOUNT_SERVICE_NAME}",
+                              "MOUNT_SERVICE_NAME", serviceName);
+                    this->addFileEventWatchStaged();
                 }
                 // else task is still running/failed, ignore
             }
