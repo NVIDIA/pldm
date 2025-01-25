@@ -201,6 +201,15 @@ class OtherDeviceUpdateManager
     void startTimer(int timerExpiryTime);
 
     /**
+     * @brief This method queries all valid D-Bus paths for software objects,
+     * extracts the UUID and SKU properties, and stores them along with the
+     * corresponding directory path and D-Bus object path in the
+     * otherDeviceDescriptorMap.
+     *
+     */
+    void buildDeviceDescriptorMap();
+
+    /**
      * @brief Interface Addition monitoring
      *
      */
@@ -216,19 +225,6 @@ class OtherDeviceUpdateManager
     Server::Activation::Activations getOverAllActivationState();
 
     /**
-     * @brief Get file path based on UUID and optionally APSKU
-     *
-     * @param UUID UUID to find file path for
-     * @param sku Optional descriptor to match descriptor published by
-     * ItemUpdater Skips validation if an empty string is passed
-     *
-     * @return pair with filepath and object path, returns {} on no match
-     */
-    std::pair<std::string, std::string>
-        getFilePath(const std::string& uuid,
-                    const std::string& sku) const noexcept;
-
-    /**
      * @brief Get the Valid Paths that may contain UUIDs
      *
      * @param paths object to store the paths into
@@ -240,20 +236,6 @@ class OtherDeviceUpdateManager
      *
      */
     void updateValidTargets(void);
-
-    /**
-     * @brief Match the descriptors published by ItemUpdater to
-     *  the descriptors in the package
-     *
-     * @param objPath - D-Bus Object Path of ItemUpdater object
-     * @param descriptor - Descriptor value obtained from the package
-     * @param descriptorName - Name of Descriptor Property
-     * @param dbusInterface - D-Bus Interace of the Descriptor
-     *
-     */
-    bool validateDescriptor(const std::string& objPath, std::string descriptor,
-                            const char* descriptorName,
-                            const char* dbusInterface) const noexcept;
 
     /**
      * @brief Fetches UUID and SKU from the package
@@ -330,6 +312,14 @@ class OtherDeviceUpdateManager
     std::unordered_map<std::string,
                        std::unique_ptr<OtherDeviceUpdateActivation>>
         otherDevices;
+
+    /**
+     * @brief Map used to store the association between a device's UUID and SKU
+     * and its corresponding directory path and D-Bus object path.
+     *
+     */
+    std::map<std::pair<UUID, SKU>, std::pair<std::string, std::string>>
+        otherDeviceDescriptorMap;
 
     /**
      * @brief Indicates image process state by item updater
