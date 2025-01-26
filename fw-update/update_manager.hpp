@@ -60,9 +60,6 @@ class Activation;
 class ActivationProgress;
 class UpdatePolicy;
 class ActivationBlocksTransition;
-class EpochTime;
-class PackageInformation;
-class PackageHash;
 
 /** @enum Enumeration to represent the types of security checks
  */
@@ -104,14 +101,6 @@ class UpdateManager
                            const pldm_msg* request, size_t reqMsgLen);
 
     int processPackage(const std::filesystem::path& packageFilePath);
-
-    /**
-     * @brief Handler to process staged package.
-     *
-     * @param packageFilePath[in] - package file path
-     * @return int
-     */
-    int processStagedPackage(const std::filesystem::path& packageFilePath);
 
     /** @brief Update firmware update completion status of each device
      *
@@ -369,19 +358,32 @@ class UpdateManager
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
 
-    std::string stagedObjPath;
-    std::filesystem::path stagedfwPackageFilePath;
-    /**
-     * @brief clear staged package and it's associated objects
-     *
-     */
-    void clearStagedPackage();
 
     /**
-     * @brief Move staged update activation object to persist states
+     * @brief integrity check of firmware package
      *
      */
-    void restoreStagedPackageActivationObjects();
+    bool packageIntegrityCheck();
+
+    void packageIntegrityCheckAsync(
+        std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
+
+    /**
+     * @brief perform security checks
+     * The function performs two types of security checks:
+     * 1. Package integrity check - using the public key stored in the signature
+     * header of the firmware package.
+     * 2. Package verification - using the public key stored on the machine
+     * in the proper location."
+     *
+     * @return True if all security checks pass; False otherwise.
+     */
+    void performSecurityChecksAsync(
+        std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
+
+    std::unique_ptr<PackageSignature> packageSignatureParser;
 
   private:
     /** @brief Device identifiers of the managed FDs */
@@ -393,14 +395,8 @@ class UpdateManager
     Watch watch;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<ActivationProgress> activationProgress;
-    std::unique_ptr<Activation> activationStaged;
-    std::unique_ptr<ActivationProgress> activationProgressStaged;
     std::unique_ptr<ActivationBlocksTransition> activationBlocksTransition;
     std::unique_ptr<UpdatePolicy> updatePolicy;
-    std::unique_ptr<UpdatePolicy> updatePolicyStaged;
-    std::unique_ptr<PackageInformation> packageInfo;
-    std::unique_ptr<PackageHash> packageHash;
-    std::unique_ptr<EpochTime> epochTime;
     std::string objPath;
 
     std::filesystem::path fwPackageFilePath;
@@ -465,15 +461,6 @@ class UpdateManager
      *
      */
     void createProgressUpdateTimer();
-
-    /**
-     * @brief update staged package properties in D-Bus path
-     *
-     * @param[in] packageVerificationStatus
-     * @param[in] packageSize
-     */
-    void updateStagedPackageProperties(bool packageVerificationStatus,
-                                       uintmax_t packageSize);
 };
 
 } // namespace fw_update

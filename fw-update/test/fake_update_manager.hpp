@@ -60,18 +60,11 @@ class FakeUpdateManager
     {
         return;
     }
-    void clearStagedPackage()
-    {
-        return;
-    }
+
     int processPackage(
         [[maybe_unused]] const std::filesystem::path& packageFilePath)
     {
         return 0;
-    }
-    void restoreStagedPackageActivationObjects()
-    {
-        return;
     }
     void performSecurityChecksAsync(
         std::function<void(bool)> onComplete,
@@ -81,8 +74,6 @@ class FakeUpdateManager
         onComplete = this->performSecurityChecksOnComplete;
         onComplete(securityChecksStatus);
     }
-    std::string stagedObjPath;
-    std::filesystem::path stagedfwPackageFilePath;
 
     std::function<void(bool)> performSecurityChecksOnComplete =
         [](bool result) {
