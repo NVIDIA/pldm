@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/utils.hpp"
 #include "common/types.hpp"
+#include "common/utils.hpp"
 
 #include <libpldm/pldm.h>
 
@@ -19,9 +19,8 @@ constexpr const char* MCTPService = "xyz.openbmc_project.MCTP";
 constexpr const char* MCTPInterface = "xyz.openbmc_project.MCTP.Endpoint";
 constexpr const char* mctpBindingIntfName = "xyz.openbmc_project.MCTP.Binding";
 constexpr const char* uuidEndpointIntfName = "xyz.openbmc_project.Common.UUID";
-constexpr const char* unixSocketIntfName{ "xyz.openbmc_project.Common.UnixSocket"};
-
-
+constexpr const char* unixSocketIntfName{
+    "xyz.openbmc_project.Common.UnixSocket"};
 
 constexpr const char* MCTPPath = "/xyz/openbmc_project/mctp";
 
@@ -41,9 +40,9 @@ class MctpDiscoveryHandlerIntf
     virtual void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
                                      [[maybe_unused]] const EID& eid)
     {}
-    virtual void handleRemovedMctpEndpoints([[maybe_unused]] const MctpInfos& mctpInfos)
-    {
-    }
+    virtual void
+        handleRemovedMctpEndpoints([[maybe_unused]] const MctpInfos& mctpInfos)
+    {}
     virtual ~MctpDiscoveryHandlerIntf()
     {}
 };

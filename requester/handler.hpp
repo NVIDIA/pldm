@@ -1,17 +1,15 @@
 #pragma once
 
-#include <libpldm/base.h>
-
 #include "common/instance_id.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
 #include "request.hpp"
 
+#include <libpldm/base.h>
 #include <libpldm/pldm.h>
 #include <sys/socket.h>
 
 #include <phosphor-logging/lg2.hpp>
-#include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
@@ -110,8 +108,7 @@ class Handler
         std::chrono::milliseconds responseTimeOut =
             std::chrono::milliseconds(RESPONSE_TIME_OUT)) :
         pldmTransport(pldmTransport),
-        event(event),
-        instanceIdDb(instanceIdDb), verbose(verbose),
+        event(event), instanceIdDb(instanceIdDb), verbose(verbose),
         instanceIdExpiryInterval(instanceIdExpiryInterval),
         numRetries(numRetries), responseTimeOut(responseTimeOut)
     {}

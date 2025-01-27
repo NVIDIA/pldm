@@ -23,8 +23,8 @@
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mocked_firmware_update_function.hpp"
-
 #include "requester/handler.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
@@ -36,6 +36,7 @@
 using ::testing::_;
 using namespace pldm;
 using namespace pldm::fw_update;
+using namespace std::chrono;
 
 class ComponentUpdaterTest : public testing::Test
 {
@@ -43,11 +44,9 @@ class ComponentUpdaterTest : public testing::Test
     ComponentUpdaterTest() :
         package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
-                          "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false,
-                   std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
-        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
+        updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true),
         deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos, compInfo,
                       compIdNameInfo, 512, &updateManager, false)
@@ -77,8 +76,7 @@ class ComponentUpdaterTest : public testing::Test
     ComponentInfo compInfo;
     ComponentIdNameMap compIdNameInfo;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
-    pldm::mctp_socket::Manager sockManager;
+    TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
@@ -89,7 +87,7 @@ class ComponentUpdaterTest : public testing::Test
 
 TEST_F(ComponentUpdaterTest, ReadPackage512B)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -167,7 +165,7 @@ TEST_F(ComponentUpdaterTest, ReadPackage512B)
 
 TEST_F(ComponentUpdaterTest, sendUpdateComponentRequest)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -180,7 +178,7 @@ TEST_F(ComponentUpdaterTest, sendUpdateComponentRequest)
 
 TEST_F(ComponentUpdaterTest, transferComplete)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -242,7 +240,7 @@ TEST_F(ComponentUpdaterTest, transferComplete)
 
 TEST_F(ComponentUpdaterTest, verifyComplete)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -304,7 +302,7 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
 
 TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -316,7 +314,7 @@ TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
 
 TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -330,7 +328,7 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
 
 TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -428,7 +426,7 @@ TEST_F(ComponentUpdaterTest, expectedState_InvalidState)
 
 TEST_F(ComponentUpdaterTest, GetStatus)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -443,7 +441,7 @@ TEST_F(ComponentUpdaterTest, GetStatus)
 
 TEST_F(ComponentUpdaterTest, GetStatus_empty_response)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
@@ -459,7 +457,7 @@ TEST_F(ComponentUpdaterTest, GetStatus_empty_response)
 
 TEST_F(ComponentUpdaterTest, GetStatusResponse)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
@@ -482,7 +480,7 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
 
 TEST_F(ComponentUpdaterTest, startComponentUpdater)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -494,7 +492,7 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
 
 TEST_F(ComponentUpdaterTest, updateComponentComplete)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -509,7 +507,7 @@ TEST_F(ComponentUpdaterTest, updateComponentComplete)
 
 TEST_F(ComponentUpdaterTest, createRequestFwDataTimer)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,
@@ -524,7 +522,7 @@ TEST_F(ComponentUpdaterTest, createRequestFwDataTimer)
 
 TEST_F(ComponentUpdaterTest, createCompleteCommandsTimeoutTimer)
 {
-    mctp_eid_t eid = 0;
+    mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
                                       compImageInfos, compInfo, compIdNameInfo,

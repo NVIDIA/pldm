@@ -16,6 +16,8 @@
  */
 #include "fw-update/activation.hpp"
 #include "fw-update/other_device_update_manager.hpp"
+#include "requester/test/mock_request.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <stddef.h>
 #include <systemd/sd-bus.h>
@@ -31,6 +33,7 @@
 
 using namespace pldm;
 using namespace pldm::fw_update;
+using namespace std::chrono;
 
 class OtherDeviceUpdateManagerTest : public testing::Test
 {
@@ -39,10 +42,9 @@ class OtherDeviceUpdateManagerTest : public testing::Test
         busMock(sdbusplus::get_mocked_new(&sdbusMock)),
         updatePolicy(busMock, "/xyz/openbmc_project/software"),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(busMock, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false,
-                   std::chrono::seconds(1), 2, std::chrono::milliseconds(100)),
-        updateManager(event, reqHandler, dbusImplRequester, descriptorMap,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
+        updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true)
     {}
 
@@ -50,8 +52,7 @@ class OtherDeviceUpdateManagerTest : public testing::Test
     sdbusplus::bus::bus busMock;
     UpdatePolicy updatePolicy;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
-    pldm::mctp_socket::Manager sockManager;
+    TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;

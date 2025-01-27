@@ -148,7 +148,6 @@ static std::optional<Response>
     return std::nullopt;
 }
 
-
 void optionUsage(void)
 {
     std::cerr << "Usage: pldmd [options]\n";
@@ -253,8 +252,8 @@ int main(int argc, char** argv)
     }
 #endif
 
-        auto hostEID = pldm::utils::readHostEID();
-        pldm_tid_t TID = hostEID;
+    auto hostEID = pldm::utils::readHostEID();
+    pldm_tid_t TID = hostEID;
     try
     {
 #ifdef LIBPLDMRESPONDER

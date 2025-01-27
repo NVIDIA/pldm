@@ -13,17 +13,21 @@
 #include "fw-update/package_signature.hpp"
 #include "fw-update/update_manager.hpp"
 #include "fw-update/watch.hpp"
-
-#include "pldmd/socket_manager.hpp"
+#include "pldmd/invoker.hpp"
 #include "requester/handler.hpp"
 #include "requester/test/mock_mctp_discovery_handler_intf.hpp"
+#include "requester/test/mock_request.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdeventplus/event.hpp>
+
+#include <chrono>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using ::testing::_;
+using namespace std::chrono;
 
 TEST(MctpEndpointDiscoveryTest, SingleHandleMctpEndpoint)
 {
@@ -31,24 +35,18 @@ TEST(MctpEndpointDiscoveryTest, SingleHandleMctpEndpoint)
 
     pldm::MockManager manager;
     pldm::responder::Invoker invoker;
-    pldm::mctp_socket::Manager sockManager;
-    EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(1);
+    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(1);
 
     sdeventplus::Event event(sdeventplus::Event::get_default());
-    pldm::dbus_api::Requester requester(pldm::utils::DBusHandler::getBus(),
-                                        "/xyz/openbmc_project/pldm");
+    TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler(
-        event, requester, sockManager, false, std::chrono::seconds(1), 2,
-        std::chrono::milliseconds(100));
-    pldm::fw_update::Manager fwUpdateManager(event, reqHandler, requester, "",
-                                             nullptr, false);
-    pldm::mctp_socket::Handler handler(event, reqHandler, invoker,
-                                       fwUpdateManager, sockManager, false);
+        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
+    pldm::fw_update::Manager fwUpdateManager(event, reqHandler, instanceIdDb,
+                                             "", nullptr, false);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, handler,
-        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
-        "./static_eid_table.json");
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    mctpDiscoveryHandler = nullptr;
 }
 
 TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
@@ -57,24 +55,19 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
     pldm::MockManager manager1;
     pldm::MockManager manager2;
 
-    EXPECT_CALL(manager1, handleMctpEndpoints(_, _)).Times(1);
-    EXPECT_CALL(manager2, handleMctpEndpoints(_, _)).Times(1);
+    EXPECT_CALL(manager1, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager2, handleMctpEndpoints(_)).Times(1);
 
-    pldm::mctp_socket::Manager sockManager;
     pldm::responder::Invoker invoker;
+    TestInstanceIdDb instanceIdDb;
     sdeventplus::Event event(sdeventplus::Event::get_default());
-    pldm::dbus_api::Requester requester(pldm::utils::DBusHandler::getBus(),
-                                        "/xyz/openbmc_project/pldm");
     pldm::requester::Handler<pldm::requester::Request> reqHandler(
-        event, requester, sockManager, false, std::chrono::seconds(1), 2,
-        std::chrono::milliseconds(100));
-    pldm::fw_update::Manager fwUpdateManager(event, reqHandler, requester, "",
-                                             nullptr, false);
-    pldm::mctp_socket::Handler handler(event, reqHandler, invoker,
-                                       fwUpdateManager, sockManager, false);
+        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
+    pldm::fw_update::Manager fwUpdateManager(event, reqHandler, instanceIdDb,
+                                             "", nullptr, false);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, handler,
+        bus,
         std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager1,
                                                                &manager2},
         "./static_eid_table.json");

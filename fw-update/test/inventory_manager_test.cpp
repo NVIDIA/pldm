@@ -19,6 +19,9 @@
 #include "common/utils.hpp"
 #include "fw-update/inventory_manager.hpp"
 #include "requester/test/mock_request.hpp"
+#include "test/test_instance_id.hpp"
+
+#include <libpldm/firmware_update.h>
 
 #include <gtest/gtest.h>
 
@@ -30,19 +33,16 @@ class InventoryManagerTest : public testing::Test
 {
   protected:
     InventoryManagerTest() :
-        event(sdeventplus::Event::get_default()),
-        dbusImplRequester(pldm::utils::DBusHandler::getBus(),
-                          "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+        event(sdeventplus::Event::get_default()), instanceIdDb(),
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
-        inventoryManager(reqHandler, dbusImplRequester, nullptr,
-                         outDescriptorMap, outComponentInfoMap,
-                         deviceInventoryInfo)
+        inventoryManager(reqHandler, instanceIdDb, nullptr, outDescriptorMap,
+                         outComponentInfoMap, deviceInventoryInfo)
     {}
 
+    int fd = -1;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
-    pldm::mctp_socket::Manager sockManager;
+    TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
     InventoryManager inventoryManager;
     DescriptorMap outDescriptorMap{};
@@ -152,10 +152,8 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
             0x30};
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp1.data());
-    dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg1, respPayloadLength1, messageError, resolution,
-        mctpInterfaces);
+        1, responseMsg1, respPayloadLength1, messageError, resolution);
 
     ComponentInfoMap componentInfoMap1{
         {1,
@@ -186,8 +184,7 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     auto responseMsg2 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp2.data());
     inventoryManager.parseGetFWParametersResponse(
-        2, responseMsg2, respPayloadLength2, messageError, resolution,
-        mctpInterfaces);
+        2, responseMsg2, respPayloadLength2, messageError, resolution);
 
     ComponentInfoMap componentInfoMap2{
         {1,
@@ -209,10 +206,8 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponseErrorCC)
         getFirmwareParametersResp{0x00, 0x00, 0x00, 0x01};
     auto responseMsg =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
-    dbus::MctpInterfaces mctpInterfaces;
     inventoryManager.parseGetFWParametersResponse(
-        1, responseMsg, respPayloadLength, messageError, resolution,
-        mctpInterfaces);
+        1, responseMsg, respPayloadLength, messageError, resolution);
     EXPECT_EQ(outComponentInfoMap.size(), 0);
 }
 

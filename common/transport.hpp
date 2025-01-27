@@ -2,9 +2,9 @@
 
 #include "config.h"
 
-#include <poll.h>
 #include <libpldm/base.h>
 #include <libpldm/pldm.h>
+#include <poll.h>
 
 #include <cstddef>
 

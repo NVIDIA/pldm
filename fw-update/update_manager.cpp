@@ -44,9 +44,10 @@ UpdateManager::UpdateManager(
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug) :
-    event(event), handler(handler), instanceIdDb(instanceIdDb),
-    fwDebug(fwDebug), descriptorMap(descriptorMap),
-    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    event(event),
+    handler(handler), instanceIdDb(instanceIdDb), fwDebug(fwDebug),
+    descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
+    componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
           std::bind_front(&UpdateManager::processStagedPackage, this), this)
 {
@@ -996,7 +997,8 @@ bool UpdateManager::createActivationObject()
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            lg2::error("Failed to create activation object: {ERROR}", "ERROR", e.what());
+            lg2::error("Failed to create activation object: {ERROR}", "ERROR",
+                       e.what());
             return false;
         }
     }

@@ -1,10 +1,14 @@
-#include "libpldm/base.h"
-
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "mock_request.hpp"
-
 #include "requester/handler.hpp"
+#include "test/test_instance_id.hpp"
+
+#include <libpldm/base.h>
+#include <libpldm/transport.h>
+
+#include <sdbusplus/async.hpp>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -21,18 +25,14 @@ using ::testing::Return;
 class HandlerTest : public testing::Test
 {
   protected:
-    HandlerTest() :
-        event(sdeventplus::Event::get_default()),
-        dbusImplReq(pldm::utils::DBusHandler::getBus(),
-                    "/xyz/openbmc_project/pldm")
-    {
-        sockManager.registerEndpoint(0, 0, 4096);
-    }
+    HandlerTest() : event(sdeventplus::Event::get_default()), instanceIdDb()
+    {}
 
+    int fd = 0;
     mctp_eid_t eid = 0;
+    PldmTransport* pldmTransport = nullptr;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplReq;
-    pldm::mctp_socket::Manager sockManager;
+    TestInstanceIdDb instanceIdDb;
 
     /** @brief This function runs the sd_event_run in a loop till all the events
      *         in the testcase are dispatched and exits when there are no events
@@ -76,15 +76,15 @@ class HandlerTest : public testing::Test
 
 TEST_F(HandlerTest, singleRequestResponseScenario)
 {
-
-    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
-                                              false, seconds(1), 2,
-                                              milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
+                                              instanceIdDb, false, seconds(1),
+                                              2, milliseconds(100));
     pldm::Request request{};
-    auto instanceId = dbusImplReq.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
+    EXPECT_EQ(instanceId, 0);
     auto rc = reqHandler.registerRequest(
         eid, instanceId, 0, 0, std::move(request),
-        std::move(std::bind_front(&HandlerTest::pldmResponseCallBack, this)));
+        std::bind_front(&HandlerTest::pldmResponseCallBack, this));
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t));
@@ -92,19 +92,17 @@ TEST_F(HandlerTest, singleRequestResponseScenario)
     reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
                               sizeof(response));
 
-    // handleResponse() will free the instance ID after calling the response
-    // handler, so the same instance ID is granted next as well
     EXPECT_EQ(validResponse, true);
-    EXPECT_EQ(instanceId, dbusImplReq.getInstanceId(eid));
 }
 
 TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
-                                              false, seconds(1), 2,
-                                              milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
+                                              instanceIdDb, false, seconds(1),
+                                              2, milliseconds(100));
     pldm::Request request{};
-    auto instanceId = dbusImplReq.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
+    EXPECT_EQ(instanceId, 0);
     auto rc = reqHandler.registerRequest(
         eid, instanceId, 0, 0, std::move(request),
         std::move(std::bind_front(&HandlerTest::pldmResponseCallBack, this)));
@@ -113,35 +111,34 @@ TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
     // Waiting for 500ms so that the instance ID expiry callback is invoked
     waitEventExpiry(milliseconds(500));
 
-    // cleanup() will free the instance ID after calling the response
-    // handler will no response, so the same instance ID is granted next
-    EXPECT_EQ(instanceId, dbusImplReq.getInstanceId(eid));
     EXPECT_EQ(nullResponse, true);
 }
 
 TEST_F(HandlerTest, multipleRequestResponseScenario)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(event, dbusImplReq, sockManager,
-                                              false, seconds(2), 2,
-                                              milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
+                                              instanceIdDb, false, seconds(2),
+                                              2, milliseconds(100));
     pldm::Request request{};
-    auto instanceId = dbusImplReq.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
+    EXPECT_EQ(instanceId, 0);
     auto rc = reqHandler.registerRequest(
         eid, instanceId, 0, 0, std::move(request),
         std::move(std::bind_front(&HandlerTest::pldmResponseCallBack, this)));
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::Request requestNxt{};
-    auto instanceIdNxt = dbusImplReq.getInstanceId(eid + 1);
+    auto instanceIdNxt = instanceIdDb.next(eid);
+    EXPECT_EQ(instanceIdNxt, 1);
     rc = reqHandler.registerRequest(
-        eid + 1, instanceIdNxt, 0, 0, std::move(requestNxt),
-        std::move(std::bind_front(&HandlerTest::pldmResponseCallBack, this)));
+        eid, instanceIdNxt, 0, 0, std::move(requestNxt),
+        std::bind_front(&HandlerTest::pldmResponseCallBack, this));
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t));
     auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
-    reqHandler.handleResponse(eid + 1, instanceIdNxt, 0, 0, responsePtr,
-                              sizeof(response));
+    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                              response.size());
     EXPECT_EQ(validResponse, true);
     EXPECT_EQ(callbackCount, 1);
     validResponse = false;
@@ -150,10 +147,9 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
     // simulate a delayed response for the first request
     waitEventExpiry(milliseconds(500));
 
-    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
-                              sizeof(response));
+    reqHandler.handleResponse(eid, instanceIdNxt, 0, 0, responsePtr,
+                              response.size());
 
     EXPECT_EQ(validResponse, true);
     EXPECT_EQ(callbackCount, 2);
-    EXPECT_EQ(instanceId, dbusImplReq.getInstanceId(eid));
 }

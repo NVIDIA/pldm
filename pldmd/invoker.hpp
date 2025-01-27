@@ -36,10 +36,11 @@ class Invoker
      *  @param[in] reqMsgLen - PLDM request message size
      *  @return PLDM response message
      */
-    Response handle(pldm_tid_t tid, Type pldmType, Command pldmCommand, const pldm_msg* request,
-                    size_t reqMsgLen)
+    Response handle(pldm_tid_t tid, Type pldmType, Command pldmCommand,
+                    const pldm_msg* request, size_t reqMsgLen)
     {
-        return handlers.at(pldmType)->handle(tid, pldmCommand, request, reqMsgLen);
+        return handlers.at(pldmType)->handle(tid, pldmCommand, request,
+                                             reqMsgLen);
     }
 
   private:

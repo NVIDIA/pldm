@@ -359,9 +359,10 @@ PropertyValue DBusHandler::getDbusPropertyVariant(
     return value;
 }
 
-PropertyMap DBusHandler::getDbusPropertiesVariant(
-    const char* serviceName, const char* objPath,
-    const char* dbusInterface) const
+PropertyMap
+    DBusHandler::getDbusPropertiesVariant(const char* serviceName,
+                                          const char* objPath,
+                                          const char* dbusInterface) const
 {
     auto& bus = DBusHandler::getBus();
     auto method =

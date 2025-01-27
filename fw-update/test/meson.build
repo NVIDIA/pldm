@@ -12,8 +12,6 @@ fw_update_test_src = declare_dependency(
             '../package_signature.cpp',
             '../../common/utils.cpp',
             '../../common/test/mocked_utils.hpp',
-            '../../pldmd/dbus_impl_requester.cpp',
-            '../../pldmd/instance_id.cpp',
             '../other_device_update_manager.cpp',
             '../watch.cpp'])
 

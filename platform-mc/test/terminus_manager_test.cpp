@@ -18,7 +18,7 @@
 
 #include "mock_terminus_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
-
+#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "requester/request.hpp"

@@ -1,6 +1,7 @@
-#include "libpldm/base.h"
-
+#include "common/transport.hpp"
 #include "mock_request.hpp"
+
+#include <libpldm/base.h>
 
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
@@ -42,13 +43,14 @@ class RequestIntfTest : public testing::Test
 
     int fd = 0;
     mctp_eid_t eid = 0;
+    PldmTransport* pldmTransport = nullptr;
     sdeventplus::Event event;
-    std::vector<uint8_t> requestMsg;
 };
 
 TEST_F(RequestIntfTest, 0Retries100msTimeout)
 {
-    MockRequest request(fd, eid, event, std::move(requestMsg), 0,
+    std::vector<uint8_t> requestMsg;
+    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 0,
                         milliseconds(100), false);
     EXPECT_CALL(request, send())
         .Times(Exactly(1))
@@ -59,7 +61,8 @@ TEST_F(RequestIntfTest, 0Retries100msTimeout)
 
 TEST_F(RequestIntfTest, 2Retries100msTimeout)
 {
-    MockRequest request(fd, eid, event, std::move(requestMsg), 2,
+    std::vector<uint8_t> requestMsg;
+    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 2,
                         milliseconds(100), false);
     // send() is called a total of 3 times, the original plus two retries
     EXPECT_CALL(request, send()).Times(3).WillRepeatedly(Return(PLDM_SUCCESS));
@@ -70,7 +73,8 @@ TEST_F(RequestIntfTest, 2Retries100msTimeout)
 
 TEST_F(RequestIntfTest, 9Retries100msTimeoutRequestStoppedAfter1sec)
 {
-    MockRequest request(fd, eid, event, std::move(requestMsg), 9,
+    std::vector<uint8_t> requestMsg;
+    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 9,
                         milliseconds(100), false);
     // send() will be called a total of 10 times, the original plus 9 retries.
     // In a ideal scenario send() would have been called 10 times in 1 sec (when
@@ -93,7 +97,8 @@ TEST_F(RequestIntfTest, 9Retries100msTimeoutRequestStoppedAfter1sec)
 
 TEST_F(RequestIntfTest, 2Retries100msTimeoutsendReturnsError)
 {
-    MockRequest request(fd, eid, event, std::move(requestMsg), 2,
+    std::vector<uint8_t> requestMsg;
+    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 2,
                         milliseconds(100), false);
     EXPECT_CALL(request, send()).Times(Exactly(1)).WillOnce(Return(PLDM_ERROR));
     auto rc = request.start();

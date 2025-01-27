@@ -2,7 +2,7 @@
 
 #include "libpldm/platform.h"
 
-
+#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 
 #include <filesystem>

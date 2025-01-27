@@ -28,9 +28,10 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
-    bus(bus), mctpEndpointAddedSignal(
-                  bus, interfacesAdded(MCTPPath),
-                  std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
+    bus(bus),
+    mctpEndpointAddedSignal(
+        bus, interfacesAdded(MCTPPath),
+        std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
     mctpEndpointRemovedSignal(
         bus, interfacesRemoved(MCTPPath),
         std::bind_front(&MctpDiscovery::removeEndpoints, this)),
@@ -67,17 +68,16 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
             try
             {
                 std::string uuid{};
-                const auto& uuidP = 
+                const auto& uuidP =
                     pldm::utils::DBusHandler().getDbusPropertiesVariant(
                         service.c_str(), path.c_str(), uuidEndpointIntfName);
                 if (uuidP.contains("UUID"))
                 {
-                    uuid =
-                        std::get<std::string>(uuidP.at("UUID"));
+                    uuid = std::get<std::string>(uuidP.at("UUID"));
                 }
-                
+
                 std::string bindingType{};
-                const auto& bindingTypeP = 
+                const auto& bindingTypeP =
                     pldm::utils::DBusHandler().getDbusPropertiesVariant(
                         service.c_str(), path.c_str(), mctpBindingIntfName);
                 if (bindingTypeP.contains("BindingType"))
@@ -106,16 +106,16 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
                         info(
                             "Adding Endpoint networkId '{NETWORK}' and EID '{EID}'",
                             "NETWORK", networkId, "EID", eid);
-                        mctpInfos.emplace_back(
-                            MctpInfo(eid, uuid, mediumType, networkId, bindingType));
+                        mctpInfos.emplace_back(MctpInfo(
+                            eid, uuid, mediumType, networkId, bindingType));
                     }
                 }
                 // watch PropertiesChanged signal from
                 // xyz.openbmc_project.Object.Enable PDI
                 if (enableMatches.find(path) == enableMatches.end())
                 {
-                    lg2::info("register match_t path:{OBJPATH}",
-                              "OBJPATH", path);
+                    lg2::info("register match_t path:{OBJPATH}", "OBJPATH",
+                              path);
                     enableMatches.emplace(
                         path,
                         sdbusplus::bus::match_t(
@@ -161,15 +161,14 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         return;
     }
 
-        if (interfaces.contains(mctpBindingIntfName))
+    if (interfaces.contains(mctpBindingIntfName))
+    {
+        const auto& properties = interfaces.at(mctpBindingIntfName);
+        if (properties.contains("BindingType"))
         {
-            const auto& properties = interfaces.at(mctpBindingIntfName);
-            if (properties.contains("BindingType"))
-            {
-                bindingType =
-                    std::get<std::string>(properties.at("BindingType"));
-            }
+            bindingType = std::get<std::string>(properties.at("BindingType"));
         }
+    }
 
     for (const auto& [intfName, properties] : interfaces)
     {
@@ -280,7 +279,6 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
     }
 }
 
-
 void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
 {
     MctpInfos addedInfos;
@@ -357,7 +355,6 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
         }
     }
 }
-
 
 void MctpDiscovery::handleRemovedMctpEndpoints(const MctpInfos& mctpInfos)
 {

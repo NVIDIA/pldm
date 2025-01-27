@@ -24,7 +24,6 @@
 #include "device_updater.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
-
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
@@ -41,7 +40,6 @@ namespace pldm
 
 namespace fw_update
 {
-
 
 class MctpDiscoveryHandlerIntf;
 

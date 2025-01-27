@@ -6,8 +6,8 @@
 #include "libpldm/fru.h"
 #include "libpldm/platform.h"
 
-#include "common/utils.hpp"
 #include "common/instance_id.hpp"
+#include "common/utils.hpp"
 
 #include <err.h>
 #include <sys/socket.h>

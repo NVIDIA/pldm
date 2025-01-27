@@ -5,7 +5,7 @@
 
 #include "bios_config.hpp"
 #include "bios_table.hpp"
-
+#include "pldmd/dbus_impl_requester.hpp"
 #include "pldmd/handler.hpp"
 #include "requester/handler.hpp"
 

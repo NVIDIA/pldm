@@ -1,12 +1,11 @@
 #pragma once
 
-#include <libpldm/base.h>
-
 #include "common/flight_recorder.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <libpldm/base.h>
 #include <libpldm/pldm.h>
 #include <sys/socket.h>
 
@@ -50,7 +49,8 @@ class RequestRetryTimer
     explicit RequestRetryTimer(sdeventplus::Event& event, uint8_t numRetries,
                                std::chrono::milliseconds timeout) :
 
-        event(event), numRetries(numRetries), timeout(timeout),
+        event(event),
+        numRetries(numRetries), timeout(timeout),
         timer(event.get(), std::bind_front(&RequestRetryTimer::callback, this))
     {}
 

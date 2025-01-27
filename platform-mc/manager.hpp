@@ -21,7 +21,7 @@
 #include "common/types.hpp"
 #include "event_manager.hpp"
 #include "platform_manager.hpp"
-
+#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "sensor_manager.hpp"

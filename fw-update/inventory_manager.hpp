@@ -18,7 +18,6 @@
 
 #include "common/types.hpp"
 #include "fw_update_utility.hpp"
-
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 
@@ -134,7 +133,8 @@ class InventoryManager
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler),
-        instanceIdDb(instanceIdDb), createInventoryCallBack(createInventoryCallBack),
+        instanceIdDb(instanceIdDb),
+        createInventoryCallBack(createInventoryCallBack),
         descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
     {}
@@ -224,8 +224,7 @@ class InventoryManager
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    requester::Coroutine
-        startFirmwareDiscoveryFlow(mctp_eid_t eid);
+    requester::Coroutine startFirmwareDiscoveryFlow(mctp_eid_t eid);
 
     /** @brief Starts get Active Firmware Version Flow
      *
@@ -291,7 +290,6 @@ class InventoryManager
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;
-
 };
 
 } // namespace fw_update

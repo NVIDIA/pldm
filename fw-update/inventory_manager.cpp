@@ -92,8 +92,8 @@ requester::Coroutine InventoryManager::getPLDMTypes(mctp_eid_t eid,
     co_return completionCode;
 }
 
-requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
-    mctp_eid_t eid)
+requester::Coroutine
+    InventoryManager::startFirmwareDiscoveryFlow(mctp_eid_t eid)
 {
     uint8_t rc = 0;
     uint64_t supportedTypes = 0;
@@ -192,8 +192,7 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
         co_return PLDM_SUCCESS;
     }
 
-    auto co = getActiveFirmwareVersion(
-        eid, updateFWVersionCallback);
+    auto co = getActiveFirmwareVersion(eid, updateFWVersionCallback);
 
     if (inventoryCoRoutineHandlers.contains(eid))
     {
@@ -213,7 +212,8 @@ requester::Coroutine InventoryManager::getActiveFirmwareVersion(
     std::string messageError{};
     std::string resolution{};
 
-    auto rc = co_await getFirmwareParameters(eid, messageError, resolution, true);
+    auto rc =
+        co_await getFirmwareParameters(eid, messageError, resolution, true);
 
     if (rc == PLDM_SUCCESS)
     {
@@ -454,8 +454,8 @@ requester::Coroutine InventoryManager::getFirmwareParameters(
     }
 
     rc = co_await parseGetFWParametersResponse(eid, responseMsg, responseLen,
-                                               messageError,
-                                               resolution, refreshFWVersionOnly);
+                                               messageError, resolution,
+                                               refreshFWVersionOnly);
 
     if (rc)
     {
