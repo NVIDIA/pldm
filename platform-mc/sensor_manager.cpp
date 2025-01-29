@@ -705,6 +705,11 @@ void SensorManager::initSensorList(tid_t tid)
     }
 
     auto terminus = termini[tid];
+    // Initialize the sensors only after the terminus is set to initialized.
+    if (!terminus->initalized)
+    {
+        return;
+    }
     // clear and initialize prioritySensors and roundRobinSensors list
     terminus->prioritySensors.clear();
     std::queue<std::variant<std::shared_ptr<NumericSensor>,
