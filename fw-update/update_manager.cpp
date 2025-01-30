@@ -479,7 +479,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
 void UpdateManager::performSecurityChecksAsync(
     std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
+    [[maybe_unused]] std::function<void(const std::string& errorMsg)> onError)
 {
 
     SecurityCheckType securityCheckType = SecurityCheckType::Disabled;
