@@ -136,6 +136,12 @@ def write_component_bitmap_bit_length(pldm_fw_up_pkg, metadata):
     pldm_fw_up_pkg.write(struct.pack('<H', int(component_bitmap_bit_length)))
     return component_bitmap_bit_length
 
+PACKAGE_FORMAT_REVISIONS = {
+    "1.0": 0x01,
+    "1.1": 0x02,
+    "1.2": 0x03,
+    "1.3": 0x04
+}
 
 def write_pkg_header_info(pldm_fw_up_pkg, metadata):
     '''
@@ -179,8 +185,7 @@ def write_pkg_header_info(pldm_fw_up_pkg, metadata):
     component_bitmap_bit_length = write_component_bitmap_bit_length(
         pldm_fw_up_pkg, metadata)
     write_package_version_string(pldm_fw_up_pkg, metadata)
-    return component_bitmap_bit_length
-
+    return component_bitmap_bit_length, package_header_format_revision
 
 def get_applicable_components(device, components, component_bitmap_bit_length):
     '''
@@ -274,7 +279,7 @@ def prepare_record_descriptors(descriptors):
             descriptor_count += 1
     return record_descriptors, descriptor_count
 
-
+#pylint: disable=too-many-locals
 def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
                                         component_bitmap_bit_length):
     '''
@@ -368,6 +373,19 @@ def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
                 component_image_set_version_string.encode('ascii')))
         pldm_fw_up_pkg.write(record_descriptors)
 
+def write_downstream_device_identification_area(pldm_fw_up_pkg):
+    '''
+    Write downstream device identification area into the PLDM package header
+    
+    This function writes the DownstreamDeviceIDRecordCount as 0, indicating
+    no downstream device ID records are present in the package.
+    
+    Parameters:
+        pldm_fw_up_pkg: PLDM FW update package
+    '''
+    # DownstreamDeviceIDRecordCount = 0 (no downstream devices)
+    pldm_fw_up_pkg.write(struct.pack('<B', 0))
+
 def get_component_comparison_stamp(component):
     '''
     Get component comparison stamp from metadata file.
@@ -402,7 +420,9 @@ def get_component_comparison_stamp(component):
                 sys.exit("ERROR: Invalid hex for ComponentComparisonStamp")
     return component_comparison_stamp
 
-def write_component_image_info_area(pldm_fw_up_pkg, metadata, image_files):
+#pylint: disable=too-many-locals,too-many-statements
+def write_component_image_info_area(pldm_fw_up_pkg, metadata,
+                        image_files, package_header_format_revision):
     '''
     Write component image information area into the PLDM package header
 
@@ -414,6 +434,7 @@ def write_component_image_info_area(pldm_fw_up_pkg, metadata, image_files):
         pldm_fw_up_pkg: PLDM FW update package
         metadata: metadata about PLDM FW update package
         image_files: component images
+        package_header_format_revision: Format revision of the package (numeric)
     '''
     components = metadata["ComponentImageInformationArea"]
     # ComponentImageCount
@@ -477,24 +498,41 @@ def write_component_image_info_area(pldm_fw_up_pkg, metadata, image_files):
         component_version_string = component["ComponentVersionString"]
         check_string_length(component_version_string)
 
+        # Check for Component Opaque Data (only for version 1.2 and above)
+        # ComponentOpaqueData is not supported yet, always default to 0 length
+        component_opaque_data_length = 0x00000000
+
         format_string = '<HHIHHIIBB' + str(len(component_version_string)) + 's'
+
+        # Prepare arguments for struct.pack
+        pack_args = [
+            component_classification,
+            component_identifier,
+            component_comparison_stamp,
+            ba2int(component_options),
+            ba2int(requested_component_activation_method),
+            component_location_offset,
+            component_size,
+            component_version_string_type,
+            len(component_version_string),
+            component_version_string.encode('ascii')
+        ]
+        # Add ComponentOpaqueDataLength field for version 1.2 and above
+        if package_header_format_revision >= PACKAGE_FORMAT_REVISIONS["1.2"]:
+            format_string += 'I'
+            pack_args.append(component_opaque_data_length)
         pldm_fw_up_pkg.write(
-            struct.pack(
-                format_string,
-                component_classification,
-                component_identifier,
-                component_comparison_stamp,
-                ba2int(component_options),
-                ba2int(requested_component_activation_method),
-                component_location_offset,
-                component_size,
-                component_version_string_type,
-                len(component_version_string),
-                component_version_string.encode('ascii')))
+            struct.pack(format_string, *pack_args)
+        )
 
     index = 0
     pkg_header_checksum_size = 4
-    start_offset = pldm_fw_up_pkg.tell() + pkg_header_checksum_size
+    # Package payload checksum is only present in version 1.3
+    pkg_payload_checksum_size = 4 if package_header_format_revision == \
+        PACKAGE_FORMAT_REVISIONS["1.3"] else 0
+    start_offset = pldm_fw_up_pkg.tell() + pkg_header_checksum_size + \
+        pkg_payload_checksum_size
+
     # Update ComponentLocationOffset and ComponentSize for all the components
     for offset in component_location_offsets:
         file_size = os.stat(image_files[index]).st_size
@@ -551,6 +589,24 @@ def append_component_images(pldm_fw_up_pkg, image_files):
             for line in file:
                 pldm_fw_up_pkg.write(line)
 
+def write_pkg_payload_checksum(pldm_fw_up_pkg, image_files):
+    '''
+    Write PLDMFWPackagePayloadChecksum into the PLDM package.
+    This is calculated for all component images in the payload.
+    Only applicable for version 1.3 and above.
+
+        Parameters:
+            pldm_fw_up_pkg: PLDM FW update package
+            image_files: component images
+    '''
+    # Calculate CRC32 for all component images
+    crc = 0
+    for image in image_files:
+        with open(image, 'rb') as file:
+            crc = binascii.crc32(file.read(), crc)
+
+    # Write the payload checksum
+    pldm_fw_up_pkg.write(struct.pack('<I', crc))
 
 def main():
     """Create PLDM FW update (DSP0267) package based on a JSON metadata file"""
@@ -565,7 +621,7 @@ def main():
 
     args = parser.parse_args()
     image_files = args.images
-    with open(args.metadatafile) as file:
+    with open(args.metadatafile, encoding='utf-8') as file:
         try:
             metadata = json.load(file)
         except ValueError:
@@ -578,15 +634,23 @@ def main():
 
     try:
         with open(args.pldmfwuppkgname, 'w+b') as pldm_fw_up_pkg:
-            component_bitmap_bit_length = write_pkg_header_info(pldm_fw_up_pkg,
-                                                                metadata)
+            component_bitmap_bit_length, package_header_format_revision = write_pkg_header_info(
+                pldm_fw_up_pkg, metadata)
+
             write_fw_device_identification_area(pldm_fw_up_pkg,
                                                 metadata,
                                                 component_bitmap_bit_length)
+            if package_header_format_revision > PACKAGE_FORMAT_REVISIONS["1.0"]:
+                write_downstream_device_identification_area(pldm_fw_up_pkg)
             write_component_image_info_area(pldm_fw_up_pkg, metadata,
-                                            image_files)
+                                            image_files, package_header_format_revision)
             update_pkg_header_size(pldm_fw_up_pkg)
             write_pkg_header_checksum(pldm_fw_up_pkg)
+
+            # Only include package payload checksum for version 1.3
+            if package_header_format_revision == PACKAGE_FORMAT_REVISIONS["1.3"]:
+                write_pkg_payload_checksum(pldm_fw_up_pkg, image_files)
+
             append_component_images(pldm_fw_up_pkg, image_files)
             pldm_fw_up_pkg.close()
     except BaseException:
