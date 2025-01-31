@@ -202,6 +202,11 @@ class StateSetEthernetPortLinkState : public StateSet
         std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> sensor)
     {
         switchBandwidthSensor = sensor;
+        if (ValuePortInfoIntf)
+        {
+            auto currentSpeed = ValuePortInfoIntf->currentSpeed();
+            switchBandwidthSensor->updateCurrentBandwidth(0.0, currentSpeed);
+        }
     }
 
     bool isDerivedSensorAssociated()
