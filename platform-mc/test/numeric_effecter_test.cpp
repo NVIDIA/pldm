@@ -36,7 +36,9 @@ class TestNumericEffecter : public ::testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
                         nullptr)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;

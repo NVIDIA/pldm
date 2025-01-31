@@ -6,6 +6,7 @@
 #include "common/flight_recorder.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "pldmd/socket_handler.hpp"
 
 #include <sys/socket.h>
 
@@ -15,10 +16,14 @@
 
 #include <chrono>
 #include <functional>
-#include <iostream>
 
 namespace pldm
 {
+
+namespace mctp_socket
+{
+class Handler;
+}
 
 namespace requester
 {
@@ -151,10 +156,12 @@ class Request final : public RequestRetryTimer
      *  @param[in] verbose - verbose tracing flag
      */
     explicit Request(int fd, mctp_eid_t eid, sdeventplus::Event& event,
+                     const pldm::mctp_socket::Handler* handler,
                      pldm::Request&& requestMsg, uint8_t numRetries,
                      std::chrono::milliseconds timeout, bool verbose) :
         RequestRetryTimer(event, numRetries, timeout),
-        fd(fd), eid(eid), requestMsg(std::move(requestMsg)), verbose(verbose)
+        fd(fd), eid(eid), requestMsg(std::move(requestMsg)), verbose(verbose),
+        socketHandler(handler)
     {}
 
   private:
@@ -162,6 +169,7 @@ class Request final : public RequestRetryTimer
     mctp_eid_t eid;           //!< endpoint ID of the remote MCTP endpoint
     pldm::Request requestMsg; //!< PLDM request message
     bool verbose;             //!< verbose tracing flag
+    const pldm::mctp_socket::Handler* socketHandler; // MCTP socket handler
 
     /** @brief Sends the PLDM request message on the socket
      *
@@ -169,13 +177,20 @@ class Request final : public RequestRetryTimer
      */
     int send() const
     {
+        if (!socketHandler)
+        {
+            lg2::error("Socket handler is unset");
+            return PLDM_ERROR;
+        }
+
         if (verbose)
         {
             pldm::utils::printBuffer(pldm::utils::Tx, requestMsg);
         }
         pldm::flightrecorder::FlightRecorder::GetInstance().saveRecord(
             requestMsg, true);
-        auto rc = pldm_send(eid, fd, requestMsg.data(), requestMsg.size());
+        auto rc = socketHandler->sendMsg(eid, fd, requestMsg.data(),
+                                         requestMsg.size());
         if (rc < 0)
         {
             lg2::error("Failed to send PLDM message. RC={RC}, errno={ERRNO}",

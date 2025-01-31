@@ -16,6 +16,7 @@
 #include "pldmd/dbus_impl_requester.hpp"
 #include "pldmd/socket_manager.hpp"
 #include "requester/handler.hpp"
+#include "requester/test/mock_handler.hpp"
 #include "requester/test/mock_mctp_discovery_handler_intf.hpp"
 
 #include <sdeventplus/event.hpp>
@@ -42,8 +43,8 @@ TEST(MctpEndpointDiscoveryTest, SingleHandleMctpEndpoint)
         std::chrono::milliseconds(100));
     pldm::fw_update::Manager fwUpdateManager(event, reqHandler, requester, "",
                                              nullptr, false);
-    pldm::mctp_socket::Handler handler(event, reqHandler, invoker,
-                                       fwUpdateManager, sockManager, false);
+    MockMctpSocketHandler handler(event, reqHandler, invoker, fwUpdateManager,
+                                  sockManager, false);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, handler,
@@ -70,8 +71,8 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
         std::chrono::milliseconds(100));
     pldm::fw_update::Manager fwUpdateManager(event, reqHandler, requester, "",
                                              nullptr, false);
-    pldm::mctp_socket::Handler handler(event, reqHandler, invoker,
-                                       fwUpdateManager, sockManager, false);
+    MockMctpSocketHandler handler(event, reqHandler, invoker, fwUpdateManager,
+                                  sockManager, false);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, handler,

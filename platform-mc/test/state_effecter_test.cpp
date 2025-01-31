@@ -36,7 +36,9 @@ class TestStateEffecter : public ::testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
                         nullptr)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     static const auto& getStateSets(const StateEffecter& stateEffecter)
     {

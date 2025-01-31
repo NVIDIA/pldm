@@ -58,7 +58,9 @@ class EventManagerTest : public testing::Test
                         false),
 
         eventManager(terminusManager, termini, fwUpdateManager)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;

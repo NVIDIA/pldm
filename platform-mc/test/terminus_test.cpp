@@ -41,7 +41,9 @@ class TerminusTest : public testing::Test
                         nullptr),
         sensorManager(event, terminusManager, termini, nullptr),
         platformManager(terminusManager, termini)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     void runEventLoopForMilliseconds(uint64_t msec)
     {

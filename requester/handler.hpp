@@ -1,3 +1,20 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 
 #include "config.h"
@@ -27,6 +44,11 @@
 
 namespace pldm
 {
+
+namespace mctp_socket
+{
+class Handler;
+}
 
 namespace requester
 {
@@ -179,8 +201,8 @@ class Handler
         }
 
         auto request = std::make_unique<RequestInterface>(
-            sockManager.getSocket(eid), eid, event, std::move(requestMsg),
-            numRetries, responseTimeOut, verbose);
+            sockManager.getSocket(eid), eid, event, socketHandler,
+            std::move(requestMsg), numRetries, responseTimeOut, verbose);
         auto timer = std::make_unique<sdbusplus::Timer>(
             event.get(), instanceIdExpiryCallBack);
 
@@ -260,6 +282,10 @@ class Handler
                         "Failed to stop the instance ID expiry timer. RC={RC}",
                         "RC", rc);
                 }
+                if (!response)
+                {
+                    lg2::error("handleResponse() called with nullptrs");
+                }
                 // Call responseHandler after erase it from the handlers to
                 // avoid starting it again in runRegisteredRequest()
                 auto unique_handler = std::move(responseHandler);
@@ -282,6 +308,11 @@ class Handler
             requester.markFree(eid, instanceId);
         }
         runRegisteredRequest(eid);
+    }
+
+    void setSocketHandler(const pldm::mctp_socket::Handler* handler)
+    {
+        socketHandler = handler;
     }
 
   private:
@@ -315,6 +346,8 @@ class Handler
     std::unordered_map<RequestKey, std::unique_ptr<sdeventplus::source::Defer>,
                        RequestKeyHasher>
         removeRequestContainer;
+
+    const pldm::mctp_socket::Handler* socketHandler; // MCTP socket handler
 
     /** @brief Remove request entry for which the instance ID expired
      *

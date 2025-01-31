@@ -59,6 +59,10 @@ if get_option('oem-nvidia').enabled()
   add_project_arguments('-DOEM_NVIDIA', language : 'cpp')
 endif
 
+if get_option('enable-in-kernel-mctp').enabled()
+    conf_data.set('MCTP_IN_KERNEL', 0)
+endif
+
 if get_option('omit-heartbeat').enabled()
   add_project_arguments('-DOMIT_HEARTBEAT', language : 'cpp')
 endif
@@ -273,6 +277,8 @@ source_files = [
   'pldmd/instance_id.cpp',
   'pldmd/dbus_impl_pdr.cpp',
   'pldmd/socket_handler.cpp',
+  'pldmd/mctp_kernel_handler.cpp',
+  'pldmd/mctp_demux_handler.cpp',
   'fw-update/inventory_manager.cpp',
   'fw-update/package_parser.cpp',
   'fw-update/component_updater.cpp',

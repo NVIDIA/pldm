@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "pldm_cmd_helper.hpp"
 
 #include "libpldm/firmware_update.h"
@@ -5,6 +7,10 @@
 
 #include "xyz/openbmc_project/Common/error.hpp"
 
+#include <linux/mctp.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <systemd/sd-bus.h>
 
 #include <sdbusplus/server.hpp>
@@ -98,6 +104,123 @@ void fillCompletionCode(uint8_t completionCode, ordered_json& data)
     else
     {
         data["CompletionCode"] = "UNKNOWN_COMPLETION_CODE";
+    }
+}
+
+/** @brief Initialize socket, send PLDM command and receive response using
+ * in-kernel MCTP
+ *
+ *  @param[in] eid - MCTP Endpoint ID to communicate with
+ *  @param[in] requestMsg - PLDM request message to send
+ *  @param[out] responseMsg - Vector to store the received PLDM response
+ *  @param[in] verbose - Enable verbose logging
+ *
+ *  @return PLDM_SUCCESS on success, negative errno on failure
+ */
+int inKernelMctpSockSendRecv(uint8_t eid,
+                             const std::vector<uint8_t>& requestMsg,
+                             std::vector<uint8_t>& responseMsg, bool verbose)
+{
+    int returnCode = 0;
+
+    int sockFd = socket(AF_MCTP, SOCK_DGRAM, 0);
+    if (-1 == sockFd)
+    {
+        returnCode = -errno;
+        std::cerr << "Failed to create the socket : RC = " << sockFd << "\n";
+        return returnCode;
+    }
+    Logger(verbose, "Success in creating the socket : RC = ", sockFd);
+
+    CustomFD socketFd(sockFd);
+
+    struct sockaddr_mctp addr
+    {};
+
+    addr.smctp_family = AF_MCTP;
+    addr.smctp_network = MCTP_NET_ANY;
+    addr.smctp_addr.s_addr = MCTP_ADDR_ANY;
+    addr.smctp_tag = MCTP_TAG_OWNER;
+    addr.smctp_type = MCTP_MSG_TYPE_PLDM;
+
+    int rc =
+        bind(sockFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
+    if (rc == -1)
+    {
+        returnCode = -errno;
+        std::cerr << "Failed to bind socket: RC = " << returnCode << "\n";
+        return returnCode;
+    }
+
+    addr.smctp_addr.s_addr = eid;
+
+    int result = sendto(socketFd(), requestMsg.data(), requestMsg.size(), 0,
+                        (struct sockaddr*)&addr, sizeof(addr));
+    if (-1 == result)
+    {
+        returnCode = -errno;
+        std::cerr << "Failed to send message type as pldm to mctp : RC = "
+                  << returnCode << "\n";
+        return returnCode;
+    }
+    Logger(verbose, "Success in sending message type as VDM to mctp : RC = ",
+           returnCode);
+
+    // Read the response from socket
+    ssize_t peekedLength = recv(socketFd(), nullptr, 0, MSG_TRUNC | MSG_PEEK);
+    if (0 == peekedLength)
+    {
+        std::cerr << "Socket is closed : peekedLength = " << peekedLength
+                  << "\n";
+        return returnCode;
+    }
+    else if (peekedLength <= -1)
+    {
+        returnCode = -errno;
+        std::cerr << "recv() system call failed : RC = " << returnCode << "\n";
+        return returnCode;
+    }
+    else
+    {
+        auto reqhdr = reinterpret_cast<const pldm_msg_hdr*>(requestMsg.data());
+        do
+        {
+            auto peekedLength =
+                recv(socketFd(), nullptr, 0, MSG_PEEK | MSG_TRUNC);
+            if (-1 == peekedLength)
+            {
+                returnCode = -errno;
+                std::cerr << "Failed to recv message length : RC = "
+                          << returnCode << "\n";
+                return returnCode;
+            }
+            responseMsg.resize(peekedLength);
+
+            struct sockaddr_mctp addr;
+            socklen_t addrlen;
+            addrlen = sizeof(addr);
+            memset(&addr, 0, sizeof(addr));
+            addr.smctp_addr.s_addr = eid;
+
+            ssize_t recvDataLength = recvfrom(
+                socketFd(), reinterpret_cast<void*>(responseMsg.data()),
+                peekedLength, MSG_TRUNC, (struct sockaddr*)&addr, &addrlen);
+
+            auto resphdr =
+                reinterpret_cast<const pldm_msg_hdr*>(responseMsg.data());
+            if (recvDataLength == peekedLength &&
+                resphdr->instance_id == reqhdr->instance_id &&
+                resphdr->request == 0)
+            {
+                return PLDM_SUCCESS;
+            }
+            else if (recvDataLength != peekedLength)
+            {
+                std::cerr << "Failure to read response length packet: length = "
+                          << recvDataLength << "\n";
+                return returnCode;
+            }
+        } while (1);
     }
 }
 
@@ -391,10 +514,12 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
                                    std::vector<uint8_t>& responseMsg)
 {
 
+#ifndef MCTP_IN_KERNEL
     // Insert the PLDM message type and EID at the beginning of the
     // msg.
     requestMsg.insert(requestMsg.begin(), MCTP_MSG_TYPE_PLDM);
     requestMsg.insert(requestMsg.begin(), mctp_eid);
+#endif
 
     bool mctpVerbose = pldmVerbose;
 
@@ -410,6 +535,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
         printBuffer(Tx, requestMsg);
     }
 
+#ifndef MCTP_IN_KERNEL
     if (mctp_eid != PLDM_ENTITY_ID)
     {
         auto [enabled, type, protocol, sockAddress] = getMctpSockInfo(mctp_eid);
@@ -504,6 +630,20 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
         responseMsg.erase(responseMsg.begin(),
                           responseMsg.begin() + 2 /* skip the mctp header */);
     }
+#else
+    int rc = inKernelMctpSockSendRecv(mctp_eid, requestMsg, responseMsg,
+                                      mctpVerbose);
+    if (rc != PLDM_SUCCESS)
+    {
+        return rc;
+    }
+
+    if (pldmVerbose)
+    {
+        std::cout << "pldmtool: ";
+        printBuffer(Rx, responseMsg);
+    }
+#endif
     return PLDM_SUCCESS;
 }
 } // namespace helper

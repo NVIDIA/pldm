@@ -39,7 +39,9 @@ class SensorManagerTest : public testing::Test
         terminusManager(event, reqHandler, dbusImplRequester, termini, 0x8,
                         nullptr),
         sensorManager(event, terminusManager, termini, nullptr)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     void runEventLoopForSeconds(uint64_t sec)
     {

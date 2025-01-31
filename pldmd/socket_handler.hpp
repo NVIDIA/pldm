@@ -19,7 +19,6 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "invoker.hpp"
-#include "requester/handler.hpp"
 #include "socket_manager.hpp"
 
 #include <sdeventplus/event.hpp>
@@ -27,7 +26,14 @@
 
 #include <map>
 #include <optional>
-#include <unordered_map>
+
+namespace pldm::requester
+{
+template <class>
+class Handler;
+
+class Request;
+} // namespace pldm::requester
 
 namespace pldm::fw_update
 {
@@ -73,37 +79,91 @@ class Handler
      *  @param[in] verbose - Verbose tracing flag
      *  @param[in/out] manager - MCTP socket manager
      */
-    explicit Handler(sdeventplus::Event& event,
-                     requester::Handler<requester::Request>& handler,
-                     Invoker& invoker, fw_update::Manager& fwManager,
-                     Manager& manager, bool verbose) :
-        event(event),
-        handler(handler), invoker(invoker), fwManager(fwManager),
-        manager(manager), verbose(verbose)
+    explicit Handler(
+        sdeventplus::Event& event,
+        pldm::requester::Handler<pldm::requester::Request>& handler,
+        Invoker& invoker, fw_update::Manager& fwManager, Manager& manager,
+        bool verbose) :
+        handler(handler),
+        invoker(invoker), fwManager(fwManager), manager(manager), event(event),
+        verbose(verbose)
     {}
 
-    int registerMctpEndpoint(EID eid, int type, int protocol,
-                             const std::vector<uint8_t>& pathName);
+    /** @brief Register a new MCTP endpoint for communication
+     *
+     *  @param[in] eid - MCTP Endpoint ID to register
+     *  @param[in] type - Transport binding type (e.g., PCIe, SMBus)
+     *  @param[in] protocol - Communication protocol identifier
+     *  @param[in] pathName - Vector containing the endpoint's path information
+     *
+     *  @return 0 on success
+     */
+    virtual int registerMctpEndpoint(EID eid, int type, int protocol,
+                                     const std::vector<uint8_t>& pathName) = 0;
+
+    virtual int sendMsg(EID eid, int mctpFd, const uint8_t* pldmMsg,
+                        size_t pldmMsgLen) const = 0;
+
+    virtual void handleReceivedMsg(IO& io, int fd, uint32_t revents) = 0;
 
   private:
-    sdeventplus::Event& event;
-    requester::Handler<requester::Request>& handler;
+    pldm::requester::Handler<pldm::requester::Request>& handler;
     Invoker& invoker;
     fw_update::Manager& fwManager;
+
+  protected:
     Manager& manager;
+    sdeventplus::Event& event;
     bool verbose;
 
-    SocketInfo initSocket(int type, int protocol,
-                          const std::vector<uint8_t>& pathName);
-
     std::optional<Response>
-        processRxMsg(const std::vector<uint8_t>& requestMsg);
+        processRxMsg(uint8_t tag, uint8_t eid, uint8_t type,
+                     const std::vector<uint8_t>& requestMsg);
+};
+
+class InKernelHandler : public Handler
+{
+  public:
+    using Handler::Handler;
+
+    int registerMctpEndpoint(EID eid, int type, int protocol,
+                             const std::vector<uint8_t>& pathName) override;
+
+    int sendMsg(EID eid, int mctpFd, const uint8_t* pldmMsg,
+                size_t pldmMsgLen) const override;
+
+    void handleReceivedMsg(IO& io, int fd, uint32_t revents) override;
+
+    std::unique_ptr<IO> io;
+    int fd;
+    int sendBufferSize;
+    bool isFdValid{false};
+};
+
+class DaemonHandler : public Handler
+{
+  public:
+    using Handler::Handler;
+
+    int registerMctpEndpoint(EID eid, int type, int protocol,
+                             const std::vector<uint8_t>& pathName) override;
+
+    int sendMsg(EID eid, int mctpFd, const uint8_t* pldmMsg,
+                size_t pldmMsgLen) const override;
+
+    void handleReceivedMsg(IO& io, int fd, uint32_t revents) override;
+
+  private:
+    SocketInfo initSocket(EID eid, int type, int protocol,
+                          const std::vector<uint8_t>& pathName);
 
     /** @brief Socket information for MCTP Tx/Rx daemons */
     std::map<std::vector<uint8_t>,
-             std::tuple<std::unique_ptr<pldm::utils::CustomFD>, SendBufferSize,
+             std::tuple<std::unique_ptr<utils::CustomFD>, SendBufferSize,
                         std::unique_ptr<IO>>>
         socketInfoMap;
+
+    std::unique_ptr<IO> io;
 };
 
 } // namespace pldm::mctp_socket

@@ -336,10 +336,16 @@ int main(int argc, char** argv)
 
 #endif
 
-        pldm::mctp_socket::Handler sockHandler(event, reqHandler, invoker,
-                                               *(fwManager.get()), sockManager,
-                                               verbose);
-
+#ifdef MCTP_IN_KERNEL
+        pldm::mctp_socket::InKernelHandler sockHandler(
+            event, reqHandler, invoker, *(fwManager.get()), sockManager,
+            verbose);
+#else
+        pldm::mctp_socket::DaemonHandler sockHandler(event, reqHandler, invoker,
+                                                     *(fwManager.get()),
+                                                     sockManager, verbose);
+#endif
+        reqHandler.setSocketHandler(&sockHandler);
         std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
             std::make_unique<MctpDiscovery>(
                 bus, sockHandler,

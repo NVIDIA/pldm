@@ -18,7 +18,6 @@
 
 #include "libpldm/requester/pldm.h"
 
-#include "activation.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"

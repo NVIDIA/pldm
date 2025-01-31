@@ -22,9 +22,6 @@
 
 #include <phosphor-logging/lg2.hpp>
 
-#include <iostream>
-#include <map>
-#include <optional>
 #include <tuple>
 #include <unordered_map>
 

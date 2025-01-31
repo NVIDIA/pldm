@@ -37,7 +37,9 @@ class MockTerminusManager : public TerminusManager
                         mctp_eid_t localEid, Manager* manager) :
         TerminusManager(event, handler, requester, termini, localEid, manager,
                         true)
-    {}
+    {
+        handler.setSocketHandler(nullptr);
+    }
 
     requester::Coroutine SendRecvPldmMsgOverMctp(mctp_eid_t /*eid*/,
                                                  Request& /*request*/,

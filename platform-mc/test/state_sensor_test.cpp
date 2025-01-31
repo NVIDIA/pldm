@@ -41,6 +41,7 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
     requester::Handler<requester::Request> reqHandler(event, dbusImplRequester,
                                                       sockManager, false);
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+    reqHandler.setSocketHandler(nullptr);
     TerminusManager terminusManager(event, reqHandler, dbusImplRequester,
                                     termini, 0x8, nullptr);
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,

@@ -69,6 +69,8 @@ class ComponentUpdaterTest : public testing::Test
                           {55555, "ComponentName2"},
                           {12, "ComponentName3"},
                           {66666, "ComponentName4"}};
+
+        reqHandler.setSocketHandler(nullptr);
     }
 
     std::ifstream package;

@@ -53,7 +53,9 @@ class TerminusManagerTest : public testing::Test
                         mockTerminusManagerLocalEid, nullptr),
         mockTerminusManager(event, reqHandler, dbusImplRequester, termini,
                             mockTerminusManagerLocalEid, nullptr)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
