@@ -1506,6 +1506,12 @@ void Terminus::addNumericSensor(
         auto sensor = std::make_shared<NumericSensor>(
             tid, true, pdr, sensorName, systemInventoryPath);
         numericSensors.emplace_back(sensor);
+        if (auxName)
+        {
+            // set default value to pdi and shm if aux name is available
+            sensor->updateReading(true, false,
+                                  std::numeric_limits<double>::quiet_NaN());
+        }
     }
     catch (const std::exception& e)
     {

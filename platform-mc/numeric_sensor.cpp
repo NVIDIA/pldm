@@ -383,9 +383,6 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
         std::make_unique<InventoryDecoratorAreaIntf>(bus, path.c_str());
     inventoryDecoratorAreaIntf->physicalContext(
         PhysicalContextType::SystemBoard);
-
-    // set sensor to default value and update to shm
-    updateReading(true, false, std::numeric_limits<double>::quiet_NaN());
 }
 
 #ifdef OEM_NVIDIA
