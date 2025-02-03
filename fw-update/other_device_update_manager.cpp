@@ -338,7 +338,7 @@ std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
                 std::get<VendorDefinedDescriptorInfo>(descriptorValue);
             if (vendorDescTitle == "APSKU")
             {
-                sku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                sku = fmt::format("0X{:02X}{:02X}{:02X}{:02X}",
                                   vendorDescData[0], vendorDescData[1],
                                   vendorDescData[2], vendorDescData[3]);
             }
