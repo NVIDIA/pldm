@@ -121,7 +121,8 @@ void StateSensor::updateReading(bool available, bool functional,
     }
 }
 
-void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
+void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
+                                    uint8_t previousEventState)
 {
     if (sensorOffset < stateSets.size())
     {
@@ -140,13 +141,25 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState)
                     "TID={TD}, SensorId={SID}, SensorOffset={SO}, EventState={ES}.",
                     "TD", tid, "SID", sensorId, "SO", sensorOffset, "ES",
                     eventState);
-
                 return;
             }
 
             std::string arg1 = entityName + " " + sensorName;
             auto [messageID, arg2, level] =
                 stateSets[sensorOffset]->getEventData();
+
+            if ((previousEventState == 0) && (level > Level::Notice))
+            {
+                // Skip to log state transition from unknown if the severity
+                // level is Notice, Information or Debug
+                lg2::info(
+                    "A state sensor event is not logged as it is transition from unknown to ok state. "
+                    "TID={TD}, SensorId={SID}, SensorOffset={SO}, EventState={ES} PreviousEventState={PES}.",
+                    "TD", tid, "SID", sensorId, "SO", sensorOffset, "ES",
+                    eventState, "PES", previousEventState);
+                return;
+            }
+
             std::string resolution = "None";
             createLogEntry(messageID, arg1, arg2, resolution, level);
         }
