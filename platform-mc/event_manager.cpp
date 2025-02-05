@@ -722,7 +722,8 @@ void EventManager::processStateSensorEvent(tid_t tid, uint16_t sensorId,
                    "SENSORID", sensorId);
         return;
     }
-    (*sensorIterator)->handleSensorEvent(sensorOffset, eventState);
+    (*sensorIterator)
+        ->handleSensorEvent(sensorOffset, eventState, previousEventState);
 }
 
 } // namespace platform_mc
