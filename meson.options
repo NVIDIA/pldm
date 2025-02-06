@@ -403,3 +403,10 @@ option(
   description: 'Enable Mockup Responder',
   value: 'disabled',
 )
+
+option(
+  'platform-chassis-object-path',
+  type: 'string',
+  description: 'The system chassis object path for associating PLDM sensors and effectors.',
+  value: '/xyz/openbmc_project/inventory/system/chassis/Baseboard_0',
+)
