@@ -16,12 +16,11 @@
  */
 #include "pldm_fw_update_cmd.hpp"
 
-#include "libpldm/firmware_update.h"
-
 #include "common/utils.hpp"
 #include "pldm_cmd_helper.hpp"
 
 #include <fmt/format.h>
+#include <libpldm/firmware_update.h>
 
 namespace pldmtool
 {
@@ -138,7 +137,7 @@ class GetStatus : public CommandInterface
     ~GetStatus() = default;
     GetStatus() = delete;
     GetStatus(const GetStatus&) = delete;
-    GetStatus(GetStatus&&) = default;
+    GetStatus(GetStatus&&) = delete;
     GetStatus& operator=(const GetStatus&) = delete;
     GetStatus& operator=(GetStatus&&) = delete;
 
@@ -234,7 +233,7 @@ class GetFwParams : public CommandInterface
     ~GetFwParams() = default;
     GetFwParams() = delete;
     GetFwParams(const GetFwParams&) = delete;
-    GetFwParams(GetFwParams&&) = default;
+    GetFwParams(GetFwParams&&) = delete;
     GetFwParams& operator=(const GetFwParams&) = delete;
     GetFwParams& operator=(GetFwParams&&) = delete;
 
@@ -511,7 +510,7 @@ class QueryDeviceIdentifiers : public CommandInterface
     ~QueryDeviceIdentifiers() = default;
     QueryDeviceIdentifiers() = delete;
     QueryDeviceIdentifiers(const QueryDeviceIdentifiers&) = delete;
-    QueryDeviceIdentifiers(QueryDeviceIdentifiers&&) = default;
+    QueryDeviceIdentifiers(QueryDeviceIdentifiers&&) = delete;
     QueryDeviceIdentifiers& operator=(const QueryDeviceIdentifiers&) = delete;
     QueryDeviceIdentifiers& operator=(QueryDeviceIdentifiers&&) = delete;
 
@@ -714,9 +713,9 @@ class CancelUpdateComponent : public CommandInterface
     ~CancelUpdateComponent() = default;
     CancelUpdateComponent() = delete;
     CancelUpdateComponent(const CancelUpdateComponent&) = delete;
-    CancelUpdateComponent(CancelUpdateComponent&&) = default;
+    CancelUpdateComponent(CancelUpdateComponent&&) = delete;
     CancelUpdateComponent& operator=(const CancelUpdateComponent&) = delete;
-    CancelUpdateComponent& operator=(CancelUpdateComponent&&) = default;
+    CancelUpdateComponent& operator=(CancelUpdateComponent&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -754,9 +753,9 @@ class CancelUpdate : public CommandInterface
     ~CancelUpdate() = default;
     CancelUpdate() = delete;
     CancelUpdate(const CancelUpdate&) = delete;
-    CancelUpdate(CancelUpdate&&) = default;
+    CancelUpdate(CancelUpdate&&) = delete;
     CancelUpdate& operator=(const CancelUpdate&) = delete;
-    CancelUpdate& operator=(CancelUpdate&&) = default;
+    CancelUpdate& operator=(CancelUpdate&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -810,13 +809,12 @@ class ActivateFirmware : public CommandInterface
     ~ActivateFirmware() = default;
     ActivateFirmware() = delete;
     ActivateFirmware(const ActivateFirmware&) = delete;
-    ActivateFirmware(ActivateFirmware&&) = default;
+    ActivateFirmware(ActivateFirmware&&) = delete;
     ActivateFirmware& operator=(const ActivateFirmware&) = delete;
-    ActivateFirmware& operator=(ActivateFirmware&&) = default;
+    ActivateFirmware& operator=(ActivateFirmware&&) = delete;
 
     explicit ActivateFirmware(const char* type, const char* name,
-                              CLI::App* app) :
-        CommandInterface(type, name, app)
+                              CLI::App* app) : CommandInterface(type, name, app)
     {
         app->add_option("--self_contained_activation_request",
                         selfContainedActivRequest,
@@ -873,9 +871,9 @@ class RequestUpdate : public CommandInterface
     ~RequestUpdate() = default;
     RequestUpdate() = delete;
     RequestUpdate(const RequestUpdate&) = delete;
-    RequestUpdate(RequestUpdate&&) = default;
+    RequestUpdate(RequestUpdate&&) = delete;
     RequestUpdate& operator=(const RequestUpdate&) = delete;
-    RequestUpdate& operator=(RequestUpdate&&) = default;
+    RequestUpdate& operator=(RequestUpdate&&) = delete;
 
     explicit RequestUpdate(const char* type, const char* name, CLI::App* app) :
         CommandInterface(type, name, app)
@@ -1009,9 +1007,9 @@ class PassComponentTable : public CommandInterface
     ~PassComponentTable() = default;
     PassComponentTable() = delete;
     PassComponentTable(const PassComponentTable&) = delete;
-    PassComponentTable(PassComponentTable&&) = default;
+    PassComponentTable(PassComponentTable&&) = delete;
     PassComponentTable& operator=(const PassComponentTable&) = delete;
-    PassComponentTable& operator=(PassComponentTable&&) = default;
+    PassComponentTable& operator=(PassComponentTable&&) = delete;
 
     explicit PassComponentTable(const char* type, const char* name,
                                 CLI::App* app) :
@@ -1150,13 +1148,12 @@ class UpdateComponent : public CommandInterface
     ~UpdateComponent() = default;
     UpdateComponent() = delete;
     UpdateComponent(const UpdateComponent&) = delete;
-    UpdateComponent(UpdateComponent&&) = default;
+    UpdateComponent(UpdateComponent&&) = delete;
     UpdateComponent& operator=(const UpdateComponent&) = delete;
-    UpdateComponent& operator=(UpdateComponent&&) = default;
+    UpdateComponent& operator=(UpdateComponent&&) = delete;
 
     explicit UpdateComponent(const char* type, const char* name,
-                             CLI::App* app) :
-        CommandInterface(type, name, app)
+                             CLI::App* app) : CommandInterface(type, name, app)
     {
 
         app->add_option("--comp_classification", compClassification,

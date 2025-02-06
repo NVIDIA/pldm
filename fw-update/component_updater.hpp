@@ -45,15 +45,6 @@ enum class ComponentUpdateStatus
 
 class UpdateManager;
 class DeviceUpdater;
-// // {
-// //     public:
-// //     stdexec::sender auto updateComponentCompletion(const size_t compIndex,
-// //                                    const ComponentUpdateStatus
-// compStatus);
-// // };
-// stdexec::sender auto DeviceUpdater::updateComponentCompletion(const size_t
-// compIndex,
-//                                    const ComponentUpdateStatus compStatus);
 
 /** @enum Enumeration to represent the PLDM ComponentUpdater sequence in the
  * firmware update flow
@@ -132,11 +123,11 @@ struct ComponentUpdaterState
 
         if (fwDebug)
         {
-            lg2::info("ComponentUpdater:prevSeq = {PREVSEQ}, command = "
-                      "{COMMAND}, currentSeq = {CURRENTSEQ}",
-                      "PREVSEQ", static_cast<size_t>(current), "COMMAND",
-                      static_cast<size_t>(command), "CURRENTSEQ",
-                      static_cast<size_t>(current));
+            info("ComponentUpdater:prevSeq = {PREVSEQ}, command = "
+                 "{COMMAND}, currentSeq = {CURRENTSEQ}",
+                 "PREVSEQ", static_cast<size_t>(current), "COMMAND",
+                 static_cast<size_t>(command), "CURRENTSEQ",
+                 static_cast<size_t>(current));
         }
         return current;
     }
@@ -161,19 +152,18 @@ struct ComponentUpdaterState
         {
             if (command == prev)
             {
-                lg2::error("ComponentUpdater Retry Request: inCmd = {COMMAND}, "
-                           "currentSeq = {CURRENTSEQ}",
-                           "COMMAND", static_cast<size_t>(command),
-                           "CURRENTSEQ", static_cast<size_t>(current));
+                error("ComponentUpdater Retry Request: inCmd = {COMMAND}, "
+                      "currentSeq = {CURRENTSEQ}",
+                      "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                      static_cast<size_t>(current));
                 return ComponentUpdaterSequence::RetryRequest;
             }
             if (command != current)
             {
-                lg2::error(
-                    "ComponentUpdater Unexpected command: inCmd = {COMMAND}, "
-                    "currentSeq = {CURRENTSEQ}",
-                    "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
-                    static_cast<size_t>(current));
+                error("ComponentUpdater Unexpected command: inCmd = {COMMAND}, "
+                      "currentSeq = {CURRENTSEQ}",
+                      "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                      static_cast<size_t>(current));
                 return ComponentUpdaterSequence::Invalid;
             }
             return ComponentUpdaterSequence::Valid;
@@ -209,9 +199,9 @@ class ComponentUpdater
   public:
     ComponentUpdater() = delete;
     ComponentUpdater(const ComponentUpdater&) = delete;
-    ComponentUpdater(ComponentUpdater&&) = default;
+    ComponentUpdater(ComponentUpdater&&) = delete;
     ComponentUpdater& operator=(const ComponentUpdater&) = delete;
-    ComponentUpdater& operator=(ComponentUpdater&&) = default;
+    ComponentUpdater& operator=(ComponentUpdater&&) = delete;
     ~ComponentUpdater() = default;
 
     /** @brief Constructor
@@ -242,13 +232,12 @@ class ComponentUpdater
                               UpdateManager* updateManager,
                               DeviceUpdater* deviceUpdater,
                               size_t componentIndex, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord),
-        componentUpdaterState(fwDebug), eid(eid), package(package),
-        compImageInfos(compImageInfos), compInfo(compInfo),
-        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-        updateManager(updateManager), deviceUpdater(deviceUpdater),
-        componentIndex(componentIndex), reqFwDataTimer(nullptr),
-        completeCommandsTimeoutTimer(nullptr)
+        fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(fwDebug),
+        eid(eid), package(package), compImageInfos(compImageInfos),
+        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
+        maxTransferSize(maxTransferSize), updateManager(updateManager),
+        deviceUpdater(deviceUpdater), componentIndex(componentIndex),
+        reqFwDataTimer(nullptr), completeCommandsTimeoutTimer(nullptr)
     {}
 
     /**
@@ -348,7 +337,7 @@ class ComponentUpdater
      * complete failures
      * @return exec::task<int>
      */
-    exec::task<int> GetStatus(std::function<void(uint8_t)> getStatusCallback);
+    void GetStatus(std::function<void(uint8_t)> getStatusCallback);
 
     /**
      * @brief process get status response
@@ -394,7 +383,7 @@ class ComponentUpdater
 
     /** @brief Component name info for components applicable for the FD.
      */
-    const ComponentIdNameMap& compIdNameInfo;
+    [[maybe_unused]] const ComponentIdNameMap& compIdNameInfo;
 
     /** @brief Maximum size in bytes of the variable payload to be requested by
      *         the FD via RequestFirmwareData command
@@ -416,7 +405,7 @@ class ComponentUpdater
      */
     size_t componentIndex = 0;
 
-    size_t numComponents = 0;
+    [[maybe_unused]] size_t numComponents = 0;
 
     /** @brief To send a PLDM request after the current command handling */
     std::unique_ptr<sdeventplus::source::Defer> pldmRequest;
@@ -432,9 +421,6 @@ class ComponentUpdater
      *
      */
     std::unique_ptr<sdbusplus::Timer> reqFwDataTimer;
-
-    /* cancel component update coroutine handler */
-    std::coroutine_handle<> cancelCompUpdateHandle = nullptr;
 
     /**
      * @brief update complete handler

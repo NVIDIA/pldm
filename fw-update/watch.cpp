@@ -96,9 +96,9 @@ int Watch::callbackImmediate(sd_event_source* /* s */, int fd, uint32_t revents,
         {
             auto tarballPath =
                 std::string{FIRMWARE_PACKAGE_STAGING_DIR} + '/' + event->name;
-            lg2::info("Received event for new file in immediate path "
-                      "{IMMEDIATE_FILE_PATH}",
-                      "IMMEDIATE_FILE_PATH", tarballPath);
+            info("Received event for new file in immediate path "
+                 "{IMMEDIATE_FILE_PATH}",
+                 "IMMEDIATE_FILE_PATH", tarballPath);
             auto rc = static_cast<Watch*>(userdata)->imageCallbackImmediate(
                 tarballPath);
             if (rc < 0)
@@ -144,15 +144,15 @@ int Watch::callbackSplitStaged(sd_event_source* /* s */, int fd,
         {
             auto tarballPath = std::string{FIRMWARE_PACKAGE_SPLIT_STAGING_DIR} +
                                '/' + event->name;
-            lg2::info("Received event for new file in staged path "
-                      "{STAGE_FILE_PATH}",
-                      "STAGE_FILE_PATH", tarballPath);
+            info("Received event for new file in staged path "
+                 "{STAGE_FILE_PATH}",
+                 "STAGE_FILE_PATH", tarballPath);
             auto rc = static_cast<Watch*>(userdata)->imageCallbackSplitStage(
                 tarballPath);
             if (rc < 0)
             {
-                lg2::error("Error processing image {STAGE_FILE_PATH}",
-                           "STAGE_FILE_PATH", tarballPath);
+                error("Error processing image {STAGE_FILE_PATH}",
+                      "STAGE_FILE_PATH", tarballPath);
             }
         }
 
@@ -182,8 +182,8 @@ void Watch::initImmediateUpdateWatch()
     {
         if (isServiceCompleted(mountService))
         {
-            lg2::info("Mount service {MOUNT_SERVICE} is completed.",
-                      "MOUNT_SERVICE", mountService);
+            info("Mount service {MOUNT_SERVICE} is completed.", "MOUNT_SERVICE",
+                 mountService);
             if (!fs::is_directory(imgDirPath))
             {
                 fs::create_directories(imgDirPath);
@@ -192,9 +192,9 @@ void Watch::initImmediateUpdateWatch()
         }
         else
         {
-            lg2::info("Mount service {MOUNT_SERVICE} is not completed."
-                      " Subscribing to systemd event.",
-                      "MOUNT_SERVICE", mountService);
+            info("Mount service {MOUNT_SERVICE} is not completed."
+                 " Subscribing to systemd event.",
+                 "MOUNT_SERVICE", mountService);
             subscribeToServiceStateChange(mountService, imgDirPath);
         }
     }
@@ -220,8 +220,8 @@ void Watch::initStagedUpdateWatch()
     {
         if (isServiceCompleted(mountService))
         {
-            lg2::info("Mount service {MOUNT_SERVICE} is completed.",
-                      "MOUNT_SERVICE", mountService);
+            info("Mount service {MOUNT_SERVICE} is completed.", "MOUNT_SERVICE",
+                 mountService);
             if (!fs::is_directory(imgSplitStageDirPath))
             {
                 fs::create_directories(imgSplitStageDirPath);
@@ -230,9 +230,9 @@ void Watch::initStagedUpdateWatch()
         }
         else
         {
-            lg2::info("Mount service {MOUNT_SERVICE} is not completed."
-                      " Subscribing to systemd event.",
-                      "MOUNT_SERVICE", mountService);
+            info("Mount service {MOUNT_SERVICE} is not completed."
+                 " Subscribing to systemd event.",
+                 "MOUNT_SERVICE", mountService);
             subscribeToServiceStateChange(mountService, imgSplitStageDirPath);
         }
     }
@@ -289,16 +289,14 @@ void Watch::addFileEventWatchStaged()
         {
             if (updateManager->processStagedPackage(entry.path()) == 0)
             {
-                lg2::info(
-                    "Objects creation success for staged image: {IMAGE_PATH}",
-                    "IMAGE_PATH", entry.path());
+                info("Objects creation success for staged image: {IMAGE_PATH}",
+                     "IMAGE_PATH", entry.path());
                 break; // only one image supported
             }
             else
             {
-                lg2::error(
-                    "Objects creation failed for staged image: {IMAGE_PATH}",
-                    "IMAGE_PATH", entry.path());
+                error("Objects creation failed for staged image: {IMAGE_PATH}",
+                      "IMAGE_PATH", entry.path());
             }
         }
     }
@@ -389,11 +387,10 @@ void Watch::subscribeToServiceStateChange(const std::string& serviceName,
                         if (stateChangeTime != stateChangeTimeImmediate)
                         {
                             stateChangeTimeImmediate = stateChangeTime;
-                            lg2::info(
-                                "Received mount service completion signal for "
-                                "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
-                                "MOUNT_SERVICE_NAME", serviceName, "IMAGE_PATH",
-                                imagePath);
+                            info("Received mount service completion signal for "
+                                 "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
+                                 "MOUNT_SERVICE_NAME", serviceName,
+                                 "IMAGE_PATH", imagePath);
                             if (-1 != fdImmediate)
                             {
                                 if (-1 != wdImmediate)
@@ -443,11 +440,10 @@ void Watch::subscribeToServiceStateChange(const std::string& serviceName,
                         if (stateChangeTime != this->stateChangeTimeSplitStage)
                         {
                             this->stateChangeTimeSplitStage = stateChangeTime;
-                            lg2::info(
-                                "Received mount service completion signal for "
-                                "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
-                                "MOUNT_SERVICE_NAME", serviceName, "IMAGE_PATH",
-                                imagePath);
+                            info("Received mount service completion signal for "
+                                 "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
+                                 "MOUNT_SERVICE_NAME", serviceName,
+                                 "IMAGE_PATH", imagePath);
                             if (-1 != fdSplitStage)
                             {
                                 if (-1 != wdSplitStage)

@@ -1,4 +1,4 @@
-libpldm_headers = ['.', './oem/ibm']
+libpldm_headers = ['.']#, './oem/ibm']
 
 sources = [
     'pldm_cmd_helper.cpp',
@@ -10,9 +10,9 @@ sources = [
     'pldmtool.cpp',
 ]
 
-if get_option('oem-ibm').allowed()
-    sources += ['oem/ibm/pldm_oem_ibm.cpp']
-endif
+# if get_option('oem-ibm').allowed()
+#     sources += ['oem/ibm/pldm_oem_ibm.cpp']
+# endif
 
 executable(
     'pldmtool',

@@ -1,10 +1,7 @@
-#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #include "softoff.hpp"
 
-#include <phosphor-logging/lg2.hpp>
-
-PHOSPHOR_LOG2_USING;
+#include <iostream>
 
 int main()
 {
@@ -14,25 +11,22 @@ int main()
     // Get a handle to system D-Bus.
     auto& bus = pldm::utils::DBusHandler::getBus();
 
-    // Obtain the instance database
-    pldm::InstanceIdDb instanceIdDb;
-
     // Attach the bus to sd_event to service user requests
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
 
-    pldm::SoftPowerOff softPower(bus, event.get(), instanceIdDb);
+    pldm::SoftPowerOff softPower(bus, event.get());
 
     if (softPower.isError())
     {
-        error(
-            "Failure in gracefully shutdown by remote terminus, exiting pldm-softpoweroff app");
+        std::cerr << "Host failed to gracefully shutdown, exiting "
+                     "pldm-softpoweroff app\n";
         return -1;
     }
 
     if (softPower.isCompleted())
     {
-        error(
-            "Remote terminus current state is not Running, exiting pldm-softpoweroff app");
+        std::cerr << "Host current state is not Running, exiting "
+                     "pldm-softpoweroff app\n";
         return 0;
     }
 
@@ -40,17 +34,20 @@ int main()
     // wait the host gracefully shutdown.
     if (softPower.hostSoftOff(event))
     {
-        error(
-            "Failure in sending soft off request to the remote terminus. Exiting pldm-softpoweroff app");
+        std::cerr << "pldm-softpoweroff:Failure in sending soft off request to "
+                     "the host. Exiting pldm-softpoweroff app\n";
+
         return -1;
     }
 
     if (softPower.isTimerExpired() && softPower.isReceiveResponse())
     {
         pldm::utils::reportError(
-            "xyz.openbmc_project.PLDM.Error.SoftPowerOff.HostSoftOffTimeOut");
-        error(
-            "ERROR! Waiting for the host soft off timeout. Exit the pldm-softpoweroff");
+            "pldm soft off: Waiting for the host soft off timeout");
+        std::cerr
+            << "PLDM host soft off: ERROR! Wait for the host soft off timeout."
+            << "Exit the pldm-softpoweroff "
+            << "\n";
         return -1;
     }
 

@@ -2,13 +2,9 @@
 
 #include "file_io_by_type.hpp"
 
-#include <phosphor-logging/lg2.hpp>
-
 #include <filesystem>
 #include <sstream>
 #include <string>
-
-PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -129,8 +125,8 @@ class LidHandler : public FileHandler
         auto fd = open(lidPath.c_str(), flags, S_IRUSR);
         if (fd == -1)
         {
-            error("Failed to open file '{LID_PATH}' for writing", "LID_PATH",
-                  lidPath);
+            std::cerr << "Could not open file for writing  " << lidPath.c_str()
+                      << "\n";
             return PLDM_ERROR;
         }
         close(fd);
@@ -138,8 +134,7 @@ class LidHandler : public FileHandler
         rc = transferFileData(lidPath, false, offset, length, address);
         if (rc != PLDM_SUCCESS)
         {
-            error("Failed to write file from memory with response code '{RC}'",
-                  "RC", rc);
+            std::cerr << "writeFileFromMemory failed with rc= " << rc << " \n";
             return rc;
         }
         if (lidType == PLDM_FILE_TYPE_LID_MARKER)
@@ -167,7 +162,7 @@ class LidHandler : public FileHandler
         return rc;
     }
 
-    virtual int readIntoMemory(uint32_t offset, uint32_t length,
+    virtual int readIntoMemory(uint32_t offset, uint32_t& length,
                                uint64_t address,
                                oem_platform::Handler* oemPlatformHandler)
     {
@@ -207,10 +202,8 @@ class LidHandler : public FileHandler
             size_t fileSize = fs::file_size(lidPath);
             if (offset > fileSize)
             {
-                error(
-                    "Offset '{OFFSET}' exceeds file size '{SIZE}' and file handle '{FILE_HANDLE}'",
-                    "OFFSET", offset, "SIZE", fileSize, "FILE_HANDLE",
-                    fileHandle);
+                std::cerr << "Offset exceeds file size, OFFSET=" << offset
+                          << " FILE_SIZE=" << fileSize << "\n";
                 return PLDM_DATA_OUT_OF_RANGE;
             }
         }
@@ -219,31 +212,28 @@ class LidHandler : public FileHandler
             flags = O_WRONLY | O_CREAT | O_TRUNC | O_SYNC;
             if (offset > 0)
             {
-                error("Offset '{OFFSET}' is non zero in a new file '{PATH}'",
-                      "OFFSET", offset, "PATH", lidPath);
+                std::cerr << "Offset is non zero in a new file \n";
                 return PLDM_DATA_OUT_OF_RANGE;
             }
         }
         auto fd = open(lidPath.c_str(), flags, S_IRUSR);
         if (fd == -1)
         {
-            error("Failed to open file '{LID_PATH}'", "LID_PATH", lidPath);
+            std::cerr << "could not open file " << lidPath.c_str() << "\n";
             return PLDM_ERROR;
         }
         rc = lseek(fd, offset, SEEK_SET);
         if (rc == -1)
         {
-            error(
-                "Failed to lseek at offset '{OFFSET}', error number - {ERROR_NUM}",
-                "ERROR_NUM", errno, "OFFSET", offset);
+            std::cerr << "lseek failed, ERROR=" << errno
+                      << ", OFFSET=" << offset << "\n";
             return PLDM_ERROR;
         }
         rc = ::write(fd, buffer, length);
         if (rc == -1)
         {
-            error(
-                "Failed to do file write of length '{LENGTH}' at offset '{OFFSET}', error number - {ERROR_NUM}",
-                "LENGTH", length, "OFFSET", offset, "ERROR_NUM", errno);
+            std::cerr << "file write failed, ERROR=" << errno
+                      << ", LENGTH=" << length << ", OFFSET=" << offset << "\n";
             return PLDM_ERROR;
         }
         else if (rc == static_cast<int>(length))

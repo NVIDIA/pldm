@@ -85,7 +85,7 @@ bool OtherDeviceUpdateManager::activate()
         pldm::utils::DBusMapping dbusMapping{path,
                                              Server::Activation::interface,
                                              "RequestedActivation", "string"};
-        lg2::info("Activating : OBJPATH = {PATH}", "PATH", path);
+        info("Activating : OBJPATH = {PATH}", "PATH", path);
         try
         {
             pldm::utils::DBusHandler().setDbusProperty(
@@ -94,9 +94,9 @@ bool OtherDeviceUpdateManager::activate()
         }
         catch (const std::exception& e)
         {
-            lg2::error("Failed to set resource RequestedActivation : {PATH}."
-                       " Error={ERROR}",
-                       "PATH", path, "ERROR", e);
+            error("Failed to set resource RequestedActivation : {PATH}."
+                  " Error={ERROR}",
+                  "PATH", path, "ERROR", e);
             std::string resolution = "Retry firmware update operation";
             std::string messageArg0 = "Firmware Update Service";
             std::string messageArg1 =
@@ -171,7 +171,6 @@ void OtherDeviceUpdateManager::onActivationChanged(
 {
 
     std::optional<std::string> activationString;
-    std::optional<uint8_t> progress;
     std::optional<std::string> reqActivation;
     auto prop = properties.find("Activation");
     if (prop != properties.end())
@@ -211,7 +210,7 @@ bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        lg2::error("Failed to set targets : {ERROR}", "ERROR", e);
+        error("Failed to set targets : {ERROR}", "ERROR", e);
         // when target filter is specified only selected devices should update
         // return error so that user can retry the update on failed devices
         return false;
@@ -232,8 +231,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
     for (const auto& intf : interfaces)
     {
-        lg2::info("New Interface Added. OBJPATH={PATH}, INTF={INTF}", "PATH",
-                  path, "INTF", intf.first);
+        info("New Interface Added. OBJPATH={PATH}, INTF={INTF}", "PATH", path,
+             "INTF", intf.first);
         if (intf.first ==
             sdbusplus::xyz::openbmc_project::Common::server::UUID::interface)
         {
@@ -281,9 +280,8 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                         }
                         catch (const sdbusplus::exception::SdBusError& e)
                         {
-                            lg2::error(
-                                "Failed to set extended version : {ERROR}",
-                                "ERROR", e);
+                            error("Failed to set extended version : {ERROR}",
+                                  "ERROR", e);
                         }
                         if (!setUpdatePolicy(path))
                         {
@@ -378,7 +376,7 @@ TransferPackageState OtherDeviceUpdateManager::txComponentImage(
     if (packageSize <
         static_cast<uintmax_t>(compOffset) + static_cast<uintmax_t>(compSize))
     {
-        lg2::error("Failed to extract non pldm device component image");
+        error("Failed to extract non pldm device component image");
         return TransferPackageState::FAILED;
     }
 
@@ -387,8 +385,8 @@ TransferPackageState OtherDeviceUpdateManager::txComponentImage(
     package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
 
     const auto& version = std::get<7>(componentImageInfo);
-    lg2::info("Extracting {VERSION} to filePath : {FILENAME}", "VERSION",
-              version, "FILENAME", filePath);
+    info("Extracting {VERSION} to filePath : {FILENAME}", "VERSION", version,
+         "FILENAME", filePath);
 
     std::ofstream outfile(filePath, std::ofstream::binary);
     outfile.write(reinterpret_cast<const char*>(&buffer[0]),
@@ -460,15 +458,15 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
 
         if (sku.empty())
         {
-            lg2::warning("No Sku descriptor found in package for UUID {UUID}",
-                         "UUID", uuid);
+            warning("No Sku descriptor found in package for UUID {UUID}",
+                    "UUID", uuid);
         }
 
         const auto& applicableCompVec =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         if (applicableCompVec.size() == 0)
         {
-            lg2::error("Invalid applicable components");
+            error("Invalid applicable components");
             continue;
         }
 
@@ -479,11 +477,11 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
             continue;
         }
 
-        lg2::info("Found Component with UUID {UUID} and SKU {SKU}", "UUID",
-                  uuid, "SKU", sku);
+        info("Found Component with UUID {UUID} and SKU {SKU}", "UUID", uuid,
+             "SKU", sku);
 
-        lg2::info("Got Non PLDM directory path {DIR} from {OBJPATH}", "DIR",
-                  directoryName, "OBJPATH", objPath);
+        info("Got Non PLDM directory path {DIR} from {OBJPATH}", "DIR",
+             directoryName, "OBJPATH", objPath);
 
         if (applicableCompVec.size() == 1)
         {
@@ -533,8 +531,7 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
             {
                 if (x.second == false)
                 {
-                    lg2::error("{PATH} not processed at timeout", "PATH",
-                               x.first);
+                    error("{PATH} not processed at timeout", "PATH", x.first);
                     // update message registry
                     std::string resolution = "Retry firmware update operation";
                     std::string messageArg0 = "Firmware Update Service";
@@ -549,7 +546,7 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
             }
         }
     });
-    lg2::info("Starting Timer to allow item updaters to process images");
+    info("Starting Timer to allow item updaters to process images");
     // Give time to add all activations
     timer->start(std::chrono::seconds(timerExpiryTime), false);
 }
@@ -584,9 +581,9 @@ bool OtherDeviceUpdateManager::validateDescriptor(
     }
     catch (const std::exception&)
     {
-        lg2::warning(fmt::format("Object {} does not have descriptor {}",
-                                 objPath, descriptorName)
-                         .c_str());
+        warning(fmt::format("Object {} does not have descriptor {}", objPath,
+                            descriptorName)
+                    .c_str());
         return false;
     }
 
@@ -621,8 +618,8 @@ std::pair<std::string, std::string>
                                    sdbusplus::xyz::openbmc_project::Inventory::
                                        Decorator::server::Asset::interface))
             {
-                lg2::info("Found object {OBJ} with matching SKU {SKU}", "OBJ",
-                          obj, "SKU", packageSKU);
+                info("Found object {OBJ} with matching SKU {SKU}", "OBJ", obj,
+                     "SKU", packageSKU);
             }
             else
             {
@@ -640,8 +637,8 @@ std::pair<std::string, std::string>
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            lg2::error("failed to fetch path from D-Bus object. {ERROR}",
-                       "ERROR", e.what());
+            error("failed to fetch path from D-Bus object. {ERROR}", "ERROR",
+                  e.what());
             continue;
         }
 
@@ -682,7 +679,7 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
         }
         catch (const std::exception& e)
         {
-            lg2::error(
+            error(
                 "Failed to read UUID property from software D-Bus objects, ERROR={ERROR}",
                 "ERROR", e);
         }
@@ -714,7 +711,7 @@ void OtherDeviceUpdateManager::getValidPaths(
     }
     catch (const std::exception& e)
     {
-        lg2::error(
+        error(
             "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
             "ERROR", e);
     }

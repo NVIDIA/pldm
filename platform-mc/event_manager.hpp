@@ -74,8 +74,8 @@ class EventManager
         TerminusManager& terminusManager,
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
         fw_update::Manager& fwUpdateManager, bool verbose = false) :
-        terminusManager(terminusManager),
-        termini(termini), fwUpdateManager(fwUpdateManager), verbose(verbose){};
+        terminusManager(terminusManager), termini(termini),
+        fwUpdateManager(fwUpdateManager), verbose(verbose) {};
 
     /** @brief Handle platform event
      *

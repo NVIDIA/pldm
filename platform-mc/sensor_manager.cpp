@@ -32,7 +32,7 @@ using SensorVariant =
 
 SensorPollingEnableIntf::SensorPollingEnableIntf(SensorManager& parent) :
     EnableIntf(pldm::utils::DBusHandler::getBus(), sensorPollingControlPath),
-    parent(parent){};
+    parent(parent) {};
 
 bool SensorPollingEnableIntf::enabled(bool value)
 {
@@ -52,8 +52,7 @@ SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
     bool verbose, const std::filesystem::path& configJson) :
-    event(event),
-    terminusManager(terminusManager), termini(termini),
+    event(event), terminusManager(terminusManager), termini(termini),
     pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
 {
     enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);

@@ -32,8 +32,7 @@ HostPDRHandler::HostPDRHandler(
     const std::string& eventsJsonsDir, pldm_entity_association_tree* entityTree,
     pldm_entity_association_tree* bmcEntityTree, Requester& requester,
     pldm::requester::Handler<pldm::requester::Request>* handler) :
-    mctp_fd(mctp_fd),
-    mctp_eid(mctp_eid), event(event), repo(repo),
+    mctp_fd(mctp_fd), mctp_eid(mctp_eid), event(event), repo(repo),
     stateSensorHandler(eventsJsonsDir), entityTree(entityTree),
     bmcEntityTree(bmcEntityTree), requester(requester), handler(handler)
 {

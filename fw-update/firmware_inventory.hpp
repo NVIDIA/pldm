@@ -53,8 +53,8 @@ class Entry : public Ifaces
     ~Entry() = default;
     Entry(const Entry&) = delete;
     Entry& operator=(const Entry&) = delete;
-    Entry(Entry&&) = default;
-    Entry& operator=(Entry&&) = default;
+    Entry(Entry&&) = delete;
+    Entry& operator=(Entry&&) = delete;
 
     const std::string upFwdAssociation = "software_version";
     const std::string upRevAssociation = "updateable";
@@ -104,8 +104,8 @@ class Manager
     ~Manager() = default;
     Manager(const Manager&) = delete;
     Manager& operator=(const Manager&) = delete;
-    Manager(Manager&&) = default;
-    Manager& operator=(Manager&&) = default;
+    Manager(Manager&&) = delete;
+    Manager& operator=(Manager&&) = delete;
 
     /** @brief Constructor
      *
@@ -115,8 +115,7 @@ class Manager
      */
     explicit Manager(sdbusplus::bus::bus& bus,
                      const FirmwareInventoryInfo& firmwareInventoryInfo,
-                     const ComponentInfoMap& componentInfoMap,
-                     utils::DBusHandlerInterface* dBusHandlerIntf);
+                     const ComponentInfoMap& componentInfoMap);
 
     /** @brief Create firmware inventory object
      *
@@ -147,9 +146,6 @@ class Manager
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<EID, CompIdentifier>, std::unique_ptr<Entry>>
         firmwareInventoryMap;
-
-    /** @brief Interface to make D-Bus client calls */
-    utils::DBusHandlerInterface* dBusHandlerIntf;
 
     /** @brief D-Bus signal match for objects to be updated with SoftwareID*/
     std::vector<sdbusplus::bus::match_t> updateFwMatch;

@@ -71,8 +71,8 @@ class Entry : public Ifaces
     ~Entry() = default;
     Entry(const Entry&) = delete;
     Entry& operator=(const Entry&) = delete;
-    Entry(Entry&&) = default;
-    Entry& operator=(Entry&&) = default;
+    Entry(Entry&&) = delete;
+    Entry& operator=(Entry&&) = delete;
 
     /** @brief Constructor
      *
@@ -99,8 +99,8 @@ class Manager
     ~Manager() = default;
     Manager(const Manager&) = delete;
     Manager& operator=(const Manager&) = delete;
-    Manager(Manager&&) = default;
-    Manager& operator=(Manager&&) = default;
+    Manager(Manager&&) = delete;
+    Manager& operator=(Manager&&) = delete;
 
     /** @brief Constructor
      *
@@ -110,8 +110,7 @@ class Manager
      */
     explicit Manager(sdbusplus::bus::bus& bus,
                      const DeviceInventoryInfo& deviceInventoryInfo,
-                     const DescriptorMap& descriptorMap,
-                     utils::DBusHandlerInterface* dBusHandlerIntf);
+                     const DescriptorMap& descriptorMap);
 
     /** @brief Create device inventory object
      *
@@ -138,9 +137,6 @@ class Manager
 
     /** @brief Map to store device inventory objects */
     std::map<pldm::UUID, std::unique_ptr<Entry>> deviceEntryMap;
-
-    /** @brief Interface to make D-Bus client calls */
-    utils::DBusHandlerInterface* dBusHandlerIntf;
 
     /** @brief D-Bus signal match for objects to be updated with SKU*/
     std::vector<sdbusplus::bus::match_t> updateSKUMatch;

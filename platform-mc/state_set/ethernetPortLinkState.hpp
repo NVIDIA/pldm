@@ -60,8 +60,7 @@ class StateSetEthernetPortLinkState : public StateSet
     StateSetEthernetPortLinkState(uint16_t stateSetId, uint8_t compId,
                                   std::string& objectPath,
                                   dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId), objectPath(objectPath)
+        StateSet(stateSetId), compId(compId), objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

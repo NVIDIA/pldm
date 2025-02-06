@@ -1,10 +1,10 @@
 #pragma once
 
-#include "common/instance_id.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
 
-#include <nlohmann/json.hpp>
+#include <libpldm/pldm.h>
+
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server.hpp>
 #include <sdbusplus/server/object.hpp>
@@ -13,7 +13,6 @@
 
 namespace pldm
 {
-using Json = nlohmann::json;
 
 /** @class SoftPowerOff
  *  @brief Responsible for coordinating Host SoftPowerOff operation
@@ -25,10 +24,8 @@ class SoftPowerOff
      *
      *  @param[in] bus       - system D-Bus handler
      *  @param[in] event     - sd_event handler
-     *  @param[in] instanceDb - pldm instance database
      */
-    SoftPowerOff(sdbusplus::bus_t& bus, sd_event* event,
-                 InstanceIdDb& instanceIdDb);
+    SoftPowerOff(sdbusplus::bus::bus& bus, sd_event* event);
 
     /** @brief Is the pldm-softpoweroff has error.
      * if hasError is true, that means the pldm-softpoweroff failed to
@@ -81,18 +78,12 @@ class SoftPowerOff
         return timer.stop();
     }
 
-    /** @brief method to parse the config Json file for softoff
-     *
-     *  @return Json - Json object of
-     */
-    Json parseConfig();
-
     /** @brief When host soft off completed, stop the timer and
      *         set the completed to true.
      *
      *  @param[in] msg - Data associated with subscribed signal
      */
-    void hostSoftOffComplete(sdbusplus::message_t& msg);
+    void hostSoftOffComplete(sdbusplus::message::message& msg);
 
     /** @brief Start the timer.
      *
@@ -104,25 +95,15 @@ class SoftPowerOff
 
     /** @brief Get effecterID from PDRs.
      *
-     *  @param[in] entityType - entity type of the entity hosting
-     *                              hosting softoff PDR
-     *  @param[in] stateSetId - state set ID of the softoff PDR
-     *
-     *  @return true or false
+     *  @return PLDM_SUCCESS or PLDM_ERROR
      */
-    bool getEffecterID(pldm::pdr::EntityType& entityType,
-                       pldm::pdr::StateSetId& stateSetId);
+    int getEffecterID();
 
     /** @brief Get VMM/SystemFirmware Sensor info from PDRs.
      *
-     *  @param[in] entityType - entity type of the entity hosting
-     *                              hosting softoff PDR
-     *  @param[in] stateSetId - state set ID of the softoff PDR
-     *
      *  @return PLDM_SUCCESS or PLDM_ERROR
      */
-    int getSensorInfo(pldm::pdr::EntityType& entityType,
-                      pldm::pdr::StateSetId& stateSetId);
+    int getSensorInfo();
 
     /** @brief effecterID
      */
@@ -148,8 +129,12 @@ class SoftPowerOff
      */
     bool responseReceived = false;
 
+    /** @brief Is the Virtual Machine Manager/VMM state effecter available.
+     */
+    bool VMMPdrExist = true;
+
     /* @brief sdbusplus handle */
-    sdbusplus::bus_t& bus;
+    sdbusplus::bus::bus& bus;
 
     /** @brief Reference to Timer object */
     sdbusplus::Timer timer;
@@ -159,10 +144,6 @@ class SoftPowerOff
      * to BMC's pldmd, and the pldmd will emit the StateSensorEvent signal.
      **/
     std::unique_ptr<sdbusplus::bus::match_t> pldmEventSignal;
-
-    /** @brief Reference to the instance database
-     */
-    InstanceIdDb& instanceIdDb;
 };
 
 } // namespace pldm

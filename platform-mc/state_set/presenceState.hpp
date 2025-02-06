@@ -38,8 +38,7 @@ class StateSetPresenceState : public StateSet
     StateSetPresenceState(uint16_t stateSetId, uint8_t compId,
                           std::string& objectPath,
                           dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

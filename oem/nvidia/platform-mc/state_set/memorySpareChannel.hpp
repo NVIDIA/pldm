@@ -42,8 +42,7 @@ class StateSetMemorySpareChannel : public StateSet
     StateSetMemorySpareChannel(uint16_t stateSetId, uint8_t compId,
                                std::string& objectPath,
                                dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        compId(compId), objPath(objectPath)
+        StateSet(stateSetId), compId(compId), objPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

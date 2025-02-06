@@ -16,8 +16,6 @@
  */
 #include "inventory_manager.hpp"
 
-#include "libpldm/firmware_update.h"
-
 #include "common/utils.hpp"
 #include "dbusutil.hpp"
 #include "requester/handler.hpp"
@@ -35,66 +33,37 @@ namespace pldm
 namespace fw_update
 {
 
-exec::task<int>
-    InventoryManager::sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                              const pldm_msg** responseMsg,
-                                              size_t* responseLen)
-{
-    int rc = 0;
-    try
-    {
-        std::tie(rc, *responseMsg, *responseLen) =
-            co_await handler.sendRecvMsg(eid, std::move(request));
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        lg2::error(
-            "Send and Receive PLDM message over MCTP throw error - {ERROR}.",
-            "ERROR", e);
-        co_return PLDM_ERROR;
-    }
-    catch (const int& e)
-    {
-        lg2::error(
-            "Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
-            "ERROR", e);
-        co_return PLDM_ERROR;
-    }
-
-    co_return rc;
-}
-
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
-                                   dbus::MctpInterfaces& mctpInterfaces)
+                                   dbus::MctpInterfaces mctpInterfaces)
 {
     queuedMctpInfos.emplace(mctpInfos);
-    if (discoverMctpTerminusTaskHandle.has_value())
+    if (discoverFDsTaskHandle.has_value())
     {
-        auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+        auto& [scope, rcOpt] = *discoverFDsTaskHandle;
         if (!rcOpt.has_value())
         {
+            info("Discover FDs already in progress");
             return;
         }
         stdexec::sync_wait(scope.on_empty());
-        discoverMctpTerminusTaskHandle.reset();
+        discoverFDsTaskHandle.reset();
     }
-    auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-    scope.spawn(stdexec::just() | stdexec::then([&]() {
-                    [[maybe_unused]] auto _ = discoverFDsTask(mctpInterfaces);
-                    return 0;
-                }) | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+
+    auto& [scope, rcOpt] = discoverFDsTaskHandle.emplace();
+    stdexec::start_detached(
+        discoverFDsTask(mctpInterfaces) |
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
 exec::task<int>
-    InventoryManager::discoverFDsTask(dbus::MctpInterfaces& mctpInterfaces)
+    InventoryManager::discoverFDsTask(dbus::MctpInterfaces mctpInterfaces)
 {
     while (!queuedMctpInfos.empty())
     {
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
         for (const auto& [eid, uuid, networkId] : mctpInfos)
         {
-            lg2::info("Starting discovery flow for eid {EID}", "EID", eid);
             mctpEidMap[eid] = uuid;
             co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
         }
@@ -113,20 +82,20 @@ exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
     auto rc = encode_get_types_req(instanceId, requestMsg);
     if (rc)
     {
-        lg2::error("encode_get_types_req failed, eid={EID} rc={RC}.", "EID",
-                   eid, "RC", rc);
+        error("encode_get_types_req failed, eid={EID} rc={RC}.", "EID", eid,
+              "RC", rc);
         co_return rc;
     }
 
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
-        lg2::error("Failed to send GetPLDMTypes request, EID={EID}, RC={RC} ",
-                   "EID", eid, "RC", rc);
+        error("Failed to send GetPLDMTypes request, EID={EID}, RC={RC} ", "EID",
+              eid, "RC", rc);
         co_return rc;
     }
 
@@ -136,8 +105,8 @@ exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
         decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
     if (rc)
     {
-        lg2::error("decode_get_types_resp failed, eid={EID} rc={RC}.", "EID",
-                   eid, "RC", rc);
+        error("decode_get_types_resp failed, eid={EID} rc={RC}.", "EID", eid,
+              "RC", rc);
         co_return rc;
     }
     co_return completionCode;
@@ -151,15 +120,14 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
     rc = co_await getPLDMTypes(eid, supportedTypes);
     if (rc)
     {
-        lg2::error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC",
-                   rc);
+        error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC", rc);
         co_return PLDM_ERROR;
     }
 
     auto isType5Supported = supportedTypes & (1 << PLDM_FWUP);
     if (!isType5Supported)
     {
-        lg2::info("Eid {EID} does not support T5", "EID", eid);
+        info("Eid {EID} does not support T5", "EID", eid);
         co_return PLDM_SUCCESS;
     }
 
@@ -179,7 +147,7 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
         }
         else
         {
-            lg2::info(
+            info(
                 "Failed to attempt the execute of 'queryDeviceIdentifiers' function., EID={EID}, RC={RC} ",
                 "EID", eid, "RC", rc);
         }
@@ -188,7 +156,7 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
     if (rc)
     {
         cleanUpResources(eid);
-        lg2::error(
+        error(
             "Failed to execute the 'queryDeviceIdentifiers' function., EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
         co_return rc;
@@ -205,19 +173,18 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
         }
         else
         {
-            lg2::error(
-                "Failed to attempt the execute of 'getFirmwareParameters' "
-                "function., EID={EID}, RC={RC} ",
-                "EID", eid, "RC", rc);
+            error("Failed to attempt the execute of 'getFirmwareParameters' "
+                  "function., EID={EID}, RC={RC} ",
+                  "EID", eid, "RC", rc);
         }
     }
 
     if (rc)
     {
         cleanUpResources(eid);
-        lg2::error("Failed to execute the 'getFirmwareParameters' function., "
-                   "EID={EID}, RC={RC} ",
-                   "EID", eid, "RC", rc);
+        error("Failed to execute the 'getFirmwareParameters' function., "
+              "EID={EID}, RC={RC} ",
+              "EID", eid, "RC", rc);
     }
 
     co_return rc;
@@ -230,8 +197,7 @@ exec::task<int> InventoryManager::initiateGetActiveFirmwareVersion(
     auto rc = co_await getPLDMTypes(eid, supportedTypes);
     if (rc)
     {
-        lg2::error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC",
-                   rc);
+        error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC", rc);
         co_return PLDM_ERROR;
     }
 
@@ -273,7 +239,7 @@ exec::task<int> InventoryManager::getActiveFirmwareVersion(
     }
 
     cleanUpResources(eid);
-    lg2::error(
+    error(
         "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
         "EID", eid, "RC", rc);
 
@@ -299,21 +265,20 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
     if (rc)
     {
         instanceIdDb.free(eid, instanceId);
-        lg2::error(
-            "encode_query_device_identifiers_req failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
+        error("encode_query_device_identifiers_req failed, EID={EID}, RC={RC}",
+              "EID", eid, "RC", rc);
         co_return rc;
     }
 
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
-                                          &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg,
+                                          &responseMsg, &responseLen);
 
     if (rc)
     {
-        lg2::error(
+        error(
             "Failed to send QueryDeviceIdentifiers request, EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
         co_return rc;
@@ -323,7 +288,7 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
         eid, responseMsg, responseLen, messageError, resolution);
     if (rc)
     {
-        lg2::error(
+        error(
             "Failed to execute the 'parseQueryDeviceIdentifiersResponse' function., EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
 
@@ -339,8 +304,8 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
 {
     if (response == nullptr || !respMsgLen)
     {
-        lg2::error("No response received for QueryDeviceIdentifiers, EID={EID}",
-                   "EID", eid);
+        error("No response received for QueryDeviceIdentifiers, EID={EID}",
+              "EID", eid);
         messageError = "Discovery Timed Out";
         resolution = "Reset the baseboard and retry the operation.";
         co_return PLDM_ERROR;
@@ -466,8 +431,8 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
     {
         descriptorMap.erase(eid);
     }
-    lg2::info("EID={EID} Descriptors=[{DESC}]", "EID", eid, "DESC",
-              descriptorLog.str());
+    info("EID={EID} Descriptors=[{DESC}]", "EID", eid, "DESC",
+         descriptorLog.str());
     descriptorMap.emplace(eid, std::move(descriptors));
 
     co_return PLDM_SUCCESS;
@@ -495,8 +460,8 @@ exec::task<int> InventoryManager::getFirmwareParameters(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
-                                          &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg,
+                                          &responseMsg, &responseLen);
 
     if (rc)
     {
@@ -512,8 +477,8 @@ exec::task<int> InventoryManager::getFirmwareParameters(
 
     if (rc)
     {
-        lg2::error("parseGetFWParametersResponse failed, EID={EID}, RC={RC} ",
-                   "EID", eid, "RC", rc);
+        error("parseGetFWParametersResponse failed, EID={EID}, RC={RC} ", "EID",
+              eid, "RC", rc);
     }
 
     co_return rc;

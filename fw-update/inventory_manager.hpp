@@ -78,8 +78,7 @@ class InventoryManager
         DeviceInventoryInfo& deviceInventoryInfo,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
-        handler(handler),
-        instanceIdDb(instanceIdDb),
+        handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
         descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
@@ -108,8 +107,8 @@ class InventoryManager
      *  @param[in] eids - MCTP endpoint ID of the FDs
      */
     void discoverFDs(const MctpInfos& mctpInfos,
-                     dbus::MctpInterfaces& mctpInterfaces);
-    exec::task<int> discoverFDsTask(dbus::MctpInterfaces& mctpInterfaces);
+                     dbus::MctpInterfaces mctpInterfaces);
+    exec::task<int> discoverFDsTask(dbus::MctpInterfaces mctpInterfaces);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -219,9 +218,6 @@ class InventoryManager
                                           dbus::MctpInterfaces& mctpInterfaces,
                                           bool refreshFWVersionOnly = false);
 
-    exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                            const pldm_msg** responseMsg,
-                                            size_t* responseLen);
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
 
@@ -238,7 +234,7 @@ class InventoryManager
     ComponentInfoMap& componentInfoMap;
 
     /** @brief device information to create message registries */
-    DeviceInventoryInfo& deviceInventoryInfo;
+    [[maybe_unused]] DeviceInventoryInfo& deviceInventoryInfo;
 
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
@@ -253,9 +249,9 @@ class InventoryManager
     std::unordered_map<EID, std::unique_ptr<sdeventplus::source::Defer>>
         pldmRequest;
 
-    /** @brief coroutine handle of discoverTerminusTask */
+    /** @brief coroutine handle of discoverFDsTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
-        discoverMctpTerminusTaskHandle{};
+        discoverFDsTaskHandle{};
 };
 
 } // namespace fw_update

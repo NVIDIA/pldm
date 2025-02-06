@@ -65,8 +65,8 @@ class DebugToken
      */
     explicit DebugToken(sdbusplus::bus::bus& bus,
                         UpdateManager* updateManager) :
-        updateManager(updateManager),
-        bus(bus), timer(nullptr), tokenStatus(false)
+        updateManager(updateManager), bus(bus), timer(nullptr),
+        tokenStatus(false)
     {}
 
     /**

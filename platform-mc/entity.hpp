@@ -43,8 +43,7 @@ class Entity
   public:
     Entity(std::vector<std::string>& inventories,
            std::vector<std::string>& ContainerInventories) :
-        inventories(inventories),
-        ContainerInventories(ContainerInventories)
+        inventories(inventories), ContainerInventories(ContainerInventories)
     {}
 
     auto getInventories()

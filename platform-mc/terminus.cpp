@@ -29,10 +29,10 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
-    initalized(false),
-    pollEvent(false), ready(false), synchronyConfigurationSupported(0),
-    resumed(true), initSensorList(true), tid(tid),
-    supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
+    initalized(false), pollEvent(false), ready(false),
+    synchronyConfigurationSupported(0), resumed(true), initSensorList(true),
+    tid(tid), supportedTypes(supportedTypes), uuid(uuid),
+    terminusManager(terminusManager)
 {
     maxBufferSize = 256;
     scanInventories();

@@ -1,24 +1,23 @@
 #include "file_io_type_dump.hpp"
 
+#include "libpldm/base.h"
+#include "oem/ibm/libpldm/file_io.h"
+
 #include "common/utils.hpp"
 #include "utils.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
-#include <libpldm/base.h>
-#include <libpldm/oem/ibm/file_io.h>
+#include <stdint.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
-#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/Dump/NewDump/server.hpp>
 
-#include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <iostream>
 #include <type_traits>
-
-PHOSPHOR_LOG2_USING;
 
 using namespace pldm::responder::utils;
 using namespace pldm::utils;
@@ -27,6 +26,7 @@ namespace pldm
 {
 namespace responder
 {
+
 static constexpr auto dumpEntry = "xyz.openbmc_project.Dump.Entry";
 static constexpr auto dumpObjPath = "/xyz/openbmc_project/dump/system";
 static constexpr auto systemDumpEntry = "xyz.openbmc_project.Dump.Entry.System";
@@ -43,68 +43,65 @@ namespace fs = std::filesystem;
 
 std::string DumpHandler::findDumpObjPath(uint32_t fileHandle)
 {
-    static constexpr auto DUMP_MANAGER_BUSNAME =
-        "xyz.openbmc_project.Dump.Manager";
-    static constexpr auto DUMP_MANAGER_PATH = "/xyz/openbmc_project/dump";
+    static constexpr auto MAPPER_BUSNAME = "xyz.openbmc_project.ObjectMapper";
+    static constexpr auto MAPPER_PATH = "/xyz/openbmc_project/object_mapper";
+    static constexpr auto MAPPER_INTERFACE = "xyz.openbmc_project.ObjectMapper";
+    auto& bus = pldm::utils::DBusHandler::getBus();
 
     // Stores the current resource dump entry path
     std::string curResDumpEntryPath{};
 
-    ObjectValueTree objects;
-    // Select the dump entry interface for system dump or resource dump
-    DumpEntryInterface dumpEntryIntf = systemDumpEntry;
-    if ((dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP) ||
-        (dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP_PARMS))
-    {
-        dumpEntryIntf = resDumpEntry;
-    }
-
     try
     {
-        objects = pldm::utils::DBusHandler::getManagedObj(DUMP_MANAGER_BUSNAME,
-                                                          DUMP_MANAGER_PATH);
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        error(
-            "Failed to retrieve dump object using GetManagedObjects call for path '{PATH}' and interface '{INTERFACE}', error - {ERROR}",
-            "PATH", DUMP_MANAGER_PATH, "INTERFACE", dumpEntryIntf, "ERROR", e);
-        return curResDumpEntryPath;
-    }
-
-    for (const auto& object : objects)
-    {
-        for (const auto& interface : object.second)
+        std::vector<std::string> paths;
+        auto method = bus.new_method_call(MAPPER_BUSNAME, MAPPER_PATH,
+                                          MAPPER_INTERFACE, "GetSubTreePaths");
+        if (dumpType == PLDM_FILE_TYPE_DUMP)
         {
-            if (interface.first != dumpEntryIntf)
+            method.append(dumpObjPath);
+            method.append(0);
+            method.append(std::vector<std::string>({systemDumpEntry}));
+        }
+        else if ((dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP) ||
+                 (dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP_PARMS))
+        {
+            method.append(resDumpObjPath);
+            method.append(0);
+            method.append(std::vector<std::string>({resDumpEntry}));
+        }
+
+        auto reply = bus.call(method);
+        reply.read(paths);
+
+        for (const auto& path : paths)
+        {
+            uint32_t dumpId = 0;
+            curResDumpEntryPath = path;
+            if (dumpType == PLDM_FILE_TYPE_DUMP)
             {
-                continue;
+                dumpId = pldm::utils::DBusHandler().getDbusProperty<uint32_t>(
+                    path.c_str(), "SourceDumpId", systemDumpEntry);
+            }
+            else if (dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP ||
+                     dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP_PARMS)
+            {
+                dumpId = pldm::utils::DBusHandler().getDbusProperty<uint32_t>(
+                    path.c_str(), "SourceDumpId", resDumpEntry);
             }
 
-            for (auto& propertyMap : interface.second)
+            if (dumpId == fileHandle)
             {
-                if (propertyMap.first == "SourceDumpId")
-                {
-                    auto dumpIdPtr = std::get_if<uint32_t>(&propertyMap.second);
-                    if (dumpIdPtr != nullptr)
-                    {
-                        auto dumpId = *dumpIdPtr;
-                        if (fileHandle == dumpId)
-                        {
-                            curResDumpEntryPath = object.first.str;
-                            return curResDumpEntryPath;
-                        }
-                    }
-                    else
-                    {
-                        error(
-                            "Invalid SourceDumpId in curResDumpEntryPath '{PATH}' but continuing with next entry for a match...",
-                            "PATH", object.first.str);
-                    }
-                }
+                curResDumpEntryPath = path;
+                break;
             }
         }
     }
+    catch (const std::exception& e)
+    {
+        std::cerr << "failed to make a d-bus call to DUMP manager, ERROR="
+                  << e.what() << "\n";
+    }
+
     return curResDumpEntryPath;
 }
 
@@ -128,13 +125,12 @@ int DumpHandler::newFileAvailable(uint64_t length)
         auto method = bus.new_method_call(service.c_str(), notifyObjPath,
                                           dumpInterface, "Notify");
         method.append(fileHandle, length);
-        bus.call_noreply(method, dbusTimeout);
+        bus.call_noreply(method);
     }
     catch (const std::exception& e)
     {
-        error(
-            "Error '{ERROR}' found for new file available while notifying new dump to dump manager with object path {PATH} and interface {INTERFACE}",
-            "ERROR", e, "PATH", notifyObjPath, "INTERFACE", dumpInterface);
+        std::cerr << "failed to make a d-bus call to DUMP manager, ERROR="
+                  << e.what() << "\n";
         return PLDM_ERROR;
     }
 
@@ -159,9 +155,8 @@ std::string DumpHandler::getOffloadUri(uint32_t fileHandle)
     }
     catch (const std::exception& e)
     {
-        error(
-            "Error '{ERROR}' found while fetching the dump offload URI with object path '{PATH}' and interface '{INTERFACE}'",
-            "ERROR", e, "PATH", path, "INTERFACE", socketInterface);
+        std::cerr << "failed to make a d-bus call to DUMP manager, ERROR="
+                  << e.what() << "\n";
     }
 
     return socketInterface;
@@ -178,9 +173,9 @@ int DumpHandler::writeFromMemory(uint32_t, uint32_t length, uint64_t address,
         {
             sock = -errno;
             close(DumpHandler::fd);
-            error(
-                "Failed to setup Unix socket while write from memory for interface '{INTERFACE}', response code '{SOCKET_RC}'",
-                "INTERFACE", socketInterface, "SOCKET_RC", sock);
+            std::cerr
+                << "DumpHandler::writeFromMemory: setupUnixSocket() failed"
+                << std::endl;
             std::remove(socketInterface.c_str());
             return PLDM_ERROR;
         }
@@ -200,9 +195,8 @@ int DumpHandler::write(const char* buffer, uint32_t, uint32_t& length,
         close(DumpHandler::fd);
         auto socketInterface = getOffloadUri(fileHandle);
         std::remove(socketInterface.c_str());
-        error(
-            "Failed to do dump write to Unix socket for interface '{INTERFACE}', response code '{RC}'",
-            "INTERFACE", socketInterface, "RC", rc);
+        std::cerr << "DumpHandler::write: writeToUnixSocket() failed"
+                  << std::endl;
         return PLDM_ERROR;
     }
 
@@ -216,9 +210,9 @@ int DumpHandler::fileAck(uint8_t fileStatus)
     {
         if (fileStatus != PLDM_SUCCESS)
         {
-            error("Failure in resource dump file ack");
+            std::cerr << "Failue in resource dump file ack" << std::endl;
             pldm::utils::reportError(
-                "xyz.openbmc_project.PLDM.Error.fileAck.ResourceDumpFileAckFail");
+                "xyz.openbmc_project.bmc.pldm.InternalFailure");
 
             PropertyValue value{
                 "xyz.openbmc_project.Common.Progress.OperationStatus.Failed"};
@@ -230,9 +224,9 @@ int DumpHandler::fileAck(uint8_t fileStatus)
             }
             catch (const std::exception& e)
             {
-                error(
-                    "Error '{ERROR}' found for file ack while setting the dump progress status as 'Failed' with object path '{PATH}' and interface 'xyz.openbmc_project.Common.Progress'",
-                    "ERROR", e, "PATH", path);
+                std::cerr << "failed to make a d-bus call to DUMP "
+                             "manager, ERROR="
+                          << e.what() << "\n";
             }
         }
 
@@ -243,55 +237,8 @@ int DumpHandler::fileAck(uint8_t fileStatus)
         return PLDM_SUCCESS;
     }
 
-    if (!path.empty())
+    if (DumpHandler::fd >= 0 && !path.empty())
     {
-        if (fileStatus == PLDM_ERROR_FILE_DISCARDED)
-        {
-            uint32_t val = 0xFFFFFFFF;
-            PropertyValue value = static_cast<uint32_t>(val);
-            auto dumpIntf = resDumpEntry;
-
-            if (dumpType == PLDM_FILE_TYPE_DUMP)
-            {
-                dumpIntf = systemDumpEntry;
-            }
-
-            DBusMapping dbusMapping{path.c_str(), dumpIntf, "SourceDumpId",
-                                    "uint32_t"};
-            try
-            {
-                pldm::utils::DBusHandler().setDbusProperty(dbusMapping, value);
-            }
-            catch (const std::exception& e)
-            {
-                error(
-                    "Failed to make a D-bus call to DUMP manager for resetting source dump file '{PATH}' on interface '{INTERFACE}', error - {ERROR}",
-                    "PATH", path, "INTERFACE", dumpIntf, "ERROR", e);
-                pldm::utils::reportError(
-                    "xyz.openbmc_project.bmc.PLDM.fileAck.SourceDumpIdResetFail");
-                return PLDM_ERROR;
-            }
-
-            auto& bus = pldm::utils::DBusHandler::getBus();
-            try
-            {
-                auto method = bus.new_method_call(
-                    "xyz.openbmc_project.Dump.Manager", path.c_str(),
-                    "xyz.openbmc_project.Object.Delete", "Delete");
-                bus.call(method, dbusTimeout);
-            }
-            catch (const std::exception& e)
-            {
-                error(
-                    "Failed to make a D-bus call to DUMP manager for delete dump file '{PATH}', error - {ERROR}",
-                    "PATH", path, "ERROR", e);
-                pldm::utils::reportError(
-                    "xyz.openbmc_project.bmc.PLDM.fileAck.DumpEntryDeleteFail");
-                return PLDM_ERROR;
-            }
-            return PLDM_SUCCESS;
-        }
-
         if (dumpType == PLDM_FILE_TYPE_DUMP ||
             dumpType == PLDM_FILE_TYPE_RESOURCE_DUMP)
         {
@@ -303,18 +250,15 @@ int DumpHandler::fileAck(uint8_t fileStatus)
             }
             catch (const std::exception& e)
             {
-                error(
-                    "Failed to make a D-bus call to DUMP manager to set the dump offloaded property 'true' for dump file '{PATH}', error - {ERROR}",
-                    "PATH", path, "ERROR", e);
+                std::cerr
+                    << "failed to make a d-bus call to DUMP manager, ERROR="
+                    << e.what() << "\n";
             }
 
+            close(DumpHandler::fd);
             auto socketInterface = getOffloadUri(fileHandle);
             std::remove(socketInterface.c_str());
-            if (DumpHandler::fd >= 0)
-            {
-                close(DumpHandler::fd);
-                DumpHandler::fd = -1;
-            }
+            DumpHandler::fd = -1;
         }
         return PLDM_SUCCESS;
     }
@@ -322,7 +266,7 @@ int DumpHandler::fileAck(uint8_t fileStatus)
     return PLDM_ERROR;
 }
 
-int DumpHandler::readIntoMemory(uint32_t offset, uint32_t length,
+int DumpHandler::readIntoMemory(uint32_t offset, uint32_t& length,
                                 uint64_t address,
                                 oem_platform::Handler* /*oemPlatformHandler*/)
 {

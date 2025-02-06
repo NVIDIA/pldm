@@ -16,11 +16,11 @@
  */
 #include "device_updater.hpp"
 
-#include "libpldm/firmware_update.h"
-
 #include "activation.hpp"
 #include "error_handling.hpp"
 #include "update_manager.hpp"
+
+#include <libpldm/firmware_update.h>
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -33,36 +33,6 @@ namespace pldm
 
 namespace fw_update
 {
-
-exec::task<int>
-    DeviceUpdater::sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                           const pldm_msg** responseMsg,
-                                           size_t* responseLen)
-{
-    int rc = 0;
-    try
-    {
-        std::tie(rc, *responseMsg, *responseLen) =
-            co_await updateManager->handler.sendRecvMsg(eid,
-                                                        std::move(request));
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        lg2::error(
-            "Send and Receive PLDM message over MCTP throw error - {ERROR}.",
-            "ERROR", e);
-        co_return PLDM_ERROR;
-    }
-    catch (const int& e)
-    {
-        lg2::error(
-            "Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
-            "ERROR", e);
-        co_return PLDM_ERROR;
-    }
-
-    co_return rc;
-}
 
 void DeviceUpdater::startFwUpdateFlow()
 {
@@ -78,15 +48,16 @@ void DeviceUpdater::deviceUpdaterHandler()
         auto& [scope, rcOpt] = *deviceUpdaterHandle;
         if (!rcOpt.has_value())
         {
+            error("Update already in progress.");
             return;
         }
         stdexec::sync_wait(scope.on_empty());
         deviceUpdaterHandle.reset();
     }
     auto& [scope, rcOpt] = deviceUpdaterHandle.emplace();
-    scope.spawn(startDeviceUpdate() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+    stdexec::start_detached(
+        startDeviceUpdate() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
 exec::task<int> DeviceUpdater::startDeviceUpdate()
@@ -97,7 +68,7 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
     auto rc = co_await sendRequestUpdate();
     if (rc)
     {
-        lg2::error("Error while sending RequestUpdate.");
+        error("Error while sending RequestUpdate.");
         updateManager->updateDeviceCompletion(eid, false);
         co_return PLDM_ERROR;
     }
@@ -106,11 +77,11 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
         rc = co_await sendPassCompTableRequest(compIndex);
         if (rc)
         {
-            lg2::error("Error while sending PassComponentTable.");
+            error("Error while sending PassComponentTable.");
             auto rc = co_await sendCancelUpdateRequest();
             if (rc)
             {
-                lg2::error("Error while sending CancelUpdate.");
+                error("Error while sending CancelUpdate.");
             }
             updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
@@ -131,9 +102,9 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
              .first->startComponentUpdater();
     if (rc)
     {
-        lg2::error("Error while initiating component updater for "
-                   "ComponentIndex={COMPONENTINDEX}.",
-                   "COMPONENTINDEX", componentIndex);
+        error("Error while initiating component updater for "
+              "ComponentIndex={COMPONENTINDEX}.",
+              "COMPONENTINDEX", componentIndex);
         co_return PLDM_ERROR;
     }
     co_return PLDM_SUCCESS;
@@ -174,8 +145,8 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
     if (rc)
     {
         updateManager->instanceIdDb.free(eid, instanceId);
-        lg2::error("encode_request_update_req failed, EID={EID}, RC={RC}",
-                   "EID", eid, "RC", rc);
+        error("encode_request_update_req failed, EID={EID}, RC={RC}", "EID",
+              eid, "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return rc;
     }
@@ -183,7 +154,8 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
     printBuffer(pldm::utils::Tx, request,
                 ("Send RequestUpdate for EID=" + std::to_string(eid)),
                 updateManager->fwDebug);
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
+    rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
         // Handle error scenario
@@ -196,7 +168,7 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
     rc = co_await processRequestUpdateResponse(eid, response, respMsgLen);
     if (rc)
     {
-        lg2::error("Error while processing RequestUpdateResponse");
+        error("Error while processing RequestUpdateResponse");
     }
     co_return rc;
 }
@@ -212,7 +184,7 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
              compIndex++)
         {
             auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-                getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
+                getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
             if (messageStatus)
             {
                 updateManager->createMessageRegistryResourceErrors(
@@ -220,8 +192,7 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
                     oemMessageError, oemResolution);
             }
         }
-        lg2::error("No response received for RequestUpdate, EID={EID}", "EID",
-                   eid);
+        error("No response received for RequestUpdate, EID={EID}", "EID", eid);
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
@@ -231,7 +202,6 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
         pldm::utils::Rx, response, respMsgLen,
         ("Received requestUpdate Response from EID=" + std::to_string(eid)),
         updateManager->fwDebug);
-    error("TMP: Flag1");
 
     uint8_t completionCode = 0;
     uint16_t fdMetaDataLen = 0;
@@ -239,7 +209,6 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
 
     auto rc = decode_request_update_resp(response, respMsgLen, &completionCode,
                                          &fdMetaDataLen, &fdWillSendPkgData);
-    error("TMP: Flag2");
     if (rc)
     {
         error(
@@ -251,7 +220,6 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
     }
     if (completionCode)
     {
-        error("TMP: Flag3");
         const auto& applicableComponents =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
@@ -268,11 +236,9 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
-    error("TMP: Flag4");
 
     deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
                                  numComponents);
-    error("TMP: Flag ret1   ");
     co_return PLDM_SUCCESS;
 }
 
@@ -374,12 +340,15 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
                 ("Send PassCompTable for EID=" + std::to_string(eid) +
                  " ,ComponentIndex=" + std::to_string(componentIndex)),
                 updateManager->fwDebug);
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
+
+    rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
-        lg2::error("Error while sending mctp request for PassCompTable.");
+        error("Error while sending mctp request for PassCompTable.");
         co_return rc;
     }
+
     rc = co_await processPassCompTableResponse(eid, response, respMsgLen);
     if (rc)
     {
@@ -387,7 +356,6 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
         error("Failed to send pass component table request for endpoint ID "
               "'{EID}', response code '{RC}'",
               "EID", eid, "RC", rc);
-        co_return rc;
     }
     co_return rc;
 }
@@ -398,7 +366,7 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     if (response == nullptr || !respMsgLen)
     {
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(PLDM_PASS_COMPONENT_TABLE, COMMAND_TIMEOUT);
+            getOemMessage(PLDM_PASS_COMPONENT_TABLE, PLDM_FWUP_TIME_OUT);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(
@@ -456,11 +424,10 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     }
     if (compResponse)
     {
-        lg2::info(
-            "In PassComponentTable, componentResponse is non-zero. Component "
-            "may be updateable EID={EID}, ComponentResponse={CR}, "
-            "ComponentResponseCode= {CRC}",
-            "EID", eid, "CR", compResponse, "CRC", compResponseCode);
+        info("In PassComponentTable, componentResponse is non-zero. Component "
+             "may be updateable EID={EID}, ComponentResponse={CR}, "
+             "ComponentResponseCode= {CRC}",
+             "EID", eid, "CR", compResponse, "CRC", compResponseCode);
     }
     deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
                                  numComponents);
@@ -548,10 +515,11 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
     printBuffer(pldm::utils::Tx, request,
                 ("Send ActivateFirmware for EID=" + std::to_string(eid)),
                 updateManager->fwDebug);
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
+    rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
-        lg2::error(
+        error(
             "Error while sending mctp request for ActivateFirmware. EID={EID}",
             "EID", eid);
         co_return rc;
@@ -584,7 +552,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         {
             updateManager->createMessageRegistry(
                 eid, fwDeviceIDRecord, compIndex, activateFailed, "",
-                PLDM_ACTIVATE_FIRMWARE, COMMAND_TIMEOUT);
+                PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
         }
         co_return PLDM_ERROR;
     }
@@ -666,8 +634,14 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
                 componentIndex, updateManager->fwDebug);
         componentUpdaterMap.emplace(
             componentIndex, std::make_pair(std::move(compUpdater), false));
-        [[maybe_unused]] auto co =
-            componentUpdaterMap[componentIndex].first->startComponentUpdater();
+        auto rc = co_await componentUpdaterMap[componentIndex]
+                      .first->startComponentUpdater();
+        if (rc)
+        {
+            error("Error starting component updater for index {INDEX}", "INDEX",
+                  componentIndex);
+            co_return rc;
+        }
         co_return PLDM_SUCCESS;
     }
     else
@@ -681,7 +655,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
                 {
                     updateModeIdleTimer = std::make_unique<
                         sdbusplus::Timer>([this]() {
-                        lg2::info(
+                        info(
                             "Firmware images are successfully staged, EID={EID}",
                             "EID", eid);
                         updateManager->updateDeviceCompletion(eid, true,
@@ -695,10 +669,11 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
                 }
                 else
                 {
+                    error("TMP: Sending ActivateFirmwareRequest");
                     auto rc = co_await sendActivateFirmwareRequest();
                     if (rc)
                     {
-                        lg2::error("Error while sending ActivateFirmware.");
+                        error("Error while sending ActivateFirmware.");
                         co_return PLDM_ERROR;
                     }
                 }
@@ -709,7 +684,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
         auto rc = co_await sendCancelUpdateRequest();
         if (rc)
         {
-            lg2::error("Error while sending CancelUpdate.");
+            error("Error while sending CancelUpdate.");
             updateManager->updateDeviceCompletion(eid, false);
             co_return PLDM_ERROR;
         }
@@ -739,8 +714,8 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
     if (rc)
     {
         updateManager->instanceIdDb.free(eid, instanceId);
-        lg2::error("encode_cancel_update_req failed, EID={EID}, RC={RC}", "EID",
-                   eid, "RC", rc);
+        error("encode_cancel_update_req failed, EID={EID}, RC={RC}", "EID", eid,
+              "RC", rc);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         updateManager->updateDeviceCompletion(eid, false);
         co_return rc;
@@ -749,19 +724,19 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
     printBuffer(pldm::utils::Tx, request,
                 ("Send CancelUpdate for EID=" + std::to_string(eid)),
                 updateManager->fwDebug);
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
+    rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
     if (rc)
     {
-        lg2::error(
-            "Error while sending mctp request for CancelUpdate. EID={EID}",
-            "EID", eid);
+        error("Error while sending mctp request for CancelUpdate. EID={EID}",
+              "EID", eid);
         co_return rc;
     }
     rc = co_await processCancelUpdateResponse(eid, response, respMsgLen);
     if (rc)
     {
-        lg2::error("Error while processing CancelUpdate Response. EID={EID}",
-                   "EID", eid);
+        error("Error while processing CancelUpdate Response. EID={EID}", "EID",
+              eid);
     }
     co_return rc;
 }
@@ -772,8 +747,7 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
     if (response == nullptr || !respMsgLen)
     {
         // Handle error scenario
-        lg2::error("No response received for CancelUpdate, EID={EID}", "EID",
-                   eid);
+        error("No response received for CancelUpdate, EID={EID}", "EID", eid);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
@@ -791,16 +765,15 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
                                         &nonFunctioningComponentBitmap);
     if (rc)
     {
-        lg2::error("Decoding CancelUpdate response failed, EID={EID}, CC={CC}",
-                   "EID", eid, "CC", completionCode);
+        error("Decoding CancelUpdate response failed, EID={EID}, CC={CC}",
+              "EID", eid, "CC", completionCode);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return rc;
     }
     if (completionCode && completionCode != PLDM_FWUP_NOT_IN_UPDATE_MODE)
     {
-        lg2::error(
-            "CancelUpdate response failed with error, EID={EID}, CC={CC}",
-            "EID", eid, "CC", completionCode);
+        error("CancelUpdate response failed with error, EID={EID}, CC={CC}",
+              "EID", eid, "CC", completionCode);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }

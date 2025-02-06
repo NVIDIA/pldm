@@ -5,7 +5,23 @@ option(
     value: 'enabled',
     description: 'Build tests'
 )
-
+option(
+    'fw-debug',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enables or disable pldm firmware update debug log. Default is disabled.'
+)
+option(
+    'oe-sdk',
+    type: 'feature',
+    description: 'Enable OE SDK'
+)
+option(
+    'requester-api',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable libpldm requester API'
+)
 option(
     'utilities',
     type: 'feature',
@@ -16,7 +32,7 @@ option(
 option(
     'libpldmresponder',
     type: 'feature',
-    value: 'enabled',
+    value: 'disabled',
     description: 'Enable libpldmresponder'
 )
 
@@ -30,6 +46,7 @@ option(
 option(
     'transport-implementation',
     type: 'combo',
+    value:  'af-mctp',
     choices: ['mctp-demux', 'af-mctp'],
     description: 'transport via af-mctp or mctp-demux'
 )
@@ -102,10 +119,17 @@ option(
 )
 
 option(
+    'number-of-command-attempts',
+    type: 'integer',
+    value: 3,
+    description: 'The number of command attempts beyond the PLDM Base specification requirements for a PLDM Request'
+)
+
+option(
     'instance-id-expiration-interval',
     type: 'integer',
     min: 5,
-    max: 6,
+    max: 30,
     value: 5,
     description: 'Instance ID expiration interval in seconds'
 )
@@ -181,7 +205,51 @@ option(
     'oem-ampere',
     type: 'feature',
     description: 'Enable AMPERE OEM PLDM',
-    value: 'enabled',
+    value: 'disabled',
+)
+
+option(
+    'omit-heartbeat',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Omit heart beat from set event receiver messages other than enable async keep alive'
+)
+
+option(
+    'debug-token',
+    type: 'feature',
+    description: 'Enable Debug Token'
+)
+option(
+    'fw-update-skip-package-size-check',
+    type: 'feature',
+    description: 'Skip PLDM package size check'
+)
+option(
+    'pldm-package-verification-must-be-signed',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Allow to update only signed PLDM package'
+)
+
+option(
+    'pldm-package-verification',
+    type: 'combo',
+    choices: ['disabled', 'authentication', 'integrity'],
+    value: 'disabled',
+    description: 'Enable PLDM package signature verification. There are two possible types of verification: authentication and integrity. Authentication verification uses a public key delivered via a receipt'
+)
+option(
+    'pldm-type2',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Support for PLDM Type-2'
+)
+option(
+    'firmware-update-time',
+    type: 'integer',
+    value: 20,
+    description: 'Time in minutes for firmware update to complete. Note: This value should be greater than webserver task timeout.'
 )
 
 ## Default Sensor Update Interval Options
@@ -197,6 +265,21 @@ option(
                     of the monitoring terminus after each configured
                     interval.''',
     value: 999
+)
+
+option(
+    'progress-percent-updater-interval',
+    type: 'integer',
+    value: 4,
+    description: 'Time in minutes to update progress percent'
+)
+
+# Firmware update configuration parameters
+option(
+    'update-mode-idle-timeout',
+    type: 'integer',
+    value: 60,
+    description: 'FD_T1 - Update mode idle timeout in seconds'
 )
 
 # Platform-mc configuration parameters
@@ -216,4 +299,91 @@ option(
                     timestamp of the sensor. The task will send
                     `GetSensorReading` if the sensor need to be updated.''',
     value: 249
+)
+
+option(
+    'local-eid-over-i2c',
+    type: 'integer',
+    value: 254,
+    description: 'The local MCTP EID over I2C'
+)
+option(
+    'local-eid-over-pcie',
+    type: 'integer',
+    value: 10,
+    description: 'The local MCTP EID over PCIe'
+)
+option(
+    'stale-sensor-upper-limitms-polling-time',
+    type: 'integer',
+    value: 750,
+    description: 'The interval time of sensor polling in milliseconds'
+)
+
+option(
+    'firmware-package-staging-dir',
+    type: 'string',
+    value: '/tmp/images',
+    description: 'Firmware package staging directory for PLDM packages. This path will be used by bmcweb to copy the firmware update package.'
+)
+option(
+    'firmware-package-split-staging-dir',
+    type: 'string',
+    value: '',
+    description: 'Firmware package split staging and update directory for PLDM packages. This path will be used by bmcweb to copy the firmware update package.'
+)
+option(
+    'firmware-package-staging-dir-mount-service',
+    type: 'string',
+    value: '',
+    description: 'Firmware package staging directory mount service. Before creating file event watch on the directory'
+)
+option(
+    'firmware-package-split-staging-dir-mount-service',
+    type: 'string',
+    value: '',
+    description: 'Firmware package split staging directory mount service. Before creating file event watch on the directory'
+)
+
+
+# Public key to verify signed PLDM package. The default value is public key which is used in the unit tests. Please do not modify.
+option(
+    'pldm-package-verification-key',
+    type: 'string',
+    value: '2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d485977454159484b6f5a497a6a3043415159464b34454541434944596741457770724a78393133306b4f46766f764c546b36436e394551696d632b383066610a47693435747569386856385568786a4c755a54315263484a4e485752785363566e6c6358435369516f6e6c5476666f4a3971444d7679614d415570354c694f4f0a4154774c57564a646654536143635450554e567147735276676841774342654e0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a',
+    description: 'Public key to verify signed PLDM package'
+)
+
+option(
+    'platform-prefix',
+    type: 'string',
+    value: 'HGX',
+    description: 'Platform prefix'
+)
+option(
+    'rr-refresh-limit',
+    type: 'integer',
+    value: 30000,
+    description: 'Refresh limit in millseconds for round robin sensors. Round robin sensors are refreshed every `n` millseconds'
+)
+
+
+option(
+    'nvlink-c2c-fabric-object',
+    type: 'feature',
+    value: 'enabled',
+    description: 'expose enpoint PDI for nvlink c2c faric'
+)
+
+option(
+    'oem-nvidia',
+    type: 'feature',
+    description: 'Enable NVIDIA OEM PLDM'
+)
+
+option(
+    'non-pldm',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Support for non pldm devices'
 )

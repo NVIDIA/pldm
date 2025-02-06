@@ -82,8 +82,8 @@ class HostEffecterParser
         pldm::utils::DBusHandler* const dbusHandler,
         const std::string& jsonPath,
         pldm::requester::Handler<pldm::requester::Request>* handler) :
-        requester(requester),
-        sockFd(fd), pdrRepo(repo), dbusHandler(dbusHandler), handler(handler)
+        requester(requester), sockFd(fd), pdrRepo(repo),
+        dbusHandler(dbusHandler), handler(handler)
     {
         try
         {

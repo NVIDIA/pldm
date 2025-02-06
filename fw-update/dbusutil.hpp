@@ -22,6 +22,8 @@
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+PHOSPHOR_LOG2_USING;
+
 constexpr auto dbusProperties = "org.freedesktop.DBus.Properties";
 constexpr auto mapperService = "xyz.openbmc_project.ObjectMapper";
 constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
@@ -129,8 +131,8 @@ inline void createLogEntry(const std::string& messageID,
     }
     else
     {
-        lg2::info("Generic message ID using default ordering for args",
-                  "MESSAGEID", messageID);
+        info("Generic message ID using default ordering for args", "MESSAGEID",
+             messageID);
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }
 
@@ -152,8 +154,8 @@ inline void createLogEntry(const std::string& messageID,
         [](boost::system::error_code ec) {
             if (ec)
             {
-                lg2::error("error while logging message registry: ",
-                           "ERROR_MESSAGE", ec.message());
+                error("error while logging message registry: ", "ERROR_MESSAGE",
+                      ec.message());
                 return;
             }
         },

@@ -20,7 +20,8 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
-#include <iostream>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm::fw_update
 {
@@ -43,8 +44,8 @@ void parseConfig(const fs::path& jsonPath,
     auto data = Json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
-        lg2::error("Parsing fw_update config file failed, FILE={JSONPATH}",
-                   "JSONPATH", jsonPath);
+        error("Parsing fw_update config file failed, FILE={JSONPATH}",
+              "JSONPATH", jsonPath);
         return;
     }
 

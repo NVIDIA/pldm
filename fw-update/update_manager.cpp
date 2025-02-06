@@ -47,10 +47,9 @@ UpdateManager::UpdateManager(
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug) :
-    event(event),
-    handler(handler), instanceIdDb(instanceIdDb), fwDebug(fwDebug),
-    descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
-    componentNameMap(componentNameMap),
+    event(event), handler(handler), instanceIdDb(instanceIdDb),
+    fwDebug(fwDebug), descriptorMap(descriptorMap),
+    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this),
           std::bind_front(&UpdateManager::processStagedPackage, this), this)
 {
@@ -211,7 +210,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         if (activation->activation() ==
             software::Activation::Activations::Activating)
         {
-            lg2::error(
+            error(
                 "Activation of package already in progress, PACKAGE_VERSION={PACKAGE_VERSION}, clearing the current activation",
                 "PACKAGE_VERSION", parser->pkgVersion);
         }
@@ -252,7 +251,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             isStageOnlyUpdate = false;
         }
     }
-    lg2::info(
+    info(
         "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
         "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
     fwPackageFilePath = packageFilePath;
@@ -264,7 +263,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
     {
-        lg2::error("No devices found for firmware update");
+        error("No devices found for firmware update");
         if (activation)
         {
             activation->activation(software::Activation::Activations::Ready);
@@ -295,8 +294,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -317,8 +314,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -352,8 +347,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
-        package.close();
-        std::filesystem::remove(packageFilePath);
         return -1;
     }
 
@@ -378,8 +371,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Invalid, this);
         }
-        package.close();
-        parser.reset();
         return -1;
     }
 
@@ -388,8 +379,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
 
-    lg2::info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
-              "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
+    info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
+         "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
 
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
     {
@@ -410,10 +401,10 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 compIdentifiers += " " + std::to_string(compIdentifier);
             }
         }
-        lg2::info("eid={EID}, RecordOffset={RECORDOFFSET}, ComponentIdentifiers"
-                  "={COMPIDENTIFIERS}",
-                  "EID", deviceUpdaterInfo.first, "RECORDOFFSET",
-                  deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
+        info("eid={EID}, RecordOffset={RECORDOFFSET}, ComponentIdentifiers"
+             "={COMPIDENTIFIERS}",
+             "EID", deviceUpdaterInfo.first, "RECORDOFFSET",
+             deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
     }
 
     // get non-pldm components, add to total component count
@@ -427,7 +418,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     else
     {
-        lg2::info(
+        info(
             "Non-PLDM device updates are skipped as they do not support firmware staging.");
     }
     totalNumComponentUpdates += otherDevicesImageCount;
@@ -446,8 +437,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
                 pldm::utils::DBusHandler::getBus(), objPath,
                 software::Activation::Activations::Ready, this);
         }
-        package.close();
-        parser.reset();
         return 0;
     }
 
@@ -490,11 +479,11 @@ bool UpdateManager::performSecurityChecks()
 
     if (integrityCheck)
     {
-        lg2::info("Firmware package integrity check completed successfully");
+        info("Firmware package integrity check completed successfully");
     }
     else
     {
-        lg2::error("Firmware package integrity check failed");
+        error("Firmware package integrity check failed");
         securityChecksPassed = false;
     }
 
@@ -512,7 +501,7 @@ bool UpdateManager::performSecurityChecks()
     }
     catch (const std::exception& e)
     {
-        lg2::error("Invalid PLDM package signature");
+        error("Invalid PLDM package signature");
         securityChecksPassed = false;
     }
 
@@ -541,7 +530,7 @@ bool UpdateManager::verifyPackage()
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to get signature header.");
+        error("Failed to get signature header.");
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
         return false;
@@ -598,7 +587,7 @@ bool UpdateManager::verifyPackage()
             return false;
         }
 
-        lg2::info("FW package signature was successfully verified");
+        info("FW package signature was successfully verified");
     }
     else
     {
@@ -612,7 +601,7 @@ bool UpdateManager::verifyPackage()
 
         return false;
 #else
-        lg2::info("FW package does not contain signature header");
+        info("FW package does not contain signature header");
 #endif
     }
 
@@ -637,7 +626,7 @@ bool UpdateManager::packageIntegrityCheck()
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to get signature header.");
+        error("Failed to get signature header.");
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
         return false;
@@ -654,7 +643,7 @@ bool UpdateManager::packageIntegrityCheck()
         }
         catch (const std::exception& e)
         {
-            lg2::info("Failed to create signature header parser.");
+            info("Failed to create signature header parser.");
 
             return true;
         }
@@ -665,7 +654,7 @@ bool UpdateManager::packageIntegrityCheck()
         }
         catch (const std::exception& e)
         {
-            lg2::error("Failed to parse signature header.", "ERROR", e);
+            error("Failed to parse signature header.", "ERROR", e);
             createLogEntry(resourceErrorDetected, compName,
                            messageErrorParseSignatureHeader, resolution);
 
@@ -680,13 +669,13 @@ bool UpdateManager::packageIntegrityCheck()
 
         if (integritycheckResult)
         {
-            lg2::info("Integrity check successful for FW Package");
+            info("Integrity check successful for FW Package");
             return true;
         }
     }
     else
     {
-        lg2::info("FW package does not contain signature header");
+        info("FW package does not contain signature header");
         return true;
     }
 
@@ -721,7 +710,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
 
         for (const auto& target : targets)
         {
-            lg2::info("Target={TARGET}", "TARGET", target);
+            info("Target={TARGET}", "TARGET", target);
         }
 
         for (const auto& [eid, componentIdNameMap] : componentNameMap)
@@ -871,7 +860,7 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     }
     else
     {
-        lg2::error(
+        error(
             "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, eid={EID}",
             "EID", eid);
         auto ptr = reinterpret_cast<pldm_msg*>(response.data());
@@ -931,7 +920,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
     if ((deviceUpdaterMap.size() == 0) &&
         (otherDeviceUpdateManager->getNumberOfProcessedImages() == 0))
     {
-        lg2::info("Nothing to activate, Setting Activations state to Active!");
+        info("Nothing to activate, Setting Activations state to Active!");
         if (activationProgress == nullptr)
         {
             activationProgress = std::make_unique<ActivationProgress>(
@@ -1010,8 +999,8 @@ bool UpdateManager::createActivationObject()
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            lg2::error("Failed to create activation object: {ERROR}", "ERROR",
-                       e.what());
+            error("Failed to create activation object: {ERROR}", "ERROR",
+                  e.what());
             return false;
         }
     }
@@ -1050,9 +1039,9 @@ void UpdateManager::updatePackageCompletion()
             activation->activation(software::Activation::Activations::Active);
         }
         auto endTime = std::chrono::steady_clock::now();
-        lg2::info("Firmware update time: {UPDATE_TIME} ms", "UPDATE_TIME",
-                  std::chrono::duration<double, std::milli>(endTime - startTime)
-                      .count());
+        info("Firmware update time: {UPDATE_TIME} ms", "UPDATE_TIME",
+             std::chrono::duration<double, std::milli>(endTime - startTime)
+                 .count());
         activationBlocksTransition.reset();
         if (fwPackageFilePath == stagedfwPackageFilePath)
         {
@@ -1085,8 +1074,8 @@ void UpdateManager::updateOtherDeviceComponents(
     {
         if (!success)
         {
-            lg2::error("Other device manager failed to get {UUID} ready",
-                       "UUID", uuid);
+            error("Other device manager failed to get {UUID} ready", "UUID",
+                  uuid);
             /* report the error, but continue on */
         }
     }
@@ -1180,8 +1169,8 @@ void UpdateManager::createProgressUpdateTimer()
             std::floor((100 * updateInterval) / totalInterval));
         if (fwDebug)
         {
-            lg2::info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
-                      progressPercent);
+            info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
+                 progressPercent);
         }
         activationProgress->progress(progressPercent);
         // percent update should always be less than 100 when task is
@@ -1191,7 +1180,7 @@ void UpdateManager::createProgressUpdateTimer()
         {
             if (fwDebug)
             {
-                lg2::error("Firmware update timeout");
+                error("Firmware update timeout");
             }
             progressTimer->stop();
         }
@@ -1240,8 +1229,8 @@ void UpdateManager::updateStagedPackageProperties(
     }
     catch (const std::exception& e)
     {
-        lg2::error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR",
-                   e.what());
+        error("calculateDigest error: {DIGEST_ERROR}", "DIGEST_ERROR",
+              e.what());
         packageVerificationStatus = false;
     }
     std::filesystem::file_time_type packageTimeStamp =
@@ -1285,17 +1274,16 @@ int UpdateManager::processStagedPackage(
     uintmax_t packageSize = package.tellg();
     if (!package.good())
     {
-        lg2::error("Opening the PLDM FW update package failed, ERR={ERRNO}, "
-                   "PACKAGEFILEPATH={PACKAGEFILEPATH}",
-                   "ERRNO", strerror(errno), "PACKAGEFILEPATH",
-                   packageFilePath);
+        error("Opening the PLDM FW update package failed, ERR={ERRNO}, "
+              "PACKAGEFILEPATH={PACKAGEFILEPATH}",
+              "ERRNO", strerror(errno), "PACKAGEFILEPATH", packageFilePath);
         updateStagedPackageProperties(false, packageSize);
         return -1;
     }
 
     if (packageSize < sizeof(pldm_package_header_information))
     {
-        lg2::error(
+        error(
             "PLDM FW update package length less than the length of the package"
             " header information, PACKAGESIZE={PACKAGESIZE}",
             "PACKAGESIZE", packageSize);
@@ -1322,7 +1310,7 @@ int UpdateManager::processStagedPackage(
     parser = parsePkgHeader(packageHeader);
     if (parser == nullptr)
     {
-        lg2::error("Invalid PLDM package header information");
+        error("Invalid PLDM package header information");
         updateStagedPackageProperties(false, packageSize);
         return -1;
     }
@@ -1347,7 +1335,7 @@ int UpdateManager::processStagedPackage(
 
     if (!integrityCheck)
     {
-        lg2::error("FW package integrity check failed");
+        error("FW package integrity check failed");
         updateStagedPackageProperties(false, packageSize);
         return -1;
     }
@@ -1372,7 +1360,7 @@ int UpdateManager::processStagedPackage(
 
 #endif
     updateStagedPackageProperties(true, packageSize);
-    lg2::info("Firmware package stage success.");
+    info("Firmware package stage success.");
     return 0;
 }
 

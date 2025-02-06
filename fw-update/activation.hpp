@@ -41,6 +41,8 @@ namespace pldm
 namespace fw_update
 {
 
+class UpdateManager;
+
 using ActivationIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Software::server::Activation>;
 using ActivationProgressIntf = sdbusplus::server::object_t<
@@ -103,6 +105,10 @@ class Delete : public DeleteIntf
     void delete_() override
     {
         updateManager->clearActivationInfo();
+        if (objPath == updateManager->stagedObjPath)
+        {
+            updateManager->clearStagedPackage();
+        }
     }
 
   private:
@@ -126,8 +132,8 @@ class Activation : public ActivationIntf
      */
     Activation(sdbusplus::bus_t& bus, std::string objPath,
                Activations activationStatus, UpdateManager* updateManager) :
-        ActivationIntf(bus, objPath.c_str(), action::defer_emit),
-        bus(bus), objPath(objPath), updateManager(updateManager)
+        ActivationIntf(bus, objPath.c_str(), action::defer_emit), bus(bus),
+        objPath(objPath), updateManager(updateManager)
     {
         deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
         activation(activationStatus);
@@ -148,9 +154,29 @@ class Activation : public ActivationIntf
             deleteImpl.reset();
             namespace software =
                 sdbusplus::xyz::openbmc_project::Software::server;
+            if (objPath == updateManager->stagedObjPath)
+            {
+                if (updateManager->processPackage(
+                        updateManager->stagedfwPackageFilePath) != 0)
+                {
+                    lg2::error("Invalid Staged PLDM Package.");
+                    deleteImpl =
+                        std::make_unique<Delete>(bus, objPath, updateManager);
+                    std::string compName = "Firmware Update Service";
+                    std::string messageError = "Invalid FW Package";
+                    std::string resolution =
+                        "Retry firmware update operation with valid FW package.";
+                    createLogEntry(resourceErrorDetected, compName,
+                                   messageError, resolution);
+                    updateManager->closePackage();
+                    updateManager->restoreStagedPackageActivationObjects();
+                    return ActivationIntf::activation(Activations::Failed);
+                }
+            }
+
             if (!updateManager->performSecurityChecks())
             {
-                lg2::error("Security checks failed setting activation to fail");
+                error("Security checks failed setting activation to fail");
                 updateManager->resetActivationBlocksTransition();
                 updateManager->clearFirmwareUpdatePackage();
                 updateManager->restoreStagedPackageActivationObjects();
@@ -163,14 +189,14 @@ class Activation : public ActivationIntf
                 value = state;
                 if (state == Activations::Failed)
                 {
-                    lg2::error("Activation failed setting activation to fail");
+                    error("Activation failed setting activation to fail");
                     updateManager->resetActivationBlocksTransition();
                     updateManager->clearFirmwareUpdatePackage();
                     updateManager->restoreStagedPackageActivationObjects();
                 }
                 else if (state == Activations::Active)
                 {
-                    lg2::info("Activation set to active");
+                    info("Activation set to active");
                     updateManager->clearFirmwareUpdatePackage();
                     updateManager->restoreStagedPackageActivationObjects();
                 }
@@ -295,9 +321,8 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
     {
         if (updateManager->fwDebug)
         {
-            lg2::info(
-                "Activating PLDM firmware update package - BMC reboots are "
-                "disabled.");
+            info("Activating PLDM firmware update package - BMC reboots are "
+                 "disabled.");
         }
         try
         {
@@ -308,7 +333,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         }
         catch (const std::exception& e)
         {
-            lg2::error("Error starting service.", "ERROR", e);
+            error("Error starting service.", "ERROR", e);
         }
     }
 
@@ -322,13 +347,12 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         {
             if (updateManager->isStageOnlyUpdate)
             {
-                lg2::info(
-                    "PLDM firmware update package is staged - BMC reboots are "
-                    "re-enabled.");
+                info("PLDM firmware update package is staged - BMC reboots are "
+                     "re-enabled.");
             }
             else
             {
-                lg2::info(
+                info(
                     "Activating PLDM firmware update package - BMC reboots are "
                     "re-enabled.");
             }
@@ -342,7 +366,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
         }
         catch (const std::exception& e)
         {
-            lg2::error("Error starting service.", "ERROR", e);
+            error("Error starting service.", "ERROR", e);
         }
     }
 };

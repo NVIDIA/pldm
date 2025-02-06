@@ -76,7 +76,7 @@ class StateSet
     virtual void associateNumericSensor(
         [[maybe_unused]] const EntityInfo& entityInfo,
         [[maybe_unused]] std::vector<std::shared_ptr<NumericSensor>>&
-            numericSensors){};
+            numericSensors) {};
 
     virtual uint8_t getValue()
     {
@@ -99,7 +99,7 @@ class StateSet
     }
     virtual std::string getStringStateType() const = 0;
     virtual std::tuple<std::string, std::string> getEventData() const = 0;
-    virtual void updateSensorName([[maybe_unused]] std::string name){};
+    virtual void updateSensorName([[maybe_unused]] std::string name) {};
 };
 
 class StateSetCreator

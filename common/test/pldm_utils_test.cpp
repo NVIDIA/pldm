@@ -146,9 +146,9 @@ TEST(FindStateEffecterPDR, testOneMatch)
     uint16_t entityID = 33;
     uint16_t stateSetId = 196;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -180,9 +180,9 @@ TEST(FindStateEffecterPDR, testNoMatch)
     uint16_t entityID = 44;
     uint16_t stateSetId = 196;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -214,9 +214,9 @@ TEST(FindStateEffecterPDR, testEmptyRepo)
     uint16_t entityID = 33;
     uint16_t stateSetId = 196;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto record = findStateEffecterPDR(tid, entityID, stateSetId, repo);
 
@@ -230,9 +230,9 @@ TEST(FindStateEffecterPDR, testMoreMatch)
     auto repo = pldm_pdr_init();
     uint8_t tid = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -291,9 +291,9 @@ TEST(FindStateEffecterPDR, testManyNoMatch)
     uint16_t entityID = 33;
     uint16_t stateSetId = 196;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -348,9 +348,9 @@ TEST(FindStateEffecterPDR, testOneMatchOneNoMatch)
     uint16_t entityID = 67;
     uint16_t stateSetId = 192;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -406,9 +406,9 @@ TEST(FindStateEffecterPDR, testOneMatchManyNoMatch)
     uint16_t entityID = 67;
     uint16_t stateSetId = 192;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_effecter_pdr*>(pdr.data());
 
@@ -582,9 +582,9 @@ TEST(FindStateSensorPDR, testOneMatch)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -616,9 +616,9 @@ TEST(FindStateSensorPDR, testNoMatch)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -650,9 +650,9 @@ TEST(FindStateSensorPDR, testEmptyRepo)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto record = findStateSensorPDR(tid, entityID, stateSetId, repo);
 
@@ -666,9 +666,9 @@ TEST(FindStateSensorPDR, testMoreMatch)
     auto repo = pldm_pdr_init();
     uint8_t tid = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -727,9 +727,9 @@ TEST(FindStateSensorPDR, testManyNoMatch)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -784,9 +784,9 @@ TEST(FindStateSensorPDR, testOneMatchOneNoMatch)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -842,9 +842,9 @@ TEST(FindStateSensorPDR, testOneMatchManyNoMatch)
     uint16_t entityID = 5;
     uint16_t stateSetId = 1;
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_sensor_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_sensor_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
 
     auto rec = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
 
@@ -1177,4 +1177,38 @@ TEST(dbusPropValuesToDouble, badTest)
     ret = dbusPropValuesToDouble("double", static_cast<std::string>("hello"),
                                  nullptr);
     EXPECT_EQ(false, ret);
+}
+
+TEST(FruFieldValuestring, goodTest)
+{
+    std::vector<uint8_t> data = {0x41, 0x6d, 0x70, 0x65, 0x72, 0x65};
+    std::string expectedString = "Ampere";
+    auto result = fruFieldValuestring(data.data(), data.size());
+    EXPECT_EQ(expectedString, result);
+}
+
+TEST(FruFieldValuestring, BadTest)
+{
+    std::vector<uint8_t> data = {0x41, 0x6d, 0x70, 0x65, 0x72, 0x65};
+    auto result = fruFieldValuestring(data.data(), 0);
+    EXPECT_EQ(std::nullopt, result);
+    result = fruFieldValuestring(nullptr, data.size());
+    EXPECT_EQ(std::nullopt, result);
+}
+
+TEST(fruFieldParserU32, goodTest)
+{
+    std::vector<uint8_t> data = {0x10, 0x12, 0x14, 0x25};
+    uint32_t expectedU32 = 0x25141210;
+    auto result = fruFieldParserU32(data.data(), data.size());
+    EXPECT_EQ(expectedU32, result.value());
+}
+
+TEST(fruFieldParserU32, BadTest)
+{
+    std::vector<uint8_t> data = {0x10, 0x12, 0x14, 0x25};
+    auto result = fruFieldParserU32(data.data(), data.size() - 1);
+    EXPECT_EQ(std::nullopt, result);
+    result = fruFieldParserU32(nullptr, data.size());
+    EXPECT_EQ(std::nullopt, result);
 }

@@ -77,7 +77,7 @@ struct DeviceUpdaterState
     {
         if (prev == command)
         {
-            lg2::error(
+            error(
                 "DeviceUpdater: Retry Request for command: inCmd = {COMMAND}, "
                 "currentSeq ={CURRENTSEQ}, prevSeq = {PREVSEQ}",
                 "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
@@ -121,13 +121,13 @@ struct DeviceUpdaterState
 
         if (fwDebug)
         {
-            lg2::info("DeviceUpdater: prevSeq = {PREVSEQ}, command = {COMMAND},"
-                      " currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX},"
-                      " numComps = {NUMCOMPS}",
-                      "PREVSEQ", static_cast<size_t>(prev), "COMMAND",
-                      static_cast<size_t>(command), "CURRENTSEQ",
-                      static_cast<size_t>(current), "COMPINDEX", compIndex,
-                      "NUMCOMPS", numComps);
+            info("DeviceUpdater: prevSeq = {PREVSEQ}, command = {COMMAND},"
+                 " currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX},"
+                 " numComps = {NUMCOMPS}",
+                 "PREVSEQ", static_cast<size_t>(prev), "COMMAND",
+                 static_cast<size_t>(command), "CURRENTSEQ",
+                 static_cast<size_t>(current), "COMPINDEX", compIndex,
+                 "NUMCOMPS", numComps);
         }
         return current;
     }
@@ -146,20 +146,19 @@ struct DeviceUpdaterState
     {
         if (prev == command)
         {
-            lg2::error(
-                "DeviceUpdater Retry Request for command: inCmd = {COMMAND},"
-                " currentSeq={CURRENTSEQ}, prevSeq={PREVSEQ}",
-                "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
-                static_cast<size_t>(current), "PREVSEQ",
-                static_cast<size_t>(prev));
+            error("DeviceUpdater Retry Request for command: inCmd = {COMMAND},"
+                  " currentSeq={CURRENTSEQ}, prevSeq={PREVSEQ}",
+                  "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                  static_cast<size_t>(current), "PREVSEQ",
+                  static_cast<size_t>(prev));
             return DeviceUpdaterSequence::RetryRequest;
         }
         if (command != current)
         {
-            lg2::error("DeviceUpdater Unexpected command: inCmd = {COMMAND}, "
-                       "currentSeq = {CURRENTSEQ}",
-                       "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
-                       static_cast<size_t>(current));
+            error("DeviceUpdater Unexpected command: inCmd = {COMMAND}, "
+                  "currentSeq = {CURRENTSEQ}",
+                  "COMMAND", static_cast<size_t>(command), "CURRENTSEQ",
+                  static_cast<size_t>(current));
             return DeviceUpdaterSequence::Invalid;
         }
         return DeviceUpdaterSequence::Valid;
@@ -195,7 +194,7 @@ class DeviceUpdater
   public:
     DeviceUpdater() = delete;
     DeviceUpdater(const DeviceUpdater&) = delete;
-    DeviceUpdater(DeviceUpdater&&) = default;
+    DeviceUpdater(DeviceUpdater&&) = delete;
     DeviceUpdater& operator=(const DeviceUpdater&) = delete;
     DeviceUpdater& operator=(DeviceUpdater&&) = delete;
     ~DeviceUpdater()
@@ -207,6 +206,7 @@ class DeviceUpdater
         }
         stdexec::sync_wait(scope.on_empty());
         deviceUpdaterHandle.reset();
+        componentUpdaterMap.clear();
     }
 
     /** @brief Constructor
@@ -233,11 +233,10 @@ class DeviceUpdater
                            const ComponentIdNameMap& compIdNameInfo,
                            uint32_t maxTransferSize,
                            UpdateManager* updateManager, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord),
-        deviceUpdaterState(fwDebug), eid(eid), package(package),
-        compImageInfos(compImageInfos), compInfo(compInfo),
-        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-        updateManager(updateManager)
+        fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(fwDebug),
+        eid(eid), package(package), compImageInfos(compImageInfos),
+        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
+        maxTransferSize(maxTransferSize), updateManager(updateManager)
     {}
 
     /** @brief Start the firmware update flow for the FD
@@ -309,9 +308,6 @@ class DeviceUpdater
         updateComponentCompletion(const size_t compIndex,
                                   const ComponentUpdateStatus compStatus);
 
-    exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                            const pldm_msg** responseMsg,
-                                            size_t* responseLen);
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device
      */

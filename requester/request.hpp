@@ -49,8 +49,7 @@ class RequestRetryTimer
     explicit RequestRetryTimer(sdeventplus::Event& event, uint8_t numRetries,
                                std::chrono::milliseconds timeout) :
 
-        event(event),
-        numRetries(numRetries), timeout(timeout),
+        event(event), numRetries(numRetries), timeout(timeout),
         timer(event.get(), std::bind_front(&RequestRetryTimer::callback, this))
     {}
 
@@ -76,7 +75,8 @@ class RequestRetryTimer
         }
         catch (const std::runtime_error& e)
         {
-            lg2::error("Failed to start the request timer.", "ERROR", e);
+            error("Failed to start the request timer, error - {ERROR}", "ERROR",
+                  e);
             return PLDM_ERROR;
         }
 

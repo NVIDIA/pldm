@@ -44,11 +44,9 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
 
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const DeviceInventoryInfo& deviceInventoryInfo,
-                 const DescriptorMap& descriptorMap,
-                 utils::DBusHandlerInterface* dBusHandlerIntf) :
-    bus(bus),
-    objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
-    descriptorMap(descriptorMap), dBusHandlerIntf(dBusHandlerIntf)
+                 const DescriptorMap& descriptorMap) :
+    bus(bus), objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
+    descriptorMap(descriptorMap)
 {}
 
 std::optional<sdbusplus::message::object_path>
@@ -175,7 +173,7 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                lg2::error("Set SKU Error: {ERROR}", "ERROR", e);
+                error("Set SKU Error: {ERROR}", "ERROR", e);
             }
         });
         propertySet.detach();

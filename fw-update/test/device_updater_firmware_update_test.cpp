@@ -226,13 +226,15 @@ int encode_update_component_req(
 //     package.seekg(0, std::ios::beg);  // Rewind to start
 //     mctp_eid_t eid = 0;
 //     size_t componentOffset = 0;
-//     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-//                                 compInfo, compIdNameInfo, 512, &updateManager,
-//                                 false);
+//     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord,
+//     compImageInfos,
+//                                 compInfo, compIdNameInfo, 512,
+//                                 &updateManager, false);
 //     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-//                                       compImageInfos, compInfo, compIdNameInfo,
-//                                       512, &updateManager, &deviceUpdater,
-//                                       componentOffset, false);
+//                                       compImageInfos, compInfo,
+//                                       compIdNameInfo, 512, &updateManager,
+//                                       &deviceUpdater, componentOffset,
+//                                       false);
 //
 //     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
 //                                       sizeof(pldm_request_firmware_data_req)>

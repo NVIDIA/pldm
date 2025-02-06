@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
 
@@ -57,13 +59,13 @@ std::vector<uint8_t>
 
     if (sizeOfPkgWithoutSignHdr == packageSize)
     {
-        lg2::info("Package Signature: package does not have Signature Header");
+        info("Package Signature: package does not have Signature Header");
         return std::vector<uint8_t>();
     }
 
     if (sizeOfPkgWithoutSignHdr + pldmFwupSignaturePackageSize != packageSize)
     {
-        lg2::error("Package Signature: invalid or corrupted package ");
+        error("Package Signature: invalid or corrupted package ");
         throw InternalFailure();
     }
 
@@ -92,7 +94,7 @@ std::unique_ptr<PackageSignature>
     {
         case packageSignatureVersion1:
         case packageSignatureVersion2:
-            lg2::error(
+            error(
                 "Parsing signature header failed, version {VERSION} is deprecated",
                 "VERSION", version);
             throw InternalFailure();
@@ -102,7 +104,7 @@ std::unique_ptr<PackageSignature>
         }
         default:
         {
-            lg2::error(
+            error(
                 "Parsing signature header failed, not supported version {VERSION}",
                 "VERSION", version);
             throw InternalFailure();
@@ -150,8 +152,7 @@ bool PackageSignature::verify(std::istream& package,
     if (!verctx)
     {
 
-        lg2::error(
-            "Verifying signature failed, cannot create a verify context");
+        error("Verifying signature failed, cannot create a verify context");
         result = false;
 
         return result;
@@ -162,8 +163,7 @@ bool PackageSignature::verify(std::istream& package,
 
     if (EVP_PKEY_verify_init(verctx) <= 0)
     {
-        lg2::error(
-            "Verifying signature failed, cannot initialize a verify context");
+        error("Verifying signature failed, cannot initialize a verify context");
         result = false;
 
         return result;
@@ -175,7 +175,7 @@ bool PackageSignature::verify(std::istream& package,
 
     if (verificationErrorCode != 1)
     {
-        lg2::error(
+        error(
             "Verifying signature failed, EVP_PKEY_verify error {VERIFICATION_ERR_CODE}",
             "VERIFICATION_ERR_CODE", verificationErrorCode);
 
@@ -200,7 +200,7 @@ void PackageSignatureV3::parseHeader()
     if (!std::equal(magic, endOfMagic, hdrSignatureMagic.begin(),
                     hdrSignatureMagic.end()))
     {
-        lg2::error(
+        error(
             "Parsing signature header failed, Signature Header does not contain PackageSignatureIdentifier");
         throw InternalFailure();
     }
@@ -209,7 +209,7 @@ void PackageSignatureV3::parseHeader()
 
     if (version != packageSignatureVersion3)
     {
-        lg2::error(
+        error(
             "Parsing signature header failed, version={VERSION} is not supported",
             "VERSION", version);
         throw InternalFailure();
@@ -227,7 +227,7 @@ void PackageSignatureV3::parseHeader()
     if (signatureType != 0)
     {
 
-        lg2::error(
+        error(
             "Parsing signature header failed, signatureType={SIGNATURE_TYPE} is not supported",
             "SIGNATURE_TYPE", signatureType);
         throw InternalFailure();
@@ -256,7 +256,7 @@ void PackageSignatureV3::parseHeader()
     if (signatureSize < signatureSha->minimumSignatureSize ||
         signatureSize > signatureSha->maximumSignatureSize)
     {
-        lg2::error(
+        error(
             "Parsing signature header failed, signatureSize={SIGNATURE_SIZE} is incorrect",
             "SIGNATURE_SIZE", signatureSize);
         throw InternalFailure();
@@ -312,7 +312,7 @@ std::vector<unsigned char>
         md = EVP_get_digestbyname(digestName.c_str());
         if (md == nullptr)
         {
-            lg2::error(
+            error(
                 "Parsing signature header failed, unknown digest name {DIGESTNAME}",
                 "DIGESTNAME", digestName);
             throw InternalFailure();
@@ -324,7 +324,7 @@ std::vector<unsigned char>
 
         if (!EVP_DigestInit_ex(mdctx, md, NULL))
         {
-            lg2::error(
+            error(
                 "Parsing signature header failed, message digest initialization failed");
             throw InternalFailure();
         }
@@ -355,7 +355,7 @@ std::vector<unsigned char>
                     reinterpret_cast<const unsigned char*>(buffer.data()),
                     currentChunkSize))
             {
-                lg2::error("Error in EVP_DigestUpdate");
+                error("Error in EVP_DigestUpdate");
                 throw InternalFailure();
             }
 
@@ -365,7 +365,7 @@ std::vector<unsigned char>
 
         if (!EVP_DigestFinal(mdctx, hash.data(), &mdLength))
         {
-            lg2::error("Error in EVP_DigestFinal");
+            error("Error in EVP_DigestFinal");
             throw InternalFailure();
         }
 

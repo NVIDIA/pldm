@@ -1,5 +1,9 @@
 #pragma once
 
+#include "libpldm/base.h"
+#include "oem/ibm/libpldm/file_io.h"
+#include "oem/ibm/libpldm/host.h"
+
 #include "common/utils.hpp"
 #include "oem/ibm/requester/dbus_to_file_handler.hpp"
 #include "oem_ibm_handler.hpp"
@@ -7,21 +11,14 @@
 #include "requester/handler.hpp"
 
 #include <fcntl.h>
-#include <libpldm/base.h>
-#include <libpldm/oem/ibm/file_io.h>
-#include <libpldm/oem/ibm/host.h>
+#include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <phosphor-logging/lg2.hpp>
-
-#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <vector>
-
-PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -29,6 +26,7 @@ namespace responder
 {
 namespace dma
 {
+
 // The minimum data size of dma transfer in bytes
 constexpr uint32_t minSize = 16;
 
@@ -117,7 +115,7 @@ Response transferAll(DMAInterface* intf, uint8_t command, fs::path& path,
     int file = open(path.string().c_str(), flags);
     if (file == -1)
     {
-        error("File at path '{PATH}' does not exist", "PATH", path);
+        std::cerr << "File does not exist, path = " << path.string() << "\n";
         encode_rw_file_memory_resp(instanceId, command, PLDM_ERROR, 0,
                                    responsePtr);
         return response;
@@ -167,77 +165,73 @@ class Handler : public CmdHandler
 {
   public:
     Handler(oem_platform::Handler* oemPlatformHandler, int hostSockFd,
-            uint8_t hostEid, pldm::InstanceIdDb* instanceIdDb,
+            uint8_t hostEid, dbus_api::Requester* dbusImplReqester,
             pldm::requester::Handler<pldm::requester::Request>* handler) :
-        oemPlatformHandler(oemPlatformHandler)
+        oemPlatformHandler(oemPlatformHandler), hostSockFd(hostSockFd),
+        hostEid(hostEid), dbusImplReqester(dbusImplReqester), handler(handler)
     {
-        handlers.emplace(
-            PLDM_READ_FILE_INTO_MEMORY,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->readFileIntoMemory(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_WRITE_FILE_FROM_MEMORY,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->writeFileFromMemory(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_WRITE_FILE_BY_TYPE_FROM_MEMORY,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->writeFileByTypeFromMemory(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_READ_FILE_BY_TYPE_INTO_MEMORY,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->readFileByTypeIntoMemory(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_READ_FILE_BY_TYPE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->readFileByType(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_WRITE_FILE_BY_TYPE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->writeFileByType(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_GET_FILE_TABLE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->getFileTable(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_READ_FILE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->readFile(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_WRITE_FILE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->writeFile(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_FILE_ACK,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->fileAck(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_HOST_GET_ALERT_STATUS,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->getAlertStatus(request, payloadLength);
-            });
-        handlers.emplace(
-            PLDM_NEW_FILE_AVAILABLE,
-            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
-                return this->newFileAvailable(request, payloadLength);
-            });
+        handlers.emplace(PLDM_READ_FILE_INTO_MEMORY,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->readFileIntoMemory(request,
+                                                             payloadLength);
+                         });
+        handlers.emplace(PLDM_WRITE_FILE_FROM_MEMORY,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->writeFileFromMemory(request,
+                                                              payloadLength);
+                         });
+        handlers.emplace(PLDM_WRITE_FILE_BY_TYPE_FROM_MEMORY,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->writeFileByTypeFromMemory(
+                                 request, payloadLength);
+                         });
+        handlers.emplace(PLDM_READ_FILE_BY_TYPE_INTO_MEMORY,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->readFileByTypeIntoMemory(
+                                 request, payloadLength);
+                         });
+        handlers.emplace(PLDM_READ_FILE_BY_TYPE, [this](const pldm_msg* request,
+                                                        size_t payloadLength) {
+            return this->readFileByType(request, payloadLength);
+        });
+        handlers.emplace(PLDM_WRITE_FILE_BY_TYPE,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->writeFileByType(request,
+                                                          payloadLength);
+                         });
+        handlers.emplace(PLDM_GET_FILE_TABLE,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->getFileTable(request, payloadLength);
+                         });
+        handlers.emplace(PLDM_READ_FILE,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->readFile(request, payloadLength);
+                         });
+        handlers.emplace(PLDM_WRITE_FILE,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->writeFile(request, payloadLength);
+                         });
+        handlers.emplace(PLDM_FILE_ACK,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->fileAck(request, payloadLength);
+                         });
+        handlers.emplace(PLDM_HOST_GET_ALERT_STATUS,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->getAlertStatus(request,
+                                                         payloadLength);
+                         });
+        handlers.emplace(PLDM_NEW_FILE_AVAILABLE,
+                         [this](const pldm_msg* request, size_t payloadLength) {
+                             return this->newFileAvailable(request,
+                                                           payloadLength);
+                         });
 
-        resDumpMatcher = std::make_unique<sdbusplus::bus::match_t>(
+        resDumpMatcher = std::make_unique<sdbusplus::bus::match::match>(
             pldm::utils::DBusHandler::getBus(),
             sdbusplus::bus::match::rules::interfacesAdded() +
                 sdbusplus::bus::match::rules::argNpath(0, dumpObjPath),
-            [this, hostSockFd, hostEid, instanceIdDb,
-             handler](sdbusplus::message_t& msg) {
+            [this, hostSockFd, hostEid, dbusImplReqester,
+             handler](sdbusplus::message::message& msg) {
                 std::map<
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
@@ -247,7 +241,7 @@ class Handler : public CmdHandler
                 std::string vspstring;
                 std::string password;
 
-                for (const auto& interface : interfaces)
+                for (auto& interface : interfaces)
                 {
                     if (interface.first == resDumpEntry)
                     {
@@ -268,19 +262,19 @@ class Handler : public CmdHandler
                             .emplace_back(
                                 std::make_unique<pldm::requester::oem_ibm::
                                                      DbusToFileHandler>(
-                                    hostSockFd, hostEid, instanceIdDb, path,
+                                    hostSockFd, hostEid, dbusImplReqester, path,
                                     handler))
                             ->processNewResourceDump(vspstring, password);
                         break;
                     }
                 }
             });
-        vmiCertMatcher = std::make_unique<sdbusplus::bus::match_t>(
+        vmiCertMatcher = std::make_unique<sdbusplus::bus::match::match>(
             pldm::utils::DBusHandler::getBus(),
             sdbusplus::bus::match::rules::interfacesAdded() +
                 sdbusplus::bus::match::rules::argNpath(0, certObjPath),
-            [this, hostSockFd, hostEid, instanceIdDb,
-             handler](sdbusplus::message_t& msg) {
+            [this, hostSockFd, hostEid, dbusImplReqester,
+             handler](sdbusplus::message::message& msg) {
                 std::map<
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
@@ -289,7 +283,7 @@ class Handler : public CmdHandler
                 msg.read(path, interfaces);
                 std::string csr;
 
-                for (const auto& interface : interfaces)
+                for (auto& interface : interfaces)
                 {
                     if (interface.first == certAuthority)
                     {
@@ -306,8 +300,8 @@ class Handler : public CmdHandler
                                     .emplace_back(std::make_unique<
                                                   pldm::requester::oem_ibm::
                                                       DbusToFileHandler>(
-                                        hostSockFd, hostEid, instanceIdDb, path,
-                                        handler))
+                                        hostSockFd, hostEid, dbusImplReqester,
+                                        path, handler))
                                     ->newCsrFileAvailable(csr, fileHandle);
                                 break;
                             }
@@ -417,18 +411,22 @@ class Handler : public CmdHandler
 
   private:
     oem_platform::Handler* oemPlatformHandler;
+    int hostSockFd;
+    uint8_t hostEid;
+    dbus_api::Requester* dbusImplReqester;
     using DBusInterfaceAdded = std::vector<std::pair<
         std::string,
         std::vector<std::pair<std::string, std::variant<std::string>>>>>;
     std::unique_ptr<pldm::requester::oem_ibm::DbusToFileHandler>
         dbusToFileHandler; //!< pointer to send request to Host
-    std::unique_ptr<sdbusplus::bus::match_t>
+    std::unique_ptr<sdbusplus::bus::match::match>
         resDumpMatcher; //!< Pointer to capture the interface added signal
                         //!< for new resource dump
-    std::unique_ptr<sdbusplus::bus::match_t>
+    std::unique_ptr<sdbusplus::bus::match::match>
         vmiCertMatcher; //!< Pointer to capture the interface added signal
                         //!< for new csr string
     /** @brief PLDM request handler */
+    pldm::requester::Handler<pldm::requester::Request>* handler;
     std::vector<std::unique_ptr<pldm::requester::oem_ibm::DbusToFileHandler>>
         dbusToFileHandlers;
 };

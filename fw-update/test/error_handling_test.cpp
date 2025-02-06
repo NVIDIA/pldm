@@ -32,7 +32,7 @@ TEST(error_handling, getOemMessage_request_update)
 
     auto [outmessageStatus, outoemMessageId, outoemMessageError,
           outoemResolution] =
-        getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
+        getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
 
     EXPECT_EQ(outmessageStatus, oemMessageStatus);
     EXPECT_EQ(outoemMessageId, oemMessageId);
@@ -49,7 +49,7 @@ TEST(error_handling, getOemMessage_get_firmware_parameters)
 
     auto [outmessageStatus, outoemMessageId, outoemMessageError,
           outoemResolution] =
-        getOemMessage(PLDM_GET_FIRMWARE_PARAMETERS, COMMAND_TIMEOUT);
+        getOemMessage(PLDM_GET_FIRMWARE_PARAMETERS, PLDM_FWUP_TIME_OUT);
 
     EXPECT_EQ(outmessageStatus, oemMessageStatus);
     EXPECT_EQ(outoemMessageId, oemMessageId);

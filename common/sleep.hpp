@@ -139,8 +139,7 @@ struct Sleep
      */
     Sleep(const sdeventplus::Event& event, uint64_t durationInUsec,
           TimerEventPriority priority) :
-        event(event),
-        durationInUsec(durationInUsec), // Convert mSec to uSec
+        event(event), durationInUsec(durationInUsec), // Convert mSec to uSec
         timerEventPriority(priority),
         rc(PLDM_SUCCESS) // Initialize the result code to success
     {}

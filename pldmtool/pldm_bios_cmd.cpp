@@ -41,7 +41,7 @@ class GetDateTime : public CommandInterface
     GetDateTime(const GetDateTime&) = delete;
     GetDateTime(GetDateTime&&) = default;
     GetDateTime& operator=(const GetDateTime&) = delete;
-    GetDateTime& operator=(GetDateTime&&) = delete;
+    GetDateTime& operator=(GetDateTime&&) = default;
 
     using CommandInterface::CommandInterface;
 
@@ -97,7 +97,7 @@ class SetDateTime : public CommandInterface
     SetDateTime(const SetDateTime&) = delete;
     SetDateTime(SetDateTime&&) = default;
     SetDateTime& operator=(const SetDateTime&) = delete;
-    SetDateTime& operator=(SetDateTime&&) = delete;
+    SetDateTime& operator=(SetDateTime&&) = default;
 
     explicit SetDateTime(const char* type, const char* name, CLI::App* app) :
         CommandInterface(type, name, app)
@@ -448,9 +448,9 @@ class GetBIOSTable : public GetBIOSTableHandler
     ~GetBIOSTable() = default;
     GetBIOSTable() = delete;
     GetBIOSTable(const GetBIOSTable&) = delete;
-    GetBIOSTable(GetBIOSTable&&) = delete;
+    GetBIOSTable(GetBIOSTable&&) = default;
     GetBIOSTable& operator=(const GetBIOSTable&) = delete;
-    GetBIOSTable& operator=(GetBIOSTable&&) = delete;
+    GetBIOSTable& operator=(GetBIOSTable&&) = default;
 
     using Table = std::vector<uint8_t>;
 
@@ -695,13 +695,14 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
 
         if (!stringTable || !attrTable)
         {
-            std::cout << "StringTable/AttrTable Unavailable" << std::endl;
+            std::cout << "StringTable/AttrTable Unavaliable" << std::endl;
             return;
         }
 
         auto handle = findAttrHandleByName(attrName, *attrTable, *stringTable);
         if (!handle)
         {
+
             std::cerr << "Can not find the attribute " << attrName << std::endl;
             return;
         }
@@ -764,11 +765,11 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
     ~SetBIOSAttributeCurrentValue() = default;
     SetBIOSAttributeCurrentValue() = delete;
     SetBIOSAttributeCurrentValue(const SetBIOSAttributeCurrentValue&) = delete;
-    SetBIOSAttributeCurrentValue(SetBIOSAttributeCurrentValue&&) = delete;
+    SetBIOSAttributeCurrentValue(SetBIOSAttributeCurrentValue&&) = default;
     SetBIOSAttributeCurrentValue&
         operator=(const SetBIOSAttributeCurrentValue&) = delete;
     SetBIOSAttributeCurrentValue&
-        operator=(SetBIOSAttributeCurrentValue&&) = delete;
+        operator=(SetBIOSAttributeCurrentValue&&) = default;
 
     explicit SetBIOSAttributeCurrentValue(const char* type, const char* name,
                                           CLI::App* app) :
@@ -789,7 +790,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
 
         if (!stringTable || !attrTable)
         {
-            std::cout << "StringTable/AttrTable Unavailable" << std::endl;
+            std::cout << "StringTable/AttrTable Unavaliable" << std::endl;
             return;
         }
 
@@ -854,13 +855,6 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                 pldm_bios_table_attr_value_entry_encode_enum_check(
                     attrValueEntry.data(), attrValueEntry.size(),
                     attrEntry->attr_handle, attrType, 1, handles.data());
-                if (rc != PLDM_SUCCESS)
-                {
-                    std::cout
-                        << "Failed to encode BIOS table attribute enum: " << rc
-                        << std::endl;
-                    return;
-                }
                 break;
             }
             case PLDM_BIOS_STRING:
@@ -875,13 +869,6 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                 pldm_bios_table_attr_value_entry_encode_string_check(
                     attrValueEntry.data(), entryLength, attrEntry->attr_handle,
                     attrType, attrValue.size(), attrValue.c_str());
-                if (rc != PLDM_SUCCESS)
-                {
-                    std::cout
-                        << "Failed to encode BIOS table attribute string: "
-                        << rc << std::endl;
-                    return;
-                }
                 break;
             }
             case PLDM_BIOS_INTEGER:
@@ -894,13 +881,6 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                 pldm_bios_table_attr_value_entry_encode_integer_check(
                     attrValueEntry.data(), entryLength, attrEntry->attr_handle,
                     attrType, value);
-                if (rc != PLDM_SUCCESS)
-                {
-                    std::cout
-                        << "Failed to encode BIOS table attribute integer: "
-                        << rc << std::endl;
-                    return;
-                }
                 break;
             }
         }

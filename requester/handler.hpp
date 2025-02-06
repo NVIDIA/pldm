@@ -6,10 +6,10 @@
 #include "request.hpp"
 
 #include <libpldm/base.h>
-#include <libpldm/pldm.h>
 #include <sys/socket.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
@@ -146,9 +146,8 @@ class Handler
         uint8_t numRetries = static_cast<uint8_t>(NUMBER_OF_REQUEST_RETRIES),
         std::chrono::milliseconds responseTimeOut =
             std::chrono::milliseconds(RESPONSE_TIME_OUT)) :
-        pldmTransport(pldmTransport),
-        event(event), instanceIdDb(instanceIdDb), verbose(verbose),
-        instanceIdExpiryInterval(instanceIdExpiryInterval),
+        pldmTransport(pldmTransport), event(event), instanceIdDb(instanceIdDb),
+        verbose(verbose), instanceIdExpiryInterval(instanceIdExpiryInterval),
         numRetries(numRetries), responseTimeOut(responseTimeOut)
     {}
 
@@ -424,8 +423,8 @@ class Handler
         responseTimeOut; //!< time to wait between each retry
 
     /** @brief Container for storing the details of the PLDM request
-     *         message, handler for the corresponding PLDM response, the
-     *         timer object for the Instance ID expiration and RequestKey
+     *         message, handler for the corresponding PLDM response and the
+     *         timer object for the Instance ID expiration
      */
     using RequestValue =
         std::tuple<std::unique_ptr<RequestInterface>, ResponseHandler,
@@ -476,8 +475,7 @@ struct SendRecvMsgOperation
     explicit SendRecvMsgOperation(Handler<RequestInterface>& handler,
                                   mctp_eid_t eid, pldm::Request&& request,
                                   R&& r) :
-        handler(handler),
-        request(std::move(request)), receiver(std::move(r))
+        handler(handler), request(std::move(request)), receiver(std::move(r))
     {
         auto requestMsg =
             reinterpret_cast<const pldm_msg*>(this->request.data());
@@ -612,8 +610,7 @@ struct SendRecvMsgSender
 
     explicit SendRecvMsgSender(requester::Handler<RequestInterface>& handler,
                                mctp_eid_t eid, pldm::Request&& request) :
-        handler(handler),
-        eid(eid), request(std::move(request))
+        handler(handler), eid(eid), request(std::move(request))
     {}
 
     friend auto tag_invoke(stdexec::get_completion_signatures_t,
@@ -664,4 +661,5 @@ stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto
 }
 
 } // namespace requester
+
 } // namespace pldm

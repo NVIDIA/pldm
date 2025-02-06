@@ -18,9 +18,6 @@ project(
 # project uses the same compiler, we can safely ignmore these info notes.
 add_project_arguments('-Wno-psabi', language: 'cpp')
 
-# Enable support for the C++ coroutines extension
-add_project_arguments('-fcoroutines',language : ['cpp'])
-
 # Disable FORTIFY_SOURCE when compiling with no optimization
 if (get_option('optimization') == '0')
     add_project_arguments('-U_FORTIFY_SOURCE', language: 'cpp')
@@ -107,34 +104,34 @@ if get_option('softoff').allowed()
         join_paths(package_datadir, 'softoff'),
     )
 endif
-if get_option('oem-ibm').allowed()
-    conf_data.set_quoted(
-        'FILE_TABLE_JSON',
-        join_paths(package_datadir, 'fileTable.json'),
-    )
-    conf_data.set_quoted(
-        'LID_RUNNING_DIR',
-        '/var/lib/phosphor-software-manager/hostfw/running',
-    )
-    conf_data.set_quoted(
-        'LID_ALTERNATE_DIR',
-        '/var/lib/phosphor-software-manager/hostfw/alternate',
-    )
-    conf_data.set_quoted(
-        'LID_STAGING_DIR',
-        '/var/lib/phosphor-software-manager/hostfw/staging',
-    )
-    conf_data.set_quoted(
-        'LID_RUNNING_PATCH_DIR',
-        '/usr/local/share/hostfw/running',
-    )
-    conf_data.set_quoted(
-        'LID_ALTERNATE_PATCH_DIR',
-        '/usr/local/share/hostfw/alternate',
-    )
-    conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
-    add_project_arguments('-DOEM_IBM', language: 'cpp')
-endif
+# if get_option('oem-ibm').allowed()
+#     conf_data.set_quoted(
+#         'FILE_TABLE_JSON',
+#         join_paths(package_datadir, 'fileTable.json'),
+#     )
+#     conf_data.set_quoted(
+#         'LID_RUNNING_DIR',
+#         '/var/lib/phosphor-software-manager/hostfw/running',
+#     )
+#     conf_data.set_quoted(
+#         'LID_ALTERNATE_DIR',
+#         '/var/lib/phosphor-software-manager/hostfw/alternate',
+#     )
+#     conf_data.set_quoted(
+#         'LID_STAGING_DIR',
+#         '/var/lib/phosphor-software-manager/hostfw/staging',
+#     )
+#     conf_data.set_quoted(
+#         'LID_RUNNING_PATCH_DIR',
+#         '/usr/local/share/hostfw/running',
+#     )
+#     conf_data.set_quoted(
+#         'LID_ALTERNATE_PATCH_DIR',
+#         '/usr/local/share/hostfw/alternate',
+#     )
+#     conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
+#     add_project_arguments('-DOEM_IBM', language: 'cpp')
+# endif
 conf_data.set(
     'NUMBER_OF_REQUEST_RETRIES',
     get_option('number-of-request-retries'),
@@ -227,9 +224,9 @@ libpldm_dep = dependency(
 
 openssl = dependency('openssl', required : true)
 
-if get_option('oem-ampere').enabled()
-    add_project_arguments('-DOEM_AMPERE', language : 'cpp')
-endif
+# if get_option('oem-ampere').enabled()
+#     add_project_arguments('-DOEM_AMPERE', language : 'cpp')
+# endif
 
 libpldmutils_headers = ['.']
 libpldmutils = library(
@@ -268,9 +265,9 @@ deps = [
 ]
 
 oem_files = []
-if get_option('oem-ampere').enabled()
-    subdir('oem/ampere')
-endif
+# if get_option('oem-ampere').enabled()
+#     subdir('oem/ampere')
+# endif
 
 if get_option('libpldmresponder').allowed()
     subdir('libpldmresponder')
@@ -278,7 +275,7 @@ if get_option('libpldmresponder').allowed()
 endif
 source_files = [
   'pldmd/pldmd.cpp',
-  'pldmd/dbus_impl_pdr.cpp',
+  'fw-update/fw_update_utility.cpp',
   'fw-update/inventory_manager.cpp',
   'fw-update/package_parser.cpp',
   'fw-update/component_updater.cpp',
@@ -307,6 +304,7 @@ if get_option('pldm-type2').enabled()
   'platform-mc/state_effecter.cpp',
   'platform-mc/state_set.cpp',
   'platform-mc/smbios_mdr.cpp',
+  'pldmd/dbus_impl_pdr.cpp',
   ]
 
   if get_option('oem-nvidia').enabled()
@@ -344,9 +342,9 @@ if get_option('systemd').allowed()
         install_dir: systemd_system_unit_dir,
     )
 
-    if get_option('oem-ibm').allowed()
-        subdir('oem/ibm/service_files')
-    endif
+    # if get_option('oem-ibm').allowed()
+    #     subdir('oem/ibm/service_files')
+    # endif
 endif
 
 subdir('pldmtool')
@@ -357,17 +355,17 @@ if get_option('utilities').allowed()
     subdir('utilities')
 endif
 
-if get_option('softoff').allowed()
-    subdir('softoff')
-endif
+# if get_option('softoff').allowed()
+#     subdir('softoff')
+# endif
 
-if get_option('tests').enabled()
-  subdir('common/test')
-  subdir('fw-update/test')
-  subdir('requester/test')
-  if get_option('libpldmresponder').enabled()
-    subdir('host-bmc/test')
-    subdir('platform-mc/test')
-  endif
-  subdir('test')
-endif
+# if get_option('tests').enabled()
+#   subdir('common/test')
+#   subdir('fw-update/test')
+#   subdir('requester/test')
+#   if get_option('libpldmresponder').enabled()
+#     subdir('host-bmc/test')
+#     subdir('platform-mc/test')
+#   endif
+#   subdir('test')
+# endif

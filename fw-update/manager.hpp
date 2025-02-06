@@ -65,14 +65,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] handler - PLDM request handler
      *  @param[in] requester - Managing instance ID for PLDM requests
      *  @param[in] fwUpdateConfigFile - Config file for firmware update
-     *  @param[in] dBusHandlerIntf - Interface to make D-Bus client calls
      *  @param[in] fwDebug - Verbosity flag to enable debug traces for fw update
      */
     explicit Manager(Event& event,
                      requester::Handler<requester::Request>& handler,
                      InstanceIdDb& instanceIdDb,
                      const std::filesystem::path& fwUpdateConfigFile,
-                     utils::DBusHandlerInterface* dBusHandlerIntf,
                      bool fwDebug) :
         inventoryMgr(handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
@@ -80,10 +78,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
-                               deviceInventoryInfo, descriptorMap,
-                               dBusHandlerIntf),
+                               deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
-                           componentInfoMap, dBusHandlerIntf)
+                           componentInfoMap)
     {
         try
         {
@@ -92,7 +89,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
         catch (const std::exception& e)
         {
-            lg2::error("Error while parsing json.", "ERROR", e);
+            error("Error while parsing json.", "ERROR", e);
         }
     }
 
@@ -135,10 +132,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             {
                 for (const auto& [intfName, properties] : interfaces)
                 {
-                    if (intfName == uuidEndpointIntfName)
+                    if (intfName == EndpointUUID)
                     {
                         uuid = std::get<std::string>(properties.at("UUID"));
                         mctpInterfaces[uuid] = interfaces;
+                        error("TMP: Added UUID {U} to mctpInterfaces", "U",
+                              uuid);
                     }
                 }
             }
@@ -165,10 +164,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void createInventory(EID eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
+        error("Called createInventory for EID {E}", "E", eid);
         deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
         {
+            error("Calling create Entry for EID {E}", "E", eid);
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
+            error("Done");
         }
     }
 
@@ -197,7 +199,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
         catch (const std::exception& e)
         {
-            lg2::error("Error while updating Firmware version.", "ERROR", e);
+            error("Error while updating Firmware version.", "ERROR", e);
         }
     }
 
@@ -206,7 +208,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] mctpInfos - information of removed MCTP endpoints
      */
-    void handleRemovedMctpEndpoints(const MctpInfos&)
+    void handleRemovedMctpEndpoints(const MctpInfos&) override
     {
         return;
     }
@@ -228,13 +230,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                            [[maybe_unused]] const EID& eid)
+                            [[maybe_unused]] const EID& eid) override
     {
         this->updateFWInventory(eid);
     }
 
     void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                             [[maybe_unused]] const EID& eid)
+                             [[maybe_unused]] const EID& eid) override
     {
         // placeholder
     }

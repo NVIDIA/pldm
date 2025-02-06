@@ -31,7 +31,7 @@ class ProgressCodeHandler : public FileHandler
     int write(const char* buffer, uint32_t offset, uint32_t& length,
               oem_platform::Handler* oemPlatformHandler) override;
 
-    int readIntoMemory(uint32_t /*offset*/, uint32_t /*length*/,
+    int readIntoMemory(uint32_t /*offset*/, uint32_t& /*length*/,
                        uint64_t /*address*/,
                        oem_platform::Handler* /*oemPlatformHandler*/) override
     {
@@ -60,8 +60,7 @@ class ProgressCodeHandler : public FileHandler
      *  @param[in] progressCodeBuffer - the progress Code SRC Buffer
      */
     virtual int setRawBootProperty(
-        const std::tuple<std::vector<uint8_t>, std::vector<uint8_t>>&
-            progressCodeBuffer);
+        const std::tuple<uint64_t, std::vector<uint8_t>>& progressCodeBuffer);
 
     /** @brief ProgressCodeHandler destructor
      */

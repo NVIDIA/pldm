@@ -54,8 +54,7 @@ class Handler : public CmdHandler
             pldm::responder::oem_platform::Handler* oemPlatformHandler,
             sdeventplus::Event& event, bool buildPDRLazily = false,
             const std::optional<EventMap>& addOnHandlersMap = std::nullopt) :
-        pdrRepo(repo),
-        hostPDRHandler(hostPDRHandler),
+        pdrRepo(repo), hostPDRHandler(hostPDRHandler),
         dbusToPLDMEventHandler(dbusToPLDMEventHandler), fruHandler(fruHandler),
         dBusIntf(dBusIntf), oemPlatformHandler(oemPlatformHandler),
         event(event), pdrJsonsDir(pdrJsonsDir), pdrCreated(false)

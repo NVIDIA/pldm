@@ -46,14 +46,13 @@ exec::task<int>
     }
     catch (const sdbusplus::exception_t& e)
     {
-        lg2::error(
-            "Send and Receive PLDM message over MCTP throw error - {ERROR}.",
-            "ERROR", e);
+        error("Send and Receive PLDM message over MCTP throw error - {ERROR}.",
+              "ERROR", e);
         co_return PLDM_ERROR;
     }
     catch (const int& e)
     {
-        lg2::error(
+        error(
             "Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
             "ERROR", e);
         co_return PLDM_ERROR;
@@ -67,9 +66,9 @@ exec::task<int> ComponentUpdater::startComponentUpdater()
     auto rc = co_await sendUpdateComponentRequest(componentIndex);
     if (rc)
     {
-        lg2::error("Error while sending component update request."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while sending component update request."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
     }
     co_return rc;
 }
@@ -149,17 +148,17 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        lg2::error("Error while sending mctp request for ComponentUpdate."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while sending mctp request for ComponentUpdate."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         co_return rc;
     }
     rc = processUpdateComponentResponse(eid, response, respMsgLen);
     if (rc)
     {
-        lg2::error("Error while processing component update response."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while processing component update response."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         co_return rc;
     }
     co_return rc;
@@ -173,7 +172,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
     {
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
+            PLDM_UPDATE_COMPONENT, PLDM_FWUP_TIME_OUT);
         error(
             "No response received for update component with endpoint ID {EID}",
             "EID", eid);
@@ -211,7 +210,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
     }
     if (completionCode)
     {
-        lg2::error(
+        error(
             "UpdateComponent response failed with error completion code,"
             " EID={EID}, CC={CC}, compCompatibilityResp={CCR}, compCompatibilityRespCode= {CCRC}",
             "EID", eid, "CC", completionCode, "CCR", compCompatibilityResp,
@@ -228,7 +227,7 @@ int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
     }
     if (compCompatibilityResp)
     {
-        lg2::error(
+        error(
             "In UpdateComponent response, ComponentCompatibilityResponse is non-zero EID={EID}, RC= {RC}, CompletionCode= {CC}, compCompatibilityResp={CCR}, compCompatibilityRespCode= {CCRC}",
             "EID", eid, "RC", rc, "CC", completionCode, "CCR",
             compCompatibilityResp, "CCRC", compCompatibilityRespCode);
@@ -308,10 +307,10 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     auto compSize = std::get<6>(comp);
     if (updateManager->fwDebug)
     {
-        lg2::info("EID={EID}, ComponentIndex={COMPONENTINDEX}, Offset="
-                  "{OFFSET}, Length={LENGTH}",
-                  "EID", eid, "COMPONENTINDEX", componentIndex, "OFFSET",
-                  offset, "LENGTH", length);
+        info("EID={EID}, ComponentIndex={COMPONENTINDEX}, Offset="
+             "{OFFSET}, Length={LENGTH}",
+             "EID", eid, "COMPONENTINDEX", componentIndex, "OFFSET", offset,
+             "LENGTH", length);
     }
 
     if (componentUpdaterState.expectedState(
@@ -324,17 +323,16 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
             ComponentUpdaterSequence::RequestFirmwareData) ==
         ComponentUpdaterSequence::RetryRequest)
     {
-        lg2::info("Retry request for RequestFirmwareData. EID={EID}, "
-                  "ComponentIndex={COMPONENTINDEX}",
-                  "EID", eid, "COMPONENTINDEX", componentIndex);
+        info("Retry request for RequestFirmwareData. EID={EID}, "
+             "ComponentIndex={COMPONENTINDEX}",
+             "EID", eid, "COMPONENTINDEX", componentIndex);
     }
 
     if (length < PLDM_FWUP_BASELINE_TRANSFER_SIZE || length > maxTransferSize)
     {
-        lg2::error(
-            "RequestFirmwareData reported PLDM_FWUP_INVALID_TRANSFER_LENGTH, "
-            "EID={EID}, offset={OFFSET}, length={LENGTH}",
-            "EID", eid, "OFFSET", offset, "LENGTH", length);
+        error("RequestFirmwareData reported PLDM_FWUP_INVALID_TRANSFER_LENGTH, "
+              "EID={EID}, offset={OFFSET}, length={LENGTH}",
+              "EID", eid, "OFFSET", offset, "LENGTH", length);
         rc = encode_request_firmware_data_resp(
             request->hdr.instance_id, PLDM_FWUP_INVALID_TRANSFER_LENGTH,
             responseMsg, sizeof(completionCode));
@@ -349,9 +347,9 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
 
     if (offset + length > compSize + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
     {
-        lg2::error("RequestFirmwareData reported PLDM_FWUP_DATA_OUT_OF_RANGE, "
-                   "EID={EID}, offset={OFFSET}, length={LENGTH}",
-                   "EID", eid, "OFFSET", offset, "LENGTH", length);
+        error("RequestFirmwareData reported PLDM_FWUP_DATA_OUT_OF_RANGE, "
+              "EID={EID}, offset={OFFSET}, length={LENGTH}",
+              "EID", eid, "OFFSET", offset, "LENGTH", length);
         rc = encode_request_firmware_data_resp(
             request->hdr.instance_id, PLDM_FWUP_DATA_OUT_OF_RANGE, responseMsg,
             sizeof(completionCode));
@@ -373,44 +371,43 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     response.resize(sizeof(pldm_msg_hdr) + sizeof(completionCode) + length);
     responseMsg = reinterpret_cast<pldm_msg*>(response.data());
     package.seekg(compOffset + offset);
-    package.read(
-        reinterpret_cast<char*>(
-            response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode)),
-        length - padBytes);
-    rc = encode_request_firmware_data_resp(
-        request->hdr.instance_id, completionCode, responseMsg,
-        sizeof(completionCode));
+    package.read(reinterpret_cast<char*>(response.data() +
+                                         sizeof(pldm_msg_hdr) +
+                                         sizeof(completionCode)),
+                 length - padBytes);
+    rc = encode_request_firmware_data_resp(request->hdr.instance_id,
+                                           completionCode, responseMsg,
+                                           sizeof(completionCode));
     if (rc)
     {
-        lg2::error(
+        error(
             "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
             "EID", eid, "RC", rc);
         return response;
     }
-    // if (!reqFwDataTimer)
-    // {
-    //     if (offset != 0)
-    //     {
-    //         lg2::warning("First data request is not at offset 0");
-    //     }
-    //
-    //     // create timer for first request
-    //     createRequestFwDataTimer();
-    // }
+    if (!reqFwDataTimer)
+    {
+        if (offset != 0)
+        {
+            warning("First data request is not at offset 0");
+        }
 
-    // if (reqFwDataTimer)
-    // {
-    //     reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds),
-    //                           false);
-    // }
-    // else
-    // {
-    //     lg2::error(
-    //         "Failed to start timer for handling RequestFirmwareData, EID={EID}, RC={RC}",
-    //         "EID", eid, "RC", rc);
-    // }
+        // create timer for first request
+        createRequestFwDataTimer();
+    }
 
-    lg2::error("TMP: Flag ret");
+    if (reqFwDataTimer)
+    {
+        reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds),
+                              false);
+    }
+    else
+    {
+        error(
+            "Failed to start timer for handling RequestFirmwareData, EID={EID}, RC={RC}",
+            "EID", eid, "RC", rc);
+    }
+
     return response;
 }
 
@@ -457,15 +454,15 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
             ComponentUpdaterSequence::TransferComplete) ==
         ComponentUpdaterSequence::RetryRequest)
     {
-        lg2::error("Retry request for Transfer complete, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Retry request for Transfer complete, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         rc = encode_transfer_complete_resp(request->hdr.instance_id,
                                            completionCode, responseMsg,
                                            sizeof(completionCode));
         if (rc)
         {
-            lg2::error(
+            error(
                 "Encoding TransferComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
@@ -477,7 +474,7 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         reqFwDataTimer.reset();
     }
     // create and start UA_T6 timer
-    lg2::info("Progress percent is not supported. Starting UA_T6 timer");
+    info("Progress percent is not supported. Starting UA_T6 timer");
     createCompleteCommandsTimeoutTimer();
     completeCommandsTimeoutTimer->start(
         std::chrono::seconds(completeCommandsTimeoutSeconds), false);
@@ -528,7 +525,7 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            scope.spawn(
+            stdexec::start_detached(
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
                 exec::default_task_context<void>(exec::inline_scheduler{}));
@@ -593,17 +590,16 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
             ComponentUpdaterSequence::VerifyComplete) ==
         ComponentUpdaterSequence::RetryRequest)
     {
-        lg2::error("Retry request for Verify complete, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Retry request for Verify complete, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         rc = encode_verify_complete_resp(request->hdr.instance_id,
                                          completionCode, responseMsg,
                                          sizeof(completionCode));
         if (rc)
         {
-            lg2::error(
-                "Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
+            error("Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
+                  "EID", eid, "RC", rc);
         }
         return response;
     }
@@ -651,7 +647,7 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            scope.spawn(
+            stdexec::start_detached(
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
                 exec::default_task_context<void>(exec::inline_scheduler{}));
@@ -699,9 +695,10 @@ void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
         discoverMctpTerminusTaskHandle.reset();
     }
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-    scope.spawn(sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+    stdexec::start_detached(
+        sendcancelUpdateComponentRequest() |
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
@@ -729,10 +726,12 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
             eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
             updateManager->getActivationMethod(compActivationModification));
     }
+    // Restore the deferred event
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,
         std::bind(&ComponentUpdater::updateComponentComplete, this,
                   ComponentUpdateStatus::UpdateComplete));
+
     if (completeCommandsTimeoutTimer)
     {
         completeCommandsTimeoutTimer->stop();
@@ -786,77 +785,47 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
             ComponentUpdaterSequence::ApplyComplete) ==
         ComponentUpdaterSequence::RetryRequest)
     {
-        lg2::error("Retry request for apply complete, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Retry request for apply complete, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         rc =
             encode_apply_complete_resp(request->hdr.instance_id, completionCode,
                                        responseMsg, sizeof(completionCode));
         if (rc)
         {
-            lg2::error(
-                "Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
+            error("Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
+                  "EID", eid, "RC", rc);
         }
         return response;
     }
 
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
-    error("Flag 4.1");
     const auto& comp = compImageInfos[applicableComponents[componentIndex]];
-    error("Flag 4.2");
     const auto& compVersion = std::get<7>(comp);
-    error("Flag 4.3");
 
     if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
-        error("Flag 5");
         auto validateApplyStatusSuccess = [this, applyResult, compVersion,
                                            compActivationModification](
                                               uint8_t currentFDState) {
             if (currentFDState == PLDM_FD_STATE_READY_XFER)
             {
-                error("Flag 6");
                 applyCompleteSucceededStatusHandler(compVersion,
                                                     compActivationModification);
             }
             else
             {
-                error("Flag 7");
                 applyCompleteFailedStatusHandler(applyResult);
             }
         };
 
-        // [[maybe_unused]] auto co = GetStatus(validateApplyStatusSuccess);
-        // stdexec::start_detached(std::move(co), exec::inline_scheduler{});
-
-        if (getStatusTaskHandle.has_value())
-        {
-            auto& [scope, rcOpt] = *getStatusTaskHandle;
-            if (!rcOpt.has_value())
-            {
-                return response;
-            }
-            stdexec::sync_wait(scope.on_empty());
-            getStatusTaskHandle.reset();
-        }
-        auto& [scope, rcOpt] = getStatusTaskHandle.emplace();
-        scope.spawn(stdexec::just() | stdexec::then([&]() {
-                        [[maybe_unused]] auto co =
-                            GetStatus(validateApplyStatusSuccess);
-                        return 0; // or any appropriate return value
-                    }) | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                    exec::default_task_context<void>(exec::inline_scheduler{}));
-        // pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-        //     updateManager->event,
-        //     [this, validateApplyStatusSuccess](EventBase&) {
-        //     error("Defer Flag");
-        //         [[maybe_unused]] auto co =
-        //             GetStatus(validateApplyStatusSuccess);
-        //     error("Defer Flag2");
-        //     });
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            [this, validateApplyStatusSuccess](EventBase&) {
+                GetStatus(validateApplyStatusSuccess);
+            });
     }
     else
     {
@@ -870,7 +839,6 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
             std::bind(&ComponentUpdater::handleComponentUpdateFailure, this,
                       applyFailedStatusHandler));
     }
-    error("Flag 9");
 
     rc = encode_apply_complete_resp(request->hdr.instance_id, completionCode,
                                     responseMsg, sizeof(completionCode));
@@ -889,7 +857,7 @@ void ComponentUpdater::createRequestFwDataTimer()
     reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
         if (updateManager->fwDebug)
         {
-            lg2::error(
+            error(
                 "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
                 "ComponentIndex={COMPONENTINDEX}",
                 "EID", eid, "COMPONENTINDEX", componentIndex, "EXPECTEDTIME",
@@ -897,7 +865,7 @@ void ComponentUpdater::createRequestFwDataTimer()
         }
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_REQUEST_FIRMWARE_DATA, COMMAND_TIMEOUT);
+            PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
         componentUpdaterState.set(
             ComponentUpdaterSequence::CancelUpdateComponent);
         if (discoverMctpTerminusTaskHandle.has_value())
@@ -911,9 +879,10 @@ void ComponentUpdater::createRequestFwDataTimer()
             discoverMctpTerminusTaskHandle.reset();
         }
         auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-        scope.spawn(sendcancelUpdateComponentRequest() |
-                        stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                    exec::default_task_context<void>(exec::inline_scheduler{}));
+        stdexec::start_detached(
+            sendcancelUpdateComponentRequest() |
+                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
     });
 }
 
@@ -923,13 +892,13 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
         std::make_unique<sdbusplus::Timer>([this]() -> void {
             if (updateManager->fwDebug)
             {
-                lg2::error("Complete Commands Timeout. EID={EID}, "
-                           "ComponentIndex={COMPONENTINDEX}",
-                           "EID", eid, "COMPONENTINDEX", componentIndex);
+                error("Complete Commands Timeout. EID={EID}, "
+                      "ComponentIndex={COMPONENTINDEX}",
+                      "EID", eid, "COMPONENTINDEX", componentIndex);
             }
             updateManager->createMessageRegistry(
                 eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                PLDM_APPLY_COMPLETE, COMMAND_TIMEOUT);
+                PLDM_APPLY_COMPLETE, PLDM_FWUP_TIME_OUT);
             componentUpdaterState.set(
                 ComponentUpdaterSequence::CancelUpdateComponent);
             if (discoverMctpTerminusTaskHandle.has_value())
@@ -943,7 +912,7 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            scope.spawn(
+            stdexec::start_detached(
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
                 exec::default_task_context<void>(exec::inline_scheduler{}));
@@ -965,9 +934,9 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
     if (rc)
     {
         updateManager->instanceIdDb.free(eid, instanceId);
-        lg2::error("encode_cancel_update_component_req failed, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}, RC={RC}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
+        error("encode_cancel_update_component_req failed, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, RC={RC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
         co_return PLDM_ERROR;
@@ -981,9 +950,9 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        lg2::error("Error while sending mctp request for ComponentUpdate."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while sending mctp request for ComponentUpdate."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
         co_return rc;
@@ -991,9 +960,9 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
     rc = processCancelUpdateComponentResponse(eid, response, respMsgLen);
     if (rc)
     {
-        lg2::error("Error while processing cancel update response."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while processing cancel update response."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
     }
     // update the status of update
@@ -1006,8 +975,8 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
 {
     if (response == nullptr || !respMsgLen)
     {
-        lg2::error("No response received for CancelUpdateComponent, EID={EID}",
-                   "EID", eid);
+        error("No response received for CancelUpdateComponent, EID={EID}",
+              "EID", eid);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return PLDM_ERROR;
     }
@@ -1022,19 +991,19 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
                                                   &completionCode);
     if (rc)
     {
-        lg2::error("Decoding CancelUpdateComponent response failed, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}, CC={CC}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
-                   completionCode);
+        error("Decoding CancelUpdateComponent response failed, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, CC={CC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
+              completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return rc;
     }
     if (completionCode)
     {
-        lg2::error(
-            "CancelUpdateComponent response failed with error, EID={EID}, "
-            "ComponentIndex={COMPONENTINDEX}, CC={CC}",
-            "EID", eid, "COMPONENTINDEX", componentIndex, "CC", completionCode);
+        error("CancelUpdateComponent response failed with error, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, CC={CC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
+              completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return PLDM_ERROR;
     }
@@ -1043,12 +1012,6 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
 
 void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
 {
-    // static stdexec::sender auto sender = stdexec::just() | stdexec::then([=,
-    // this] {deviceUpdater->updateComponentCompletion(componentIndex,
-    // status);}); static stdexec::sender auto sender = stdexec::just() |
-    // stdexec::then([this, status](){
-    //     deviceUpdater->updateComponentCompletion(componentIndex, status);
-    // }());
     if (updateCompletionCoHandle.has_value())
     {
         auto& [scope, rcOpt] = *updateCompletionCoHandle;
@@ -1059,24 +1022,15 @@ void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
         stdexec::sync_wait(scope.on_empty());
         updateCompletionCoHandle.reset();
     }
-    auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-    scope.spawn(stdexec::just() | stdexec::then([&]() {
-                    [[maybe_unused]] auto co =
-                        deviceUpdater->updateComponentCompletion(componentIndex,
-                                                                 status);
-                    return 0; // or any appropriate return value
-                }) | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
-    // scope.spawn(sender |
-    //         stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-    //     exec::default_task_context<void>(exec::inline_scheduler{}));
-    return;
+    auto& [scope, rcOpt] = updateCompletionCoHandle.emplace();
+    stdexec::start_detached(
+        deviceUpdater->updateComponentCompletion(componentIndex, status) |
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
-exec::task<int>
-    ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
+void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
 {
-    error("Running callback");
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
     pldmRequest.reset();
@@ -1088,41 +1042,56 @@ exec::task<int>
 
     auto rc = encode_get_status_req(instanceId, requestMsg,
                                     PLDM_GET_STATUS_REQ_BYTES);
-    error("Flag1.1");
     if (rc)
     {
         updateManager->instanceIdDb.free(eid, instanceId);
-        lg2::error("encode_get_status_req failed, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}, RC={RC}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
-        co_return PLDM_ERROR;
+        error("encode_get_status_req failed, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, RC={RC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "RC", rc);
+        return;
     }
-
     printBuffer(pldm::utils::Tx, request,
                 ("Send GetStatusRequest for EID=" + std::to_string(eid)),
                 updateManager->fwDebug);
 
-    error("Flag1.2");
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
-    if (rc)
+    // Create a new task for sendRecvPldmMsgOverMctp
+    if (getStatusTaskHandle.has_value())
     {
-        lg2::error("Error while sending mctp request for ComponentUpdate."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
-        co_return rc;
+        auto& [scope, rcOpt] = *getStatusTaskHandle;
+        if (!rcOpt.has_value())
+        {
+            return;
+        }
+        getStatusTaskHandle.reset();
     }
-    error("Flag1.3");
-    rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,
-                                  progressPercent);
-    if (rc)
-    {
-        lg2::error("Error while processing get request response."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
-    }
-    error("Calling callback");
-    getStatusCallback(currentFDState);
-    co_return rc;
+
+    getStatusTaskHandle.emplace();
+    stdexec::start_detached(
+        sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen) |
+            stdexec::then([this, getStatusCallback, &response, &respMsgLen,
+                           &currentFDState, &progressPercent](int sendRc) {
+                if (sendRc)
+                {
+                    error(
+                        "Error while sending mctp request for ComponentUpdate."
+                        " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                        "EID", eid, "COMPONENTINDEX", componentIndex);
+                    return;
+                }
+
+                auto rc = processGetStatusResponse(
+                    eid, response, respMsgLen, currentFDState, progressPercent);
+                if (rc)
+                {
+                    error("Error while processing get request response."
+                          " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                          "EID", eid, "COMPONENTINDEX", componentIndex);
+                    return;
+                }
+
+                getStatusCallback(currentFDState);
+            }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
 int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
@@ -1133,7 +1102,7 @@ int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
 {
     if (response == nullptr || !respMsgLen)
     {
-        lg2::error("No response received for GetStatus, EID={EID}", "EID", eid);
+        error("No response received for GetStatus, EID={EID}", "EID", eid);
         return PLDM_ERROR;
     }
 
@@ -1153,19 +1122,19 @@ int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
                                      &reasonCode, &updateOptionFlagsEnabled);
     if (rc)
     {
-        lg2::error("Decoding GetStatus response failed, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}, CC={CC}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
-                   completionCode);
+        error("Decoding GetStatus response failed, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, CC={CC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
+              completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return rc;
     }
     if (completionCode)
     {
-        lg2::error("GetStatus response failed with error, EID={EID}, "
-                   "ComponentIndex={COMPONENTINDEX}, CC={CC}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
-                   completionCode);
+        error("GetStatus response failed with error, EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}, CC={CC}",
+              "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
+              completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return PLDM_ERROR;
     }

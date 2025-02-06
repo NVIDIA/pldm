@@ -602,18 +602,23 @@ uint16_t findStateSensorId(const pldm_pdr* pdrRepo, uint8_t tid,
 
 void printBuffer(bool isTx, const std::vector<uint8_t>& buffer)
 {
-    if (buffer.empty())
+    if (!buffer.empty())
     {
-        return;
+        std::ostringstream tempStream;
+        for (int byte : buffer)
+        {
+            tempStream << std::setfill('0') << std::setw(2) << std::hex << byte
+                       << " ";
+        }
+        if (isTx)
+        {
+            lg2::info("Tx: {TX}", "TX", tempStream.str());
+        }
+        else
+        {
+            lg2::info("Rx: {RX}", "RX", tempStream.str());
+        }
     }
-
-    std::cout << (isTx ? "Tx: " : "Rx: ");
-
-    std::ranges::for_each(buffer, [](uint8_t byte) {
-        std::cout << std::format("{:02x} ", byte);
-    });
-
-    std::cout << std::endl;
 }
 
 void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen)
@@ -786,6 +791,32 @@ bool dbusPropValuesToDouble(const std::string_view& type,
     }
 
     return true;
+}
+
+std::optional<std::string> fruFieldValuestring(const uint8_t* value,
+                                               const uint8_t& length)
+{
+    if (!value || !length)
+    {
+        error("Fru data to string invalid data.");
+        return std::nullopt;
+    }
+
+    return std::string(reinterpret_cast<const char*>(value), length);
+}
+
+std::optional<uint32_t> fruFieldParserU32(const uint8_t* value,
+                                          const uint8_t& length)
+{
+    if (!value || length != sizeof(uint32_t))
+    {
+        error("Fru data to u32 invalid data.");
+        return std::nullopt;
+    }
+
+    uint32_t ret;
+    std::memcpy(&ret, value, length);
+    return ret;
 }
 } // namespace utils
 } // namespace pldm

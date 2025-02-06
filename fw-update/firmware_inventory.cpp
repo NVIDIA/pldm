@@ -65,11 +65,9 @@ void Entry::setVersion(const std::string& versionStr)
 
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
-                 const ComponentInfoMap& componentInfoMap,
-                 utils::DBusHandlerInterface* dBusHandlerIntf) :
-    bus(bus),
-    firmwareInventoryInfo(firmwareInventoryInfo),
-    componentInfoMap(componentInfoMap), dBusHandlerIntf(dBusHandlerIntf)
+                 const ComponentInfoMap& componentInfoMap) :
+    bus(bus), firmwareInventoryInfo(firmwareInventoryInfo),
+    componentInfoMap(componentInfoMap)
 {}
 
 void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
@@ -210,7 +208,7 @@ void Manager::updateSwIdOnSignal(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                lg2::error("SoftwareId set error: {ERROR}", "ERROR", e);
+                error("SoftwareId set error: {ERROR}", "ERROR", e);
             }
         });
         propertySet.detach();

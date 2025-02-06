@@ -21,8 +21,7 @@ const std::vector<uint8_t> pdrTypes{PLDM_STATE_SENSOR_PDR};
 DbusToPLDMEvent::DbusToPLDMEvent(
     int mctp_fd, uint8_t mctp_eid, Requester& requester,
     pldm::requester::Handler<pldm::requester::Request>* handler) :
-    mctp_fd(mctp_fd),
-    mctp_eid(mctp_eid), requester(requester), handler(handler)
+    mctp_fd(mctp_fd), mctp_eid(mctp_eid), requester(requester), handler(handler)
 {}
 
 void DbusToPLDMEvent::sendEventMsg(uint8_t eventType,

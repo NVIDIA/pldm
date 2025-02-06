@@ -62,7 +62,7 @@ ErrorCode constexpr stageImageDowngrade = 0x9C;
 
 /* request update error mapping */
 static ErrorMapping requestUpdateMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
     {PLDM_FWUP_ALREADY_IN_UPDATE_MODE,
@@ -79,7 +79,7 @@ static ErrorMapping requestUpdateMapping{
 
 /* pass component table error mapping */
 static ErrorMapping passComponentTblMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Initiating firmware update timed out",
       "Retry firmware update operation"}},
     {PLDM_FWUP_NOT_IN_UPDATE_MODE,
@@ -89,7 +89,7 @@ static ErrorMapping passComponentTblMapping{
       "Retry firmware update operation"}}};
 /* update component error mapping */
 static ErrorMapping updateComponentMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Initiating component update timed out",
       "Retry firmware update operation"}},
     {PLDM_FWUP_NOT_IN_UPDATE_MODE,
@@ -103,14 +103,14 @@ static ErrorMapping updateComponentMapping{
 
 /* request firmware data error mapping */
 static ErrorMapping requestFwDataMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Transferring component timed out", "Retry firmware update operation"}}};
 
 /* transfer complete error mapping */
 static ErrorMapping transferCompleteMapping{
-    {NO_MATCHING_VERSION,
+    {PLDM_FWUP_TRANSFER_ERROR_VERSION_MISMATCH,
      {"No Matching Version", "Verify the contents of the FW package"}},
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Transferring component timed out", "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {reqGrantError,
@@ -127,9 +127,9 @@ static ErrorMapping transferCompleteMapping{
 
 /* verify result error mapping */
 static ErrorMapping verifyCompleteMapping{
-    {VERSION_MISMATCH,
+    {PLDM_FWUP_VERIFY_ERROR_VERSION_MISMATCH,
      {"Version mismatch", "Verify the contents of the FW package"}},
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Verifying component timed out", "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
@@ -160,7 +160,7 @@ static ErrorMapping verifyCompleteMapping{
 
 /* apply complete command error mapping */
 static ErrorMapping applyCompleteMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Complete Commands Timeout", "Retry firmware update operation."}},
     {PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE,
      {"Applying the image failed due to write operation failure",
@@ -174,7 +174,7 @@ static ErrorMapping applyCompleteMapping{
 
 /* activate firmware error mapping */
 static ErrorMapping activateFirmwareMapping{
-    {COMMAND_TIMEOUT,
+    {PLDM_FWUP_TIME_OUT,
      {"Activating firmware timed out", "Retry firmware update operation."}}};
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
@@ -233,15 +233,15 @@ inline std::tuple<bool, std::string, std::string, std::string>
         }
         else
         {
-            lg2::error(
+            error(
                 "Error Code: {ERRORCODE} not found for command: {COMMANDTYPE}",
                 "ERRORCODE", errorCode, "COMMANDTYPE", (unsigned)commandType);
         }
     }
     else
     {
-        lg2::error("No mapping found for command: {COMMANDTYPE}", "COMMANDTYPE",
-                   (unsigned)commandType);
+        error("No mapping found for command: {COMMANDTYPE}", "COMMANDTYPE",
+              (unsigned)commandType);
     }
     return {status, oemMessageId, oemMessageError, oemResolution};
 }
@@ -278,14 +278,14 @@ inline std::tuple<bool, std::string, std::string, std::string>
         }
         else
         {
-            lg2::error(
+            error(
                 "Component Compatibility Response Code: {ERRORCODE} not found for command: {COMMANDTYPE}",
                 "ERRORCODE", errorCode, "COMMANDTYPE", (unsigned)commandType);
         }
     }
     else
     {
-        lg2::error(
+        error(
             "No component compatibility response code mapping found for command: {COMMANDTYPE}",
             "COMMANDTYPE", (unsigned)commandType);
     }

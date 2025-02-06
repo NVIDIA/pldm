@@ -1,11 +1,12 @@
 #include "pldm_oem_ibm.hpp"
 
+#include "oem/ibm/libpldm/file_io.h"
+#include "oem/ibm/libpldm/host.h"
+#include "pldm_types.h"
+
 #include "../../pldm_cmd_helper.hpp"
 
 #include <endian.h>
-#include <libpldm/oem/ibm/file_io.h>
-#include <libpldm/oem/ibm/host.h>
-#include <libpldm/pldm_types.h>
 
 #include <iostream>
 #include <string>
@@ -37,7 +38,7 @@ class GetAlertStatus : public CommandInterface
     GetAlertStatus(const GetAlertStatus&) = delete;
     GetAlertStatus(GetAlertStatus&&) = default;
     GetAlertStatus& operator=(const GetAlertStatus&) = delete;
-    GetAlertStatus& operator=(GetAlertStatus&&) = delete;
+    GetAlertStatus& operator=(GetAlertStatus&&) = default;
 
     explicit GetAlertStatus(const char* type, const char* name, CLI::App* app) :
         CommandInterface(type, name, app)
@@ -99,18 +100,19 @@ class GetFileTable : public CommandInterface
     GetFileTable(const GetFileTable&) = delete;
     GetFileTable(GetFileTable&&) = default;
     GetFileTable& operator=(const GetFileTable&) = delete;
-    GetFileTable& operator=(GetFileTable&&) = delete;
+    GetFileTable& operator=(GetFileTable&&) = default;
 
     using CommandInterface::CommandInterface;
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
+
         return {PLDM_ERROR, {}};
     }
 
     void parseResponseMsg(pldm_msg*, size_t) override
     {}
-    void exec() override
+    void exec()
     {
         std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
                                         PLDM_GET_FILE_TABLE_REQ_BYTES);
@@ -182,7 +184,7 @@ class GetFileTable : public CommandInterface
             startptr += sizeof(filetableData->file_name_length);
 
             fdata["FileName"] = (std::string(
-                reinterpret_cast<const char*>(startptr), nameLength));
+                reinterpret_cast<char const*>(startptr), nameLength));
             startptr += nameLength;
 
             auto fileSize = *(reinterpret_cast<uint32_t*>(startptr));

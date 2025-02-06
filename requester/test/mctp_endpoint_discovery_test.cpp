@@ -1,5 +1,4 @@
 
-
 #include "common/utils.hpp"
 #include "fw-update/component_updater.hpp"
 #include "fw-update/config.hpp"
@@ -88,6 +87,7 @@ TEST(MctpEndpointDiscoveryTest, goodAddToExistingMctpInfos)
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
     EXPECT_EQ(std::get<2>(mctpInfo), "abc");
+    EXPECT_EQ(std::get<3>(mctpInfo), 1);
 }
 
 TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
@@ -128,10 +128,12 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveFromExistingMctpInfos)
     mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
     EXPECT_EQ(std::get<2>(mctpInfo), "abc");
+    EXPECT_EQ(std::get<3>(mctpInfo), 1);
     EXPECT_EQ(removedInfos.size(), 1);
     mctpInfo = removedInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 11);
     EXPECT_EQ(std::get<2>(mctpInfo), "def");
+    EXPECT_EQ(std::get<3>(mctpInfo), 2);
 }
 
 TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
@@ -149,6 +151,7 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
     EXPECT_EQ(std::get<2>(mctpInfo), "abc");
+    EXPECT_EQ(std::get<3>(mctpInfo), 1);
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
         "xyz.openbmc_project.sdbusplus.test.Object",
         "/xyz/openbmc_project/sdbusplus/test/object",

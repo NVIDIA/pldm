@@ -1,5 +1,3 @@
-
-
 #include "mctp_endpoint_discovery.hpp"
 
 #include "common/types.hpp"
@@ -29,10 +27,9 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
-    bus(bus),
-    mctpEndpointAddedSignal(
-        bus, interfacesAdded(MCTPPath),
-        std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
+    bus(bus), mctpEndpointAddedSignal(
+                  bus, interfacesAdded(MCTPPath),
+                  std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
     mctpEndpointRemovedSignal(
         bus, interfacesRemoved(MCTPPath),
         std::bind_front(&MctpDiscovery::removeEndpoints, this)),
@@ -81,14 +78,13 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
                     types.end())
                 {
                     mctpInfos.emplace_back(
-                        MctpInfo(std::get<EID>(epProps), uuid, ""));
+                        MctpInfo(std::get<EID>(epProps), uuid, {}));
                 }
                 // watch PropertiesChanged signal from
                 // xyz.openbmc_project.Object.Enable PDI
                 if (enableMatches.find(path) == enableMatches.end())
                 {
-                    lg2::info("register match_t path:{OBJPATH}", "OBJPATH",
-                              path);
+                    info("register match_t path:{OBJPATH}", "OBJPATH", path);
                     enableMatches.emplace(
                         path,
                         sdbusplus::bus::match_t(
@@ -219,7 +215,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     info(
                         "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
                         "NETWORK", networkId, "EID", eid, "UUID", uuid);
-                    mctpInfos.emplace_back(MctpInfo(eid, uuid, ""));
+                    mctpInfos.emplace_back(MctpInfo(eid, uuid, {}));
                 }
             }
         }
@@ -227,8 +223,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
     // watch PropertiesChanged signal from xyz.openbmc_project.Object.Enable PDI
     if (enableMatches.find(objPath.str) == enableMatches.end())
     {
-        lg2::info("register match_t objectPath:{OBJPATH}", "OBJPATH",
-                  objPath.str);
+        info("register match_t objectPath:{OBJPATH}", "OBJPATH", objPath.str);
         enableMatches.emplace(
             objPath.str,
             sdbusplus::bus::match_t(
@@ -264,8 +259,7 @@ void MctpDiscovery::removeFromExistingMctpInfos(MctpInfos& mctpInfos,
     }
     for (const auto& mctpInfo : removedInfos)
     {
-        info("Removing Endpoint networkId '{NETWORK}' and  EID '{EID}'", "EID",
-             std::get<0>(mctpInfo));
+        info("Removing Endpoint EID '{EID}'", "EID", std::get<0>(mctpInfo));
         existingMctpInfos.erase(std::remove(existingMctpInfos.begin(),
                                             existingMctpInfos.end(), mctpInfo),
                                 existingMctpInfos.end());
@@ -283,8 +277,8 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
     auto data = nlohmann::json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
-        lg2::error("Parsing json file failed. FilePath={FILE_PATH}",
-                   "FILE_PATH", std::string(staticEidTablePath));
+        error("Parsing json file failed. FilePath={FILE_PATH}", "FILE_PATH",
+              std::string(staticEidTablePath));
         return;
     }
 
@@ -298,8 +292,8 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
         auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
         if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
-            lg2::error("Added Static MCTP Info for EID: {EID}", "EID", eid);
-            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, ""));
+            error("Added Static MCTP Info for EID: {EID}", "EID", eid);
+            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, {}));
         }
     }
 }
@@ -328,7 +322,6 @@ void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
     {
         if (handler)
         {
-            lg2::info("Calling handleMctpEndpoints");
             handler->handleMctpEndpoints(mctpInfos);
         }
     }
@@ -345,7 +338,7 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
     if (prop != properties.end())
     {
         auto enabled = std::get<bool>(prop->second);
-        lg2::info(
+        info(
             "Received xyz.openbmc_poject.Object.Enabled PropertiesChanged signal for "
             "Enabled={ENABLED} at PATH={OBJ_PATH} from SERVICE={SERVICE}",
             "ENABLED", enabled, "OBJ_PATH", objPath, "SERVICE", service);
@@ -375,8 +368,8 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                lg2::error("refreshEndpoints: failed to get UUID,  {ERROR}",
-                           "ERROR", e);
+                error("refreshEndpoints: failed to get UUID,  {ERROR}", "ERROR",
+                      e);
             }
         }
     }

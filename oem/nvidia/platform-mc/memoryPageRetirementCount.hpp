@@ -47,8 +47,7 @@ class OemMemoryPageRetirementCountInft :
      */
     OemMemoryPageRetirementCountInft(std::shared_ptr<NumericSensor> sensor,
                                      bus::bus& bus, const char* path) :
-        MemoryPageRetirementCountInft(bus, path),
-        sensor(*sensor)
+        MemoryPageRetirementCountInft(bus, path), sensor(*sensor)
     {}
 
     virtual ~OemMemoryPageRetirementCountInft() = default;

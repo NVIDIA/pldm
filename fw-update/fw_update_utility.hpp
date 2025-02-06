@@ -48,7 +48,7 @@ inline void printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
 {
     if (fwDebug)
     {
-        lg2::info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
+        info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
         pldm::utils::printBuffer(isTx, buffer);
     }
 }
@@ -69,7 +69,7 @@ inline void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen,
 {
     if (fwDebug)
     {
-        lg2::info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
+        info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
         auto ptr = reinterpret_cast<const uint8_t*>(buffer);
         auto outBuffer =
             std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
@@ -94,6 +94,11 @@ inline Response sendCommandNotExpectedResponse(const pldm_msg* request,
     assert(rc == PLDM_SUCCESS);
     return response;
 }
+
+exec::task<int> sendRecvPldmMsgOverMctp(RequesterHandler& handle,
+                                        mctp_eid_t eid, Request& request,
+                                        const pldm_msg** responseMsg,
+                                        size_t* responseLen);
 
 } // namespace fw_update
 

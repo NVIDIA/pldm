@@ -19,12 +19,18 @@
                             "xyz.openbmc_project.State.Host.Transition.On"
                         ]
                     },
-                    "state": {
-                        "id": 196,
-                        "state_values": [2]
+                    "state" : {
+                        "id" : 196,
+                        "state_values": [
+                            2
+                            ]
                     }
                 }
+
             ]
+
         }
+
     ]
+
 }

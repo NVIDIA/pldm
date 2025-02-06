@@ -51,7 +51,7 @@ bool DebugToken::activate()
     pldm::utils::DBusMapping dbusMapping{tokenPath,
                                          Server::Activation::interface,
                                          "RequestedActivation", "string"};
-    lg2::info("Activating : OBJPATH={OBJPATH}", "OBJPATH", tokenPath);
+    info("Activating : OBJPATH={OBJPATH}", "OBJPATH", tokenPath);
     try
     {
         pldm::utils::DBusHandler().setDbusProperty(
@@ -60,9 +60,8 @@ bool DebugToken::activate()
     }
     catch (const std::exception& e)
     {
-        lg2::error(
-            "Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
-            "OBJPATH", tokenPath, "ERROR", e);
+        error("Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
+              "OBJPATH", tokenPath, "ERROR", e);
         createLogEntry(transferFailed,
                        std::filesystem::path(tokenPath).filename(),
                        tokenVersion, transferFailedResolution);
@@ -135,7 +134,7 @@ void DebugToken::updateDebugToken(
                     std::get<ApplicableComponents>(fwDeviceIDRecord);
                 if (applicableCompVec.size() == 0)
                 {
-                    lg2::error("Invalid applicable components");
+                    error("Invalid applicable components");
                     continue;
                 }
                 const auto& componentImageInfo =
@@ -157,11 +156,11 @@ void DebugToken::updateDebugToken(
                 }
                 catch (const sdbusplus::exception::SdBusError& e)
                 {
-                    lg2::error("failed to get filepath.", "ERROR", e);
+                    error("failed to get filepath.", "ERROR", e);
                     continue;
                 }
-                lg2::info("Got filepath for install token. FILEPATH={FILEPATH}",
-                          "FILEPATH", filepath);
+                info("Got filepath for install token. FILEPATH={FILEPATH}",
+                     "FILEPATH", filepath);
                 if (filepath == "")
                 {
                     continue;
@@ -175,7 +174,7 @@ void DebugToken::updateDebugToken(
                 filepath += "/" + boost::uuids::to_string(
                                       boost::uuids::random_generator()())
                                       .substr(0, 8);
-                lg2::info(
+                info(
                     "Extracting to filepath: VERSION={VERSION}, FILEPATH={FILEPATH}",
                     "VERSION", version, "FILEPATH", filepath);
                 std::ofstream outfile(filepath, std::ofstream::binary);
@@ -199,7 +198,7 @@ void DebugToken::updateDebugToken(
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            lg2::error("failed to get filepath.", "ERROR", e);
+            error("failed to get filepath.", "ERROR", e);
             createLogEntry(transferFailed, "HGX_FW_Debug_Token_Erase", "0.0",
                            transferFailedResolution);
             startUpdate();
@@ -221,7 +220,7 @@ void DebugToken::updateDebugToken(
     setVersion();
     if (!activate())
     {
-        lg2::error("Activation failed for debug token");
+        error("Activation failed for debug token");
         startUpdate();
         return;
     }
@@ -278,7 +277,7 @@ void DebugToken::getValidPaths(std::vector<std::string>& paths)
     }
     catch (const std::exception& e)
     {
-        lg2::error(
+        error(
             "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
             "ERROR", e);
     }
@@ -306,11 +305,11 @@ void DebugToken::startTimer(auto timerExpiryTime)
                 createLogEntry(transferFailed, componentName, tokenVersion,
                                transferFailedResolution);
             }
-            lg2::error("Activation Timer expired for install debug token");
+            error("Activation Timer expired for install debug token");
             startUpdate();
         }
     });
-    lg2::info("Starting Timer to allow install or erase debug token");
+    info("Starting Timer to allow install or erase debug token");
     timer->start(std::chrono::seconds(timerExpiryTime), false);
 }
 
@@ -336,7 +335,7 @@ void DebugToken::setVersion()
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        lg2::error("Failed to set extended version.", "ERROR", e);
+        error("Failed to set extended version.", "ERROR", e);
     }
 }
 

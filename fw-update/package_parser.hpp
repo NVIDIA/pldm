@@ -16,9 +16,9 @@
  */
 #pragma once
 
-#include "libpldm/firmware_update.h"
-
 #include "common/types.hpp"
+
+#include <libpldm/firmware_update.h>
 
 #include <array>
 #include <cstdint>
@@ -63,8 +63,7 @@ class PackageParser
     explicit PackageParser(PackageHeaderSize pkgHeaderSize,
                            const PackageVersion& pkgVersion,
                            ComponentBitmapBitLength componentBitmapBitLength) :
-        pkgHeaderSize(pkgHeaderSize),
-        pkgVersion(pkgVersion),
+        pkgHeaderSize(pkgHeaderSize), pkgVersion(pkgVersion),
         componentBitmapBitLength(componentBitmapBitLength)
     {}
 

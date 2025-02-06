@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -19,6 +20,7 @@ using UUID = std::string;
 using SKU = std::string;
 using Availability = bool;
 using EID = uint8_t;
+using eid = uint8_t;
 using UUID = std::string;
 using Request = std::vector<uint8_t>;
 using Response = std::vector<uint8_t>;
@@ -36,25 +38,26 @@ using MctpMedium = std::string;
 /** @brief Type definition of MCTP Network Index.
  *         uint32_t is used as defined in MCTP Endpoint D-Bus Interface
  */
+using NetworkId = uint32_t;
 
 /** @brief Type definition of MCTP interface information between two endpoints.
- *         EID : Endpoint eid in byte. Defined to match with MCTP D-Bus
+ *         eid : Endpoint EID in byte. Defined to match with MCTP D-Bus
  *               interface
  *         UUID : Endpoint UUID which is used to different the endpoints
  *         MctpMedium: Endpoint MCTP Medium info (Resersed)
  *         NetworkId: MCTP network index
  */
-using MctpInfo = std::tuple<EID, UUID, UUID>;
+using MctpInfo = std::tuple<EID, UUID, uint32_t>;
 
 /** @brief Type definition of MCTP endpoint D-Bus properties in
  *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
  *
  *         NetworkId: MCTP network index
- *         EID : Endpoint eid in byte. Defined to match with MCTP D-Bus
+ *         eid : Endpoint EID in byte. Defined to match with MCTP D-Bus
  *               interface
  *         MCTPMsgTypes: MCTP message types
  */
-using MctpEndpointProps = std::tuple<NetworkId, EID, MCTPMsgTypes>;
+using MctpEndpointProps = std::tuple<NetworkId, eid, MCTPMsgTypes>;
 
 /** @brief Type defined for list of MCTP interface information
  */
@@ -62,7 +65,7 @@ using MctpInfos = std::vector<MctpInfo>;
 
 /**
  * In `Table 2 - Special endpoint IDs` of DSP0236.
- * eid from 1 to 7 is reserved eid. So the start valid eid is 8
+ * EID from 1 to 7 is reserved EID. So the start valid EID is 8
  */
 #define MCTP_START_VALID_EID 8
 constexpr uint8_t BmcMctpEid = 8;
@@ -259,9 +262,9 @@ struct MatchEntryInfo
     bool matchInventoryEntry(const dbus::InterfaceMap& interfaceMap,
                              U& entry) const
     {
-        for (uint16_t i = 0; i < infos.size(); i++)
+        for (size_t i = 0; i < infos.size(); i++)
         {
-            const auto& [cfgIntfName, cfgProps] = std::get<0>(infos[i]);
+            const auto [cfgIntfName, cfgProps] = std::get<0>(infos[i]);
 
             if (isDirectMatch(interfaceMap, cfgIntfName, cfgProps))
             {
@@ -272,7 +275,7 @@ struct MatchEntryInfo
             if (interfaceMap.contains(cfgIntfName))
             {
                 if (std::all_of(cfgProps.begin(), cfgProps.end(),
-                                [&](const auto& cfgProperty) {
+                                [&, cfgIntfName](const auto& cfgProperty) {
                                     return isPropertyMatch(
                                         interfaceMap, cfgProperty, cfgIntfName);
                                 }))

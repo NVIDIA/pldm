@@ -86,8 +86,7 @@ class StateSetNvlink : public StateSet
   public:
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
                    dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        objPath(objectPath)
+        StateSet(stateSetId), objPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

@@ -26,6 +26,8 @@
 #include "requester/handler.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <libpldm/firmware_update.h>
+
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <sdeventplus/test/sdevent.hpp>
@@ -48,9 +50,8 @@ class DeviceUpdaterTest : public testing::Test
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true),
-        deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false)
+        deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos, compInfo,
+                      compIdNameInfo, 512, &updateManager, false)
     {
         fwDeviceIDRecord = {
             1,
@@ -130,7 +131,6 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 TEST_F(DeviceUpdaterTest, requestUpdate)
 {
 
-
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
         reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
@@ -142,7 +142,7 @@ TEST_F(DeviceUpdaterTest, requestUpdate)
         auto co = deviceUpdater.processRequestUpdateResponse(
             eid, requestMsg, sizeof(struct pldm_request_update_resp));
         stdexec::sync_wait(std::move(co));
-        });
+    });
 }
 
 TEST_F(DeviceUpdaterTest,
