@@ -80,7 +80,8 @@ class StateSensor
     /** @brief Updating the association to D-Bus interface
      *  @param[in] inventoryPath - inventory path of the entity
      */
-    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath)
+    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath,
+                                  const bool flag)
     {
         for (auto& stateSet : stateSets)
         {
@@ -100,11 +101,17 @@ class StateSensor
                 associatedEntityPath = path;
             }
             stateSet->setAssociation(assocs);
+            defaultInventoryAssociated = flag;
 
-            sdbusplus::message::object_path entityPath(associatedEntityPath);
-            associationEntityId = entityPath.filename();
-            transform(associationEntityId.begin(), associationEntityId.end(),
-                      associationEntityId.begin(), ::toupper);
+            if (!defaultInventoryAssociated)
+            {
+                sdbusplus::message::object_path entityPath(
+                    associatedEntityPath);
+                associationEntityId = entityPath.filename();
+                transform(associationEntityId.begin(),
+                          associationEntityId.end(),
+                          associationEntityId.begin(), ::toupper);
+            }
         }
     }
 
@@ -191,6 +198,9 @@ class StateSensor
     std::string associationEntityId;
     std::string path;
     bool refreshed = false;
+
+    /** @brief flag to indicate if default inventory is associated */
+    bool defaultInventoryAssociated;
 };
 } // namespace platform_mc
 } // namespace pldm

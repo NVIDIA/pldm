@@ -147,7 +147,8 @@ class NumericSensor
     /** @brief Updating the association to D-Bus interface
      *  @param[in] inventoryPath - inventory path of the entity
      */
-    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath)
+    inline void setInventoryPaths(const std::vector<std::string>& inventoryPath,
+                                  const bool flag)
     {
         if (associationDefinitionsIntf)
         {
@@ -159,6 +160,7 @@ class NumericSensor
                     std::make_tuple("chassis", "all_sensors", path.c_str()));
             }
             associationDefinitionsIntf->associations(assocs);
+            defaultInventoryAssociated = flag;
         }
     }
 
@@ -400,6 +402,9 @@ class NumericSensor
 
     /** @brief flag to skip polling */
     bool skipPolling;
+
+    /** @brief flag to indicate if default inventory is associated */
+    bool defaultInventoryAssociated;
 };
 } // namespace platform_mc
 } // namespace pldm
