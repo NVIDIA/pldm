@@ -45,6 +45,7 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
     hasValueIntf = true;
     skipPolling = false;
     pollingIndicator = POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO;
+    defaultInventoryAssociated = true;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -400,6 +401,7 @@ NumericSensor::NumericSensor(
     sensorUnit = SensorUnit::DegreesC;
     hasValueIntf = true;
     skipPolling = false;
+    defaultInventoryAssociated = true;
     switch (baseUnit)
     {
         case PLDM_SENSOR_UNIT_DEGRESS_C:
@@ -601,7 +603,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     if (definitions.size() > 0)
     {
         endpoint = std::get<2>(definitions[0]);
-        if (endpoint.size() > 0)
+        if (endpoint.size() > 0 && !defaultInventoryAssociated)
         {
             tal::TelemetryAggregator::updateTelemetry(
                 objPath, ifaceName, propertyName, rawSmbpbiData,
