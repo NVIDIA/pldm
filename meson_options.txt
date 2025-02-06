@@ -64,3 +64,5 @@ option('firmware-package-split-staging-dir-mount-service', type: 'string', descr
 
 # Public key to verify signed PLDM package. The default value is public key which is used in the unit tests. Please do not modify.
 option('pldm-package-verification-key', type: 'string', description: 'Public key to verify signed PLDM package', value: '2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d485977454159484b6f5a497a6a3043415159464b34454541434944596741457770724a78393133306b4f46766f764c546b36436e394551696d632b383066610a47693435747569386856385568786a4c755a54315263484a4e485752785363566e6c6358435369516f6e6c5476666f4a3971444d7679614d415570354c694f4f0a4154774c57564a646654536143635450554e567147735276676841774342654e0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a')
+
+option('platform-chassis-object-path', type: 'string', description: 'The system chassis object path for associating PLDM sensors and effectors.', value: '/xyz/openbmc_project/inventory/system/chassis/Baseboard_0')

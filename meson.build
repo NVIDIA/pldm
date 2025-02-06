@@ -130,6 +130,7 @@ conf_data.set('STALE_SENSOR_UPPER_LIMITS_POLLING_TIME', get_option('stale-sensor
 if get_option('platform-prefix') != ''
   conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
 endif
+conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
 if get_option('nvlink-c2c-fabric-object').enabled()
   add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language : ['c','cpp'])
 endif
