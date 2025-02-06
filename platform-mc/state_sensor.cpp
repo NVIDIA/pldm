@@ -48,6 +48,7 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
     auto& bus = pldm::utils::DBusHandler::getBus();
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
+    defaultInventoryAssociated = true;
 
     operationalStatusIntf =
         std::make_unique<OperationalStatusIntf>(bus, path.c_str());
@@ -82,10 +83,14 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
             stateSetId, idx++, objPath, association, this);
         stateSets.emplace_back(std::move(stateSet));
     }
-    sdbusplus::message::object_path entityPath(associationPath);
-    associationEntityId = entityPath.filename();
-    transform(associationEntityId.begin(), associationEntityId.end(),
-              associationEntityId.begin(), ::toupper);
+
+    if (!defaultInventoryAssociated)
+    {
+        sdbusplus::message::object_path entityPath(associationPath);
+        associationEntityId = entityPath.filename();
+        transform(associationEntityId.begin(), associationEntityId.end(),
+                  associationEntityId.begin(), ::toupper);
+    }
 }
 
 void StateSensor::handleErrGetSensorReading()

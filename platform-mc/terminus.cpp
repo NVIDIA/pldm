@@ -1350,7 +1350,7 @@ requester::Coroutine Terminus::updateAssociations()
 
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath, false);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1370,7 +1370,7 @@ requester::Coroutine Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath);
+        ptr->setInventoryPaths(inventoryPath, false);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
