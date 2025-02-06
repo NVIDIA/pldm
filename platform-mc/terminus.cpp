@@ -37,8 +37,7 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     supportedTypes(supportedTypes), uuid(uuid), terminusManager(terminusManager)
 {
     // default system inventory object path
-    systemInventoryPath =
-        "/xyz/openbmc_project/inventory/system/chassis/Baseboard_0";
+    systemInventoryPath = PLATFORM_CHASSIS_PATH;
     maxBufferSize = 256;
     needRefresh = false;
 }
@@ -1212,8 +1211,7 @@ requester::Coroutine Terminus::scanInventories()
         auto getSubTreeResponse = co_await utils::coGetSubTree(
             "/xyz/openbmc_project/inventory", 0, interestedInterfaces);
         // default system inventory object path
-        systemInventoryPath =
-            "/xyz/openbmc_project/inventory/system/chassis/Baseboard_0";
+        systemInventoryPath = PLATFORM_CHASSIS_PATH;
 
         inventories.clear();
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
