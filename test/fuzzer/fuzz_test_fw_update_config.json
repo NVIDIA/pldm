@@ -1,0 +1,44 @@
+{
+    "entries": [
+        {
+            "match": {
+                "Interface":"xyz.openbmc_project.Common.UUID",
+                "Properties":[
+                    {
+                        "Name":"UUID",
+                        "Type":"s",
+                        "Value":"f53dca18-6180-4b92-af93-0162795dc5b7"
+                    }
+                ]
+            },
+            "device_inventory": {
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName1",
+                    "associations": [
+                        {
+                            "forward": "parent",
+                            "reverse": "child",
+                            "endpoint": "/xyz/openbmc_project/inventory/chassis"
+                        }
+                    ]
+                },
+                "update": {
+                    "object_path": "/xyz/openbmc_project/inventory/chassis/DeviceName2"
+                }
+            },
+            "firmware_inventory": {
+                "create": {
+                    "ComponentName1": 100
+                },
+                "update": {
+                    "ComponentName2": 101
+                }
+            },
+            "component_info": {
+                "ComponentName1": 100,
+                "ComponentName2": 101
+            }
+        }
+    ]
+}
+
