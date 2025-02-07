@@ -12,6 +12,10 @@ project(
     ],
 )
 
+if get_option('use_fuzz').enabled()
+  add_global_arguments('-DFUZZ_TEST', language : ['c','cpp'])
+endif
+
 # Wno-psabi reduces the number of "Note:" messages when cross-compiling some STL
 # stuff for ARM. See https://stackoverflow.com/questions/48149323/strange-gcc-warning-when-compiling-qt-project
 # Basically, gcc 6 and gcc 7 are not ABI compatible, but since the whole OpenBMC
@@ -409,3 +413,7 @@ endif
 #   subdir('test')
 #   subdir('mockup-responder/test')
 # endif
+
+if get_option('use_fuzz').enabled()
+  subdir('test/fuzz')
+endif
