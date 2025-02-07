@@ -508,24 +508,22 @@ void UpdateManager::performSecurityChecksAsync(
 
 #ifdef PLDM_PACKAGE_VERIFICATION
     securityCheckType = SecurityCheckType::Authentication;
-    try
-    {
-        // Verify the signature of the firmware package
-        if (!verifyPackage())
-        {
-            onComplete(false);
-        }
-        else
-        {
-            onComplete(true);
-        }
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Invalid PLDM package signature");
-        onError(std::string("Package verification failed with exception: ") +
-                e.what());
-    }
+    // Verify the signature of the firmware package
+    verifyPackageAsync(
+        [onComplete](bool verificationCheck) {
+            if (verificationCheck)
+            {
+                lg2::info(
+                    "Firmware package verification completed successfully");
+                onComplete(true);
+            }
+            else
+            {
+                lg2::error("Firmware package verification failed");
+                onComplete(false);
+            }
+        },
+        onError);
 
 #endif
 
@@ -628,6 +626,109 @@ bool UpdateManager::verifyPackage()
     }
 
     return true;
+}
+
+void UpdateManager::verifyPackageAsync(
+    std::function<void(bool)> onComplete,
+    std::function<void(const std::string& errorMsg)> onError)
+{
+    const static std::string compName = "Firmware Update Service";
+    const static std::string messageError =
+        "Validating FW Package signature failed";
+    const static std::string messageErrorParseSignatureHeader =
+        "Failed to parse FW Package signature header";
+    const static std::string messageErrorUnsupportedVersion =
+        "Unsupported version of package signature";
+    const static std::string resolution =
+        "Retry firmware update operation with correctly signed FW package.";
+
+    uintmax_t calcPkgSize = parser->calculatePackageSize();
+    std::vector<uint8_t> pkgSignHdrData;
+
+    try
+    {
+        pkgSignHdrData =
+            PackageSignature::getSignatureHeader(package, calcPkgSize);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to get signature header.");
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
+        onComplete(false);
+        return;
+    }
+    if (pkgSignHdrData.size())
+    {
+        try
+        {
+            packageSignatureParser =
+                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Failed to create signature header parser.");
+
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorUnsupportedVersion, resolution);
+            onComplete(false);
+
+            return;
+        }
+
+        try
+        {
+            packageSignatureParser->parseHeader();
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Failed to parse signature header.", "ERROR", e);
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorParseSignatureHeader, resolution);
+
+            onComplete(false);
+            return;
+        }
+
+        uintmax_t sizeOfSignedData =
+            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
+
+        packageSignatureParser->verifyAsync(
+            package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData,
+            [onComplete](bool verificationCheckResult) {
+                if (verificationCheckResult)
+                {
+                    lg2::info("FW package signature was successfully verified");
+                    onComplete(true);
+                }
+                else
+                {
+                    createLogEntry(resourceErrorDetected, compName,
+                                   messageError, resolution);
+                    onComplete(false);
+                }
+            },
+            onError);
+
+        return;
+    }
+    else
+    {
+
+#ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
+        std::string messageErrorNotContainSignatureHeader =
+            "Package does not contain signature header";
+
+        createLogEntry(resourceErrorDetected, compName,
+                       messageErrorNotContainSignatureHeader, resolution);
+
+        onComplete(false);
+#else
+        lg2::info("FW package does not contain signature header");
+        onComplete(true);
+#endif
+        return;
+    }
 }
 
 void UpdateManager::packageIntegrityCheckAsync(
