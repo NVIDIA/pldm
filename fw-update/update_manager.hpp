@@ -347,6 +347,41 @@ class UpdateManager
     bool verifyPackage();
 
     /**
+     * @brief performs package verification checks asynchronously.
+     * This function verifies the package using the public key stored
+     * on the machine in the designated location.
+     *
+     * @param onComplete Callback function invoked with 'true' if the
+     * verification succeeds, or 'false' otherwise.
+     * @param onError Callback function invoked with an error message if
+     * verification fails due to an error.
+     */
+    void verifyPackageAsync(
+        std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
+
+    std::string stagedObjPath;
+    std::filesystem::path stagedfwPackageFilePath;
+
+    /**
+     * @brief clear staged package associated objects
+     *
+     */
+    void clearStagedPackageInfo();
+
+    /**
+     * @brief clear staged package and it's associated objects
+     *
+     */
+    void clearStagedPackage();
+
+    /**
+     * @brief Move staged update activation object to persist states
+     *
+     */
+    void restoreStagedPackageActivationObjects();
+
+    /**
      * @brief close file handler of firmware package
      *
      */
