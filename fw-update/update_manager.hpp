@@ -354,6 +354,21 @@ class UpdateManager
                          size_t compIndex);
 
     bool verifyPackage();
+
+    /**
+     * @brief performs package verification checks asynchronously.
+     * This function verifies the package using the public key stored
+     * on the machine in the designated location.
+     *
+     * @param onComplete Callback function invoked with 'true' if the
+     * verification succeeds, or 'false' otherwise.
+     * @param onError Callback function invoked with an error message if
+     * verification fails due to an error.
+     */
+    void verifyPackageAsync(
+        std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
+
     std::string stagedObjPath;
     std::filesystem::path stagedfwPackageFilePath;
 
