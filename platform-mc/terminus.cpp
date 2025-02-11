@@ -447,14 +447,20 @@ bool Terminus::parsePDRs()
         if (pdrHdr->type == PLDM_SENSOR_AUXILIARY_NAMES_PDR)
         {
             auto sensorAuxiliaryNames = parseSensorAuxiliaryNamesPDR(pdr);
-            sensorAuxiliaryNamesTbl.emplace_back(
-                std::move(sensorAuxiliaryNames));
+            if (sensorAuxiliaryNames != nullptr)
+            {
+                sensorAuxiliaryNamesTbl.emplace_back(
+                    std::move(sensorAuxiliaryNames));
+            }
         }
         else if (pdrHdr->type == PLDM_EFFECTER_AUXILIARY_NAMES_PDR)
         {
             auto effecterAuxiliaryNames = parseEffecterAuxiliaryNamesPDR(pdr);
-            effecterAuxiliaryNamesTbl.emplace_back(
-                std::move(effecterAuxiliaryNames));
+            if (effecterAuxiliaryNames != nullptr)
+            {
+                effecterAuxiliaryNamesTbl.emplace_back(
+                    std::move(effecterAuxiliaryNames));
+            }
         }
         else if (pdrHdr->type == PLDM_NUMERIC_SENSOR_PDR)
         {
@@ -664,6 +670,7 @@ std::shared_ptr<SensorAuxiliaryNames>
         lg2::error(
             "Failed to parse sensorAuxiliaryNamesPDR record, sensorId={SENSORID}, {ERROR}.",
             "SENSORID", pdr->sensor_id, "ERROR", e);
+        return nullptr;
     }
 
     return std::make_shared<SensorAuxiliaryNames>(
@@ -716,6 +723,7 @@ std::shared_ptr<EffecterAuxiliaryNames>
         lg2::error(
             "Failed to parse effecterAuxiliaryNamesPDR record, effecterId={EFFECTERID}, {ERROR}.",
             "EFFECTERID", pdr->effecter_id, "ERROR", e);
+        return nullptr;
     }
 
     return std::make_shared<EffecterAuxiliaryNames>(
