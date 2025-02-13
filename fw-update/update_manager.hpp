@@ -358,7 +358,6 @@ class UpdateManager
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
 
-
     /**
      * @brief integrity check of firmware package
      *

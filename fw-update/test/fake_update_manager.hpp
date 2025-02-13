@@ -60,7 +60,6 @@ class FakeUpdateManager
     {
         return;
     }
-
     int processPackage(
         [[maybe_unused]] const std::filesystem::path& packageFilePath)
     {

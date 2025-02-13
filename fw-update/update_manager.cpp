@@ -50,6 +50,7 @@ UpdateManager::UpdateManager(
     componentNameMap(componentNameMap),
     watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
 {
+    watch.initImmediateUpdateWatch();
     updatePolicy = std::make_unique<UpdatePolicy>(
         pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
 
@@ -229,6 +230,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     size_t versionHash = std::hash<std::string>{}(packageFilePath);
     objPath = swRootPath + std::to_string(versionHash);
     forceUpdate = updatePolicy->forceUpdate();
+    auto targets = updatePolicy->targets();
     if (updatePolicy->updateOption() ==
         software::UpdatePolicy::UpdateOptionSupport::StageOnly)
     {
@@ -242,12 +244,11 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     lg2::info(
         "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
         "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
-
     fwPackageFilePath = packageFilePath;
 
     // create the device updater
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
-        pldm::utils::DBusHandler::getBus(), this, updatePolicy->targets());
+        pldm::utils::DBusHandler::getBus(), this, targets);
 
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
@@ -364,7 +365,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
 
     const auto& compImageInfos = parser->getComponentImageInfos();
-    auto targets = updatePolicy->targets();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
@@ -425,7 +425,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         {
             activation = std::make_unique<Activation>(
                 pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Failed, this);
+                software::Activation::Activations::Ready, this);
         }
         return 0;
     }

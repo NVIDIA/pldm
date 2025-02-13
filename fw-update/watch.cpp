@@ -19,9 +19,12 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
+#include <regex>
 #include <stdexcept>
 #include <string>
 
@@ -35,57 +38,26 @@ namespace fw_update
 using namespace std::string_literals;
 namespace fs = std::filesystem;
 
-Watch::Watch(sd_event* loop, std::function<int(std::string&)> imageCallback) :
-    imageCallback(imageCallback)
-{
-    // Check if IMAGE DIR exists.
-    fs::path imgDirPath(FIRMWARE_PACKAGE_STAGING_DIR);
-    if (!fs::is_directory(imgDirPath))
-    {
-        fs::create_directories(imgDirPath);
-    }
-
-    fd = inotify_init1(IN_NONBLOCK);
-    if (-1 == fd)
-    {
-        // Store a copy of errno, because the string creation below will
-        // invalidate errno due to one more system calls.
-        auto error = errno;
-        throw std::runtime_error("inotify_init1 failed, errno="s +
-                                 std::strerror(error));
-    }
-
-    wd = inotify_add_watch(fd, FIRMWARE_PACKAGE_STAGING_DIR, IN_CLOSE_WRITE);
-    if (-1 == wd)
-    {
-        auto error = errno;
-        close(fd);
-        throw std::runtime_error("inotify_add_watch failed, errno="s +
-                                 std::strerror(error));
-    }
-
-    auto rc = sd_event_add_io(loop, nullptr, fd, EPOLLIN, callback, this);
-    if (0 > rc)
-    {
-        throw std::runtime_error("failed to add to event loop, rc="s +
-                                 std::strerror(-rc));
-    }
-}
+Watch::Watch(sd_event* loop,
+             std::function<int(std::string&)> imageCallbackImmediate) :
+    imageCallbackImmediate(imageCallbackImmediate),
+    loop(loop)
+{}
 
 Watch::~Watch()
 {
-    if (-1 != fd)
+    if (-1 != fdImmediate)
     {
-        if (-1 != wd)
+        if (-1 != wdImmediate)
         {
-            inotify_rm_watch(fd, wd);
+            inotify_rm_watch(fdImmediate, wdImmediate);
         }
-        close(fd);
+        close(fdImmediate);
     }
 }
 
-int Watch::callback(sd_event_source* /* s */, int fd, uint32_t revents,
-                    void* userdata)
+int Watch::callbackImmediate(sd_event_source* /* s */, int fd, uint32_t revents,
+                             void* userdata)
 {
     if (!(revents & EPOLLIN))
     {
@@ -110,7 +82,11 @@ int Watch::callback(sd_event_source* /* s */, int fd, uint32_t revents,
         {
             auto tarballPath =
                 std::string{FIRMWARE_PACKAGE_STAGING_DIR} + '/' + event->name;
-            auto rc = static_cast<Watch*>(userdata)->imageCallback(tarballPath);
+            lg2::info("Received event for new file in immediate path "
+                      "{IMMEDIATE_FILE_PATH}",
+                      "IMMEDIATE_FILE_PATH", tarballPath);
+            auto rc = static_cast<Watch*>(userdata)->imageCallbackImmediate(
+                tarballPath);
             if (rc < 0)
             {
                 // log<level::ERR>("Error processing image",
@@ -126,6 +102,165 @@ int Watch::callback(sd_event_source* /* s */, int fd, uint32_t revents,
     }
 
     return 0;
+}
+
+void Watch::initImmediateUpdateWatch()
+{
+    fs::path imgDirPath(FIRMWARE_PACKAGE_STAGING_DIR);
+    std::string mountService(FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE);
+    if (mountService.empty())
+    {
+        if (!fs::is_directory(imgDirPath))
+        {
+            fs::create_directories(imgDirPath);
+        }
+        addFileEventWatchImmediate();
+    }
+    else
+    {
+        if (isServiceCompleted(mountService))
+        {
+            lg2::info("Mount service {MOUNT_SERVICE} is completed.",
+                      "MOUNT_SERVICE", mountService);
+            if (!fs::is_directory(imgDirPath))
+            {
+                fs::create_directories(imgDirPath);
+            }
+            addFileEventWatchImmediate();
+        }
+        else
+        {
+            lg2::info("Mount service {MOUNT_SERVICE} is not completed."
+                      " Subscribing to systemd event.",
+                      "MOUNT_SERVICE", mountService);
+            subscribeToServiceStateChange(mountService, imgDirPath);
+        }
+    }
+}
+
+void Watch::addFileEventWatchImmediate()
+{
+    fs::path imgImmediateDirPath(FIRMWARE_PACKAGE_STAGING_DIR);
+    if (!fs::is_directory(imgImmediateDirPath))
+    {
+        fs::create_directories(imgImmediateDirPath);
+    }
+    fdImmediate = inotify_init1(IN_NONBLOCK);
+    if (-1 == fdImmediate)
+    {
+        // Store a copy of errno, because the string creation below will
+        // invalidate errno due to one more system calls.
+        auto error = errno;
+        throw std::runtime_error("inotify_init1 failed, errno="s +
+                                 std::strerror(error));
+    }
+
+    wdImmediate = inotify_add_watch(fdImmediate, FIRMWARE_PACKAGE_STAGING_DIR,
+                                    IN_CLOSE_WRITE);
+    if (-1 == wdImmediate)
+    {
+        auto error = errno;
+        close(fdImmediate);
+        throw std::runtime_error("inotify_add_watch failed, errno="s +
+                                 std::strerror(error));
+    }
+
+    auto rc = sd_event_add_io(loop, nullptr, fdImmediate, EPOLLIN,
+                              callbackImmediate, this);
+    if (0 > rc)
+    {
+        throw std::runtime_error("failed to add to event loop, rc="s +
+                                 std::strerror(-rc));
+    }
+}
+
+bool Watch::isServiceCompleted(const std::string& serviceName)
+{
+    using namespace pldm::utils;
+    std::string serviceStatus;
+    std::string dbusPath = "/org/freedesktop/systemd1/unit/" + serviceName;
+    dbusPath = std::regex_replace(dbusPath, std::regex("\\-"), "_2d");
+    dbusPath = std::regex_replace(dbusPath, std::regex("\\."), "_2e");
+    auto dbusHandler = pldm::utils::DBusHandler();
+    auto& bus = dbusHandler.getBus();
+    auto method = bus.new_method_call("org.freedesktop.systemd1",
+                                      dbusPath.c_str(), dbusProperties, "Get");
+    method.append("org.freedesktop.systemd1.Unit", "ActiveState");
+
+    PropertyValue value{};
+    auto reply = bus.call(method);
+    reply.read(value);
+    serviceStatus = std::get<std::string>(value);
+
+    if (serviceStatus == "active")
+    {
+        return true;
+    }
+    // other states are reloading, inactive(yet to start), failed, activating,
+    // and deactivating
+    return false;
+}
+
+void Watch::subscribeToServiceStateChange(const std::string& serviceName,
+                                          const std::string& imagePath)
+{
+    std::string dbusPath = "/org/freedesktop/systemd1/unit/" + serviceName;
+    dbusPath = std::regex_replace(dbusPath, std::regex("\\-"), "_2d");
+    dbusPath = std::regex_replace(dbusPath, std::regex("\\."), "_2e");
+    if (imagePath == FIRMWARE_PACKAGE_STAGING_DIR)
+    {
+        auto stateChangeHandler = [this, serviceName, imagePath](
+                                      sdbusplus::message::message& msg) {
+            using Interface = std::string;
+            Interface interface;
+            pldm::dbus::PropertyMap properties;
+            std::string objPath = msg.get_path();
+
+            msg.read(interface, properties);
+            auto prop = properties.find("ActiveState");
+            if (prop != properties.end())
+            {
+                auto activeState = std::get<std::string>(prop->second);
+                if (activeState == "active")
+                {
+                    auto stateChangeTimestamp =
+                        properties.find("StateChangeTimestampMonotonic");
+                    if (stateChangeTimestamp != properties.end())
+                    {
+                        auto stateChangeTime =
+                            std::get<uint64_t>(stateChangeTimestamp->second);
+                        if (stateChangeTime != stateChangeTimeImmediate)
+                        {
+                            stateChangeTimeImmediate = stateChangeTime;
+                            lg2::info(
+                                "Received mount service completion signal for "
+                                "{MOUNT_SERVICE_NAME} and PATH={IMAGE_PATH}",
+                                "MOUNT_SERVICE_NAME", serviceName, "IMAGE_PATH",
+                                imagePath);
+                            if (-1 != fdImmediate)
+                            {
+                                if (-1 != wdImmediate)
+                                {
+                                    inotify_rm_watch(fdImmediate, wdImmediate);
+                                }
+                                close(fdImmediate);
+                            }
+                            this->addFileEventWatchImmediate();
+                        }
+                    }
+                }
+                // else -> other task states are activating, deactivating,
+                // reloading which maps to running. Remaining states are,
+                // failed, inactive maps to failed.
+            }
+        };
+        immediateUpdateEvent = std::make_unique<sdbusplus::bus::match_t>(
+            pldm::utils::DBusHandler().getBus(),
+            "type='signal',interface='org.freedesktop.DBus.Properties',"
+            "member='PropertiesChanged',path='" +
+                dbusPath + "',arg0='org.freedesktop.systemd1.Unit'",
+            stateChangeHandler);
+    }
 }
 
 } // namespace fw_update

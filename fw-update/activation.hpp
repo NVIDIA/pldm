@@ -87,7 +87,7 @@ class Delete : public DeleteIntf
     Delete(sdbusplus::bus::bus& bus, const std::string& objPath,
            UpdateManager* updateManager) :
         DeleteIntf(bus, objPath.c_str(), action::emit_interface_added),
-        updateManager(updateManager)
+        updateManager(updateManager), objPath(objPath)
     {}
 
     /** @brief Delete the Activation D-Bus object for the FW update package */
@@ -98,6 +98,7 @@ class Delete : public DeleteIntf
 
   private:
     UpdateManager* updateManager;
+    const std::string objPath;
 };
 
 /** @class Activation
@@ -136,7 +137,8 @@ class Activation : public ActivationIntf
         if (value == Activations::Activating)
         {
             deleteImpl.reset();
-
+            namespace software =
+                sdbusplus::xyz::openbmc_project::Software::server;
             updateManager->performSecurityChecksAsync(
                 [this, updateManager(updateManager)](bool securityCheck) {
                     if (!securityCheck)
@@ -200,11 +202,7 @@ class Activation : public ActivationIntf
         if ((value == RequestedActivations::Active) &&
             (requestedActivation() != RequestedActivations::Active))
         {
-            if ((ActivationIntf::activation() == Activations::Ready))
-            {
-                activation(Activations::Activating);
-            }
-            else if ((ActivationIntf::activation() == Activations::Invalid))
+            if ((ActivationIntf::activation() == Activations::Invalid))
             {
                 std::string compName = "Firmware Update Service";
                 std::string messageError = "Invalid FW Package";
@@ -214,6 +212,10 @@ class Activation : public ActivationIntf
                                resolution);
                 updateManager->clearFirmwareUpdatePackage();
                 activation(Activations::Failed);
+            }
+            else
+            {
+                activation(Activations::Activating);
             }
         }
         return ActivationIntf::requestedActivation(value);
