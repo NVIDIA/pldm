@@ -514,6 +514,97 @@ void UpdateManager::performSecurityChecksAsync(
     }
 }
 
+
+void UpdateManager::packageIntegrityCheckAsync( std::function<void(bool)> onComplete,
+    std::function<void(const std::string& errorMsg)> onError)
+{
+    const static std::string compName = "Firmware Update Service";
+    const static std::string messageError =
+        "Integrity check failed for FW Package";
+    const static std::string messageErrorParseSignatureHeader =
+        "Failed to parse FW Package signature header";
+    const static std::string resolution =
+        "Retry firmware update using a valid package.";
+
+    const auto calcPkgSize = parser->calculatePackageSize();
+    std::vector<uint8_t> pkgSignHdrData;
+
+    try
+    {
+        pkgSignHdrData =
+            PackageSignature::getSignatureHeader(package, calcPkgSize);
+    }
+    catch (const std::exception& e)
+    {
+        error("Failed to get signature header.");
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
+        onComplete(false);
+        return;
+    }
+
+    if (pkgSignHdrData.size())
+    {
+        try
+        {
+            packageSignatureParser =
+                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
+        }
+        catch (const std::exception& e)
+        {
+            info("Failed to create signature header parser.");
+
+            onComplete(true);
+            return;
+        }
+
+        try
+        {
+            packageSignatureParser->parseHeader();
+        }
+        catch (const std::exception& e)
+        {
+            error("Failed to parse signature header.", "ERROR", e);
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorParseSignatureHeader, resolution);
+
+            onComplete(false);
+            return;
+        }
+
+        auto sizeOfSignedData =
+            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
+        packageSignatureParser->integrityCheckAsync(
+            package, sizeOfSignedData,
+            [onComplete](bool integritycheckResult) {
+                if (integritycheckResult)
+                {
+                    info("Integrity check successful for FW Package");
+                    onComplete(true);
+                }
+                else
+                {
+                    createLogEntry(resourceErrorDetected, compName,
+                                   messageError, resolution);
+                    onComplete(false);
+                }
+            },
+            onError);
+
+        return;
+    }
+    else
+    {
+        info("FW package does not contain signature header");
+        onComplete(true);
+        return;
+    }
+
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+
+    onComplete(false);
+}
+
 void UpdateManager::verifyPackageAsync(
     std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
@@ -615,171 +706,6 @@ void UpdateManager::verifyPackageAsync(
 #endif
         return;
     }
-}
-
-void UpdateManager::packageIntegrityCheckAsync(
-    std::function<void(bool)> onComplete,
-    std::function<void(const std::string& errorMsg)> onError)
-{
-    const static std::string compName = "Firmware Update Service";
-    const static std::string messageError =
-        "Integrity check failed for FW Package";
-    const static std::string messageErrorParseSignatureHeader =
-        "Failed to parse FW Package signature header";
-    const static std::string resolution =
-        "Retry firmware update using a valid package.";
-
-    const auto calcPkgSize = parser->calculatePackageSize();
-    std::vector<uint8_t> pkgSignHdrData;
-
-    try
-    {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
-    }
-    catch (const std::exception& e)
-    {
-        error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
-        onComplete(false);
-        return;
-    }
-
-    if (pkgSignHdrData.size())
-    {
-        try
-        {
-            packageSignatureParser =
-                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
-        }
-        catch (const std::exception& e)
-        {
-            info("Failed to create signature header parser.");
-
-            onComplete(true);
-            return;
-        }
-
-        try
-        {
-            packageSignatureParser->parseHeader();
-        }
-        catch (const std::exception& e)
-        {
-            error("Failed to parse signature header.", "ERROR", e);
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorParseSignatureHeader, resolution);
-
-            onComplete(false);
-            return;
-        }
-
-        auto sizeOfSignedData =
-            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
-        packageSignatureParser->integrityCheckAsync(
-            package, sizeOfSignedData,
-            [onComplete](bool integritycheckResult) {
-                if (integritycheckResult)
-                {
-                    info("Integrity check successful for FW Package");
-                    onComplete(true);
-                }
-                else
-                {
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
-                    onComplete(false);
-                }
-            },
-            onError);
-
-        return;
-    }
-    else
-    {
-        info("FW package does not contain signature header");
-        onComplete(true);
-        return;
-    }
-
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-
-    onComplete(false);
-}
-
-bool UpdateManager::packageIntegrityCheck()
-{
-    std::string compName = "Firmware Update Service";
-    std::string messageError = "Integrity check failed for FW Package";
-    std::string messageErrorParseSignatureHeader =
-        "Failed to parse FW Package signature header";
-    std::string resolution = "Retry firmware update using a valid package.";
-
-    uintmax_t calcPkgSize = parser->calculatePackageSize();
-    std::vector<uint8_t> pkgSignHdrData;
-
-    try
-    {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
-    }
-    catch (const std::exception& e)
-    {
-        error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
-        return false;
-    }
-
-    if (pkgSignHdrData.size())
-    {
-        try
-        {
-            packageSignatureParser =
-                PackageSignature::createPackageSignatureParser(pkgSignHdrData);
-        }
-        catch (const std::exception& e)
-        {
-            info("Failed to create signature header parser.");
-
-            return true;
-        }
-
-        try
-        {
-            packageSignatureParser->parseHeader();
-        }
-        catch (const std::exception& e)
-        {
-            error("Failed to parse signature header.", "ERROR", e);
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorParseSignatureHeader, resolution);
-
-            return false;
-        }
-
-        uintmax_t sizeOfSignedData =
-            packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
-
-        bool integritycheckResult =
-            packageSignatureParser->integrityCheck(package, sizeOfSignedData);
-
-        if (integritycheckResult)
-        {
-            info("Integrity check successful for FW Package");
-            return true;
-        }
-    }
-    else
-    {
-        info("FW package does not contain signature header");
-        return true;
-    }
-
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-
-    return false;
 }
 
 DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
