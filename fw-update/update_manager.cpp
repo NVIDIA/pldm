@@ -720,6 +720,8 @@ void UpdateManager::packageIntegrityCheckAsync(
         "Integrity check failed for FW Package";
     const static std::string messageErrorParseSignatureHeader =
         "Failed to parse FW Package signature header";
+    const static std::string messageErrorUnsupportedVersion =
+        "Unsupported version in FW Package signature header";
     const static std::string resolution =
         "Retry firmware update using a valid package.";
 
@@ -751,7 +753,10 @@ void UpdateManager::packageIntegrityCheckAsync(
         {
             lg2::info("Failed to create signature header parser.");
 
-            onComplete(true);
+            createLogEntry(resourceErrorDetected, compName,
+                           messageErrorUnsupportedVersion, resolution);
+            onComplete(false);
+
             return;
         }
 
