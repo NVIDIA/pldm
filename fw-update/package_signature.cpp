@@ -414,8 +414,9 @@ void PackageSignatureSha384::calculateDigestAsync(
     if (useChunks)
     {
         lg2::info(
-            "Package Signature: Calculating digest with chunk size of {CHUNKSIZE} bytes",
-            "CHUNKSIZE", chunkSize);
+            "Package Signature: Calculating digest with chunk size of {CHUNKSIZE} bytes"
+            " and timer interval {TIMERINTERVAL} ms",
+            "CHUNKSIZE", chunkSize, "TIMERINTERVAL", chunkTimerInterval);
         const EVP_MD* md = EVP_get_digestbyname(digestName.c_str());
         if (md == nullptr)
         {
@@ -446,11 +447,12 @@ void PackageSignatureSha384::calculateDigestAsync(
 
         try
         {
-            this->requestChunkCalculation =
-                std::make_unique<sdeventplus::source::Defer>(
-                    event,
-                    std::bind(&PackageSignatureSha384::handleChunkProcessing,
-                              this, nullptr, this));
+            requestChunkCalculation = std::make_unique<sdbusplus::Timer>(
+                event.get(),
+                std::bind(&PackageSignatureSha384::handleChunkProcessing,
+                          this));
+            requestChunkCalculation->start(
+                std::chrono::milliseconds(chunkTimerInterval), true);
         }
         catch (const std::exception& e)
         {
@@ -482,8 +484,7 @@ void PackageSignatureSha384::calculateDigestAsync(
     }
 }
 
-void PackageSignatureSha384::handleChunkProcessing(sd_event_source* /*source*/,
-                                                   PackageSignatureShaBase* ctx)
+void PackageSignatureSha384::handleChunkProcessing()
 {
     try
     {
@@ -497,11 +498,13 @@ void PackageSignatureSha384::handleChunkProcessing(sd_event_source* /*source*/,
             {
                 lg2::error("Error in EVP_DigestFinal");
                 this->onError("Failed to finalize the digest");
+                this->requestChunkCalculation->stop();
                 this->requestChunkCalculation.reset();
                 return;
             }
 
             this->onComplete(*this->hash);
+            this->requestChunkCalculation->stop();
             this->requestChunkCalculation.reset();
             return;
         }
@@ -529,31 +532,13 @@ void PackageSignatureSha384::handleChunkProcessing(sd_event_source* /*source*/,
         }
 
         this->chunkNumber++;
-
-        auto event = sdeventplus::Event::get_default();
-
-        try
-        {
-            this->requestChunkCalculation =
-                std::make_unique<sdeventplus::source::Defer>(
-                    event,
-                    std::bind(&PackageSignatureSha384::handleChunkProcessing,
-                              this, nullptr, ctx));
-        }
-        catch (const std::exception& e)
-        {
-            lg2::error("Failed to re-add chunk processing: {ERR}", "ERR",
-                       e.what());
-            this->onError(
-                "Failed to re-add chunk processing to the event loop");
-            this->requestChunkCalculation.reset();
-        }
     }
     catch (const std::exception& e)
     {
         this->onError(
             std::string("Exception occurred during chunk processing: ") +
             e.what());
+        this->requestChunkCalculation->stop();
         this->requestChunkCalculation.reset();
         return;
     }

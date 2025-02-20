@@ -239,6 +239,13 @@ option(
     value: 'disabled',
     description: 'Enable PLDM package signature verification. There are two possible types of verification: authentication and integrity. Authentication verification uses a public key delivered via a receipt'
 )
+
+option(
+    'pldm-package-verification-timer-interval',
+    type: 'integer',
+    description: 'The interval for chunk processing in milliseconds', value: 250
+)
+
 option(
     'pldm-type2',
     type: 'feature',
