@@ -10,6 +10,8 @@ WatchdogSec=60s
 BusName=xyz.openbmc_project.PLDM
 EnvironmentFile=/etc/default/pldm_verbosity
 ExecStart=/usr/bin/pldmd --verbose $VERBOSE $FWDEBUG
+LogRateLimitIntervalSec=10m
+LogRateLimitBurst=40000
 
 [Install]
 WantedBy=multi-user.target
