@@ -26,6 +26,7 @@
 #include <openssl/sha.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
@@ -124,6 +125,7 @@ struct PackageSignatureShaBase
   protected:
     std::string digestName;
     size_t chunkSize = CALCULATE_DIGEST_CHUNK_SIZE;
+    uint32_t chunkTimerInterval = CALCULATE_DIGEST_TIMER_INTERVAL;
     std::istream* package;
     std::shared_ptr<std::vector<unsigned char>> hash;
     int chunkNumber;
@@ -133,7 +135,7 @@ struct PackageSignatureShaBase
     std::function<void(const std::string& errorMsg)> onError;
 
     /** @brief To send a request to handle chunk calculation */
-    std::unique_ptr<sdeventplus::source::Defer> requestChunkCalculation;
+    std::unique_ptr<sdbusplus::Timer> requestChunkCalculation;
 };
 
 /** @struct PackageSignatureSha384
@@ -162,8 +164,7 @@ struct PackageSignatureSha384 : public PackageSignatureShaBase
         std::function<void(std::vector<unsigned char>)> onComplete,
         std::function<void(const std::string& errorMsg)> onError) override;
 
-    void handleChunkProcessing(sd_event_source* source,
-                               PackageSignatureShaBase* ctx);
+    void handleChunkProcessing();
 };
 
 /** @class PackageSignature
