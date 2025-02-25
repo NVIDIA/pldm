@@ -77,7 +77,10 @@ MctpDiscovery::MctpDiscovery(
             reply.read(objects);
             for (const auto& [objectPath, interfaces] : objects)
             {
-                populateMctpInfo(interfaces, mctpInfos, mctpInterfaces);
+                if (!populateMctpInfo(interfaces, mctpInfos, mctpInterfaces))
+                {
+                    continue;
+                }
 
                 // watch PropertiesChanged signal from
                 // xyz.openbmc_project.Object.Enable PDI
@@ -107,7 +110,7 @@ MctpDiscovery::MctpDiscovery(
     handleMctpEndpoints(mctpInfos, mctpInterfaces);
 }
 
-void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
+bool MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                                      MctpInfos& mctpInfos,
                                      dbus::MctpInterfaces& mctpInterfaces)
 {
@@ -123,7 +126,6 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
             if (intfName == uuidEndpointIntfName)
             {
                 uuid = std::get<std::string>(properties.at("UUID"));
-                mctpInterfaces[uuid] = interfaces;
             }
 
             if (intfName == unixSocketIntfName)
@@ -137,7 +139,7 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
 
         if (uuid.empty() || address.empty() || !type)
         {
-            return;
+            return false;
         }
 
         if (interfaces.contains(mctpBindingIntfName))
@@ -166,16 +168,20 @@ void MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                               mctpTypePLDM) != mctpTypes.end())
                 {
                     handler.registerMctpEndpoint(eid, type, protocol, address);
+                    mctpInterfaces[uuid] = interfaces;
                     mctpInfos.emplace_back(std::make_tuple(
                         eid, uuid, mediumType, networkId, bindingType));
+                    return true;
                 }
             }
         }
     }
     catch (const std::exception& e)
     {
-        lg2::error("Error while getting properties.", "ERROR", e);
+        lg2::error("Error while getting MCTP properties.", "ERROR", e);
     }
+
+    return false;
 }
 
 void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
@@ -189,7 +195,10 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message::message& msg)
     dbus::InterfaceMap interfaces;
     msg.read(objPath, interfaces);
 
-    populateMctpInfo(interfaces, mctpInfos, mctpInterfaces);
+    if (!populateMctpInfo(interfaces, mctpInfos, mctpInterfaces))
+    {
+        return;
+    }
 
     // watch PropertiesChanged signal from xyz.openbmc_project.Object.Enable PDI
     if (enableMatches.find(objPath.str) == enableMatches.end())

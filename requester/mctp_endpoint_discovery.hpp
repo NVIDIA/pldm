@@ -95,8 +95,11 @@ class MctpDiscovery
      *
      *  @param[in] interfaces - MCTP D-Bus information
      *  @param[out] mctpInfos - MCTP info for PLDM discovery
+     *  @param[out] mctpInterfaces - MCTP endpoint D-Bus interfaces
+     *  @return true if MCTP endpoint is eligible for PLDM discovery, false
+     *          otherwise
      */
-    void populateMctpInfo(const dbus::InterfaceMap& interfaces,
+    bool populateMctpInfo(const dbus::InterfaceMap& interfaces,
                           MctpInfos& mctpInfos,
                           dbus::MctpInterfaces& mctpInterfaces);
 
