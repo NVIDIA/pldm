@@ -220,21 +220,26 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                         "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
                         "NETWORK", networkId, "EID", eid, "UUID", uuid);
                     mctpInfos.emplace_back(MctpInfo(eid, uuid, {}));
+
+                    // watch PropertiesChanged signal from
+                    // xyz.openbmc_project.Object.Enable PDI
+                    if (enableMatches.find(objPath.str) == enableMatches.end())
+                    {
+                        info("register match_t objectPath:{OBJPATH}", "OBJPATH",
+                             objPath.str);
+                        enableMatches.emplace(
+                            objPath.str,
+                            sdbusplus::bus::match_t(
+                                bus,
+                                sdbusplus::bus::match::rules::propertiesChanged(
+                                    objPath.str,
+                                    "xyz.openbmc_project.Object.Enable"),
+                                std::bind_front(
+                                    &MctpDiscovery::refreshEndpoints, this)));
+                    }
                 }
             }
         }
-    }
-    // watch PropertiesChanged signal from xyz.openbmc_project.Object.Enable PDI
-    if (enableMatches.find(objPath.str) == enableMatches.end())
-    {
-        info("register match_t objectPath:{OBJPATH}", "OBJPATH", objPath.str);
-        enableMatches.emplace(
-            objPath.str,
-            sdbusplus::bus::match_t(
-                bus,
-                sdbusplus::bus::match::rules::propertiesChanged(
-                    objPath.str, "xyz.openbmc_project.Object.Enable"),
-                std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
     }
 }
 
