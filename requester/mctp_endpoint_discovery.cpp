@@ -80,6 +80,10 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
                     mctpInfos.emplace_back(
                         MctpInfo(std::get<EID>(epProps), uuid, {}));
                 }
+                else
+                {
+                    continue;
+                }
                 // watch PropertiesChanged signal from
                 // xyz.openbmc_project.Object.Enable PDI
                 if (enableMatches.find(path) == enableMatches.end())
