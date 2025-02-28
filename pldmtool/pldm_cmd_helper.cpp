@@ -327,12 +327,13 @@ pldm::dbus::ObjectValueTree CommandInterface::getMctpManagedObjects(
     return objects;
 }
 
-std::tuple<int, int, std::vector<uint8_t>>
+std::tuple<bool, int, int, std::vector<uint8_t>>
     CommandInterface::getMctpSockInfo(uint8_t remoteEID)
 {
     using namespace pldm;
     int type = 0;
     int protocol = 0;
+    bool enabled = false;
     std::vector<uint8_t> address{};
 
     const auto& mctpCtrlServices = getMctpServices();
@@ -362,20 +363,28 @@ std::tuple<int, int, std::vector<uint8_t>>
                 protocol = std::get<size_t>(properties.at("Protocol"));
                 address =
                     std::get<std::vector<uint8_t>>(properties.at("Address"));
+
+                if (interfaces.contains(objectEnableIntfName))
+                {
+                    const auto& propertiesEnable =
+                        interfaces.at(objectEnableIntfName);
+                    enabled = std::get<bool>(propertiesEnable.at("Enabled"));
+                }
+
                 if (address.empty() || !type)
                 {
                     address.clear();
-                    return {0, 0, address};
+                    return {false, 0, 0, address};
                 }
                 else
                 {
-                    return {type, protocol, address};
+                    return {enabled, type, protocol, address};
                 }
             }
         }
     }
 
-    return {type, protocol, address};
+    return {enabled, type, protocol, address};
 }
 
 int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
@@ -403,10 +412,18 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
     if (mctp_eid != PLDM_ENTITY_ID)
     {
-        auto [type, protocol, sockAddress] = getMctpSockInfo(mctp_eid);
+        auto [enabled, type, protocol, sockAddress] = getMctpSockInfo(mctp_eid);
+
         if (sockAddress.empty())
         {
             std::cerr << "pldmtool: Remote MCTP endpoint not found"
+                      << "\n";
+            return -1;
+        }
+
+        if (!enabled)
+        {
+            std::cerr << "pldmtool: Remote MCTP endpoint is disabled"
                       << "\n";
             return -1;
         }

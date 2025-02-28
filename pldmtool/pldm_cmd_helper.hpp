@@ -32,6 +32,7 @@ constexpr static uint8_t MCTP_MSG_TYPE_PLDM = 1;
 constexpr static auto mctpEndpointIntfName{"xyz.openbmc_project.MCTP.Endpoint"};
 constexpr static auto unixSocketIntfName{
     "xyz.openbmc_project.Common.UnixSocket"};
+constexpr static auto objectEnableIntfName{"xyz.openbmc_project.Object.Enable"};
 using ordered_json = nlohmann::ordered_json;
 
 /** @brief print the input message if pldmverbose is enabled
@@ -160,7 +161,7 @@ class CommandInterface
      *  @return On success return the type, protocol and unit socket address, on
      *          failure the address will be empty
      */
-    std::tuple<int, int, std::vector<uint8_t>>
+    std::tuple<bool, int, int, std::vector<uint8_t>>
         getMctpSockInfo(uint8_t remoteEID);
     const std::string pldmType;
     const std::string commandName;
