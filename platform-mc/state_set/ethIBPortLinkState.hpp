@@ -54,12 +54,12 @@ using PortLinkStates = sdbusplus::server::xyz::openbmc_project::inventory::
 using PortLinkStatus = sdbusplus::server::xyz::openbmc_project::inventory::
     decorator::PortState::LinkStatusType;
 
-class StateSetEthernetPortLinkState : public StateSet
+class StateSetEthIBPortLinkState : public StateSet
 {
   public:
-    StateSetEthernetPortLinkState(uint16_t stateSetId, uint8_t compId,
-                                  std::string& objectPath,
-                                  dbus::PathAssociation& stateAssociation) :
+    StateSetEthIBPortLinkState(uint16_t stateSetId, uint8_t compId,
+                               std::string& objectPath,
+                               dbus::PathAssociation& stateAssociation) :
         StateSet(stateSetId),
         compId(compId), objectPath(objectPath)
     {
@@ -79,7 +79,7 @@ class StateSetEthernetPortLinkState : public StateSet
         setDefaultValue();
     }
 
-    ~StateSetEthernetPortLinkState() = default;
+    ~StateSetEthIBPortLinkState() = default;
 
     void setValue(uint8_t value) override
     {
@@ -172,7 +172,8 @@ class StateSetEthernetPortLinkState : public StateSet
             if (entityInfo == sensor->getEntityInfo())
             {
                 auto& [containerID, entityType, entityInstance] = entityInfo;
-                if (entityType == PLDM_ENTITY_ETHERNET &&
+                if ((entityType == PLDM_ENTITY_ETHERNET ||
+                     entityType == PLDM_ENTITY_INFINIBAND) &&
                     sensor->getBaseUnit() == PLDM_SENSOR_UNIT_BITS)
                 {
                     linkSpeedSensor = sensor;

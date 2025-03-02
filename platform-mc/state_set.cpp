@@ -28,7 +28,7 @@
 #include "state_effecter.hpp"
 #include "state_sensor.hpp"
 #include "state_set/clearNonVolatileVariables.hpp"
-#include "state_set/ethernetPortLinkState.hpp"
+#include "state_set/ethIBPortLinkState.hpp"
 #include "state_set/healthState.hpp"
 #include "state_set/pciePortLinkState.hpp"
 #include "state_set/performance.hpp"
@@ -102,9 +102,10 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
             stateSetId, compId, path, stateAssociation, nullptr);
     }
     else if (stateSetId == PLDM_STATESET_ID_LINKSTATE &&
-             entityType == PLDM_ENTITY_ETHERNET)
+             (entityType == PLDM_ENTITY_ETHERNET ||
+              entityType == PLDM_ENTITY_INFINIBAND))
     {
-        return std::make_unique<StateSetEthernetPortLinkState>(
+        return std::make_unique<StateSetEthIBPortLinkState>(
             stateSetId, compId, path, stateAssociation);
     }
     else if (stateSetId == PLDM_STATESET_ID_HEALTHSTATE)

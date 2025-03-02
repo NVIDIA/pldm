@@ -139,6 +139,7 @@ enum pldm_entity_id_codes {
 
 	/* Network ports connection types */
 	PLDM_ENTITY_ETHERNET = 300,
+	PLDM_ENTITY_INFINIBAND = 301,
 
 	/* OEM ranges */
 	PLDM_OEM_ENTITY_TYPE_START = 24576,
