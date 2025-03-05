@@ -73,6 +73,7 @@ class StateSetNvlink : public StateSet
         endpointAssociationDefinitionsIntf = nullptr;
     std::unique_ptr<InstanceIntf> endpointInstanceIntf = nullptr;
     std::string objPath;
+    const StateSensor& stateSensor;
 
     // C2CLink fabric prefix
     const std::string fabricsObjectPath =
@@ -85,8 +86,9 @@ class StateSetNvlink : public StateSet
 
   public:
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
-                   dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), objPath(objectPath)
+                   dbus::PathAssociation& stateAssociation,
+                   StateSensor& sensorRef) :
+        StateSet(stateSetId), objPath(objectPath), stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -131,7 +133,8 @@ class StateSetNvlink : public StateSet
             if (forward == "chassis" && reverse == "all_states")
             {
                 endpoint = std::get<2>(assoc);
-                if (endpoint.size() > 0)
+                if ((endpoint.size() > 0) &&
+                    (!stateSensor.isDefaultInventoryAssociated()))
                 {
                     tal::TelemetryAggregator::updateTelemetry(
                         objPath, ifaceName, propertyName, rawPropValue,

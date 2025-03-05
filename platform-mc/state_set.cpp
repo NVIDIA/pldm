@@ -63,8 +63,8 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK &&
              entityType == PLDM_ENTITY_SYS_BUS)
     {
-        return std::make_unique<oem_nvidia::StateSetNvlink>(stateSetId, path,
-                                                            stateAssociation);
+        return std::make_unique<oem_nvidia::StateSetNvlink>(
+            stateSetId, path, stateAssociation, *sensor);
     }
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
     {
@@ -94,7 +94,7 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
              entityType == PLDM_ENTITY_PCI_EXPRESS_BUS)
     {
         return std::make_unique<StateSetPciePortLinkState>(
-            stateSetId, compId, path, stateAssociation);
+            stateSetId, compId, path, stateAssociation, *sensor);
     }
     else if (stateSetId == PLDM_STATESET_ID_BOOT_REQUEST)
     {

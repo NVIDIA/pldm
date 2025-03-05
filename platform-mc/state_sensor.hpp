@@ -190,6 +190,11 @@ class StateSensor
         return (deltaInUsec > refreshLimitInUsec);
     }
 
+    bool isDefaultInventoryAssociated() const
+    {
+        return defaultInventoryAssociated;
+    }
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
