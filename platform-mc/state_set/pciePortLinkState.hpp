@@ -52,9 +52,10 @@ class StateSetPciePortLinkState : public StateSet
   public:
     StateSetPciePortLinkState(uint16_t stateSetId, uint8_t compId,
                               std::string& objectPath,
-                              dbus::PathAssociation& stateAssociation) :
+                              dbus::PathAssociation& stateAssociation,
+                              StateSensor& sensorRef) :
         StateSet(stateSetId),
-        objPath(objectPath), compId(compId)
+        objPath(objectPath), compId(compId), stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -98,7 +99,8 @@ class StateSetPciePortLinkState : public StateSet
             if (forward == "chassis" && reverse == "all_states")
             {
                 endpoint = std::get<2>(assoc);
-                if (endpoint.size() > 0)
+                if ((endpoint.size() > 0) &&
+                    (!stateSensor.isDefaultInventoryAssociated()))
                 {
                     tal::TelemetryAggregator::updateTelemetry(
                         objPath, ifaceName, propertyName, rawPropValue,
@@ -175,6 +177,7 @@ class StateSetPciePortLinkState : public StateSet
     std::unique_ptr<PortInfoIntf> ValuePortInfoIntf = nullptr;
     std::unique_ptr<PortStateIntf> ValuePortStateIntf = nullptr;
     uint8_t compId = 0;
+    const StateSensor& stateSensor;
 };
 
 } // namespace platform_mc
