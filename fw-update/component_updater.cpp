@@ -152,8 +152,8 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
             PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
         error("Error while sending mctp request for ComponentUpdate."
-                   " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                   "EID", eid, "COMPONENTINDEX", componentIndex);
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -1080,18 +1080,22 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
                            &currentFDState, &progressPercent](int sendRc) {
                 if (sendRc)
                 {
-                    auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
                         getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
                     if (messageStatus)
                     {
-                        this->updateManager->createMessageRegistryResourceErrors(
-                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                            oemMessageError, oemResolution);
+                        this->updateManager
+                            ->createMessageRegistryResourceErrors(
+                                eid, fwDeviceIDRecord, componentIndex,
+                                oemMessageId, oemMessageError, oemResolution);
                     }
-                    error("Error while sending mctp request for ComponentUpdate."
-                               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-                               "EID", eid, "COMPONENTINDEX", componentIndex);
-                    componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+                    error(
+                        "Error while sending mctp request for ComponentUpdate."
+                        " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                        "EID", eid, "COMPONENTINDEX", componentIndex);
+                    componentUpdaterState.set(
+                        ComponentUpdaterSequence::Invalid);
                     getStatusCallback(currentFDState);
                     return sendRc;
                 }

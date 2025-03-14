@@ -43,8 +43,8 @@ namespace fs = std::filesystem;
 Watch::Watch(sd_event* loop,
              std::function<int(std::string&)> imageCallbackImmediate,
              UpdateManager* updateManager) :
-    imageCallbackImmediate(imageCallbackImmediate),
-    loop(loop), updateManager(updateManager)
+    imageCallbackImmediate(imageCallbackImmediate), loop(loop),
+    updateManager(updateManager)
 {}
 
 Watch::~Watch()

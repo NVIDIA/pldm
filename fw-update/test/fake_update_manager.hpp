@@ -78,7 +78,6 @@ class FakeUpdateManager
     {
         return true;
     }
-
 };
 } // namespace testing
 

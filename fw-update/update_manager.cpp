@@ -234,20 +234,20 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
     std::vector<sdbusplus::message::object_path> targets;
-        size_t versionHash = std::hash<std::string>{}(packageFilePath);
-        objPath = swRootPath + std::to_string(versionHash);
-        targets = updatePolicy->targets();
-        forceUpdate = updatePolicy->forceUpdate();
-        if (updatePolicy->updateOption() ==
-            software::UpdatePolicy::UpdateOptionSupport::StageOnly)
-        {
-            isStageOnlyUpdate = true;
-        }
+    size_t versionHash = std::hash<std::string>{}(packageFilePath);
+    objPath = swRootPath + std::to_string(versionHash);
+    targets = updatePolicy->targets();
+    forceUpdate = updatePolicy->forceUpdate();
+    if (updatePolicy->updateOption() ==
+        software::UpdatePolicy::UpdateOptionSupport::StageOnly)
+    {
+        isStageOnlyUpdate = true;
+    }
 
-        else
-        {
-            isStageOnlyUpdate = false;
-        }
+    else
+    {
+        isStageOnlyUpdate = false;
+    }
     info(
         "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
         "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
