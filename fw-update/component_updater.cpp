@@ -254,9 +254,10 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                                                &length);
     if (rc)
     {
-        lg2::error(
-            "Decoding RequestFirmwareData request failed, EID={EID}, RC={RC}",
-            "EID", eid, "RC", rc);
+        printBuffer(pldm::utils::Rx, request, payloadLength,
+                    ("Decoding RequestFirmwareData request failed for EID=" +
+                     std::to_string(eid) + ", RC=" + std::to_string(rc)),
+                    updateManager->fwDebug);
         rc = encode_request_firmware_data_resp(
             request->hdr.instance_id, PLDM_ERROR_INVALID_DATA, responseMsg,
             sizeof(completionCode));
@@ -266,7 +267,6 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                 "Encoding RequestFirmwareData response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -411,7 +411,6 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
                 "Encoding TransferComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -542,7 +541,6 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
                 "Encoding VerifyComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -729,7 +727,6 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 "Encoding ApplyComplete response failed, EID={EID}, RC={RC}",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
