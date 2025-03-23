@@ -304,7 +304,6 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                 "Failed to encode request firmware date response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -448,7 +447,6 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
                 "Failed to encode TransferComplete response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -584,7 +582,6 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
                 "Failed to encode verify complete response of endpoint ID '{EID}', response code '{RC}'.",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
@@ -779,7 +776,6 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 "Failed to encode apply complete response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
         }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         return response;
     }
 
