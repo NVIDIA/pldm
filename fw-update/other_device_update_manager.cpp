@@ -438,8 +438,9 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
 }
 
 size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
-    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    const ComponentImageInfos& componentImageInfos, std::istream& package)
+    [[maybe_unused]] const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    [[maybe_unused]] const ComponentImageInfos& componentImageInfos,
+    [[maybe_unused]] std::istream& package)
 {
 #ifndef NON_PLDM
     return 0;

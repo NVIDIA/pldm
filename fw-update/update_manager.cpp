@@ -1089,6 +1089,7 @@ software::Activation::Activations UpdateManager::activatePackage()
     if (nonPLDMState == software::Activation::Activations::Failed ||
         nonPLDMState == software::Activation::Activations::Active)
     {
+        setActivationStatus(nonPLDMState);
         return nonPLDMState;
     }
     return software::Activation::Activations::Activating;
@@ -1126,7 +1127,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         progressTimer->stop();
         progressTimer.reset();
         activationProgress->progress(100);
-#ifdef OEM_NVIDIA
+#ifdef DEBUG_TOKEN
         if (!(debugToken->isDebugTokenComponentPresent() &&
               parser->getComponentImageInfos().size() == 1))
 #endif
