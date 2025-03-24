@@ -125,52 +125,10 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
             return rc;
         }
 
-        // save event data to file
-        std::string dirName{"/var/cper"};
-        auto dirStatus = fs::status(dirName);
-        if (fs::exists(dirStatus))
-        {
-            if (!fs::is_directory(dirStatus))
-            {
-                lg2::error("Failed to create {DIRNAME} directory", "DIRNAME",
-                           dirName);
-                return PLDM_ERROR;
-            }
-        }
-        else
-        {
-            fs::create_directory(dirName);
-        }
-
-        std::string fileName{dirName + "/cper-XXXXXX"};
-        auto fd = mkstemp(fileName.data());
-        if (fd < 0)
-        {
-            lg2::error("Failed to generate temp file:{ERRORNO}", "ERRORNO",
-                       std::strerror(errno));
-            return PLDM_ERROR;
-        }
-        close(fd);
-
-        std::ofstream ofs;
-        ofs.exceptions(std::ofstream::failbit | std::ofstream::badbit |
-                       std::ofstream::eofbit);
-
-        try
-        {
-            platformEventStatus = PLDM_EVENT_ACCEPTED_FOR_LOGGING;
-            ofs.open(fileName);
-            ofs.write(reinterpret_cast<const char*>(eventData), eventDataSize);
-            ofs.close();
-        }
-        catch (const std::exception& e)
-        {
-            lg2::error("Failed to save CPER to {FILENAME}, {ERROR}.",
-                       "FILENAME", fileName, "ERROR", e);
-            return PLDM_ERROR;
-        }
-
-        notifyCPERLogger(fileName);
+        const unsigned char* eventDataChar =
+            std::bit_cast<const unsigned char*>(eventData);
+        notifyCPERLogger(
+            std::span<const unsigned char>(eventDataChar, eventDataSize));
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFC)
     {
@@ -399,7 +357,7 @@ auto asioCallback = [](const boost::system::error_code& ec,
     }
 };
 
-void EventManager::notifyCPERLogger(const std::string& dataPath)
+void EventManager::notifyCPERLogger(std::span<const unsigned char> data)
 {
     static constexpr auto loggerObj = "/xyz/openbmc_project/cperlogger";
     static constexpr auto loggerIntf = "xyz.openbmc_project.CPER";
@@ -410,7 +368,7 @@ void EventManager::notifyCPERLogger(const std::string& dataPath)
         auto service =
             pldm::utils::DBusHandler().getService(loggerObj, loggerIntf);
         conn->async_method_call(asioCallback, service.c_str(), loggerObj,
-                                loggerIntf, "CreateLog", dataPath);
+                                loggerIntf, "CreateLog", data);
     }
     catch (const std::exception& e)
     {

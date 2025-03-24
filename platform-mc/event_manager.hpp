@@ -127,7 +127,7 @@ class EventManager
         uint8_t& eventClass, uint32_t& eventDataSize,
         std::vector<uint8_t>& eventData, uint32_t& eventDataIntegrityChecksum);
 
-    void notifyCPERLogger(const std::string& dataPath);
+    void notifyCPERLogger(const std::span<const unsigned char> dataPath);
 
     void processDeferredPldmMessagePollEvent(uint8_t tid);
 
