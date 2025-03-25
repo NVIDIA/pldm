@@ -121,7 +121,7 @@ class FlightRecorder
         }
         else
         {
-            lg2::error("Fight recorder policy is disabled");
+            lg2::error("Flight recorder policy is disabled");
         }
     }
 };
