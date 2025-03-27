@@ -16,12 +16,8 @@
  */
 #include "oem_nvidia.hpp"
 
-#include "libpldm/platform.h"
-
 #include "common/dBusAsyncUtils.hpp"
-#include "common/utils.hpp"
 #include "memoryPageRetirementCount.hpp"
-#include "oem/nvidia/platform-mc/EDPp.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
@@ -29,8 +25,6 @@
 #include "staticPowerHint.hpp"
 
 #include <phosphor-logging/lg2.hpp>
-
-#include <limits>
 
 using namespace pldm::pdr;
 
@@ -42,79 +36,6 @@ namespace platform_mc
 namespace nvidia
 {
 
-void generateEDPpIntf(
-    std::shared_ptr<NumericEffecter> numericEffecter,
-    std::vector<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
-        numericEffecterPdrs,
-    bool persistence)
-{
-    double maxValue = std::numeric_limits<double>::quiet_NaN();
-    double minValue = std::numeric_limits<double>::quiet_NaN();
-
-    // search through the numeric Effecter pdrs
-    for (auto& pdr : numericEffecterPdrs)
-    {
-
-        // Iterate until the numeric Effecter matching the PDR is found.
-        if (pdr->effecter_id != numericEffecter->effecterId)
-        {
-            continue;
-        }
-
-        // Pull the maxValue, minValue, and nominalValues from the
-        // numericSensor's pdr to add to the EDPpInt's AllowableMax and
-        // AllowableMin properties respectively.
-        switch (pdr->effecter_data_size)
-        {
-            case PLDM_EFFECTER_DATA_SIZE_UINT8:
-                maxValue = pdr->max_set_table.value_u8;
-                minValue = pdr->min_set_table.value_u8;
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_SINT8:
-                maxValue = pdr->max_set_table.value_s8;
-                minValue = pdr->min_set_table.value_s8;
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_UINT16:
-                maxValue = pdr->max_set_table.value_u16;
-                minValue = pdr->min_set_table.value_u16;
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_SINT16:
-                maxValue = pdr->max_set_table.value_s16;
-                minValue = pdr->min_set_table.value_s16;
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_UINT32:
-                maxValue = pdr->max_set_table.value_u32;
-                minValue = pdr->min_set_table.value_u32;
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_SINT32:
-                maxValue = pdr->max_set_table.value_s32;
-                minValue = pdr->min_set_table.value_s32;
-                break;
-        }
-    }
-
-    numericEffecter->unitIntf.reset();
-
-    auto EdppInterface = std::make_unique<EDPpIntf>(
-        *numericEffecter, utils::DBusHandler().getBus(),
-        numericEffecter->path.c_str(), persistence);
-
-    if (EdppInterface != nullptr)
-    {
-        // unitModifier to Base Unit (mW to Watts)
-        EdppInterface->pdrMaxSettable(numericEffecter->unitToBase(maxValue));
-        EdppInterface->pdrMinSettable(numericEffecter->unitToBase(minValue));
-
-        numericEffecter->unitIntf = std::move(EdppInterface);
-    }
-    else
-    {
-        lg2::error(
-            "Created EdppInterface is nullptr, and numericEffecter with EID {EID} has no unitIntf",
-            "EID", numericEffecter->effecterId);
-    }
-}
-
 static void processEffecterPowerCapPdr(Terminus& terminus,
                                        nvidia_oem_effecter_powercap_pdr* pdr)
 {
@@ -125,6 +46,8 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
             continue;
         }
 
+        auto persistenceIntf = std::make_unique<OemPersistenceIntf>(
+            utils::DBusHandler().getBus(), effecter->path.c_str());
         bool persistence =
             ((pdr->oem_effecter_powercap ==
               static_cast<uint8_t>(
@@ -134,28 +57,8 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
                   OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE)))
                 ? true
                 : false;
-
-        // If the OEM Effecter PowerCap PDR's OemPowerCap ID match to an EDPp
-        // Control Effecter, generate the EDPp intf
-        if (pdr->oem_effecter_powercap ==
-                static_cast<uint8_t>(
-                    OemPowerCapPersistence::OEM_POWERCAP_EDPP_VOLATILE) ||
-            pdr->oem_effecter_powercap ==
-                static_cast<uint8_t>(
-                    OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE))
-        {
-            generateEDPpIntf(effecter, terminus.numericEffecterPdrs,
-                             persistence); // pass in the list of numeric
-                                           // effecters pdrs
-        }
-
-        if (persistence)
-        {
-            auto persistenceIntf = std::make_unique<OemPersistenceIntf>(
-                utils::DBusHandler().getBus(), effecter->path.c_str());
-            persistenceIntf->persistent(persistence);
-            effecter->oemIntfs.push_back(std::move(persistenceIntf));
-        }
+        persistenceIntf->persistent(persistence);
+        effecter->oemIntfs.push_back(std::move(persistenceIntf));
     }
 }
 

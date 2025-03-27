@@ -20,7 +20,6 @@
 
 #include "common/types.hpp"
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
-#include "platform-mc/numeric_effecter.hpp"
 #include "platform-mc/oem_base.hpp"
 #include "requester/handler.hpp"
 
