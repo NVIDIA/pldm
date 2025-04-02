@@ -681,10 +681,14 @@ std::shared_ptr<EffecterAuxiliaryNames>
         const std::vector<uint8_t>& pdrData)
 {
     constexpr uint8_t NullTerminator = 0;
+    size_t parseLen = 0;
     auto pdr =
         reinterpret_cast<const struct pldm_effecter_auxiliary_names_pdr*>(
             pdrData.data());
     const uint8_t* ptr = pdr->names;
+    // reducing by 1 byte because the length of pdr->names (names[1]) is not
+    // pared yet at the moment.
+    parseLen += sizeof(pldm_effecter_auxiliary_names_pdr) - sizeof(pdr->names);
     std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
         effecterAuxNames{};
     try
@@ -693,17 +697,23 @@ std::shared_ptr<EffecterAuxiliaryNames>
         {
             const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
             ptr += sizeof(uint8_t);
+            parseLen += sizeof(uint8_t);
             std::vector<std::pair<NameLanguageTag, EffecterName>> nameStrings{};
             for (int j = 0; j < nameStringCount; j++)
             {
                 std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
                                             0, PLDM_STR_UTF_8_MAX_LEN);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
+                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
+                std::vector<uint8_t> u16NameStringVec(
+                    pdrData.begin() + parseLen, pdrData.end());
                 std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(ptr), 0,
-                    PLDM_STR_UTF_16_MAX_LEN);
+                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
+                    0, PLDM_STR_UTF_16_MAX_LEN);
                 ptr += (u16NameString.size() + sizeof(NullTerminator)) *
                        sizeof(uint16_t);
+                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
+                            sizeof(uint16_t);
                 std::transform(u16NameString.cbegin(), u16NameString.cend(),
                                u16NameString.begin(),
                                [](uint16_t utf16) { return be16toh(utf16); });
