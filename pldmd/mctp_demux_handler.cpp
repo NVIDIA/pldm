@@ -127,7 +127,13 @@ void DaemonHandler::handleReceivedMsg(IO& io, int fd, uint32_t revents)
 {
     using namespace pldm::flightrecorder;
     using namespace pldm::utils;
-    if (!(revents & EPOLLIN))
+    if (revents & (POLLHUP | POLLERR))
+    {
+        lg2::warning("Transport Socket hang-up or error. IO Exiting.");
+        io.get_event().exit(0);
+        return;
+    }
+    else if (!(revents & EPOLLIN))
     {
         return;
     }
