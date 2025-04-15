@@ -139,6 +139,10 @@ if get_option('nvlink-c2c-fabric-object').enabled()
 endif
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
 
+if get_option('nvidia-disable-edpp-effecters').enabled()
+  conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
+endif
+
 configure_file(output: 'config.h',
   configuration: conf_data
 )
