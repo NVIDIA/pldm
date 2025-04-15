@@ -417,3 +417,10 @@ option(
   description: 'Enable AFL++ fuzzing test infrastructure. When enabled, builds fuzzing test binaries for PLDM components including device updater, PDR access, and PLDM registration tests. Uses AFL++ (American Fuzzy Lop++) for mutation-based fuzzing. Requires AFL++ toolchain to be installed. Default is disabled.',
   value: 'disabled',
 )
+
+option(
+  'nvidia-disable-edpp-effecters',
+  type: 'feature',
+  description: 'Disable the creation of EDPp effecters and their association with CPU power controls',
+  value: 'disabled',
+)

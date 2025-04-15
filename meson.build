@@ -198,6 +198,9 @@ conf_data.set(
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
 conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
+if get_option('nvidia-disable-edpp-effecters').enabled()
+  conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
+endif
 
 configure_file(output: 'config.h', configuration: conf_data)
 

@@ -39,12 +39,32 @@ namespace nvidia
 static void processEffecterPowerCapPdr(Terminus& terminus,
                                        nvidia_oem_effecter_powercap_pdr* pdr)
 {
-    for (auto& effecter : terminus.numericEffecters)
+    auto& effecters = terminus.numericEffecters;
+
+    for (auto it = effecters.begin(); it != effecters.end();)
     {
+        auto& effecter = *it;
+
         if (effecter->effecterId != pdr->associated_effecterid)
         {
+            it++;
             continue;
         }
+
+#ifdef NVIDIA_DISABLE_EDPP_EFFECTERS
+        // filter out CPU's EDPp Volatile and EDPp Non-Volatile effecters
+        if (pdr->oem_effecter_powercap ==
+                static_cast<uint8_t>(
+                    OemPowerCapPersistence::OEM_POWERCAP_EDPP_VOLATILE) ||
+            pdr->oem_effecter_powercap ==
+                static_cast<uint8_t>(
+                    OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE))
+        {
+
+            it = effecters.erase(it);
+            continue;
+        }
+#endif
 
         auto persistenceIntf = std::make_unique<OemPersistenceIntf>(
             utils::DBusHandler().getBus(), effecter->path.c_str());
@@ -59,6 +79,8 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
                 : false;
         persistenceIntf->persistent(persistence);
         effecter->oemIntfs.push_back(std::move(persistenceIntf));
+
+        ++it;
     }
 }
 
