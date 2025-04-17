@@ -788,19 +788,25 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
                         auto applicableComponents =
                             std::get<ApplicableComponents>(
                                 inFwDeviceIDRecords[index]);
-                        for (const auto& index : applicableComponents)
-                        {
-                            const auto& compImageInfo = compImageInfos[index];
+
+                        std::erase_if(applicableComponents, [&](const auto&
+                                                                    idx) {
+                            const auto& compImageInfo = compImageInfos[idx];
                             CompIdentifier compIdentifier =
                                 std::get<static_cast<size_t>(
                                     ComponentImageInfoPos::CompIdentifierPos)>(
                                     compImageInfo);
-                            if ((std::find(compList.begin(), compList.end(),
-                                           compIdentifier) == compList.end()))
+
+                            if (std::find(compList.begin(), compList.end(),
+                                          compIdentifier) == compList.end())
                             {
-                                std::erase(applicableComponents, index);
+                                lg2::info(
+                                    "Component {ID} not found in list - skipping",
+                                    "ID", compIdentifier);
+                                return true; // Remove this component
                             }
-                        }
+                            return false; // Keep this component
+                        });
                         if (applicableComponents.size())
                         {
                             outFwDeviceIDRecords.emplace_back(
