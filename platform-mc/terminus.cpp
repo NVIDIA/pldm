@@ -143,6 +143,18 @@ exec::task<int> Terminus::checkI2CDeviceInventory(uint8_t bus, uint8_t addr)
     co_return PLDM_FAILED;
 }
 
+exec::task<int> Terminus::checkUSBDeviceInventory(uint8_t eid)
+{
+    if (eid == tid)
+    {
+        co_return PLDM_SUCCESS;
+    }
+    else
+    {
+        co_return PLDM_FAILED;
+    }
+}
+
 bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 {
     if (nsmUuid.substr(0, 36) == uuid.substr(0, 36))
@@ -162,6 +174,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
         auto getSubTreeResponse = co_await utils::coGetSubTree(
             objPath, 0,
             {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
+             "xyz.openbmc_project.Configuration.USBDeviceAssociation",
              "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
 
         if (getSubTreeResponse.size() == 0)
@@ -179,6 +192,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                 {
                     uint64_t bus = 0;
                     uint64_t addr = 0;
+                    uint64_t eid = 0;
                     if (interface ==
                         "xyz.openbmc_project.Configuration.I2CDeviceAssociation")
                     {
@@ -198,6 +212,19 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                     }
                     else if (
                         interface ==
+                        "xyz.openbmc_project.Configuration.USBDeviceAssociation")
+                    {
+                        eid = co_await utils::coGetDbusProperty<uint64_t>(
+                            objectPath.c_str(), "EID",
+                            "xyz.openbmc_project.Configuration.USBDeviceAssociation");
+                        auto rc = co_await checkUSBDeviceInventory(eid);
+                        if (rc == PLDM_SUCCESS)
+                        {
+                            found = true;
+                        }
+                    }
+                    else if (
+                        interface ==
                         "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
                     {
                         auto nsmUuid = co_await utils::coGetDbusProperty<
@@ -210,7 +237,8 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 
                     if (found)
                     {
-                        co_await getSensorAuxNameFromEM(bus, addr, objPath);
+                        co_await getSensorAuxNameFromEM(bus, addr, eid,
+                                                        objPath);
 #ifdef OEM_NVIDIA
                         co_await getPortInfoFromEM(objPath);
                         co_await getInfoForNVSwitchFromEM(objPath);
@@ -231,10 +259,10 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
     co_return PLDM_FAILED;
 }
 
-exec::task<int>
-    Terminus::getSensorAuxNameFromEM([[maybe_unused]] uint8_t bus,
-                                     [[maybe_unused]] uint8_t addr,
-                                     const std::string& objPath)
+exec::task<int> Terminus::getSensorAuxNameFromEM([[maybe_unused]] uint8_t bus,
+                                                 [[maybe_unused]] uint8_t addr,
+                                                 [[maybe_unused]] uint8_t eid,
+                                                 const std::string& objPath)
 {
     try
     {
@@ -272,6 +300,14 @@ exec::task<int>
                 path.c_str(), "Address",
                 "xyz.openbmc_project.Configuration.SensorAuxName");
             if (mctpI2cAddr != 0 && mctpI2cAddr != addr)
+            {
+                continue;
+            }
+
+            auto mctpEid = co_await utils::coGetDbusProperty<uint64_t>(
+                path.c_str(), "EID",
+                "xyz.openbmc_project.Configuration.SensorAuxName");
+            if (mctpEid != 0 && mctpEid != eid)
             {
                 continue;
             }

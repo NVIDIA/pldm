@@ -244,6 +244,7 @@ class Terminus
      */
     exec::task<int> checkDeviceInventory(const std::string& objPath);
     exec::task<int> checkI2CDeviceInventory(uint8_t bus, uint8_t addr);
+    exec::task<int> checkUSBDeviceInventory(uint8_t eid);
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI
@@ -251,6 +252,7 @@ class Terminus
      *  @param[in] objPath - device inventory path
      */
     exec::task<int> getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
+                                           uint8_t eid,
                                            const std::string& objPath);
 
 #ifdef OEM_NVIDIA
