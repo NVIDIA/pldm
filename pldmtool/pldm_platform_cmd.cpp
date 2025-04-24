@@ -100,7 +100,7 @@ class GetPDR : public CommandInterface
             }
 
             // start the array
-            std::cout << "[\n";
+            std::cerr << "[\n";
 
             // Retrieve all PDR records starting from the first
             recordHandle = 0;
@@ -133,12 +133,12 @@ class GetPDR : public CommandInterface
                 if (recordHandle != 0)
                 {
                     // close the array
-                    std::cout << ",";
+                    std::cerr << ",";
                 }
             } while (recordHandle != 0);
 
             // close the array
-            std::cout << "]\n";
+            std::cerr << "]\n";
         }
         else
         {
@@ -1142,7 +1142,7 @@ class GetPDR : public CommandInterface
         }
         else
         {
-            std::cout << "Get associationType failed.\n";
+            std::cerr << "Get associationType failed.\n";
         }
         output["containerEntityType"] =
             getEntityName(pdr->container.entity_type);

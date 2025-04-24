@@ -51,7 +51,7 @@ void Logger(bool pldmverbose, const char* msg, const T& data)
     {
         std::stringstream s;
         s << data;
-        std::cout << msg << s.str() << std::endl;
+        std::cerr << msg << s.str() << std::endl;
     }
 }
 

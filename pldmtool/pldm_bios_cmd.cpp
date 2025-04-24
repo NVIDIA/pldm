@@ -361,7 +361,7 @@ class GetBIOSTableHandler : public CommandInterface
             }
             else
             {
-                std::cout << "Get AttributeType failed.\n";
+                std::cerr << "Get AttributeType failed.\n";
             }
         }
         switch (attrType)
@@ -429,7 +429,7 @@ class GetBIOSTableHandler : public CommandInterface
             case PLDM_BIOS_PASSWORD:
             case PLDM_BIOS_PASSWORD_READ_ONLY:
             {
-                std::cout << "Password attribute: Not Supported" << std::endl;
+                std::cerr << "Password attribute: Not Supported" << std::endl;
                 break;
             }
         }
@@ -540,7 +540,7 @@ class GetBIOSTable : public GetBIOSTableHandler
             }
             else
             {
-                std::cout << "Get AttributeType failed.\n";
+                std::cerr << "Get AttributeType failed.\n";
             }
 
             switch (attrType)
@@ -623,7 +623,7 @@ class GetBIOSTable : public GetBIOSTableHandler
                 }
                 case PLDM_BIOS_PASSWORD:
                 case PLDM_BIOS_PASSWORD_READ_ONLY:
-                    std::cout << "Password attribute: Not Supported"
+                    std::cerr << "Password attribute: Not Supported"
                               << std::endl;
             }
             output.emplace_back(std::move(attrdata));
@@ -681,7 +681,7 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
 
         if (!stringTable || !attrTable)
         {
-            std::cout << "StringTable/AttrTable Unavaliable" << std::endl;
+            std::cerr << "StringTable/AttrTable Unavaliable" << std::endl;
             return;
         }
 
@@ -776,7 +776,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
 
         if (!stringTable || !attrTable)
         {
-            std::cout << "StringTable/AttrTable Unavaliable" << std::endl;
+            std::cerr << "StringTable/AttrTable Unavaliable" << std::endl;
             return;
         }
 
@@ -784,7 +784,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
             findAttrEntryByName(attrName, *attrTable, *stringTable);
         if (attrEntry == nullptr)
         {
-            std::cout << "Could not find attribute :" << attrName << std::endl;
+            std::cerr << "Could not find attribute :" << attrName << std::endl;
             return;
         }
 
@@ -812,7 +812,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                     attrValue.c_str());
                 if (stringEntry == nullptr)
                 {
-                    std::cout
+                    std::cerr
                         << "Set Attribute Error: It's not a possible value"
                         << std::endl;
                     return;
@@ -828,7 +828,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                 }
                 if (i == pvNum)
                 {
-                    std::cout
+                    std::cerr
                         << "Set Attribute Error: It's not a possible value"
                         << std::endl;
                     return;

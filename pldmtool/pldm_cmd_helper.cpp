@@ -351,7 +351,7 @@ void CommandInterface::exec()
 
     if (mctp_eid == PLDM_ENTITY_ID && !socketName.has_value())
     {
-        std::cout << "--socket_name is required when "
+        std::cerr << "--socket_name is required when "
                   << "--mctp_eid is equal to "
                   << static_cast<int>(PLDM_ENTITY_ID)
                   << " or when MCTP endpoint is not provided\n"
@@ -531,7 +531,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
     if (pldmVerbose)
     {
-        std::cout << "pldmtool: ";
+        std::cerr << "pldmtool: ";
         printBuffer(Tx, requestMsg);
     }
 
@@ -608,7 +608,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
         free(responseMessage);
         if (pldmVerbose)
         {
-            std::cout << "pldmtool: ";
+            std::cerr << "pldmtool: ";
             printBuffer(Rx, responseMsg);
         }
     }
@@ -624,7 +624,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
         if (pldmVerbose)
         {
-            std::cout << "pldmtool: ";
+            std::cerr << "pldmtool: ";
             printBuffer(Rx, responseMsg);
         }
         responseMsg.erase(responseMsg.begin(),
@@ -640,7 +640,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
     if (pldmVerbose)
     {
-        std::cout << "pldmtool: ";
+        std::cerr << "pldmtool: ";
         printBuffer(Rx, responseMsg);
     }
 #endif
