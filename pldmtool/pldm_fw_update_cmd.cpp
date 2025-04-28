@@ -1101,7 +1101,7 @@ class PassComponentTable : public CommandInterface
                                             ? "Component may be updateable"
                                             : "Component can be updated";
 
-            data["ComponentResponse"] =
+            data["ComponentResponseCode"] =
                 fmt::format("0x{:02X}", compResponseCode);
         }
 
