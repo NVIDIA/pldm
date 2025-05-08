@@ -90,7 +90,8 @@ requester::Coroutine PlatformManager::initEventReceiver(tid_t tid)
         rc = co_await setEventReceiver(tid,
                                        PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
                                        terminusManager.getLocalEid());
-        if (rc)
+        if (rc != PLDM_SUCCESS &&
+            rc != terminus->resumptionStatus.eventReciever)
         {
             auto mctpInfo = terminusManager.toMctpInfo(tid);
             if (!mctpInfo)
@@ -109,6 +110,8 @@ requester::Coroutine PlatformManager::initEventReceiver(tid_t tid)
                     "DESTEID", destEid);
             }
         }
+
+        terminus->resumptionStatus.eventReciever = rc;
     }
     co_return rc;
 }

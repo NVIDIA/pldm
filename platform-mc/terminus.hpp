@@ -83,6 +83,19 @@ static const std::map<EntityType, std::string_view> entityInterfaces = {
      "xyz.openbmc_project.Inventory.Item.Board"}};
 
 /**
+ * @brief TerminusResumptionStatus
+ *
+ * This struct holds the present status of the terminus resumption process
+ */
+struct TerminusResumptionStatus
+{
+    TerminusResumptionStatus() : eventReciever{PLDM_SUCCESS}
+    {}
+
+    uint8_t eventReciever;
+};
+
+/**
  * @brief Terminus
  *
  * Terminus class holds the TID, supported PLDM Type or PDRs which are needed by
@@ -285,6 +298,10 @@ class Terminus
     /** @brief This value indicates if polling sensor list need to be
      * initialized */
     bool initSensorList;
+
+    /** @brief This struct holds the present status of the terminus resumption
+     * process */
+    TerminusResumptionStatus resumptionStatus{};
 
     /** @brief set the terminus to online state */
     void setOnline();
