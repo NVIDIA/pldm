@@ -350,7 +350,8 @@ executable(
   implicit_include_directories: false,
   dependencies: deps,
   install: true,
-  install_dir: get_option('bindir'))
+  install_dir: get_option('bindir'),
+  cpp_args: ['-fno-lto'])
 
 if get_option('systemd').allowed()
     systemd_system_unit_dir = dependency('systemd').get_variable(
