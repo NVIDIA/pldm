@@ -67,6 +67,7 @@ endif
 if get_option('debug-token').enabled()
     add_project_arguments('-DDEBUG_TOKEN', language : ['c','cpp'])
 endif
+conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
 if get_option('fw-debug').enabled()
   conf_data.set('FWDEBUG', '--fw-debug')
 endif
@@ -361,6 +362,13 @@ if get_option('systemd').allowed()
         install: true,
         install_dir: systemd_system_unit_dir,
     )
+  configure_file(
+    input: 'pldmd/verbosity/verbosity',
+    output: 'pldm_verbosity',
+    configuration: conf_data,
+    install: true,
+    install_dir: join_paths(get_option('sysconfdir'), 'default'))
+
 
     # if get_option('oem-ibm').allowed()
     #     subdir('oem/ibm/service_files')
