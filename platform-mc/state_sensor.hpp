@@ -106,9 +106,6 @@ class StateSensor
                 sdbusplus::message::object_path entityPath(
                     associatedEntityPath);
                 associationEntityId = entityPath.filename();
-                transform(associationEntityId.begin(),
-                          associationEntityId.end(),
-                          associationEntityId.begin(), ::toupper);
             }
         }
     }
