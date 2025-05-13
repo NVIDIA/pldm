@@ -401,8 +401,9 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
-static std::string cpuNameToMemoryName(const std::string& cpuName)
+static std::string cpuNameToMemoryName(std::string cpuName)
 {
+    std::transform(cpuName.begin(), cpuName.end(), cpuName.begin(), ::toupper);
     // The sensors are associated to CPU by default based on contained id. Using
     // it to associate with corresponding Memory.
     if (cpuName == "HGX_CPU_0" || cpuName == "CPU_0")

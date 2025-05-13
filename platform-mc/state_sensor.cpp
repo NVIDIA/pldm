@@ -88,8 +88,6 @@ StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
     {
         sdbusplus::message::object_path entityPath(associationPath);
         associationEntityId = entityPath.filename();
-        transform(associationEntityId.begin(), associationEntityId.end(),
-                  associationEntityId.begin(), ::toupper);
     }
 }
 
@@ -135,7 +133,12 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
         {
             stateSets[sensorOffset]->setValue(eventState);
 
-            const std::string entityName = getAssociationEntityId();
+            std::string entityName = getAssociationEntityId();
+            std::string platformPrefix = std::string(PLATFORM_PREFIX) + "_";
+            if (entityName.rfind(platformPrefix, 0) == 0)
+            {
+                entityName = entityName.substr(platformPrefix.length());
+            }
             const std::string sensorName =
                 stateSets[sensorOffset]->getStringStateType();
 
