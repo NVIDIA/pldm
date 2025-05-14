@@ -139,6 +139,9 @@ bool MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
 
         if (uuid.empty() || address.empty() || !type)
         {
+            lg2::error(
+                "Missing required MCTP properties - UUID: {UUID}, Address empty: {ADDR_EMPTY}, Type: {TYPE}",
+                "UUID", uuid, "ADDR_EMPTY", address.empty(), "TYPE", type);
             return false;
         }
 
@@ -171,7 +174,16 @@ bool MctpDiscovery::populateMctpInfo(const dbus::InterfaceMap& interfaces,
                     mctpInterfaces[uuid] = interfaces;
                     mctpInfos.emplace_back(std::make_tuple(
                         eid, uuid, mediumType, networkId, bindingType));
+                    lg2::info(
+                        "Successfully registered MCTP endpoint - EID: {EID}, UUID: {UUID}",
+                        "EID", eid, "UUID", uuid);
                     return true;
+                }
+                else
+                {
+                    lg2::info(
+                        "MCTP endpoint does not support PLDM type - EID: {EID}, UUID: {UUID}",
+                        "EID", eid, "UUID", uuid);
                 }
             }
         }
