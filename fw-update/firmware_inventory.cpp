@@ -96,6 +96,11 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
                     bus, objPath, std::get<1>(compInfo), swId);
                 entry->createUpdateableAssociation(swBasePath);
 
+                lg2::info(
+                    "Created software D-Bus object: path={PATH}, component_id={ID}, version={VERSION}",
+                    "PATH", objPath, "ID", swId, "VERSION",
+                    std::get<1>(compInfo));
+
                 const auto& assocs =
                     std::get<Associations>(componentObject->second);
 
@@ -119,6 +124,10 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
                 std::string objPath = swBasePath + "/" + componentName->second;
                 auto swId = fmt::format("0x{:04X}", compKey.second);
                 updateSwId(objPath, swId);
+
+                lg2::info(
+                    "Updated software ID for existing D-Bus object: path={PATH}, component_id={ID}",
+                    "PATH", objPath, "ID", swId);
             }
         }
     }
@@ -126,6 +135,9 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
     {
         // Skip if UUID is not present or firmware inventory information from
         // firmware update config JSON is empty
+        lg2::info(
+            "Skipping firmware inventory creation: UUID not found or empty firmware inventory config, EID={EID}",
+            "EID", eid);
     }
 }
 
@@ -144,6 +156,12 @@ void Manager::updateFWVersion(pldm::EID eid)
                 inventoryEntry->second->setVersion(std::get<1>(compInfo));
             }
         }
+    }
+    else
+    {
+        lg2::info(
+            "Skipping firmware version update: EID not found in component info map, EID={EID}",
+            "EID", eid);
     }
 }
 

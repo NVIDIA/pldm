@@ -204,6 +204,7 @@ exec::task<int> InventoryManager::initiateGetActiveFirmwareVersion(
     auto isType5Supported = supportedTypes & (1 << PLDM_FWUP);
     if (!isType5Supported)
     {
+        lg2::info("EID={EID} does not support PLDM T5.", "EID", eid);
         co_return PLDM_SUCCESS;
     }
 
@@ -541,6 +542,8 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
     variable_field pendingCompVerStr{};
 
     ComponentInfo componentInfo{};
+    std::ostringstream paramsLog{};
+
     while (fwParams.comp_count-- && (compParamTableLen > 0))
     {
         auto rc = decode_get_firmware_parameters_resp_comp_entry(
@@ -566,11 +569,26 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
             std::make_pair(compClassification, compIdentifier),
             std::make_tuple(compEntry.comp_classification_index,
                             utils::toString(activeCompVerStr)));
+
+        paramsLog << "{Classification: " << static_cast<int>(compClassification)
+                  << ", ID: " << compIdentifier << ", Index: "
+                  << static_cast<int>(compEntry.comp_classification_index)
+                  << ", Active Version: " << utils::toString(activeCompVerStr)
+                  << ", ActiveCompStamp: "
+                  << compEntry.active_comp_comparison_stamp
+                  << ", Pending Version: " << utils::toString(pendingCompVerStr)
+                  << ", PendingCompStamp: "
+                  << compEntry.pending_comp_comparison_stamp << "}, ";
+
         compParamPtr += sizeof(pldm_component_parameter_entry) +
                         activeCompVerStr.length + pendingCompVerStr.length;
         compParamTableLen -= sizeof(pldm_component_parameter_entry) +
                              activeCompVerStr.length + pendingCompVerStr.length;
     }
+    paramsLog << "]";
+    lg2::info("EID={EID} FW Parameters: {PARAMS}", "EID", eid, "PARAMS",
+              paramsLog.str());
+
     if (componentInfoMap.contains(eid))
     {
         componentInfoMap.erase(eid);

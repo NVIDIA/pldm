@@ -96,6 +96,11 @@ std::optional<sdbusplus::message::object_path>
                 uuid,
                 std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
             deviceObjPath = objPath;
+
+            lg2::info(
+                "Created ERoT Chassis D-Bus object: path={PATH}, uuid={UUID}, ecsku={ECSKU}",
+                "PATH", objPath, "UUID", uuid, "ECSKU",
+                ecsku.empty() ? "N/A" : ecsku);
         }
 
         const auto& updateObjPath = std::get<UpdateDeviceInfo>(deviceInfo);
@@ -109,6 +114,9 @@ std::optional<sdbusplus::message::object_path>
     {
         // Skip if UUID is not present or device inventory information from
         // firmware update config JSON is empty
+        lg2::info(
+            "Skipping device inventory creation: UUID not found or empty device inventory config, EID={EID}, UUID={UUID}",
+            "EID", eid, "UUID", uuid);
     }
     return deviceObjPath;
 }
@@ -128,6 +136,8 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
         try
         {
             std::string tmpVal = std::get<std::string>(value);
+            lg2::info("Setting APSKU for path={PATH}: apsku={APSKU}", "PATH",
+                      dbusMapping.objectPath, "APSKU", tmpVal);
             setDBusProperty(dbusMapping, tmpVal);
         }
         catch (const std::exception& e)
@@ -169,6 +179,8 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
             try
             {
                 std::string tmpVal = std::get<std::string>(value);
+                lg2::info("Updating APSKU for path={PATH}: apsku={APSKU}",
+                          "PATH", dbusMapping.objectPath, "APSKU", tmpVal);
                 setDBusProperty(dbusMapping, tmpVal);
             }
             catch (const std::exception& e)
