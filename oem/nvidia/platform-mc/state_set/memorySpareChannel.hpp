@@ -31,6 +31,8 @@ namespace platform_mc
 
 using MemorySpareChannelIntf = sdbusplus::server::object_t<
     sdbusplus::com::nvidia::server::MemorySpareChannel>;
+using ChannelPresence =
+    sdbusplus::com::nvidia::server::MemorySpareChannel::Presence;
 
 class StateSetMemorySpareChannel : public StateSet
 {
@@ -72,7 +74,9 @@ class StateSetMemorySpareChannel : public StateSet
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
 
-        DbusVariantType propValue{ValueIntf->memorySpareChannelPresence()};
+        DbusVariantType propValue{
+            MemorySpareChannelIntf::convertPresenceToString(
+                ValueIntf->memorySpareChannelPresence())};
 
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();
@@ -98,11 +102,15 @@ class StateSetMemorySpareChannel : public StateSet
         switch (value)
         {
             case PLDM_STATESET_PRESENCE_PRESENT:
-                ValueIntf->memorySpareChannelPresence(true);
+                ValueIntf->memorySpareChannelPresence(ChannelPresence::Present);
                 break;
             case PLDM_STATESET_PRESENCE_NOT_PRESENT:
+                ValueIntf->memorySpareChannelPresence(
+                    ChannelPresence::NotPresent);
+                break;
             default:
-                ValueIntf->memorySpareChannelPresence(false);
+                ValueIntf->memorySpareChannelPresence(
+                    ChannelPresence::Unavailable);
                 break;
         }
 #ifdef OEM_NVIDIA
@@ -112,20 +120,26 @@ class StateSetMemorySpareChannel : public StateSet
 
     void setDefaultValue() override
     {
-        ValueIntf->memorySpareChannelPresence(false);
+        ValueIntf->memorySpareChannelPresence(ChannelPresence::Unavailable);
     }
 
     std::tuple<std::string, std::string, Level> getEventData() const override
     {
-        if (ValueIntf->memorySpareChannelPresence())
+        if (ValueIntf->memorySpareChannelPresence() == ChannelPresence::Present)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("True"), Level::Informational};
         }
-        else
+        else if (ValueIntf->memorySpareChannelPresence() ==
+                 ChannelPresence::NotPresent)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("False"), Level::Informational};
+        }
+        else
+        {
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Unknown"), Level::Informational};
         }
     }
 
