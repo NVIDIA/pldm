@@ -93,19 +93,21 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
     // Should be true for PLDM_STATESET_PRESENCE_PRESENT
     stateSensor->updateReading(true, true, 0, PLDM_STATESET_PRESENCE_PRESENT);
     EXPECT_EQ(
-        true,
+        sdbusplus::common::com::nvidia::MemorySpareChannel::Presence::Present,
         stateSetMemorySpareChannel->ValueIntf->memorySpareChannelPresence());
 
     // Should be false for PLDM_STATESET_PRESENCE_NOT_PRESENT
     stateSensor->updateReading(true, true, 0,
                                PLDM_STATESET_PRESENCE_NOT_PRESENT);
     EXPECT_EQ(
-        false,
+        sdbusplus::common::com::nvidia::MemorySpareChannel::Presence::
+            NotPresent,
         stateSetMemorySpareChannel->ValueIntf->memorySpareChannelPresence());
 
     // Should be false for invalid state set
     stateSensor->updateReading(true, true, 0, 0);
     EXPECT_EQ(
-        false,
+        sdbusplus::common::com::nvidia::MemorySpareChannel::Presence::
+            Unavailable,
         stateSetMemorySpareChannel->ValueIntf->memorySpareChannelPresence());
 }
