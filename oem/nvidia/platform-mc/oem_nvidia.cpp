@@ -401,18 +401,16 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
-static std::string cpuNameToMemoryName(const std::string& cpuName)
+static std::string cpuNameToMemoryName(std::string cpuName)
 {
-    std::string cpuNameUpperCase = cpuName;
-    transform(cpuNameUpperCase.begin(), cpuNameUpperCase.end(),
-              cpuNameUpperCase.begin(), ::toupper);
+    std::transform(cpuName.begin(), cpuName.end(), cpuName.begin(), ::toupper);
     // The sensors are associated to CPU by default based on contained id. Using
     // it to associate with corresponding Memory.
-    if (cpuNameUpperCase == "HGX_CPU_0" || cpuNameUpperCase == "CPU_0")
+    if (cpuName == "HGX_CPU_0" || cpuName == "CPU_0")
     {
         return "ProcessorModule_0_Memory_0";
     }
-    if (cpuNameUpperCase == "HGX_CPU_1" || cpuNameUpperCase == "CPU_1")
+    if (cpuName == "HGX_CPU_1" || cpuName == "CPU_1")
     {
         return "ProcessorModule_1_Memory_0";
     }
