@@ -134,11 +134,13 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
             stateSets[sensorOffset]->setValue(eventState);
 
             std::string entityName = getAssociationEntityId();
+#ifdef PLATFORM_PREFIX
             std::string platformPrefix = std::string(PLATFORM_PREFIX) + "_";
-            if (entityName.rfind(platformPrefix, 0) == 0)
+            if (entityName.starts_with(platformPrefix))
             {
                 entityName = entityName.substr(platformPrefix.length());
             }
+#endif
             const std::string sensorName =
                 stateSets[sensorOffset]->getStringStateType();
 
