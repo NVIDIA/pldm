@@ -196,6 +196,13 @@ class Terminus
      */
     std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorID id);
 
+    /** @brief Get inentory path by sensorID
+     *
+     *  @param[in] id - sensor ID
+     *  @return inventory path name
+     */
+    std::optional<ParentObjPath> getInventoryPath(SensorID id);
+
     /** @brief Get Effecter Auxiliary Names by effecterID
      *
      *  @param[in] id - effecter ID
@@ -361,7 +368,8 @@ class Terminus
         effecterAuxiliaryNamesTbl{};
 
     /** @brief The sensor aux name from EntityManager configuration PDI */
-    std::map<SensorID, AuxiliaryNames> sensorAuxNameOverwriteTbl{};
+    std::map<SensorID, std::tuple<AuxiliaryNames, ParentObjPath>>
+        sensorAuxNameOverwriteTbl{};
 
 #ifdef OEM_NVIDIA
     /** @brief The Port information from EntityManager configuration PDI */

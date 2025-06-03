@@ -312,11 +312,19 @@ requester::Coroutine Terminus::getSensorAuxNameFromEM(
                 continue;
             }
 
-            auto& auxNameTbl = sensorAuxNameOverwriteTbl[sensorId];
+            AuxiliaryNames auxNameTbl;
             for (auto auxName : auxNames)
             {
                 auxNameTbl.push_back({{"en", auxName}});
             }
+
+            auto parentPathEM =
+                co_await pldm::utils::coGetDbusProperty<std::string>(
+                    path.c_str(), "ParentObjPath",
+                    "xyz.openbmc_project.Configuration.SensorAuxName");
+
+            sensorAuxNameOverwriteTbl[sensorId] =
+                std::make_tuple(auxNameTbl, parentPathEM);
         }
     }
     catch (const std::exception& e)
@@ -602,7 +610,7 @@ std::shared_ptr<SensorAuxiliaryNames>
     if (sensorAuxNameOverwriteTbl.find(id) != sensorAuxNameOverwriteTbl.end())
     {
         return std::make_shared<SensorAuxiliaryNames>(
-            id, 1, sensorAuxNameOverwriteTbl[id]);
+            id, 1, std::get<0>(sensorAuxNameOverwriteTbl[id]));
     }
     else
     {
@@ -617,6 +625,20 @@ std::shared_ptr<SensorAuxiliaryNames>
         }
     }
     return nullptr;
+}
+
+std::optional<ParentObjPath> Terminus::getInventoryPath(SensorID id)
+{
+    if (sensorAuxNameOverwriteTbl.find(id) != sensorAuxNameOverwriteTbl.end())
+    {
+        auto& path = std::get<1>(sensorAuxNameOverwriteTbl[id]);
+        if (!path.empty() &&
+            path.starts_with("/xyz/openbmc_project/inventory/"))
+        {
+            return path;
+        }
+    }
+    return std::nullopt;
 }
 
 #ifdef OEM_NVIDIA
@@ -1399,8 +1421,17 @@ requester::Coroutine Terminus::updateAssociations()
         }
 
         auto entityInfo = ptr->getEntityInfo();
-        auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath, false);
+        std::vector<ParentObjPath> inventoryPaths;
+        auto inventoryPath = getInventoryPath(ptr->sensorId);
+        if (inventoryPath)
+        {
+            inventoryPaths.push_back(*inventoryPath);
+        }
+        else
+        {
+            inventoryPaths = findInventory(entityInfo);
+        }
+        ptr->setInventoryPaths(inventoryPaths, false);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
