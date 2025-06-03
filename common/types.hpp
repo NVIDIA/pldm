@@ -419,6 +419,7 @@ using EffecterAuxiliaryNames = SensorAuxiliaryNames;
 using EnitityAssociations =
     std::map<pdr::ContainerID,
              std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
+using ParentObjPath = std::string;
 } // namespace platform_mc
 
 } // namespace pldm
