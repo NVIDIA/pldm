@@ -22,6 +22,8 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+PHOSPHOR_LOG2_USING;
+
 namespace pldm
 {
 namespace fw_update

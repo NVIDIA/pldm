@@ -199,14 +199,17 @@ class DeviceUpdater
     DeviceUpdater& operator=(DeviceUpdater&&) = delete;
     ~DeviceUpdater()
     {
-        auto& [scope, rcOpt] = *deviceUpdaterHandle;
-        if (!rcOpt.has_value())
-        {
-            return;
-        }
-        stdexec::sync_wait(scope.on_empty());
-        deviceUpdaterHandle.reset();
         componentUpdaterMap.clear();
+        if (deviceUpdaterHandle.has_value())
+        {
+            auto& [scope, rcOpt] = *deviceUpdaterHandle;
+            if (!rcOpt.has_value())
+            {
+                return;
+            }
+            stdexec::sync_wait(scope.on_empty());
+        }
+        deviceUpdaterHandle.reset();
     }
 
     /** @brief Constructor

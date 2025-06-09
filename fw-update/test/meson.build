@@ -13,6 +13,7 @@ fw_update_test_src = declare_dependency(
             '../../common/utils.cpp',
             '../../common/test/mocked_utils.hpp',
             '../other_device_update_manager.cpp',
+            '../fw_update_utility.cpp',
             '../watch.cpp'])
 
 tests = [

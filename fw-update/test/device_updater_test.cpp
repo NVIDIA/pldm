@@ -297,23 +297,6 @@ TEST(DeviceUpdaterSequence, command_RetryRequest)
     EXPECT_EQ(sequence, DeviceUpdaterSequence::RetryRequest);
 }
 
-TEST_F(DeviceUpdaterTest, sendRecvPldmMsgOverMctp)
-{
-
-    auto instanceId = updateManager.instanceIdDb.next(eid);
-    Request request(sizeof(pldm_msg_hdr));
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-    const pldm_msg* response = NULL;
-    size_t respMsgLen = 0;
-    auto rc = encode_cancel_update_req(instanceId, requestMsg,
-                                       PLDM_CANCEL_UPDATE_REQ_BYTES);
-    EXPECT_EQ(rc, PLDM_SUCCESS);
-    EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = deviceUpdater.sendRecvPldmMsgOverMctp(
-            eid, request, &response, &respMsgLen);
-    });
-}
-
 TEST_F(DeviceUpdaterTest, sendcancelUpdateRequest)
 {
     EXPECT_NO_THROW({

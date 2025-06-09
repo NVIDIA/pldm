@@ -134,8 +134,7 @@ TEST(Manager, SingleMatch)
                 return 0;
             }));
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
     dbus::MctpInterfaces mctpInterfaces = {
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -181,8 +180,7 @@ TEST(Manager, SingleMatchTwoComponents)
             {compIdentifier2, componentObject2}},
            {}}}});
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
     dbus::MctpInterfaces mctpInterfaces;
 
     manager.createEntry(eid, uuid, mctpInterfaces);
@@ -288,8 +286,7 @@ TEST(Manager, MulipleMatch)
                 return 0;
             }));
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}},
         {uuid2, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
@@ -338,8 +335,7 @@ TEST(Manager, test_private_method_updateSwId)
            {}}}});
     const std::string objPath = "/xyz/openbmc_project/software/" + compName1;
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
 
     EXPECT_NO_THROW({ manager.updateSwId(objPath, compName1); });
 }
@@ -356,8 +352,7 @@ TEST(Manager, test_private_method_updateSwId_emptyObjPath)
 
     const std::string emptyObjPath;
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, fwInventoryInfo, componentInfoMap, &dbusHandler);
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap);
 
     EXPECT_NO_THROW({ manager.updateSwId(emptyObjPath, compName1); });
 }

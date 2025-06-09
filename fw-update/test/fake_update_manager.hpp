@@ -65,9 +65,7 @@ class FakeUpdateManager
     {
         return 0;
     }
-    bool performSecurityChecks()
-
-        void closePackage()
+    void closePackage()
     {
         return;
     }
@@ -79,19 +77,6 @@ class FakeUpdateManager
         onComplete = this->performSecurityChecksOnComplete;
         onComplete(securityChecksStatus);
     }
-    std::function<void(bool)> performSecurityChecksOnComplete =
-        [](bool result) {
-            if (result)
-            {
-                resultPerformSecurityChecksOnComplete =
-                    software::Activation::Activations::Active;
-            }
-            else
-            {
-                resultPerformSecurityChecksOnComplete =
-                    software::Activation::Activations::Failed;
-            }
-        };
     std::function<void(bool)> performSecurityChecksOnComplete =
         [](bool result) {
             if (result)

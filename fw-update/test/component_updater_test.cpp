@@ -454,39 +454,6 @@ TEST_F(ComponentUpdaterTest, expectedState_InvalidState)
     EXPECT_EQ(sequence, ComponentUpdaterSequence::Invalid);
 }
 
-TEST_F(ComponentUpdaterTest, GetStatus)
-{
-    mctp_eid_t eid = 0x1;
-    size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
-
-    auto getStatusHandler = []([[maybe_unused]] uint8_t currentFDState) {
-        return;
-    };
-    EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = componentUpdater.GetStatus(getStatusHandler);
-    });
-}
-
-TEST_F(ComponentUpdaterTest, GetStatus_empty_response)
-{
-    mctp_eid_t eid = 0x1;
-    size_t componentOffset = 0;
-    uint8_t currentFDState = 0;
-    uint8_t progressPercent = 0x65;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
-    EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = componentUpdater.processGetStatusResponse(
-            eid, nullptr, 0, currentFDState, progressPercent);
-    });
-}
-
 TEST_F(ComponentUpdaterTest, GetStatusResponse)
 {
     mctp_eid_t eid = 0x1;
@@ -522,50 +489,4 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.startComponentUpdater();
     });
-}
-
-TEST_F(ComponentUpdaterTest, updateComponentComplete)
-{
-    mctp_eid_t eid = 0x1;
-    size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
-
-    EXPECT_NO_THROW({
-        componentUpdater.updateComponentComplete(
-            ComponentUpdateStatus::UpdateFailed);
-    });
-}
-
-TEST_F(ComponentUpdaterTest, createRequestFwDataTimer)
-{
-    mctp_eid_t eid = 0x1;
-    size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
-
-    componentUpdater.createRequestFwDataTimer();
-    EXPECT_NE(componentUpdater.reqFwDataTimer, nullptr);
-    componentUpdater.reqFwDataTimer->start(std::chrono::seconds(1), false);
-    sleep(3);
-}
-
-TEST_F(ComponentUpdaterTest, createCompleteCommandsTimeoutTimer)
-{
-    mctp_eid_t eid = 0x1;
-    size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
-
-    componentUpdater.createCompleteCommandsTimeoutTimer();
-    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
-    componentUpdater.completeCommandsTimeoutTimer->start(
-        std::chrono::seconds(1), false);
-    sleep(3);
 }

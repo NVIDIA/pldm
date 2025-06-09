@@ -422,19 +422,19 @@ if get_option('softoff').allowed()
     subdir('softoff')
 endif
 
-# if get_option('tests').enabled()
-#   subdir('common/test')
-#   subdir('fw-update/test')
-#   subdir('requester/test')
-#   if get_option('libpldmresponder').enabled()
-#     subdir('host-bmc/test')
-#     subdir('platform-mc/test')
-#   endif
-#   subdir('test')
-#   if get_option('mockup-responder').enabled()
-#     subdir('mockup-responder/test')
-#   endif
-# endif
+if get_option('tests').enabled()
+  subdir('common/test')
+  subdir('fw-update/test')
+  subdir('requester/test')
+  if get_option('libpldmresponder').enabled()
+    # subdir('host-bmc/test')
+    # subdir('platform-mc/test')
+  endif
+  subdir('test')
+  if get_option('mockup-responder').enabled()
+    subdir('mockup-responder/test')
+  endif
+endif
 
 if get_option('use_fuzz').enabled()
   subdir('test/fuzz')

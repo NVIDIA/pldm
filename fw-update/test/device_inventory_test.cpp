@@ -76,8 +76,7 @@ TEST(Manager, SingleMatchForECSKU)
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
 }
 
@@ -103,8 +102,7 @@ TEST(Manager, SingleMatchForAPSKU)
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
     EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
@@ -134,8 +132,7 @@ TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
     EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
@@ -163,8 +160,7 @@ TEST(Manager, SingleMatchForAPSKUwithUpdate)
 
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
     EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
@@ -202,8 +198,7 @@ TEST(Manager, MultipleMatch)
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath2)))
         .Times(1);
 
-    MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces1{
         {uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}}};
     dbus::MctpInterfaces mctpInterfaces2{
@@ -235,7 +230,7 @@ TEST(Manager, MultiPropertyMatch)
         .Times(1);
 
     MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid,
          {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice",
@@ -264,7 +259,7 @@ TEST(Manager, NoMatch)
         .Times(0);
 
     MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces;
     const UUID uuid2{"ad4c8360-c54c-11eb-8529-0242ac130004"};
     // Non-matching MCTP UUID, not present in the mctp end point interface entry
@@ -297,7 +292,7 @@ TEST(Manager, MultiPropertyNoMatch)
         .Times(0);
 
     MockdBusHandler dbusHandler;
-    Manager manager(busMock, deviceInventoryInfo, descriptorMap, &dbusHandler);
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     // No match for wrong property value
     dbus::MctpInterfaces mctpInterfaces{
         {uuid,

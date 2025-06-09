@@ -38,8 +38,6 @@ namespace pldm
 namespace fw_update
 {
 
-class UpdateManager;
-
 using ActivationIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Software::server::Activation>;
 using ActivationProgressIntf = sdbusplus::server::object_t<
