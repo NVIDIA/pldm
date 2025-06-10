@@ -212,7 +212,7 @@ class Terminus
      *  @param[in] id - sensor ID
      *  @return sensor port types
      */
-    std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t,
+    std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
                                std::vector<dbus::PathAssociation>>>
         getSensorPortInfo(SensorID id);
 
@@ -367,7 +367,7 @@ class Terminus
 
 #ifdef OEM_NVIDIA
     /** @brief The Port information from EntityManager configuration PDI */
-    std::map<SensorID, std::tuple<PortType, PortProtocol, uint64_t,
+    std::map<SensorID, std::tuple<PortType, std::string, uint64_t,
                                   std::vector<dbus::PathAssociation>>>
         sensorPortInfoOverwriteTbl{};
 #endif

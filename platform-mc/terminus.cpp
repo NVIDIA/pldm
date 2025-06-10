@@ -383,8 +383,7 @@ exec::task<int> Terminus::getPortInfoFromEM(const std::string& objPath)
             }
 
             sensorPortInfoOverwriteTbl[sensorId] = std::make_tuple(
-                PortInfoIntf::convertPortTypeFromString(portType),
-                PortInfoIntf::convertPortProtocolFromString(portProtocol),
+                PortInfoIntf::convertPortTypeFromString(portType), portProtocol,
                 maxSpeed, associations);
         }
     }
@@ -621,13 +620,13 @@ std::shared_ptr<SensorAuxiliaryNames>
 }
 
 #ifdef OEM_NVIDIA
-std::shared_ptr<std::tuple<PortType, PortProtocol, uint64_t,
+std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
                            std::vector<dbus::PathAssociation>>>
     Terminus::getSensorPortInfo(SensorID id)
 {
     if (sensorPortInfoOverwriteTbl.find(id) != sensorPortInfoOverwriteTbl.end())
     {
-        return std::make_shared<std::tuple<PortType, PortProtocol, uint64_t,
+        return std::make_shared<std::tuple<PortType, std::string, uint64_t,
                                            std::vector<dbus::PathAssociation>>>(
             sensorPortInfoOverwriteTbl[id]);
     }

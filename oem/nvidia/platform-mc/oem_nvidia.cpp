@@ -417,6 +417,34 @@ static std::string cpuNameToMemoryName(std::string cpuName)
     return "";
 }
 
+static void setPortProtocol(StateSetEthIBPortLinkState* state,
+                            std::string configPortProtocol,
+                            EntityType portEntityType)
+{
+    if (configPortProtocol.length())
+    {
+        auto portProtocol =
+            PortInfoIntf::convertPortProtocolFromString(configPortProtocol);
+        state->setPortProtocolValue(portProtocol);
+    }
+    else
+    {
+        switch (portEntityType)
+        {
+            case PLDM_ENTITY_ETHERNET:
+                state->setPortProtocolValue(PortProtocol::Ethernet);
+                break;
+            case PLDM_ENTITY_INFINIBAND:
+                state->setPortProtocolValue(PortProtocol::InfiniBand);
+                break;
+            default:
+                lg2::debug("Unsupported PortProtocol : {PORT_PROTOCOL}",
+                           "PORT_PROTOCOL", std::to_string(portEntityType));
+                break;
+        }
+    }
+}
+
 exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 {
     for (auto sensor : terminus.stateSensors)
@@ -441,17 +469,8 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
                             stateSet.get());
 
                     ptr->setPortTypeValue(get<0>(*sensorPortInfo));
-                    switch (std::get<1>(entityInfo))
-                    {
-                        case PLDM_ENTITY_ETHERNET:
-                            ptr->setPortProtocolValue(PortProtocol::Ethernet);
-                            break;
-                        case PLDM_ENTITY_INFINIBAND:
-                            ptr->setPortProtocolValue(PortProtocol::NVLink);
-                            break;
-                        default:
-                            break;
-                    }
+                    setPortProtocol(ptr, std::get<1>(*sensorPortInfo),
+                                    std::get<1>(entityInfo));
 
                     // convert MBps to Gbps then assign to maxSpeed
                     double maxSpeedInGbps =
