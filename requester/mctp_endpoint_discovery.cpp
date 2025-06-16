@@ -362,7 +362,7 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
                         "xyz.openbmc_project.Common.UUID");
 
                 const auto eid =
-                    pldm::utils::DBusHandler().getDbusProperty<uint32_t>(
+                    pldm::utils::DBusHandler().getDbusProperty<uint8_t>(
                         objPath.c_str(), "EID",
                         "xyz.openbmc_project.MCTP.Endpoint");
 

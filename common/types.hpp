@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <typeinfo>
 
 namespace pldm
 {
@@ -251,12 +252,37 @@ struct MatchEntryInfo
         {
             return false;
         }
-        return std::any_of(interfaceProp->second.begin(),
-                           interfaceProp->second.end(),
-                           [&](const auto& dBusProp) {
-                               return cfgPropertyName == dBusProp.first &&
-                                      cfgPropertyValue == dBusProp.second;
-                           });
+
+        auto propIt = interfaceProp->second.find(cfgPropertyName);
+        if (propIt == interfaceProp->second.end())
+        {
+            return false;
+        }
+
+        bool matches = false;
+        std::visit([&](const auto& expected) {
+            using ExpectedType = std::decay_t<decltype(expected)>;
+            std::visit([&](const auto& actual) {
+                using ActualType = std::decay_t<decltype(actual)>;
+                if constexpr (std::is_arithmetic_v<ExpectedType> &&
+                            std::is_arithmetic_v<ActualType>)
+                {
+                    // Convert both to int64_t for comparison
+                    matches = static_cast<int64_t>(expected) ==
+                             static_cast<int64_t>(actual);
+                }
+                else if constexpr (std::is_same_v<ExpectedType, ActualType>)
+                {
+                    matches = expected == actual;
+                }
+                else
+                {
+                    matches = false;
+                }
+            }, propIt->second);
+        }, cfgPropertyValue);
+
+        return matches;
     }
 
     bool matchInventoryEntry(const dbus::InterfaceMap& interfaceMap,

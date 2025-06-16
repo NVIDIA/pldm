@@ -71,6 +71,10 @@ void parseConfig(const fs::path& jsonPath,
             {
                 value = prop.value()["Value"].get<uint32_t>();
             }
+            else if (type == "y")
+            {
+                value = prop.value()["Value"].get<uint8_t>();
+            }
             propMap.emplace(name, value);
         }
 
