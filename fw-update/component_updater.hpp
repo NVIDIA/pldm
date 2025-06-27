@@ -340,6 +340,15 @@ class ComponentUpdater
     void GetStatus(std::function<void(uint8_t)> getStatusCallback);
 
     /**
+     * @brief send get status request coroutine
+     *
+     * @param[in] getStatusCallback - callback to handle the response
+     * @return exec::task<int>
+     */
+    exec::task<int> sendGetStatusRequest(
+        std::function<void(uint8_t)> getStatusCallback);
+
+    /**
      * @brief process get status response
      *
      * @param[in] eid

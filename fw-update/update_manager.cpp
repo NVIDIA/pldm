@@ -229,7 +229,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     // Populate object path with the hash of the package file path
     size_t versionHash = std::hash<std::string>{}(packageFilePath);
     objPath = swRootPath + std::to_string(versionHash);
-    forceUpdate = updatePolicy->forceUpdate();
+    forceUpdate = true;
     auto targets = updatePolicy->targets();
     if (updatePolicy->updateOption() ==
         software::UpdatePolicy::UpdateOptionSupport::StageOnly)
