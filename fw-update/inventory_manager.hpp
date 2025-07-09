@@ -199,13 +199,17 @@ class InventoryManager
         dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
-    /** @brief Initiate Get Active Firmware Version
+    /** @brief Refresh the firmware identifiers and component details of a FD
+     *
+     *  Inventory commands QueryDeviceIdentifiers and GetFirmwareParmeters
+     *  commands are sent to the specified FD and the response is used to
+     *  refresh the firmware identifiers and component details.
      *
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
-    requester::Coroutine initiateGetActiveFirmwareVersion(
+    requester::Coroutine initiateRefreshFDInventory(
         mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Send getPLDMTypes command to destination EID and then return the
@@ -216,6 +220,13 @@ class InventoryManager
      *  @return coroutine return_value - PLDM completion code
      */
     requester::Coroutine getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
+
+    /** @brief Clear only the descriptor cache of a given endpoint. Software
+     *         inventory objects and chassis objects are preserved.
+     *
+     *  @param[in] eid - MCTP endpoint ID
+     */
+    void clearDescriptorCache(mctp_eid_t eid);
 
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
@@ -230,7 +241,7 @@ class InventoryManager
         startFirmwareDiscoveryFlow(mctp_eid_t eid,
                                    dbus::MctpInterfaces mctpInterfaces);
 
-    /** @brief Starts get Active Firmware Version Flow
+    /** @brief Refresh firmware device inventory
      *
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] mctpInterfaces - Reference to the dbus::MctpInterfaces object
@@ -238,9 +249,9 @@ class InventoryManager
      *  @param[in] updateFWVersionCallback - Callback function for updating
      * firmware version in the D-BUS
      */
-    requester::Coroutine getActiveFirmwareVersion(
-        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
-        UpdateFWVersionCallBack updateFWVersionCallback);
+    requester::Coroutine
+        refreshFDInventory(mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
+                           UpdateFWVersionCallBack updateFWVersionCallback);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *

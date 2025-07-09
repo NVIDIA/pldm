@@ -181,7 +181,7 @@ requester::Coroutine InventoryManager::startFirmwareDiscoveryFlow(
     co_return rc;
 }
 
-requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
+requester::Coroutine InventoryManager::initiateRefreshFDInventory(
     mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
     uint64_t supportedTypes = 0;
@@ -206,8 +206,7 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
     }
 
     dbus::MctpInterfaces mctpInterfaces;
-    auto co =
-        getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
+    auto co = refreshFDInventory(eid, mctpInterfaces, updateFWVersionCallback);
 
     if (inventoryCoRoutineHandlers.contains(eid))
     {
@@ -221,36 +220,49 @@ requester::Coroutine InventoryManager::initiateGetActiveFirmwareVersion(
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine InventoryManager::getActiveFirmwareVersion(
+requester::Coroutine InventoryManager::refreshFDInventory(
     mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
     UpdateFWVersionCallBack updateFWVersionCallback)
 {
     std::string messageError{};
     std::string resolution{};
 
-    auto rc = co_await getFirmwareParameters(eid, messageError, resolution,
-                                             mctpInterfaces, true);
-
-    if (rc == PLDM_SUCCESS)
+    auto rc = co_await queryDeviceIdentifiers(eid, messageError, resolution);
+    if (rc)
     {
-        if (updateFWVersionCallback)
+        cleanUpResources(eid);
+        lg2::error(
+            "Failed to execute the 'queryDeviceIdentifiers' function., EID={EID}, RC={RC} ",
+            "EID", eid, "RC", rc);
+        if (!messageError.empty() && !resolution.empty())
         {
-            updateFWVersionCallback(eid);
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
         }
         co_return rc;
     }
 
-    cleanUpResources(eid);
-    lg2::error(
-        "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
-        "EID", eid, "RC", rc);
-    if (!messageError.empty() && !resolution.empty())
+    rc = co_await getFirmwareParameters(eid, messageError, resolution,
+                                        mctpInterfaces, true);
+    if (rc)
     {
-        logDiscoveryFailedMessage(eid, messageError, resolution,
-                                  mctpInterfaces);
+        cleanUpResources(eid);
+        lg2::error(
+            "Failed to execute the 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
+            "EID", eid, "RC", rc);
+        if (!messageError.empty() && !resolution.empty())
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
+        }
+        co_return rc;
     }
 
-    co_return rc;
+    if (updateFWVersionCallback)
+    {
+        updateFWVersionCallback(eid);
+    }
+    co_return PLDM_SUCCESS;
 }
 
 void InventoryManager::cleanUpResources(mctp_eid_t eid)
@@ -599,7 +611,7 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
     // next endpoints after discovering the first endpoint associated with the
     // UUID. The logic to calculate fastest EID to the PLDM FD is not
     // needed when FW versions are refreshed.
-    if (mctpEidMap.contains(eid) && !refreshFWVersionOnly)
+    if (mctpEidMap.contains(eid))
     {
         const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
         // This condition is met, if an additional eid is discovered for a
@@ -617,6 +629,21 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
                 lg2::info(
                     "Fastest path to UUID={UUID} is already set to EID={EID}",
                     "UUID", uuid, "EID", eid);
+                co_return PLDM_SUCCESS;
+            }
+
+            // During refresh, only clean up slower endpoints without modifying
+            // priority queue
+            if (refreshFWVersionOnly)
+            {
+                if (eid != curFastestEid)
+                {
+                    lg2::info(
+                        "Refresh: Clearing slower endpoint EID={EID} for UUID={UUID}, fastest is EID={FASTEST_EID}",
+                        "EID", eid, "UUID", uuid, "FASTEST_EID", curFastestEid);
+                    descriptorMap.erase(eid);
+                    componentInfoMap.erase(eid);
+                }
                 co_return PLDM_SUCCESS;
             }
 
@@ -656,6 +683,11 @@ requester::Coroutine InventoryManager::parseGetFWParametersResponse(
         }
         else
         {
+            if (refreshFWVersionOnly)
+            {
+                co_return PLDM_SUCCESS;
+            }
+
             std::priority_queue<MctpEidInfo> mctpEidInfo;
             mctpEidInfo.push({eid, mediumType, bindingType});
             mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
@@ -687,6 +719,20 @@ void InventoryManager::logDiscoveryFailedMessage(
             createLogEntry(resourceErrorDetected, compName, messageError,
                            resolution);
         }
+    }
+}
+
+void InventoryManager::clearDescriptorCache(mctp_eid_t eid)
+{
+    descriptorMap.erase(eid);
+    if (inventoryCoRoutineHandlers.contains(eid))
+    {
+        auto& handler = inventoryCoRoutineHandlers[eid];
+        if (handler && handler.done())
+        {
+            handler.destroy();
+        }
+        inventoryCoRoutineHandlers.erase(eid);
     }
 }
 

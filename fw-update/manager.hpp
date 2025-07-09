@@ -143,26 +143,27 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
-    /** @brief Update Active Firmware Version for the given EID
-     * This method is called whenever platform event is received for firmware
-     * version change.
-     *  Data Structure containing active firmware version is updated for all the
-     * components associated with the input EID in the
-     * initiateGetActiveFirmwareVersion method, and then in updateFWVersion
-     * method, for each component, dbus is updated only if there's a change in
-     * firmware version
+    /** @brief Refresh firmware information for a specific endpoint
+     *
+     *  Called when:
+     *  - A platform event is received indicating firmware version change
+     *  - MCTP endpoint comes online (status change to enabled)
+     *
+     *  Queries the endpoint to refresh both firmware descriptors and
+     *  component information. Updates D-Bus objects only
+     *  for components whose versions have changed.
      *
      *  @param[in] eid - MCTP endpoint
      */
-    void updateFWInventory(EID eid)
+    void refreshFirmwareInfo(EID eid)
     {
         try
         {
             UpdateFWVersionCallBack updateFWVersionCallback = [this](EID eid) {
                 this->fwInventoryManager.updateFWVersion(eid);
             };
-            inventoryMgr.initiateGetActiveFirmwareVersion(
-                eid, updateFWVersionCallback);
+            inventoryMgr.initiateRefreshFDInventory(eid,
+                                                    updateFWVersionCallback);
         }
         catch (const std::exception& e)
         {
@@ -189,13 +190,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
                             [[maybe_unused]] const EID& eid) override
     {
-        this->updateFWInventory(eid);
+        this->refreshFirmwareInfo(eid);
     }
 
     void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
                              [[maybe_unused]] const EID& eid) override
     {
-        // placeholder
+        // Keep componentInfoMap and componentNameMap to maintain inventory
+        // visibility. Ongoing updates will fail gracefully on MCTP
+        // communication errors.
+        lg2::info(
+            "Clearing firmware descriptors for offline endpoint EID={EID}",
+            "EID", eid);
+        inventoryMgr.clearDescriptorCache(eid);
     }
 
   private:

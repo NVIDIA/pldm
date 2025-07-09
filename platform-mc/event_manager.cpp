@@ -106,7 +106,7 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         }
 
         auto eid = std::get<0>(mctpInfo.value());
-        fwUpdateManager.updateFWInventory(eid);
+        fwUpdateManager.refreshFirmwareInfo(eid);
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA)
     {

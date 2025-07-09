@@ -61,14 +61,21 @@ std::optional<sdbusplus::message::object_path>
 
     if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
         deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                deviceInfo) &&
-        descriptorMap.contains(eid))
+                                                deviceInfo))
     {
+        auto descSearch = descriptorMap.find(eid);
+        if (descSearch == descriptorMap.end())
+        {
+            lg2::info(
+                "Descriptor not found for EID={EID}, skipping device inventory creation",
+                "EID", eid);
+            return deviceObjPath;
+        }
+
         const auto& objPath =
             std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
         const auto& assocs =
             std::get<Associations>(std::get<CreateDeviceInfo>(deviceInfo));
-        auto descSearch = descriptorMap.find(eid);
         std::string ecsku{};
         std::string apsku{};
         for (const auto& [descType, descValue] : descSearch->second)
