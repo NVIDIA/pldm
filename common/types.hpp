@@ -380,6 +380,8 @@ using PossibleStates = std::set<uint8_t>;
 //!< composite effecter/sensor
 using CompositeSensorStates = std::vector<PossibleStates>;
 using EntityInfo = std::tuple<ContainerID, EntityType, EntityInstance>;
+using StateSetData = std::tuple<StateSetId, PossibleStates>;
+using StateSetInfo = std::tuple<EntityInfo, std::vector<StateSetData>>;
 using SensorInfo =
     std::tuple<EntityInfo, CompositeSensorStates, std::vector<StateSetId>>;
 
