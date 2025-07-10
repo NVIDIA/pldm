@@ -600,14 +600,16 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
         const auto& uuid = mctpEidMap[eid];
         // This condition is only hit when a second EID is found with the same
         // UUID during discovery.
-        if (std::find(discoveredUuids.begin(), discoveredUuids.end(),uuid) != discoveredUuids.end())
+        if (discoveredUuids.find(uuid) != discoveredUuids.end())
         {
             info("UUID {U} has already been discovered, skipping inventory creation", "U", uuid);
+            descriptorMap.erase(discoveredUuids.at(uuid));
+            componentInfoMap.erase(discoveredUuids.at(uuid));
             co_return PLDM_SUCCESS;
         }
         if (createInventoryCallBack)
         {
-            discoveredUuids.emplace_back(uuid);
+            discoveredUuids.insert_or_assign(uuid, eid);
             createInventoryCallBack(eid, uuid, mctpInterfaces);
         }
     }

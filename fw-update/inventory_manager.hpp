@@ -240,7 +240,7 @@ class InventoryManager
     MctpEidMap mctpEidMap;
 
     /** @brief Track the MCTP endpoints discovered during discovery*/
-    std::vector<UUID> discoveredUuids{};
+    std::map<UUID, EID> discoveredUuids{};
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;
