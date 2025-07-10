@@ -151,31 +151,24 @@ void SensorManager::doSensorPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
-    if (terminus->doSensorPollingTaskHandle)
+    if (terminus->doSensorPollingTaskHandle.has_value())
     {
-        if (terminus->doSensorPollingTaskHandle.done())
+        auto& [scope, rcOpt] = *terminus->doSensorPollingTaskHandle;
+        if (!rcOpt.has_value())
         {
-            terminus->doSensorPollingTaskHandle.destroy();
-            auto co = doSensorPollingTask(tid);
-            terminus->doSensorPollingTaskHandle = co.handle;
-            if (terminus->doSensorPollingTaskHandle.done())
-            {
-                terminus->doSensorPollingTaskHandle = nullptr;
-            }
+            lg2::error("Sensor polling already in progress for TID {TID}.", "TID", tid);
+            return;
         }
+        stdexec::sync_wait(scope.on_empty());
+        terminus->doSensorPollingTaskHandle.reset();
     }
-    else
-    {
-        auto co = doSensorPollingTask(tid);
-        terminus->doSensorPollingTaskHandle = co.handle;
-        if (terminus->doSensorPollingTaskHandle.done())
-        {
-            terminus->doSensorPollingTaskHandle = nullptr;
-        }
-    }
+    auto& [scope, rcOpt] = terminus->doSensorPollingTaskHandle.emplace();
+    stdexec::start_detached(
+        doSensorPollingTask(tid) | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
-requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
+exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
 {
     uint64_t t0 = 0;
     uint64_t t1 = 0;
@@ -443,7 +436,7 @@ requester::Coroutine SensorManager::doSensorPollingTask(tid_t tid)
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine
+exec::task<int>
     SensorManager::getSensorReading(std::shared_ptr<NumericSensor> sensor)
 {
     auto tid = sensor->tid;
@@ -627,7 +620,7 @@ requester::Coroutine
     co_return completionCode;
 }
 
-requester::Coroutine
+exec::task<int>
     SensorManager::getStateSensorReadings(std::shared_ptr<StateSensor> sensor)
 {
     auto tid = sensor->tid;

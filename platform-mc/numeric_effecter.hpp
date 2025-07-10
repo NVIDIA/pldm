@@ -95,18 +95,18 @@ class NumericEffecter
      *
      *  @param[in] state - the effecter state to be set
      */
-    requester::Coroutine
+    exec::task<int>
         setNumericEffecterEnable(pldm_effecter_oper_state state);
 
     /** @brief Sending setNumericEffecterValue command for the effecter
      *
      *  @param[in] effecterValue - the effecter value to be set
      */
-    requester::Coroutine setNumericEffecterValue(double effecterValue);
+    exec::task<int> setNumericEffecterValue(double effecterValue);
 
     /** @brief Sending getNumericEffecterValue command for the effecter
      */
-    requester::Coroutine getNumericEffecterValue();
+    exec::task<int> getNumericEffecterValue();
 
     /**
      * raw: raw value, read from/set to effecter.

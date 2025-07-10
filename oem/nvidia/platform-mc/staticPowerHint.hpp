@@ -27,6 +27,7 @@
 #include <sdeventplus/event.hpp>
 
 #include <cmath>
+#include <optional>
 
 namespace pldm
 {
@@ -124,17 +125,18 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
     void estimatePower(double cpuClockFrequency, double workloadFactor,
                        double temperature) override
     {
-        if (estimationTaskHandle)
+        if (estimationTaskHandle.has_value())
         {
-            if (!estimationTaskHandle.done())
+            auto& [scope, rcOpt] = *estimationTaskHandle;
+            if (!rcOpt.has_value())
             {
                 StaticPowerHintInft::stateOfLastEstimatePower(
                     StateOfEstimatePower::Failed);
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     Unavailable();
             }
-            estimationTaskHandle.destroy();
-            estimationTaskHandle = nullptr;
+            stdexec::sync_wait(scope.on_empty());
+            estimationTaskHandle.reset();
         }
 
         // check range
@@ -173,19 +175,17 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         StaticPowerHintInft::valid(false, true);
         StaticPowerHintInft::stateOfLastEstimatePower(
             StateOfEstimatePower::InProgress);
-        auto co =
-            estimationTask(cpuClockFrequency, workloadFactor, temperature);
-        estimationTaskHandle = co.handle;
-        if (estimationTaskHandle.done())
-        {
-            estimationTaskHandle = nullptr;
-        }
+        auto& [scope, rcOpt] = estimationTaskHandle.emplace();
+        stdexec::start_detached(
+            estimationTask(cpuClockFrequency, workloadFactor, temperature) |
+                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
     }
 
   private:
-    requester::Coroutine estimationTask(double cpuClockFrequency,
-                                        double workloadFactor,
-                                        double temperature)
+    exec::task<int> estimationTask(double cpuClockFrequency,
+                                    double workloadFactor,
+                                    double temperature)
     {
         uint64_t t0 = 0;
         uint64_t t1 = 0;
@@ -251,7 +251,9 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
     NumericEffecter& effecterWorkloadFactor;
     NumericEffecter& effecterPowerEstimation;
 
-    std::coroutine_handle<> estimationTaskHandle;
+    /** @brief coroutine handle of estimationTask */
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        estimationTaskHandle;
     bool verbose;
 };
 

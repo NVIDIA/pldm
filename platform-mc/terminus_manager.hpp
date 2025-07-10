@@ -78,7 +78,7 @@ class TerminusManager
      *  @param[out] responseLen - length of response PLDM message
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine SendRecvPldmMsg(tid_t tid, Request& request,
+    exec::task<int> SendRecvPldmMsg(tid_t tid, Request& request,
                                          const pldm_msg** responseMsg,
                                          size_t* responseLen);
 
@@ -91,7 +91,7 @@ class TerminusManager
      *  @param[out] responseLen - length of response PLDM message
      *  @return coroutine return_value - PLDM completion code
      */
-    virtual requester::Coroutine
+    virtual exec::task<int>
         SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
                                 const pldm_msg** responseMsg,
                                 size_t* responseLen);
@@ -118,7 +118,7 @@ class TerminusManager
      *  @param[in] tid - Terminus ID
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine resumeTid(tid_t tid);
+    exec::task<int> resumeTid(tid_t tid);
 
     /** @brief Show Numeric Sensors without Aux Names **/
     bool numericSensorsWithoutAuxName;
@@ -128,14 +128,14 @@ class TerminusManager
      *
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine discoverMctpTerminusTask();
+    exec::task<int> discoverMctpTerminusTask();
 
     /** @brief Initialize terminus and then instantiate terminus object to keeps
      *         the data fetched from terminus
      *
      *  @param[in] mctpInfo - NetworkId, EID and UUID
      */
-    requester::Coroutine initMctpTerminus(const MctpInfo& mctpInfo);
+    exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo);
 
     /** @brief Send getTID PLDM command to destination EID and then return the
      *         value of tid in reference parameter.
@@ -144,7 +144,7 @@ class TerminusManager
      *  @param[out] tid - TID returned from terminus
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getTidOverMctp(mctp_eid_t eid, tid_t& tid);
+    exec::task<int> getTidOverMctp(mctp_eid_t eid, tid_t& tid);
 
     /** @brief Send setTID command to destination EID.
      *
@@ -152,7 +152,7 @@ class TerminusManager
      *  @param[in] tid - Terminus ID
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine setTidOverMctp(mctp_eid_t eid, tid_t tid);
+    exec::task<int> setTidOverMctp(mctp_eid_t eid, tid_t tid);
 
     /** @brief Send getPLDMTypes command to destination EID and then return the
      *         value of supportedTypes in reference parameter.
@@ -161,7 +161,7 @@ class TerminusManager
      *  @param[out] supportedTypes - Supported Types returned from terminus
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPLDMTypes(tid_t tid, uint64_t& supportedTypes);
+    exec::task<int> getPLDMTypes(tid_t tid, uint64_t& supportedTypes);
 
     /** @brief getTerminusUID command
      *
@@ -169,7 +169,7 @@ class TerminusManager
      *  @param[out] uuid - UUID in string format xxxxxxxx-xxxx-xxxx-xxxxxxxxxxxx
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getTerminusUID(tid_t tid, UUID& uuidStr);
+    exec::task<int> getTerminusUID(tid_t tid, UUID& uuidStr);
 
     sdeventplus::Event& event;
     RequesterHandler& handler;
@@ -190,7 +190,8 @@ class TerminusManager
     std::queue<MctpInfos> queuedMctpInfos{};
 
     /** @brief coroutine handle of discoverTerminusTask */
-    std::coroutine_handle<> discoverMctpTerminusTaskHandle;
+    std::optional<std::pair<exec::async_scope, std::optional<int>>>
+        discoverMctpTerminusTaskHandle;
 
     /** @brief A Manager interface for calling the hook functions **/
     Manager* manager;

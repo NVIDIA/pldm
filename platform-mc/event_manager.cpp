@@ -211,7 +211,7 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
     return PLDM_SUCCESS;
 }
 
-requester::Coroutine
+exec::task<int>
     EventManager::pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize)
 {
     uint8_t rc = 0;
@@ -322,7 +322,7 @@ requester::Coroutine
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine EventManager::pollForPlatformEventMessage(
+exec::task<int> EventManager::pollForPlatformEventMessage(
     tid_t tid, uint8_t transferOperationFlag, uint32_t dataTransferHandle,
     uint16_t eventIdToAcknowledge, uint8_t& completionCode, uint8_t& eventTid,
     uint16_t& eventId, uint32_t& nextDataTransferHandle, uint8_t& transferFlag,

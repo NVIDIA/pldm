@@ -259,7 +259,7 @@ void NumericEffecter::handleErrGetNumericEffecterValue()
     }
 }
 
-requester::Coroutine
+exec::task<int>
     NumericEffecter::setNumericEffecterEnable(pldm_effecter_oper_state state)
 {
     Request request(sizeof(pldm_msg_hdr) +
@@ -308,7 +308,7 @@ requester::Coroutine
     co_return completionCode;
 }
 
-requester::Coroutine
+exec::task<int>
     NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
     Request request(sizeof(pldm_msg_hdr) +
@@ -389,7 +389,7 @@ requester::Coroutine
     co_return completionCode;
 }
 
-requester::Coroutine NumericEffecter::getNumericEffecterValue()
+exec::task<int> NumericEffecter::getNumericEffecterValue()
 {
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES);

@@ -108,17 +108,17 @@ class StateEffecter
     /** @brief Sending getStateEffecterStates command for the effecter
      *
      */
-    requester::Coroutine getStateEffecterStates();
+    exec::task<int> getStateEffecterStates();
 
     /** @brief Sending setStateEffecterStates command for the effecter
      *
      */
-    requester::Coroutine setStateEffecterStates(uint8_t cmpId, uint8_t value);
+    exec::task<int> setStateEffecterStates(uint8_t cmpId, uint8_t value);
 
     /** @brief Sending setStateEffecterStates command for the effecter
      *
      */
-    requester::Coroutine setStateEffecterStates(
+    exec::task<int> setStateEffecterStates(
         std::vector<set_effecter_state_field>& stateField);
 
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to */

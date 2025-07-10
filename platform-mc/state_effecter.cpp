@@ -163,7 +163,7 @@ void StateEffecter::updateReading(uint8_t compEffecterIndex,
     }
 }
 
-requester::Coroutine StateEffecter::getStateEffecterStates()
+exec::task<int> StateEffecter::getStateEffecterStates()
 {
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
@@ -225,7 +225,7 @@ requester::Coroutine StateEffecter::getStateEffecterStates()
     co_return completionCode;
 }
 
-requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
+exec::task<int> StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                            uint8_t value)
 {
     uint8_t cmpEffCnt = stateSets.size();
@@ -257,7 +257,7 @@ requester::Coroutine StateEffecter::setStateEffecterStates(uint8_t cmpId,
     co_return rc;
 }
 
-requester::Coroutine StateEffecter::setStateEffecterStates(
+exec::task<int> StateEffecter::setStateEffecterStates(
     std::vector<set_effecter_state_field>& stateField)
 {
     uint8_t cmpEffCnt = stateSets.size();

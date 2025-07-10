@@ -74,7 +74,9 @@ class ClearNonVolatileVariablesEffecterIntf :
             requestState = PLDM_STATESET_BOOT_REQUEST_NORMAL;
         }
 
-        effecter.setStateEffecterStates(compId, requestState).detach();
+        stdexec::start_detached(
+            effecter.setStateEffecterStates(compId, requestState),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
         return value;
     }
 

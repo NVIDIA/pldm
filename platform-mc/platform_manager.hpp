@@ -53,13 +53,13 @@ class PlatformManager
     /** @brief Initialize terminus which supports PLDM Type 2
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine initTerminus();
+    exec::task<int> initTerminus();
 
     /** @brief Initialize terminus Event Receiver setting
      *  @param[in] tid - Terminus ID
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine initEventReceiver(tid_t tid);
+    exec::task<int> initEventReceiver(tid_t tid);
 
   private:
     /** @brief Fetch all PDRs from terminus.
@@ -67,7 +67,7 @@ class PlatformManager
      *  @param[in] terminus - The terminus object to store fetched PDRs
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPDRs(std::shared_ptr<Terminus> terminus);
+    exec::task<int> getPDRs(std::shared_ptr<Terminus> terminus);
 
     /** @brief Fetch PDR from terminus
      *
@@ -85,7 +85,7 @@ class PlatformManager
      *  @param[out] transferCrc - CRC value when record data is last part of PDR
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPDR(tid_t tid, uint32_t recordHndl,
+    exec::task<int> getPDR(tid_t tid, uint32_t recordHndl,
                                 uint32_t dataTransferHndl,
                                 uint8_t transferOpFlag, uint16_t requestCnt,
                                 uint16_t recordChgNum, uint32_t& nextRecordHndl,
@@ -99,7 +99,7 @@ class PlatformManager
      *  @param[in] terminus - The terminus object to store fetched PDRs
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine getPDRRepositoryInfo(tid_t tid,
+    exec::task<int> getPDRRepositoryInfo(tid_t tid,
                                               uint8_t& repositoryState,
                                               uint32_t& recordCount,
                                               uint32_t& repositorySize,
@@ -114,7 +114,7 @@ class PlatformManager
      * should send event message to
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine setEventReceiver(
+    exec::task<int> setEventReceiver(
         tid_t tid, pldm_event_message_global_enable eventMessageGlobalEnable,
         mctp_eid_t eventReceiverEid);
 
@@ -124,7 +124,7 @@ class PlatformManager
      *  @param[out] terminusBufferSize
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine eventMessageBufferSize(tid_t tid,
+    exec::task<int> eventMessageBufferSize(tid_t tid,
                                                 uint16_t receiverMaxBufferSize,
                                                 uint16_t& terminusBufferSize);
 
@@ -140,7 +140,7 @@ class PlatformManager
      *  @param[out] eventClass - vector of eventClass the device can generate
      *  @return coroutine return_value - PLDM completion code
      */
-    requester::Coroutine eventMessageSupported(
+    exec::task<int> eventMessageSupported(
         tid_t tid, uint8_t formatVersion, uint8_t& synchronyConfiguration,
         uint8_t& synchronyConfigurationSupported,
         uint8_t& numerEventClassReturned, std::vector<uint8_t>& eventClass);

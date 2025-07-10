@@ -64,12 +64,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         verbose(verbose)
     {}
 
-    requester::Coroutine beforeDiscoverTerminus()
+    exec::task<int> beforeDiscoverTerminus()
     {
         co_return PLDM_SUCCESS;
     }
 
-    requester::Coroutine afterDiscoverTerminus()
+    exec::task<int> afterDiscoverTerminus()
     {
         auto rc = co_await platformManager.initTerminus();
         co_return rc;
@@ -209,7 +209,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return PLDM_SUCCESS;
     }
 
-    requester::Coroutine pollForPlatformEvent(tid_t tid)
+    exec::task<int> pollForPlatformEvent(tid_t tid)
     {
         auto it = termini.find(tid);
         if (it != termini.end())
@@ -222,7 +222,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return PLDM_SUCCESS;
     }
 
-    requester::Coroutine resumeTerminus(tid_t tid)
+    exec::task<int> resumeTerminus(tid_t tid)
     {
         auto it = termini.find(tid);
         if (it != termini.end())

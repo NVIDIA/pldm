@@ -25,7 +25,7 @@ namespace pldm
 namespace platform_mc
 {
 
-requester::Coroutine PlatformManager::initTerminus()
+exec::task<int> PlatformManager::initTerminus()
 {
     for (auto& [tid, terminus] : termini)
     {
@@ -69,7 +69,7 @@ requester::Coroutine PlatformManager::initTerminus()
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine PlatformManager::initEventReceiver(tid_t tid)
+exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
 {
     if (termini.find(tid) == termini.end())
     {
@@ -107,7 +107,7 @@ requester::Coroutine PlatformManager::initEventReceiver(tid_t tid)
     co_return rc;
 }
 
-requester::Coroutine
+exec::task<int>
     PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
 {
     tid_t tid = terminus->getTid();
@@ -213,7 +213,7 @@ requester::Coroutine
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine PlatformManager::getPDR(
+exec::task<int> PlatformManager::getPDR(
     tid_t tid, uint32_t recordHndl, uint32_t dataTransferHndl,
     uint8_t transferOpFlag, uint16_t requestCnt, uint16_t recordChgNum,
     uint32_t& nextRecordHndl, uint32_t& nextDataTransferHndl,
@@ -251,7 +251,7 @@ requester::Coroutine PlatformManager::getPDR(
     co_return completionCode;
 }
 
-requester::Coroutine PlatformManager::getPDRRepositoryInfo(
+exec::task<int> PlatformManager::getPDRRepositoryInfo(
     tid_t tid, uint8_t& repositoryState, uint32_t& recordCount,
     uint32_t& repositorySize, uint32_t& largestRecordSize)
 {
@@ -289,7 +289,7 @@ requester::Coroutine PlatformManager::getPDRRepositoryInfo(
     co_return completionCode;
 }
 
-requester::Coroutine PlatformManager::eventMessageBufferSize(
+exec::task<int> PlatformManager::eventMessageBufferSize(
     tid_t tid, uint16_t receiverMaxBufferSize, uint16_t& terminusBufferSize)
 {
     Request request(sizeof(pldm_msg_hdr) +
@@ -321,7 +321,7 @@ requester::Coroutine PlatformManager::eventMessageBufferSize(
     co_return completionCode;
 }
 
-requester::Coroutine PlatformManager::setEventReceiver(
+exec::task<int> PlatformManager::setEventReceiver(
     tid_t tid, pldm_event_message_global_enable eventMessageGlobalEnable,
     mctp_eid_t eventReceiverEid)
 {
@@ -370,7 +370,7 @@ requester::Coroutine PlatformManager::setEventReceiver(
     co_return completionCode;
 }
 
-requester::Coroutine PlatformManager::eventMessageSupported(
+exec::task<int> PlatformManager::eventMessageSupported(
     tid_t tid, uint8_t formatVersion, uint8_t& synchronyConfiguration,
     uint8_t& synchronyConfigurationSupported, uint8_t& numberEventClassReturned,
     std::vector<uint8_t>& eventClass)

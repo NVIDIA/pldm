@@ -97,7 +97,7 @@ class EventManager
      *
      *  @param[in] dstTid - the destination TID
      */
-    requester::Coroutine pollForPlatformEventTask(tid_t tid,
+    exec::task<int> pollForPlatformEventTask(tid_t tid,
                                                   uint16_t maxBufferSize);
 
   protected:
@@ -119,7 +119,7 @@ class EventManager
      *  @return coroutine return_value - PLDM completion code
      *
      */
-    requester::Coroutine pollForPlatformEventMessage(
+    exec::task<int> pollForPlatformEventMessage(
         tid_t tid, uint8_t transferOperationFlag, uint32_t dataTransferHandle,
         uint16_t eventIdToAcknowledge, uint8_t& completionCode,
         uint8_t& eventTid, uint16_t& eventId, uint32_t& nextDataTransferHandle,

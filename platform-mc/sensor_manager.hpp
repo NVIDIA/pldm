@@ -140,20 +140,20 @@ class SensorManager
 
     /** @brief polling all sensors in each terminus
      */
-    requester::Coroutine doSensorPollingTask(tid_t tid);
+    exec::task<int> doSensorPollingTask(tid_t tid);
 
     /** @brief Sending getSensorReading command for the sensor
      *
      *  @param[in] sensor - the sensor to be updated
      */
-    requester::Coroutine
+    exec::task<int>
         getSensorReading(std::shared_ptr<NumericSensor> sensor);
 
     /** @brief Sending getStateSensorReadings command for the sensor
      *
      *  @param[in] sensor - the sensor to be updated
      */
-    requester::Coroutine
+    exec::task<int>
         getStateSensorReadings(std::shared_ptr<StateSensor> sensor);
 
     /** @brief check if numeric sensor is in priority name spaces

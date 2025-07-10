@@ -209,32 +209,24 @@ void TerminusManager::unmapTid(const tid_t& tid)
 void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
 {
     queuedMctpInfos.emplace(mctpInfos);
-    if (discoverMctpTerminusTaskHandle)
+    if (discoverMctpTerminusTaskHandle.has_value())
     {
-        if (discoverMctpTerminusTaskHandle.done())
+        auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+        if (!rcOpt.has_value())
         {
-            discoverMctpTerminusTaskHandle.destroy();
-
-            auto co = discoverMctpTerminusTask();
-            discoverMctpTerminusTaskHandle = co.handle;
-            if (discoverMctpTerminusTaskHandle.done())
-            {
-                discoverMctpTerminusTaskHandle = nullptr;
-            }
+            lg2::error("Terminus discovery already in progress.");
+            return;
         }
+        stdexec::sync_wait(scope.on_empty());
+        discoverMctpTerminusTaskHandle.reset();
     }
-    else
-    {
-        auto co = discoverMctpTerminusTask();
-        discoverMctpTerminusTaskHandle = co.handle;
-        if (discoverMctpTerminusTaskHandle.done())
-        {
-            discoverMctpTerminusTaskHandle = nullptr;
-        }
-    }
+    auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+    stdexec::start_detached(
+        discoverMctpTerminusTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
-requester::Coroutine TerminusManager::discoverMctpTerminusTask()
+exec::task<int> TerminusManager::discoverMctpTerminusTask()
 {
     if (manager)
     {
@@ -270,7 +262,7 @@ requester::Coroutine TerminusManager::discoverMctpTerminusTask()
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
+exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
     mctp_eid_t eid = std::get<0>(mctpInfo);
     tid_t tid = 0;
@@ -332,7 +324,7 @@ requester::Coroutine TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine
+exec::task<int>
     TerminusManager::SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
                                              const pldm_msg** responseMsg,
                                              size_t* responseLen)
@@ -347,7 +339,7 @@ requester::Coroutine
     co_return rc;
 }
 
-requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
+exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 {
     auto instanceId = requester.getInstanceId(eid);
     Request request(sizeof(pldm_msg_hdr));
@@ -384,7 +376,7 @@ requester::Coroutine TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     co_return completionCode;
 }
 
-requester::Coroutine TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
+exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 {
     auto instanceId = requester.getInstanceId(eid);
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
@@ -415,7 +407,7 @@ requester::Coroutine TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
     co_return responseMsg->payload[0];
 }
 
-requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
+exec::task<int> TerminusManager::getPLDMTypes(tid_t tid,
                                                    uint64_t& supportedTypes)
 {
     Request request(sizeof(pldm_msg_hdr));
@@ -450,7 +442,7 @@ requester::Coroutine TerminusManager::getPLDMTypes(tid_t tid,
     co_return completionCode;
 }
 
-requester::Coroutine TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
+exec::task<int> TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
 {
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
@@ -497,7 +489,7 @@ requester::Coroutine TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
     co_return completionCode;
 }
 
-requester::Coroutine
+exec::task<int>
     TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
                                      const pldm_msg** responseMsg,
                                      size_t* responseLen)
@@ -542,7 +534,7 @@ std::shared_ptr<Terminus> TerminusManager::getTerminus(const UUID& uuid)
     return nullptr;
 }
 
-requester::Coroutine TerminusManager::resumeTid(tid_t tid)
+exec::task<int> TerminusManager::resumeTid(tid_t tid)
 {
     auto mctpInfo = toMctpInfo(tid);
     if (!mctpInfo)

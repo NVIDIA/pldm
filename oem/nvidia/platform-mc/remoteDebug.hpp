@@ -163,15 +163,17 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     uint32_t timeout(uint32_t value, bool skipSignal)
     {
-        numericEffecter
-            .setNumericEffecterValue(numericEffecter.baseToRaw(value))
-            .detach();
+        stdexec::start_detached(
+            numericEffecter.setNumericEffecterValue(numericEffecter.baseToRaw(value)),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
         return RemoteDebugIntf::timeout(value, skipSignal);
     }
 
     uint32_t timeout() const override
     {
-        numericEffecter.getNumericEffecterValue().detach();
+        stdexec::start_detached(
+            numericEffecter.getNumericEffecterValue(),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
         return numericEffecter.rawToBase(numericEffecter.getValue());
     }
 
@@ -199,7 +201,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_ENABLED};
         }
 
-        stateEffecter.setStateEffecterStates(stateField).detach();
+        stdexec::start_detached(
+            stateEffecter.setStateEffecterStates(stateField),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
     }
 
     void disable(std::vector<DebugPolicy> debugPolicy) override
@@ -227,7 +231,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_DISABLED};
         }
 
-        stateEffecter.setStateEffecterStates(stateField).detach();
+        stdexec::start_detached(
+            stateEffecter.setStateEffecterStates(stateField),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
     }
 
     uint8_t toCompId(DebugPolicy value)
