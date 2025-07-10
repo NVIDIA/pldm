@@ -20,7 +20,7 @@
 #include "libpldm/platform.h"
 
 #ifdef OEM_NVIDIA
-#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#include "libpldm/oem/nvidia/energy_count_numeric_sensor_oem.h"
 
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #endif

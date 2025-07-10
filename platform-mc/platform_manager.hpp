@@ -17,7 +17,7 @@
 #pragma once
 
 #include "libpldm/platform.h"
-#include "libpldm/requester/pldm.h"
+#include "libpldm/pldm.h"
 
 #include "terminus.hpp"
 #include "terminus_manager.hpp"

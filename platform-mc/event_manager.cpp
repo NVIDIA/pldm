@@ -17,7 +17,7 @@
 #include "event_manager.hpp"
 
 #include "libpldm/utils.h"
-#include "platform.h"
+#include "libpldm/platform.h"
 
 #include "fw-update/manager.hpp"
 #include "smbios_mdr.hpp"

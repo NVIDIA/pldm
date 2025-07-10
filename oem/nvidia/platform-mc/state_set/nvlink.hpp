@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "libpldm/state_set_oem_nvidia.h"
+#include "libpldm/oem/nvidia/state_set_oem_nvidia.h"
 
 #include "common/types.hpp"
 #include "platform-mc/state_set.hpp"

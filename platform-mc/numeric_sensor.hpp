@@ -17,9 +17,9 @@
 #pragma once
 
 #include "libpldm/platform.h"
-#include "libpldm/requester/pldm.h"
+#include "libpldm/pldm.h"
 #ifdef OEM_NVIDIA
-#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#include "libpldm/oem/nvidia/energy_count_numeric_sensor_oem.h"
 #endif
 
 #include "common/types.hpp"

@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "oem/nvidia/libpldm/energy_count_numeric_sensor_oem.h"
+#include "libpldm/oem/nvidia/energy_count_numeric_sensor_oem.h"
 
 #include "common/types.hpp"
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"

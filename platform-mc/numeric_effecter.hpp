@@ -17,7 +17,7 @@
 #pragma once
 
 #include "libpldm/platform.h"
-#include "libpldm/requester/pldm.h"
+#include "libpldm/pldm.h"
 
 #include "common/types.hpp"
 #include "platform-mc/numeric_effecter_base_unit.hpp"
