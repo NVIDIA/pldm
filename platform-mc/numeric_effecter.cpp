@@ -86,28 +86,28 @@ NumericEffecter::NumericEffecter(
     switch (pdr->effecter_data_size)
     {
         case PLDM_EFFECTER_DATA_SIZE_UINT8:
-            maxValue = pdr->max_set_table.value_u8;
-            minValue = pdr->min_set_table.value_u8;
+            maxValue = pdr->max_settable.value_u8;
+            minValue = pdr->min_settable.value_u8;
             break;
         case PLDM_EFFECTER_DATA_SIZE_SINT8:
-            maxValue = pdr->max_set_table.value_s8;
-            minValue = pdr->min_set_table.value_s8;
+            maxValue = pdr->max_settable.value_s8;
+            minValue = pdr->min_settable.value_s8;
             break;
         case PLDM_EFFECTER_DATA_SIZE_UINT16:
-            maxValue = pdr->max_set_table.value_u16;
-            minValue = pdr->min_set_table.value_u16;
+            maxValue = pdr->max_settable.value_u16;
+            minValue = pdr->min_settable.value_u16;
             break;
         case PLDM_EFFECTER_DATA_SIZE_SINT16:
-            maxValue = pdr->max_set_table.value_s16;
-            minValue = pdr->min_set_table.value_s16;
+            maxValue = pdr->max_settable.value_s16;
+            minValue = pdr->min_settable.value_s16;
             break;
         case PLDM_EFFECTER_DATA_SIZE_UINT32:
-            maxValue = pdr->max_set_table.value_u32;
-            minValue = pdr->min_set_table.value_u32;
+            maxValue = pdr->max_settable.value_u32;
+            minValue = pdr->min_settable.value_u32;
             break;
         case PLDM_EFFECTER_DATA_SIZE_SINT32:
-            maxValue = pdr->max_set_table.value_s32;
-            minValue = pdr->min_set_table.value_s32;
+            maxValue = pdr->max_settable.value_s32;
+            minValue = pdr->min_settable.value_s32;
             break;
     }
 

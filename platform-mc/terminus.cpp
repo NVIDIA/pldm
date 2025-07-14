@@ -1022,7 +1022,7 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
 {
     const uint8_t* ptr = pdr.data();
     auto parsedPdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
-    size_t count = (uint8_t*)(&parsedPdr->max_set_table.value_u8) -
+    size_t count = (uint8_t*)(&parsedPdr->max_settable.value_u8) -
                    (uint8_t*)(&parsedPdr->hdr);
     memcpy(&parsedPdr->hdr, ptr, count);
     ptr += count;
@@ -1031,24 +1031,24 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
     {
         case PLDM_EFFECTER_DATA_SIZE_UINT8:
         case PLDM_EFFECTER_DATA_SIZE_SINT8:
-            parsedPdr->max_set_table.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->max_set_table.value_u8);
-            parsedPdr->min_set_table.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->min_set_table.value_u8);
+            parsedPdr->max_settable.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->max_settable.value_u8);
+            parsedPdr->min_settable.value_u8 = *((uint8_t*)ptr);
+            ptr += sizeof(parsedPdr->min_settable.value_u8);
             break;
         case PLDM_EFFECTER_DATA_SIZE_UINT16:
         case PLDM_EFFECTER_DATA_SIZE_SINT16:
-            parsedPdr->max_set_table.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->max_set_table.value_u16);
-            parsedPdr->min_set_table.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->min_set_table.value_u16);
+            parsedPdr->max_settable.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->max_settable.value_u16);
+            parsedPdr->min_settable.value_u16 = le16toh(*((uint16_t*)ptr));
+            ptr += sizeof(parsedPdr->min_settable.value_u16);
             break;
         case PLDM_EFFECTER_DATA_SIZE_UINT32:
         case PLDM_EFFECTER_DATA_SIZE_SINT32:
-            parsedPdr->max_set_table.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->max_set_table.value_u32);
-            parsedPdr->min_set_table.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->min_set_table.value_u32);
+            parsedPdr->max_settable.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->max_settable.value_u32);
+            parsedPdr->min_settable.value_u32 = le32toh(*((uint32_t*)ptr));
+            ptr += sizeof(parsedPdr->min_settable.value_u32);
             break;
         default:
             break;
