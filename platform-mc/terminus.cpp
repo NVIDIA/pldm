@@ -777,16 +777,16 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
     expectedPDRSize -= PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_MIN_LENGTH;
     switch (parsedPdr->sensor_data_size)
     {
-        case PLDM_SENSOR_DATA_SIZE_UINT8:
-        case PLDM_SENSOR_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
             expectedPDRSize += 3 * sizeof(uint8_t);
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT16:
-        case PLDM_SENSOR_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
             expectedPDRSize += 3 * sizeof(uint16_t);
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT32:
-        case PLDM_SENSOR_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
             expectedPDRSize += 3 * sizeof(uint32_t);
             break;
         default:
@@ -828,13 +828,13 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
 
     switch (parsedPdr->sensor_data_size)
     {
-        case PLDM_SENSOR_DATA_SIZE_UINT8:
-        case PLDM_SENSOR_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
             parsedPdr->hysteresis.value_u8 = *((uint8_t*)ptr);
             ptr += sizeof(parsedPdr->hysteresis.value_u8);
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT16:
-        case PLDM_SENSOR_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
         {
             // hysValue =  *((uint16_t*)ptr);
             uint16_t hysValue = 0;
@@ -843,8 +843,8 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
             ptr += sizeof(parsedPdr->hysteresis.value_u16);
             break;
         }
-        case PLDM_SENSOR_DATA_SIZE_UINT32:
-        case PLDM_SENSOR_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
         {
             uint32_t hysValue = 0;
             memcpy(&hysValue, ptr, sizeof(uint32_t));
@@ -863,15 +863,15 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
 
     switch (parsedPdr->sensor_data_size)
     {
-        case PLDM_SENSOR_DATA_SIZE_UINT8:
-        case PLDM_SENSOR_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
             parsedPdr->max_readable.value_u8 = *((uint8_t*)ptr);
             ptr += sizeof(parsedPdr->max_readable.value_u8);
             parsedPdr->min_readable.value_u8 = *((uint8_t*)ptr);
             ptr += sizeof(parsedPdr->min_readable.value_u8);
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT16:
-        case PLDM_SENSOR_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
         {
             uint16_t maxReadableValue = 0;
             memcpy(&maxReadableValue, ptr, sizeof(uint16_t));
@@ -883,8 +883,8 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr>
             ptr += sizeof(parsedPdr->min_readable.value_u16);
             break;
         }
-        case PLDM_SENSOR_DATA_SIZE_UINT32:
-        case PLDM_SENSOR_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
         {
             uint32_t maxReadableValue = 0;
             memcpy(&maxReadableValue, ptr, sizeof(uint32_t));

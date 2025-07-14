@@ -106,32 +106,32 @@ NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
 
     switch (pdr->sensor_data_size)
     {
-        case PLDM_SENSOR_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
             maxValue = pdr->max_readable.value_u8;
             minValue = pdr->min_readable.value_u8;
             hysteresis = pdr->hysteresis.value_u8;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
             maxValue = pdr->max_readable.value_s8;
             minValue = pdr->min_readable.value_s8;
             hysteresis = pdr->hysteresis.value_s8;
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
             maxValue = pdr->max_readable.value_u16;
             minValue = pdr->min_readable.value_u16;
             hysteresis = pdr->hysteresis.value_u16;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
             maxValue = pdr->max_readable.value_s16;
             minValue = pdr->min_readable.value_s16;
             hysteresis = pdr->hysteresis.value_s16;
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
             maxValue = pdr->max_readable.value_u32;
             minValue = pdr->min_readable.value_u32;
             hysteresis = pdr->hysteresis.value_u32;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
             maxValue = pdr->max_readable.value_s32;
             minValue = pdr->min_readable.value_s32;
             hysteresis = pdr->hysteresis.value_s32;
@@ -461,35 +461,35 @@ NumericSensor::NumericSensor(
 
     switch (pdr->sensor_data_size)
     {
-        case PLDM_SENSOR_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
             maxValue = pdr->max_readable.value_u8;
             minValue = pdr->min_readable.value_u8;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
             maxValue = pdr->max_readable.value_s8;
             minValue = pdr->min_readable.value_s8;
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
             maxValue = pdr->max_readable.value_u16;
             minValue = pdr->min_readable.value_u16;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
             maxValue = pdr->max_readable.value_s16;
             minValue = pdr->min_readable.value_s16;
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
             maxValue = pdr->max_readable.value_u32;
             minValue = pdr->min_readable.value_u32;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
             maxValue = pdr->max_readable.value_s32;
             minValue = pdr->min_readable.value_s32;
             break;
-        case PLDM_SENSOR_DATA_SIZE_UINT64:
+        case PLDM_SENSOR_OEM_DATA_SIZE_UINT64:
             maxValue = pdr->max_readable.value_u64;
             minValue = pdr->min_readable.value_u64;
             break;
-        case PLDM_SENSOR_DATA_SIZE_SINT64:
+        case PLDM_SENSOR_OEM_DATA_SIZE_SINT64:
             maxValue = pdr->max_readable.value_s64;
             minValue = pdr->min_readable.value_s64;
             break;

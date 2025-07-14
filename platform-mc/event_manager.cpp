@@ -518,27 +518,27 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
 
             switch (sensorDataSize)
             {
-                case PLDM_SENSOR_DATA_SIZE_UINT8:
+                case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
                     reading = static_cast<double>(
                         static_cast<uint8_t>(presentReading));
                     break;
-                case PLDM_SENSOR_DATA_SIZE_SINT8:
+                case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
                     reading = static_cast<double>(
                         static_cast<int8_t>(presentReading));
                     break;
-                case PLDM_SENSOR_DATA_SIZE_UINT16:
+                case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
                     reading = static_cast<double>(
                         static_cast<uint16_t>(presentReading));
                     break;
-                case PLDM_SENSOR_DATA_SIZE_SINT16:
+                case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
                     reading = static_cast<double>(
                         static_cast<int16_t>(presentReading));
                     break;
-                case PLDM_SENSOR_DATA_SIZE_UINT32:
+                case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
                     reading = static_cast<double>(
                         static_cast<uint32_t>(presentReading));
                     break;
-                case PLDM_SENSOR_DATA_SIZE_SINT32:
+                case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
                     reading = static_cast<double>(
                         static_cast<int32_t>(presentReading));
                     break;
