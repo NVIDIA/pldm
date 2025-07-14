@@ -18,6 +18,7 @@
 
 #include "manager.hpp"
 
+#include <sdbusplus/exception.hpp>
 #include <stdio.h>
 
 namespace pldm
@@ -334,8 +335,25 @@ exec::task<int>
                                              const pldm_msg** responseMsg,
                                              size_t* responseLen)
 {
-    auto rc = co_await requester::SendRecvPldmMsg<RequesterHandler>(
-        handler, eid, request, responseMsg, responseLen);
+    int rc = 0;
+    try
+    {
+        std::tie(rc, *responseMsg, *responseLen) =
+            co_await handler.sendRecvMsg(eid, std::move(request));
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Send and Receive PLDM message over MCTP throw error - {ERROR}.",
+                   "ERROR", e);
+        co_return PLDM_ERROR;
+    }
+    catch (const int& e)
+    {
+        lg2::error("Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
+                   "ERROR", e);
+        co_return PLDM_ERROR;
+    }
+
     if (rc)
     {
         lg2::error("sendRecvPldmMsgOverMctp failed. eid={EID} rc={RC}", "EID",
