@@ -190,13 +190,10 @@ exec::task<int> StateEffecter::getStateEffecterStates()
         co_return rc;
     }
 
-    uint8_t completionCode = PLDM_SUCCESS;
-    uint8_t comp_effecter_count = 0;
-    std::array<get_effecter_state_field, 8> stateField{};
+    pldm_get_state_effecter_states_resp resp;
 
     rc = decode_get_state_effecter_states_resp(
-        responseMsg, payloadLen, &completionCode, &comp_effecter_count,
-        stateField.data());
+        responseMsg, payloadLen, &resp);
     if (rc)
     {
         lg2::error(
@@ -206,24 +203,24 @@ exec::task<int> StateEffecter::getStateEffecterStates()
         co_return rc;
     }
 
-    if (completionCode != PLDM_SUCCESS)
+    if (resp.completion_code != PLDM_SUCCESS)
     {
         lg2::error(
             "Failed to decode response of GetStateEffecterStates, tid={TID}, effecterId={EFFECTERID}, cc={CC}.",
-            "TID", tid, "EFFECTERID", effecterId, "CC", completionCode);
+            "TID", tid, "EFFECTERID", effecterId, "CC", resp.completion_code);
         handleErrGetStateEffecterStates();
-        co_return completionCode;
+        co_return resp.completion_code;
     }
 
-    for (size_t i = 0; i < comp_effecter_count; i++)
+    for (size_t i = 0; i < resp.comp_effecter_count; i++)
     {
         updateReading(i,
                       static_cast<pldm_effecter_oper_state>(
-                          stateField[i].effecter_op_state),
-                      stateField[i].pending_state, stateField[i].present_state);
+                          resp.field[i].effecter_op_state),
+                      resp.field[i].pending_state, resp.field[i].present_state);
     }
 
-    co_return completionCode;
+    co_return resp.completion_code;
 }
 
 exec::task<int> StateEffecter::setStateEffecterStates(uint8_t cmpId,
