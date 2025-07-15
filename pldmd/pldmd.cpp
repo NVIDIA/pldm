@@ -43,7 +43,7 @@
 #include <string>
 #include <vector>
 
-#ifdef PLDM_TYP2
+#ifdef PLDM_TYPE2
 #include "platform-mc/manager.hpp"
 #endif
 PHOSPHOR_LOG2_USING;
@@ -263,8 +263,8 @@ int main(int argc, char** argv)
                                              FW_UPDATE_CONFIG_JSON, fwDebug);
 
 #ifdef PLDM_TYPE2
-    std::unique_ptr<platform_mc::Manager> platformManager =
-        std::make_unique<platform_mc::Manager>(event, reqHandler, dbusImplReq,
+    std::unique_ptr<pldm::platform_mc::Manager> platformManager =
+        std::make_unique<pldm::platform_mc::Manager>(event, reqHandler, instanceIdDb,
                                                *(fwManager.get()), verbose,
                                                numericSensorsWithoutAuxName);
 

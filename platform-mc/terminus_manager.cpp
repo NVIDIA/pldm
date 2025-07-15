@@ -28,11 +28,11 @@ namespace platform_mc
 
 TerminusManager::TerminusManager(
     sdeventplus::Event& event, requester::Handler<requester::Request>& handler,
-    dbus_api::Requester& requester,
+    InstanceIdDb& instanceIdDb,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, mctp_eid_t localEid,
     Manager* manager, bool numericSensorsWithoutAuxName) :
     numericSensorsWithoutAuxName(numericSensorsWithoutAuxName), event(event),
-    handler(handler), requester(requester), termini(termini),
+    handler(handler), instanceIdDb(instanceIdDb), termini(termini),
     localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
 {
     // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
@@ -364,13 +364,13 @@ exec::task<int>
 
 exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 {
-    auto instanceId = requester.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_tid_req(instanceId, requestMsg);
     if (rc)
     {
-        requester.markFree(eid, instanceId);
+        instanceIdDb.free(eid, instanceId);
         lg2::error("encode_get_tid_req failed, eid={EID} rc={RC}", "EID", eid,
                    "RC", rc);
         co_return rc;
@@ -401,13 +401,13 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 
 exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 {
-    auto instanceId = requester.getInstanceId(eid);
+    auto instanceId = instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_tid_req(instanceId, tid, requestMsg);
     if (rc)
     {
-        requester.markFree(eid, instanceId);
+        instanceIdDb.free(eid, instanceId);
         co_return rc;
     }
 
@@ -530,7 +530,7 @@ exec::task<int>
 
         auto eid = std::get<0>(mctpInfo.value());
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-        requestMsg->hdr.instance_id = requester.getInstanceId(eid);
+        requestMsg->hdr.instance_id = instanceIdDb.next(eid);
         auto rc = co_await SendRecvPldmMsgOverMctp(eid, request, responseMsg,
                                                    responseLen);
         co_return rc;

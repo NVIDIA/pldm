@@ -19,6 +19,7 @@
 #include "libpldm/platform.h"
 #include "libpldm/pldm.h"
 
+#include "common/instance_id.hpp"
 #include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -59,7 +60,7 @@ class TerminusManager
     explicit TerminusManager(
         sdeventplus::Event& event,
         requester::Handler<requester::Request>& handler,
-        dbus_api::Requester& requester,
+        InstanceIdDb& instanceIdDb,
         std::map<tid_t, std::shared_ptr<Terminus>>& termini,
         mctp_eid_t localEid, Manager* manager,
         bool numericSensorsWithoutAuxName = false);
@@ -174,7 +175,7 @@ class TerminusManager
 
     sdeventplus::Event& event;
     RequesterHandler& handler;
-    dbus_api::Requester& requester;
+    InstanceIdDb& instanceIdDb;
 
     /** @brief Managed termini list */
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
