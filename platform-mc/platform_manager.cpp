@@ -51,7 +51,7 @@ exec::task<int> PlatformManager::initTerminus()
             {
                 lg2::error("failed to send eventMessageSupported, rc={RC}.",
                            "RC", rc);
-                terminus->synchronyConfigurationSupported = 0;
+                terminus->synchronyConfigurationSupported.byte = 0;
             }
 
             if (!terminus->initalized)
@@ -78,7 +78,7 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
 
     auto& terminus = termini[tid];
     uint8_t rc = PLDM_SUCCESS;
-    if (terminus->synchronyConfigurationSupported &
+    if (terminus->synchronyConfigurationSupported.byte &
         (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
     {
         rc = co_await setEventReceiver(tid,
@@ -372,8 +372,8 @@ exec::task<int> PlatformManager::setEventReceiver(
 
 exec::task<int> PlatformManager::eventMessageSupported(
     tid_t tid, uint8_t formatVersion, uint8_t& synchronyConfiguration,
-    uint8_t& synchronyConfigurationSupported, uint8_t& numberEventClassReturned,
-    std::vector<uint8_t>& eventClass)
+    bitfield8_t& synchronyConfigurationSupported,
+    uint8_t& numberEventClassReturned, std::vector<uint8_t>& eventClass)
 {
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);

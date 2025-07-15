@@ -142,7 +142,7 @@ class PlatformManager
      */
     exec::task<int> eventMessageSupported(
         tid_t tid, uint8_t formatVersion, uint8_t& synchronyConfiguration,
-        uint8_t& synchronyConfigurationSupported,
+        bitfield8_t& synchronyConfigurationSupported,
         uint8_t& numerEventClassReturned, std::vector<uint8_t>& eventClass);
 
     /** reference of TerminusManager for sending PLDM request to terminus*/

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "libpldm/entity.h"
+#include "libpldm/pldm_types.h"
 #include "libpldm/platform.h"
 
 #ifdef OEM_NVIDIA
@@ -276,7 +277,7 @@ class Terminus
 
     /** @brief This value indicates the event messaging styles supported by the
      * terminus */
-    uint8_t synchronyConfigurationSupported;
+    bitfield8_t synchronyConfigurationSupported;
 
     /** @brief This value indicates if the terminus is resumed successfully */
     bool resumed;
