@@ -168,7 +168,8 @@ exec::task<int> StateEffecter::getStateEffecterStates()
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-    auto rc = encode_get_state_effecter_states_req(0, effecterId, requestMsg);
+    auto rc = encode_get_state_effecter_states_req(
+        0, effecterId, requestMsg, PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
     if (rc)
     {
         lg2::error(
