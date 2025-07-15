@@ -375,37 +375,55 @@ exec::task<int> PlatformManager::eventMessageSupported(
     bitfield8_t& synchronyConfigurationSupported,
     uint8_t& numberEventClassReturned, std::vector<uint8_t>& eventClass)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
+    auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_event_message_supported_req(0, formatVersion, requestMsg);
     if (rc)
     {
+        lg2::error(
+            "Failed to encode request EventMessageSupported for terminus ID {TID}, error {RC} ",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
-    const pldm_msg* responseMsg = NULL;
+    const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
     rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
                                                   &responseLen);
     if (rc)
     {
+        lg2::error(
+            "Failed to send EventMessageSupported message for terminus {TID}, error {RC}",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
     uint8_t completionCode = 0;
-    uint8_t* pEventClass = 0;
+    uint8_t eventClassCount = static_cast<uint8_t>(responseLen) -
+                              PLDM_EVENT_MESSAGE_SUPPORTED_MIN_RESP_BYTES;
+    eventClass.resize(eventClassCount);
+
     rc = decode_event_message_supported_resp(
         responseMsg, responseLen, &completionCode, &synchronyConfiguration,
         &synchronyConfigurationSupported, &numberEventClassReturned,
-        &pEventClass);
+        eventClass.data(), eventClassCount);
     if (rc)
     {
+        lg2::error(
+            "Failed to decode response EventMessageSupported for terminus ID {TID}, error {RC} ",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
-    eventClass.insert(eventClass.end(), pEventClass,
-                      pEventClass + numberEventClassReturned);
+    if (completionCode != PLDM_SUCCESS)
+    {
+        lg2::error(
+            "Error : EventMessageSupported for terminus ID {TID}, complete code {CC}.",
+            "TID", tid, "CC", completionCode);
+        co_return completionCode;
+    }
+
     co_return completionCode;
 }
 } // namespace platform_mc
