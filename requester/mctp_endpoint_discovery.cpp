@@ -95,7 +95,7 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
                             bus,
                             sdbusplus::bus::match::rules::propertiesChanged(
                                 path.c_str(),
-                                "xyz.openbmc_project.Object.Enable"),
+                                "au.com.codeconstruct.MCTP.Endpoint1"),
                             std::bind_front(&MctpDiscovery::refreshEndpoints,
                                             this)));
                 }
@@ -222,7 +222,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     mctpInfos.emplace_back(MctpInfo(eid, uuid, {}));
 
                     // watch PropertiesChanged signal from
-                    // xyz.openbmc_project.Object.Enable PDI
+                    // au.com.codeconstruct.MCTP.Endpoint1 PDI
                     if (enableMatches.find(objPath.str) == enableMatches.end())
                     {
                         info("register match_t objectPath:{OBJPATH}", "OBJPATH",
@@ -233,7 +233,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                                 bus,
                                 sdbusplus::bus::match::rules::propertiesChanged(
                                     objPath.str,
-                                    "xyz.openbmc_project.Object.Enable"),
+                                    "au.com.codeconstruct.MCTP.Endpoint1"),
                                 std::bind_front(
                                     &MctpDiscovery::refreshEndpoints, this)));
                     }
@@ -343,14 +343,14 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
     std::string service = msg.get_sender();
 
     msg.read(interface, properties);
-    auto prop = properties.find("Enabled");
+    auto prop = properties.find("Connectivity");
     if (prop != properties.end())
     {
-        auto enabled = std::get<bool>(prop->second);
+        auto connectivity = std::get<std::string>(prop->second);
         info(
-            "Received xyz.openbmc_poject.Object.Enabled PropertiesChanged signal for "
-            "Enabled={ENABLED} at PATH={OBJ_PATH} from SERVICE={SERVICE}",
-            "ENABLED", enabled, "OBJ_PATH", objPath, "SERVICE", service);
+            "Received au.com.codeconstruct.MCTP.Endpoint1 PropertiesChanged signal for "
+            "Connectivity={CONN} at PATH={OBJ_PATH} from SERVICE={SERVICE}",
+            "CONN", connectivity, "OBJ_PATH", objPath, "SERVICE", service);
 
         for (MctpDiscoveryHandlerIntf* handler : handlers)
         {
@@ -366,7 +366,7 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
                         objPath.c_str(), "EID",
                         "xyz.openbmc_project.MCTP.Endpoint");
 
-                if (enabled)
+                if (connectivity == "Available")
                 {
                     handler->onlineMctpEndpoint(uuid, eid);
                 }
