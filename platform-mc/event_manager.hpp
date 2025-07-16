@@ -104,6 +104,7 @@ class EventManager
     /** @brief Send pollForPlatformEventMessage and return response
      *
      *  @param[in] tid
+     *  @param[in] formatVersion
      *  @param[in] transferOpFlag
      *  @param[in] dataTransferHandle
      *  @param[in] eventIdToAcknowledge
@@ -120,10 +121,11 @@ class EventManager
      *
      */
     exec::task<int> pollForPlatformEventMessage(
-        tid_t tid, uint8_t transferOperationFlag, uint32_t dataTransferHandle,
-        uint16_t eventIdToAcknowledge, uint8_t& completionCode,
-        uint8_t& eventTid, uint16_t& eventId, uint32_t& nextDataTransferHandle,
-        uint8_t& transferFlag, uint8_t& eventClass, uint32_t& eventDataSize,
+        tid_t tid, uint8_t formatVersion, uint8_t transferOperationFlag,
+        uint32_t dataTransferHandle, uint16_t eventIdToAcknowledge,
+        uint8_t& completionCode, uint8_t& eventTid, uint16_t& eventId,
+        uint32_t& nextDataTransferHandle, uint8_t& transferFlag,
+        uint8_t& eventClass, uint32_t& eventDataSize,
         std::vector<uint8_t>& eventData, uint32_t& eventDataIntegrityChecksum);
 
     void notifyCPERLogger(const std::string& dataPath);

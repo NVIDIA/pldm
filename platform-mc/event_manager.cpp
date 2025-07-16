@@ -16,8 +16,8 @@
  */
 #include "event_manager.hpp"
 
-#include "libpldm/utils.h"
 #include "libpldm/platform.h"
+#include "libpldm/utils.h"
 
 #include "fw-update/manager.hpp"
 #include "smbios_mdr.hpp"
@@ -211,8 +211,8 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
     return PLDM_SUCCESS;
 }
 
-exec::task<int>
-    EventManager::pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize)
+exec::task<int> EventManager::pollForPlatformEventTask(tid_t tid,
+                                                       uint16_t maxBufferSize)
 {
     uint8_t rc = 0;
     uint8_t transferOperationFlag = PLDM_GET_FIRSTPART;
@@ -221,6 +221,7 @@ exec::task<int>
 
     uint8_t completionCode = 0;
     uint8_t eventTid = 0;
+    uint8_t formatVersion = 0x1; // Constant, no need to reset
     uint16_t eventId = 0xffff;
     uint32_t nextDataTransferHandle = 0;
     uint8_t transferFlag = 0;
@@ -232,7 +233,7 @@ exec::task<int>
     while (eventId != 0)
     {
         rc = co_await pollForPlatformEventMessage(
-            tid, transferOperationFlag, dataTransferHandle,
+            tid, formatVersion, transferOperationFlag, dataTransferHandle,
             eventIdToAcknowledge, completionCode, eventTid, eventId,
             nextDataTransferHandle, transferFlag, eventClass, eventDataSize,
             eventData, eventDataIntegrityChecksum);
@@ -323,46 +324,69 @@ exec::task<int>
 }
 
 exec::task<int> EventManager::pollForPlatformEventMessage(
-    tid_t tid, uint8_t transferOperationFlag, uint32_t dataTransferHandle,
-    uint16_t eventIdToAcknowledge, uint8_t& completionCode, uint8_t& eventTid,
-    uint16_t& eventId, uint32_t& nextDataTransferHandle, uint8_t& transferFlag,
+    tid_t tid, uint8_t formatVersion, uint8_t transferOperationFlag,
+    uint32_t dataTransferHandle, uint16_t eventIdToAcknowledge,
+    uint8_t& completionCode, uint8_t& eventTid, uint16_t& eventId,
+    uint32_t& nextDataTransferHandle, uint8_t& transferFlag,
     uint8_t& eventClass, uint32_t& eventDataSize,
     std::vector<uint8_t>& eventData, uint32_t& eventDataIntegrityChecksum)
 {
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_REQ_BYTES);
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    auto requestMsg = new (request.data()) pldm_msg;
+
     auto rc = encode_poll_for_platform_event_message_req(
-        0, 0x01, transferOperationFlag, dataTransferHandle,
-        eventIdToAcknowledge, requestMsg);
+        0, formatVersion, transferOperationFlag, dataTransferHandle,
+        eventIdToAcknowledge, requestMsg, request.size());
+
     if (rc)
     {
         lg2::error(
-            "encode_poll_for_platform_event_message_req failed. tid={TID} rc={RC}",
+            "Failed to encode request PollForPlatformEventMessage for terminus ID {TID}, error {RC} ",
             "TID", tid, "RC", rc);
         co_return rc;
     }
 
-    const pldm_msg* responseMsg = NULL;
+    const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
+
     rc = co_await terminusManager.SendRecvPldmMsg(tid, request, &responseMsg,
                                                   &responseLen);
     if (rc)
     {
+        lg2::error(
+            "Failed to send PollForPlatformEventMessage message for terminus {TID}, error {RC}",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
+
+    // Temp pointer to decoded event data
+    uint8_t* rawEventData = nullptr;
 
     rc = decode_poll_for_platform_event_message_resp(
         responseMsg, responseLen, &completionCode, &eventTid, &eventId,
         &nextDataTransferHandle, &transferFlag, &eventClass, &eventDataSize,
-        eventData.data(), &eventDataIntegrityChecksum);
+        reinterpret_cast<void**>(&rawEventData), &eventDataIntegrityChecksum);
+
     if (rc)
     {
         lg2::error(
-            "decode_poll_for_platform_event_message_resp failed. tid={TID} rc={RC} responseLen={RLEN}",
-            "TID", tid, "RC", rc, "RLEN", responseLen);
+            "Failed to decode response PollForPlatformEventMessage for terminus ID {TID}, error {RC} ",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
+
+    if (completionCode != PLDM_SUCCESS)
+    {
+        lg2::error(
+            "Error : PollForPlatformEventMessage for terminus ID {TID}, complete code {CC}.",
+            "TID", tid, "CC", completionCode);
+        co_return rc;
+    }
+
+    // Copy event data into vector
+    eventData.assign(rawEventData, rawEventData + eventDataSize);
+
     co_return completionCode;
 }
 
