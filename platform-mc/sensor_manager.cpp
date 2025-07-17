@@ -472,12 +472,12 @@ exec::task<int>
                         PLDM_GET_OEM_ENERGYCOUNT_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
-        rc = encode_get_oem_enegy_count_sensor_reading_req(0, sensorId,
-                                                           requestMsg);
+        rc = encode_get_oem_energy_count_sensor_reading_req(0, sensorId,
+                                                            requestMsg);
         if (rc)
         {
             lg2::error(
-                "encode_get_oem_enegycount_sensor_reading_req failed, tid={TID}, rc={RC}.",
+                "encode_get_oem_energy_count_sensor_reading_req failed, tid={TID}, rc={RC}.",
                 "TID", tid, "RC", rc);
             co_return rc;
         }
