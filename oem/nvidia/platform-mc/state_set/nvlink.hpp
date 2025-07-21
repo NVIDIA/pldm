@@ -124,8 +124,17 @@ class StateSetNvlink : public StateSet
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
 
-        DbusVariantType propValue{PortStateIntf::convertLinkStatesToString(
-            ValuePortStateIntf->linkState())};
+        DbusVariantType propValue{};
+        if (propName == "LinkStatus")
+        {
+            propValue = PortStateIntf::convertLinkStatusTypeToString(
+                ValuePortStateIntf->linkStatus());
+        }
+        else if (propName == "LinkState")
+        {
+            propValue = PortStateIntf::convertLinkStatesToString(
+                ValuePortStateIntf->linkState());
+        }
 
         std::string endpoint{};
         auto definitions = associationDefinitionsIntf->associations();
@@ -170,6 +179,7 @@ class StateSetNvlink : public StateSet
         }
 #ifdef OEM_NVIDIA
         updateShmemReading("LinkState");
+        updateShmemReading("LinkStatus");
 #endif
     }
 
