@@ -20,7 +20,6 @@
 #include "libpldm/pldm.h"
 
 #include "common/instance_id.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "terminus.hpp"

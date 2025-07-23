@@ -22,7 +22,6 @@
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 #include "watch.hpp"
 
