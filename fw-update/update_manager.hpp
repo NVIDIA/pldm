@@ -410,13 +410,13 @@ class UpdateManager
     /** @brief Total number of component updates to calculate the progress of
      *         the Firmware activation
      */
-    size_t totalNumComponentUpdates;
+    size_t totalNumComponentUpdates = 0;
     /** @brief FW update package can contain updates for multiple firmware
      *         devices and each device can have multiple components. Once
      *         each component is updated (Transfer completed, Verified and
      *         Applied) ActivationProgress is updated.
      */
-    size_t compUpdateCompletedCount;
+    size_t compUpdateCompletedCount = 0;
     decltype(std::chrono::steady_clock::now()) startTime;
 
     std::unique_ptr<OtherDeviceUpdateManager> otherDeviceUpdateManager;
