@@ -161,7 +161,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
 
     EXPECT_CALL(eventManager, createSensorThresholdLogEntry(
                                   SensorThresholdWarningHighGoingHigh, _,
-                                  SENSOR_READING, WARNING_HIGH))
+                                  SENSOR_READING, WARNING_HIGH, _, _))
         .Times(1)
         .WillRepeatedly(Return());
     std::vector<uint8_t> eventData{0x1,
@@ -178,58 +178,73 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
     EXPECT_EQ(PLDM_EVENT_NO_LOGGING, platformEventStatus);
 }
 
-TEST_F(EventManagerTest, getSensorThresholdMessageIdTest)
+TEST_F(EventManagerTest, getSensorThresholdEventDataTest)
 {
-    std::string messageId{};
-    messageId = eventManager.getSensorThresholdMessageId(PLDM_SENSOR_UNKNOWN,
-                                                         PLDM_SENSOR_NORMAL);
+    std::string messageId;
+    std::string eventId;
+    std::string impactedComponent;
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(PLDM_SENSOR_UNKNOWN,
+                                                 PLDM_SENSOR_NORMAL, nullptr);
     EXPECT_EQ(messageId, std::string{});
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningLowGoingLow);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERCRITICAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_LOWERCRITICAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalLowGoingLow);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningHighGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERCRITICAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UNKNOWN, PLDM_SENSOR_UPPERCRITICAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalHighGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningLowGoingLow);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_LOWERWARNING, PLDM_SENSOR_LOWERCRITICAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERCRITICAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalLowGoingLow);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_LOWERCRITICAL, PLDM_SENSOR_LOWERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalLowGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_LOWERWARNING, PLDM_SENSOR_NORMAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_NORMAL, PLDM_SENSOR_UPPERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningLowGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_NORMAL, PLDM_SENSOR_UPPERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_NORMAL, PLDM_SENSOR_UPPERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningHighGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UPPERWARNING, PLDM_SENSOR_UPPERCRITICAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UPPERWARNING, PLDM_SENSOR_UPPERCRITICAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalHighGoingHigh);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UPPERCRITICAL, PLDM_SENSOR_UPPERWARNING);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(
+            PLDM_SENSOR_UPPERCRITICAL, PLDM_SENSOR_UPPERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalHighGoingLow);
 
-    messageId = eventManager.getSensorThresholdMessageId(
-        PLDM_SENSOR_UPPERWARNING, PLDM_SENSOR_NORMAL);
+    std::tie(messageId, eventId, impactedComponent) =
+        eventManager.getSensorThresholdEventData(PLDM_SENSOR_UPPERWARNING,
+                                                 PLDM_SENSOR_NORMAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningHighGoingLow);
 }

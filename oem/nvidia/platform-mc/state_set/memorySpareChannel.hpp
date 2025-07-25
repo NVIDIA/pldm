@@ -122,23 +122,25 @@ class StateSetMemorySpareChannel : public StateSet
         ValueIntf->memorySpareChannelPresence(ChannelPresence::Unavailable);
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (ValueIntf->memorySpareChannelPresence() == ChannelPresence::Present)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("True"), Level::Informational};
+                    std::string("True"), Level::Informational, "", ""};
         }
         else if (ValueIntf->memorySpareChannelPresence() ==
                  ChannelPresence::NotPresent)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("False"), Level::Informational};
+                    std::string("False"), Level::Informational, "", ""};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Unknown"), Level::Informational};
+                    std::string("Unknown"), Level::Informational, "", ""};
         }
     }
 

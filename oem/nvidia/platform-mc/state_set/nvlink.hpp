@@ -188,29 +188,46 @@ class StateSetNvlink : public StateSet
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("LinkUp"), Level::Informational};
+                    std::string("LinkUp"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
+            if (sensorEventInfo)
+            {
+                std::string eventId = "";
+                std::string impactedComponent =
+                    sensorEventInfo->impactedComponent;
+                auto it = sensorEventInfo->eventIdsMap.find("LinkDown");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
+                        std::string("LinkDown"), Level::Informational, eventId,
+                        impactedComponent};
+            }
+
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("LinkDown"), Level::Informational};
+                std::string("LinkDown"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error"), Level::Informational};
+                std::string("Error"), Level::Informational, "", ""};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational};
+                    std::string("Unknown"), Level::Informational, "", ""};
         }
     }
 

@@ -35,12 +35,13 @@ namespace platform_mc
 
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
 
-StateSensor::StateSensor(const uint8_t tid, const bool sensorDisabled,
-                         const uint16_t sensorId, StateSetInfo sensorInfo,
-                         AuxiliaryNames* sensorNames,
-                         std::string& associationPath) :
+StateSensor::StateSensor(
+    const uint8_t tid, const bool sensorDisabled, const uint16_t sensorId,
+    StateSetInfo sensorInfo, AuxiliaryNames* sensorNames,
+    std::string& associationPath,
+    std::shared_ptr<utils::SensorEventInfo> sensorEventInfo) :
     tid(tid), sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true),
-    async(false)
+    async(false), sensorEventInfo(sensorEventInfo)
 {
     path = "/xyz/openbmc_project/state/PLDM_Sensor_" +
            std::to_string(sensorId) + "_" + std::to_string(tid);
@@ -155,8 +156,9 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
             }
 
             std::string arg1 = entityName + " " + sensorName;
-            auto [messageID, arg2, level] =
-                stateSets[sensorOffset]->getEventData();
+            auto [messageID, arg2, level, eventId, impactedComponent] =
+                stateSets[sensorOffset]->getEventData(
+                    sensorEventInfo ? sensorEventInfo.get() : nullptr);
 
             if ((previousEventState == 0) && (level > Level::Notice))
             {
@@ -171,7 +173,12 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
             }
 
             std::string resolution = "None";
+#ifdef OEM_NVIDIA
+            createLogEntryAdditionalOEMArgs(messageID, arg1, arg2, resolution,
+                                            eventId, impactedComponent, level);
+#else
             createLogEntry(messageID, arg1, arg2, resolution, level);
+#endif
         }
     }
     else
@@ -216,6 +223,54 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
     addData["REDFISH_MESSAGE_ID"] = messageID;
     addData["REDFISH_MESSAGE_ARGS"] = arg1 + "," + arg2;
     addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
+
+    createLog(addData, level);
+    return;
+}
+
+void StateSensor::createLogEntryAdditionalOEMArgs(
+    std::string& messageID, std::string& arg1, std::string& arg2,
+    std::string& resolution, std::string& eventId,
+    std::string& impactedComponent, Level level)
+{
+    auto createLog = [&messageID](std::map<std::string, std::string>& addData,
+                                  Level& level) {
+        static constexpr auto logObjPath = "/xyz/openbmc_project/logging";
+        static constexpr auto logInterface =
+            "xyz.openbmc_project.Logging.Create";
+        auto& bus = pldm::utils::DBusHandler::getBus();
+
+        try
+        {
+            auto service =
+                pldm::utils::DBusHandler().getService(logObjPath, logInterface);
+            auto severity = sdbusplus::xyz::openbmc_project::Logging::server::
+                convertForMessage(level);
+            auto method = bus.new_method_call(service.c_str(), logObjPath,
+                                              logInterface, "Create");
+            method.append(messageID, severity, addData);
+            bus.call_noreply(method);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error(
+                "Failed to create D-Bus log entry for sensor message registry, {ERROR}.",
+                "ERROR", e);
+        }
+    };
+
+    std::map<std::string, std::string> addData;
+    addData["REDFISH_MESSAGE_ID"] = messageID;
+    addData["REDFISH_MESSAGE_ARGS"] = arg1 + "," + arg2;
+    addData["xyz.openbmc_project.Logging.Entry.Resolution"] = resolution;
+    if (!eventId.empty())
+    {
+        addData["xyz.openbmc_project.Logging.Entry.EventId"] = eventId;
+    }
+    if (!impactedComponent.empty())
+    {
+        addData["DEVICE_NAME"] = impactedComponent;
+    }
     createLog(addData, level);
     return;
 }

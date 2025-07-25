@@ -21,6 +21,7 @@
 #endif
 
 #include "common/dBusAsyncUtils.hpp"
+#include "common/utils.hpp"
 #include "terminus.hpp"
 #include "terminus_manager.hpp"
 
@@ -186,6 +187,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 #ifdef OEM_NVIDIA
                         co_await getPortInfoFromEM(objPath);
                         co_await getInfoForNVSwitchFromEM(objPath);
+                        co_await getSensorEventInfoFromEM(objPath);
 #endif
                         co_return PLDM_SUCCESS;
                     }
@@ -451,6 +453,69 @@ exec::task<int> Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
     }
     co_return PLDM_SUCCESS;
 }
+
+requester::Coroutine
+    Terminus::getSensorEventInfoFromEM(const std::string& objPath)
+{
+    try
+    {
+        auto getSubTreeResponse = co_await utils::coGetSubTree(
+            objPath, 0, {"xyz.openbmc_project.Configuration.SensorEventInfo"});
+        if (getSubTreeResponse.size() == 0)
+        {
+            co_return PLDM_FAILED;
+        }
+        for (auto& [path, mapperServiceMap] : getSubTreeResponse)
+        {
+            try
+            {
+                auto sensorId =
+                    co_await pldm::utils::coGetDbusProperty<uint64_t>(
+                        path.c_str(), "SensorId",
+                        "xyz.openbmc_project.Configuration.SensorEventInfo");
+                auto impactedComponent =
+                    co_await pldm::utils::coGetDbusProperty<std::string>(
+                        path.c_str(), "ImpactedComponent",
+                        "xyz.openbmc_project.Configuration.SensorEventInfo");
+                auto eventIdsEM = co_await pldm::utils::coGetDbusProperty<
+                    std::vector<std::string>>(
+                    path.c_str(), "EventIds",
+                    "xyz.openbmc_project.Configuration.SensorEventInfo");
+
+                std::unordered_map<std::string, std::string> eventIdsMap;
+                if (eventIdsEM.size() % 2 != 0)
+                {
+                    lg2::error(
+                        "EventIds in sensor event info must follow (eventIdKey,"
+                        " eventId) for {OBJ}",
+                        "OBJ", path);
+                    co_return PLDM_FAILED;
+                }
+
+                for (uint8_t it = 0; it < eventIdsEM.size(); it += 2)
+                {
+                    eventIdsMap[eventIdsEM[it]] = eventIdsEM[it + 1];
+                }
+
+                sensorEventInfoOverwriteTbl[sensorId] =
+                    std::make_shared<utils::SensorEventInfo>(
+                        impactedComponent, std::move(eventIdsMap));
+            }
+            catch (const std::exception& e)
+            {
+                lg2::error(
+                    "Failed to parse SensorEventInfo for path {PATH}: {ERROR}",
+                    "PATH", path, "ERROR", e);
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::info("no Configuration.SensorEventInfo Error: {ERROR} path:{PATH}",
+                  "ERROR", e, "PATH", objPath);
+    }
+    co_return PLDM_SUCCESS;
+}
 #endif
 
 bool Terminus::doesSupport(uint8_t type)
@@ -629,6 +694,17 @@ std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
         return std::make_shared<std::tuple<PortType, std::string, uint64_t,
                                            std::vector<dbus::PathAssociation>>>(
             sensorPortInfoOverwriteTbl[id]);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<utils::SensorEventInfo>
+    Terminus::getSensorEventInfo(SensorID id)
+{
+    auto it = sensorEventInfoOverwriteTbl.find(id);
+    if (it != sensorEventInfoOverwriteTbl.end())
+    {
+        return it->second;
     }
     return nullptr;
 }
@@ -1312,10 +1388,15 @@ void Terminus::addNumericSensor(
         sensorName = *auxName;
     }
 
+    std::shared_ptr<utils::SensorEventInfo> sensorEventInfo = nullptr;
+#ifdef OEM_NVIDIA
+    sensorEventInfo = getSensorEventInfo(pdr->sensor_id);
+#endif
+
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            tid, true, pdr, sensorName, systemInventoryPath);
+            tid, true, pdr, sensorName, systemInventoryPath, sensorEventInfo);
         numericSensors.emplace_back(sensor);
         if (auxName)
         {
@@ -1412,11 +1493,16 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
         sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
     }
 
+    std::shared_ptr<utils::SensorEventInfo> stateSensorEventInfo = nullptr;
+#ifdef OEM_NVIDIA
+    stateSensorEventInfo = getSensorEventInfo(sId);
+#endif
+
     try
     {
-        auto sensor =
-            std::make_shared<StateSensor>(tid, true, sId, std::move(sensorInfo),
-                                          sensorNames, systemInventoryPath);
+        auto sensor = std::make_shared<StateSensor>(
+            tid, true, sId, std::move(sensorInfo), sensorNames,
+            systemInventoryPath, stateSensorEventInfo);
         stateSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)

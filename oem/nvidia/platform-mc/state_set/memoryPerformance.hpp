@@ -121,18 +121,20 @@ class StateSetMemoryPerformance : public StateSet
         ValueIntf->value(MemoryPerformanceStates::Unknown);
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (ValueIntf->value() == MemoryPerformanceStates::Normal)
         {
             return {std::string("ResourceEvent.1.0.ResourceErrorsCorrected"),
-                    std::string("Normal"), Level::Informational};
+                    std::string("Normal"), Level::Informational, "", ""};
         }
         else
         {
             std::string arg = "PerformanceDegraded due to high temperature";
             return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    arg, Level::Error};
+                    arg, Level::Error, "", ""};
         }
     }
 

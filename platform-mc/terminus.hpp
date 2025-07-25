@@ -223,6 +223,13 @@ class Terminus
                                std::vector<dbus::PathAssociation>>>
         getSensorPortInfo(SensorID id);
 
+    /** @brief Get Sensor Event Info by sensorID
+     *
+     *  @param[in] id - sensor ID
+     *  @return sensor event info
+     */
+    std::shared_ptr<utils::SensorEventInfo> getSensorEventInfo(SensorID id);
+
     std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor =
         nullptr;
 #endif
@@ -280,6 +287,7 @@ class Terminus
      */
     exec::task<int> getPortInfoFromEM(const std::string& objPath);
     exec::task<int> getInfoForNVSwitchFromEM(const std::string& objPath);
+    exec::task<int> getSensorEventInfoFromEM(const std::string& objPath);
 #endif
 
     /** @brief The flag indicates whether the terminus has been initialized
@@ -376,6 +384,12 @@ class Terminus
     std::map<SensorID, std::tuple<PortType, std::string, uint64_t,
                                   std::vector<dbus::PathAssociation>>>
         sensorPortInfoOverwriteTbl{};
+
+    /**
+     * @brief Table mapping SensorID to SensorEventInfo
+     */
+    std::map<SensorID, std::shared_ptr<utils::SensorEventInfo>>
+        sensorEventInfoOverwriteTbl{};
 #endif
 
     std::string systemInventoryPath;
