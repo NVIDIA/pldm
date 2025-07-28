@@ -176,7 +176,7 @@ option(
 option(
     'softoff',
     type: 'feature',
-    value: 'enabled',
+    value: 'disabled',
     description: 'Build soft power off application'
 )
 
@@ -193,7 +193,7 @@ option(
 option(
     'oem-ibm',
     type: 'feature',
-    value: 'enabled',
+    value: 'disabled',
     description: 'Enable IBM OEM PLDM'
 )
 

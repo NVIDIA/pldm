@@ -16,10 +16,12 @@
  */
 #include "libpldm/entity.h"
 
+#include "common/instance_id.hpp"
 #include "mock_terminus_manager.hpp"
 #include "platform-mc/platform_manager.hpp"
 #include "platform-mc/sensor_manager.hpp"
 #include "platform-mc/terminus.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <sdeventplus/event.hpp>
 
@@ -34,14 +36,15 @@ class TerminusTest : public testing::Test
     TerminusTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        dbusImplRequester(bus, "/xyz/openbmc_project/pldm"),
-        reqHandler(event, dbusImplRequester, sockManager, false, seconds(1), 2,
+        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
                    milliseconds(100)),
-        terminusManager(event, reqHandler, dbusImplRequester, termini, localEid,
+        terminusManager(event, reqHandler, instanceIdDb, termini, localEid,
                         nullptr),
         sensorManager(event, terminusManager, termini, nullptr),
         platformManager(terminusManager, termini)
-    {}
+    {
+        reqHandler.setSocketHandler(nullptr);
+    }
 
     void runEventLoopForMilliseconds(uint64_t msec)
     {
@@ -226,7 +229,7 @@ class TerminusTest : public testing::Test
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
-    pldm::dbus_api::Requester dbusImplRequester;
+    TestInstanceIdDb instanceIdDb;
     pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::MockTerminusManager terminusManager;

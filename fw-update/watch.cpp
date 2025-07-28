@@ -16,8 +16,6 @@
  */
 #include "watch.hpp"
 
-#include "update_manager.hpp"
-
 #include <sys/inotify.h>
 #include <unistd.h>
 
@@ -29,6 +27,8 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {

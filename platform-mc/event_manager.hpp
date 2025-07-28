@@ -19,6 +19,7 @@
 #include "libpldm/platform.h"
 #include "libpldm/pldm.h"
 
+#include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
 #include "requester/handler.hpp"

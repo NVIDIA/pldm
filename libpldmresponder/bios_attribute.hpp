@@ -3,6 +3,7 @@
 #include "bios_table.h"
 
 #include "bios_table.hpp"
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 
 #include <nlohmann/json.hpp>

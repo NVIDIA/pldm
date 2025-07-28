@@ -7,7 +7,6 @@
 #include "common/utils.hpp"
 #include "libpldmresponder/event_parser.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
-#include "pldmd/dbus_impl_requester.hpp"
 #include "requester/handler.hpp"
 
 #include <sdeventplus/event.hpp>
@@ -84,7 +83,7 @@ class HostPDRHandler
      *  @param[in] eventsJsonDir - directory path which has the config JSONs
      *  @param[in] entityTree - Pointer to BMC and Host entity association tree
      *  @param[in] bmcEntityTree - pointer to BMC's entity association tree
-     *  @param[in] requester - reference to Requester object
+     *  @param[in] instanceIdDb - reference to InstanceIdDb object
      *  @param[in] handler - PLDM request handler
      */
     explicit HostPDRHandler(
@@ -92,7 +91,7 @@ class HostPDRHandler
         pldm_pdr* repo, const std::string& eventsJsonsDir,
         pldm_entity_association_tree* entityTree,
         pldm_entity_association_tree* bmcEntityTree,
-        pldm::dbus_api::Requester& requester,
+        pldm::InstanceIdDb& instanceIdDb,
         pldm::requester::Handler<pldm::requester::Request>* handler);
 
     /** @brief fetch PDRs from host firmware. See @class.
@@ -226,10 +225,10 @@ class HostPDRHandler
     /** @brief Pointer to BMC's entity association tree */
     pldm_entity_association_tree* bmcEntityTree;
 
-    /** @brief reference to Requester object, primarily used to access API to
+    /** @brief reference to InstanceIdDb object, primarily used to access API to
      *  obtain PLDM instance id.
      */
-    pldm::dbus_api::Requester& requester;
+    pldm::InstanceIdDb& instanceIdDb;
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>* handler;

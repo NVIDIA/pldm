@@ -32,8 +32,6 @@ if (get_option('optimization') == '0')
     message('Disabling FORTIFY_SOURCE as optimization is set to 0')
 endif
 
-conf_data = configuration_data()
-
 package_datadir = join_paths(
     get_option('prefix'),
     get_option('datadir'),
@@ -51,6 +49,10 @@ cpp = meson.get_compiler('cpp')
 # Enable POSIX poll APIs in libpldm
 if cpp.has_header('poll.h')
     conf_data.set('PLDM_HAS_POLL', 1)
+endif
+
+if get_option('omit-heartbeat').enabled()
+  add_project_arguments('-DOMIT_HEARTBEAT', language : 'cpp')
 endif
 
 if(get_option('pldm-package-verification') == 'authentication')
@@ -92,6 +94,7 @@ else
 endif
 conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-staging-dir-mount-service'))
 conf_data.set('PROGRESS_UPDATE_INTERVAL', get_option('progress-percent-updater-interval'))
+
 if get_option('libpldmresponder').allowed()
     conf_data.set_quoted('BIOS_JSONS_DIR', join_paths(package_datadir, 'bios'))
     conf_data.set(
@@ -123,6 +126,7 @@ if get_option('libpldmresponder').allowed()
     conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
     add_project_arguments('-DLIBPLDMRESPONDER', language: 'cpp')
 endif
+
 if get_option('softoff').allowed()
     conf_data.set(
         'SOFTOFF_TIMEOUT_SECONDS',
@@ -133,34 +137,36 @@ if get_option('softoff').allowed()
         join_paths(package_datadir, 'softoff'),
     )
 endif
-# if get_option('oem-ibm').allowed()
-#     conf_data.set_quoted(
-#         'FILE_TABLE_JSON',
-#         join_paths(package_datadir, 'fileTable.json'),
-#     )
-#     conf_data.set_quoted(
-#         'LID_RUNNING_DIR',
-#         '/var/lib/phosphor-software-manager/hostfw/running',
-#     )
-#     conf_data.set_quoted(
-#         'LID_ALTERNATE_DIR',
-#         '/var/lib/phosphor-software-manager/hostfw/alternate',
-#     )
-#     conf_data.set_quoted(
-#         'LID_STAGING_DIR',
-#         '/var/lib/phosphor-software-manager/hostfw/staging',
-#     )
-#     conf_data.set_quoted(
-#         'LID_RUNNING_PATCH_DIR',
-#         '/usr/local/share/hostfw/running',
-#     )
-#     conf_data.set_quoted(
-#         'LID_ALTERNATE_PATCH_DIR',
-#         '/usr/local/share/hostfw/alternate',
-#     )
-#     conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
-#     add_project_arguments('-DOEM_IBM', language: 'cpp')
-# endif
+
+if get_option('oem-ibm').allowed()
+    conf_data.set_quoted(
+        'FILE_TABLE_JSON',
+        join_paths(package_datadir, 'fileTable.json'),
+    )
+    conf_data.set_quoted(
+        'LID_RUNNING_DIR',
+        '/var/lib/phosphor-software-manager/hostfw/running',
+    )
+    conf_data.set_quoted(
+        'LID_ALTERNATE_DIR',
+        '/var/lib/phosphor-software-manager/hostfw/alternate',
+    )
+    conf_data.set_quoted(
+        'LID_STAGING_DIR',
+        '/var/lib/phosphor-software-manager/hostfw/staging',
+    )
+    conf_data.set_quoted(
+        'LID_RUNNING_PATCH_DIR',
+        '/usr/local/share/hostfw/running',
+    )
+    conf_data.set_quoted(
+        'LID_ALTERNATE_PATCH_DIR',
+        '/usr/local/share/hostfw/alternate',
+    )
+    conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
+    add_project_arguments('-DOEM_IBM', language: 'cpp')
+endif
+
 conf_data.set(
     'NUMBER_OF_REQUEST_RETRIES',
     get_option('number-of-request-retries'),
@@ -176,6 +182,7 @@ conf_data.set(
 )
 conf_data.set_quoted('HOST_EID_PATH', join_paths(package_datadir, 'host_eid'))
 conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
+
 conf_data.set('UPDATE_MODE_IDLE_TIMEOUT', get_option('update-mode-idle-timeout'))
 conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
 conf_data.set_quoted('STATIC_EID_TABLE_PATH', join_paths(package_datadir, 'static_eid_table.json'))
@@ -186,21 +193,33 @@ conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
 conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
 conf_data.set('STALE_SENSOR_UPPER_LIMITS_POLLING_TIME', get_option('stale-sensor-upper-limitms-polling-time'))
+
 if get_option('transport-implementation') == 'mctp-demux'
     conf_data.set('PLDM_TRANSPORT_WITH_MCTP_DEMUX', 1)
 elif get_option('transport-implementation') == 'af-mctp'
     conf_data.set('PLDM_TRANSPORT_WITH_AF_MCTP', 1)
 endif
+
 conf_data.set(
     'DEFAULT_SENSOR_UPDATER_INTERVAL',
     get_option('default-sensor-update-interval'),
 )
-conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
-conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
+
+if get_option('platform-prefix') != ''
+  conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
+endif
 conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
+if get_option('nvlink-c2c-fabric-object').enabled()
+  add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language : ['c','cpp'])
+endif
 if get_option('nvidia-disable-edpp-effecters').enabled()
   conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
 endif
+
+conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
+
+conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
+conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
 
 configure_file(output: 'config.h', configuration: conf_data)
 
@@ -258,9 +277,9 @@ libpldm_dep = dependency(
 
 openssl = dependency('openssl', required : true)
 
-# if get_option('oem-ampere').enabled()
-#     add_project_arguments('-DOEM_AMPERE', language : 'cpp')
-# endif
+if get_option('oem-ampere').enabled()
+    add_project_arguments('-DOEM_AMPERE', language : 'cpp')
+endif
 
 libpldmutils_headers = ['.']
 libpldmutils = library(
@@ -356,7 +375,6 @@ if get_option('debug-token').enabled()
   ]
 endif
 
-
 executable(
   'pldmd',
   sources: source_files,
@@ -380,30 +398,29 @@ if get_option('systemd').allowed()
         install: true,
         install_dir: systemd_system_unit_dir,
     )
-  configure_file(
-    input: 'pldmd/verbosity/verbosity',
-    output: 'pldm_verbosity',
-    configuration: conf_data,
-    install: true,
-    install_dir: join_paths(get_option('sysconfdir'), 'default'))
 
+    if get_option('oem-ibm').allowed()
+        subdir('oem/ibm/service_files')
+    endif
 
-    # if get_option('oem-ibm').allowed()
-    #     subdir('oem/ibm/service_files')
-    # endif
+    configure_file(
+      input: 'pldmd/verbosity/verbosity',
+      output: 'pldm_verbosity',
+      configuration: conf_data,
+      install: true,
+      install_dir: join_paths(get_option('sysconfdir'), 'default'))
 endif
 
 subdir('pldmtool')
-
 subdir('configurations')
 
 if get_option('utilities').allowed()
     subdir('utilities')
 endif
 
-# if get_option('softoff').allowed()
-#     subdir('softoff')
-# endif
+if get_option('softoff').allowed()
+    subdir('softoff')
+endif
 
 # if get_option('tests').enabled()
 #   subdir('common/test')
@@ -414,7 +431,9 @@ endif
 #     subdir('platform-mc/test')
 #   endif
 #   subdir('test')
-#   subdir('mockup-responder/test')
+#   if get_option('mockup-responder').enabled()
+#     subdir('mockup-responder/test')
+#   endif
 # endif
 
 if get_option('use_fuzz').enabled()

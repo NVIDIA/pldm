@@ -17,9 +17,7 @@
 #pragma once
 
 #include "common/types.hpp"
-#include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
-#include "requester/request.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/timer.hpp>

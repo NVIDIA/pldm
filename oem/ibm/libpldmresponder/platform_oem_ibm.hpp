@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pldmd/dbus_impl_requester.hpp"
+#include "common/instance_id.hpp"
 #include "requester/handler.hpp"
 
 #include <vector>
