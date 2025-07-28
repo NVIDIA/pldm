@@ -13,7 +13,7 @@ project(
 )
 
 if get_option('use_fuzz').enabled()
-  add_global_arguments('-DFUZZ_TEST', language : ['c','cpp'])
+    add_global_arguments('-DFUZZ_TEST', language: ['c', 'cpp'])
 endif
 
 # Wno-psabi reduces the number of "Note:" messages when cross-compiling some STL
@@ -52,48 +52,69 @@ if cpp.has_header('poll.h')
 endif
 
 if get_option('omit-heartbeat').enabled()
-  add_project_arguments('-DOMIT_HEARTBEAT', language : 'cpp')
+    add_project_arguments('-DOMIT_HEARTBEAT', language: 'cpp')
 endif
 
-if(get_option('pldm-package-verification') == 'authentication')
-    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
+if (get_option('pldm-package-verification') == 'authentication')
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language: ['c', 'cpp'])
 endif
 if get_option('pldm-package-verification-must-be-signed').enabled()
-    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language : ['c','cpp'])
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language: ['c', 'cpp'])
 endif
-if(get_option('pldm-package-verification') == 'integrity')
-    add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language : ['c','cpp'])
+if (get_option('pldm-package-verification') == 'integrity')
+    add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language: ['c', 'cpp'])
 endif
 
-conf_data.set('CALCULATE_DIGEST_CHUNK_SIZE', get_option('pldm-package-verification-calculate-digest-chunk-size'))
-conf_data.set('CALCULATE_DIGEST_TIMER_INTERVAL', get_option('pldm-package-verification-timer-interval'))
+conf_data.set(
+    'CALCULATE_DIGEST_CHUNK_SIZE',
+    get_option('pldm-package-verification-calculate-digest-chunk-size'),
+)
+conf_data.set(
+    'CALCULATE_DIGEST_TIMER_INTERVAL',
+    get_option('pldm-package-verification-timer-interval'),
+)
 
 if get_option('pldm-type2').enabled()
-  add_project_arguments('-DPLDM_TYPE2', language : ['c','cpp'])
+    add_project_arguments('-DPLDM_TYPE2', language: ['c', 'cpp'])
 endif
 if get_option('oem-nvidia').enabled()
-    add_project_arguments('-DOEM_NVIDIA', language : ['c','cpp'])
+    add_project_arguments('-DOEM_NVIDIA', language: ['c', 'cpp'])
 endif
 if get_option('debug-token').enabled()
-    add_project_arguments('-DDEBUG_TOKEN', language : ['c','cpp'])
+    add_project_arguments('-DDEBUG_TOKEN', language: ['c', 'cpp'])
 endif
-conf_data.set('PLDM_VERBOSITY',get_option('verbosity'))
+conf_data.set('PLDM_VERBOSITY', get_option('verbosity'))
 if get_option('fw-debug').enabled()
-  conf_data.set('FWDEBUG', '--fw-debug')
+    conf_data.set('FWDEBUG', '--fw-debug')
 endif
 conf_data.set('NUMBER_OF_REQUEST_RETRIES', get_option('number-of-request-retries'))
 conf_data.set('NUMBER_OF_COMMAND_ATTEMPTS', get_option('number-of-command-attempts'))
-conf_data.set('INSTANCE_ID_EXPIRATION_INTERVAL',get_option('instance-id-expiration-interval'))
-conf_data.set('RESPONSE_TIME_OUT',get_option('response-time-out'))
-conf_data.set('FLIGHT_RECORDER_MAX_ENTRIES',get_option('flightrecorder-max-entries'))
+conf_data.set(
+    'INSTANCE_ID_EXPIRATION_INTERVAL',
+    get_option('instance-id-expiration-interval'),
+)
+conf_data.set('RESPONSE_TIME_OUT', get_option('response-time-out'))
+conf_data.set('FLIGHT_RECORDER_MAX_ENTRIES', get_option('flightrecorder-max-entries'))
 conf_data.set('FIRMWARE_UPDATE_TIME', get_option('firmware-update-time'))
 if get_option('firmware-package-staging-dir').endswith('/')
-  conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR', get_option('firmware-package-staging-dir').substring(0, -1))
+    conf_data.set_quoted(
+        'FIRMWARE_PACKAGE_STAGING_DIR',
+        get_option('firmware-package-staging-dir').substring(0, -1),
+    )
 else
-  conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR', get_option('firmware-package-staging-dir'))
+    conf_data.set_quoted(
+        'FIRMWARE_PACKAGE_STAGING_DIR',
+        get_option('firmware-package-staging-dir'),
+    )
 endif
-conf_data.set_quoted('FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE', get_option('firmware-package-staging-dir-mount-service'))
-conf_data.set('PROGRESS_UPDATE_INTERVAL', get_option('progress-percent-updater-interval'))
+conf_data.set_quoted(
+    'FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE',
+    get_option('firmware-package-staging-dir-mount-service'),
+)
+conf_data.set(
+    'PROGRESS_UPDATE_INTERVAL',
+    get_option('progress-percent-updater-interval'),
+)
 
 if get_option('libpldmresponder').allowed()
     conf_data.set_quoted('BIOS_JSONS_DIR', join_paths(package_datadir, 'bios'))
@@ -184,15 +205,27 @@ conf_data.set_quoted('HOST_EID_PATH', join_paths(package_datadir, 'host_eid'))
 conf_data.set('MAXIMUM_TRANSFER_SIZE', get_option('maximum-transfer-size'))
 
 conf_data.set('UPDATE_MODE_IDLE_TIMEOUT', get_option('update-mode-idle-timeout'))
-conf_data.set_quoted('FW_UPDATE_CONFIG_JSON', join_paths(package_datadir, 'fw_update_config.json'))
-conf_data.set_quoted('STATIC_EID_TABLE_PATH', join_paths(package_datadir, 'static_eid_table.json'))
+conf_data.set_quoted(
+    'FW_UPDATE_CONFIG_JSON',
+    join_paths(package_datadir, 'fw_update_config.json'),
+)
+conf_data.set_quoted(
+    'STATIC_EID_TABLE_PATH',
+    join_paths(package_datadir, 'static_eid_table.json'),
+)
 conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
 conf_data.set_quoted('PLDM_T2_CONFIG_JSON', join_paths(package_datadir, 'pldm_t2_config.json'))
-conf_data.set_quoted('PLDM_PACKAGE_VERIFICATION_KEY', get_option('pldm-package-verification-key'))
+conf_data.set_quoted(
+    'PLDM_PACKAGE_VERIFICATION_KEY',
+    get_option('pldm-package-verification-key'),
+)
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
 conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
-conf_data.set('STALE_SENSOR_UPPER_LIMITS_POLLING_TIME', get_option('stale-sensor-upper-limitms-polling-time'))
+conf_data.set(
+    'STALE_SENSOR_UPPER_LIMITS_POLLING_TIME',
+    get_option('stale-sensor-upper-limitms-polling-time'),
+)
 
 if get_option('transport-implementation') == 'mctp-demux'
     conf_data.set('PLDM_TRANSPORT_WITH_MCTP_DEMUX', 1)
@@ -206,14 +239,14 @@ conf_data.set(
 )
 
 if get_option('platform-prefix') != ''
-  conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
+    conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
 endif
 conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
 if get_option('nvlink-c2c-fabric-object').enabled()
-  add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language : ['c','cpp'])
+    add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
 if get_option('nvidia-disable-edpp-effecters').enabled()
-  conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
+    conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
 endif
 
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
@@ -224,8 +257,7 @@ conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-objec
 configure_file(output: 'config.h', configuration: conf_data)
 
 add_project_arguments(
-    '-include',
-    '@0@'.format(meson.current_build_dir() / 'config.h'),
+    '-include', '@0@'.format(meson.current_build_dir() / 'config.h'),
     language: 'cpp',
 )
 
@@ -246,7 +278,7 @@ else
 endif
 
 if get_option('tests').allowed()
-    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language : ['c','cpp'])
+    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language: ['c', 'cpp'])
     gtest = dependency('gtest', main: true, disabler: true, required: false)
     gmock = dependency('gmock', disabler: true, required: false)
     if not gtest.found() or not gmock.found()
@@ -275,10 +307,10 @@ libpldm_dep = dependency(
     include_type: 'system',
 )
 
-openssl = dependency('openssl', required : true)
+openssl = dependency('openssl', required: true)
 
 if get_option('oem-ampere').enabled()
-    add_project_arguments('-DOEM_AMPERE', language : 'cpp')
+    add_project_arguments('-DOEM_AMPERE', language: 'cpp')
 endif
 
 libpldmutils_headers = ['.']
@@ -303,18 +335,18 @@ libpldmutils = declare_dependency(
     link_with: libpldmutils,
 )
 
-nvidia_tal =dependency('nvidia-tal', required : true)
+nvidia_tal = dependency('nvidia-tal', required: true)
 
 deps = [
-  libpldm_dep,
-  libpldmutils,
-  nlohmann_json_dep,
-  sdbusplus,
-  sdeventplus,
-  phosphor_dbus_interfaces,
-  phosphor_logging_dep,
-  openssl,
-  nvidia_tal,
+    libpldm_dep,
+    libpldmutils,
+    nlohmann_json_dep,
+    sdbusplus,
+    sdeventplus,
+    phosphor_dbus_interfaces,
+    phosphor_logging_dep,
+    openssl,
+    nvidia_tal,
 ]
 
 oem_files = []
@@ -327,65 +359,64 @@ if get_option('libpldmresponder').allowed()
     deps += [libpldmresponder_dep]
 endif
 source_files = [
-  'pldmd/pldmd.cpp',
-  'fw-update/fw_update_utility.cpp',
-  'fw-update/inventory_manager.cpp',
-  'fw-update/package_parser.cpp',
-  'fw-update/component_updater.cpp',
-  'fw-update/device_updater.cpp',
-  'fw-update/watch.cpp',
-  'fw-update/update_manager.cpp',
-  'fw-update/other_device_update_manager.cpp',
-  'fw-update/config.cpp',
-  'fw-update/device_inventory.cpp',
-  'fw-update/firmware_inventory.cpp',
-  'fw-update/package_signature.cpp',
-  'requester/mctp_endpoint_discovery.cpp',
+    'pldmd/pldmd.cpp',
+    'fw-update/fw_update_utility.cpp',
+    'fw-update/inventory_manager.cpp',
+    'fw-update/package_parser.cpp',
+    'fw-update/component_updater.cpp',
+    'fw-update/device_updater.cpp',
+    'fw-update/watch.cpp',
+    'fw-update/update_manager.cpp',
+    'fw-update/other_device_update_manager.cpp',
+    'fw-update/config.cpp',
+    'fw-update/device_inventory.cpp',
+    'fw-update/firmware_inventory.cpp',
+    'fw-update/package_signature.cpp',
+    'requester/mctp_endpoint_discovery.cpp',
 ]
 
 if get_option('pldm-type2').enabled()
-  source_files += [
-  'platform-mc/terminus_manager.cpp',
-  'platform-mc/terminus.cpp',
-  'platform-mc/platform_manager.cpp',
-  'platform-mc/sensor_manager.cpp',
-  'platform-mc/numeric_sensor.cpp',
-  'platform-mc/numeric_effecter.cpp',
-  'platform-mc/state_sensor.cpp',
-  'platform-mc/event_manager.cpp',
-  'platform-mc/state_set.cpp',
-  'platform-mc/state_effecter.cpp',
-  'platform-mc/state_set.cpp',
-  'platform-mc/smbios_mdr.cpp',
-  'pldmd/dbus_impl_pdr.cpp',
-  ]
-
-  if get_option('oem-nvidia').enabled()
     source_files += [
-      'oem/nvidia/platform-mc/oem_nvidia.cpp',
-      'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp'
+        'platform-mc/terminus_manager.cpp',
+        'platform-mc/terminus.cpp',
+        'platform-mc/platform_manager.cpp',
+        'platform-mc/sensor_manager.cpp',
+        'platform-mc/numeric_sensor.cpp',
+        'platform-mc/numeric_effecter.cpp',
+        'platform-mc/state_sensor.cpp',
+        'platform-mc/event_manager.cpp',
+        'platform-mc/state_set.cpp',
+        'platform-mc/state_effecter.cpp',
+        'platform-mc/state_set.cpp',
+        'platform-mc/smbios_mdr.cpp',
+        'pldmd/dbus_impl_pdr.cpp',
     ]
-  endif
+
+    if get_option('oem-nvidia').enabled()
+        source_files += [
+            'oem/nvidia/platform-mc/oem_nvidia.cpp',
+            'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
+        ]
+    endif
 
 endif
 
 if get_option('debug-token').enabled()
-  source_files += [
-    'fw-update/oem-nvidia/debug_token.cpp'
-  ]
+    source_files += ['fw-update/oem-nvidia/debug_token.cpp']
 endif
 
 executable(
-  'pldmd',
-  sources: source_files,
-  implicit_include_directories: false,
-  dependencies: deps,
-  install: true,
-  install_dir: get_option('bindir'),
-  cpp_args: ['-fno-lto'])
+    'pldmd',
+    sources: source_files,
+    implicit_include_directories: false,
+    dependencies: deps,
+    install: true,
+    install_dir: get_option('bindir'),
+    cpp_args: ['-fno-lto'],
+)
 
 if get_option('mockup-responder').enabled()
-  subdir('mockup-responder')
+    subdir('mockup-responder')
 endif
 
 if get_option('systemd').allowed()
@@ -404,11 +435,12 @@ if get_option('systemd').allowed()
     endif
 
     configure_file(
-      input: 'pldmd/verbosity/verbosity',
-      output: 'pldm_verbosity',
-      configuration: conf_data,
-      install: true,
-      install_dir: join_paths(get_option('sysconfdir'), 'default'))
+        input: 'pldmd/verbosity/verbosity',
+        output: 'pldm_verbosity',
+        configuration: conf_data,
+        install: true,
+        install_dir: join_paths(get_option('sysconfdir'), 'default'),
+    )
 endif
 
 subdir('pldmtool')
@@ -423,19 +455,19 @@ if get_option('softoff').allowed()
 endif
 
 if get_option('tests').enabled()
-  subdir('common/test')
-  subdir('fw-update/test')
-  subdir('requester/test')
-  if get_option('libpldmresponder').enabled()
-    # subdir('host-bmc/test')
-    # subdir('platform-mc/test')
-  endif
-  subdir('test')
-  if get_option('mockup-responder').enabled()
-    subdir('mockup-responder/test')
-  endif
+    subdir('common/test')
+    subdir('fw-update/test')
+    subdir('requester/test')
+    if get_option('libpldmresponder').enabled()
+        # subdir('host-bmc/test')
+        # subdir('platform-mc/test')
+    endif
+    subdir('test')
+    if get_option('mockup-responder').enabled()
+        subdir('mockup-responder/test')
+    endif
 endif
 
 if get_option('use_fuzz').enabled()
-  subdir('test/fuzz')
+    subdir('test/fuzz')
 endif

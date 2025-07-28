@@ -12,7 +12,7 @@ dep_src_files = [
     '../pdr_json_parser.cpp',
     '../sensor_to_dbus.cpp',
     '../../pldmd/dbus_impl_requester.cpp',
-    '../../pldmd/instance_id.cpp'
+    '../../pldmd/instance_id.cpp',
 ]
 
 dep_src_headers = [
@@ -22,7 +22,7 @@ dep_src_headers = [
     '../../common',
     '../../libpldm',
     '../../fw-update',
-    '../../libpldmresponder'
+    '../../libpldmresponder',
 ]
 
 test_src = declare_dependency(
@@ -35,7 +35,11 @@ tests = [
 ]
 
 foreach t : tests
-    test(t, executable(t.underscorify(), t + '.cpp',
+    test(
+        t,
+        executable(
+            t.underscorify(),
+            t + '.cpp',
             implicit_include_directories: false,
             link_args: dynamic_linker,
             build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
@@ -48,7 +52,9 @@ foreach t : tests
                 phosphor_logging,
                 gtest,
                 gmock,
-                phosphor_dbus_interfaces
-            ]),
-        workdir: meson.current_source_dir())
+                phosphor_dbus_interfaces,
+            ],
+        ),
+        workdir: meson.current_source_dir(),
+    )
 endforeach

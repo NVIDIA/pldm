@@ -1,28 +1,30 @@
 test_src = declare_dependency(
-          sources: [
-            '../mctp_endpoint_discovery.cpp',
-            '../../common/utils.cpp',
-            '../../common/transport.cpp',
-            '../../fw-update/inventory_manager.cpp',
-            '../../fw-update/package_parser.cpp',
-            '../../fw-update/component_updater.cpp',
-            '../../fw-update/device_updater.cpp',
-            '../../fw-update/update_manager.cpp',
-            '../../fw-update/config.cpp',
-            '../../fw-update/device_inventory.cpp',
-            '../../fw-update/firmware_inventory.cpp',
-            '../../fw-update/other_device_update_manager.cpp',
-            '../../fw-update/watch.cpp',
-            '../../fw-update/fw_update_utility.cpp',
-            '../../fw-update/package_signature.cpp'])
+    sources: [
+        '../mctp_endpoint_discovery.cpp',
+        '../../common/utils.cpp',
+        '../../common/transport.cpp',
+        '../../fw-update/inventory_manager.cpp',
+        '../../fw-update/package_parser.cpp',
+        '../../fw-update/component_updater.cpp',
+        '../../fw-update/device_updater.cpp',
+        '../../fw-update/update_manager.cpp',
+        '../../fw-update/config.cpp',
+        '../../fw-update/device_inventory.cpp',
+        '../../fw-update/firmware_inventory.cpp',
+        '../../fw-update/other_device_update_manager.cpp',
+        '../../fw-update/watch.cpp',
+        '../../fw-update/fw_update_utility.cpp',
+        '../../fw-update/package_signature.cpp',
+    ],
+)
 
 tests = [
-  'handler_test',
-  'request_test',
-  'mctp_endpoint_discovery_test',
+    'handler_test',
+    'request_test',
+    'mctp_endpoint_discovery_test',
 ]
 
-openssl = dependency('openssl', required : true)
+openssl = dependency('openssl', required: true)
 
 foreach t : tests
     test(
