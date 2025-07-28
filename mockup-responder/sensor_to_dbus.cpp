@@ -69,8 +69,7 @@ void Sensor::updateState(const std::string& newState)
 
 Effecter::Effecter(uint16_t effecterId,
                    sdbusplus::asio::object_server& server) :
-    effecterId(effecterId),
-    composite_count(1), functionalValue(true),
+    effecterId(effecterId), composite_count(1), functionalValue(true),
     stateValue(operationalStatusPath + "Enabled")
 {
     value = 0;

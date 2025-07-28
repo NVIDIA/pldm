@@ -49,8 +49,7 @@ class StateSetDebugState : public StateSet
                        [[maybe_unused]] std::string& objectPath,
                        [[maybe_unused]] dbus::PathAssociation& stateAssociation,
                        [[maybe_unused]] StateEffecter* effecter) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         setDefaultValue();
@@ -128,9 +127,8 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                        std::shared_ptr<StateEffecter> stateEffecter,
                        std::shared_ptr<NumericEffecter> numericEffecter,
                        std::shared_ptr<StateSensor> stateSensor) :
-        RemoteDebugIntf(bus, path),
-        stateEffecter(*stateEffecter), numericEffecter(*numericEffecter),
-        stateSensor(*stateSensor)
+        RemoteDebugIntf(bus, path), stateEffecter(*stateEffecter),
+        numericEffecter(*numericEffecter), stateSensor(*stateSensor)
     {}
 
     DebugState jtagDebug() const override

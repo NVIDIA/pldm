@@ -84,9 +84,8 @@ class Handler
         pldm::requester::Handler<pldm::requester::Request>& handler,
         Invoker& invoker, fw_update::Manager& fwManager, Manager& manager,
         bool verbose) :
-        handler(handler),
-        invoker(invoker), fwManager(fwManager), manager(manager), event(event),
-        verbose(verbose)
+        handler(handler), invoker(invoker), fwManager(fwManager),
+        manager(manager), event(event), verbose(verbose)
     {}
 
     /** @brief Register a new MCTP endpoint for communication

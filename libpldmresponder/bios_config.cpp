@@ -43,9 +43,8 @@ BIOSConfig::BIOSConfig(
     const char* jsonDir, const char* tableDir, DBusHandler* const dbusHandler,
     int fd, uint8_t eid, InstanceIdDb* instanceIdDb,
     pldm::requester::Handler<pldm::requester::Request>* handler) :
-    jsonDir(jsonDir),
-    tableDir(tableDir), dbusHandler(dbusHandler), fd(fd), eid(eid),
-    instanceIdDb(instanceIdDb), handler(handler)
+    jsonDir(jsonDir), tableDir(tableDir), dbusHandler(dbusHandler), fd(fd),
+    eid(eid), instanceIdDb(instanceIdDb), handler(handler)
 
 {
     fs::create_directories(tableDir);

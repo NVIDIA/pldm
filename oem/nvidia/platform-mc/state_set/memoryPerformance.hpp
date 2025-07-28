@@ -44,8 +44,7 @@ class StateSetMemoryPerformance : public StateSet
     StateSetMemoryPerformance(uint16_t stateSetId, uint8_t compId,
                               std::string& objectPath,
                               dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId),
-        objPath(objectPath), compId(compId)
+        StateSet(stateSetId), objPath(objectPath), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

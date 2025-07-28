@@ -30,10 +30,9 @@ TerminusManager::TerminusManager(
     InstanceIdDb& instanceIdDb,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, mctp_eid_t localEid,
     Manager* manager, bool numericSensorsWithoutAuxName) :
-    numericSensorsWithoutAuxName(numericSensorsWithoutAuxName),
-    event(event), handler(handler), instanceIdDb(instanceIdDb),
-    termini(termini), localEid(localEid), tidPool(tidPoolSize, false),
-    manager(manager)
+    numericSensorsWithoutAuxName(numericSensorsWithoutAuxName), event(event),
+    handler(handler), instanceIdDb(instanceIdDb), termini(termini),
+    localEid(localEid), tidPool(tidPoolSize, false), manager(manager)
 {
     // DSP0240 v1.1.0 table-8, special value: 0,0xFF = reserved
     tidPool[0] = true;

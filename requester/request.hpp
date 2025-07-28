@@ -54,8 +54,7 @@ class RequestRetryTimer
     explicit RequestRetryTimer(sdeventplus::Event& event, uint8_t numRetries,
                                std::chrono::milliseconds timeout) :
 
-        event(event),
-        numRetries(numRetries), timeout(timeout),
+        event(event), numRetries(numRetries), timeout(timeout),
         timer(event.get(), std::bind_front(&RequestRetryTimer::callback, this))
     {}
 
@@ -159,8 +158,8 @@ class Request final : public RequestRetryTimer
                      const pldm::mctp_socket::Handler* handler,
                      pldm::Request&& requestMsg, uint8_t numRetries,
                      std::chrono::milliseconds timeout, bool verbose) :
-        RequestRetryTimer(event, numRetries, timeout),
-        fd(fd), eid(eid), requestMsg(std::move(requestMsg)), verbose(verbose),
+        RequestRetryTimer(event, numRetries, timeout), fd(fd), eid(eid),
+        requestMsg(std::move(requestMsg)), verbose(verbose),
         socketHandler(handler)
     {}
 

@@ -347,8 +347,7 @@ class GetPLDMCommands : public CommandInterface
     GetPLDMCommands& operator=(GetPLDMCommands&&) = default;
 
     explicit GetPLDMCommands(const char* type, const char* name,
-                             CLI::App* app) :
-        CommandInterface(type, name, app)
+                             CLI::App* app) : CommandInterface(type, name, app)
     {
         app->add_option("-t,--type", pldmType, "pldm supported type")
             ->required()

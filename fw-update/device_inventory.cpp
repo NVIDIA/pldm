@@ -46,8 +46,7 @@ Manager::Manager(sdbusplus::bus::bus& bus,
                  const DeviceInventoryInfo& deviceInventoryInfo,
                  const DescriptorMap& descriptorMap,
                  utils::DBusHandlerInterface* dBusHandlerIntf) :
-    bus(bus),
-    objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
+    bus(bus), objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
     descriptorMap(descriptorMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 

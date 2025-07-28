@@ -134,8 +134,7 @@ int inKernelMctpSockSendRecv(uint8_t eid,
 
     CustomFD socketFd(sockFd);
 
-    struct sockaddr_mctp addr
-    {};
+    struct sockaddr_mctp addr{};
 
     addr.smctp_family = AF_MCTP;
     addr.smctp_network = MCTP_NET_ANY;
@@ -243,8 +242,7 @@ int mctpSockSendRecv(std::string socketName,
     }
     Logger(pldmVerbose, "Success in creating the socket : RC = ", sockFd);
 
-    struct sockaddr_un addr
-    {};
+    struct sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
 
     memcpy(addr.sun_path, devPath.data(), devPath.size());
@@ -552,8 +550,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
 
         CustomFD socketFd(sockFd);
 
-        struct sockaddr_un addr
-        {};
+        struct sockaddr_un addr{};
         addr.sun_family = AF_UNIX;
         memcpy(addr.sun_path, sockAddress.data(), sockAddress.size());
         rc = connect(sockFd, reinterpret_cast<struct sockaddr*>(&addr),

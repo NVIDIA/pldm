@@ -120,8 +120,7 @@ class OtherDeviceUpdateManager
     explicit OtherDeviceUpdateManager(
         sdbusplus::bus::bus& bus, UpdateManager* upMan,
         std::vector<sdbusplus::message::object_path> targets) :
-        updateManager(upMan),
-        bus(bus), timer(nullptr), targets(targets)
+        updateManager(upMan), bus(bus), timer(nullptr), targets(targets)
     {
         /* cache number of valid targets */
         updateValidTargets();

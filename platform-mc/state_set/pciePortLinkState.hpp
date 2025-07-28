@@ -54,8 +54,8 @@ class StateSetPciePortLinkState : public StateSet
                               std::string& objectPath,
                               dbus::PathAssociation& stateAssociation,
                               StateSensor& sensorRef) :
-        StateSet(stateSetId),
-        objPath(objectPath), compId(compId), stateSensor(sensorRef)
+        StateSet(stateSetId), objPath(objectPath), compId(compId),
+        stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

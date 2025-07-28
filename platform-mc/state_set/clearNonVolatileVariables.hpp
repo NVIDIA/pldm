@@ -34,8 +34,7 @@ class ClearNonVolatileVariablesStateIntf : public ClearNonVolatileVariablesIntf
   public:
     ClearNonVolatileVariablesStateIntf(bus::bus& bus, const char* path,
                                        uint8_t compId) :
-        ClearNonVolatileVariablesIntf(bus, path),
-        compId(compId)
+        ClearNonVolatileVariablesIntf(bus, path), compId(compId)
     {}
 
     virtual void update(bool value)
@@ -98,8 +97,7 @@ class StateSetClearNonvolatileVariable : public StateSet
                                      std::string& objectPath,
                                      dbus::PathAssociation& stateAssociation,
                                      StateEffecter* effecter) :
-        StateSet(stateSetId),
-        compId(compId)
+        StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

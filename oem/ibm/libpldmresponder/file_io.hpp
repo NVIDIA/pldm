@@ -169,9 +169,8 @@ class Handler : public CmdHandler
     Handler(oem_platform::Handler* oemPlatformHandler, int hostSockFd,
             uint8_t hostEid, dbus_api::Requester* dbusImplReqester,
             pldm::requester::Handler<pldm::requester::Request>* handler) :
-        oemPlatformHandler(oemPlatformHandler),
-        hostSockFd(hostSockFd), hostEid(hostEid),
-        dbusImplReqester(dbusImplReqester), handler(handler)
+        oemPlatformHandler(oemPlatformHandler), hostSockFd(hostSockFd),
+        hostEid(hostEid), dbusImplReqester(dbusImplReqester), handler(handler)
     {
         handlers.emplace(PLDM_READ_FILE_INTO_MEMORY,
                          [this](const pldm_msg* request, size_t payloadLength) {

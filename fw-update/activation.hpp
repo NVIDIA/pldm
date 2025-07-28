@@ -117,8 +117,8 @@ class Activation : public ActivationIntf
      */
     Activation(sdbusplus::bus::bus& bus, std::string objPath,
                Activations activationStatus, UpdateManager* updateManager) :
-        ActivationIntf(bus, objPath.c_str(), action::defer_emit),
-        bus(bus), objPath(objPath), updateManager(updateManager)
+        ActivationIntf(bus, objPath.c_str(), action::defer_emit), bus(bus),
+        objPath(objPath), updateManager(updateManager)
     {
         deleteImpl = std::make_unique<Delete>(bus, objPath, updateManager);
         activation(activationStatus);

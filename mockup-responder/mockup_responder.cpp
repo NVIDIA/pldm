@@ -87,9 +87,8 @@ MockupResponder::MockupResponder(bool verbose, sdeventplus::Event& event,
                                  uint8_t eid, std::string pdrPath,
                                  uint16_t terminusMaxBufferSize,
                                  uint8_t* uuidValue) :
-    event(event),
-    verbose(verbose), mockEid(eid), server(server), eventReceiverEid(0),
-    jsonParser(verbose, server),
+    event(event), verbose(verbose), mockEid(eid), server(server),
+    eventReceiverEid(0), jsonParser(verbose, server),
     mockTerminusMaxBufferSize(terminusMaxBufferSize)
 {
     std::memcpy(this->mockUUID, uuidValue, sizeof(this->mockUUID));

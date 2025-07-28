@@ -27,8 +27,7 @@ class Handler : public CmdHandler
     Handler(uint8_t eid, InstanceIdDb& instanceIdDb, sdeventplus::Event& event,
             pldm::responder::oem_platform::Handler* oemPlatformHandler,
             pldm::requester::Handler<pldm::requester::Request>* handler) :
-        eid(eid),
-        instanceIdDb(instanceIdDb), event(event),
+        eid(eid), instanceIdDb(instanceIdDb), event(event),
         oemPlatformHandler(oemPlatformHandler), handler(handler)
     {
         handlers.emplace(PLDM_GET_PLDM_TYPES,

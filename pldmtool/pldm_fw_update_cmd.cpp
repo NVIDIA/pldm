@@ -806,8 +806,7 @@ class ActivateFirmware : public CommandInterface
     ActivateFirmware& operator=(ActivateFirmware&&) = default;
 
     explicit ActivateFirmware(const char* type, const char* name,
-                              CLI::App* app) :
-        CommandInterface(type, name, app)
+                              CLI::App* app) : CommandInterface(type, name, app)
     {
         app->add_option("--self_contained_activation_request",
                         selfContainedActivRequest,
@@ -1130,8 +1129,7 @@ class UpdateComponent : public CommandInterface
     UpdateComponent& operator=(UpdateComponent&&) = default;
 
     explicit UpdateComponent(const char* type, const char* name,
-                             CLI::App* app) :
-        CommandInterface(type, name, app)
+                             CLI::App* app) : CommandInterface(type, name, app)
     {
 
         app->add_option(

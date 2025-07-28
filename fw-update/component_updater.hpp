@@ -232,13 +232,12 @@ class ComponentUpdater
                               UpdateManager* updateManager,
                               DeviceUpdater* deviceUpdater,
                               size_t componentIndex, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord),
-        componentUpdaterState(fwDebug), eid(eid), package(package),
-        compImageInfos(compImageInfos), compInfo(compInfo),
-        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-        updateManager(updateManager), deviceUpdater(deviceUpdater),
-        componentIndex(componentIndex), reqFwDataTimer(nullptr),
-        completeCommandsTimeoutTimer(nullptr)
+        fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(fwDebug),
+        eid(eid), package(package), compImageInfos(compImageInfos),
+        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
+        maxTransferSize(maxTransferSize), updateManager(updateManager),
+        deviceUpdater(deviceUpdater), componentIndex(componentIndex),
+        reqFwDataTimer(nullptr), completeCommandsTimeoutTimer(nullptr)
     {}
 
     /**

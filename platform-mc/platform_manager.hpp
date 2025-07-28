@@ -47,8 +47,7 @@ class PlatformManager
     explicit PlatformManager(
         TerminusManager& terminusManager,
         std::map<tid_t, std::shared_ptr<Terminus>>& termini) :
-        terminusManager(terminusManager),
-        termini(termini)
+        terminusManager(terminusManager), termini(termini)
     {}
 
     /** @brief Initialize terminus which supports PLDM Type 2

@@ -44,8 +44,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
      */
     NumericEffecterWattInft(NumericEffecter& effecter, bus::bus& bus,
                             const char* path) :
-        NumericEffecterBaseUnit(effecter),
-        PowerCapInft(bus, path)
+        NumericEffecterBaseUnit(effecter), PowerCapInft(bus, path)
     {}
 
     void pdrMaxSettable(double maxValue) override

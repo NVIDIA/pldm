@@ -90,8 +90,7 @@ class StateSetNvlink : public StateSet
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
                    dbus::PathAssociation& stateAssociation,
                    StateSensor& sensorRef) :
-        StateSet(stateSetId),
-        objPath(objectPath), stateSensor(sensorRef)
+        StateSet(stateSetId), objPath(objectPath), stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =

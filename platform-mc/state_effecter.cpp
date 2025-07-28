@@ -37,9 +37,8 @@ StateEffecter::StateEffecter(
     std::vector<std::vector<std::pair<std::string, std::string>>>*
         effecterNames,
     std::string& associationPath, TerminusManager& terminusManager) :
-    tid(tid),
-    effecterId(effecterId), effecterInfo(effecterInfo), needUpdate(true),
-    terminusManager(terminusManager)
+    tid(tid), effecterId(effecterId), effecterInfo(effecterInfo),
+    needUpdate(true), terminusManager(terminusManager)
 {
     path = "/xyz/openbmc_project/control/PLDM_Effecter_" +
            std::to_string(effecterId) + "_" + std::to_string(tid);

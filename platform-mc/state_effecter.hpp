@@ -68,7 +68,7 @@ class StateEffecter
                       effecterNames,
                   std::string& associationPath,
                   TerminusManager& terminusManager);
-    ~StateEffecter(){};
+    ~StateEffecter() {};
 
     /** @brief Get the ContainerID, EntityType, EntityInstance of the PLDM
      * Entity which the sensor belongs to

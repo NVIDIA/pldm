@@ -32,7 +32,7 @@ class MockSensorManager : public SensorManager
                       TerminusManager& terminusManager,
                       std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
                       Manager* manager) :
-        SensorManager(event, terminusManager, termini, manager){};
+        SensorManager(event, terminusManager, termini, manager) {};
 
     MOCK_METHOD(void, doSensorPolling, (tid_t tid), (override));
 };

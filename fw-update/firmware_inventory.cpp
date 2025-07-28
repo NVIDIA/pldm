@@ -67,8 +67,7 @@ Manager::Manager(sdbusplus::bus::bus& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
                  const ComponentInfoMap& componentInfoMap,
                  utils::DBusHandlerInterface* dBusHandlerIntf) :
-    bus(bus),
-    firmwareInventoryInfo(firmwareInventoryInfo),
+    bus(bus), firmwareInventoryInfo(firmwareInventoryInfo),
     componentInfoMap(componentInfoMap), dBusHandlerIntf(dBusHandlerIntf)
 {}
 

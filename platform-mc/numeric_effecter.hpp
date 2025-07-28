@@ -72,7 +72,7 @@ class NumericEffecter
                     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
                     std::string& effecerName, std::string& associationPath,
                     TerminusManager& terminusManager);
-    ~NumericEffecter(){};
+    ~NumericEffecter() {};
 
     /** @brief The function called by Sensor Manager to set sensor to
      * error status.

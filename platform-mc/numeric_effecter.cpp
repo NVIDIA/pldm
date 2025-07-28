@@ -35,8 +35,7 @@ NumericEffecter::NumericEffecter(
     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
     std::string& effecerName, std::string& associationPath,
     TerminusManager& terminusManager) :
-    tid(tid),
-    effecterId(pdr->effecter_id),
+    tid(tid), effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance)),
     needUpdate(true), terminusManager(terminusManager), baseUnit(pdr->base_unit)

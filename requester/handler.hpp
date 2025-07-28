@@ -132,9 +132,8 @@ class Handler
         uint8_t numRetries = static_cast<uint8_t>(NUMBER_OF_REQUEST_RETRIES),
         std::chrono::milliseconds responseTimeOut =
             std::chrono::milliseconds(RESPONSE_TIME_OUT)) :
-        event(event),
-        instanceIdDb(instanceIdDb), sockManager(sockManager), verbose(verbose),
-        instanceIdExpiryInterval(instanceIdExpiryInterval),
+        event(event), instanceIdDb(instanceIdDb), sockManager(sockManager),
+        verbose(verbose), instanceIdExpiryInterval(instanceIdExpiryInterval),
         numRetries(numRetries), responseTimeOut(responseTimeOut)
     {}
 
@@ -476,8 +475,7 @@ struct SendRecvPldmMsg
     SendRecvPldmMsg(RequesterHandler& handler, uint8_t eid,
                     pldm::Request& request, const pldm_msg** responseMsg,
                     size_t* responseLen) :
-        handler(handler),
-        eid(eid), request(request), responseMsg(responseMsg),
+        handler(handler), eid(eid), request(request), responseMsg(responseMsg),
         responseLen(responseLen), rc(PLDM_ERROR)
     {}
 

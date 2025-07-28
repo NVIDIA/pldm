@@ -232,11 +232,10 @@ class DeviceUpdater
                            const ComponentIdNameMap compIdNameInfo,
                            uint32_t maxTransferSize,
                            UpdateManager* updateManager, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord),
-        deviceUpdaterState(fwDebug), eid(eid), package(package),
-        compImageInfos(compImageInfos), compInfo(compInfo),
-        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-        updateManager(updateManager)
+        fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(fwDebug),
+        eid(eid), package(package), compImageInfos(compImageInfos),
+        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
+        maxTransferSize(maxTransferSize), updateManager(updateManager)
     {}
 
     /** @brief Start the firmware update flow for the FD

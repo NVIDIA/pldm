@@ -57,7 +57,7 @@ class SwitchBandwidthSensor
         const tid_t tid, std::string sName, std::string& switchType,
         std::vector<std::string>& switchProtocols,
         const std::vector<dbus::PathAssociation>& associations);
-    ~SwitchBandwidthSensor(){};
+    ~SwitchBandwidthSensor() {};
 
     void setDefaultValue();
     void updateOnSharedMemory();
