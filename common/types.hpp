@@ -35,6 +35,7 @@ using VendorIANA = uint32_t;
  */
 
 using MctpMedium = std::string;
+using MctpBinding = std::string;
 /** @brief Type definition of MCTP Network Index.
  *         uint32_t is used as defined in MCTP Endpoint D-Bus Interface
  */
@@ -46,7 +47,7 @@ using NetworkId = uint32_t;
  *         UUID : Endpoint UUID which is used to different the endpoints
  *         NetworkId: MCTP network index
  */
-using MctpInfo = std::tuple<EID, UUID, NetworkId>;
+using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId, MctpBinding>;
 
 /** @brief Type definition of MCTP endpoint D-Bus properties in
  *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
@@ -56,7 +57,7 @@ using MctpInfo = std::tuple<EID, UUID, NetworkId>;
  *               interface
  *         MCTPMsgTypes: MCTP message types
  */
-using MctpEndpointProps = std::tuple<NetworkId, eid, MCTPMsgTypes>;
+using MctpEndpointProps = std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding>;
 
 /** @brief Type defined for list of MCTP interface information
  */

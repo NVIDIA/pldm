@@ -99,39 +99,36 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority = {
     {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 5},
     {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 6}};
 
-// TODO: This is currently commented out as the Code Construct MCTP Stack Only
-// Provides: EID, UUID, Network ID. Needs to be re-visited once support is
-// available.
 /**
  * @brief MCTP Binding Type priority table ordering by bandwidth
  */
-// static std::unordered_map<MctpBinding, Priority> bindingPriority = {
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
-//     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
+ static std::unordered_map<MctpBinding, Priority> bindingPriority = {
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
+     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
-// static bool isPreferred(const MctpInfo& currentMctpInfo,
-//                         const MctpInfo& newMctpInfo)
-// {
-//     auto currentMedium = std::get<2>(currentMctpInfo);
-//     auto newMedium = std::get<2>(newMctpInfo);
-//     auto currentBinding = std::get<4>(currentMctpInfo);
-//     auto newBinding = std::get<4>(newMctpInfo);
+ static bool isPreferred(const MctpInfo& currentMctpInfo,
+                         const MctpInfo& newMctpInfo)
+ {
+     auto currentMedium = std::get<2>(currentMctpInfo);
+     auto newMedium = std::get<2>(newMctpInfo);
+     auto currentBinding = std::get<4>(currentMctpInfo);
+     auto newBinding = std::get<4>(newMctpInfo);
 
-//     if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
-//     {
-//         return bindingPriority.at(currentBinding) >
-//                bindingPriority.at(newBinding);
-//     }
-//     else
-//     {
-//         return mediumPriority.at(currentMedium) >
-//         mediumPriority.at(newMedium);
-//     }
-// }
+     if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
+     {
+         return bindingPriority.at(currentBinding) >
+                bindingPriority.at(newBinding);
+     }
+     else
+     {
+         return mediumPriority.at(currentMedium) >
+         mediumPriority.at(newMedium);
+     }
+ }
 
 std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
 {
@@ -148,12 +145,9 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
         mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
             return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
                    (std::get<1>(v.second) == std::get<1>(mctpInfo)) &&
-                   (std::get<2>(v.second) == std::get<2>(mctpInfo)); // &&
-            // (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
-            // (std::get<4>(v.second) == std::get<4>(mctpInfo));
-            // TODO: Above part is currently commented out as the Code Construct
-            // MCTP Stack Only Provides: EID, UUID, Network ID. Needs to be
-            // re-visited once support is available.
+                   (std::get<2>(v.second) == std::get<2>(mctpInfo)) &&
+            (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
+            (std::get<4>(v.second) == std::get<4>(mctpInfo));
         });
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {
@@ -168,12 +162,12 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {
         // check if new medium type is preferred than original
-        // auto& currentMctpInfo = mctpInfoTableIterator->second;
+        auto& currentMctpInfo = mctpInfoTableIterator->second;
         auto tid = mctpInfoTableIterator->first;
-        // if (!isPreferred(currentMctpInfo, mctpInfo))
-        // {
-        //     return std::nullopt;
-        // }
+        if (!isPreferred(currentMctpInfo, mctpInfo))
+        {
+            return std::nullopt;
+        }
         lg2::info(
             "Reassign the terminus TID={TID} to preferred medium eid={EID}.",
             "TID", tid, "EID", std::get<0>(mctpInfo));

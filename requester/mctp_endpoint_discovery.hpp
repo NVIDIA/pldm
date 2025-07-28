@@ -17,6 +17,7 @@ namespace pldm
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 constexpr const char* MCTPService = "au.com.codeconstruct.MCTP1";
 constexpr const char* MCTPInterface = "xyz.openbmc_project.MCTP.Endpoint";
+constexpr const char* MCTPBindingInterface = "xyz.openbmc_project.MCTP.Binding";
 constexpr const char* EndpointUUID = "xyz.openbmc_project.Common.UUID";
 constexpr const char* MCTPPath = "/au/com/codeconstruct/mctp1";
 

@@ -37,7 +37,64 @@ namespace fw_update
 using CreateInventoryCallBack =
     std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(EID)>;
-using MctpEidMap = std::unordered_map<EID, UUID>;
+using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
+
+using Priority = int;
+
+static std::unordered_map<MctpMedium, Priority> mediumPriority = {
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.I3C", 3},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.KCS", 4},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 5},
+    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 6}};
+
+/**
+ * @brief MCTP Binding Type priority table ordering by bandwidth
+ */
+static std::unordered_map<MctpBinding, Priority> bindingPriority = {
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
+
+struct MctpEidInfo
+{
+    EID eid;
+    MctpMedium medium;
+    MctpBinding binding;
+
+    friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
+    {
+        if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
+        {
+            return (bindingPriority.at(lhs.binding) >
+                    bindingPriority.at(rhs.binding));
+        }
+        else
+        {
+            return (mediumPriority.at(lhs.medium) >
+                    mediumPriority.at(rhs.medium));
+        }
+    }
+};
+
+struct MCTPEidInfoPriorityQueue : std::priority_queue<MctpEidInfo>
+{
+    auto begin() const
+    {
+        return c.begin();
+    }
+    auto end() const
+    {
+        return c.end();
+    }
+};
+
+using MctpInfoMap = std::map<UUID, MCTPEidInfoPriorityQueue>;
 
 /** @class InventoryManager
  *
@@ -239,8 +296,7 @@ class InventoryManager
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
 
-    /** @brief Track the MCTP endpoints discovered during discovery*/
-    std::map<UUID, EID> discoveredUuids{};
+    MctpInfoMap mctpInfoMap;
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;
