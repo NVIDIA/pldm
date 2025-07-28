@@ -96,8 +96,7 @@ class EventManager
      *
      *  @param[in] dstTid - the destination TID
      */
-    exec::task<int> pollForPlatformEventTask(tid_t tid,
-                                                  uint16_t maxBufferSize);
+    exec::task<int> pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize);
 
   protected:
     /** @brief Send pollForPlatformEventMessage and return response

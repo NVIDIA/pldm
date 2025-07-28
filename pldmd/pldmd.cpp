@@ -264,9 +264,9 @@ int main(int argc, char** argv)
 
 #ifdef PLDM_TYPE2
     std::unique_ptr<pldm::platform_mc::Manager> platformManager =
-        std::make_unique<pldm::platform_mc::Manager>(event, reqHandler, instanceIdDb,
-                                               *(fwManager.get()), verbose,
-                                               numericSensorsWithoutAuxName);
+        std::make_unique<pldm::platform_mc::Manager>(
+            event, reqHandler, instanceIdDb, *(fwManager.get()), verbose,
+            numericSensorsWithoutAuxName);
 
     // Initializing telemetry for pldmd
     if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,

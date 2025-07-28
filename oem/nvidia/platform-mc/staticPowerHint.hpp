@@ -184,8 +184,7 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
 
   private:
     exec::task<int> estimationTask(double cpuClockFrequency,
-                                    double workloadFactor,
-                                    double temperature)
+                                   double workloadFactor, double temperature)
     {
         uint64_t t0 = 0;
         uint64_t t1 = 0;

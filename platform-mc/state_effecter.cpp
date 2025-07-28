@@ -192,8 +192,7 @@ exec::task<int> StateEffecter::getStateEffecterStates()
 
     pldm_get_state_effecter_states_resp resp;
 
-    rc = decode_get_state_effecter_states_resp(
-        responseMsg, payloadLen, &resp);
+    rc = decode_get_state_effecter_states_resp(responseMsg, payloadLen, &resp);
     if (rc)
     {
         lg2::error(
@@ -224,7 +223,7 @@ exec::task<int> StateEffecter::getStateEffecterStates()
 }
 
 exec::task<int> StateEffecter::setStateEffecterStates(uint8_t cmpId,
-                                                           uint8_t value)
+                                                      uint8_t value)
 {
     uint8_t cmpEffCnt = stateSets.size();
     uint8_t rc = PLDM_SUCCESS;

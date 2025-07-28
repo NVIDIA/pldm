@@ -51,12 +51,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
-                     InstanceIdDb& instanceIdDb, fw_update::Manager& fwUpdateManager,
-                     bool verbose = false,
+                     InstanceIdDb& instanceIdDb,
+                     fw_update::Manager& fwUpdateManager, bool verbose = false,
                      bool numericSensorsWithoutAuxName = false) :
         fwUpdateManager(fwUpdateManager),
-        terminusManager(event, handler, instanceIdDb, termini, LOCAL_EID_OVER_I2C,
-                        this, numericSensorsWithoutAuxName),
+        terminusManager(event, handler, instanceIdDb, termini,
+                        LOCAL_EID_OVER_I2C, this, numericSensorsWithoutAuxName),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, this, verbose),
         eventManager(terminusManager, termini, fwUpdateManager, verbose),

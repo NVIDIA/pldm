@@ -80,8 +80,8 @@ class TerminusManager
      *  @return coroutine return_value - PLDM completion code
      */
     exec::task<int> SendRecvPldmMsg(tid_t tid, Request& request,
-                                         const pldm_msg** responseMsg,
-                                         size_t* responseLen);
+                                    const pldm_msg** responseMsg,
+                                    size_t* responseLen);
 
     /** @brief Send request PLDM message to eid. The function will
      *         return when received the response message from terminus.

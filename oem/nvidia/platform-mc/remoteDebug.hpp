@@ -164,7 +164,8 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     uint32_t timeout(uint32_t value, bool skipSignal)
     {
         stdexec::start_detached(
-            numericEffecter.setNumericEffecterValue(numericEffecter.baseToRaw(value)),
+            numericEffecter.setNumericEffecterValue(
+                numericEffecter.baseToRaw(value)),
             exec::default_task_context<void>(exec::inline_scheduler{}));
         return RemoteDebugIntf::timeout(value, skipSignal);
     }

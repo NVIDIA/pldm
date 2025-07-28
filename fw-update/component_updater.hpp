@@ -345,8 +345,8 @@ class ComponentUpdater
      * @param[in] getStatusCallback - callback to handle the response
      * @return exec::task<int>
      */
-    exec::task<int> sendGetStatusRequest(
-        std::function<void(uint8_t)> getStatusCallback);
+    exec::task<int>
+        sendGetStatusRequest(std::function<void(uint8_t)> getStatusCallback);
 
     /**
      * @brief process get status response

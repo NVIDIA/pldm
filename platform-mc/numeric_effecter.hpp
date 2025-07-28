@@ -95,8 +95,7 @@ class NumericEffecter
      *
      *  @param[in] state - the effecter state to be set
      */
-    exec::task<int>
-        setNumericEffecterEnable(pldm_effecter_oper_state state);
+    exec::task<int> setNumericEffecterEnable(pldm_effecter_oper_state state);
 
     /** @brief Sending setNumericEffecterValue command for the effecter
      *

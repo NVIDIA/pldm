@@ -602,7 +602,9 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
         // UUID during discovery.
         if (discoveredUuids.find(uuid) != discoveredUuids.end())
         {
-            info("UUID {U} has already been discovered, skipping inventory creation", "U", uuid);
+            info(
+                "UUID {U} has already been discovered, skipping inventory creation",
+                "U", uuid);
             descriptorMap.erase(discoveredUuids.at(uuid));
             componentInfoMap.erase(discoveredUuids.at(uuid));
             co_return PLDM_SUCCESS;

@@ -403,8 +403,7 @@ exec::task<int> Terminus::getPortInfoFromEM(const std::string& objPath)
     co_return PLDM_SUCCESS;
 }
 
-exec::task<int>
-    Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
+exec::task<int> Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
 {
     if (switchBandwidthSensor)
     {

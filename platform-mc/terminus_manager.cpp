@@ -18,8 +18,9 @@
 
 #include "manager.hpp"
 
-#include <sdbusplus/exception.hpp>
 #include <stdio.h>
+
+#include <sdbusplus/exception.hpp>
 
 namespace pldm
 {
@@ -98,8 +99,9 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority = {
     {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 5},
     {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 6}};
 
-// TODO: This is currently commented out as the Code Construct MCTP Stack Only Provides: EID, UUID, Network ID.
-// Needs to be re-visited once support is available.
+// TODO: This is currently commented out as the Code Construct MCTP Stack Only
+// Provides: EID, UUID, Network ID. Needs to be re-visited once support is
+// available.
 /**
  * @brief MCTP Binding Type priority table ordering by bandwidth
  */
@@ -126,7 +128,8 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority = {
 //     }
 //     else
 //     {
-//         return mediumPriority.at(currentMedium) > mediumPriority.at(newMedium);
+//         return mediumPriority.at(currentMedium) >
+//         mediumPriority.at(newMedium);
 //     }
 // }
 
@@ -146,11 +149,11 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
             return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
                    (std::get<1>(v.second) == std::get<1>(mctpInfo)) &&
                    (std::get<2>(v.second) == std::get<2>(mctpInfo)); // &&
-                   // (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
-                   // (std::get<4>(v.second) == std::get<4>(mctpInfo));
-                   // TODO: Above part is currently commented out as the Code Construct
-                   // MCTP Stack Only Provides: EID, UUID, Network ID. Needs to be
-                   // re-visited once support is available.
+            // (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
+            // (std::get<4>(v.second) == std::get<4>(mctpInfo));
+            // TODO: Above part is currently commented out as the Code Construct
+            // MCTP Stack Only Provides: EID, UUID, Network ID. Needs to be
+            // re-visited once support is available.
         });
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {
@@ -228,7 +231,8 @@ void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
     }
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
     stdexec::start_detached(
-        discoverMctpTerminusTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        discoverMctpTerminusTask() |
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
         exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
@@ -343,14 +347,16 @@ exec::task<int>
     }
     catch (const sdbusplus::exception_t& e)
     {
-        lg2::error("Send and Receive PLDM message over MCTP throw error - {ERROR}.",
-                   "ERROR", e);
+        lg2::error(
+            "Send and Receive PLDM message over MCTP throw error - {ERROR}.",
+            "ERROR", e);
         co_return PLDM_ERROR;
     }
     catch (const int& e)
     {
-        lg2::error("Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
-                   "ERROR", e);
+        lg2::error(
+            "Send and Receive PLDM message over MCTP throw int error - {ERROR}.",
+            "ERROR", e);
         co_return PLDM_ERROR;
     }
 
@@ -431,7 +437,7 @@ exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 }
 
 exec::task<int> TerminusManager::getPLDMTypes(tid_t tid,
-                                                   uint64_t& supportedTypes)
+                                              uint64_t& supportedTypes)
 {
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
@@ -512,10 +518,9 @@ exec::task<int> TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)
     co_return completionCode;
 }
 
-exec::task<int>
-    TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
-                                     const pldm_msg** responseMsg,
-                                     size_t* responseLen)
+exec::task<int> TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
+                                                 const pldm_msg** responseMsg,
+                                                 size_t* responseLen)
 {
     if (tidPool[tid] &&
         transportLayerTable[tid] == SupportedTransportLayer::MCTP)

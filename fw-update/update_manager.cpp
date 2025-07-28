@@ -514,8 +514,8 @@ void UpdateManager::performSecurityChecksAsync(
     }
 }
 
-
-void UpdateManager::packageIntegrityCheckAsync( std::function<void(bool)> onComplete,
+void UpdateManager::packageIntegrityCheckAsync(
+    std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
     const static std::string compName = "Firmware Update Service";

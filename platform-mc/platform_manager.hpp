@@ -86,24 +86,23 @@ class PlatformManager
      *  @return coroutine return_value - PLDM completion code
      */
     exec::task<int> getPDR(tid_t tid, uint32_t recordHndl,
-                                uint32_t dataTransferHndl,
-                                uint8_t transferOpFlag, uint16_t requestCnt,
-                                uint16_t recordChgNum, uint32_t& nextRecordHndl,
-                                uint32_t& nextDataTransferHndl,
-                                uint8_t& transferFlag, uint16_t& responseCnt,
-                                std::vector<uint8_t>& recordData,
-                                uint8_t& transferCrc);
+                           uint32_t dataTransferHndl, uint8_t transferOpFlag,
+                           uint16_t requestCnt, uint16_t recordChgNum,
+                           uint32_t& nextRecordHndl,
+                           uint32_t& nextDataTransferHndl,
+                           uint8_t& transferFlag, uint16_t& responseCnt,
+                           std::vector<uint8_t>& recordData,
+                           uint8_t& transferCrc);
 
     /** @brief get PDR repository information.
      *
      *  @param[in] terminus - The terminus object to store fetched PDRs
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> getPDRRepositoryInfo(tid_t tid,
-                                              uint8_t& repositoryState,
-                                              uint32_t& recordCount,
-                                              uint32_t& repositorySize,
-                                              uint32_t& largestRecordSize);
+    exec::task<int> getPDRRepositoryInfo(tid_t tid, uint8_t& repositoryState,
+                                         uint32_t& recordCount,
+                                         uint32_t& repositorySize,
+                                         uint32_t& largestRecordSize);
 
     /** @brief Send setEventReceiver command to destination EID.
      *
@@ -125,8 +124,8 @@ class PlatformManager
      *  @return coroutine return_value - PLDM completion code
      */
     exec::task<int> eventMessageBufferSize(tid_t tid,
-                                                uint16_t receiverMaxBufferSize,
-                                                uint16_t& terminusBufferSize);
+                                           uint16_t receiverMaxBufferSize,
+                                           uint16_t& terminusBufferSize);
 
     /** @brief  send eventMessageSupprted
      *  @param[in] tid - Destination TID

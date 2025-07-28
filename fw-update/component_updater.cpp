@@ -1080,19 +1080,17 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        auto [messageStatus, oemMessageId, oemMessageError,
-              oemResolution] =
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
             getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex,
-                oemMessageId, oemMessageError, oemResolution);
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
         }
-        error(
-            "Error while sending mctp request for ComponentUpdate."
-            " EID={EID}, ComponentIndex={COMPONENTINDEX}",
-            "EID", eid, "COMPONENTINDEX", componentIndex);
+        error("Error while sending mctp request for ComponentUpdate."
+              " EID={EID}, ComponentIndex={COMPONENTINDEX}",
+              "EID", eid, "COMPONENTINDEX", componentIndex);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         getStatusCallback(0);
         co_return rc;
@@ -1100,7 +1098,8 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
 
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
-    rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState, progressPercent);
+    rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,
+                                  progressPercent);
     if (rc)
     {
         error("Error while processing get request response."

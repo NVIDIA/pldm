@@ -26,9 +26,9 @@
 #include <openssl/sha.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
-#include <sdbusplus/timer.hpp>
 
 #include <array>
 #include <fstream>

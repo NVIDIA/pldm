@@ -308,8 +308,7 @@ exec::task<int>
     co_return completionCode;
 }
 
-exec::task<int>
-    NumericEffecter::setNumericEffecterValue(double effecterValue)
+exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
     Request request(sizeof(pldm_msg_hdr) +
                     PLDM_SET_NUMERIC_EFFECTER_VALUE_MAX_REQ_BYTES);

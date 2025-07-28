@@ -17,6 +17,7 @@
 #pragma once
 
 #include "utils.hpp"
+
 #include <phosphor-logging/lg2.hpp>
 
 #include <queue>
@@ -106,8 +107,8 @@ struct coGetDbusProperty
     coGetDbusProperty(const std::string& objectPath,
                       const std::string& property, const std::string& interface,
                       const std::string service = entityManagerService) :
-        service(service),
-        objectPath(objectPath), interface(interface), property(property), ret{}
+        service(service), objectPath(objectPath), interface(interface),
+        property(property), ret{}
     {}
 };
 
@@ -178,8 +179,7 @@ struct coGetServiceMap
      */
     coGetServiceMap(const std::string& objectPath,
                     const dbus::Interfaces& ifaceList) :
-        objectPath(objectPath),
-        ifaceList(ifaceList)
+        objectPath(objectPath), ifaceList(ifaceList)
     {}
 };
 
@@ -251,8 +251,7 @@ struct coGetSubTree
      */
     coGetSubTree(const std::string& objectPath, int depth,
                  const dbus::Interfaces& ifaceList) :
-        objectPath(objectPath),
-        depth(depth), ifaceList(ifaceList)
+        objectPath(objectPath), depth(depth), ifaceList(ifaceList)
     {}
 };
 
@@ -286,8 +285,8 @@ struct coGetDbusProperty
     coGetDbusProperty(const std::string& objectPath,
                       const std::string& property, const std::string& interface,
                       const std::string service = entityManagerService) :
-        service(service),
-        objectPath(objectPath), interface(interface), property(property), ret{}
+        service(service), objectPath(objectPath), interface(interface),
+        property(property), ret{}
     {}
 };
 
@@ -315,8 +314,7 @@ struct coGetServiceMap
 
     coGetServiceMap(const std::string& objectPath,
                     const dbus::Interfaces& ifaceList) :
-        objectPath(objectPath),
-        ifaceList(ifaceList)
+        objectPath(objectPath), ifaceList(ifaceList)
     {}
 };
 
@@ -345,8 +343,7 @@ struct coGetSubTree
 
     coGetSubTree(const std::string& objectPath, int depth,
                  const dbus::Interfaces& ifaceList) :
-        objectPath(objectPath),
-        depth(depth), ifaceList(ifaceList)
+        objectPath(objectPath), depth(depth), ifaceList(ifaceList)
     {}
 };
 

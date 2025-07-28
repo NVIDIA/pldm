@@ -116,8 +116,7 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
     co_return rc;
 }
 
-exec::task<int>
-    PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
+exec::task<int> PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
 {
     tid_t tid = terminus->getTid();
 
@@ -384,8 +383,8 @@ exec::task<int> PlatformManager::eventMessageSupported(
     bitfield8_t& synchronyConfigurationSupported,
     uint8_t& numberEventClassReturned, std::vector<uint8_t>& eventClass)
 {
-    Request request(
-        sizeof(pldm_msg_hdr) + PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
+    Request request(sizeof(pldm_msg_hdr) +
+                    PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
     auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_event_message_supported_req(0, formatVersion, requestMsg);
     if (rc)
