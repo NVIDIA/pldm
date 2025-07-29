@@ -55,14 +55,27 @@ if get_option('omit-heartbeat').enabled()
     add_project_arguments('-DOMIT_HEARTBEAT', language: 'cpp')
 endif
 
+if get_option('non-pldm').enabled()
+    add_project_arguments('-DNON_PLDM', language: ['c', 'cpp'])
+endif
+if get_option('fw-update-skip-package-size-check').enabled()
+    add_project_arguments('-DSKIP_PACKAGE_SIZE_CHECK', language: ['c', 'cpp'])
+endif
+
 if (get_option('pldm-package-verification') == 'authentication')
     add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language: ['c', 'cpp'])
 endif
 if get_option('pldm-package-verification-must-be-signed').enabled()
-    add_project_arguments('-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED', language: ['c', 'cpp'])
+    add_project_arguments(
+        '-DPLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED',
+        language: ['c', 'cpp'],
+    )
 endif
 if (get_option('pldm-package-verification') == 'integrity')
-    add_project_arguments('-DPLDM_PACKAGE_INTEGRITY_CHECK', language: ['c', 'cpp'])
+    add_project_arguments(
+        '-DPLDM_PACKAGE_INTEGRITY_CHECK',
+        language: ['c', 'cpp'],
+    )
 endif
 
 conf_data.set(
@@ -87,14 +100,23 @@ conf_data.set('PLDM_VERBOSITY', get_option('verbosity'))
 if get_option('fw-debug').enabled()
     conf_data.set('FWDEBUG', '--fw-debug')
 endif
-conf_data.set('NUMBER_OF_REQUEST_RETRIES', get_option('number-of-request-retries'))
-conf_data.set('NUMBER_OF_COMMAND_ATTEMPTS', get_option('number-of-command-attempts'))
+conf_data.set(
+    'NUMBER_OF_REQUEST_RETRIES',
+    get_option('number-of-request-retries'),
+)
+conf_data.set(
+    'NUMBER_OF_COMMAND_ATTEMPTS',
+    get_option('number-of-command-attempts'),
+)
 conf_data.set(
     'INSTANCE_ID_EXPIRATION_INTERVAL',
     get_option('instance-id-expiration-interval'),
 )
 conf_data.set('RESPONSE_TIME_OUT', get_option('response-time-out'))
-conf_data.set('FLIGHT_RECORDER_MAX_ENTRIES', get_option('flightrecorder-max-entries'))
+conf_data.set(
+    'FLIGHT_RECORDER_MAX_ENTRIES',
+    get_option('flightrecorder-max-entries'),
+)
 conf_data.set('FIRMWARE_UPDATE_TIME', get_option('firmware-update-time'))
 if get_option('firmware-package-staging-dir').endswith('/')
     conf_data.set_quoted(
@@ -214,7 +236,10 @@ conf_data.set_quoted(
     join_paths(package_datadir, 'static_eid_table.json'),
 )
 conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
-conf_data.set_quoted('PLDM_T2_CONFIG_JSON', join_paths(package_datadir, 'pldm_t2_config.json'))
+conf_data.set_quoted(
+    'PLDM_T2_CONFIG_JSON',
+    join_paths(package_datadir, 'pldm_t2_config.json'),
+)
 conf_data.set_quoted(
     'PLDM_PACKAGE_VERIFICATION_KEY',
     get_option('pldm-package-verification-key'),
@@ -241,7 +266,10 @@ conf_data.set(
 if get_option('platform-prefix') != ''
     conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
 endif
-conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
+conf_data.set_quoted(
+    'PLATFORM_CHASSIS_PATH',
+    get_option('platform-chassis-object-path'),
+)
 if get_option('nvlink-c2c-fabric-object').enabled()
     add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
@@ -252,12 +280,16 @@ endif
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
-conf_data.set_quoted('PLATFORM_CHASSIS_PATH', get_option('platform-chassis-object-path'))
+conf_data.set_quoted(
+    'PLATFORM_CHASSIS_PATH',
+    get_option('platform-chassis-object-path'),
+)
 
 configure_file(output: 'config.h', configuration: conf_data)
 
 add_project_arguments(
-    '-include', '@0@'.format(meson.current_build_dir() / 'config.h'),
+    '-include',
+    '@0@'.format(meson.current_build_dir() / 'config.h'),
     language: 'cpp',
 )
 
