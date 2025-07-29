@@ -77,8 +77,8 @@ TEST(MctpEndpointDiscoveryTest, goodAddToExistingMctpInfos)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, 0, {}, {}),
-        pldm::MctpInfo(12, pldm::emptyUUID, 0, {}, {})};
+        pldm::MctpInfo(11, pldm::emptyUUID, "", 0, ""),
+        pldm::MctpInfo(12, pldm::emptyUUID, "", 0, "")};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
@@ -86,7 +86,7 @@ TEST(MctpEndpointDiscoveryTest, goodAddToExistingMctpInfos)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), 0);
+    EXPECT_EQ(std::get<3>(mctpInfo), 0);
 }
 
 TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
@@ -94,7 +94,7 @@ TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, 0, {}, {})};
+        pldm::MctpInfo(11, pldm::emptyUUID, "", 0, "")};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
@@ -107,8 +107,8 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveFromExistingMctpInfos)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, 0, {}, {}),
-        pldm::MctpInfo(12, pldm::emptyUUID, 0, {}, {})};
+        pldm::MctpInfo(11, pldm::emptyUUID, "", 0, ""),
+        pldm::MctpInfo(12, pldm::emptyUUID, "", 0, "")};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
@@ -116,22 +116,22 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveFromExistingMctpInfos)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), 0);
+    EXPECT_EQ(std::get<3>(mctpInfo), 0);
     pldm::MctpInfos removedInfos;
     pldm::MctpInfos remainMctpInfos;
     remainMctpInfos.emplace_back(
-        pldm::MctpInfo(12, pldm::emptyUUID, 0, {}, {}));
+        pldm::MctpInfo(12, pldm::emptyUUID, "", 0, ""));
 
     mctpDiscoveryHandler->removeFromExistingMctpInfos(remainMctpInfos,
                                                       removedInfos);
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 1);
     mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), 0);
+    EXPECT_EQ(std::get<3>(mctpInfo), 0);
     EXPECT_EQ(removedInfos.size(), 1);
     mctpInfo = removedInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 11);
-    EXPECT_EQ(std::get<2>(mctpInfo), 0);
+    EXPECT_EQ(std::get<3>(mctpInfo), 0);
 }
 
 TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
@@ -139,8 +139,8 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, 0, {}, {}),
-        pldm::MctpInfo(12, pldm::emptyUUID, 0, {}, {})};
+        pldm::MctpInfo(11, pldm::emptyUUID, "", 0, ""),
+        pldm::MctpInfo(12, pldm::emptyUUID, "", 0, "")};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
@@ -148,7 +148,7 @@ TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
     EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), 0);
+    EXPECT_EQ(std::get<3>(mctpInfo), 0);
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
         "xyz.openbmc_project.sdbusplus.test.Object",
         "/xyz/openbmc_project/sdbusplus/test/object",
