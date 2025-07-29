@@ -11,7 +11,6 @@ deps = [
     phosphor_dbus_interfaces,
     phosphor_logging,
     openssl,
-
 ]
 
 #executable(
@@ -156,7 +155,9 @@ executable(
     install: false,
 )
 
-sources_files_platform_set_state_effecter_states = ['platform_set_state_effecter_states_fuzz_test.cpp']
+sources_files_platform_set_state_effecter_states = [
+    'platform_set_state_effecter_states_fuzz_test.cpp',
+]
 
 executable(
     'platform_set_state_effecter_states_fuzz_test',
@@ -180,7 +181,9 @@ executable(
     install: false,
 )
 
-sources_files_get_pdr_repository_info = ['get_pdr_repository_info_fuzz_test.cpp']
+sources_files_get_pdr_repository_info = [
+    'get_pdr_repository_info_fuzz_test.cpp',
+]
 
 executable(
     'get_pdr_repository_info_fuzz_test',
@@ -192,7 +195,9 @@ executable(
     install: false,
 )
 
-sources_files_get_set_numeric_effecter_value = ['get_set_numeric_effecter_value_fuzz_test.cpp']
+sources_files_get_set_numeric_effecter_value = [
+    'get_set_numeric_effecter_value_fuzz_test.cpp',
+]
 
 executable(
     'get_set_numeric_effecter_value_fuzz_test',
@@ -216,7 +221,9 @@ executable(
     install: false,
 )
 
-sources_files_pldm_pdr_repository_chg_event_event = ['pldm_pdr_repository_chg_event_event_fuzz_test.cpp']
+sources_files_pldm_pdr_repository_chg_event_event = [
+    'pldm_pdr_repository_chg_event_event_fuzz_test.cpp',
+]
 
 executable(
     'pldm_pdr_repository_chg_event_event_fuzz_test',
@@ -240,7 +247,9 @@ executable(
     install: false,
 )
 
-sources_files_event_message_supported = ['event_message_supported_fuzz_test.cpp']
+sources_files_event_message_supported = [
+    'event_message_supported_fuzz_test.cpp',
+]
 
 executable(
     'event_message_supported_fuzz_test',
@@ -300,7 +309,9 @@ executable(
     install: false,
 )
 
-sources_files_mctp_endpoint_discovery = ['mctp_endpoint_discovery_fuzz_test.cpp']
+sources_files_mctp_endpoint_discovery = [
+    'mctp_endpoint_discovery_fuzz_test.cpp',
+]
 
 executable(
     'mctp_endpoint_discovery_fuzz_test',
@@ -324,7 +335,9 @@ executable(
     install: false,
 )
 
-sources_files_get_state_sensor_readings_fuzz_test = ['get_state_sensor_readings_fuzz_test.cpp']
+sources_files_get_state_sensor_readings_fuzz_test = [
+    'get_state_sensor_readings_fuzz_test.cpp',
+]
 
 executable(
     'get_state_sensor_readings_fuzz_test',

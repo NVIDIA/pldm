@@ -35,14 +35,14 @@ dep_src_files += [
     '../../oem/nvidia/libpldm/energy_count_numeric_sensor_oem.c',
 ]
 
-dep_src_headers = [
-    '../../requester',
-    '../../oem/nvidia',
-]
+dep_src_headers = ['../../requester', '../../oem/nvidia']
 
 test_cpp_args = ['-DOEM_NVIDIA', '-DMOCK_DBUS_ASYNC_UTILS']
 
-test_src = declare_dependency(sources: dep_src_files, include_directories: dep_src_headers)
+test_src = declare_dependency(
+    sources: dep_src_files,
+    include_directories: dep_src_headers,
+)
 
 tests = [
     'terminus_manager_test',

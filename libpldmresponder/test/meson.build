@@ -21,7 +21,10 @@ if get_option('oem-ibm').enabled()
 endif
 
 dep_src_files = ['../../test/test_instance_id.hpp']
-dep_src = declare_dependency(sources: dep_src_files, include_directories: '../../requester')
+dep_src = declare_dependency(
+    sources: dep_src_files,
+    include_directories: '../../requester',
+)
 
 foreach t : tests
     test(

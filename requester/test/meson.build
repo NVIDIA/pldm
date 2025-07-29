@@ -18,11 +18,7 @@ test_src = declare_dependency(
     ],
 )
 
-tests = [
-    'handler_test',
-    'request_test',
-    'mctp_endpoint_discovery_test',
-]
+tests = ['handler_test', 'request_test', 'mctp_endpoint_discovery_test']
 
 openssl = dependency('openssl', required: true)
 

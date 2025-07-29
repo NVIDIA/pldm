@@ -1,13 +1,9 @@
 host_bmc_test_src = declare_dependency(
-    sources: [
-        '../dbus_to_host_effecters.cpp',
-    ],
+    sources: ['../dbus_to_host_effecters.cpp'],
     include_directories: '../../requester',
 )
 
-tests = [
-    'dbus_to_host_effecter_test',
-]
+tests = ['dbus_to_host_effecter_test']
 
 foreach t : tests
     test(

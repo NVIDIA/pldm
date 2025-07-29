@@ -30,9 +30,7 @@ test_src = declare_dependency(
     include_directories: dep_src_headers,
 )
 
-tests = [
-    'mockup_responder_test',
-]
+tests = ['mockup_responder_test']
 
 foreach t : tests
     test(

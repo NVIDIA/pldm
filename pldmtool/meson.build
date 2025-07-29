@@ -1,4 +1,4 @@
-libpldm_headers = ['.'] #, './oem/ibm']
+libpldm_headers = ['.']  #, './oem/ibm']
 
 sources = [
     'pldm_cmd_helper.cpp',
