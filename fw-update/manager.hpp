@@ -136,8 +136,6 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                     {
                         uuid = std::get<std::string>(properties.at("UUID"));
                         mctpInterfaces[uuid] = interfaces;
-                        error("TMP: Added UUID {U} to mctpInterfaces", "U",
-                              uuid);
                     }
                 }
             }
@@ -165,13 +163,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void createInventory(EID eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
-        error("Called createInventory for EID {E}", "E", eid);
         deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
         {
-            error("Calling create Entry for EID {E}", "E", eid);
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
-            error("Done");
         }
     }
 

@@ -102,33 +102,32 @@ static std::unordered_map<MctpMedium, Priority> mediumPriority = {
 /**
  * @brief MCTP Binding Type priority table ordering by bandwidth
  */
- static std::unordered_map<MctpBinding, Priority> bindingPriority = {
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
-     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
+static std::unordered_map<MctpBinding, Priority> bindingPriority = {
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
+    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
- static bool isPreferred(const MctpInfo& currentMctpInfo,
-                         const MctpInfo& newMctpInfo)
- {
-     auto currentMedium = std::get<2>(currentMctpInfo);
-     auto newMedium = std::get<2>(newMctpInfo);
-     auto currentBinding = std::get<4>(currentMctpInfo);
-     auto newBinding = std::get<4>(newMctpInfo);
+static bool isPreferred(const MctpInfo& currentMctpInfo,
+                        const MctpInfo& newMctpInfo)
+{
+    auto currentMedium = std::get<2>(currentMctpInfo);
+    auto newMedium = std::get<2>(newMctpInfo);
+    auto currentBinding = std::get<4>(currentMctpInfo);
+    auto newBinding = std::get<4>(newMctpInfo);
 
-     if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
-     {
-         return bindingPriority.at(currentBinding) >
-                bindingPriority.at(newBinding);
-     }
-     else
-     {
-         return mediumPriority.at(currentMedium) >
-         mediumPriority.at(newMedium);
-     }
- }
+    if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
+    {
+        return bindingPriority.at(currentBinding) >
+               bindingPriority.at(newBinding);
+    }
+    else
+    {
+        return mediumPriority.at(currentMedium) > mediumPriority.at(newMedium);
+    }
+}
 
 std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
 {
@@ -146,8 +145,8 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
             return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
                    (std::get<1>(v.second) == std::get<1>(mctpInfo)) &&
                    (std::get<2>(v.second) == std::get<2>(mctpInfo)) &&
-            (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
-            (std::get<4>(v.second) == std::get<4>(mctpInfo));
+                   (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
+                   (std::get<4>(v.second) == std::get<4>(mctpInfo));
         });
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {

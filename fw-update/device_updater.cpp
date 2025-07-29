@@ -689,7 +689,6 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
                 }
                 else
                 {
-                    error("TMP: Sending ActivateFirmwareRequest");
                     auto rc = co_await sendActivateFirmwareRequest();
                     if (rc)
                     {

@@ -57,7 +57,8 @@ using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId, MctpBinding>;
  *               interface
  *         MCTPMsgTypes: MCTP message types
  */
-using MctpEndpointProps = std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding>;
+using MctpEndpointProps =
+    std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding>;
 
 /** @brief Type defined for list of MCTP interface information
  */

@@ -62,7 +62,8 @@ exec::task<int>
     while (!queuedMctpInfos.empty())
     {
         const MctpInfos& mctpInfos = queuedMctpInfos.front();
-        for (const auto& [eid, uuid, mediumType, networkId, bindingType] : mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
+             mctpInfos)
         {
             mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
             co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
@@ -618,9 +619,8 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
             // rediscovery of the MCTP endpoint
             if (curFastestEid == eid)
             {
-                info(
-                    "Fastest path to UUID={UUID} is already set to EID={EID}",
-                    "UUID", uuid, "EID", eid);
+                info("Fastest path to UUID={UUID} is already set to EID={EID}",
+                     "UUID", uuid, "EID", eid);
                 co_return PLDM_SUCCESS;
             }
 

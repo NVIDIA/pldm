@@ -37,7 +37,8 @@ namespace fw_update
 using CreateInventoryCallBack =
     std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(EID)>;
-using MctpEidMap = std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
+using MctpEidMap =
+    std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
 
 using Priority = int;
 

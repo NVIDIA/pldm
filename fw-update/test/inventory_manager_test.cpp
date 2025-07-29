@@ -161,7 +161,6 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
         1, responseMsg1, respPayloadLength1, messageError, resolution,
         mctpInterfaces);
     stdexec::sync_wait(std::move(co1));
-    std::cerr << "TMP: Done co1" << std::endl;
 
     ComponentInfoMap componentInfoMap1{
         {1,
