@@ -3,7 +3,7 @@
 #include "pldm_cmd_helper.hpp"
 // #include "pldm_fru_cmd.hpp"
 #include "pldm_fw_update_cmd.hpp"
-// #include "pldm_platform_cmd.hpp"
+#include "pldm_platform_cmd.hpp"
 #include "pldmtool/oem/ibm/pldm_oem_ibm.hpp"
 
 #include <CLI/CLI.hpp>
@@ -71,7 +71,7 @@ int main(int argc, char** argv)
     pldmtool::raw::registerCommand(app);
     pldmtool::base::registerCommand(app);
     // pldmtool::bios::registerCommand(app);
-    // pldmtool::platform::registerCommand(app);
+    pldmtool::platform::registerCommand(app);
     // pldmtool::fru::registerCommand(app);
     pldmtool::fw_update::registerCommand(app);
 

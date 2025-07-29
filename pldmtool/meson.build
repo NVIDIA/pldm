@@ -3,7 +3,7 @@ libpldm_headers = ['.'] #, './oem/ibm']
 sources = [
     'pldm_cmd_helper.cpp',
     'pldm_base_cmd.cpp',
-    # 'pldm_platform_cmd.cpp',
+    'pldm_platform_cmd.cpp',
     # 'pldm_bios_cmd.cpp',
     # 'pldm_fru_cmd.cpp',
     'pldm_fw_update_cmd.cpp',
