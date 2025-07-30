@@ -22,8 +22,18 @@ pldm_pdr* Repo::getPdr() const
 
 RecordHandle Repo::addRecord(const PdrEntry& pdrEntry)
 {
-    return pldm_pdr_add(repo, pdrEntry.data, pdrEntry.size,
-                        pdrEntry.handle.recordHandle, false);
+    uint32_t handle = pdrEntry.handle.recordHandle;
+    // Not using the deprecated API: pldm_pdr_add
+    // TODO: Might need a revisit once libpldm is synced with upstream, As
+    // upstream libpldm does have pldm_pdr_add as part of the stable ABI
+    int rc = pldm_pdr_add_check(repo, pdrEntry.data, pdrEntry.size, false,
+                                TERMINUS_HANDLE, &handle);
+    if (rc)
+    {
+        // pldm_pdr_add() assert()ed on failure to add PDR
+        throw std::runtime_error("Failed to add PDR");
+    }
+    return handle;
 }
 
 const pldm_pdr_record* Repo::getFirstRecord(PdrEntry& pdrEntry)

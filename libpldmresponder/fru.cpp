@@ -23,7 +23,6 @@ namespace responder
 
 void FruImpl::buildFRUTable()
 {
-
     if (isBuilt)
     {
         return;
@@ -112,7 +111,19 @@ void FruImpl::buildFRUTable()
         }
     }
 
-    pldm_entity_association_pdr_add(entityTree, pdrRepo, false);
+    // Not using the deprecated API:
+    // pldm_entity_association_pdr_add
+    // TODO: Please revisit after libpldm sync
+    int rc = pldm_entity_association_pdr_add_check(entityTree, pdrRepo, false,
+                                                   TERMINUS_HANDLE);
+    if (rc < 0)
+    {
+        // pldm_entity_assocation_pdr_add() assert()ed on failure
+        error("Failed to add PLDM entity association PDR, response code '{RC}'",
+              "RC", rc);
+        throw std::runtime_error("Failed to add PLDM entity association PDR");
+    }
+
     // save a copy of bmc's entity association tree
     pldm_entity_association_tree_copy_root(entityTree, bmcEntityTree);
 
@@ -166,13 +177,12 @@ void FruImpl::populateRecords(
     auto numRecsCount = numRecs;
     static uint32_t bmc_record_handle = 0;
 
-    for (auto const& [recType, encType, fieldInfos] : recordInfos)
+    for (const auto& [recType, encType, fieldInfos] : recordInfos)
     {
         std::vector<uint8_t> tlvs;
         uint8_t numFRUFields = 0;
-        for (auto const& [intf, prop, propType, fieldTypeNum] : fieldInfos)
+        for (const auto& [intf, prop, propType, fieldTypeNum] : fieldInfos)
         {
-
             try
             {
                 pldm::responder::dbus::Value propValue;
@@ -216,7 +226,7 @@ void FruImpl::populateRecords(
                               std::back_inserter(tlvs));
                 }
             }
-            catch (const std::out_of_range& e)
+            catch (const std::out_of_range&)
             {
                 continue;
             }
@@ -228,10 +238,19 @@ void FruImpl::populateRecords(
             {
                 recordSetIdentifier = nextRSI();
                 bmc_record_handle = nextRecordHandle();
-                pldm_pdr_add_fru_record_set(
+                // Not using the deprecated API:
+                // pldm_pdr_add_fru_record_set
+                // TODO: Please revisit after libpldm sync
+                int rc = pldm_pdr_add_fru_record_set_check(
                     pdrRepo, TERMINUS_HANDLE, recordSetIdentifier,
                     entity.entity_type, entity.entity_instance_num,
-                    entity.entity_container_id, bmc_record_handle);
+                    entity.entity_container_id, &bmc_record_handle);
+                if (rc)
+                {
+                    // pldm_pdr_add_fru_record_set() assert()ed on failure
+                    throw std::runtime_error(
+                        "Failed to add PDR FRU record set");
+                }
             }
             auto curSize = table.size();
             table.resize(curSize + recHeaderSize + tlvs.size());

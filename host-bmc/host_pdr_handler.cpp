@@ -26,6 +26,25 @@ constexpr auto fruJson = "host_frus.json";
 const Json emptyJson{};
 const std::vector<Json> emptyJsonList{};
 
+template <typename T>
+uint16_t extractTerminusHandle(std::vector<uint8_t>& pdr)
+{
+    T* var = nullptr;
+    if (std::is_same<T, pldm_pdr_fru_record_set>::value)
+    {
+        var = (T*)(pdr.data() + sizeof(pldm_pdr_hdr));
+    }
+    else
+    {
+        var = (T*)(pdr.data());
+    }
+    if (var != nullptr)
+    {
+        return var->terminus_handle;
+    }
+    return TERMINUS_HANDLE;
+}
+
 HostPDRHandler::HostPDRHandler(
     int mctp_fd, uint8_t mctp_eid, sdeventplus::Event& event, pldm_pdr* repo,
     const std::string& eventsJsonsDir, pldm_entity_association_tree* entityTree,
@@ -224,8 +243,17 @@ void HostPDRHandler::mergeEntityAssociations(const std::vector<uint8_t>& pdr)
         }
         else
         {
-            pldm_entity_association_pdr_add_from_node(node, repo, &entities,
-                                                      numEntities, true);
+            // Don't use the deprecated API:
+            // pldm_entity_association_pdr_add_from_node
+            // TODO: Please revisit after libpldm sync
+            int rc = pldm_entity_association_pdr_add_from_node_check(
+                node, repo, &entities, numEntities, true, TERMINUS_HANDLE);
+            if (rc)
+            {
+                error(
+                    "Failed to add entity association PDR from node, response code '{RC}'",
+                    "RC", rc);
+            }
         }
     }
     free(entities);
@@ -368,6 +396,7 @@ void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
     bool tlValid = true;
     uint32_t rh = 0;
     uint16_t terminusHandle = 0;
+    uint16_t pdrTerminusHandle = 0;
     uint8_t tid = 0;
 
     uint8_t completionCode{};
@@ -437,6 +466,8 @@ void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
             {
                 if (pdrHdr->type == PLDM_TERMINUS_LOCATOR_PDR)
                 {
+                    pdrTerminusHandle =
+                        extractTerminusHandle<pldm_terminus_locator_pdr>(pdr);
                     auto tlpdr =
                         reinterpret_cast<const pldm_terminus_locator_pdr*>(
                             pdr.data());
@@ -473,7 +504,16 @@ void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
                 }
                 else
                 {
-                    pldm_pdr_add(repo, pdr.data(), respCount, rh, true);
+                    // Don't use the deprecated API:
+                    // pldm_pdr_add
+                    // TODO: Please revisit after libpldm sync
+                    int rc = pldm_pdr_add_check(repo, pdr.data(), respCount,
+                                                true, pdrTerminusHandle, &rh);
+                    if (rc)
+                    {
+                        // pldm_pdr_add() assert()ed on failure to add a PDR.
+                        throw std::runtime_error("Failed to add PDR");
+                    }
                 }
             }
         }
