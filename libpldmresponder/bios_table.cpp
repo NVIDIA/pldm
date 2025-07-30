@@ -1,7 +1,5 @@
 #include "bios_table.hpp"
 
-#include "bios_table.h"
-
 #include <fstream>
 
 namespace pldm

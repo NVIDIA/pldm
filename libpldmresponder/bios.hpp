@@ -1,7 +1,6 @@
 #pragma once
 
-#include "libpldm/bios.h"
-#include "libpldm/bios_table.h"
+#include "config.h"
 
 #include "bios_config.hpp"
 #include "bios_table.hpp"
@@ -9,6 +8,8 @@
 #include "pldmd/handler.hpp"
 #include "requester/handler.hpp"
 
+#include <libpldm/bios.h>
+#include <libpldm/bios_table.h>
 #include <stdint.h>
 
 #include <ctime>

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "bios_table.h"
-
 #include "bios_attribute.hpp"
 #include "bios_table.hpp"
 #include "requester/handler.hpp"
+
+#include <libpldm/bios_table.h>
 
 #include <nlohmann/json.hpp>
 

@@ -1,14 +1,16 @@
 #include "fru.hpp"
 
-#include "libpldm/entity.h"
-#include "libpldm/utils.h"
-
 #include "common/utils.hpp"
 
 #include <config.h>
+#include <libpldm/entity.h>
+#include <libpldm/utils.h>
 #include <systemd/sd-journal.h>
 
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
+
+PHOSPHOR_LOG2_USING;
 
 #include <iostream>
 #include <set>

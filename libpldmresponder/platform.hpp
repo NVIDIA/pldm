@@ -1,8 +1,6 @@
 #pragma once
 
-#include "libpldm/platform.h"
-#include "libpldm/states.h"
-#include "pdr.h"
+#include "config.h"
 
 #include "common/utils.hpp"
 #include "event_parser.hpp"
@@ -14,6 +12,9 @@
 #include "oem_handler.hpp"
 #include "pldmd/handler.hpp"
 
+#include <libpldm/pdr.h>
+#include <libpldm/platform.h>
+#include <libpldm/states.h>
 #include <stdint.h>
 
 #include <map>

@@ -51,7 +51,6 @@ PHOSPHOR_LOG2_USING;
 #ifdef LIBPLDMRESPONDER
 #include "dbus_impl_pdr.hpp"
 #include "host-bmc/dbus_to_event_handler.hpp"
-#include "host-bmc/dbus_to_terminus_effecters.hpp"
 #include "host-bmc/host_condition.hpp"
 #include "host-bmc/host_pdr_handler.hpp"
 #include "libpldmresponder/base.hpp"
@@ -59,7 +58,6 @@ PHOSPHOR_LOG2_USING;
 #include "libpldmresponder/fru.hpp"
 #include "libpldmresponder/oem_handler.hpp"
 #include "libpldmresponder/platform.hpp"
-#include "libpldmresponder/platform_config.hpp"
 #include "xyz/openbmc_project/PLDM/Event/server.hpp"
 #endif
 

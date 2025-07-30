@@ -1,16 +1,16 @@
-
-
-#include "libpldm/base.h"
-
-#include "libpldm/bios.h"
-#include "libpldm/fru.h"
-#include "libpldm/platform.h"
-#include "libpldm/pldm.h"
+#include "config.h"
 
 #include "base.hpp"
+
 #include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #include "libpldmresponder/pdr.hpp"
+
+#include <libpldm/base.h>
+#include <libpldm/bios.h>
+#include <libpldm/fru.h>
+#include <libpldm/platform.h>
+#include <libpldm/pldm.h>
 
 #include <array>
 #include <cstring>
@@ -20,8 +20,8 @@
 #include <vector>
 
 #ifdef OEM_IBM
-#include "libpldm/file_io.h"
-#include "libpldm/host.h"
+#include <libpldm/file_io.h>
+#include <libpldm/host.h>
 #endif
 
 namespace pldm
