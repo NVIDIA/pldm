@@ -77,11 +77,11 @@ class HostEffecterParser
      *  @param[in] handler - PLDM request handler
      */
     explicit HostEffecterParser(
-        pldm::dbus_api::Requester* requester, int fd, const pldm_pdr* repo,
+        pldm::InstanceIdDb* instanceIdDb, int fd, const pldm_pdr* repo,
         pldm::utils::DBusHandler* const dbusHandler,
         const std::string& jsonPath,
         pldm::requester::Handler<pldm::requester::Request>* handler) :
-        requester(requester), sockFd(fd), pdrRepo(repo),
+        instanceIdDb(instanceIdDb), sockFd(fd), pdrRepo(repo),
         dbusHandler(dbusHandler), handler(handler)
     {
         try
@@ -167,10 +167,10 @@ class HostEffecterParser
                                          uint16_t effecterId);
 
   protected:
-    pldm::dbus_api::Requester*
-        requester;           //!< Reference to Requester to obtain instance id
-    int sockFd;              //!< Socket fd to send message to host
-    const pldm_pdr* pdrRepo; //!< Reference to PDR repo
+    pldm::InstanceIdDb*
+        instanceIdDb; //!< Reference to InstanceIdDb to obtain instance id
+    int sockFd;       //!< Socket fd to send message to host
+    const pldm_pdr* pdrRepo;                    //!< Reference to PDR repo
     std::vector<EffecterInfo> hostEffecterInfo; //!< Parsed effecter information
     std::vector<std::unique_ptr<sdbusplus::bus::match::match>>
         effecterInfoMatch; //!< vector to catch the D-Bus property change
