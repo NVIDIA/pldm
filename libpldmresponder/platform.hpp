@@ -67,30 +67,31 @@ class Handler : public CmdHandler
             pdrCreated = true;
         }
 
-        handlers.emplace(PLDM_GET_PDR,
-                         [this](const pldm_msg* request, size_t payloadLength) {
-                             return this->getPDR(request, payloadLength);
-                         });
-        handlers.emplace(PLDM_SET_NUMERIC_EFFECTER_VALUE,
-                         [this](const pldm_msg* request, size_t payloadLength) {
-                             return this->setNumericEffecterValue(
-                                 request, payloadLength);
-                         });
-        handlers.emplace(PLDM_SET_STATE_EFFECTER_STATES,
-                         [this](const pldm_msg* request, size_t payloadLength) {
-                             return this->setStateEffecterStates(request,
-                                                                 payloadLength);
-                         });
-        handlers.emplace(PLDM_PLATFORM_EVENT_MESSAGE,
-                         [this](const pldm_msg* request, size_t payloadLength) {
-                             return this->platformEventMessage(request,
-                                                               payloadLength);
-                         });
-        handlers.emplace(PLDM_GET_STATE_SENSOR_READINGS,
-                         [this](const pldm_msg* request, size_t payloadLength) {
-                             return this->getStateSensorReadings(request,
-                                                                 payloadLength);
-                         });
+        handlers.emplace(
+            PLDM_GET_PDR,
+            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
+                return this->getPDR(request, payloadLength);
+            });
+        handlers.emplace(
+            PLDM_SET_NUMERIC_EFFECTER_VALUE,
+            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
+                return this->setNumericEffecterValue(request, payloadLength);
+            });
+        handlers.emplace(
+            PLDM_SET_STATE_EFFECTER_STATES,
+            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
+                return this->setStateEffecterStates(request, payloadLength);
+            });
+        handlers.emplace(
+            PLDM_PLATFORM_EVENT_MESSAGE,
+            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
+                return this->platformEventMessage(request, payloadLength);
+            });
+        handlers.emplace(
+            PLDM_GET_STATE_SENSOR_READINGS,
+            [this](pldm_tid_t, const pldm_msg* request, size_t payloadLength) {
+                return this->getStateSensorReadings(request, payloadLength);
+            });
 
         // Default handler for PLDM Events
         eventHandlers[PLDM_SENSOR_EVENT].emplace_back(
