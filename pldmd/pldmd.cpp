@@ -43,14 +43,16 @@
 #include <string>
 #include <vector>
 
+PHOSPHOR_LOG2_USING;
+
 #ifdef PLDM_TYPE2
 #include "platform-mc/manager.hpp"
 #endif
-PHOSPHOR_LOG2_USING;
 
 #ifdef LIBPLDMRESPONDER
 #include "dbus_impl_pdr.hpp"
 #include "host-bmc/dbus_to_event_handler.hpp"
+#include "host-bmc/dbus_to_host_effecters.hpp"
 #include "host-bmc/host_condition.hpp"
 #include "host-bmc/host_pdr_handler.hpp"
 #include "libpldmresponder/base.hpp"
@@ -62,8 +64,7 @@ PHOSPHOR_LOG2_USING;
 #endif
 
 #ifdef OEM_IBM
-// TODO: Causing UT failures since libpldmresponder is disabled
-// #include "oem_ibm.hpp"
+#include "oem_ibm.hpp"
 #endif
 
 #ifdef OEM_AMPERE
@@ -169,16 +170,15 @@ static std::optional<Response>
 
 void optionUsage(void)
 {
-    std::cerr << "Usage: pldmd [options]\n";
-    std::cerr << "Options:\n";
-    std::cerr
-        << "  --verbose=<0/1>  0 - Disable verbosity, 1 - Enable verbosity\n";
-    std::cerr << "  --fw-debug Optional flag to enable firmware update logs\n";
+    info("Usage: pldmd [options]");
+    info("Options:");
+    info("  --verbose=<0/1>  0 - Disable verbosity, 1 - Enable verbosity");
+    info("  --fw-debug Optional flag to enable firmware update logs");
 #ifdef PLDM_TYPE2
-    std::cerr
-        << "  --num-sens-wo-aux-name Optional flag to enable Numeric Sensors without Auxillary Names\n";
+    info(
+        "  --num-sens-wo-aux-name Optional flag to enable Numeric Sensors without Auxillary Names");
 #endif
-    std::cerr << "Defaulted settings:  --verbose=0 \n";
+    info("Defaulted settings:  --verbose=0");
 }
 
 int main(int argc, char** argv)
@@ -239,26 +239,32 @@ int main(int argc, char** argv)
     /* To maintain current behaviour until we have the infrastructure to find
      * and use the correct TIDs */
     pldm_tid_t TID = hostEID;
+    PldmTransport pldmTransport{};
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
-    PldmTransport pldmTransport{};
     sdbusplus::server::manager_t objManager(bus, "/");
-    PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
     sdbusplus::server::manager_t sensorsObjManager(
         bus, "/xyz/openbmc_project/sensors");
 
+    PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
+
     InstanceIdDb instanceIdDb;
 
-    event.set_watchdog(true);
     sdbusplus::server::manager_t inventoryManager(
         bus, "/xyz/openbmc_project/inventory");
 
     Invoker invoker{};
     requester::Handler<requester::Request> reqHandler(&pldmTransport, event,
                                                       instanceIdDb, verbose);
+
     std::unique_ptr<fw_update::Manager> fwManager =
         std::make_unique<fw_update::Manager>(event, reqHandler, instanceIdDb,
                                              FW_UPDATE_CONFIG_JSON, fwDebug);
+
+    event.set_watchdog(true);
+
+    // TODO: Check if we need to create PDR repo here.
+    DBusHandler dbusHandler;
 
 #ifdef PLDM_TYPE2
     std::unique_ptr<pldm::platform_mc::Manager> platformManager =
@@ -281,14 +287,8 @@ int main(int argc, char** argv)
     {
         throw std::runtime_error("Failed to instantiate PDR repository");
     }
-    DBusHandler dbusHandler;
-    std::unique_ptr<pldm::host_effecters::HostEffecterParser>
-        hostEffecterParser =
-            std::make_unique<pldm::host_effecters::HostEffecterParser>(
-                &instanceIdDb, pldmTransport.getEventSource(), pdrRepo.get(),
-                &dbusHandler, HOST_JSONS_DIR, &reqHandler);
+
     using namespace pldm::state_sensor;
-    int sockfd = 0;
     dbus_api::Host dbusImplHost(bus, "/xyz/openbmc_project/pldm");
     std::unique_ptr<pldm_entity_association_tree,
                     decltype(&pldm_entity_association_tree_destroy)>
@@ -310,10 +310,15 @@ int main(int argc, char** argv)
     }
     std::shared_ptr<HostPDRHandler> hostPDRHandler;
     std::unique_ptr<DbusToPLDMEvent> dbusToPLDMEventHandler;
-    auto hostEID = pldm::utils::readHostEID();
-    pldm_tid_t TID = hostEID;
+
     if (hostEID)
     {
+        std::unique_ptr<pldm::host_effecters::HostEffecterParser>
+            hostEffecterParser =
+                std::make_unique<pldm::host_effecters::HostEffecterParser>(
+                    &instanceIdDb, pldmTransport.getEventSource(),
+                    pdrRepo.get(), &dbusHandler, HOST_JSONS_DIR, &reqHandler);
+
         hostPDRHandler = std::make_shared<HostPDRHandler>(
             pldmTransport.getEventSource(), hostEID, event, pdrRepo.get(),
             EVENTS_JSONS_DIR, entityTree.get(), bmcEntityTree.get(),
@@ -327,39 +332,17 @@ int main(int argc, char** argv)
             pldmTransport.getEventSource(), hostEID, instanceIdDb, &reqHandler);
     }
 
-    // #ifdef OEM_IBM
-    //              std::unique_ptr<pldm::responder::CodeUpdate> codeUpdate =
-    //                  std::make_unique<pldm::responder::CodeUpdate>(&dbusHandler);
-    //              codeUpdate->clearDirPath(LID_STAGING_DIR);
-    //              oemPlatformHandler =
-    //              std::make_unique<oem_ibm_platform::Handler>(
-    //                      &dbusHandler, codeUpdate.get(), sockfd, hostEID,
-    //                      dbusImplReq, event, &reqHandler));
-    //              codeUpdate->setOemPlatformHandler(oemPlatformHandler.get());
-    //              invoker.registerHandler(PLDM_OEM,
-    //                      std::make_unique<oem_ibm::Handler>(
-    //                          oemPlatformHandler.get(), sockfd, hostEID,
-    //                          &dbusImplReq, &reqHandler));
-    // #endif
-    invoker.registerHandler(
-        PLDM_BIOS, std::make_unique<bios::Handler>(sockfd, hostEID,
-                                                   &dbusImplReq, &reqHandler));
     auto fruHandler = std::make_unique<fru::Handler>(
         FRU_JSONS_DIR, FRU_MASTER_JSON, pdrRepo.get(), entityTree.get(),
         bmcEntityTree.get());
+
+    // FRU table is built lazily when a FRU command or Get PDR
+    // command is handled. To enable building FRU table, the FRU
+    // handler is passed to the Platform handler.
+
+    std::unique_ptr<oem_platform::Handler> oemPlatformHandler{};
 
 #ifdef PLDM_TYPE2
-    invoker.registerHandler(
-        PLDM_BIOS, std::make_unique<bios::Handler>(sockfd, hostEID,
-                                                   &dbusImplReq, &reqHandler));
-    auto fruHandler = std::make_unique<fru::Handler>(
-        FRU_JSONS_DIR, FRU_MASTER_JSON, pdrRepo.get(), entityTree.get(),
-        bmcEntityTree.get());
-
-    // FRU table is built lazily when a FRU command or Get PDR command is
-    // handled. To enable building FRU table, the FRU handler is passed to
-    // the Platform handler.
-
     pldm::responder::platform::EventMap addOnEventHandlers{
         {PLDM_CPER_MESSAGE_EVENT,
          {[&platformManager](const pldm_msg* request, size_t payloadLength,
@@ -426,13 +409,20 @@ int main(int argc, char** argv)
         addOnEventHandlers
 #endif
     );
-    // #ifdef OEM_IBM
-    //              pldm::responder::oem_ibm_platform::Handler*
-    //              oemIbmPlatformHandler =
-    //                  dynamic_cast<pldm::responder::oem_ibm_platform::Handler*>(
-    //                          oemPlatformHandler.get());
-    //              oemIbmPlatformHandler->setPlatformHandler(platformHandler.get());
-    // #endif
+
+    auto biosHandler = std::make_unique<bios::Handler>(
+        pldmTransport.getEventSource(), hostEID, &instanceIdDb, &reqHandler);
+
+    auto baseHandler = std::make_unique<base::Handler>(
+        hostEID, instanceIdDb, event, oemPlatformHandler.get(), &reqHandler);
+
+#ifdef OEM_AMPERE
+    pldm::oem_ampere::OemAMPERE oemAMPERE(
+        &dbusHandler, pldmTransport.getEventSource(), pdrRepo.get(),
+        instanceIdDb, event, invoker, hostPDRHandler.get(),
+        platformHandler.get(), fruHandler.get(), baseHandler.get(),
+        biosHandler.get(), platformManager.get(), &reqHandler);
+#endif
 
 #ifdef OEM_IBM
     pldm::oem_ibm::OemIBM oemIBM(&dbusHandler, pldmTransport.getEventSource(),
@@ -456,11 +446,12 @@ int main(int argc, char** argv)
     std::unique_ptr<MctpDiscovery> mctpDiscoveryHandler =
         std::make_unique<MctpDiscovery>(
             bus,
-            // For refreshing the firmware version, it's important to invoke
-            // PLDM type 5 code prior to type 2. The descriptor Map with
-            // firmware version info is maintained in fwManager, so
-            // that whenever platform event for version change is received
-            // in plaformManager, the same descriptor Map is updated.
+            // For refreshing the firmware version, it's important
+            // to invoke PLDM type 5 code prior to type 2. The
+            // descriptor Map with firmware version info is
+            // maintained in fwManager, so that whenever platform
+            // event for version change is received in
+            // plaformManager, the same descriptor Map is updated.
             std::initializer_list<MctpDiscoveryHandlerIntf*>{
                 fwManager.get(),
 #ifdef PLDM_TYPE2
@@ -469,7 +460,14 @@ int main(int argc, char** argv)
             });
     auto callback = [verbose, &invoker, &reqHandler, &fwManager, &pldmTransport,
                      TID](IO& io, int fd, uint32_t revents) mutable {
-        if (!(revents & EPOLLIN))
+        if (revents & (POLLHUP | POLLERR))
+        {
+            warning("Transport Socket hang-up or error. IO Exiting.");
+            io.get_event().exit(0);
+            return;
+        }
+
+        else if (!(revents & EPOLLIN))
         {
             return;
         }
@@ -517,11 +515,12 @@ int main(int argc, char** argv)
         // TODO check that we get here if mctp-demux dies?
         else if (returnCode == PLDM_REQUESTER_RECV_FAIL)
         {
-            // MCTP daemon has closed the socket this daemon is connected
-            // to. This may or may not be an error scenario, in either case
-            // the recovery mechanism for this daemon is to restart, and
-            // hence exit the event loop, that will cause this daemon to
-            // exit with a failure code.
+            // MCTP daemon has closed the socket this daemon is
+            // connected to. This may or may not be an error
+            // scenario, in either case the recovery mechanism for
+            // this daemon is to restart, and hence exit the event
+            // loop, that will cause this daemon to exit with a
+            // failure code.
             error(
                 "MCTP daemon closed the socket, IO exiting with response code '{RC}'",
                 "RC", returnCode);
@@ -538,7 +537,6 @@ int main(int argc, char** argv)
     };
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
-
 #ifndef SYSTEM_SPECIFIC_BIOS_JSON
     try
     {
@@ -559,11 +557,14 @@ int main(int argc, char** argv)
 #endif
     stdplus::signal::block(SIGUSR1);
     sdeventplus::source::Signal sigUsr1(
-        event, SIGUSR1, std::bind_front(&interruptFlightRecorderCallBack));
-
+        event, SIGUSR1,
+        [](Signal& signal, const struct signalfd_siginfo* info) {
+            interruptFlightRecorderCallBack(signal, info);
+        });
     int returnCode = event.loop();
     if (returnCode)
     {
         exit(EXIT_FAILURE);
     }
+    exit(EXIT_SUCCESS);
 }
