@@ -27,7 +27,6 @@
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <cerrno>
-#include <variant>
 
 namespace pldm
 {
@@ -342,8 +341,11 @@ exec::task<int> EventManager::pollForPlatformEventMessage(
         co_return rc;
     }
 
-    // Copy event data into vector
-    eventData.assign(rawEventData, rawEventData + eventDataSize);
+    if (rawEventData)
+    {
+        // Copy event data
+        eventData.assign(rawEventData, rawEventData + eventDataSize);
+    }
 
     co_return completionCode;
 }
