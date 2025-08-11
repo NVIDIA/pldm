@@ -259,57 +259,92 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
     co_return PLDM_FAILED;
 }
 
-exec::task<int> Terminus::getSensorAuxNameFromEM([[maybe_unused]] uint8_t bus,
-                                                 [[maybe_unused]] uint8_t addr,
-                                                 [[maybe_unused]] uint8_t eid,
+exec::task<int> Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
+                                                 uint8_t eid,
                                                  const std::string& objPath)
 {
+    static constexpr const char* sensorAuxInterface =
+        "xyz.openbmc_project.Configuration.SensorAuxName";
+
     try
     {
         sensorAuxNameOverwriteTbl.clear();
 
-        auto getSubTreeResponse = co_await utils::coGetSubTree(
-            objPath, 0, {"xyz.openbmc_project.Configuration.SensorAuxName"});
+        auto getSubTreeResponse =
+            co_await utils::coGetSubTree(objPath, 0, {sensorAuxInterface});
 
         if (getSubTreeResponse.size() == 0)
         {
             co_return PLDM_SUCCESS;
         }
 
-        for (auto& [path, mapperServiceMap] : getSubTreeResponse)
+        for (const auto& [path, mapperServiceMap] : getSubTreeResponse)
         {
-            auto sensorId = co_await utils::coGetDbusProperty<uint64_t>(
-                path.c_str(), "SensorId",
-                "xyz.openbmc_project.Configuration.SensorAuxName");
+            if (mapperServiceMap.empty()) [[unlikely]]
+            {
+                lg2::error("No Service found for path: {PATH}. Skipping.",
+                           "PATH", path);
+                continue;
+            }
 
-            auto auxNames =
-                co_await utils::coGetDbusProperty<std::vector<std::string>>(
-                    path.c_str(), "AuxNames",
-                    "xyz.openbmc_project.Configuration.SensorAuxName");
+            if (mapperServiceMap.size() > 1) [[unlikely]]
+            {
+                lg2::error(
+                    "More than one service found for the same path: {PATH}. "
+                    "A path should be globally unique. Skipping.",
+                    "PATH", path);
+                continue;
+            }
+
+            const auto& [serviceName, interfaces] = *(mapperServiceMap.begin());
+
+            const utils::PropertyMap properties =
+                utils::DBusHandler().getDbusPropertiesVariant(
+                    serviceName.c_str(), path.c_str(), sensorAuxInterface);
+
+            if (!properties.contains("SensorId") ||
+                !properties.contains("AuxNames")) [[unlikely]]
+            {
+                lg2::error(
+                    "Unable to find mandatory properties SensorId, AuxNames for:"
+                    "{PATH}. Skipping.",
+                    "PATH", path);
+                continue;
+            }
+
+            const auto sensorId = std::get<uint64_t>(properties.at("SensorId"));
+
+            const auto auxNames =
+                std::get<std::vector<std::string>>(properties.at("AuxNames"));
 
             // Check Bus/Address property if they exist
-            auto mctpI2cBus = co_await utils::coGetDbusProperty<uint64_t>(
-                path.c_str(), "Bus",
-                "xyz.openbmc_project.Configuration.SensorAuxName");
-            if (mctpI2cBus != 0 && mctpI2cBus != bus)
+            if (properties.contains("Bus"))
             {
-                continue;
+                const auto mctpI2cBus =
+                    std::get<uint64_t>(properties.at("Bus"));
+                if (mctpI2cBus != 0 && mctpI2cBus != bus)
+                {
+                    continue;
+                }
             }
 
-            auto mctpI2cAddr = co_await utils::coGetDbusProperty<uint64_t>(
-                path.c_str(), "Address",
-                "xyz.openbmc_project.Configuration.SensorAuxName");
-            if (mctpI2cAddr != 0 && mctpI2cAddr != addr)
+            if (properties.contains("Address"))
             {
-                continue;
+                const auto mctpI2cAddr =
+                    std::get<uint64_t>(properties.at("Address"));
+                if (mctpI2cAddr != 0 && mctpI2cAddr != addr)
+                {
+                    continue;
+                }
             }
 
-            auto mctpEid = co_await utils::coGetDbusProperty<uint64_t>(
-                path.c_str(), "EID",
-                "xyz.openbmc_project.Configuration.SensorAuxName");
-            if (mctpEid != 0 && mctpEid != eid)
+            if (properties.contains("EID"))
             {
-                continue;
+                const auto mctpEid = std::get<uint64_t>(properties.at("EID"));
+                if (mctpEid != 0 && mctpEid != eid)
+                {
+                    continue;
+                }
             }
 
             AuxiliaryNames auxNameTbl;
