@@ -17,8 +17,6 @@
 #include "libpldm/entity.h"
 
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
-#include "platform-mc/state_sensor.hpp"
-#include "platform-mc/state_set.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
 

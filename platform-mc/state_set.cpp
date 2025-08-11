@@ -58,7 +58,7 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
          entityType == PLDM_ENTITY_MEMORY_CONTROLLER))
     {
         return std::make_unique<StateSetMemorySpareChannel>(
-            stateSetId, compId, path, stateAssociation);
+            stateSetId, compId, path, stateAssociation, *sensor);
     }
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK &&
              entityType == PLDM_ENTITY_SYS_BUS)
@@ -83,12 +83,12 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
         entityType == PLDM_ENTITY_PROC)
     {
         return std::make_unique<StateSetPerformance>(stateSetId, compId, path,
-                                                     stateAssociation);
+                                                     stateAssociation, *sensor);
     }
     else if (stateSetId == PLDM_STATESET_ID_POWERSUPPLY)
     {
         return std::make_unique<StateSetPowerSupplyInput>(
-            stateSetId, compId, path, stateAssociation);
+            stateSetId, compId, path, stateAssociation, *sensor);
     }
     else if (stateSetId == PLDM_STATESET_ID_LINKSTATE &&
              entityType == PLDM_ENTITY_PCI_EXPRESS_BUS)

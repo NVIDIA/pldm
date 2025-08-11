@@ -220,6 +220,8 @@ class Terminus
 
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
+    requester::Coroutine getInventoryParent(const std::string objPath);
+
     requester::Coroutine scanInventories();
 
     requester::Coroutine updateAssociations();
@@ -375,6 +377,8 @@ class Terminus
     std::vector<std::tuple<dbus::ObjectPath, EntityType, EntityInstance>>
         inventories;
 
+    std::map<dbus::ObjectPath, dbus::ObjectPath> inventoryParentMap;
+
     std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
 
     EnitityAssociations entityAssociations;
@@ -385,6 +389,7 @@ class Terminus
     void refreshAssociations();
     requester::Coroutine refreshAssociationsTask();
     bool needRefresh;
+    bool inventoriesPopulated;
 };
 } // namespace platform_mc
 } // namespace pldm
