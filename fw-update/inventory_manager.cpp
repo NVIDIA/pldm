@@ -36,7 +36,7 @@ namespace fw_update
 void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
                                    dbus::MctpInterfaces mctpInterfaces)
 {
-    queuedMctpInfos.emplace(mctpInfos);
+    queuedMctpInfos.emplace(mctpInfos, mctpInterfaces);
     if (discoverFDsTaskHandle.has_value())
     {
         auto& [scope, rcOpt] = *discoverFDsTaskHandle;
@@ -51,17 +51,15 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
 
     auto& [scope, rcOpt] = discoverFDsTaskHandle.emplace();
     stdexec::start_detached(
-        discoverFDsTask(mctpInterfaces) |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
         exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
-exec::task<int>
-    InventoryManager::discoverFDsTask(dbus::MctpInterfaces mctpInterfaces)
+exec::task<int> InventoryManager::discoverFDsTask()
 {
     while (!queuedMctpInfos.empty())
     {
-        const MctpInfos& mctpInfos = queuedMctpInfos.front();
+        const auto& [mctpInfos, mctpInterfaces] = queuedMctpInfos.front();
         for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
              mctpInfos)
         {

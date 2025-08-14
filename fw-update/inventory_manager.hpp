@@ -166,7 +166,7 @@ class InventoryManager
      */
     void discoverFDs(const MctpInfos& mctpInfos,
                      dbus::MctpInterfaces mctpInterfaces);
-    exec::task<int> discoverFDsTask(dbus::MctpInterfaces mctpInterfaces);
+    exec::task<int> discoverFDsTask();
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -303,7 +303,7 @@ class InventoryManager
     uint8_t numAttempts;
 
     /** @brief A queue of MctpInfos to be discovered **/
-    std::queue<MctpInfos> queuedMctpInfos{};
+    std::queue<std::pair<MctpInfos, dbus::MctpInterfaces>> queuedMctpInfos{};
 
     /** @brief To send a PLDM request after the current command handling */
     std::unordered_map<EID, std::unique_ptr<sdeventplus::source::Defer>>
