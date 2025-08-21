@@ -647,6 +647,9 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
         return;
     }
     ordered_json data;
+
+    fillCompletionCode(completionCode, data);
+
     data["EID"] = eid;
     ordered_json descriptors;
     while ((deviceIdentifiersLen > 0) && (descriptorCount--))
