@@ -243,10 +243,7 @@ void HostPDRHandler::mergeEntityAssociations(const std::vector<uint8_t>& pdr)
         }
         else
         {
-            // Don't use the deprecated API:
-            // pldm_entity_association_pdr_add_from_node
-            // TODO: Please revisit after libpldm sync
-            int rc = pldm_entity_association_pdr_add_from_node_check(
+            int rc = pldm_entity_association_pdr_add_from_node(
                 node, repo, &entities, numEntities, true, TERMINUS_HANDLE);
             if (rc)
             {
@@ -504,11 +501,8 @@ void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
                 }
                 else
                 {
-                    // Don't use the deprecated API:
-                    // pldm_pdr_add
-                    // TODO: Please revisit after libpldm sync
-                    int rc = pldm_pdr_add_check(repo, pdr.data(), respCount,
-                                                true, pdrTerminusHandle, &rh);
+                    int rc = pldm_pdr_add(repo, pdr.data(), respCount, true,
+                                          pdrTerminusHandle, &rh);
                     if (rc)
                     {
                         // pldm_pdr_add() assert()ed on failure to add a PDR.

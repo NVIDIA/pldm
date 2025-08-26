@@ -169,25 +169,14 @@ int BIOSConfig::checkAttributeTable(const Table& table)
             case PLDM_BIOS_ENUMERATION_READ_ONLY:
             {
                 uint8_t pvNum;
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_pv_num
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_enum_decode_pv_num_check(entry,
-                                                                    &pvNum);
+                pldm_bios_table_attr_entry_enum_decode_pv_num(entry, &pvNum);
                 std::vector<uint16_t> pvHandls(pvNum);
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_pv_hdls
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_enum_decode_pv_hdls_check(
+                pldm_bios_table_attr_entry_enum_decode_pv_hdls(
                     entry, pvHandls.data(), pvHandls.size());
                 uint8_t defNum;
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_def_num_check
-                // TODO: Please revisit after libpldm sync
-                pldm_bios_table_attr_entry_enum_decode_def_num_check(entry,
-                                                                     &defNum);
+                pldm_bios_table_attr_entry_enum_decode_def_num(entry, &defNum);
                 std::vector<uint8_t> defIndices(defNum);
                 pldm_bios_table_attr_entry_enum_decode_def_indices(
                     entry, defIndices.data(), defIndices.size());
@@ -276,12 +265,9 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
         auto strLength =
             pldm_bios_table_string_entry_decode_string_length(stringEntry);
         std::vector<char> buffer(strLength + 1 /* sizeof '\0' */);
-        // Not using the deprecated API:
-        // pldm_bios_table_string_entry_decode_string
-        // TODO: Please revisit after libpldm sync
         // Preconditions are upheld therefore no error check necessary
-        pldm_bios_table_string_entry_decode_string_check(
-            stringEntry, buffer.data(), buffer.size());
+        pldm_bios_table_string_entry_decode_string(stringEntry, buffer.data(),
+                                                   buffer.size());
         attributeName = std::string(buffer.data(), buffer.data() + strLength);
 
         if (!biosAttributes.empty())
@@ -312,12 +298,9 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                         pldm_bios_table_string_entry_decode_string_length(
                             stringEntry);
                     std::vector<char> buffer(strLength + 1 /* sizeof '\0' */);
-                    // Not using the deprecated API:
-                    // pldm_bios_table_string_entry_decode_string
-                    // TODO: Please revisit after libpldm sync
                     // Preconditions are upheld therefore no error check
                     // necessary
-                    pldm_bios_table_string_entry_decode_string_check(
+                    pldm_bios_table_string_entry_decode_string(
                         stringEntry, buffer.data(), buffer.size());
 
                     return std::string(buffer.data(),
@@ -328,18 +311,12 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                                 "AttributeType.Enumeration";
 
                 uint8_t pvNum;
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_pv_num
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_enum_decode_pv_num_check(attrEntry,
-                                                                    &pvNum);
+                pldm_bios_table_attr_entry_enum_decode_pv_num(attrEntry,
+                                                              &pvNum);
                 std::vector<uint16_t> pvHandls(pvNum);
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_pv_hdls
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_enum_decode_pv_hdls_check(
+                pldm_bios_table_attr_entry_enum_decode_pv_hdls(
                     attrEntry, pvHandls.data(), pvHandls.size());
 
                 // get possible_value
@@ -370,12 +347,9 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                 }
 
                 uint8_t defNum;
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_enum_decode_def_num_check
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_enum_decode_def_num_check(attrEntry,
-                                                                     &defNum);
+                pldm_bios_table_attr_entry_enum_decode_def_num(attrEntry,
+                                                               &defNum);
                 std::vector<uint8_t> defIndices(defNum);
                 pldm_bios_table_attr_entry_enum_decode_def_indices(
                     attrEntry, defIndices.data(), defIndices.size());
@@ -433,11 +407,8 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                 auto max = pldm_bios_table_attr_entry_string_decode_max_length(
                     attrEntry);
                 uint16_t def;
-                // Not using the deprecated API:
-                // pldm_bios_table_attr_entry_string_decode_def_string_length
-                // TODO: Please revisit after libpldm sync
                 // Preconditions are upheld therefore no error check necessary
-                pldm_bios_table_attr_entry_string_decode_def_string_length_check(
+                pldm_bios_table_attr_entry_string_decode_def_string_length(
                     attrEntry, &def);
                 std::vector<char> defString(def + 1);
                 pldm_bios_table_attr_entry_string_decode_def_string(

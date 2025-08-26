@@ -111,11 +111,8 @@ void FruImpl::buildFRUTable()
         }
     }
 
-    // Not using the deprecated API:
-    // pldm_entity_association_pdr_add
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_entity_association_pdr_add_check(entityTree, pdrRepo, false,
-                                                   TERMINUS_HANDLE);
+    int rc = pldm_entity_association_pdr_add(entityTree, pdrRepo, false,
+                                             TERMINUS_HANDLE);
     if (rc < 0)
     {
         // pldm_entity_assocation_pdr_add() assert()ed on failure
@@ -238,10 +235,7 @@ void FruImpl::populateRecords(
             {
                 recordSetIdentifier = nextRSI();
                 bmc_record_handle = nextRecordHandle();
-                // Not using the deprecated API:
-                // pldm_pdr_add_fru_record_set
-                // TODO: Please revisit after libpldm sync
-                int rc = pldm_pdr_add_fru_record_set_check(
+                int rc = pldm_pdr_add_fru_record_set(
                     pdrRepo, TERMINUS_HANDLE, recordSetIdentifier,
                     entity.entity_type, entity.entity_instance_num,
                     entity.entity_container_id, &bmc_record_handle);
