@@ -263,8 +263,6 @@ class Terminus
      *          false - the device inventory doesn't belong to the terminus
      */
     exec::task<int> checkDeviceInventory(const std::string& objPath);
-    exec::task<int> checkI2CDeviceInventory(uint8_t bus, uint8_t addr);
-    exec::task<int> checkUSBDeviceInventory(uint8_t eid);
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI
