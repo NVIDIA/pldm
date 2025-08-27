@@ -108,7 +108,7 @@ int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
         fwUpdateManager.updateFWInventory(eid);
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFA ||
-             eventClass == PLDM_CPER_MESSAGE_EVENT)
+             eventClass == PLDM_CPER_EVENT)
     {
         uint8_t formatVersion;
         uint8_t formatType;
