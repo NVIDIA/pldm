@@ -255,7 +255,8 @@ exec::task<int> EventManager::pollForPlatformEventTask(tid_t tid,
                 else if (transferFlag == PLDM_PLATFORM_TRANSFER_END)
                 {
                     if (eventDataIntegrityChecksum ==
-                        crc32(eventMessage.data(), eventMessage.size()))
+                        pldm_edac_crc32(eventMessage.data(),
+                                        eventMessage.size()))
                     {
                         handlePlatformEvent(
                             eventTid, eventClass, eventMessage.data(),

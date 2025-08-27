@@ -133,7 +133,7 @@ void FruImpl::buildFRUTable()
         table.resize(table.size() + padBytes, 0);
 
         // Calculate the checksum
-        checksum = crc32(table.data(), table.size());
+        checksum = pldm_edac_crc32(table.data(), table.size());
     }
     isBuilt = true;
 }
@@ -301,7 +301,7 @@ int FruImpl::getFRURecordByOption(std::vector<uint8_t>& fruData,
     }
 
     auto pads = utils::getNumPadBytes(recordTableSize);
-    auto sum = crc32(fruData.data(), recordTableSize + pads);
+    auto sum = pldm_edac_crc32(fruData.data(), recordTableSize + pads);
 
     auto iter = fruData.begin() + recordTableSize + pads;
     std::copy_n(reinterpret_cast<const uint8_t*>(&sum), sizeof(sum), iter);
