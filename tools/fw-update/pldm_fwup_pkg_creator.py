@@ -568,7 +568,7 @@ def write_pkg_header_checksum(pldm_fw_up_pkg):
     pldm_fw_up_pkg.write(struct.pack('<I', package_header_checksum))
 
 
-def update_pkg_header_size(pldm_fw_up_pkg):
+def update_pkg_header_size(pldm_fw_up_pkg, package_header_format_revision):
     '''
     Update PackageHeader in the PLDM package header. The package header size
     which is the count of all bytes in the PLDM package header structure is
@@ -579,6 +579,9 @@ def update_pkg_header_size(pldm_fw_up_pkg):
     '''
     pkg_header_checksum_size = 4
     file_size = pldm_fw_up_pkg.tell() + pkg_header_checksum_size
+    if package_header_format_revision >= 4:
+        payload_checksum_size = 4
+        file_size += payload_checksum_size
     pkg_header_size_offset = 17
     # Seek past PackageHeaderIdentifier and PackageHeaderFormatRevision
     pldm_fw_up_pkg.seek(pkg_header_size_offset)
@@ -655,7 +658,7 @@ def main():
                 write_downstream_device_identification_area(pldm_fw_up_pkg)
             write_component_image_info_area(pldm_fw_up_pkg, metadata,
                                             image_files, package_header_format_revision)
-            update_pkg_header_size(pldm_fw_up_pkg)
+            update_pkg_header_size(pldm_fw_up_pkg, package_header_format_revision)
             write_pkg_header_checksum(pldm_fw_up_pkg)
 
             # Only include package payload checksum for version 1.3
