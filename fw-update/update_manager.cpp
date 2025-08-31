@@ -50,35 +50,23 @@ UpdateManager::UpdateManager(
     event(event), handler(handler), instanceIdDb(instanceIdDb),
     fwDebug(fwDebug), descriptorMap(descriptorMap),
     componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
-    watch(event.get(), std::bind_front(&UpdateManager::processPackage, this))
+    updater(std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
+                                     "/xyz/openbmc_project/software/pldm",
+                                     this))
 {
-    watch.initImmediateUpdateWatch();
-    updatePolicy = std::make_unique<UpdatePolicy>(
-        pldm::utils::DBusHandler::getBus(), "/xyz/openbmc_project/software");
-
-    if (std::filesystem::exists(FIRMWARE_PACKAGE_STAGING_DIR))
-    {
-        for (const auto& entry :
-             std::filesystem::directory_iterator(FIRMWARE_PACKAGE_STAGING_DIR))
-        {
-            if (entry.is_directory() &&
-                entry.path() ==
-                    (std::string{FIRMWARE_PACKAGE_STAGING_DIR} + "/pldm"))
-            {
-                // skip removing pldm directory which contains non-pldm image
-                // directories.
-            }
-            else
-            {
-                std::filesystem::remove_all(entry.path());
-            }
-        }
-    }
     progressTimer = nullptr;
     forceUpdate = false;
 }
 
 UpdateManager::~UpdateManager() = default;
+
+std::string UpdateManager::getSwId()
+{
+    return std::to_string(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+}
 
 std::string
     UpdateManager::getActivationMethod(bitfield16_t compActivationModification)
@@ -210,101 +198,84 @@ void UpdateManager::createMessageRegistryResourceErrors(
     createLogEntry(messageID, compName, messageError, resolution);
 }
 
-int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
+std::string UpdateManager::processStreamDefer(
+    std::istream& package, uintmax_t packageSize, bool forceUpdateFlag,
+    std::vector<sdbusplus::message::object_path> targets)
 {
-    startTime = std::chrono::steady_clock::now();
-    if (activation)
-    {
-        if (activation->activation() ==
-            software::Activation::Activations::Activating)
-        {
-            error(
-                "Activation of package already in progress, PACKAGE_VERSION={PACKAGE_VERSION}, clearing the current activation",
-                "PACKAGE_VERSION", parser->pkgVersion);
-        }
-        clearActivationInfo();
-    }
+    auto swId = getSwId();
+    objPath = swRootPath + swId;
+    forceUpdate = forceUpdateFlag;
 
-    namespace software = sdbusplus::xyz::openbmc_project::Software::server;
-    // Populate object path with the hash of the package file path
-    size_t versionHash = std::hash<std::string>{}(packageFilePath);
-    objPath = swRootPath + std::to_string(versionHash);
-    forceUpdate = updatePolicy->forceUpdate();
-    auto targets = updatePolicy->targets();
-    if (updatePolicy->updateOption() ==
-        software::UpdatePolicy::UpdateOptionSupport::StageOnly)
-    {
-        isStageOnlyUpdate = true;
-    }
+    // TODO: Currently stage-only update is not supported via D-Bus API
+    isStageOnlyUpdate = false;
 
-    else
-    {
-        isStageOnlyUpdate = false;
-    }
     info(
         "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
         "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
-    fwPackageFilePath = packageFilePath;
 
-    // create the device updater
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this, targets);
+
+    if (!activation)
+    {
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Ready, this);
+        activationProgress = std::make_unique<ActivationProgress>(
+            pldm::utils::DBusHandler::getBus(), objPath);
+    }
 
     // If no devices discovered, take no action on the package.
     if (!descriptorMap.size() && !otherDeviceUpdateManager->getValidTargets())
     {
         error("No devices found for firmware update");
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Ready);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Ready, this);
-        }
-        return 0;
+
+        std::string compName = "Firmware Update Service";
+        std::string messageError = "No Matching Devices";
+        std::string resolution =
+            "Verify the FW package has devices that are listed in the"
+            " Redfish FW Inventory";
+        createLogEntry(resourceErrorDetected, compName, messageError,
+                       resolution);
+
+        activation->activation(software::Activation::Activations::Active);
+        activationProgress->progress(100);
+
+        return objPath;
     }
 
-    package.open(packageFilePath,
-                 std::ios::binary | std::ios::in | std::ios::ate);
+    updateDeferHandler = std::make_unique<sdeventplus::source::Defer>(
+        event, [this, &package, packageSize,
+                targets](sdeventplus::source::EventBase&) {
+            this->processStream(package, packageSize, targets);
+        });
+
+    return objPath;
+}
+
+void UpdateManager::processStream(
+    std::istream& package, uintmax_t packageSize,
+    std::vector<sdbusplus::message::object_path> targets)
+{
+    startTime = std::chrono::steady_clock::now();
+
+    package.clear();
+    package.seekg(0, std::ios::beg);
     if (!package.good())
     {
-        error(
-            "Failed to open the PLDM fw update package file '{FILE}', error - {ERROR}.",
-            "ERROR", errno, "FILE", packageFilePath);
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
+        error("Package stream is not in a valid state");
+        handleInvalidPackageError();
+        return;
     }
 
-    uintmax_t packageSize = package.tellg();
     if (packageSize < sizeof(pldm_package_header_information))
     {
         error(
             "PLDM fw update package length {SIZE} less than the length of the package header information '{PACKAGE_HEADER_INFO_SIZE}'.",
             "SIZE", packageSize, "PACKAGE_HEADER_INFO_SIZE",
             sizeof(pldm_package_header_information));
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
+        handleInvalidPackageError();
+        return;
     }
 
     package.seekg(0);
@@ -327,17 +298,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     if (parser == nullptr)
     {
         error("Invalid PLDM package header information");
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
+        handleInvalidPackageError();
+        parser.reset();
+        return;
     }
 
     package.seekg(0);
@@ -351,17 +314,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     catch (const std::exception& e)
     {
         error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Invalid);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Invalid, this);
-        }
-        return -1;
+        handleInvalidPackageError();
+        parser.reset();
+        return;
     }
 
     const auto& compImageInfos = parser->getComponentImageInfos();
@@ -397,6 +352,9 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
              deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
     }
 
+    package.clear();
+    package.seekg(0, std::ios::beg);
+
     // get non-pldm components, add to total component count
     size_t otherDevicesImageCount = 0;
     if (!isStageOnlyUpdate)
@@ -413,22 +371,16 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
     totalNumComponentUpdates += otherDevicesImageCount;
 
+    // Log if no matching devices found (but don't set activation state -
+    // startNonPLDMUpdate() will handle that and create message registry)
     if (!deviceUpdaterInfos.size() && !otherDevicesImageCount)
     {
         error(
             "No matching devices found with the PLDM firmware update package");
-        if (activation)
-        {
-            activation->activation(software::Activation::Activations::Failed);
-        }
-        else
-        {
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Ready, this);
-        }
-        return 0;
     }
+
+    package.clear();
+    package.seekg(0, std::ios::beg);
 
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
     {
@@ -437,7 +389,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         auto search = componentInfoMap.find(deviceUpdaterInfo.first);
         auto compIdNameInfoSearch =
             componentNameMap.find(deviceUpdaterInfo.first);
-        if (compIdNameInfoSearch != componentNameMap.end())
+        if (search != componentInfoMap.end() &&
+            compIdNameInfoSearch != componentNameMap.end())
         {
 
             deviceUpdaterMap.emplace(deviceUpdaterInfo.first,
@@ -453,9 +406,12 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     // delay activation object creation if there are non-pldm updates
     if (otherDevicesImageCount == 0)
     {
-        createActivationObject();
+        if (activation)
+        {
+            activation->activation(
+                software::Activation::Activations::Activating);
+        }
     }
-    return 0;
 }
 
 void UpdateManager::performSecurityChecksAsync(
@@ -531,8 +487,8 @@ void UpdateManager::packageIntegrityCheckAsync(
 
     try
     {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
+        pkgSignHdrData = PackageSignature::getSignatureHeader(
+            updater->getImageStream(), calcPkgSize);
     }
     catch (const std::exception& e)
     {
@@ -575,7 +531,7 @@ void UpdateManager::packageIntegrityCheckAsync(
         auto sizeOfSignedData =
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
         packageSignatureParser->integrityCheckAsync(
-            package, sizeOfSignedData,
+            updater->getImageStream(), sizeOfSignedData,
             [onComplete](bool integritycheckResult) {
                 if (integritycheckResult)
                 {
@@ -624,8 +580,8 @@ void UpdateManager::verifyPackageAsync(
 
     try
     {
-        pkgSignHdrData =
-            PackageSignature::getSignatureHeader(package, calcPkgSize);
+        pkgSignHdrData = PackageSignature::getSignatureHeader(
+            updater->getImageStream(), calcPkgSize);
     }
     catch (const std::exception& e)
     {
@@ -671,7 +627,8 @@ void UpdateManager::verifyPackageAsync(
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
 
         packageSignatureParser->verifyAsync(
-            package, PLDM_PACKAGE_VERIFICATION_KEY, sizeOfSignedData,
+            updater->getImageStream(), PLDM_PACKAGE_VERIFICATION_KEY,
+            sizeOfSignedData,
             [onComplete](bool verificationCheckResult) {
                 if (verificationCheckResult)
                 {
@@ -914,7 +871,8 @@ software::Activation::Activations UpdateManager::activatePackage()
     debugToken =
         std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);
     debugToken->updateDebugToken(parser->getFwDeviceIDRecords(),
-                                 parser->getComponentImageInfos(), package);
+                                 parser->getComponentImageInfos(),
+                                 updater->getImageStream());
     return software::Activation::Activations::Activating;
 #endif
     startPLDMUpdate();
@@ -997,7 +955,6 @@ void UpdateManager::clearActivationInfo()
     deviceUpdaterMap.clear();
     deviceUpdateCompletionMap.clear();
     parser.reset();
-    package.close();
     clearFirmwareUpdatePackage();
     totalNumComponentUpdates = 0;
     compUpdateCompletedCount = 0;
@@ -1010,31 +967,6 @@ void UpdateManager::clearActivationInfo()
         progressTimer->stop();
     }
     progressTimer.reset();
-}
-
-bool UpdateManager::createActivationObject()
-{
-    if (deviceUpdaterMap.size() ||
-        otherDeviceUpdateManager->getNumberOfProcessedImages())
-    {
-        try
-        {
-            namespace software =
-                sdbusplus::xyz::openbmc_project::Software::server;
-            activation = std::make_unique<Activation>(
-                pldm::utils::DBusHandler::getBus(), objPath,
-                software::Activation::Activations::Ready, this);
-            activationProgress = std::make_unique<ActivationProgress>(
-                pldm::utils::DBusHandler::getBus(), objPath);
-        }
-        catch (const sdbusplus::exception::SdBusError& e)
-        {
-            error("Failed to create activation object: {ERROR}", "ERROR",
-                  e.what());
-            return false;
-        }
-    }
-    return true;
 }
 
 void UpdateManager::updatePackageCompletion()
@@ -1107,7 +1039,11 @@ void UpdateManager::updateOtherDeviceComponents(
     if (otherDeviceMap.size() > 0)
     {
         otherDeviceComponents = otherDeviceMap;
-        createActivationObject();
+        if (activation)
+        {
+            activation->activation(
+                software::Activation::Activations::Activating);
+        }
     }
 }
 
@@ -1142,14 +1078,30 @@ void UpdateManager::resetActivationBlocksTransition()
 
 void UpdateManager::clearFirmwareUpdatePackage()
 {
-    package.close();
-    std::filesystem::remove(fwPackageFilePath);
+    if (updater)
+    {
+        updater->clearImageStream();
+    }
 }
 
 void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
     activation->activation(state);
+}
+
+void UpdateManager::clearExistingActivation()
+{
+    if (activation)
+    {
+        if (activation->activation() ==
+            software::Activation::Activations::Activating)
+        {
+            error(
+                "Activation of package already in progress, clearing the current activation");
+        }
+        clearActivationInfo();
+    }
 }
 
 ComponentName UpdateManager::getComponentName(
@@ -1203,6 +1155,27 @@ void UpdateManager::createProgressUpdateTimer()
         }
         return;
     });
+}
+
+void UpdateManager::handleInvalidPackageError()
+{
+    std::string compName = "Firmware Update Service";
+    std::string messageError = "Invalid FW Package";
+    std::string resolution =
+        "Retry firmware update operation with valid FW package.";
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+    clearFirmwareUpdatePackage();
+
+    if (activation)
+    {
+        activation->activation(software::Activation::Activations::Failed);
+    }
+    else
+    {
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Failed, this);
+    }
 }
 
 } // namespace fw_update

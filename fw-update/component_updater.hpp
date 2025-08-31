@@ -221,7 +221,7 @@ class ComponentUpdater
      *  @param[in] deviceUpdater - To update the status of device
      *  @param[in] componentIndex - component index
      */
-    explicit ComponentUpdater(mctp_eid_t eid, std::ifstream& package,
+    explicit ComponentUpdater(mctp_eid_t eid, std::istream& package,
                               const FirmwareDeviceIDRecord& fwDeviceIDRecord,
                               const ComponentImageInfos& compImageInfos,
                               const ComponentInfo& compInfo,
@@ -375,8 +375,8 @@ class ComponentUpdater
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
 
-    /** @brief File stream for firmware update package */
-    std::ifstream& package;
+    /** @brief Stream for firmware update package */
+    std::istream& package;
 
     /** @brief Component image information for all the components in the fw
      *         update package

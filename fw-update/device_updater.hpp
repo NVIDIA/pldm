@@ -229,7 +229,7 @@ class DeviceUpdater
      *  @param[in] updateManager - To update the status of fw update of the
      *                             device
      */
-    explicit DeviceUpdater(mctp_eid_t eid, std::ifstream& package,
+    explicit DeviceUpdater(mctp_eid_t eid, std::istream& package,
                            const FirmwareDeviceIDRecord& fwDeviceIDRecord,
                            const ComponentImageInfos& compImageInfos,
                            const ComponentInfo compInfo,
@@ -403,8 +403,8 @@ class DeviceUpdater
      */
     std::unique_ptr<sdbusplus::Timer> updateModeIdleTimer;
 
-    /** @brief File stream for firmware update package */
-    std::ifstream& package;
+    /** @brief Stream for firmware update package */
+    std::istream& package;
 
     /** @brief Component image information for all the components in the fw
      *         update package
