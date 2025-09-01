@@ -281,7 +281,8 @@ def prepare_record_descriptors(descriptors):
 
 #pylint: disable=too-many-locals
 def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
-                                        component_bitmap_bit_length):
+                                        component_bitmap_bit_length,
+                                        package_header_format_revision):
     '''
     Write firmware device ID records into the PLDM package header
 
@@ -341,6 +342,11 @@ def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
         fw_device_pkg_data_length = 0
         record_length += 2
 
+        # ReferenceManifestLength - set to 0x00000000 as no reference manifest data provided
+        reference_manifest_length = 0x00000000
+        if package_header_format_revision >= PACKAGE_FORMAT_REVISIONS["1.3"]:
+            record_length += 4
+
         # ApplicableComponents
         components = metadata["ComponentImageInformationArea"]
         applicable_components = \
@@ -357,20 +363,24 @@ def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
             prepare_record_descriptors(descriptors)
         record_length += len(record_descriptors)
 
-        format_string = '<HBIBBH' + \
-            str(applicable_components_bitfield_length) + 's' + \
+        format_string = '<HBIBBH'
+        package_args = [
+            record_length,
+            descriptor_count,
+            ba2int(device_update_option_flags),
+            component_image_set_version_string_type,
+            len(component_image_set_version_string),
+            fw_device_pkg_data_length
+        ]
+        if package_header_format_revision >= PACKAGE_FORMAT_REVISIONS["1.3"]:
+            format_string += 'I'
+            package_args.append(reference_manifest_length)
+        format_string += str(applicable_components_bitfield_length) + 's' + \
             str(len(component_image_set_version_string)) + 's'
+        package_args.append(applicable_components.tobytes())
+        package_args.append(component_image_set_version_string.encode('ascii'))
         pldm_fw_up_pkg.write(
-            struct.pack(
-                format_string,
-                record_length,
-                descriptor_count,
-                ba2int(device_update_option_flags),
-                component_image_set_version_string_type,
-                len(component_image_set_version_string),
-                fw_device_pkg_data_length,
-                applicable_components.tobytes(),
-                component_image_set_version_string.encode('ascii')))
+            struct.pack(format_string, *package_args))
         pldm_fw_up_pkg.write(record_descriptors)
 
 def write_downstream_device_identification_area(pldm_fw_up_pkg):
@@ -639,7 +649,8 @@ def main():
 
             write_fw_device_identification_area(pldm_fw_up_pkg,
                                                 metadata,
-                                                component_bitmap_bit_length)
+                                                component_bitmap_bit_length,
+                                                package_header_format_revision)
             if package_header_format_revision > PACKAGE_FORMAT_REVISIONS["1.0"]:
                 write_downstream_device_identification_area(pldm_fw_up_pkg)
             write_component_image_info_area(pldm_fw_up_pkg, metadata,
