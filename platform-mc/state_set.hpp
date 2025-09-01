@@ -51,13 +51,12 @@ class StateSet
     uint8_t opState;
 
   public:
-    StateSet(uint16_t id) : id(id), opState(0)
-    {}
+    StateSet(uint16_t id) : id(id), opState(0) {}
     virtual ~StateSet() = default;
     virtual void setValue(uint8_t value) = 0;
     virtual void setDefaultValue() = 0;
-    virtual void
-        setAssociation(std::vector<dbus::PathAssociation>& stateAssociations)
+    virtual void setAssociation(
+        std::vector<dbus::PathAssociation>& stateAssociations)
     {
         if (!associationDefinitionsIntf)
         {
@@ -67,10 +66,9 @@ class StateSet
 
         for (const auto& assoc : stateAssociations)
         {
-
-            assocs.emplace_back(std::make_tuple(assoc.forward.c_str(),
-                                                assoc.reverse.c_str(),
-                                                assoc.path.c_str()));
+            assocs.emplace_back(
+                std::make_tuple(assoc.forward.c_str(), assoc.reverse.c_str(),
+                                assoc.path.c_str()));
         }
         associationDefinitionsIntf->associations(assocs);
     }
@@ -100,23 +98,21 @@ class StateSet
         return id;
     }
     virtual std::string getStringStateType() const = 0;
-    virtual std::tuple<std::string, std::string, Level>
-        getEventData() const = 0;
+    virtual std::tuple<std::string, std::string, Level> getEventData()
+        const = 0;
     virtual void updateSensorName([[maybe_unused]] std::string name) {};
 };
 
 class StateSetCreator
 {
   public:
-    static std::unique_ptr<StateSet>
-        createSensor(uint16_t stateSetId, uint8_t compId, std::string& path,
-                     dbus::PathAssociation& stateAssociation,
-                     StateSensor* sensor);
+    static std::unique_ptr<StateSet> createSensor(
+        uint16_t stateSetId, uint8_t compId, std::string& path,
+        dbus::PathAssociation& stateAssociation, StateSensor* sensor);
 
-    static std::unique_ptr<StateSet>
-        createEffecter(uint16_t stateSetId, uint8_t compId, std::string& path,
-                       dbus::PathAssociation& stateAssociation,
-                       StateEffecter* effecter);
+    static std::unique_ptr<StateSet> createEffecter(
+        uint16_t stateSetId, uint8_t compId, std::string& path,
+        dbus::PathAssociation& stateAssociation, StateEffecter* effecter);
 };
 
 } // namespace platform_mc

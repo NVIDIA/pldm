@@ -109,8 +109,7 @@ StatestoDbusVal populateMapping(const std::string& type, const Json& dBusValues,
 class RepoInterface
 {
   public:
-    RepoInterface(pldm_pdr* repo) : repo(repo)
-    {}
+    RepoInterface(pldm_pdr* repo) : repo(repo) {}
 
     virtual ~RepoInterface() = default;
 
@@ -145,9 +144,8 @@ class RepoInterface
      *  @return opaque pointer acting as PDR record handle, will be NULL if
      *          record was not found
      */
-    virtual const pldm_pdr_record*
-        getNextRecord(const pldm_pdr_record* currRecord,
-                      PdrEntry& pdrEntry) = 0;
+    virtual const pldm_pdr_record* getNextRecord(
+        const pldm_pdr_record* currRecord, PdrEntry& pdrEntry) = 0;
 
     /** @brief Get record handle of a PDR record
      *
@@ -184,8 +182,7 @@ class RepoInterface
 class Repo : public RepoInterface
 {
   public:
-    Repo(pldm_pdr* repo) : RepoInterface(repo)
-    {}
+    Repo(pldm_pdr* repo) : RepoInterface(repo) {}
 
     pldm_pdr* getPdr() const override;
 

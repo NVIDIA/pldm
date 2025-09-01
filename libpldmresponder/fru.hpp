@@ -197,7 +197,6 @@ namespace fru
 
 class Handler : public CmdHandler
 {
-
   public:
     Handler(const std::string& configPath,
             const std::filesystem::path& fruMasterJsonPath, pldm_pdr* pdrRepo,
@@ -256,8 +255,8 @@ class Handler : public CmdHandler
      *
      *  @return std::map<ObjectPath, pldm_entity>
      */
-    const pldm::responder::dbus::AssociatedEntityMap&
-        getAssociateEntityMap() const
+    const pldm::responder::dbus::AssociatedEntityMap& getAssociateEntityMap()
+        const
     {
         return impl.getAssociateEntityMap();
     }

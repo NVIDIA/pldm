@@ -165,8 +165,8 @@ void StateEffecter::updateReading(uint8_t compEffecterIndex,
 
 exec::task<int> StateEffecter::getStateEffecterStates()
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_state_effecter_states_req(
         0, effecterId, requestMsg, PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
@@ -276,9 +276,9 @@ exec::task<int> StateEffecter::setStateEffecterStates(
         co_return PLDM_ERROR_INVALID_DATA;
     }
 
-    Request request(sizeof(pldm_msg_hdr) + sizeof(effecterId) +
-                    sizeof(cmpEffCnt) +
-                    sizeof(set_effecter_state_field) * cmpEffCnt);
+    Request request(
+        sizeof(pldm_msg_hdr) + sizeof(effecterId) + sizeof(cmpEffCnt) +
+        sizeof(set_effecter_state_field) * cmpEffCnt);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
     auto rc = encode_set_state_effecter_states_req(

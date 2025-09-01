@@ -54,8 +54,8 @@ int main(int argc, char** argv)
     uint8_t transferCRC = getchar();
 
     // + size of record data and transfer CRC
-    std::vector<uint8_t> responseMsg(hdrSize + PLDM_GET_PDR_MIN_RESP_BYTES +
-                                     recordData.size() + 1);
+    std::vector<uint8_t> responseMsg(
+        hdrSize + PLDM_GET_PDR_MIN_RESP_BYTES + recordData.size() + 1);
 
     auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
 

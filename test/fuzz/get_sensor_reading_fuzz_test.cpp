@@ -31,8 +31,8 @@ int main(int argc, char** argv)
     (void)argv;
     constexpr auto hdrSize = sizeof(pldm_msg_hdr);
 
-    std::vector<uint8_t> requestMsg(hdrSize +
-                                    PLDM_GET_SENSOR_READING_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        hdrSize + PLDM_GET_SENSOR_READING_REQ_BYTES);
 
     uint16_t sensorId{0};
     bool8_t rearmEventState = getBoolCin();

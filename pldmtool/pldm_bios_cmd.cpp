@@ -110,8 +110,8 @@ class SetDateTime : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        sizeof(struct pldm_set_date_time_req));
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + sizeof(struct pldm_set_date_time_req));
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
         uint16_t year = 0;
         uint8_t month = 0;
@@ -191,13 +191,12 @@ class GetBIOSTableHandler : public CommandInterface
         return {PLDM_ERROR, {}};
     }
 
-    void parseResponseMsg(pldm_msg*, size_t) override
-    {}
+    void parseResponseMsg(pldm_msg*, size_t) override {}
 
     std::optional<Table> getBIOSTable(pldm_bios_table_types tableType)
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_BIOS_TABLE_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_BIOS_TABLE_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
         auto rc = encode_get_bios_table_req(instanceId, 0, PLDM_GET_FIRSTPART,
@@ -240,9 +239,9 @@ class GetBIOSTableHandler : public CommandInterface
         return std::make_optional<Table>(tableData, tableData + tableSize);
     }
 
-    const pldm_bios_attr_table_entry*
-        findAttrEntryByName(const std::string& name, const Table& attrTable,
-                            const Table& stringTable)
+    const pldm_bios_attr_table_entry* findAttrEntryByName(
+        const std::string& name, const Table& attrTable,
+        const Table& stringTable)
     {
         auto stringEntry = pldm_bios_table_string_find_by_string(
             stringTable.data(), stringTable.size(), name.c_str());
@@ -334,8 +333,8 @@ class GetBIOSTableHandler : public CommandInterface
             return displayString;
         }
         uint8_t pvNum;
-        int rc = pldm_bios_table_attr_entry_enum_decode_pv_num_check(attrEntry,
-                                                                     &pvNum);
+        int rc = pldm_bios_table_attr_entry_enum_decode_pv_num_check(
+            attrEntry, &pvNum);
         if (rc != PLDM_SUCCESS)
         {
             return displayString;
@@ -625,9 +624,9 @@ class GetBIOSTable : public GetBIOSTableHandler
                         entry, defString.data(), defString.size());
 
                     std::stringstream stringtype;
-                    stringtype << "0x" << std::hex << std::setw(2)
-                               << std::setfill('0') << (int)strType << std::dec
-                               << std::setw(0);
+                    stringtype
+                        << "0x" << std::hex << std::setw(2) << std::setfill('0')
+                        << (int)strType << std::dec << std::setw(0);
                     attrdata["StringType"] = stringtype.str();
                     attrdata["MinimumStringLength"] = (int)min;
                     attrdata["MaximumStringLength"] = (int)max;
@@ -637,8 +636,8 @@ class GetBIOSTable : public GetBIOSTableHandler
                 }
                 case PLDM_BIOS_PASSWORD:
                 case PLDM_BIOS_PASSWORD_READ_ONLY:
-                    std::cerr << "Password attribute: Not Supported"
-                              << std::endl;
+                    std::cerr
+                        << "Password attribute: Not Supported" << std::endl;
             }
             output.emplace_back(std::move(attrdata));
         }
@@ -674,14 +673,13 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
         const GetBIOSAttributeCurrentValueByHandle&) = delete;
     GetBIOSAttributeCurrentValueByHandle(
         GetBIOSAttributeCurrentValueByHandle&&) = delete;
-    GetBIOSAttributeCurrentValueByHandle&
-        operator=(const GetBIOSAttributeCurrentValueByHandle&) = delete;
-    GetBIOSAttributeCurrentValueByHandle&
-        operator=(GetBIOSAttributeCurrentValueByHandle&&) = delete;
+    GetBIOSAttributeCurrentValueByHandle& operator=(
+        const GetBIOSAttributeCurrentValueByHandle&) = delete;
+    GetBIOSAttributeCurrentValueByHandle& operator=(
+        GetBIOSAttributeCurrentValueByHandle&&) = delete;
 
-    explicit GetBIOSAttributeCurrentValueByHandle(const char* type,
-                                                  const char* name,
-                                                  CLI::App* app) :
+    explicit GetBIOSAttributeCurrentValueByHandle(
+        const char* type, const char* name, CLI::App* app) :
         GetBIOSTableHandler(type, name, app)
     {
         app->add_option("-a, --attribute", attrName, "pldm BIOS attribute name")
@@ -702,7 +700,6 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
         auto handle = findAttrHandleByName(attrName, *attrTable, *stringTable);
         if (!handle)
         {
-
             std::cerr << "Can not find the attribute " << attrName << std::endl;
             return;
         }
@@ -766,10 +763,10 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
     SetBIOSAttributeCurrentValue() = delete;
     SetBIOSAttributeCurrentValue(const SetBIOSAttributeCurrentValue&) = delete;
     SetBIOSAttributeCurrentValue(SetBIOSAttributeCurrentValue&&) = default;
-    SetBIOSAttributeCurrentValue&
-        operator=(const SetBIOSAttributeCurrentValue&) = delete;
-    SetBIOSAttributeCurrentValue&
-        operator=(SetBIOSAttributeCurrentValue&&) = default;
+    SetBIOSAttributeCurrentValue& operator=(
+        const SetBIOSAttributeCurrentValue&) = delete;
+    SetBIOSAttributeCurrentValue& operator=(SetBIOSAttributeCurrentValue&&) =
+        default;
 
     explicit SetBIOSAttributeCurrentValue(const char* type, const char* name,
                                           CLI::App* app) :

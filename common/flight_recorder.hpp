@@ -96,8 +96,8 @@ class FlightRecorder
                  flightRecorderDumpPath);
             for (const auto& message : tapeRecorder)
             {
-                recorderOutputFile << std::get<FlightRecorderTimeStamp>(message)
-                                   << " : ";
+                recorderOutputFile
+                    << std::get<FlightRecorderTimeStamp>(message) << " : ";
                 if (std::get<ReqOrResponse>(message))
                 {
                     recorderOutputFile << "Tx : \n";

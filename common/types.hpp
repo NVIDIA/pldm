@@ -200,12 +200,9 @@ struct MatchEntryInfo
     MatchEntryInfo(MatchEntryInfo&&) = delete;
     MatchEntryInfo& operator=(MatchEntryInfo&&) = delete;
 
-    MatchEntryInfo(const T& i) : infos(i)
-    {}
-    MatchEntryInfo()
-    {}
-    ~MatchEntryInfo()
-    {}
+    MatchEntryInfo(const T& i) : infos(i) {}
+    MatchEntryInfo() {}
+    ~MatchEntryInfo() {}
 
     T infos;
 

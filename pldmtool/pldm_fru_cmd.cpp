@@ -33,8 +33,8 @@ class GetFruRecordTableMetadata : public CommandInterface
     GetFruRecordTableMetadata() = delete;
     GetFruRecordTableMetadata(const GetFruRecordTableMetadata&) = delete;
     GetFruRecordTableMetadata(GetFruRecordTableMetadata&&) = default;
-    GetFruRecordTableMetadata&
-        operator=(const GetFruRecordTableMetadata&) = delete;
+    GetFruRecordTableMetadata& operator=(const GetFruRecordTableMetadata&) =
+        delete;
     GetFruRecordTableMetadata& operator=(GetFruRecordTableMetadata&&) = delete;
 
     using CommandInterface::CommandInterface;
@@ -412,8 +412,8 @@ class GetFruRecordTable : public CommandInterface
     using CommandInterface::CommandInterface;
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_FRU_RECORD_TABLE_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_FRU_RECORD_TABLE_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
         auto rc = encode_get_fru_record_table_req(

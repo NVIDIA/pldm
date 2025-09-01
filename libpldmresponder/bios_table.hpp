@@ -230,9 +230,8 @@ StringField decodeStringEntry(const pldm_bios_attr_table_entry* entry);
  *  @param[in] info - string info
  *  @return pointer to the constructed entry
  */
-const pldm_bios_attr_table_entry*
-    constructStringEntry(Table& table,
-                         pldm_bios_table_attr_entry_string_info* info);
+const pldm_bios_attr_table_entry* constructStringEntry(
+    Table& table, pldm_bios_table_attr_entry_string_info* info);
 
 /** @struct IntegerField
  *  @brief Integer field of attribute table
@@ -251,9 +250,8 @@ struct IntegerField
  *  @param[in] info - integer info
  *  @return pointer to the constructed entry
  */
-const pldm_bios_attr_table_entry*
-    constructIntegerEntry(Table& table,
-                          pldm_bios_table_attr_entry_integer_info* info);
+const pldm_bios_attr_table_entry* constructIntegerEntry(
+    Table& table, pldm_bios_table_attr_entry_integer_info* info);
 
 /** @brief decode integer entry of attribute table
  *  @param[in] entry - Pointer to an attribute table entry
@@ -282,9 +280,8 @@ EnumField decodeEnumEntry(const pldm_bios_attr_table_entry* entry);
  *  @param[in] info - enum info
  *  @return pointer to the constructed entry
  */
-const pldm_bios_attr_table_entry*
-    constructEnumEntry(Table& table,
-                       pldm_bios_table_attr_entry_enum_info* info);
+const pldm_bios_attr_table_entry* constructEnumEntry(
+    Table& table, pldm_bios_table_attr_entry_enum_info* info);
 
 } // namespace attribute
 
@@ -322,8 +319,8 @@ uint64_t decodeIntegerEntry(const pldm_bios_attr_val_table_entry* entry);
  *  @param[in] entry - Pointer to an attribute value table entry
  *  @return Current value string handle indices
  */
-std::vector<uint8_t>
-    decodeEnumEntry(const pldm_bios_attr_val_table_entry* entry);
+std::vector<uint8_t> decodeEnumEntry(
+    const pldm_bios_attr_val_table_entry* entry);
 
 /** @brief Construct string entry of attribute value table at the end of the
  *         given table
@@ -333,9 +330,9 @@ std::vector<uint8_t>
  *  @param[in] str - The string
  *  @return Pointer to the constructed entry
  */
-const pldm_bios_attr_val_table_entry*
-    constructStringEntry(Table& table, uint16_t attrHandle, uint8_t attrType,
-                         const std::string& str);
+const pldm_bios_attr_val_table_entry* constructStringEntry(
+    Table& table, uint16_t attrHandle, uint8_t attrType,
+    const std::string& str);
 
 /** @brief Construct integer entry of attribute value table at the end of
  *         the given table
@@ -345,10 +342,8 @@ const pldm_bios_attr_val_table_entry*
  *  @param[in] value - The integer
  *  @return Pointer to the constructed entry
  */
-const pldm_bios_attr_val_table_entry* constructIntegerEntry(Table& table,
-                                                            uint16_t attrHandle,
-                                                            uint8_t attrType,
-                                                            uint64_t value);
+const pldm_bios_attr_val_table_entry* constructIntegerEntry(
+    Table& table, uint16_t attrHandle, uint8_t attrType, uint64_t value);
 
 /** @brief Construct enum entry of attribute value table at the end of
  *         the given table
@@ -358,9 +353,9 @@ const pldm_bios_attr_val_table_entry* constructIntegerEntry(Table& table,
  *  @param[in] handleIndices -  handle indices
  *  @return Pointer to the constructed entry
  */
-const pldm_bios_attr_val_table_entry*
-    constructEnumEntry(Table& table, uint16_t attrHandle, uint8_t attrType,
-                       const std::vector<uint8_t>& handleIndices);
+const pldm_bios_attr_val_table_entry* constructEnumEntry(
+    Table& table, uint16_t attrHandle, uint8_t attrType,
+    const std::vector<uint8_t>& handleIndices);
 
 /** @brief construct a table with an new entry
  *  @param[in] table - the table need to be updated

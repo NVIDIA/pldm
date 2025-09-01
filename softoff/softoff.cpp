@@ -322,9 +322,9 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
         return PLDM_ERROR;
     }
 
-    std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(effecterID) +
-                            sizeof(effecterCount) +
-                            sizeof(set_effecter_state_field)>
+    std::array<uint8_t,
+               sizeof(pldm_msg_hdr) + sizeof(effecterID) +
+                   sizeof(effecterCount) + sizeof(set_effecter_state_field)>
         requestMsg{};
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     set_effecter_state_field stateField{
@@ -339,8 +339,8 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
     }
 
     // Add a timer to the event loop, default 30s.
-    auto timerCallback = [=, this](Timer& /*source*/,
-                                   Timer::TimePoint /*time*/) {
+    auto timerCallback = [=,
+                          this](Timer& /*source*/, Timer::TimePoint /*time*/) {
         if (!responseReceived)
         {
             std::cerr

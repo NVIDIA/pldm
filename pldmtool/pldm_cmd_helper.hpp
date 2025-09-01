@@ -138,8 +138,8 @@ class CommandInterface
      *  @return On success return the objects managed by the service
      *          on error return empty
      */
-    pldm::dbus::ObjectValueTree
-        getMctpManagedObjects(const std::string& service) const noexcept;
+    pldm::dbus::ObjectValueTree getMctpManagedObjects(
+        const std::string& service) const noexcept;
 
     /** @brief Get set of MCTP services
      *

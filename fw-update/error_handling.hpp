@@ -234,9 +234,9 @@ static const CommandToCompCompatibilityMap CommandToCompCompatibilityTbl = {
  * present
  * @return false - error code mapping is not present
  */
-inline std::tuple<bool, std::string, std::string, std::string>
-    getOemMessage(const pldm_firmware_update_commands& commandType,
-                  const ErrorCode& errorCode)
+inline std::tuple<bool, std::string, std::string, std::string> getOemMessage(
+    const pldm_firmware_update_commands& commandType,
+    const ErrorCode& errorCode)
 {
     using namespace pldm::fw_update;
     bool status = false;

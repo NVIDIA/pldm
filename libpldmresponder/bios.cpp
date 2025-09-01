@@ -36,11 +36,11 @@ void epochToBCDTime(uint64_t timeSec, uint8_t& seconds, uint8_t& minutes,
     minutes = pldm::utils::decimalToBcd(time->tm_min);
     hours = pldm::utils::decimalToBcd(time->tm_hour);
     day = pldm::utils::decimalToBcd(time->tm_mday);
-    month = pldm::utils::decimalToBcd(time->tm_mon +
-                                      1); // The number of months in the range
-                                          // 0 to 11.PLDM expects range 1 to 12
-    year = pldm::utils::decimalToBcd(time->tm_year +
-                                     1900); // The number of years since 1900
+    month = pldm::utils::decimalToBcd(
+        time->tm_mon + 1);     // The number of months in the range
+                               // 0 to 11.PLDM expects range 1 to 12
+    year = pldm::utils::decimalToBcd(
+        time->tm_year + 1900); // The number of years since 1900
 }
 
 std::time_t timeToEpoch(uint8_t seconds, uint8_t minutes, uint8_t hours,
@@ -191,7 +191,6 @@ Response Handler::setDateTime(const pldm_msg* request, size_t payloadLength)
     }
     catch (const std::exception& e)
     {
-
         std::cerr << "Error Setting time,PATH=" << setTimePath
                   << "TIME INTERFACE=" << setTimeInterface
                   << "ERROR=" << e.what() << "\n";

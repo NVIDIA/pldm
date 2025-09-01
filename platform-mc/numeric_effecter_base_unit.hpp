@@ -41,8 +41,7 @@ class NumericEffecterBaseUnit
     constexpr static pldm_effecter_oper_state EFFECTER_OPER_NO_REQ =
         EFFECTER_OPER_STATE_STATUSUNKNOWN;
 
-    NumericEffecterBaseUnit(NumericEffecter& effecter) : effecter(effecter)
-    {}
+    NumericEffecterBaseUnit(NumericEffecter& effecter) : effecter(effecter) {}
 
     virtual ~NumericEffecterBaseUnit() = default;
 

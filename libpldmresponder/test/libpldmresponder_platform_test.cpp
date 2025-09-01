@@ -304,15 +304,13 @@ TEST(setStateEffecterStatesHandler, testBadRequest)
         MockdBusHandler, Handler>(mockedUtils, handler, 0x1, stateField);
     ASSERT_EQ(rc, PLDM_PLATFORM_SET_EFFECTER_UNSUPPORTED_SENSORSTATE);
 
-    rc = platform_state_effecter::setStateEffecterStatesHandler<MockdBusHandler,
-                                                                Handler>(
-        mockedUtils, handler, 0x9, stateField);
+    rc = platform_state_effecter::setStateEffecterStatesHandler<
+        MockdBusHandler, Handler>(mockedUtils, handler, 0x9, stateField);
     ASSERT_EQ(rc, PLDM_PLATFORM_INVALID_EFFECTER_ID);
 
     stateField.push_back({PLDM_REQUEST_SET, 4});
-    rc = platform_state_effecter::setStateEffecterStatesHandler<MockdBusHandler,
-                                                                Handler>(
-        mockedUtils, handler, 0x1, stateField);
+    rc = platform_state_effecter::setStateEffecterStatesHandler<
+        MockdBusHandler, Handler>(mockedUtils, handler, 0x1, stateField);
     ASSERT_EQ(rc, PLDM_ERROR_INVALID_DATA);
 
     pldm_pdr_destroy(inPDRRepo);
@@ -402,10 +400,10 @@ TEST(parseStateSensor, allScenarios)
 {
     // Sample state sensor with SensorID - 1, EntityType - Processor Module(67)
     // State Set ID - Operational Running Status(11), Supported States - 3,4
-    std::vector<uint8_t> sample1PDR{0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00,
-                                    0x00, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00,
-                                    0x43, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-                                    0x00, 0x01, 0x0b, 0x00, 0x01, 0x18};
+    std::vector<uint8_t> sample1PDR{
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x00, 0x17,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x43, 0x00, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x0b, 0x00, 0x01, 0x18};
 
     const auto& [terminusHandle1, sensorID1, sensorInfo1] =
         parseStateSensorPDR(sample1PDR);
@@ -423,10 +421,10 @@ TEST(parseStateSensor, allScenarios)
 
     // Sample state sensor with SensorID - 2, EntityType - System Firmware(31)
     // State Set ID - Availability(2), Supported States - 3,4,9,10,11,13
-    std::vector<uint8_t> sample2PDR{0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00,
-                                    0x00, 0x17, 0x00, 0x00, 0x00, 0x02, 0x00,
-                                    0x1F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-                                    0x00, 0x01, 0x02, 0x00, 0x02, 0x18, 0x2E};
+    std::vector<uint8_t> sample2PDR{
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x00, 0x17, 0x00,
+        0x00, 0x00, 0x02, 0x00, 0x1F, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x01, 0x02, 0x00, 0x02, 0x18, 0x2E};
 
     const auto& [terminusHandle2, sensorID2, sensorInfo2] =
         parseStateSensorPDR(sample2PDR);

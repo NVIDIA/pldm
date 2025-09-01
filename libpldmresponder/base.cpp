@@ -181,8 +181,8 @@ void Handler::processSetEventReceiver(
     sdeventplus::source::EventBase& /*source */)
 {
     survEvent.reset();
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_SET_EVENT_RECEIVER_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_SET_EVENT_RECEIVER_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto instanceId = instanceIdDb.next(eid);
     uint8_t eventMessageGlobalEnable =

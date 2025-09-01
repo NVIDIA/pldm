@@ -259,9 +259,8 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
     co_return PLDM_FAILED;
 }
 
-exec::task<int> Terminus::getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
-                                                 uint8_t eid,
-                                                 const std::string& objPath)
+exec::task<int> Terminus::getSensorAuxNameFromEM(
+    uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath)
 {
     static constexpr const char* sensorAuxInterface =
         "xyz.openbmc_project.Configuration.SensorAuxName";
@@ -638,8 +637,8 @@ bool Terminus::parsePDRs()
     return rc;
 }
 
-std::shared_ptr<SensorAuxiliaryNames>
-    Terminus::getSensorAuxiliaryNames(SensorID id)
+std::shared_ptr<SensorAuxiliaryNames> Terminus::getSensorAuxiliaryNames(
+    SensorID id)
 {
     if (sensorAuxNameOverwriteTbl.find(id) != sensorAuxNameOverwriteTbl.end())
     {
@@ -690,8 +689,8 @@ std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
 }
 #endif
 
-std::shared_ptr<EffecterAuxiliaryNames>
-    Terminus::getEffecterAuxiliaryNames(EffecterID id)
+std::shared_ptr<EffecterAuxiliaryNames> Terminus::getEffecterAuxiliaryNames(
+    EffecterID id)
 {
     for (auto effecterAuxiliaryNames : effecterAuxiliaryNamesTbl)
     {
@@ -705,8 +704,8 @@ std::shared_ptr<EffecterAuxiliaryNames>
     return nullptr;
 }
 
-std::shared_ptr<SensorAuxiliaryNames>
-    Terminus::parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData)
+std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
+    const std::vector<uint8_t>& pdrData)
 {
     constexpr uint8_t NullTerminator = 0;
     size_t parseLen = 0;
@@ -864,8 +863,8 @@ void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
     }
 }
 
-std::shared_ptr<pldm_numeric_sensor_value_pdr>
-    Terminus::parseNumericSensorPDR(const std::vector<uint8_t>& pdr)
+std::shared_ptr<pldm_numeric_sensor_value_pdr> Terminus::parseNumericSensorPDR(
+    const std::vector<uint8_t>& pdr)
 {
     const uint8_t* ptr = pdr.data();
     auto parsedPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
@@ -967,8 +966,8 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
     return parsedPdr;
 }
 
-std::tuple<SensorID, StateSetInfo>
-    Terminus::parseStateSensorPDR(std::vector<uint8_t>& stateSensorPdr)
+std::tuple<SensorID, StateSetInfo> Terminus::parseStateSensorPDR(
+    std::vector<uint8_t>& stateSensorPdr)
 {
     auto pdr =
         reinterpret_cast<const pldm_state_sensor_pdr*>(stateSensorPdr.data());
@@ -988,8 +987,8 @@ std::tuple<SensorID, StateSetInfo>
     return std::make_tuple(pdr->sensor_id, std::move(stateSetInfo));
 }
 
-std::tuple<EffecterID, StateSetInfo>
-    Terminus::parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr)
+std::tuple<EffecterID, StateSetInfo> Terminus::parseStateEffecterPDR(
+    std::vector<uint8_t>& stateEffecterPdr)
 {
     auto pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(
         stateEffecterPdr.data());
@@ -1418,9 +1417,9 @@ void Terminus::addOEMEnergyCountNumericSensor(
 void Terminus::addNumericEffecter(
     const std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr)
 {
-    std::string effecterName = "PLDM_Effecter_" +
-                               std::to_string(pdr->effecter_id) + "_" +
-                               std::to_string(tid);
+    std::string effecterName =
+        "PLDM_Effecter_" + std::to_string(pdr->effecter_id) + "_" +
+        std::to_string(tid);
 
     if (pdr->effecter_auxiliary_names)
     {

@@ -93,24 +93,25 @@ TEST_F(TestBIOSConfig, buildTablesTest)
     EXPECT_TRUE(attrTable);
     EXPECT_TRUE(attrValueTable);
 
-    std::set<std::string> expectedStrings = {"HMCManagedState",
-                                             "On",
-                                             "Off",
-                                             "FWBootSide",
-                                             "Perm",
-                                             "Temp",
-                                             "InbandCodeUpdate",
-                                             "Allowed",
-                                             "NotAllowed",
-                                             "CodeUpdatePolicy",
-                                             "Concurrent",
-                                             "Disruptive",
-                                             "VDD_AVSBUS_RAIL",
-                                             "SBE_IMAGE_MINIMUM_VALID_ECS",
-                                             "INTEGER_INVALID_CASE",
-                                             "str_example1",
-                                             "str_example2",
-                                             "str_example3"};
+    std::set<std::string> expectedStrings = {
+        "HMCManagedState",
+        "On",
+        "Off",
+        "FWBootSide",
+        "Perm",
+        "Temp",
+        "InbandCodeUpdate",
+        "Allowed",
+        "NotAllowed",
+        "CodeUpdatePolicy",
+        "Concurrent",
+        "Disruptive",
+        "VDD_AVSBUS_RAIL",
+        "SBE_IMAGE_MINIMUM_VALID_ECS",
+        "INTEGER_INVALID_CASE",
+        "str_example1",
+        "str_example2",
+        "str_example3"};
     std::set<std::string> strings;
     for (auto entry : BIOSTableIter<PLDM_BIOS_STRING_TABLE>(
              stringTable->data(), stringTable->size()))
@@ -171,8 +172,8 @@ TEST_F(TestBIOSConfig, buildTablesTest)
             case PLDM_BIOS_ENUMERATION:
             case PLDM_BIOS_ENUMERATION_READ_ONLY:
             {
-                auto [pvHdls, defInds] =
-                    table::attribute::decodeEnumEntry(entry);
+                auto [pvHdls,
+                      defInds] = table::attribute::decodeEnumEntry(entry);
                 auto possibleValues = jsonEntry->at("possible_values")
                                           .get<std::vector<std::string>>();
                 std::vector<std::string> strings;
@@ -298,9 +299,8 @@ TEST_F(TestBIOSConfig, setAttrValue)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     auto attrValueTable = biosConfig.getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
-    auto findEntry =
-        [&attrValueTable](
-            uint16_t handle) -> const pldm_bios_attr_val_table_entry* {
+    auto findEntry = [&attrValueTable](uint16_t handle)
+        -> const pldm_bios_attr_val_table_entry* {
         for (auto entry : BIOSTableIter<PLDM_BIOS_ATTR_VAL_TABLE>(
                  attrValueTable->data(), attrValueTable->size()))
         {

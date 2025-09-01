@@ -100,9 +100,8 @@ struct PackageSignatureShaBase
      *
      *  @return digest
      */
-    virtual std::vector<unsigned char>
-        calculateDigest(std::istream& package,
-                        uintmax_t lengthOfSignedData) = 0;
+    virtual std::vector<unsigned char> calculateDigest(
+        std::istream& package, uintmax_t lengthOfSignedData) = 0;
 
     /** @brief Asynchronously calculate digest based on a concrete SHA
      * algorithm.
@@ -155,9 +154,8 @@ struct PackageSignatureSha384 : public PackageSignatureShaBase
         useChunks = true;
     }
 
-    std::vector<unsigned char>
-        calculateDigest(std::istream& package,
-                        uintmax_t lengthOfSignedData) override;
+    std::vector<unsigned char> calculateDigest(
+        std::istream& package, uintmax_t lengthOfSignedData) override;
     void calculateDigestAsync(
         std::istream& package, uintmax_t lengthOfSignedData,
         std::function<void(std::vector<unsigned char>)> onComplete,
@@ -220,11 +218,10 @@ class PackageSignature
      * verification, providing an exception pointer for detailed error
      * information.
      */
-    virtual void
-        verifyAsync(std::istream& package, const std::string& publicKey,
-                    uintmax_t lengthOfSignedData,
-                    std::function<void(bool)> onComplete,
-                    std::function<void(const std::string& errorMsg)> onError);
+    virtual void verifyAsync(
+        std::istream& package, const std::string& publicKey,
+        uintmax_t lengthOfSignedData, std::function<void(bool)> onComplete,
+        std::function<void(const std::string& errorMsg)> onError);
 
     /** @brief Package signature integrity check function.
      *         Verify package using public key and signature stored
@@ -268,8 +265,8 @@ class PackageSignature
      *
      *  @return size of signed data
      */
-    virtual uintmax_t
-        calculateSizeOfSignedData(uintmax_t sizeOfPkgWithoutSignHdr) = 0;
+    virtual uintmax_t calculateSizeOfSignedData(
+        uintmax_t sizeOfPkgWithoutSignHdr) = 0;
 
     /** @brief Parse signature header
      *
@@ -297,9 +294,8 @@ class PackageSignature
      *
      *  @return Package Signature Header as a vector
      */
-    static std::vector<uint8_t>
-        getSignatureHeader(std::istream& package,
-                           uintmax_t sizeOfPkgWithoutSignHdr);
+    static std::vector<uint8_t> getSignatureHeader(
+        std::istream& package, uintmax_t sizeOfPkgWithoutSignHdr);
 
     /** @brief Get Version of Package Signature Format
      *
@@ -307,8 +303,8 @@ class PackageSignature
      *
      *  @return Version of Package Signature Format
      */
-    static PackageSignatureVersion
-        getSignatureVersion(std::vector<uint8_t>& pkgSignData);
+    static PackageSignatureVersion getSignatureVersion(
+        std::vector<uint8_t>& pkgSignData);
 
     /** @brief Create parser for concrete Version of Package Signature Format
      *
@@ -316,8 +312,8 @@ class PackageSignature
      *
      *  @return Concrete package signature parser
      */
-    static std::unique_ptr<PackageSignature>
-        createPackageSignatureParser(std::vector<uint8_t>& pkgSignData);
+    static std::unique_ptr<PackageSignature> createPackageSignatureParser(
+        std::vector<uint8_t>& pkgSignData);
 
   protected:
     /** @brief SHA hash */
@@ -392,8 +388,8 @@ class PackageSignatureV3 : public PackageSignature
      *
      *  @return size of signed data
      */
-    virtual uintmax_t
-        calculateSizeOfSignedData(uintmax_t sizeOfPkgWithoutSignHdr);
+    virtual uintmax_t calculateSizeOfSignedData(
+        uintmax_t sizeOfPkgWithoutSignHdr);
 
     /** @brief Parse signature header
      *

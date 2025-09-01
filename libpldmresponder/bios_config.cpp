@@ -285,8 +285,8 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
             case PLDM_BIOS_ENUMERATION:
             case PLDM_BIOS_ENUMERATION_READ_ONLY:
             {
-                auto getValue = [](uint16_t handle,
-                                   const Table& table) -> std::string {
+                auto getValue =
+                    [](uint16_t handle, const Table& table) -> std::string {
                     auto stringEntry = pldm_bios_table_string_find_by_handle(
                         table.data(), table.size(), handle);
                     if (stringEntry == nullptr)
@@ -648,8 +648,8 @@ int BIOSConfig::checkAttrValueToUpdate(
     const pldm_bios_attr_table_entry* attrEntry, Table&)
 
 {
-    auto [attrHandle, attrType] =
-        table::attribute_value::decodeHeader(attrValueEntry);
+    auto [attrHandle,
+          attrType] = table::attribute_value::decodeHeader(attrValueEntry);
 
     switch (attrType)
     {
@@ -658,8 +658,8 @@ int BIOSConfig::checkAttrValueToUpdate(
         {
             auto value =
                 table::attribute_value::decodeEnumEntry(attrValueEntry);
-            auto [pvHdls, defIndex] =
-                table::attribute::decodeEnumEntry(attrEntry);
+            auto [pvHdls,
+                  defIndex] = table::attribute::decodeEnumEntry(attrEntry);
             if (!(value.size() == 1))
             {
                 return PLDM_ERROR_INVALID_LENGTH;
@@ -678,8 +678,8 @@ int BIOSConfig::checkAttrValueToUpdate(
         {
             auto value =
                 table::attribute_value::decodeIntegerEntry(attrValueEntry);
-            auto [lower, upper, scalar, def] =
-                table::attribute::decodeIntegerEntry(attrEntry);
+            auto [lower, upper, scalar,
+                  def] = table::attribute::decodeIntegerEntry(attrEntry);
 
             if (value < lower || value > upper)
             {
@@ -842,8 +842,8 @@ void BIOSConfig::processBiosAttrChangeNotification(
         return;
     }
 
-    auto [attrHdl, attrType, stringHdl] =
-        table::attribute::decodeHeader(tableEntry);
+    auto [attrHdl, attrType,
+          stringHdl] = table::attribute::decodeHeader(tableEntry);
 
     auto attrValueSrcTable = getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
 

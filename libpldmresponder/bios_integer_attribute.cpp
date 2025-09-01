@@ -104,7 +104,6 @@ void BIOSIntegerAttribute::constructEntry(
     const BIOSStringTable& stringTable, Table& attrTable, Table& attrValueTable,
     std::optional<std::variant<int64_t, std::string>> optAttributeValue)
 {
-
     pldm_bios_table_attr_entry_integer_info info = {
         stringTable.findHandle(name), readOnly,
         integerInfo.lowerBound,       integerInfo.upperBound,
@@ -114,8 +113,8 @@ void BIOSIntegerAttribute::constructEntry(
     auto attrTableEntry =
         table::attribute::constructIntegerEntry(attrTable, &info);
 
-    auto [attrHandle, attrType, _] =
-        table::attribute::decodeHeader(attrTableEntry);
+    auto [attrHandle, attrType,
+          _] = table::attribute::decodeHeader(attrTableEntry);
 
     int64_t currentValue{};
     if (optAttributeValue.has_value())
@@ -220,8 +219,8 @@ void BIOSIntegerAttribute::generateAttributeEntry(
     const std::variant<int64_t, std::string>& attributevalue,
     Table& attrValueEntry)
 {
-    attrValueEntry.resize(sizeof(pldm_bios_attr_val_table_entry) +
-                          sizeof(int64_t) - 1);
+    attrValueEntry.resize(
+        sizeof(pldm_bios_attr_val_table_entry) + sizeof(int64_t) - 1);
 
     auto entry = reinterpret_cast<pldm_bios_attr_val_table_entry*>(
         attrValueEntry.data());

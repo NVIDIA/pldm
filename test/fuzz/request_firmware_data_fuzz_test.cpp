@@ -56,7 +56,7 @@ int main(int argc, char** argv)
 
     auto responseMsg = reinterpret_cast<pldm_msg*>(reqFwDataResponse.data());
 
-    encode_request_firmware_data_resp(instanceId, completionCode, responseMsg,
-                                      sizeof(completionCode) +
-                                          PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    encode_request_firmware_data_resp(
+        instanceId, completionCode, responseMsg,
+        sizeof(completionCode) + PLDM_FWUP_BASELINE_TRANSFER_SIZE);
 }

@@ -77,9 +77,9 @@ class TerminusTest : public testing::Test
         EXPECT_EQ(rc, PLDM_SUCCESS);
 
         // support pldm type0 and type2
-        std::vector<uint8_t> getPldmTypesResp0{0x00, PLDM_BASE, 0x04, 0x00,
-                                               0x05, 0x00,      0x00, 0x00,
-                                               0x00, 0x00,      0x00, 0x00};
+        std::vector<uint8_t> getPldmTypesResp0{
+            0x00, PLDM_BASE, 0x04, 0x00, 0x05, 0x00,
+            0x00, 0x00,      0x00, 0x00, 0x00, 0x00};
         rc = terminusManager.enqueueResponse(getPldmTypesResp0);
         EXPECT_EQ(rc, PLDM_SUCCESS);
 
@@ -128,25 +128,25 @@ class TerminusTest : public testing::Test
             0x00, // nextDataTransferHandle
             0x05, // startAndEnd
             69,
-            0, // responseCount
+            0,    // responseCount
             0x00,
             0x00,
             0x00,
-            0x01,                    // record handle
-            0x01,                    // PDRHeaderVersion
-            PLDM_NUMERIC_SENSOR_PDR, // PDRType
+            0x01,                        // record handle
+            0x01,                        // PDRHeaderVersion
+            PLDM_NUMERIC_SENSOR_PDR,     // PDRType
             0x00,
-            0x00, // recordChangeNumber
+            0x00,                        // recordChangeNumber
             34,
-            0, // dataLength
+            0,                           // dataLength
             0x00,
-            0x00, // PLDMTerminusHandle
+            0x00,                        // PLDMTerminusHandle
             0x01,
-            0x00, // sensorID=1
+            0x00,                        // sensorID=1
             PLDM_ENTITY_POWER_SUPPLY,
-            0, // entityType=Power Supply(120)
+            0,                           // entityType=Power Supply(120)
             1,
-            0, // entityInstanceNumber
+            0,                           // entityInstanceNumber
             0x1,
             0x0,                         // containerID=1
             PLDM_NO_INIT,                // sensorInit
@@ -171,12 +171,12 @@ class TerminusTest : public testing::Test
             0x80,
             0x3f, // offset=1.0
             0,
-            0, // accuracy
-            0, // plusTolerance
-            0, // minusTolerance
-            2, // hysteresis
-            0, // supportedThresholds
-            0, // thresholdAndHysteresisVolatility
+            0,    // accuracy
+            0,    // plusTolerance
+            0,    // minusTolerance
+            2,    // hysteresis
+            0,    // supportedThresholds
+            0,    // thresholdAndHysteresisVolatility
             0,
             0,
             0x80,
@@ -208,17 +208,18 @@ class TerminusTest : public testing::Test
         auto rc = terminusManager.clearQueuedResponses();
         EXPECT_EQ(rc, PLDM_SUCCESS);
 
-        std::vector<uint8_t> getSensorReadingResp0{0x00,
-                                                   PLDM_PLATFORM,
-                                                   PLDM_GET_SENSOR_READING,
-                                                   PLDM_SUCCESS,
-                                                   PLDM_SENSOR_DATA_SIZE_UINT8,
-                                                   PLDM_SENSOR_ENABLED,
-                                                   PLDM_NO_EVENT_GENERATION,
-                                                   PLDM_SENSOR_NORMAL,
-                                                   PLDM_SENSOR_NORMAL,
-                                                   PLDM_SENSOR_NORMAL,
-                                                   0x12};
+        std::vector<uint8_t> getSensorReadingResp0{
+            0x00,
+            PLDM_PLATFORM,
+            PLDM_GET_SENSOR_READING,
+            PLDM_SUCCESS,
+            PLDM_SENSOR_DATA_SIZE_UINT8,
+            PLDM_SENSOR_ENABLED,
+            PLDM_NO_EVENT_GENERATION,
+            PLDM_SENSOR_NORMAL,
+            PLDM_SENSOR_NORMAL,
+            PLDM_SENSOR_NORMAL,
+            0x12};
         rc = terminusManager.enqueueResponse(getSensorReadingResp0);
         EXPECT_EQ(rc, PLDM_SUCCESS);
         rc = terminusManager.enqueueResponse(getSensorReadingResp0);
@@ -274,15 +275,15 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         0x1,                             // PDRHeaderVersion
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                             // recordChangeNumber
         21,
-        0, // dataLength
+        0,                               // dataLength
         0,
-        0x0, // PLDMTerminusHandle
+        0x0,                             // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID
-        0x1, // sensorCount
-        0x1, // nameStringCount
+        0x0,                             // sensorID
+        0x1,                             // sensorCount
+        0x1,                             // nameStringCount
         'e',
         'n',
         0x0, // nameLanguageTag
@@ -306,22 +307,22 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesPDRTest)
         0x1,                             // PDRHeaderVersion
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                             // recordChangeNumber
         21,
-        0, // dataLength
+        0,                               // dataLength
         0,
-        0x0, // PLDMTerminusHandle
+        0x0,                             // PLDMTerminusHandle
         0x2,
-        0x0, // sensorID
-        0x2, // sensorCount
-             // sensor0
-        0x0, // nameStringCount
-             // sensor1
-        0x1, // nameStringCount
+        0x0,                             // sensorID
+        0x2,                             // sensorCount
+                                         // sensor0
+        0x0,                             // nameStringCount
+                                         // sensor1
+        0x1,                             // nameStringCount
         'e', 'n',
-        0x0, // nameLanguageTag
+        0x0,                             // nameLanguageTag
         0x0, 'T', 0x0, 'E', 0x0, 'M', 0x0, 'P', 0x0, '2', 0x0,
-        0x0 // sensorName
+        0x0                              // sensorName
     };
 
     t1.pdrs.emplace_back(pdr1);
@@ -369,15 +370,15 @@ TEST_F(TerminusTest, addNumericSensorTest)
         0x1,                             // PDRHeaderVersion
         PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                             // recordChangeNumber
         21,
-        0, // dataLength
+        0,                               // dataLength
         0,
-        0x0, // PLDMTerminusHandle
+        0x0,                             // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID
-        0x1, // sensorCount
-        0x1, // nameStringCount
+        0x0,                             // sensorID
+        0x1,                             // sensorCount
+        0x1,                             // nameStringCount
         'e',
         'n',
         0x0, // nameLanguageTag
@@ -399,21 +400,21 @@ TEST_F(TerminusTest, addNumericSensorTest)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         56,
-        0, // dataLength
+        0,                           // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -484,21 +485,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrTest)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         56,
-        0, // dataLength
+        0,                           // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -590,21 +591,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                           // record handle
+        0x1,                           // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,       // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                           // recordChangeNumber
         56,
-        0, // dataLength
+        0,                             // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                             // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                           // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                             // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                             // entityInstanceNumber
         0x1,
         0x0,                           // containerID=1
         PLDM_NO_INIT,                  // sensorInit
@@ -696,21 +697,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                          // record handle
+        0x1,                          // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,      // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                          // recordChangeNumber
         56,
-        0, // dataLength
+        0,                            // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                            // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                          // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                            // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                            // entityInstanceNumber
         0x1,
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
@@ -749,31 +750,31 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
         0,
         0,
         0x80,
-        0x3f, // updateInverval=1.0
+        0x3f,                           // updateInverval=1.0
         0,
-        0x10, // maxReadable = 4096
+        0x10,                           // maxReadable = 4096
         0,
         0,                              // minReadable = 0
         PLDM_RANGE_FIELD_FORMAT_UINT16, // rangeFieldFormat
         0,                              // rangeFieldsupport
         0x88,
-        0x13, // nominalValue = 5,000
+        0x13,                           // nominalValue = 5,000
         0x70,
-        0x17, // normalMax = 6,000
+        0x17,                           // normalMax = 6,000
         0xa0,
-        0x0f, // normalMin = 4,000
+        0x0f,                           // normalMin = 4,000
         0x58,
-        0x1b, // warningHigh = 7,000
+        0x1b,                           // warningHigh = 7,000
         0xb8,
-        0x0b, // warningLow = 3,000
+        0x0b,                           // warningLow = 3,000
         0x40,
-        0x1f, // criticalHigh = 8,000
+        0x1f,                           // criticalHigh = 8,000
         0xd0,
-        0x07, // criticalLow = 2,000
+        0x07,                           // criticalLow = 2,000
         0x28,
-        0x23, // fatalHigh = 9,000
+        0x23,                           // fatalHigh = 9,000
         0xe8,
-        0x03 // fatalLow = 1,000
+        0x03                            // fatalLow = 1,000
     };
 
     t1.pdrs.emplace_back(pdr1);
@@ -815,21 +816,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                          // record handle
+        0x1,                          // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,      // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                          // recordChangeNumber
         56,
-        0, // dataLength
+        0,                            // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                            // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                          // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                            // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                            // entityInstanceNumber
         0x1,
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
@@ -868,31 +869,31 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
         0,
         0,
         0x80,
-        0x3f, // updateInverval=1.0
+        0x3f,                           // updateInverval=1.0
         0xe8,
-        0x03, // maxReadable = 1000
+        0x03,                           // maxReadable = 1000
         0x18,
         0xfc,                           // minReadable = -1000
         PLDM_RANGE_FIELD_FORMAT_SINT16, // rangeFieldFormat
         0,                              // rangeFieldsupport
         0,
-        0, // nominalValue = 0
+        0,                              // nominalValue = 0
         0xf4,
-        0x01, // normalMax = 500
+        0x01,                           // normalMax = 500
         0x0c,
-        0xfe, // normalMin = -500
+        0xfe,                           // normalMin = -500
         0xe8,
-        0x03, // warningHigh = 1,000
+        0x03,                           // warningHigh = 1,000
         0x18,
-        0xfc, // warningLow = -1,000
+        0xfc,                           // warningLow = -1,000
         0xd0,
-        0x07, // criticalHigh = 2,000
+        0x07,                           // criticalHigh = 2,000
         0x30,
-        0xf8, // criticalLow = -2,000
+        0xf8,                           // criticalLow = -2,000
         0xb8,
-        0x0b, // fatalHigh = 3,000
+        0x0b,                           // fatalHigh = 3,000
         0x48,
-        0xf4 // fatalLow = -3,000
+        0xf4                            // fatalLow = -3,000
     };
 
     t1.pdrs.emplace_back(pdr1);
@@ -934,21 +935,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                          // record handle
+        0x1,                          // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,      // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                          // recordChangeNumber
         56,
-        0, // dataLength
+        0,                            // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                            // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                          // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                            // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                            // entityInstanceNumber
         0x1,
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
@@ -1077,21 +1078,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                          // record handle
+        0x1,                          // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,      // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                          // recordChangeNumber
         56,
-        0, // dataLength
+        0,                            // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                            // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                          // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                            // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                            // entityInstanceNumber
         0x1,
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
@@ -1220,21 +1221,21 @@ TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                          // record handle
+        0x1,                          // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,      // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                          // recordChangeNumber
         56,
-        0, // dataLength
+        0,                            // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                            // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                          // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                            // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                            // entityInstanceNumber
         0x1,
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
@@ -1364,21 +1365,21 @@ TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         34,
-        0, // dataLength
+        0,                           // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit

@@ -129,9 +129,9 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
     compImgSetVerStrInfo.length =
         static_cast<uint8_t>(compImageSetVersion.size());
 
-    Request request(sizeof(pldm_msg_hdr) +
-                    sizeof(struct pldm_request_update_req) +
-                    compImgSetVerStrInfo.length);
+    Request request(
+        sizeof(pldm_msg_hdr) + sizeof(struct pldm_request_update_req) +
+        compImgSetVerStrInfo.length);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
     size_t respMsgLen = 0;
@@ -328,9 +328,9 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
     compVerStrInfo.ptr = reinterpret_cast<const uint8_t*>(compVersion.data());
     compVerStrInfo.length = static_cast<uint8_t>(compVersion.size());
 
-    Request request(sizeof(pldm_msg_hdr) +
-                    sizeof(struct pldm_pass_component_table_req) +
-                    compVerStrInfo.length);
+    Request request(
+        sizeof(pldm_msg_hdr) + sizeof(struct pldm_pass_component_table_req) +
+        compVerStrInfo.length);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_pass_component_table_req(
         instanceId, transferFlag, compClassification, compIdentifier,
@@ -514,8 +514,8 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
 {
     pldmRequest.reset();
     auto instanceId = updateManager->instanceIdDb.next(eid);
-    Request request(sizeof(pldm_msg_hdr) +
-                    sizeof(struct pldm_activate_firmware_req));
+    Request request(
+        sizeof(pldm_msg_hdr) + sizeof(struct pldm_activate_firmware_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
     size_t respMsgLen = 0;

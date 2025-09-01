@@ -48,9 +48,9 @@ bool DebugToken::activate()
 {
     bool activationStatus = true;
 
-    pldm::utils::DBusMapping dbusMapping{tokenPath,
-                                         Server::Activation::interface,
-                                         "RequestedActivation", "string"};
+    pldm::utils::DBusMapping dbusMapping{
+        tokenPath, Server::Activation::interface, "RequestedActivation",
+        "string"};
     info("Activating : OBJPATH={OBJPATH}", "OBJPATH", tokenPath);
     try
     {
@@ -114,7 +114,7 @@ void DebugToken::updateDebugToken(
             std::get<Descriptors>(fwDeviceIDRecord);
         for (auto& it : deviceIDDescriptors) // For each Descriptors
         {
-            if (it.first == PLDM_FWUP_UUID) // Check UUID
+            if (it.first == PLDM_FWUP_UUID)  // Check UUID
             {
                 std::ostringstream tempStream;
                 for (int byte : std::get<0>(it.second))
@@ -228,8 +228,8 @@ void DebugToken::updateDebugToken(
     return;
 }
 
-std::pair<std::string, std::string>
-    DebugToken::getFilePath(const std::string& uuid)
+std::pair<std::string, std::string> DebugToken::getFilePath(
+    const std::string& uuid)
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
@@ -269,9 +269,9 @@ void DebugToken::getValidPaths(std::vector<std::string>& paths)
             pldm::utils::mapperInterface, "GetSubTreePaths");
         method.append("/xyz/openbmc_project/software");
         method.append(0); // Depth 0 to search all
-        method.append(
-            std::vector<std::string>({sdbusplus::xyz::openbmc_project::Common::
-                                          server::UUID::interface}));
+        method.append(std::vector<std::string>(
+            {sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                 interface}));
         auto reply = bus.call(method);
         reply.read(paths);
     }

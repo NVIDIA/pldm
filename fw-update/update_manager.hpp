@@ -183,14 +183,13 @@ class UpdateManager
      * oem messages will be logged.
      *  @param[in] errorCode - error code (optional)
      */
-    void
-        createMessageRegistry(mctp_eid_t eid,
-                              const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                              size_t compIndex, const std::string& messageID,
-                              const std::string& resolution = {},
-                              const pldm_firmware_update_commands commandType =
-                                  static_cast<pldm_firmware_update_commands>(0),
-                              const uint8_t errorCode = 0);
+    void createMessageRegistry(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex, const std::string& messageID,
+        const std::string& resolution = {},
+        const pldm_firmware_update_commands commandType =
+            static_cast<pldm_firmware_update_commands>(0),
+        const uint8_t errorCode = 0);
 
     /**
      * @brief Create a Message Registry for Resource Errors
@@ -335,10 +334,9 @@ class UpdateManager
      * @return On success return the component name and empty stricng on no
      *         match
      */
-    ComponentName
-        getComponentName(mctp_eid_t eid,
-                         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                         size_t compIndex);
+    ComponentName getComponentName(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex);
 
     /**
      * @brief performs package verification checks asynchronously.

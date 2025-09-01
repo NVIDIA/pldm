@@ -146,7 +146,6 @@ void Manager::updateFWVersion(pldm::EID eid)
     if (auto compInfoSearch = componentInfoMap.find(eid);
         compInfoSearch != componentInfoMap.end())
     {
-
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
             auto key = std::make_pair(eid, compKey.second);

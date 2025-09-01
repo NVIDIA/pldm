@@ -327,10 +327,9 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     co_return PLDM_SUCCESS;
 }
 
-exec::task<int>
-    TerminusManager::SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                             const pldm_msg** responseMsg,
-                                             size_t* responseLen)
+exec::task<int> TerminusManager::SendRecvPldmMsgOverMctp(
+    mctp_eid_t eid, Request& request, const pldm_msg** responseMsg,
+    size_t* responseLen)
 {
     int rc = 0;
     try

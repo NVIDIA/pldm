@@ -33,7 +33,6 @@ using namespace pldm::fw_update;
 
 class DeviceUpdaterFuzzTest
 {
-
   public:
     DeviceUpdaterFuzzTest(bool (*dataReader)(char* value, int size) =
                               [](char* value, int size) -> bool {

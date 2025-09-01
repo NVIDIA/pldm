@@ -44,8 +44,9 @@ BIOSEnumAttribute::BIOSEnumAttribute(const Json& entry,
 uint8_t BIOSEnumAttribute::getValueIndex(const std::string& value,
                                          const std::vector<std::string>& pVs)
 {
-    auto iter = std::find_if(pVs.begin(), pVs.end(),
-                             [&value](const auto& v) { return v == value; });
+    auto iter = std::find_if(pVs.begin(), pVs.end(), [&value](const auto& v) {
+        return v == value;
+    });
     if (iter == pVs.end())
     {
         throw std::invalid_argument("value must be one of possible value");
@@ -205,8 +206,8 @@ void BIOSEnumAttribute::constructEntry(
 
     auto attrTableEntry =
         table::attribute::constructEnumEntry(attrTable, &info);
-    auto [attrHandle, attrType, _] =
-        table::attribute::decodeHeader(attrTableEntry);
+    auto [attrHandle, attrType,
+          _] = table::attribute::decodeHeader(attrTableEntry);
 
     std::vector<uint8_t> currValueIndices(1, 0);
 

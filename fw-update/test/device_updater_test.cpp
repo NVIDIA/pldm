@@ -130,7 +130,6 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 
 TEST_F(DeviceUpdaterTest, requestUpdate)
 {
-
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
         reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
@@ -179,7 +178,6 @@ TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START)
 
 TEST_F(DeviceUpdaterTest, passCompTable)
 {
-
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
         reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
@@ -195,7 +193,6 @@ TEST_F(DeviceUpdaterTest, passCompTable)
 
 TEST_F(DeviceUpdaterTest, sendActivateFirmwareRequest)
 {
-
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = deviceUpdater.sendActivateFirmwareRequest();
     });
@@ -203,7 +200,6 @@ TEST_F(DeviceUpdaterTest, sendActivateFirmwareRequest)
 
 TEST_F(DeviceUpdaterTest, activateFirmware)
 {
-
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_activate_firmware_resp)>
         activateFirmwareReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00};
@@ -220,7 +216,6 @@ TEST_F(DeviceUpdaterTest, activateFirmware)
 
 TEST_F(DeviceUpdaterTest, sendCommandNotExpectedResponse)
 {
-
     const pldm_msg pldmmsg{};
 
     EXPECT_NO_THROW({ sendCommandNotExpectedResponse(&pldmmsg, 0); });
@@ -306,7 +301,6 @@ TEST_F(DeviceUpdaterTest, sendcancelUpdateRequest)
 
 TEST_F(DeviceUpdaterTest, cancelUpdate_empty_response)
 {
-
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
             deviceUpdater.processCancelUpdateResponse(eid, nullptr, 0);
@@ -315,7 +309,6 @@ TEST_F(DeviceUpdaterTest, cancelUpdate_empty_response)
 
 TEST_F(DeviceUpdaterTest, cancelUpdate)
 {
-
     const pldm_msg pldmmsg{};
 
     EXPECT_NO_THROW({
@@ -326,8 +319,9 @@ TEST_F(DeviceUpdaterTest, cancelUpdate)
 
 TEST_F(DeviceUpdaterTest, sendRequestUpdate)
 {
-    EXPECT_NO_THROW(
-        { [[maybe_unused]] auto co = deviceUpdater.sendRequestUpdate(); });
+    EXPECT_NO_THROW({
+        [[maybe_unused]] auto co = deviceUpdater.sendRequestUpdate();
+    });
 }
 
 TEST_F(DeviceUpdaterTest, updateComponentCompletion)

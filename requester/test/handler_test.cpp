@@ -25,8 +25,7 @@ using ::testing::Return;
 class HandlerTest : public testing::Test
 {
   protected:
-    HandlerTest() : event(sdeventplus::Event::get_default()), instanceIdDb()
-    {}
+    HandlerTest() : event(sdeventplus::Event::get_default()), instanceIdDb() {}
 
     int fd = 0;
     mctp_eid_t eid = 0;
@@ -76,9 +75,9 @@ class HandlerTest : public testing::Test
 
 TEST_F(HandlerTest, singleRequestResponseScenario)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
-                                              instanceIdDb, false, seconds(1),
-                                              2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(1), 2,
+        milliseconds(100));
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
@@ -97,9 +96,9 @@ TEST_F(HandlerTest, singleRequestResponseScenario)
 
 TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
-                                              instanceIdDb, false, seconds(1),
-                                              2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(1), 2,
+        milliseconds(100));
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
@@ -116,9 +115,9 @@ TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
 
 TEST_F(HandlerTest, multipleRequestResponseScenario)
 {
-    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
-                                              instanceIdDb, false, seconds(2),
-                                              2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(2), 2,
+        milliseconds(100));
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
@@ -157,9 +156,9 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
 TEST_F(HandlerTest, singleRequestResponseScenarioUsingCoroutine)
 {
     exec::async_scope scope;
-    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
-                                              instanceIdDb, false, seconds(1),
-                                              2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(1), 2,
+        milliseconds(100));
 
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
@@ -204,9 +203,9 @@ TEST_F(HandlerTest, singleRequestResponseScenarioUsingCoroutine)
 TEST_F(HandlerTest, singleRequestCancellationScenarioUsingCoroutine)
 {
     exec::async_scope scope;
-    Handler<NiceMock<MockRequest>> reqHandler(pldmTransport, event,
-                                              instanceIdDb, false, seconds(1),
-                                              2, milliseconds(100));
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(1), 2,
+        milliseconds(100));
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
 

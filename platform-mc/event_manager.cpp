@@ -34,10 +34,9 @@ namespace platform_mc
 {
 namespace fs = std::filesystem;
 
-int EventManager::handlePlatformEvent(tid_t tid, uint8_t eventClass,
-                                      const uint8_t* eventData,
-                                      size_t eventDataSize,
-                                      uint8_t& platformEventStatus)
+int EventManager::handlePlatformEvent(
+    tid_t tid, uint8_t eventClass, const uint8_t* eventData,
+    size_t eventDataSize, uint8_t& platformEventStatus)
 {
     platformEventStatus = PLDM_EVENT_NO_LOGGING;
     if (eventClass == PLDM_SENSOR_EVENT)
@@ -289,8 +288,8 @@ exec::task<int> EventManager::pollForPlatformEventMessage(
     uint8_t& eventClass, uint32_t& eventDataSize,
     std::vector<uint8_t>& eventData, uint32_t& eventDataIntegrityChecksum)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE_REQ_BYTES);
     auto requestMsg = new (request.data()) pldm_msg;
 
     auto rc = encode_poll_for_platform_event_message_req(
@@ -351,14 +350,14 @@ exec::task<int> EventManager::pollForPlatformEventMessage(
     co_return completionCode;
 }
 
-auto asioCallback = [](const boost::system::error_code& ec,
-                       sdbusplus::message::message& msg) {
-    if (ec)
-    {
-        lg2::error("Error notifying CPER Logger, {ERROR}.", "ERROR",
-                   msg.get_errno());
-    }
-};
+auto asioCallback =
+    [](const boost::system::error_code& ec, sdbusplus::message::message& msg) {
+        if (ec)
+        {
+            lg2::error("Error notifying CPER Logger, {ERROR}.", "ERROR",
+                       msg.get_errno());
+        }
+    };
 
 void EventManager::notifyCPERLogger(std::span<const unsigned char> data)
 {
@@ -380,10 +379,9 @@ void EventManager::notifyCPERLogger(std::span<const unsigned char> data)
     return;
 }
 
-void EventManager::createSensorThresholdLogEntry(const std::string& messageId,
-                                                 const std::string& sensorName,
-                                                 const double reading,
-                                                 const double threshold)
+void EventManager::createSensorThresholdLogEntry(
+    const std::string& messageId, const std::string& sensorName,
+    const double reading, const double threshold)
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -419,9 +417,9 @@ void EventManager::createSensorThresholdLogEntry(const std::string& messageId,
     addData["REDFISH_MESSAGE_ID"] = messageId;
     Level level = Level::Informational;
 
-    addData["REDFISH_MESSAGE_ARGS"] = sensorName + "," +
-                                      std::to_string(reading) + "," +
-                                      std::to_string(threshold);
+    addData["REDFISH_MESSAGE_ARGS"] =
+        sensorName + "," + std::to_string(reading) + "," +
+        std::to_string(threshold);
 
     if (messageId == SensorThresholdWarningLowGoingHigh ||
         messageId == SensorThresholdWarningHighGoingLow)
@@ -538,9 +536,8 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
     }
 }
 
-std::string
-    EventManager::getSensorThresholdMessageId(uint8_t previousEventState,
-                                              uint8_t eventState)
+std::string EventManager::getSensorThresholdMessageId(
+    uint8_t previousEventState, uint8_t eventState)
 {
     switch (previousEventState)
     {

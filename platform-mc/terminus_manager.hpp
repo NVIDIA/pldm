@@ -92,10 +92,9 @@ class TerminusManager
      *  @param[out] responseLen - length of response PLDM message
      *  @return coroutine return_value - PLDM completion code
      */
-    virtual exec::task<int>
-        SendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                const pldm_msg** responseMsg,
-                                size_t* responseLen);
+    virtual exec::task<int> SendRecvPldmMsgOverMctp(
+        mctp_eid_t eid, Request& request, const pldm_msg** responseMsg,
+        size_t* responseLen);
 
     /** @brief member functions to map/unmap tid
      */

@@ -148,8 +148,8 @@ StatestoDbusVal populateMapping(const std::string& type, const Json& dBusValues,
     return valueMap;
 }
 
-std::tuple<TerminusHandle, SensorID, SensorInfo>
-    parseStateSensorPDR(const std::vector<uint8_t>& stateSensorPdr)
+std::tuple<TerminusHandle, SensorID, SensorInfo> parseStateSensorPDR(
+    const std::vector<uint8_t>& stateSensorPdr)
 {
     auto pdr =
         reinterpret_cast<const pldm_state_sensor_pdr*>(stateSensorPdr.data());

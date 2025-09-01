@@ -82,11 +82,10 @@ static const std::map<uint8_t, std::vector<uint8_t>> capabilities{
      {PLDM_GET_FRU_RECORD_TABLE_METADATA, PLDM_GET_FRU_RECORD_TABLE,
       PLDM_GET_FRU_RECORD_BY_OPTION}}};
 
-MockupResponder::MockupResponder(bool verbose, sdeventplus::Event& event,
-                                 sdbusplus::asio::object_server& server,
-                                 uint8_t eid, std::string pdrPath,
-                                 uint16_t terminusMaxBufferSize,
-                                 uint8_t* uuidValue) :
+MockupResponder::MockupResponder(
+    bool verbose, sdeventplus::Event& event,
+    sdbusplus::asio::object_server& server, uint8_t eid, std::string pdrPath,
+    uint16_t terminusMaxBufferSize, uint8_t* uuidValue) :
     event(event), verbose(verbose), mockEid(eid), server(server),
     eventReceiverEid(0), jsonParser(verbose, server),
     mockTerminusMaxBufferSize(terminusMaxBufferSize)
@@ -336,7 +335,6 @@ Response MockupResponder::getPLDMCommands(const pldm_msg* request,
 Response MockupResponder::getPLDMVersion(const pldm_msg* request,
                                          size_t payloadLength)
 {
-
     lg2::info("GetPLDMVersion");
 
     uint32_t transferHandle;
@@ -499,7 +497,6 @@ Response MockupResponder::getPdr(const pldm_msg* request, size_t payloadLength,
     uint8_t* recordData = nullptr;
     try
     {
-
         uint8_t* pdrData{};
         uint32_t pdrSize{};
         uint32_t pdrNextRecordHandle{};
@@ -609,9 +606,9 @@ Response MockupResponder::getStateSensorReadings(const pldm_msg* request,
                                           PLDM_PLATFORM_INVALID_SENSOR_ID);
     }
     auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
-    rc = encode_get_state_sensor_readings_resp(request->hdr.instance_id,
-                                               completion_code, compSensorCnt,
-                                               stateFields.data(), responsePtr);
+    rc = encode_get_state_sensor_readings_resp(
+        request->hdr.instance_id, completion_code, compSensorCnt,
+        stateFields.data(), responsePtr);
     if (rc != PLDM_SUCCESS)
     {
         lg2::error(
@@ -747,9 +744,9 @@ Response MockupResponder::getStateEffecterStates(const pldm_msg* request,
     }
 
     auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
-    rc = encode_get_state_effecter_states_resp(request->hdr.instance_id,
-                                               completion_code, compEffecterCnt,
-                                               stateFields.data(), responsePtr);
+    rc = encode_get_state_effecter_states_resp(
+        request->hdr.instance_id, completion_code, compEffecterCnt,
+        stateFields.data(), responsePtr);
 
     if (rc != PLDM_SUCCESS)
     {
@@ -762,9 +759,8 @@ Response MockupResponder::getStateEffecterStates(const pldm_msg* request,
     return response;
 }
 
-Response MockupResponder::getSensorReading(const pldm_msg* request,
-                                           size_t payloadLength,
-                                           pldm_pdr* pdrRepoRef)
+Response MockupResponder::getSensorReading(
+    const pldm_msg* request, size_t payloadLength, pldm_pdr* pdrRepoRef)
 {
     lg2::info("GetSensorReading");
 
@@ -836,9 +832,8 @@ Response MockupResponder::getSensorReading(const pldm_msg* request,
     return response;
 }
 
-Response MockupResponder::getEventMessageBufferSize(const pldm_msg* request,
-                                                    size_t payloadLength,
-                                                    MockupResponder& responder)
+Response MockupResponder::getEventMessageBufferSize(
+    const pldm_msg* request, size_t payloadLength, MockupResponder& responder)
 {
     lg2::info("GetEventMessageBufferSize");
 
@@ -920,9 +915,8 @@ Response MockupResponder::getEventMessageSupported(const pldm_msg* request,
     return response;
 }
 
-Response
-    MockupResponder::getPdrRepositoryInfo(const pldm_msg* request,
-                                          [[maybe_unused]] size_t payloadLength)
+Response MockupResponder::getPdrRepositoryInfo(
+    const pldm_msg* request, [[maybe_unused]] size_t payloadLength)
 {
     lg2::info("GetPdrRepositoryInfo");
 
@@ -955,9 +949,8 @@ Response
     return response;
 }
 
-Response MockupResponder::setEventReceiver(const pldm_msg* request,
-                                           size_t payloadLength,
-                                           MockupResponder& responder)
+Response MockupResponder::setEventReceiver(
+    const pldm_msg* request, size_t payloadLength, MockupResponder& responder)
 {
     lg2::info("SetEventReceiver");
 
@@ -1040,8 +1033,8 @@ Response MockupResponder::setEventReceiver(const pldm_msg* request,
     return response;
 }
 
-std::optional<std::vector<uint8_t>>
-    MockupResponder::processRxMsg(const std::vector<uint8_t>& rxMsg)
+std::optional<std::vector<uint8_t>> MockupResponder::processRxMsg(
+    const std::vector<uint8_t>& rxMsg)
 {
     using MsgTag = uint8_t;
     using type = uint8_t;
@@ -1143,9 +1136,8 @@ std::optional<std::vector<uint8_t>>
     return std::nullopt;
 }
 
-std::optional<std::vector<uint8_t>>
-    MockupResponder::unsupportedCommandHandler(size_t requestLen,
-                                               pldm_header_info& hdrFields)
+std::optional<std::vector<uint8_t>> MockupResponder::unsupportedCommandHandler(
+    size_t requestLen, pldm_header_info& hdrFields)
 {
     lg2::info("Handling unsupported command...");
 

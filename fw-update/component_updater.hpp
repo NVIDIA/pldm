@@ -221,15 +221,13 @@ class ComponentUpdater
      *  @param[in] deviceUpdater - To update the status of device
      *  @param[in] componentIndex - component index
      */
-    explicit ComponentUpdater(mctp_eid_t eid, std::ifstream& package,
-                              const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                              const ComponentImageInfos& compImageInfos,
-                              const ComponentInfo& compInfo,
-                              const ComponentIdNameMap& compIdNameInfo,
-                              uint32_t maxTransferSize,
-                              UpdateManager* updateManager,
-                              DeviceUpdater* deviceUpdater,
-                              size_t componentIndex, bool fwDebug) :
+    explicit ComponentUpdater(
+        mctp_eid_t eid, std::ifstream& package,
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        const ComponentImageInfos& compImageInfos,
+        const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
+        uint32_t maxTransferSize, UpdateManager* updateManager,
+        DeviceUpdater* deviceUpdater, size_t componentIndex, bool fwDebug) :
         fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(fwDebug),
         eid(eid), package(package), compImageInfos(compImageInfos),
         compInfo(compInfo), compIdNameInfo(compIdNameInfo),
@@ -315,9 +313,8 @@ class ComponentUpdater
      * @param[in] response - cancel update response
      * @param[in] respMsgLen - response length
      */
-    int processCancelUpdateComponentResponse(mctp_eid_t eid,
-                                             const pldm_msg* response,
-                                             size_t respMsgLen);
+    int processCancelUpdateComponentResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device
@@ -343,8 +340,8 @@ class ComponentUpdater
      * @param[in] getStatusCallback - callback to handle the response
      * @return exec::task<int>
      */
-    exec::task<int>
-        sendGetStatusRequest(std::function<void(uint8_t)> getStatusCallback);
+    exec::task<int> sendGetStatusRequest(
+        std::function<void(uint8_t)> getStatusCallback);
 
     /**
      * @brief process get status response

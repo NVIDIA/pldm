@@ -90,8 +90,7 @@ static const std::map<EntityType, std::string_view> entityInterfaces = {
  */
 struct TerminusResumptionStatus
 {
-    TerminusResumptionStatus() : eventReciever{PLDM_SUCCESS}
-    {}
+    TerminusResumptionStatus() : eventReciever{PLDM_SUCCESS} {}
 
     uint8_t eventReciever;
 };
@@ -210,8 +209,8 @@ class Terminus
      *  @param[in] id - effecter ID
      *  @return effecter auxiliary names
      */
-    std::shared_ptr<EffecterAuxiliaryNames>
-        getEffecterAuxiliaryNames(EffecterID id);
+    std::shared_ptr<EffecterAuxiliaryNames> getEffecterAuxiliaryNames(
+        EffecterID id);
 
 #ifdef OEM_NVIDIA
     /** @brief Get Sensor Port type by sensorID
@@ -271,9 +270,8 @@ class Terminus
      *
      *  @param[in] objPath - device inventory path
      */
-    exec::task<int> getSensorAuxNameFromEM(uint8_t bus, uint8_t addr,
-                                           uint8_t eid,
-                                           const std::string& objPath);
+    exec::task<int> getSensorAuxNameFromEM(
+        uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath);
 
 #ifdef OEM_NVIDIA
     /** @brief get sensor Port information from EM configuration PDI
@@ -324,27 +322,27 @@ class Terminus
     }
 
   private:
-    std::shared_ptr<pldm_numeric_sensor_value_pdr>
-        parseNumericSensorPDR(const std::vector<uint8_t>& pdrData);
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> parseNumericSensorPDR(
+        const std::vector<uint8_t>& pdrData);
 
-    std::shared_ptr<pldm_numeric_effecter_value_pdr>
-        parseNumericEffecterPDR(const std::vector<uint8_t>& pdrData);
+    std::shared_ptr<pldm_numeric_effecter_value_pdr> parseNumericEffecterPDR(
+        const std::vector<uint8_t>& pdrData);
 
-    std::shared_ptr<SensorAuxiliaryNames>
-        parseSensorAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData);
+    std::shared_ptr<SensorAuxiliaryNames> parseSensorAuxiliaryNamesPDR(
+        const std::vector<uint8_t>& pdrData);
 
-    std::shared_ptr<EffecterAuxiliaryNames>
-        parseEffecterAuxiliaryNamesPDR(const std::vector<uint8_t>& pdrData);
+    std::shared_ptr<EffecterAuxiliaryNames> parseEffecterAuxiliaryNamesPDR(
+        const std::vector<uint8_t>& pdrData);
 
-    std::tuple<SensorID, StateSetInfo>
-        parseStateSensorPDR(std::vector<uint8_t>& pdr);
+    std::tuple<SensorID, StateSetInfo> parseStateSensorPDR(
+        std::vector<uint8_t>& pdr);
 
     void parseStateSetInfo(const unsigned char* statesPtr,
                            uint8_t compositeSensorCount,
                            std::vector<StateSetData>& stateSets);
 
-    std::tuple<EffecterID, StateSetInfo>
-        parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr);
+    std::tuple<EffecterID, StateSetInfo> parseStateEffecterPDR(
+        std::vector<uint8_t>& stateEffecterPdr);
 
     OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);
 

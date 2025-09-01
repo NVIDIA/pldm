@@ -77,12 +77,13 @@ class GetPDR : public CommandInterface
             "eg: The recordHandle value for the PDR to be retrieved and 0 "
             "means get first PDR in the repository.");
         pdrRecType = "";
-        pdrOptionGroup->add_option("-t, --type", pdrRecType,
-                                   "retrieve all PDRs of the requested type\n"
-                                   "supported types:\n"
-                                   "[terminusLocator, stateSensor, "
-                                   "numericEffecter, stateEffecter, "
-                                   "EntityAssociation, fruRecord, ... ]");
+        pdrOptionGroup->add_option(
+            "-t, --type", pdrRecType,
+            "retrieve all PDRs of the requested type\n"
+            "supported types:\n"
+            "[terminusLocator, stateSensor, "
+            "numericEffecter, stateEffecter, "
+            "EntityAssociation, fruRecord, ... ]");
         allPDRs = false;
         pdrOptionGroup->add_flag("-a, --all", allPDRs,
                                  "retrieve all PDRs from a PDR repository");
@@ -148,8 +149,8 @@ class GetPDR : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_PDR_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_PDR_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
         auto rc =
@@ -585,9 +586,8 @@ class GetPDR : public CommandInterface
         }
     }
 
-    std::vector<std::string>
-        getStateSetPossibleStateNames(uint16_t stateId,
-                                      const std::vector<uint8_t>& value)
+    std::vector<std::string> getStateSetPossibleStateNames(
+        uint16_t stateId, const std::vector<uint8_t>& value)
     {
         std::vector<std::string> data{};
         std::map<uint8_t, std::string> stateNameMaps;
@@ -680,8 +680,8 @@ class GetPDR : public CommandInterface
             return;
         }
         struct pldm_numeric_sensor_value_pdr pdr;
-        size_t count =
-            (uint8_t*)(&pdr.hysteresis.value_u8) - (uint8_t*)(&pdr.hdr);
+        size_t count = (uint8_t*)(&pdr.hysteresis.value_u8) -
+                       (uint8_t*)(&pdr.hdr);
 
         memcpy(&pdr.hdr, data, count);
         data += count;
@@ -1177,8 +1177,8 @@ class GetPDR : public CommandInterface
             return;
         }
         struct pldm_numeric_effecter_value_pdr pdr;
-        size_t count =
-            (uint8_t*)(&pdr.max_settable.value_u8) - (uint8_t*)(&pdr.hdr);
+        size_t count = (uint8_t*)(&pdr.max_settable.value_u8) -
+                       (uint8_t*)(&pdr.hdr);
 
         memcpy(&pdr.hdr, data, count);
         data += count;

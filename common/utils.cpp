@@ -27,10 +27,9 @@ namespace pldm
 namespace utils
 {
 
-std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t /*tid*/,
-                                                       uint16_t entityID,
-                                                       uint16_t stateSetId,
-                                                       const pldm_pdr* repo)
+std::vector<std::vector<uint8_t>> findStateEffecterPDR(
+    uint8_t /*tid*/, uint16_t entityID, uint16_t stateSetId,
+    const pldm_pdr* repo)
 {
     uint8_t* outData = nullptr;
     uint32_t size{};
@@ -80,10 +79,9 @@ std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t /*tid*/,
     return pdrs;
 }
 
-std::vector<std::vector<uint8_t>> findStateSensorPDR(uint8_t /*tid*/,
-                                                     uint16_t entityID,
-                                                     uint16_t stateSetId,
-                                                     const pldm_pdr* repo)
+std::vector<std::vector<uint8_t>> findStateSensorPDR(
+    uint8_t /*tid*/, uint16_t entityID, uint16_t stateSetId,
+    const pldm_pdr* repo)
 {
     uint8_t* outData = nullptr;
     uint32_t size{};
@@ -203,9 +201,8 @@ bool uintToDate(uint64_t data, uint16_t* year, uint8_t* month, uint8_t* day,
     return true;
 }
 
-std::optional<std::vector<set_effecter_state_field>>
-    parseEffecterData(const std::vector<uint8_t>& effecterData,
-                      uint8_t effecterCount)
+std::optional<std::vector<set_effecter_state_field>> parseEffecterData(
+    const std::vector<uint8_t>& effecterData, uint8_t effecterCount)
 {
     std::vector<set_effecter_state_field> stateField;
 
@@ -251,9 +248,9 @@ std::string DBusHandler::getService(const char* path,
     return mapperResponse.begin()->first;
 }
 
-GetSubTreeResponse
-    DBusHandler::getSubtree(const std::string& searchPath, int depth,
-                            const std::vector<std::string>& ifaceList) const
+GetSubTreeResponse DBusHandler::getSubtree(
+    const std::string& searchPath, int depth,
+    const std::vector<std::string>& ifaceList) const
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
     auto method = bus.new_method_call(ObjectMapper::default_service,
@@ -410,10 +407,9 @@ ObjectValueTree DBusHandler::getManagedObj(const char* service,
     return bus.call(method).unpack<ObjectValueTree>();
 }
 
-PropertyMap
-    DBusHandler::getDbusPropertiesVariant(const char* serviceName,
-                                          const char* objPath,
-                                          const char* dbusInterface) const
+PropertyMap DBusHandler::getDbusPropertiesVariant(
+    const char* serviceName, const char* objPath,
+    const char* dbusInterface) const
 {
     auto& bus = DBusHandler::getBus();
     auto method =
@@ -422,9 +418,8 @@ PropertyMap
     return bus.call(method, dbusTimeout).unpack<PropertyMap>();
 }
 
-bool DBusHandler::checkDbusPropertyVariant(const char* objPath,
-                                           const char* dbusProp,
-                                           const char* dbusInterface) const
+bool DBusHandler::checkDbusPropertyVariant(
+    const char* objPath, const char* dbusProp, const char* dbusInterface) const
 {
     auto& bus = DBusHandler::getBus();
     auto service = getService(objPath, dbusInterface);
@@ -656,8 +651,8 @@ std::vector<std::string> split(std::string_view srcStr, std::string_view delim,
         if (!trimStr.empty())
         {
             dstStr.remove_prefix(dstStr.find_first_not_of(trimStr));
-            dstStr.remove_suffix(dstStr.size() - 1 -
-                                 dstStr.find_last_not_of(trimStr));
+            dstStr.remove_suffix(
+                dstStr.size() - 1 - dstStr.find_last_not_of(trimStr));
         }
 
         if (!dstStr.empty())

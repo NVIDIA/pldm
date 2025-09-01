@@ -122,15 +122,15 @@ void SwitchBandwidthSensor::updateOnSharedMemory()
 
     DbusVariantType variantCB{switchIntf->currentBandwidth()};
     std::string propertyName = "CurrentBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(path, ifaceName, propertyName,
-                                              rawSmbpbiData, steadyTimeStamp,
-                                              retCode, variantCB);
+    tal::TelemetryAggregator::updateTelemetry(
+        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode,
+        variantCB);
 
     DbusVariantType variantMB{switchIntf->maxBandwidth()};
     propertyName = "MaxBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(path, ifaceName, propertyName,
-                                              rawSmbpbiData, steadyTimeStamp,
-                                              retCode, variantMB);
+    tal::TelemetryAggregator::updateTelemetry(
+        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode,
+        variantMB);
 }
 
 } // namespace oem_nvidia

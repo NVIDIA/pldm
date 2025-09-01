@@ -106,8 +106,8 @@ class OtherDeviceUpdateManager
     OtherDeviceUpdateManager() = delete;
     OtherDeviceUpdateManager(const OtherDeviceUpdateManager&) = delete;
     OtherDeviceUpdateManager(OtherDeviceUpdateManager&&) = delete;
-    OtherDeviceUpdateManager&
-        operator=(const OtherDeviceUpdateManager&) = delete;
+    OtherDeviceUpdateManager& operator=(const OtherDeviceUpdateManager&) =
+        delete;
     OtherDeviceUpdateManager& operator=(OtherDeviceUpdateManager&&) = delete;
     ~OtherDeviceUpdateManager() = default;
 
@@ -173,10 +173,9 @@ class OtherDeviceUpdateManager
      * @param package - pldm image input stream
      * @return size_t - number of other device images
      */
-    size_t
-        extractOtherDevicePkgs(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-                               const ComponentImageInfos& componentImageInfos,
-                               std::istream& package);
+    size_t extractOtherDevicePkgs(
+        const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+        const ComponentImageInfos& componentImageInfos, std::istream& package);
 
     /**
      * @brief Get the Number Of Processed Images object
@@ -252,10 +251,9 @@ class OtherDeviceUpdateManager
      * @param componentImageInfo - Image info of the component to transfer
      * @param package - input stream of the package
      */
-    TransferPackageState
-        txComponentImage(const std::string& filePath,
-                         const ComponentImageInfo& componentImageInfo,
-                         std::istream& package);
+    TransferPackageState txComponentImage(
+        const std::string& filePath,
+        const ComponentImageInfo& componentImageInfo, std::istream& package);
 
     /**
      * @brief Handles the transfers of a single component
@@ -266,11 +264,10 @@ class OtherDeviceUpdateManager
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
-    TransferPackageState
-        txSingleComponent(const std::string& dirPath,
-                          const ComponentImageInfo& componentImageInfo,
-                          std::istream& package, const std::string& objPath,
-                          const UUID& uuid);
+    TransferPackageState txSingleComponent(
+        const std::string& dirPath,
+        const ComponentImageInfo& componentImageInfo, std::istream& package,
+        const std::string& objPath, const UUID& uuid);
 
     /**
      * @brief Handles the transfers of multiple components
@@ -284,12 +281,11 @@ class OtherDeviceUpdateManager
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
-    TransferPackageState
-        txMultipleComponents(const std::string& dirPath,
-                             const ApplicableComponents& applicableCompVec,
-                             const ComponentImageInfos& componentImageInfos,
-                             std::istream& package, const std::string& objPath,
-                             const UUID& uuid);
+    TransferPackageState txMultipleComponents(
+        const std::string& dirPath,
+        const ApplicableComponents& applicableCompVec,
+        const ComponentImageInfos& componentImageInfos, std::istream& package,
+        const std::string& objPath, const UUID& uuid);
 
     UpdateManager* updateManager;
 

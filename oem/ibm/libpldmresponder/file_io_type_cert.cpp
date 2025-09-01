@@ -152,9 +152,9 @@ int CertHandler::write(const char* buffer, uint32_t offset, uint32_t& length,
             }
             PropertyValue valueStatus{
                 "xyz.openbmc_project.Certs.Entry.State.Complete"};
-            DBusMapping dbusMappingStatus{certObjPath +
-                                              std::to_string(fileHandle),
-                                          certEntryIntf, "Status", "string"};
+            DBusMapping dbusMappingStatus{
+                certObjPath + std::to_string(fileHandle), certEntryIntf,
+                "Status", "string"};
             try
             {
                 pldm::utils::DBusHandler().setDbusProperty(dbusMappingStatus,

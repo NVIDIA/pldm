@@ -67,7 +67,6 @@ using FruRecordMap = std::map<ItemIntfName, FruRecordInfos>;
  */
 class FruParser
 {
-
   public:
     FruParser() = delete;
     explicit FruParser(const std::string& dirPath,
@@ -97,14 +96,14 @@ class FruParser
      *  @return return the info create the PLDM FRU records from inventory D-Bus
      *          objects
      */
-    const FruRecordInfos&
-        getRecordInfo(const pldm::responder::dbus::Interface& intf) const
+    const FruRecordInfos& getRecordInfo(
+        const pldm::responder::dbus::Interface& intf) const
     {
         return recordMap.at(intf);
     }
 
-    pldm::responder::dbus::EntityType
-        getEntityType(const pldm::responder::dbus::Interface& intf) const
+    pldm::responder::dbus::EntityType getEntityType(
+        const pldm::responder::dbus::Interface& intf) const
     {
         return intfToEntityType.at(intf);
     }

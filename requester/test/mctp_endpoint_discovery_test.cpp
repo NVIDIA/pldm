@@ -55,8 +55,8 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus,
-        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager1,
-                                                               &manager2},
+        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
+            &manager1, &manager2},
         "./static_eid_table.json");
 }
 

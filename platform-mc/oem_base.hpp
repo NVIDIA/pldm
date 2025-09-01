@@ -29,8 +29,7 @@ namespace platform_mc
 class OemIntf
 {
   public:
-    OemIntf()
-    {}
+    OemIntf() {}
     virtual ~OemIntf() = default;
 };
 

@@ -103,10 +103,10 @@ void requestPLDMServiceName()
     }
 }
 
-static std::optional<Response>
-    processRxMsg(const std::vector<uint8_t>& requestMsg, Invoker& invoker,
-                 requester::Handler<requester::Request>& handler,
-                 fw_update::Manager* fwManager, pldm_tid_t tid)
+static std::optional<Response> processRxMsg(
+    const std::vector<uint8_t>& requestMsg, Invoker& invoker,
+    requester::Handler<requester::Request>& handler,
+    fw_update::Manager* fwManager, pldm_tid_t tid)
 {
     uint8_t eid = tid;
 
@@ -425,11 +425,11 @@ int main(int argc, char** argv)
 #endif
 
 #ifdef OEM_IBM
-    pldm::oem_ibm::OemIBM oemIBM(&dbusHandler, pldmTransport.getEventSource(),
-                                 hostEID, pdrRepo.get(), instanceIdDb, event,
-                                 invoker, hostPDRHandler.get(),
-                                 platformHandler.get(), fruHandler.get(),
-                                 baseHandler.get(), &reqHandler);
+    pldm::oem_ibm::OemIBM oemIBM(
+        &dbusHandler, pldmTransport.getEventSource(), hostEID, pdrRepo.get(),
+        instanceIdDb, event, invoker, hostPDRHandler.get(),
+        platformHandler.get(), fruHandler.get(), baseHandler.get(),
+        &reqHandler);
 #endif
 
     invoker.registerHandler(PLDM_BIOS, std::move(biosHandler));

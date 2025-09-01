@@ -95,10 +95,9 @@ inline Response sendCommandNotExpectedResponse(const pldm_msg* request,
     return response;
 }
 
-exec::task<int> sendRecvPldmMsgOverMctp(RequesterHandler& handle,
-                                        mctp_eid_t eid, Request& request,
-                                        const pldm_msg** responseMsg,
-                                        size_t* responseLen);
+exec::task<int> sendRecvPldmMsgOverMctp(
+    RequesterHandler& handle, mctp_eid_t eid, Request& request,
+    const pldm_msg** responseMsg, size_t* responseLen);
 
 } // namespace fw_update
 

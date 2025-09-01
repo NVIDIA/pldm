@@ -300,8 +300,7 @@ class LidHandler : public FileHandler
 
     /** @brief LidHandler destructor
      */
-    ~LidHandler()
-    {}
+    ~LidHandler() {}
 
   protected:
     std::string lidPath;

@@ -159,8 +159,8 @@ class Handler
             info(
                 "Instance ID expiry for EID '{EID}' using InstanceID '{INSTANCEID}'",
                 "EID", key.eid, "INSTANCEID", key.instanceId);
-            auto& [request, responseHandler, timerInstance] =
-                this->handlers[key];
+            auto& [request, responseHandler,
+                   timerInstance] = this->handlers[key];
             request->stop();
             auto rc = timerInstance->stop();
             if (rc)
@@ -408,8 +408,8 @@ class Handler
      *          Return [PLDM_ERROR_NOT_READY, nullptr, 0] if timed out.
      *          Return [PLDM_SUCCESS, resp, len] if succeeded
      */
-    stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto
-        sendRecvMsg(mctp_eid_t eid, pldm::Request&& request);
+    stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto sendRecvMsg(
+        mctp_eid_t eid, pldm::Request&& request);
 
   private:
     PldmTransport* pldmTransport; //!< PLDM transport object
@@ -417,10 +417,10 @@ class Handler
     pldm::InstanceIdDb& instanceIdDb; //!< reference to an InstanceIdDb
     bool verbose;                     //!< verbose tracing flag
     std::chrono::seconds
-        instanceIdExpiryInterval; //!< Instance ID expiration interval
-    uint8_t numRetries;           //!< number of request retries
+        instanceIdExpiryInterval;     //!< Instance ID expiration interval
+    uint8_t numRetries;               //!< number of request retries
     std::chrono::milliseconds
-        responseTimeOut; //!< time to wait between each retry
+        responseTimeOut;              //!< time to wait between each retry
 
     /** @brief Container for storing the details of the PLDM request
      *         message, handler for the corresponding PLDM response and the

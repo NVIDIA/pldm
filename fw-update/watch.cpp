@@ -71,8 +71,8 @@ int Watch::callbackImmediate(sd_event_source* /* s */, int fd, uint32_t revents,
     if (0 > bytes)
     {
         auto error = errno;
-        throw std::runtime_error("failed to read inotify event, errno="s +
-                                 std::strerror(error));
+        throw std::runtime_error(
+            "failed to read inotify event, errno="s + std::strerror(error));
     }
 
     auto offset = 0;
@@ -152,8 +152,8 @@ void Watch::addFileEventWatchImmediate()
         // Store a copy of errno, because the string creation below will
         // invalidate errno due to one more system calls.
         auto error = errno;
-        throw std::runtime_error("inotify_init1 failed, errno="s +
-                                 std::strerror(error));
+        throw std::runtime_error(
+            "inotify_init1 failed, errno="s + std::strerror(error));
     }
 
     wdImmediate = inotify_add_watch(fdImmediate, FIRMWARE_PACKAGE_STAGING_DIR,
@@ -162,16 +162,16 @@ void Watch::addFileEventWatchImmediate()
     {
         auto error = errno;
         close(fdImmediate);
-        throw std::runtime_error("inotify_add_watch failed, errno="s +
-                                 std::strerror(error));
+        throw std::runtime_error(
+            "inotify_add_watch failed, errno="s + std::strerror(error));
     }
 
     auto rc = sd_event_add_io(loop, nullptr, fdImmediate, EPOLLIN,
                               callbackImmediate, this);
     if (0 > rc)
     {
-        throw std::runtime_error("failed to add to event loop, rc="s +
-                                 std::strerror(-rc));
+        throw std::runtime_error(
+            "failed to add to event loop, rc="s + std::strerror(-rc));
     }
 }
 

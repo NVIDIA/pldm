@@ -204,10 +204,10 @@ TEST_F(ComponentUpdaterTest, transferComplete)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     {
         constexpr std::array<uint8_t,
@@ -266,10 +266,10 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     {
         constexpr std::array<uint8_t,
@@ -328,10 +328,10 @@ TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
@@ -343,15 +343,15 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
-            componentUpdater.processCancelUpdateComponentResponse(eid, nullptr,
-                                                                  0);
+            componentUpdater.processCancelUpdateComponentResponse(
+                eid, nullptr, 0);
     });
 }
 
@@ -359,10 +359,10 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
         cancelCompUpdateResponse{0x80, 0x05, 0x1c};
 
@@ -460,10 +460,10 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     size_t componentOffset = 0;
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_get_status_resp)>
         getStatusResponse{0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03,
@@ -481,10 +481,10 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
 {
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.startComponentUpdater();

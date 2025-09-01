@@ -95,10 +95,9 @@ class ClearNonVolatileVariablesEffecterIntf :
 class StateSetClearNonvolatileVariable : public StateSet
 {
   public:
-    StateSetClearNonvolatileVariable(uint16_t stateSetId, uint8_t compId,
-                                     std::string& objectPath,
-                                     dbus::PathAssociation& stateAssociation,
-                                     StateEffecter* effecter) :
+    StateSetClearNonvolatileVariable(
+        uint16_t stateSetId, uint8_t compId, std::string& objectPath,
+        dbus::PathAssociation& stateAssociation, StateEffecter* effecter) :
         StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();

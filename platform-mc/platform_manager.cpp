@@ -166,10 +166,10 @@ exec::task<int> PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
 
     do
     {
-        rc =
-            co_await getPDR(tid, recordHndl, 0, PLDM_GET_FIRSTPART, recvBufSize,
-                            0, nextRecordHndl, nextDataTransferHndl,
-                            transferFlag, responseCnt, recvBuf, transferCrc);
+        rc = co_await getPDR(tid, recordHndl, 0, PLDM_GET_FIRSTPART,
+                             recvBufSize, 0, nextRecordHndl,
+                             nextDataTransferHndl, transferFlag, responseCnt,
+                             recvBuf, transferCrc);
 
         if (rc)
         {
@@ -193,11 +193,11 @@ exec::task<int> PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
                                              recvBuf.begin() + responseCnt);
             do
             {
-                rc = co_await getPDR(tid, recordHndl, nextDataTransferHndl,
-                                     PLDM_GET_NEXTPART, recvBufSize,
-                                     recordChgNum, nextRecordHndl,
-                                     nextDataTransferHndl, transferFlag,
-                                     responseCnt, recvBuf, transferCrc);
+                rc = co_await getPDR(
+                    tid, recordHndl, nextDataTransferHndl, PLDM_GET_NEXTPART,
+                    recvBufSize, recordChgNum, nextRecordHndl,
+                    nextDataTransferHndl, transferFlag, responseCnt, recvBuf,
+                    transferCrc);
                 if (rc)
                 {
                     co_return rc;
@@ -300,8 +300,8 @@ exec::task<int> PlatformManager::getPDRRepositoryInfo(
 exec::task<int> PlatformManager::eventMessageBufferSize(
     tid_t tid, uint16_t receiverMaxBufferSize, uint16_t& terminusBufferSize)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_EVENT_MESSAGE_BUFFER_SIZE_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_event_message_buffer_size_req(0, receiverMaxBufferSize,
                                                    requestMsg);
@@ -383,8 +383,8 @@ exec::task<int> PlatformManager::eventMessageSupported(
     bitfield8_t& synchronyConfigurationSupported,
     uint8_t& numberEventClassReturned, std::vector<uint8_t>& eventClass)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_EVENT_MESSAGE_SUPPORTED_REQ_BYTES);
     auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_event_message_supported_req(0, formatVersion, requestMsg);
     if (rc)

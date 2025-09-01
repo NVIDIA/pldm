@@ -255,10 +255,9 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
 exec::task<int> InventoryManager::queryDeviceIdentifiers(
     mctp_eid_t eid, std::string& messageError, std::string& resolution)
 {
-
     auto instanceId = instanceIdDb.next(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr) +
-                       PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
+    Request requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto rc = encode_query_device_identifiers_req(
         instanceId, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, request);
@@ -443,8 +442,8 @@ exec::task<int> InventoryManager::getFirmwareParameters(
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
     auto instanceId = instanceIdDb.next(eid);
-    Request requestMsg(sizeof(pldm_msg_hdr) +
-                       PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
+    Request requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto rc = encode_get_firmware_parameters_req(
         instanceId, PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES, request);

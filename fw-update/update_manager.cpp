@@ -80,8 +80,8 @@ UpdateManager::UpdateManager(
 
 UpdateManager::~UpdateManager() = default;
 
-std::string
-    UpdateManager::getActivationMethod(bitfield16_t compActivationModification)
+std::string UpdateManager::getActivationMethod(
+    bitfield16_t compActivationModification)
 {
     static std::unordered_map<size_t, std::string> compActivationMethod = {
         {PLDM_ACTIVATION_AUTOMATIC, "Automatic"},
@@ -157,13 +157,13 @@ void UpdateManager::createMessageRegistry(
     createLogEntry(messageID, compName, compVersion, resolution);
     if (commandType != 0)
     {
-        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(commandType, errorCode);
+        auto [messageStatus, oemMessageId, oemMessageError,
+              oemResolution] = getOemMessage(commandType, errorCode);
         if (messageStatus)
         {
-            createMessageRegistryResourceErrors(eid, fwDeviceIDRecord,
-                                                compIndex, oemMessageId,
-                                                oemMessageError, oemResolution);
+            createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, compIndex, oemMessageId, oemMessageError,
+                oemResolution);
         }
     }
 }
@@ -439,14 +439,13 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
             componentNameMap.find(deviceUpdaterInfo.first);
         if (compIdNameInfoSearch != componentNameMap.end())
         {
-
-            deviceUpdaterMap.emplace(deviceUpdaterInfo.first,
-                                     std::make_unique<DeviceUpdater>(
-                                         deviceUpdaterInfo.first, package,
-                                         fwDeviceIDRecord, compImageInfos,
-                                         search->second,
-                                         compIdNameInfoSearch->second,
-                                         MAXIMUM_TRANSFER_SIZE, this, fwDebug));
+            deviceUpdaterMap.emplace(
+                deviceUpdaterInfo.first,
+                std::make_unique<DeviceUpdater>(
+                    deviceUpdaterInfo.first, package, fwDeviceIDRecord,
+                    compImageInfos, search->second,
+                    compIdNameInfoSearch->second, MAXIMUM_TRANSFER_SIZE, this,
+                    fwDebug));
         }
     }
 
@@ -462,7 +461,6 @@ void UpdateManager::performSecurityChecksAsync(
     std::function<void(bool)> onComplete,
     [[maybe_unused]] std::function<void(const std::string& errorMsg)> onError)
 {
-
     SecurityCheckType securityCheckType = SecurityCheckType::Disabled;
 
 #ifdef PLDM_PACKAGE_INTEGRITY_CHECK
@@ -691,7 +689,6 @@ void UpdateManager::verifyPackageAsync(
     }
     else
     {
-
 #ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
         std::string messageErrorNotContainSignatureHeader =
             "Package does not contain signature header";
@@ -805,7 +802,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
                                     "ID", compIdentifier);
                                 return true; // Remove this component
                             }
-                            return false; // Keep this component
+                            return false;    // Keep this component
                         });
                         if (applicableComponents.size())
                         {

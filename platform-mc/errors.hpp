@@ -29,8 +29,8 @@ class InvalidArgument final : public sdbusplus::exception::internal_exception
   public:
     explicit InvalidArgument(std::string_view propertyNameArg) :
         propertyName(propertyNameArg),
-        errWhatDetailed("Invalid argument was given for property: "s +
-                        description())
+        errWhatDetailed(
+            "Invalid argument was given for property: "s + description())
     {}
     InvalidArgument(std::string_view propertyNameArg, std::string_view info) :
         propertyName(propertyNameArg),

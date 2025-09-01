@@ -42,8 +42,8 @@ void DbusToFileHandler::sendNewFileAvailableCmd(uint64_t fileSize)
         return;
     }
     auto instanceId = requester->getInstanceId(mctp_eid);
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_NEW_FILE_REQ_BYTES + fileSize);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_NEW_FILE_REQ_BYTES + fileSize);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     // Need to revisit this logic at the time of multiple resource dump support
     uint32_t fileHandle = 1;
@@ -73,9 +73,8 @@ void DbusToFileHandler::sendNewFileAvailableCmd(uint64_t fileSize)
         {
             std::cerr << "Failed to decode_new_file_resp or"
                       << " Host returned error for new_file_available"
-                      << " rc=" << rc
-                      << ", cc=" << static_cast<unsigned>(completionCode)
-                      << "\n";
+                      << " rc=" << rc << ", cc="
+                      << static_cast<unsigned>(completionCode) << "\n";
             reportResourceDumpFailure();
         }
     };
@@ -91,7 +90,6 @@ void DbusToFileHandler::sendNewFileAvailableCmd(uint64_t fileSize)
 
 void DbusToFileHandler::reportResourceDumpFailure()
 {
-
     pldm::utils::reportError("xyz.openbmc_project.bmc.pldm.InternalFailure");
 
     PropertyValue value{resDumpStatus};
@@ -197,9 +195,8 @@ void DbusToFileHandler::newCsrFileAvailable(const std::string& csr,
                                PLDM_FILE_TYPE_CERT_SIGNING_REQUEST);
 }
 
-void DbusToFileHandler::newFileAvailableSendToHost(const uint32_t fileSize,
-                                                   const uint32_t fileHandle,
-                                                   const uint16_t type)
+void DbusToFileHandler::newFileAvailableSendToHost(
+    const uint32_t fileSize, const uint32_t fileHandle, const uint16_t type)
 {
     if (requester == NULL)
     {
@@ -209,8 +206,8 @@ void DbusToFileHandler::newFileAvailableSendToHost(const uint32_t fileSize,
         return;
     }
     auto instanceId = requester->getInstanceId(mctp_eid);
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_NEW_FILE_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_NEW_FILE_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
     auto rc =
@@ -221,28 +218,27 @@ void DbusToFileHandler::newFileAvailableSendToHost(const uint32_t fileSize,
         std::cerr << "Failed to encode_new_file_req, rc = " << rc << std::endl;
         return;
     }
-    auto newFileAvailableRespHandler = [](mctp_eid_t /*eid*/,
-                                          const pldm_msg* response,
-                                          size_t respMsgLen) {
-        if (response == nullptr || !respMsgLen)
-        {
-            std::cerr << "Failed to receive response for NewFileAvailable "
-                         "command for vmi \n";
-            return;
-        }
-        uint8_t completionCode{};
-        auto rc = decode_new_file_resp(response, respMsgLen, &completionCode);
-        if (rc || completionCode)
-        {
-            std::cerr << "Failed to decode_new_file_resp for vmi, or"
-                      << " Host returned error for new_file_available"
-                      << " rc=" << rc
-                      << ", cc=" << static_cast<unsigned>(completionCode)
-                      << "\n";
-            pldm::utils::reportError(
-                "xyz.openbmc_project.bmc.pldm.InternalFailure");
-        }
-    };
+    auto newFileAvailableRespHandler =
+        [](mctp_eid_t /*eid*/, const pldm_msg* response, size_t respMsgLen) {
+            if (response == nullptr || !respMsgLen)
+            {
+                std::cerr << "Failed to receive response for NewFileAvailable "
+                             "command for vmi \n";
+                return;
+            }
+            uint8_t completionCode{};
+            auto rc =
+                decode_new_file_resp(response, respMsgLen, &completionCode);
+            if (rc || completionCode)
+            {
+                std::cerr << "Failed to decode_new_file_resp for vmi, or"
+                          << " Host returned error for new_file_available"
+                          << " rc=" << rc << ", cc="
+                          << static_cast<unsigned>(completionCode) << "\n";
+                pldm::utils::reportError(
+                    "xyz.openbmc_project.bmc.pldm.InternalFailure");
+            }
+        };
     rc = handler->registerRequest(
         mctp_eid, instanceId, PLDM_OEM, PLDM_NEW_FILE_AVAILABLE,
         std::move(requestMsg), std::move(newFileAvailableRespHandler));

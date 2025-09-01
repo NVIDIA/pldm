@@ -155,8 +155,8 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
             }
 
             std::string arg1 = entityName + " " + sensorName;
-            auto [messageID, arg2, level] =
-                stateSets[sensorOffset]->getEventData();
+            auto [messageID, arg2,
+                  level] = stateSets[sensorOffset]->getEventData();
 
             if ((previousEventState == 0) && (level > Level::Notice))
             {

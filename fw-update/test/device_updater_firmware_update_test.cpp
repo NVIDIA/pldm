@@ -97,10 +97,9 @@ std::unique_ptr<MockedFirmwareUpdateFunction>
     DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction;
 
-int encode_request_firmware_data_resp(uint8_t instance_id,
-                                      uint8_t completion_code,
-                                      struct pldm_msg* msg,
-                                      size_t payload_length)
+int encode_request_firmware_data_resp(
+    uint8_t instance_id, uint8_t completion_code, struct pldm_msg* msg,
+    size_t payload_length)
 {
     return DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction->encode_request_firmware_data_resp(
@@ -116,14 +115,12 @@ int decode_request_firmware_data_req(const struct pldm_msg* msg,
             msg, payload_length, offset, length);
 }
 
-int encode_request_update_req(uint8_t instance_id, uint32_t max_transfer_size,
-                              uint16_t num_of_comp,
-                              uint8_t max_outstanding_transfer_req,
-                              uint16_t pkg_data_len,
-                              uint8_t comp_image_set_ver_str_type,
-                              uint8_t comp_image_set_ver_str_len,
-                              const struct variable_field* comp_img_set_ver_str,
-                              struct pldm_msg* msg, size_t payload_length)
+int encode_request_update_req(
+    uint8_t instance_id, uint32_t max_transfer_size, uint16_t num_of_comp,
+    uint8_t max_outstanding_transfer_req, uint16_t pkg_data_len,
+    uint8_t comp_image_set_ver_str_type, uint8_t comp_image_set_ver_str_len,
+    const struct variable_field* comp_img_set_ver_str, struct pldm_msg* msg,
+    size_t payload_length)
 {
     return DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction->encode_request_update_req(
@@ -147,24 +144,20 @@ int encode_pass_component_table_req(
             comp_ver_str_len, comp_ver_str, msg, payload_length);
 }
 
-int decode_pass_component_table_resp(const struct pldm_msg* msg,
-                                     size_t payload_length,
-                                     uint8_t* completion_code,
-                                     uint8_t* comp_resp,
-                                     uint8_t* comp_resp_code)
+int decode_pass_component_table_resp(
+    const struct pldm_msg* msg, size_t payload_length, uint8_t* completion_code,
+    uint8_t* comp_resp, uint8_t* comp_resp_code)
 {
     return DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction->decode_pass_component_table_resp(
             msg, payload_length, completion_code, comp_resp, comp_resp_code);
 }
 
-int decode_update_component_resp(const struct pldm_msg* msg,
-                                 size_t payload_length,
-                                 uint8_t* completion_code,
-                                 uint8_t* comp_compatability_resp,
-                                 uint8_t* comp_compatability_resp_code,
-                                 bitfield32_t* update_option_flags_enabled,
-                                 uint16_t* time_before_req_fw_data)
+int decode_update_component_resp(
+    const struct pldm_msg* msg, size_t payload_length, uint8_t* completion_code,
+    uint8_t* comp_compatability_resp, uint8_t* comp_compatability_resp_code,
+    bitfield32_t* update_option_flags_enabled,
+    uint16_t* time_before_req_fw_data)
 {
     return DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction->decode_update_component_resp(
@@ -191,10 +184,9 @@ int encode_apply_complete_resp(uint8_t instance_id, uint8_t completion_code,
             instance_id, completion_code, msg, payload_length);
 }
 
-int decode_request_update_resp(const struct pldm_msg* msg,
-                               size_t payload_length, uint8_t* completion_code,
-                               uint16_t* fd_meta_data_len,
-                               uint8_t* fd_will_send_pkg_data)
+int decode_request_update_resp(
+    const struct pldm_msg* msg, size_t payload_length, uint8_t* completion_code,
+    uint16_t* fd_meta_data_len, uint8_t* fd_will_send_pkg_data)
 {
     return DeviceUpdaterTestWithMockedFirmwareUpdateFunctions::
         _mockedFirmwareUpdateFunction->decode_request_update_resp(
@@ -344,10 +336,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
                                 false);
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_update_component_resp)>
@@ -375,10 +367,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
                                 false);
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
@@ -449,10 +441,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
                                 false);
-    ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
-                                      compImageInfos, compInfo, compIdNameInfo,
-                                      512, &updateManager, &deviceUpdater,
-                                      componentOffset, false);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
+        false);
 
     EXPECT_CALL(*_mockedFirmwareUpdateFunction,
                 encode_update_component_req(_, _, _, _, _, _, _, _, _, _, _, _))

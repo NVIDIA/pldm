@@ -85,21 +85,21 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -122,7 +122,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0,
         0,
         0,
-        0, // offset=1.0
+        0,  // offset=1.0
         0,
         0,  // accuracy
         0,  // plusTolerance
@@ -164,16 +164,17 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
                                   SENSOR_READING, WARNING_HIGH))
         .Times(1)
         .WillRepeatedly(Return());
-    std::vector<uint8_t> eventData{0x1,
-                                   0x0, // sensor id
-                                   PLDM_NUMERIC_SENSOR_STATE,
-                                   PLDM_SENSOR_UPPERWARNING,
-                                   PLDM_SENSOR_NORMAL,
-                                   PLDM_SENSOR_DATA_SIZE_UINT8,
-                                   SENSOR_READING};
-    rc = eventManager.handlePlatformEvent(tid, PLDM_SENSOR_EVENT,
-                                          eventData.data(), eventData.size(),
-                                          platformEventStatus);
+    std::vector<uint8_t> eventData{
+        0x1,
+        0x0, // sensor id
+        PLDM_NUMERIC_SENSOR_STATE,
+        PLDM_SENSOR_UPPERWARNING,
+        PLDM_SENSOR_NORMAL,
+        PLDM_SENSOR_DATA_SIZE_UINT8,
+        SENSOR_READING};
+    rc = eventManager.handlePlatformEvent(
+        tid, PLDM_SENSOR_EVENT, eventData.data(), eventData.size(),
+        platformEventStatus);
     EXPECT_EQ(PLDM_SUCCESS, rc);
     EXPECT_EQ(PLDM_EVENT_NO_LOGGING, platformEventStatus);
 }

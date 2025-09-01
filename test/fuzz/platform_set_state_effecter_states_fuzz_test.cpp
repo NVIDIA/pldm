@@ -66,7 +66,7 @@ int main(int argc, char** argv)
 
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
-    decode_set_state_effecter_states_req(request, requestMsg.size() - hdrSize,
-                                         &retEffecterId, &retCompEffecterCnt,
-                                         retStateField.data());
+    decode_set_state_effecter_states_req(
+        request, requestMsg.size() - hdrSize, &retEffecterId,
+        &retCompEffecterCnt, retStateField.data());
 }

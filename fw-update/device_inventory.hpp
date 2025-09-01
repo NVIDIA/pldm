@@ -47,10 +47,9 @@ using LocationCodeIntf =
 using DecoratorHealthIntf =
     sdbusplus::xyz::openbmc_project::State::Decorator::server::Health;
 
-using Ifaces =
-    sdbusplus::server::object::object<ChassisIntf, UUIDIntf, AssociationIntf,
-                                      SPDMResponderIntf, DecoratorAssetIntf,
-                                      LocationCodeIntf, DecoratorHealthIntf>;
+using Ifaces = sdbusplus::server::object::object<
+    ChassisIntf, UUIDIntf, AssociationIntf, SPDMResponderIntf,
+    DecoratorAssetIntf, LocationCodeIntf, DecoratorHealthIntf>;
 
 /** @class Entry
  *
@@ -120,9 +119,9 @@ class Manager
      *  @return Object path of the device inventory object, std::nullopt if
      * object path is empty
      */
-    std::optional<sdbusplus::message::object_path>
-        createEntry(pldm::EID eid, const pldm::UUID& uuid,
-                    dbus::MctpInterfaces& mctpInterfaces);
+    std::optional<sdbusplus::message::object_path> createEntry(
+        pldm::EID eid, const pldm::UUID& uuid,
+        dbus::MctpInterfaces& mctpInterfaces);
 
   private:
     sdbusplus::bus::bus& bus;

@@ -94,9 +94,8 @@ int sendBiosAttributeUpdateEvent(
         if (rc || completionCode)
         {
             std::cerr << "Failed to decode_platform_event_message_resp: "
-                      << "rc=" << rc
-                      << ", cc=" << static_cast<unsigned>(completionCode)
-                      << std::endl;
+                      << "rc=" << rc << ", cc="
+                      << static_cast<unsigned>(completionCode) << std::endl;
         }
     };
     rc = handler->registerRequest(

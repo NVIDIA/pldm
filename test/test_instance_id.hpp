@@ -12,8 +12,7 @@ static constexpr uintmax_t pldmMaxInstanceIds = 32;
 class TestInstanceIdDb : public pldm::InstanceIdDb
 {
   public:
-    TestInstanceIdDb() : TestInstanceIdDb(createDb())
-    {}
+    TestInstanceIdDb() : TestInstanceIdDb(createDb()) {}
 
     ~TestInstanceIdDb()
     {

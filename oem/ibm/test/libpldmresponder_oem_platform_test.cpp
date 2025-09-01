@@ -142,9 +142,9 @@ TEST(EncodeCodeUpdateEvent, testGoodRequest)
     opStateSensorEventData->present_op_state = uint8_t(CodeUpdateState::START);
     opStateSensorEventData->previous_op_state = uint8_t(CodeUpdateState::END);
 
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
-                                    sensorEventDataVec.size());
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
+        sensorEventDataVec.size());
 
     auto rc =
         encodeEventMsg(PLDM_SENSOR_EVENT, sensorEventDataVec, requestMsg, 0x1);
@@ -193,9 +193,9 @@ TEST(generateStateEffecterOEMPDR, testGoodRequest)
     std::unique_ptr<CodeUpdate> mockCodeUpdate =
         std::make_unique<MockCodeUpdate>(mockDbusHandler.get());
     std::unique_ptr<oem_ibm_platform::Handler> mockoemPlatformHandler =
-        std::make_unique<MockOemPlatformHandler>(mockDbusHandler.get(),
-                                                 mockCodeUpdate.get(), 0x1, 0x9,
-                                                 requester, event);
+        std::make_unique<MockOemPlatformHandler>(
+            mockDbusHandler.get(), mockCodeUpdate.get(), 0x1, 0x9, requester,
+            event);
     Repo inRepo(inPDRRepo);
 
     mockoemPlatformHandler->buildOEMPDR(inRepo);
@@ -299,9 +299,9 @@ TEST(generateStateSensorOEMPDR, testGoodRequest)
     std::unique_ptr<CodeUpdate> mockCodeUpdate =
         std::make_unique<MockCodeUpdate>(mockDbusHandler.get());
     std::unique_ptr<oem_ibm_platform::Handler> mockoemPlatformHandler =
-        std::make_unique<MockOemPlatformHandler>(mockDbusHandler.get(),
-                                                 mockCodeUpdate.get(), 0x1, 0x9,
-                                                 requester, event);
+        std::make_unique<MockOemPlatformHandler>(
+            mockDbusHandler.get(), mockCodeUpdate.get(), 0x1, 0x9, requester,
+            event);
     Repo inRepo(inPDRRepo);
     mockoemPlatformHandler->buildOEMPDR(inRepo);
     ASSERT_EQ(inRepo.empty(), false);

@@ -35,7 +35,6 @@ class PackageSignatureTest : public testing::Test
   protected:
     PackageSignatureTest()
     {
-
         unsignedPackage = {
             0xF0, 0x18, 0x87, 0x8C, 0xCB, 0x7D, 0x49, 0x43, 0x98, 0x00, 0xA0,
             0x2F, 0x05, 0x9A, 0xCA, 0x02, 0x01, 0x8B, 0x00, 0x00, 0x00, 0x00,
@@ -1857,12 +1856,12 @@ class PackageSignatureV3TestUseChunks : public PackageSignatureV3
     PackageSignatureV3TestUseChunks() = delete;
     PackageSignatureV3TestUseChunks(const PackageSignatureV3TestUseChunks&) =
         delete;
-    PackageSignatureV3TestUseChunks&
-        operator=(const PackageSignatureV3TestUseChunks&) = delete;
+    PackageSignatureV3TestUseChunks& operator=(
+        const PackageSignatureV3TestUseChunks&) = delete;
     PackageSignatureV3TestUseChunks(PackageSignatureV3TestUseChunks&&) =
         default;
-    PackageSignatureV3TestUseChunks&
-        operator=(PackageSignatureV3TestUseChunks&&) = default;
+    PackageSignatureV3TestUseChunks& operator=(
+        PackageSignatureV3TestUseChunks&&) = default;
     virtual ~PackageSignatureV3TestUseChunks() = default;
 
     /** @brief Constructor
@@ -1882,7 +1881,6 @@ class PackageSignatureV3TestUseChunks : public PackageSignatureV3
 
 TEST_F(PackageSignatureTest, signatureV3WithUseChunksDisabled)
 {
-
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
     std::istringstream package(strPkg);
@@ -1892,8 +1890,8 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksDisabled)
     std::vector<uint8_t> pkgSignHdrData =
         PackageSignature::getSignatureHeader(package, calcPkgSize);
 
-    PackageSignatureV3TestUseChunks packageSignatureParser(pkgSignHdrData,
-                                                           false);
+    PackageSignatureV3TestUseChunks packageSignatureParser(
+        pkgSignHdrData, false);
 
     packageSignatureParser.parseHeader();
 
@@ -1909,7 +1907,6 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksDisabled)
 
 TEST_F(PackageSignatureTest, signatureV3WithUseChunksEnabled)
 {
-
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
     std::istringstream package(strPkg);
@@ -1919,8 +1916,8 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksEnabled)
     std::vector<uint8_t> pkgSignHdrData =
         PackageSignature::getSignatureHeader(package, calcPkgSize);
 
-    PackageSignatureV3TestUseChunks packageSignatureParser(pkgSignHdrData,
-                                                           true);
+    PackageSignatureV3TestUseChunks packageSignatureParser(
+        pkgSignHdrData, true);
 
     packageSignatureParser.parseHeader();
 

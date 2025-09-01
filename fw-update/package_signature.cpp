@@ -39,9 +39,8 @@ namespace fw_update
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
-std::vector<uint8_t>
-    PackageSignature::getSignatureHeader(std::istream& package,
-                                         uintmax_t sizeOfPkgWithoutSignHdr)
+std::vector<uint8_t> PackageSignature::getSignatureHeader(
+    std::istream& package, uintmax_t sizeOfPkgWithoutSignHdr)
 {
     package.seekg(0, std::ios_base::end);
 
@@ -68,8 +67,8 @@ std::vector<uint8_t>
     return pkgSignData;
 }
 
-PackageSignatureVersion
-    PackageSignature::getSignatureVersion(std::vector<uint8_t>& pkgSignData)
+PackageSignatureVersion PackageSignature::getSignatureVersion(
+    std::vector<uint8_t>& pkgSignData)
 {
     return pkgSignData[pldmFwupSignatureMagicLength];
 }
@@ -205,8 +204,8 @@ bool PackageSignature::verify(std::istream& package,
     BIO* bo = NULL;
 
     input = BN_new();
-    std::unique_ptr<BIGNUM, decltype(&::BN_free)> ctxInputPtr{input,
-                                                              &::BN_free};
+    std::unique_ptr<BIGNUM, decltype(&::BN_free)> ctxInputPtr{
+        input, &::BN_free};
 
     int inputLength = BN_hex2bn(&input, publicKey.c_str());
     inputLength = (inputLength + 1) / 2;
@@ -225,7 +224,6 @@ bool PackageSignature::verify(std::istream& package,
     verctx = EVP_PKEY_CTX_new(vkey, NULL);
     if (!verctx)
     {
-
         error("Verifying signature failed, cannot create a verify context");
         result = false;
 
@@ -300,7 +298,6 @@ void PackageSignatureV3::parseHeader()
 
     if (signatureType != 0)
     {
-
         error(
             "Parsing signature header failed, signatureType={SIGNATURE_TYPE} is not supported",
             "SIGNATURE_TYPE", signatureType);
@@ -544,9 +541,8 @@ void PackageSignatureSha384::handleChunkProcessing()
     }
 }
 
-std::vector<unsigned char>
-    PackageSignatureSha384::calculateDigest(std::istream& package,
-                                            uintmax_t lengthOfSignedData)
+std::vector<unsigned char> PackageSignatureSha384::calculateDigest(
+    std::istream& package, uintmax_t lengthOfSignedData)
 {
     package.seekg(0);
 
@@ -622,7 +618,6 @@ std::vector<unsigned char>
     }
     else
     {
-
         std::vector<uint8_t> packageVector;
         packageVector.resize(lengthOfSignedData);
 

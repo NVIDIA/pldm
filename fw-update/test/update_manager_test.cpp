@@ -258,7 +258,6 @@ TEST_F(UpdateManagerTest, processPackage_no_matching_devices_found)
 
 TEST_F(UpdateManagerTest, processPackage_new)
 {
-
     int expectedResult(0);
 
     requester::Handler<requester::Request> reqHandler2(
@@ -483,7 +482,6 @@ TEST_F(UpdateManagerTest, handleRequest_not_supported_command)
 
 TEST_F(UpdateManagerTest, setActivationStatus)
 {
-
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true);
 
@@ -504,8 +502,9 @@ TEST_F(UpdateManagerTest, updateOtherDeviceComponents)
         {"device1", true}, {"device2", false}, {"device3", true}};
 
     updateManager.processPackage("./test_pkg");
-    EXPECT_NO_THROW(
-        { updateManager.updateOtherDeviceComponents(otherDeviceMap); });
+    EXPECT_NO_THROW({
+        updateManager.updateOtherDeviceComponents(otherDeviceMap);
+    });
 }
 
 TEST_F(UpdateManagerTest, resetActivationBlocksTransition)
@@ -680,7 +679,6 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
 
 TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
 {
-
     int expectedResult = -1;
 
     requester::Handler<requester::Request> reqHandler2(

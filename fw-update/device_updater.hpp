@@ -229,13 +229,12 @@ class DeviceUpdater
      *  @param[in] updateManager - To update the status of fw update of the
      *                             device
      */
-    explicit DeviceUpdater(mctp_eid_t eid, std::ifstream& package,
-                           const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                           const ComponentImageInfos& compImageInfos,
-                           const ComponentInfo compInfo,
-                           const ComponentIdNameMap compIdNameInfo,
-                           uint32_t maxTransferSize,
-                           UpdateManager* updateManager, bool fwDebug) :
+    explicit DeviceUpdater(
+        mctp_eid_t eid, std::ifstream& package,
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        const ComponentImageInfos& compImageInfos, const ComponentInfo compInfo,
+        const ComponentIdNameMap compIdNameInfo, uint32_t maxTransferSize,
+        UpdateManager* updateManager, bool fwDebug) :
         fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(fwDebug),
         eid(eid), package(package), compImageInfos(compImageInfos),
         compInfo(compInfo), compIdNameInfo(compIdNameInfo),
@@ -307,9 +306,8 @@ class DeviceUpdater
      * @param[in] compIndex - component index
      * @param[in] compStatus - component status
      */
-    exec::task<int>
-        updateComponentCompletion(const size_t compIndex,
-                                  const ComponentUpdateStatus compStatus);
+    exec::task<int> updateComponentCompletion(
+        const size_t compIndex, const ComponentUpdateStatus compStatus);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
      *         firmware device
@@ -352,9 +350,8 @@ class DeviceUpdater
      * @param[in] respMsgLen - response length
      * @return exec::task<int>
      */
-    exec::task<int> processRequestUpdateResponse(mctp_eid_t eid,
-                                                 const pldm_msg* response,
-                                                 size_t respMsgLen);
+    exec::task<int> processRequestUpdateResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief Send PassComponentTable command request
      *
@@ -371,9 +368,8 @@ class DeviceUpdater
      * @param[in] respMsgLen - response length
      * @return exec::task<int>
      */
-    exec::task<int> processPassCompTableResponse(mctp_eid_t eid,
-                                                 const pldm_msg* response,
-                                                 size_t respMsgLen);
+    exec::task<int> processPassCompTableResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /**
      * @brief Send ActivateFirmware command request
@@ -390,9 +386,8 @@ class DeviceUpdater
      * @param[in] respMsgLen - response size
      * @return exec::task<int>
      */
-    exec::task<int> processActivateFirmwareResponse(mctp_eid_t eid,
-                                                    const pldm_msg* response,
-                                                    size_t respMsgLen);
+    exec::task<int> processActivateFirmwareResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
@@ -452,9 +447,8 @@ class DeviceUpdater
      * @param[in] response - cancel update response
      * @param[in] respMsgLen - response length
      */
-    exec::task<int> processCancelUpdateResponse(mctp_eid_t eid,
-                                                const pldm_msg* response,
-                                                size_t respMsgLen);
+    exec::task<int> processCancelUpdateResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /**
      * @brief List of components successfully updated

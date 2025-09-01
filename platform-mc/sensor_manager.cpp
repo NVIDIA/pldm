@@ -438,8 +438,8 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
     co_return PLDM_SUCCESS;
 }
 
-exec::task<int>
-    SensorManager::getSensorReading(std::shared_ptr<NumericSensor> sensor)
+exec::task<int> SensorManager::getSensorReading(
+    std::shared_ptr<NumericSensor> sensor)
 {
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
@@ -450,8 +450,8 @@ exec::task<int>
 
     if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
-        Request request(sizeof(pldm_msg_hdr) +
-                        PLDM_GET_SENSOR_READING_REQ_BYTES);
+        Request request(
+            sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
         rc = encode_get_sensor_reading_req(0, sensorId, false, requestMsg);
@@ -622,14 +622,14 @@ exec::task<int>
     co_return completionCode;
 }
 
-exec::task<int>
-    SensorManager::getStateSensorReadings(std::shared_ptr<StateSensor> sensor)
+exec::task<int> SensorManager::getStateSensorReadings(
+    std::shared_ptr<StateSensor> sensor)
 {
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
 
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
     auto rc = encode_get_state_sensor_readings_req(0, sensorId, (bitfield8_t)0,

@@ -17,8 +17,7 @@ using namespace pldm::responder;
 class TestBaseCommands : public testing::Test
 {
   protected:
-    TestBaseCommands() : event(sdeventplus::Event::get_default())
-    {}
+    TestBaseCommands() : event(sdeventplus::Event::get_default()) {}
 
     uint8_t mctpEid = 0;
     TestInstanceIdDb instanceIdDb;

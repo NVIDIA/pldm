@@ -33,9 +33,8 @@ void getRepoByType(const Repo& inRepo, Repo& outRepo, Type pdrType)
     }
 }
 
-const pldm_pdr_record* getRecordByHandle(const RepoInterface& pdrRepo,
-                                         RecordHandle recordHandle,
-                                         PdrEntry& pdrEntry)
+const pldm_pdr_record* getRecordByHandle(
+    const RepoInterface& pdrRepo, RecordHandle recordHandle, PdrEntry& pdrEntry)
 {
     uint8_t* pdrData = nullptr;
     auto record =

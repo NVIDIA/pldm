@@ -88,8 +88,7 @@ struct CustomFD
     CustomFD(CustomFD&&) = delete;
     CustomFD& operator=(CustomFD&&) = delete;
 
-    CustomFD(int fd) : fd(fd)
-    {}
+    CustomFD(int fd) : fd(fd) {}
 
     ~CustomFD()
     {
@@ -137,9 +136,8 @@ bool uintToDate(uint64_t data, uint16_t* year, uint8_t* month, uint8_t* day,
  *  @return[out] parse success and get a valid set_effecter_state_field
  *               structure, return nullopt means parse failed
  */
-std::optional<std::vector<set_effecter_state_field>>
-    parseEffecterData(const std::vector<uint8_t>& effecterData,
-                      uint8_t effecterCount);
+std::optional<std::vector<set_effecter_state_field>> parseEffecterData(
+    const std::vector<uint8_t>& effecterData, uint8_t effecterCount);
 
 /**
  *  @brief creates an error log
@@ -178,12 +176,11 @@ struct DBusMapping
     std::string propertyType; //!< D-Bus property type
 };
 
-using PropertyValue =
-    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
-                 uint64_t, double, std::string, std::vector<uint8_t>,
-                 std::vector<std::string>,
-                 std::vector<std::tuple<std::string, std::string, std::string>>,
-                 std::vector<sdbusplus::message::object_path>>;
+using PropertyValue = std::variant<
+    bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+    double, std::string, std::vector<uint8_t>, std::vector<std::string>,
+    std::vector<std::tuple<std::string, std::string, std::string>>,
+    std::vector<sdbusplus::message::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<
@@ -217,24 +214,24 @@ class DBusHandlerInterface
 
     virtual std::string getService(const char* path,
                                    const char* interface) const = 0;
-    virtual GetSubTreeResponse
-        getSubtree(const std::string& path, int depth,
-                   const std::vector<std::string>& ifaceList) const = 0;
+    virtual GetSubTreeResponse getSubtree(
+        const std::string& path, int depth,
+        const std::vector<std::string>& ifaceList) const = 0;
 
-    virtual GetSubTreePathsResponse
-        getSubTreePaths(const std::string& objectPath, int depth,
-                        const std::vector<std::string>& ifaceList) const = 0;
+    virtual GetSubTreePathsResponse getSubTreePaths(
+        const std::string& objectPath, int depth,
+        const std::vector<std::string>& ifaceList) const = 0;
 
     virtual void setDbusProperty(const DBusMapping& dBusMap,
                                  const PropertyValue& value) const = 0;
 
-    virtual PropertyValue
-        getDbusPropertyVariant(const char* objPath, const char* dbusProp,
-                               const char* dbusInterface) const = 0;
+    virtual PropertyValue getDbusPropertyVariant(
+        const char* objPath, const char* dbusProp,
+        const char* dbusInterface) const = 0;
 
-    virtual PropertyMap
-        getDbusPropertiesVariant(const char* serviceName, const char* objPath,
-                                 const char* dbusInterface) const = 0;
+    virtual PropertyMap getDbusPropertiesVariant(
+        const char* serviceName, const char* objPath,
+        const char* dbusInterface) const = 0;
     virtual bool checkDbusPropertyVariant(const char* objPath,
                                           const char* dbusProp,
                                           const char* dbusInterface) const = 0;
@@ -292,9 +289,9 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @throw sdbusplus::exception_t when it fails
      */
-    GetSubTreeResponse
-        getSubtree(const std::string& path, int depth,
-                   const std::vector<std::string>& ifaceList) const override;
+    GetSubTreeResponse getSubtree(
+        const std::string& path, int depth,
+        const std::vector<std::string>& ifaceList) const override;
 
     /** @brief Get Subtree path response from the mapper
      *
@@ -319,9 +316,9 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @throw sdbusplus::exception_t when it fails
      */
-    PropertyValue
-        getDbusPropertyVariant(const char* objPath, const char* dbusProp,
-                               const char* dbusInterface) const override;
+    PropertyValue getDbusPropertyVariant(
+        const char* objPath, const char* dbusProp,
+        const char* dbusInterface) const override;
 
     /** @brief Get All properties(type: variant) from the requested dbus
      *
@@ -333,9 +330,9 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @throw sdbusplus::exception_t when it fails
      */
-    PropertyMap
-        getDbusPropertiesVariant(const char* serviceName, const char* objPath,
-                                 const char* dbusInterface) const override;
+    PropertyMap getDbusPropertiesVariant(
+        const char* serviceName, const char* objPath,
+        const char* dbusInterface) const override;
 
     /** @brief The template function to get property from the requested dbus
      *         path
@@ -449,10 +446,8 @@ PropertyValue jsonEntryToDbusVal(std::string_view type,
  *  @param[in] repo - pointer to BMC's primary PDR repo.
  *  @return array[array[uint8_t]] - StateEffecterPDRs
  */
-std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t tid,
-                                                       uint16_t entityID,
-                                                       uint16_t stateSetId,
-                                                       const pldm_pdr* repo);
+std::vector<std::vector<uint8_t>> findStateEffecterPDR(
+    uint8_t tid, uint16_t entityID, uint16_t stateSetId, const pldm_pdr* repo);
 /** @brief Find State Sensor PDR
  *  @param[in] tid - PLDM terminus ID.
  *  @param[in] entityID - entity that can be associated with PLDM State set.
@@ -460,10 +455,8 @@ std::vector<std::vector<uint8_t>> findStateEffecterPDR(uint8_t tid,
  *  @param[in] repo - pointer to BMC's primary PDR repo.
  *  @return array[array[uint8_t]] - StateSensorPDRs
  */
-std::vector<std::vector<uint8_t>> findStateSensorPDR(uint8_t tid,
-                                                     uint16_t entityID,
-                                                     uint16_t stateSetId,
-                                                     const pldm_pdr* repo);
+std::vector<std::vector<uint8_t>> findStateSensorPDR(
+    uint8_t tid, uint16_t entityID, uint16_t stateSetId, const pldm_pdr* repo);
 
 /** @brief Find sensor id from a state sensor PDR
  *

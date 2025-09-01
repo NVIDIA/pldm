@@ -51,8 +51,8 @@ class GetAlertStatus : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_ALERT_STATUS_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_ALERT_STATUS_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
         auto rc = encode_get_alert_status_req(instanceId, versionId, request,
@@ -65,9 +65,9 @@ class GetAlertStatus : public CommandInterface
         uint8_t completionCode = 0;
         uint32_t rack_entry = 0;
         uint32_t pri_cec_node = 0;
-        auto rc = decode_get_alert_status_resp(responsePtr, payloadLength,
-                                               &completionCode, &rack_entry,
-                                               &pri_cec_node);
+        auto rc = decode_get_alert_status_resp(
+            responsePtr, payloadLength, &completionCode, &rack_entry,
+            &pri_cec_node);
 
         if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
         {
@@ -106,16 +106,14 @@ class GetFileTable : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-
         return {PLDM_ERROR, {}};
     }
 
-    void parseResponseMsg(pldm_msg*, size_t) override
-    {}
+    void parseResponseMsg(pldm_msg*, size_t) override {}
     void exec()
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_FILE_TABLE_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_FILE_TABLE_REQ_BYTES);
 
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
@@ -155,8 +153,8 @@ class GetFileTable : public CommandInterface
             return;
         }
 
-        auto tableData = reinterpret_cast<uint8_t*>((responsePtr->payload) +
-                                                    table_data_start_offset);
+        auto tableData = reinterpret_cast<uint8_t*>(
+            (responsePtr->payload) + table_data_start_offset);
         printFileAttrTable(tableData, fileTableDataLength);
     }
 
@@ -184,7 +182,7 @@ class GetFileTable : public CommandInterface
             startptr += sizeof(filetableData->file_name_length);
 
             fdata["FileName"] = (std::string(
-                reinterpret_cast<char const*>(startptr), nameLength));
+                reinterpret_cast<const char*>(startptr), nameLength));
             startptr += nameLength;
 
             auto fileSize = *(reinterpret_cast<uint32_t*>(startptr));

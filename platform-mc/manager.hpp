@@ -135,11 +135,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      * be set by this function.
      * @return int Returns 0 on success, or an error code on failure.
      */
-    int handleActiveFWVersionChangeEvent(const pldm_msg* request,
-                                         size_t payloadLength,
-                                         uint8_t /* formatVersion */,
-                                         uint8_t tid, size_t eventDataOffset,
-                                         uint8_t& platformEventStatus)
+    int handleActiveFWVersionChangeEvent(
+        const pldm_msg* request, size_t payloadLength,
+        uint8_t /* formatVersion */, uint8_t tid, size_t eventDataOffset,
+        uint8_t& platformEventStatus)
     {
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;
@@ -163,11 +162,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return PLDM_SUCCESS;
     }
 
-    int handlePldmMessagePollEvent(const pldm_msg* request,
-                                   size_t payloadLength,
-                                   uint8_t /* formatVersion */, uint8_t tid,
-                                   size_t eventDataOffset,
-                                   uint8_t& platformEventStatus)
+    int handlePldmMessagePollEvent(
+        const pldm_msg* request, size_t payloadLength,
+        uint8_t /* formatVersion */, uint8_t tid, size_t eventDataOffset,
+        uint8_t& platformEventStatus)
     {
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;

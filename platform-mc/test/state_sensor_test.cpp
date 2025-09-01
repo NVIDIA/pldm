@@ -55,27 +55,27 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
         0x1,                   // PDRHeaderVersion
         PLDM_STATE_SENSOR_PDR, // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                   // recordChangeNumber
         0x0,
-        0x11, // dataLength
+        0x11,                  // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                     // PLDMTerminusHandle
         static_cast<uint8_t>(sensorId & 0xFF),
         static_cast<uint8_t>((sensorId >> 8) & 0xFF),
         PLDM_ENTITY_MEMORY_CONTROLLER,
-        0, // entityType=Memory controller (143)
+        0,            // entityType=Memory controller (143)
         1,
-        0, // entityInstanceNumber
+        0,            // entityInstanceNumber
         0x1,
         0x0,          // containerID=1
         PLDM_NO_INIT, // sensorInit
         false,        // sensorAuxiliaryNamesPDR
         1,            // compositeSensorCount
         static_cast<uint8_t>(PLDM_STATESET_ID_PRESENCE & 0xFF),
-        static_cast<uint8_t>((PLDM_STATESET_ID_PRESENCE >> 8) &
-                             0xFF), // stateSetID (13)
-        0x1,                        // possibleStatesSize
-        0x3                         // possibleStates
+        static_cast<uint8_t>(
+            (PLDM_STATESET_ID_PRESENCE >> 8) & 0xFF), // stateSetID (13)
+        0x1,                                          // possibleStatesSize
+        0x3                                           // possibleStates
     };
 
     t1.pdrs.emplace_back(pdr1);

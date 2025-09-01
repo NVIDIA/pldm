@@ -208,8 +208,8 @@ void buildAllCodeUpdateSensorPDR(oem_ibm_platform::Handler* platformHandler,
                                  uint16_t stateSetID, pdr_utils::Repo& repo)
 {
     size_t pdrSize = 0;
-    pdrSize =
-        sizeof(pldm_state_sensor_pdr) + sizeof(state_sensor_possible_states);
+    pdrSize = sizeof(pldm_state_sensor_pdr) +
+              sizeof(state_sensor_possible_states);
     std::vector<uint8_t> entry{};
     entry.resize(pdrSize);
     pldm_state_sensor_pdr* pdr =
@@ -318,9 +318,8 @@ int pldm::responder::oem_ibm_platform::Handler::sendEventToHost(
             if (rc || completionCode)
             {
                 std::cerr << "Failed to decode_platform_event_message_resp: "
-                          << " for code update event rc=" << rc
-                          << ", cc=" << static_cast<unsigned>(completionCode)
-                          << std::endl;
+                          << " for code update event rc=" << rc << ", cc="
+                          << static_cast<unsigned>(completionCode) << std::endl;
             }
         };
     auto rc = handler->registerRequest(
@@ -367,9 +366,9 @@ void pldm::responder::oem_ibm_platform::Handler::sendStateSensorEvent(
     eventClass->event_state = eventState;
     eventClass->previous_event_state = prevEventState;
     auto instanceId = requester.getInstanceId(mctp_eid);
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
-                                    sensorEventDataVec.size());
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
+        sensorEventDataVec.size());
     auto rc = encodeEventMsg(PLDM_SENSOR_EVENT, sensorEventDataVec, requestMsg,
                              instanceId);
     if (rc != PLDM_SUCCESS)
@@ -433,7 +432,6 @@ void pldm::responder::oem_ibm_platform::Handler::_processSystemReboot(
     }
     catch (const std::exception& e)
     {
-
         std::cerr << "Chassis State transition to Off failed,"
                   << "unable to set property RequestedPowerTransition"
                   << "ERROR=" << e.what() << "\n";
@@ -558,9 +556,9 @@ void pldm::responder::oem_ibm_platform::Handler::resetWatchDogTimer()
 void pldm::responder::oem_ibm_platform::Handler::disableWatchDogTimer()
 {
     setEventReceiverCnt = 0;
-    pldm::utils::DBusMapping dbusMapping{"/xyz/openbmc_project/watchdog/host0",
-                                         "xyz.openbmc_project.State.Watchdog",
-                                         "Enabled", "bool"};
+    pldm::utils::DBusMapping dbusMapping{
+        "/xyz/openbmc_project/watchdog/host0",
+        "xyz.openbmc_project.State.Watchdog", "Enabled", "bool"};
     bool wdStatus = watchDogRunning();
 
     if (!wdStatus)

@@ -26,9 +26,9 @@ namespace responder
 namespace platform
 {
 
-using generatePDR = std::function<void(const pldm::utils::DBusHandler& dBusIntf,
-                                       const pldm::utils::Json& json,
-                                       pdr_utils::RepoInterface& repo)>;
+using generatePDR = std::function<void(
+    const pldm::utils::DBusHandler& dBusIntf, const pldm::utils::Json& json,
+    pdr_utils::RepoInterface& repo)>;
 
 using EffecterId = uint16_t;
 using DbusObjMaps =
@@ -260,10 +260,9 @@ class Handler : public CmdHandler
      *                               message
      *  @return PLDM completion code
      */
-    int pldmPDRRepositoryChgEvent(const pldm_msg* request, size_t payloadLength,
-                                  uint8_t formatVersion, uint8_t tid,
-                                  size_t eventDataOffset,
-                                  uint8_t& platformEventStatus);
+    int pldmPDRRepositoryChgEvent(
+        const pldm_msg* request, size_t payloadLength, uint8_t formatVersion,
+        uint8_t tid, size_t eventDataOffset, uint8_t& platformEventStatus);
 
     /** @brief Handler for extracting the PDR handles from changeEntries
      *
@@ -331,9 +330,8 @@ class Handler : public CmdHandler
             {
                 std::cerr << "The requester sent wrong composite effecter"
                           << " count for the effecter, EFFECTER_ID="
-                          << (unsigned)effecterId
-                          << "COMP_EFF_CNT=" << (unsigned)compEffecterCnt
-                          << "\n";
+                          << (unsigned)effecterId << "COMP_EFF_CNT="
+                          << (unsigned)compEffecterCnt << "\n";
                 return PLDM_ERROR_INVALID_DATA;
             }
             break;
@@ -356,8 +354,8 @@ class Handler : public CmdHandler
                 // computation is based on table 79 from DSP0248 v1.1.1
                 uint8_t bitfieldIndex =
                     stateField[currState].effecter_state / 8;
-                uint8_t bit =
-                    stateField[currState].effecter_state - (8 * bitfieldIndex);
+                uint8_t bit = stateField[currState].effecter_state -
+                              (8 * bitfieldIndex);
                 if (states->possible_states_size < bitfieldIndex ||
                     !(states->states[bitfieldIndex].byte & (1 << bit)))
                 {

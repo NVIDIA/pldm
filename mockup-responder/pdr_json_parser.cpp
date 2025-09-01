@@ -42,7 +42,6 @@ const Json PdrJsonParser::empty{};
 
     for (const auto& e : nEffecterPDRs)
     {
-
         auto entries = e.value("entries", emptyList);
 
         for (Json& f : entries)
@@ -56,7 +55,6 @@ const Json PdrJsonParser::empty{};
 
     for (const auto& e : sEffecterPDRs)
     {
-
         auto entries = e.value("entries", emptyList);
 
         for (auto& f : entries)
@@ -455,9 +453,9 @@ void PdrJsonParser::parseEntityAssociation(Json& json, ::pldm_pdr* pdrRepo)
     assert(containedEntityCount <= 255);
     uint8_t count = containedEntityCount;
 
-    std::vector<uint8_t> pdr(sizeof(pldm_pdr_hdr) +
-                             sizeof(pldm_pdr_entity_association) +
-                             sizeof(pldm_entity) * containedEntityCount);
+    std::vector<uint8_t> pdr(
+        sizeof(pldm_pdr_hdr) + sizeof(pldm_pdr_entity_association) +
+        sizeof(pldm_entity) * containedEntityCount);
 
     size_t pdrSize = pdr.size();
     auto hdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
@@ -521,9 +519,9 @@ void PdrJsonParser::parseEntry(::pldm_pdr* pdrRepo, Json json)
     std::vector<uint8_t> entry{};
     entry.resize(pdrSize);
 
-    std::vector<uint8_t> pdr(sizeof(struct pldm_state_effecter_pdr) -
-                             sizeof(uint8_t) +
-                             sizeof(struct state_effecter_possible_states));
+    std::vector<uint8_t> pdr(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
 
     pldm_state_effecter_pdr* rec =
         reinterpret_cast<pldm_state_effecter_pdr*>(entry.data());

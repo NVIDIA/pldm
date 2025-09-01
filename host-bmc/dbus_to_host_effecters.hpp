@@ -49,7 +49,7 @@ struct EffecterInfo
     uint16_t entityInstance; //!< Entity instance for the host effecter
     uint8_t compEffecterCnt; //!< Composite effecter count
     std::vector<DBusEffecterMapping>
-        dbusInfo; //!< D-Bus information for the effecter id
+        dbusInfo;            //!< D-Bus information for the effecter id
 };
 
 /** @class HostEffecterParser
@@ -135,10 +135,9 @@ class HostEffecterParser
      * @param[in] effecterId - host effecter id
      * @return - PLDM status code
      */
-    virtual int
-        setHostStateEffecter(size_t effecterInfoIndex,
-                             std::vector<set_effecter_state_field>& stateField,
-                             uint16_t effecterId);
+    virtual int setHostStateEffecter(
+        size_t effecterInfoIndex,
+        std::vector<set_effecter_state_field>& stateField, uint16_t effecterId);
 
     /* @brief Fetches the new state value and the index in stateField set which
      *        needs to be set with the new value in the setStateEffecter call
@@ -160,11 +159,9 @@ class HostEffecterParser
      * @param[in] dbusInfoIndex - index of dbusInfo within effecterInfo
      * @param[in] effecterId - host effecter id
      */
-    virtual void createHostEffecterMatch(const std::string& objectPath,
-                                         const std::string& interface,
-                                         size_t effecterInfoIndex,
-                                         size_t dbusInfoIndex,
-                                         uint16_t effecterId);
+    virtual void createHostEffecterMatch(
+        const std::string& objectPath, const std::string& interface,
+        size_t effecterInfoIndex, size_t dbusInfoIndex, uint16_t effecterId);
 
   protected:
     pldm::InstanceIdDb*

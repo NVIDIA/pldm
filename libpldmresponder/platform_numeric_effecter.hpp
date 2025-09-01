@@ -31,9 +31,9 @@ namespace platform_numeric_effecter
  *          failure, PropertyValue: The value to be set
  */
 template <typename T>
-std::pair<int, std::optional<pldm::utils::PropertyValue>>
-    getEffecterRawValue(const pldm_numeric_effecter_value_pdr* pdr,
-                        T& effecterValue, std::string propertyType)
+std::pair<int, std::optional<pldm::utils::PropertyValue>> getEffecterRawValue(
+    const pldm_numeric_effecter_value_pdr* pdr, T& effecterValue,
+    std::string propertyType)
 {
     // X = Round [ (Y - B) / m ]
     // refer to DSP0248_1.2.0 27.8
@@ -183,10 +183,9 @@ std::pair<int, std::optional<pldm::utils::PropertyValue>>
  *  @return std::pair<int, std::optional<PropertyValue>> - rc:Success or
  *          failure, PropertyValue: The value to be set
  */
-std::pair<int, std::optional<pldm::utils::PropertyValue>>
-    convertToDbusValue(const pldm_numeric_effecter_value_pdr* pdr,
-                       uint8_t effecterDataSize, uint8_t* effecterValue,
-                       std::string propertyType)
+std::pair<int, std::optional<pldm::utils::PropertyValue>> convertToDbusValue(
+    const pldm_numeric_effecter_value_pdr* pdr, uint8_t effecterDataSize,
+    uint8_t* effecterValue, std::string propertyType)
 {
     if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT8)
     {
@@ -244,11 +243,10 @@ std::pair<int, std::optional<pldm::utils::PropertyValue>>
  * terms of PLDM completion codes if atleast one state fails to be set
  */
 template <class DBusInterface, class Handler>
-int setNumericEffecterValueHandler(const DBusInterface& dBusIntf,
-                                   Handler& handler, uint16_t effecterId,
-                                   uint8_t effecterDataSize,
-                                   uint8_t* effecterValue,
-                                   size_t effecterValueLength)
+int setNumericEffecterValueHandler(
+    const DBusInterface& dBusIntf, Handler& handler, uint16_t effecterId,
+    uint8_t effecterDataSize, uint8_t* effecterValue,
+    size_t effecterValueLength)
 {
     constexpr auto effecterValueArrayLength = 4;
     pldm_numeric_effecter_value_pdr* pdr = nullptr;
@@ -310,7 +308,6 @@ int setNumericEffecterValueHandler(const DBusInterface& dBusIntf,
         }
         try
         {
-
             dBusIntf.setDbusProperty(dbusMapping, dbusValue.value());
         }
         catch (const std::exception& e)

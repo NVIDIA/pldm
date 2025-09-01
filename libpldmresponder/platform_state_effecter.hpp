@@ -96,8 +96,8 @@ int setStateEffecterStatesHandler(
             std::vector<StateSetNum> allowed{};
             // computation is based on table 79 from DSP0248 v1.1.1
             uint8_t bitfieldIndex = stateField[currState].effecter_state / 8;
-            uint8_t bit =
-                stateField[currState].effecter_state - (8 * bitfieldIndex);
+            uint8_t bit = stateField[currState].effecter_state -
+                          (8 * bitfieldIndex);
 
             uint8_t stateValue{0};
             if (states->possible_states_size > bitfieldIndex)

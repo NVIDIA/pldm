@@ -82,9 +82,9 @@ bool OtherDeviceUpdateManager::activate()
     {
         auto& path = x.first;
 
-        pldm::utils::DBusMapping dbusMapping{path,
-                                             Server::Activation::interface,
-                                             "RequestedActivation", "string"};
+        pldm::utils::DBusMapping dbusMapping{
+            path, Server::Activation::interface, "RequestedActivation",
+            "string"};
         info("Activating : OBJPATH = {PATH}", "PATH", path);
         try
         {
@@ -127,7 +127,6 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(
         if (otherDevices[objPath]->activationState ==
             Server::Activation::Activations::Active)
         {
-
             /*
              * Conditions to add awaitToActivate message for Non PLDM Components
              * in Summary Log: Condition 1: Targets vector is empty implying
@@ -169,7 +168,6 @@ void OtherDeviceUpdateManager::onActivationChangedMsg(
 void OtherDeviceUpdateManager::onActivationChanged(
     const std::string& objPath, const pldm::dbus::PropertyMap& properties)
 {
-
     std::optional<std::string> activationString;
     std::optional<std::string> reqActivation;
     auto prop = properties.find("Activation");
@@ -317,7 +315,7 @@ std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
     UUID uuid{};
     SKU sku{};
     for (const auto& [descriptorType, descriptorValue] :
-         deviceIDDescriptors) // For each Descriptors
+         deviceIDDescriptors)                 // For each Descriptors
     {
         if (descriptorType == PLDM_FWUP_UUID) // Check UUID
         {
@@ -691,9 +689,9 @@ void OtherDeviceUpdateManager::getValidPaths(
             pldm::utils::mapperInterface, "GetSubTreePaths");
         method.append("/xyz/openbmc_project/software/other");
         method.append(0); // Depth 0 to search all
-        method.append(
-            std::vector<std::string>({sdbusplus::xyz::openbmc_project::Common::
-                                          server::UUID::interface}));
+        method.append(std::vector<std::string>(
+            {sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                 interface}));
         auto reply = bus.call(method);
         reply.read(paths);
     }

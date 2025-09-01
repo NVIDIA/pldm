@@ -221,10 +221,9 @@ void HostEffecterParser::processHostEffecterChangeNotification(
     }
 }
 
-uint8_t
-    HostEffecterParser::findNewStateValue(size_t effecterInfoIndex,
-                                          size_t dbusInfoIndex,
-                                          const PropertyValue& propertyValue)
+uint8_t HostEffecterParser::findNewStateValue(
+    size_t effecterInfoIndex, size_t dbusInfoIndex,
+    const PropertyValue& propertyValue)
 {
     const auto& propValues = hostEffecterInfo[effecterInfoIndex]
                                  .dbusInfo[dbusInfoIndex]
@@ -309,11 +308,9 @@ int HostEffecterParser::setHostStateEffecter(
     return rc;
 }
 
-void HostEffecterParser::createHostEffecterMatch(const std::string& objectPath,
-                                                 const std::string& interface,
-                                                 size_t effecterInfoIndex,
-                                                 size_t dbusInfoIndex,
-                                                 uint16_t effecterId)
+void HostEffecterParser::createHostEffecterMatch(
+    const std::string& objectPath, const std::string& interface,
+    size_t effecterInfoIndex, size_t dbusInfoIndex, uint16_t effecterId)
 {
     using namespace sdbusplus::bus::match::rules;
     effecterInfoMatch.emplace_back(

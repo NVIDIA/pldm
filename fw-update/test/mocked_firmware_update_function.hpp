@@ -33,8 +33,7 @@ using ::testing::Return;
 class MockedFirmwareUpdateFunction
 {
   public:
-    virtual ~MockedFirmwareUpdateFunction()
-    {}
+    virtual ~MockedFirmwareUpdateFunction() {}
 
     MOCK_METHOD10(encode_request_update_req,
                   int(uint8_t, uint32_t, uint16_t, uint8_t, uint16_t, uint8_t,

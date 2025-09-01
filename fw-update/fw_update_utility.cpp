@@ -20,10 +20,9 @@
 namespace pldm::fw_update
 {
 
-exec::task<int> sendRecvPldmMsgOverMctp(RequesterHandler& handle,
-                                        mctp_eid_t eid, Request& request,
-                                        const pldm_msg** responseMsg,
-                                        size_t* responseLen)
+exec::task<int> sendRecvPldmMsgOverMctp(
+    RequesterHandler& handle, mctp_eid_t eid, Request& request,
+    const pldm_msg** responseMsg, size_t* responseLen)
 {
     int rc = 0;
     try

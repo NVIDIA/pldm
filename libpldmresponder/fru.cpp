@@ -269,10 +269,9 @@ void FruImpl::getFRUTable(Response& response)
                 iter);
 }
 
-int FruImpl::getFRURecordByOption(std::vector<uint8_t>& fruData,
-                                  uint16_t /* fruTableHandle */,
-                                  uint16_t recordSetIdentifer,
-                                  uint8_t recordType, uint8_t fieldType)
+int FruImpl::getFRURecordByOption(
+    std::vector<uint8_t>& fruData, uint16_t /* fruTableHandle */,
+    uint16_t recordSetIdentifer, uint8_t recordType, uint8_t fieldType)
 {
     // FRU table is built lazily, build if not done.
     buildFRUTable();

@@ -68,7 +68,7 @@ struct MctpEidInfo
     MctpMedium medium;
     MctpBinding binding;
 
-    friend bool operator<(MctpEidInfo const& lhs, MctpEidInfo const& rhs)
+    friend bool operator<(const MctpEidInfo& lhs, const MctpEidInfo& rhs)
     {
         if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
         {
@@ -230,9 +230,8 @@ class InventoryManager
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
-    exec::task<int>
-        startFirmwareDiscoveryFlow(mctp_eid_t eid,
-                                   dbus::MctpInterfaces mctpInterfaces);
+    exec::task<int> startFirmwareDiscoveryFlow(
+        mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces);
 
     /** @brief Starts get Active Firmware Version Flow
      *
@@ -258,9 +257,8 @@ class InventoryManager
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
      */
-    exec::task<int> queryDeviceIdentifiers(mctp_eid_t eid,
-                                           std::string& messageError,
-                                           std::string& resolution);
+    exec::task<int> queryDeviceIdentifiers(
+        mctp_eid_t eid, std::string& messageError, std::string& resolution);
 
     /** @brief Send GetFirmwareParameters command request
      *
@@ -270,11 +268,10 @@ class InventoryManager
      *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware
      * version after receiving platform event
      */
-    exec::task<int> getFirmwareParameters(mctp_eid_t eid,
-                                          std::string& messageError,
-                                          std::string& resolution,
-                                          dbus::MctpInterfaces& mctpInterfaces,
-                                          bool refreshFWVersionOnly = false);
+    exec::task<int> getFirmwareParameters(
+        mctp_eid_t eid, std::string& messageError, std::string& resolution,
+        dbus::MctpInterfaces& mctpInterfaces,
+        bool refreshFWVersionOnly = false);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;

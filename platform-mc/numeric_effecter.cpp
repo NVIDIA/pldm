@@ -234,9 +234,9 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
 
     if (unitIntf)
     {
-        unitIntf->handleGetNumericEffecterValue(effecterOperState,
-                                                rawToBase(pendingValue),
-                                                rawToBase(presentValue));
+        unitIntf->handleGetNumericEffecterValue(
+            effecterOperState, rawToBase(pendingValue),
+            rawToBase(presentValue));
     }
 }
 
@@ -259,11 +259,11 @@ void NumericEffecter::handleErrGetNumericEffecterValue()
     }
 }
 
-exec::task<int>
-    NumericEffecter::setNumericEffecterEnable(pldm_effecter_oper_state state)
+exec::task<int> NumericEffecter::setNumericEffecterEnable(
+    pldm_effecter_oper_state state)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_SET_NUMERIC_EFFECTER_ENABLE_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_EFFECTER_ENABLE_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_numeric_effecter_enable_req(0, effecterId, state,
                                                      requestMsg);
@@ -310,8 +310,8 @@ exec::task<int>
 
 exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_SET_NUMERIC_EFFECTER_VALUE_MAX_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_EFFECTER_VALUE_MAX_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     union_effecter_data_size effecterValueRaw;
     size_t payloadLength;
@@ -343,9 +343,9 @@ exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
             payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
             break;
     }
-    auto rc = encode_set_numeric_effecter_value_req(0, effecterId, dataSize,
-                                                    &effecterValueRaw.value_u8,
-                                                    requestMsg, payloadLength);
+    auto rc = encode_set_numeric_effecter_value_req(
+        0, effecterId, dataSize, &effecterValueRaw.value_u8, requestMsg,
+        payloadLength);
     if (rc)
     {
         lg2::error(
@@ -390,8 +390,8 @@ exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 
 exec::task<int> NumericEffecter::getNumericEffecterValue()
 {
-    Request request(sizeof(pldm_msg_hdr) +
-                    PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES);
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_numeric_effecter_value_req(0, effecterId, requestMsg);
     if (rc)

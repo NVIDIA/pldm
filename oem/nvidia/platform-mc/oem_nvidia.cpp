@@ -60,7 +60,6 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
                 static_cast<uint8_t>(
                     OemPowerCapPersistence::OEM_POWERCAP_EDPP_NONVOLATILE))
         {
-
             it = effecters.erase(it);
             continue;
         }
@@ -269,7 +268,6 @@ void nvidiaInitTerminus(Terminus& terminus)
         staticPowerHintCpuClockFrequencyEffecter != nullptr ||
         staticPowerHintPowerEstimationEffecter != nullptr)
     {
-
         if (staticPowerHintTemperatureEffecter == nullptr)
         {
             lg2::error("Cannot find static power hint Temperature effecter");

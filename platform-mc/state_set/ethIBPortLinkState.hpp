@@ -161,10 +161,10 @@ class StateSetEthIBPortLinkState : public StateSet
         return objectName;
     }
 
-    virtual void
-        associateNumericSensor(const EntityInfo& entityInfo,
-                               std::vector<std::shared_ptr<NumericSensor>>&
-                                   numericSensors) override final
+    virtual void associateNumericSensor(
+        const EntityInfo& entityInfo,
+        std::vector<std::shared_ptr<NumericSensor>>& numericSensors)
+        override final
     {
         for (auto& sensor : numericSensors)
         {

@@ -72,17 +72,15 @@ class MockupResponder
                     sdbusplus::asio::object_server& server, uint8_t eid,
                     std::string pdrPath, uint16_t terminusMaxBufferSize,
                     uint8_t* uuid);
-    ~MockupResponder()
-    {}
+    ~MockupResponder() {}
 
     int initSocket();
 
-    std::optional<std::vector<uint8_t>>
-        processRxMsg(const std::vector<uint8_t>& rxMsg);
+    std::optional<std::vector<uint8_t>> processRxMsg(
+        const std::vector<uint8_t>& rxMsg);
 
-    std::optional<std::vector<uint8_t>>
-        unsupportedCommandHandler(size_t requestLen,
-                                  pldm_header_info& hdrFields);
+    std::optional<std::vector<uint8_t>> unsupportedCommandHandler(
+        size_t requestLen, pldm_header_info& hdrFields);
 
     void readJsonPdrs(std::string& path);
 

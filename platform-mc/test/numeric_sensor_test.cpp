@@ -59,21 +59,21 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -98,12 +98,12 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x80,
         0x3f, // offset=1.0
         0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
-        0, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
+        0,    // accuracy
+        0,    // plusTolerance
+        0,    // minusTolerance
+        2,    // hysteresis
+        0,    // supportedThresholds
+        0,    // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -152,21 +152,21 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0, // entityType=Power Supply(120)
+        0,                           // entityType=Power Supply(120)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
@@ -191,12 +191,12 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x80,
         0x3f, // offset=1.0
         0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
-        0, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
+        0,    // accuracy
+        0,    // plusTolerance
+        0,    // minusTolerance
+        2,    // hysteresis
+        0,    // supportedThresholds
+        0,    // thresholdAndHysteresisVolatility
         0,
         0,
         0x80,
@@ -320,21 +320,21 @@ TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
         0x0,
         0x0,
         0x0,
-        0x1,                     // record handle
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
+        0x1,                         // record handle
+        0x1,                         // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                         // recordChangeNumber
         0x0,
-        56, // dataLength
+        56,                          // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                           // PLDMTerminusHandle
         0x1,
-        0x0, // sensorID=1
+        0x0,                         // sensorID=1
         PLDM_ENTITY_MEMORY_CONTROLLER,
-        0, // entityType=Memory Controller(143)
+        0,                           // entityType=Memory Controller(143)
         1,
-        0, // entityInstanceNumber
+        0,                           // entityInstanceNumber
         0x1,
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit

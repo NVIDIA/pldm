@@ -32,10 +32,9 @@ namespace pldm
 namespace fw_update
 {
 
-exec::task<int>
-    ComponentUpdater::sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
-                                              const pldm_msg** responseMsg,
-                                              size_t* responseLen)
+exec::task<int> ComponentUpdater::sendRecvPldmMsgOverMctp(
+    mctp_eid_t eid, Request& request, const pldm_msg** responseMsg,
+    size_t* responseLen)
 {
     int rc = 0;
     try
@@ -117,9 +116,9 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
     compVerStrInfo.ptr = reinterpret_cast<const uint8_t*>(compVersion.data());
     compVerStrInfo.length = static_cast<uint8_t>(compVersion.size());
 
-    Request request(sizeof(pldm_msg_hdr) +
-                    sizeof(struct pldm_update_component_req) +
-                    compVerStrInfo.length);
+    Request request(
+        sizeof(pldm_msg_hdr) + sizeof(struct pldm_update_component_req) +
+        compVerStrInfo.length);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
     size_t respMsgLen = 0;
@@ -172,9 +171,8 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
     co_return rc;
 }
 
-int ComponentUpdater::processUpdateComponentResponse(mctp_eid_t eid,
-                                                     const pldm_msg* response,
-                                                     size_t respMsgLen)
+int ComponentUpdater::processUpdateComponentResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -378,13 +376,13 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     response.resize(sizeof(pldm_msg_hdr) + sizeof(completionCode) + length);
     responseMsg = reinterpret_cast<pldm_msg*>(response.data());
     package.seekg(compOffset + offset);
-    package.read(reinterpret_cast<char*>(response.data() +
-                                         sizeof(pldm_msg_hdr) +
-                                         sizeof(completionCode)),
-                 length - padBytes);
-    rc = encode_request_firmware_data_resp(request->hdr.instance_id,
-                                           completionCode, responseMsg,
-                                           sizeof(completionCode));
+    package.read(
+        reinterpret_cast<char*>(
+            response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode)),
+        length - padBytes);
+    rc = encode_request_firmware_data_resp(
+        request->hdr.instance_id, completionCode, responseMsg,
+        sizeof(completionCode));
     if (rc)
     {
         error(
@@ -677,9 +675,9 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
 
 void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
 {
-    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
-                                         applyFailed, "", PLDM_APPLY_COMPLETE,
-                                         applyResult);
+    updateManager->createMessageRegistry(
+        eid, fwDeviceIDRecord, componentIndex, applyFailed, "",
+        PLDM_APPLY_COMPLETE, applyResult);
     error(
         "Failed to apply component endpoint ID '{EID}' and version '{COMPONENT_VERSION}', error - {ERROR}",
         "EID", eid, "ERROR", applyResult);
@@ -811,19 +809,19 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
     if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
-        auto validateApplyStatusSuccess = [this, applyResult, compVersion,
-                                           compActivationModification](
-                                              uint8_t currentFDState) {
-            if (currentFDState == PLDM_FD_STATE_READY_XFER)
-            {
-                applyCompleteSucceededStatusHandler(compVersion,
-                                                    compActivationModification);
-            }
-            else
-            {
-                applyCompleteFailedStatusHandler(applyResult);
-            }
-        };
+        auto validateApplyStatusSuccess =
+            [this, applyResult, compVersion,
+             compActivationModification](uint8_t currentFDState) {
+                if (currentFDState == PLDM_FD_STATE_READY_XFER)
+                {
+                    applyCompleteSucceededStatusHandler(
+                        compVersion, compActivationModification);
+                }
+                else
+                {
+                    applyCompleteFailedStatusHandler(applyResult);
+                }
+            };
 
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -1080,8 +1078,8 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+        auto [messageStatus, oemMessageId, oemMessageError,
+              oemResolution] = getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
         if (messageStatus)
         {
             updateManager->createMessageRegistryResourceErrors(
@@ -1111,11 +1109,9 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     co_return rc;
 }
 
-int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
-                                               const pldm_msg* response,
-                                               size_t respMsgLen,
-                                               uint8_t& currentFDState,
-                                               uint8_t& progressPercent)
+int ComponentUpdater::processGetStatusResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t& currentFDState, uint8_t& progressPercent)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -1133,10 +1129,10 @@ int ComponentUpdater::processGetStatusResponse(mctp_eid_t eid,
     uint8_t auxStateStatus = 0;
     uint8_t reasonCode = 0;
     bitfield32_t updateOptionFlagsEnabled{0};
-    auto rc = decode_get_status_resp(response, respMsgLen, &completionCode,
-                                     &currentFDState, &previousState, &auxState,
-                                     &auxStateStatus, &progressPercent,
-                                     &reasonCode, &updateOptionFlagsEnabled);
+    auto rc = decode_get_status_resp(
+        response, respMsgLen, &completionCode, &currentFDState, &previousState,
+        &auxState, &auxStateStatus, &progressPercent, &reasonCode,
+        &updateOptionFlagsEnabled);
     if (rc)
     {
         error("Decoding GetStatus response failed, EID={EID}, "

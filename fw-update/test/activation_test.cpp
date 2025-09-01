@@ -37,8 +37,7 @@ using ::testing::Throw;
 class ActivationTest : public testing::Test
 {
   protected:
-    ActivationTest() : updateManager()
-    {}
+    ActivationTest() : updateManager() {}
 
     ~ActivationTest() override = default;
 
@@ -230,8 +229,8 @@ TEST_F(ActivationTest, ActivationBlocksTransition_Constructor)
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
 
     EXPECT_NO_THROW({
-        ActivationBlocksTransition activationBlocksTransition(busMock, objPath,
-                                                              &updateManager);
+        ActivationBlocksTransition activationBlocksTransition(
+            busMock, objPath, &updateManager);
     });
 }
 
@@ -256,8 +255,8 @@ TEST_F(ActivationTest,
         .WillOnce(Return(0));
 
     EXPECT_NO_THROW({
-        ActivationBlocksTransition activationBlocksTransition(busMock, objPath,
-                                                              &updateManager);
+        ActivationBlocksTransition activationBlocksTransition(
+            busMock, objPath, &updateManager);
     });
 }
 
@@ -275,7 +274,7 @@ TEST_F(
         .WillOnce(Throw(testex));
 
     EXPECT_NO_THROW({
-        ActivationBlocksTransition activationBlocksTransition(busMock, objPath,
-                                                              &updateManager);
+        ActivationBlocksTransition activationBlocksTransition(
+            busMock, objPath, &updateManager);
     });
 }

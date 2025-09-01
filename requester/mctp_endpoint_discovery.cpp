@@ -112,9 +112,8 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
     }
 }
 
-MctpEndpointProps
-    MctpDiscovery::getMctpEndpointProps(const std::string& service,
-                                        const std::string& path)
+MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
+    const std::string& service, const std::string& path)
 {
     try
     {

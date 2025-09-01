@@ -427,7 +427,7 @@ int setBootSide(uint16_t entityInstance, uint8_t currState,
 }
 
 template <typename... T>
-int executeCmd(T const&... t)
+int executeCmd(const T&... t)
 {
     std::stringstream cmd;
     ((cmd << t << " "), ...) << std::endl;

@@ -49,8 +49,8 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
         return nullptr;
     }
 
-    auto& [containerId, entityType, entityInstance] =
-        std::get<0>(sensor->sensorInfo);
+    auto& [containerId, entityType,
+           entityInstance] = std::get<0>(sensor->sensorInfo);
 
 #ifdef OEM_NVIDIA
     if (stateSetId == PLDM_STATESET_ID_PRESENCE &&

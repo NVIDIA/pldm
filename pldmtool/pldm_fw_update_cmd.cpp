@@ -145,8 +145,8 @@ class GetStatus : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_STATUS_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_STATUS_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
         auto rc = encode_get_status_req(instanceId, request,
                                         PLDM_GET_STATUS_REQ_BYTES);
@@ -181,7 +181,6 @@ class GetStatus : public CommandInterface
 
         if (completionCode == PLDM_SUCCESS)
         {
-
             data["CurrentState"] = fdStateMachine.at(currentState);
             data["PreviousState"] = fdStateMachine.at(previousState);
             data["AuxState"] = fdAuxState.at(auxState);
@@ -241,8 +240,8 @@ class GetFwParams : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
         auto rc = encode_get_firmware_parameters_req(
             instanceId, PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES, request);
@@ -273,7 +272,6 @@ class GetFwParams : public CommandInterface
 
         if (fwParams.completion_code == PLDM_SUCCESS)
         {
-
             ordered_json capabilitiesDuringUpdate;
             if (fwParams.capabilities_during_update.bits.bit0)
             {
@@ -492,9 +490,9 @@ class GetFwParams : public CommandInterface
                 compParamPtr += sizeof(pldm_component_parameter_entry) +
                                 activeCompVerStr.length +
                                 pendingCompVerStr.length;
-                compParamTableLen -= sizeof(pldm_component_parameter_entry) +
-                                     activeCompVerStr.length +
-                                     pendingCompVerStr.length;
+                compParamTableLen -=
+                    sizeof(pldm_component_parameter_entry) +
+                    activeCompVerStr.length + pendingCompVerStr.length;
                 compDataEntries.push_back(compData);
             }
             data["ComponentParameterEntries"] = compDataEntries;
@@ -589,9 +587,9 @@ void QueryDeviceIdentifiers::updateDescriptor(
             }
         }
         // Entry is not present, add type and value to json response
-        ordered_json descriptor =
-            ordered_json::object({{"Type", descriptorName.at(descriptorType)},
-                                  {"Value", ordered_json::array()}});
+        ordered_json descriptor = ordered_json::object(
+            {{"Type", descriptorName.at(descriptorType)},
+             {"Value", ordered_json::array()}});
         if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
         {
             descriptor["Value"].emplace_back(descDataStream.str());
@@ -613,8 +611,8 @@ void QueryDeviceIdentifiers::updateDescriptor(
 }
 std::pair<int, std::vector<uint8_t>> QueryDeviceIdentifiers::createRequestMsg()
 {
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto rc = encode_query_device_identifiers_req(
         instanceId, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, request);
@@ -948,9 +946,9 @@ class RequestUpdate : public CommandInterface
         compImgSetVerStrInfo.length =
             static_cast<uint8_t>(compImgSetVerStr.size());
 
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                        sizeof(struct pldm_request_update_req) +
-                                        compImgSetVerStrInfo.length);
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + sizeof(struct pldm_request_update_req) +
+            compImgSetVerStrInfo.length);
 
         auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
@@ -1018,7 +1016,6 @@ class PassComponentTable : public CommandInterface
                                 CLI::App* app) :
         CommandInterface(type, name, app)
     {
-
         app->add_option(
                "--transfer_flag", transferFlag,
                "The transfer flag that indicates what part of the Component Table\n"
@@ -1122,9 +1119,9 @@ class PassComponentTable : public CommandInterface
 
         if (cc == PLDM_SUCCESS)
         {
-            data["ComponentResponse"] = compResponse
-                                            ? "Component may be updateable"
-                                            : "Component can be updated";
+            data["ComponentResponse"] =
+                compResponse ? "Component may be updateable"
+                             : "Component can be updated";
 
             // data["ComponentResponse"] =
             //     fmt::format("0x{:02X}", compResponseCode);
@@ -1158,7 +1155,6 @@ class UpdateComponent : public CommandInterface
     explicit UpdateComponent(const char* type, const char* name,
                              CLI::App* app) : CommandInterface(type, name, app)
     {
-
         app->add_option("--comp_classification", compClassification,
                         "Classification value provided by the firmware package "
                         "header information for\n"
@@ -1226,7 +1222,6 @@ class UpdateComponent : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-
         variable_field compVerStrInfo{};
 
         compVerStrInfo.ptr =

@@ -45,13 +45,13 @@ int main(int argc, char** argv)
         oemUpdateTime[i] = getUint8t();
     }
 
-    std::vector<uint8_t> responseMsg(hdrSize +
-                                     PLDM_GET_PDR_REPOSITORY_INFO_RESP_BYTES);
+    std::vector<uint8_t> responseMsg(
+        hdrSize + PLDM_GET_PDR_REPOSITORY_INFO_RESP_BYTES);
 
     auto response = reinterpret_cast<pldm_msg*>(responseMsg.data());
 
-    encode_get_pdr_repository_info_resp(0, PLDM_SUCCESS, repositoryState,
-                                        updateTime, oemUpdateTime, recordCount,
-                                        repositorySize, largestRecordSize,
-                                        dataTransferHandleTimeout, response);
+    encode_get_pdr_repository_info_resp(
+        0, PLDM_SUCCESS, repositoryState, updateTime, oemUpdateTime,
+        recordCount, repositorySize, largestRecordSize,
+        dataTransferHandleTimeout, response);
 }

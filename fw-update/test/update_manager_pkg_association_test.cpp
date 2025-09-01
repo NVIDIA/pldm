@@ -318,7 +318,6 @@ class PackageAssociationTargetFiltering : public testing::Test
 
 TEST_F(PackageAssociationTargetFiltering, MatchingTwoComponents)
 {
-
     const std::string erotFPGAFirmware =
         "/xyz/openbmc_project/software/ERoT_FPGA_Firmware";
     const std::string erotHMCFirmware =

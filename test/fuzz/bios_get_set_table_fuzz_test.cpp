@@ -31,8 +31,8 @@ int main(int argc, char** argv)
     (void)argv;
     constexpr auto hdrSize = sizeof(pldm_msg_hdr);
 
-    auto respSize =
-        sizeof(pldm_msg_hdr) + PLDM_GET_BIOS_TABLE_MIN_RESP_BYTES + 4;
+    auto respSize = sizeof(pldm_msg_hdr) + PLDM_GET_BIOS_TABLE_MIN_RESP_BYTES +
+                    4;
     std::vector<uint8_t> responseMsg{};
 
     responseMsg.resize(respSize);
@@ -55,13 +55,13 @@ int main(int argc, char** argv)
     uint8_t tableType = PLDM_BIOS_STRING_TABLE % (getUint8t() + 1);
 
     std::vector<uint8_t> requestMsg{};
-    requestMsg.resize(hdrSize + PLDM_SET_BIOS_TABLE_MIN_REQ_BYTES +
-                      sizeof(tableData));
+    requestMsg.resize(
+        hdrSize + PLDM_SET_BIOS_TABLE_MIN_REQ_BYTES + sizeof(tableData));
 
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
 
-    encode_set_bios_table_req(instanceId, transferHandle, transferFlag,
-                              tableType, reinterpret_cast<uint8_t*>(&tableData),
-                              sizeof(tableData), request,
-                              requestMsg.size() - hdrSize);
+    encode_set_bios_table_req(
+        instanceId, transferHandle, transferFlag, tableType,
+        reinterpret_cast<uint8_t*>(&tableData), sizeof(tableData), request,
+        requestMsg.size() - hdrSize);
 }

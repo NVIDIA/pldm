@@ -159,9 +159,8 @@ int DMA::transferDataHost(int fd, uint32_t offset, uint32_t length,
         rc = lseek(fd, offset, SEEK_SET);
         if (rc == -1)
         {
-            std::cerr << "lseek failed, ERROR=" << errno
-                      << ", UPSTREAM=" << upstream << ", OFFSET=" << offset
-                      << "\n";
+            std::cerr << "lseek failed, ERROR=" << errno << ", UPSTREAM="
+                      << upstream << ", OFFSET=" << offset << "\n";
             return rc;
         }
 
@@ -209,9 +208,8 @@ int DMA::transferDataHost(int fd, uint32_t offset, uint32_t length,
         rc = lseek(fd, offset, SEEK_SET);
         if (rc == -1)
         {
-            std::cerr << "lseek failed, ERROR=" << errno
-                      << ", UPSTREAM=" << upstream << ", OFFSET=" << offset
-                      << "\n";
+            std::cerr << "lseek failed, ERROR=" << errno << ", UPSTREAM="
+                      << upstream << ", OFFSET=" << offset << "\n";
             return rc;
         }
         rc = write(fd, static_cast<const char*>(vgaMemPtr.get()), length);
@@ -397,8 +395,8 @@ Response Handler::getFileTable(const pldm_msg* request, size_t payloadLength)
     uint8_t transferFlag = 0;
     uint8_t tableType = 0;
 
-    Response response(sizeof(pldm_msg_hdr) +
-                      PLDM_GET_FILE_TABLE_MIN_RESP_BYTES);
+    Response response(
+        sizeof(pldm_msg_hdr) + PLDM_GET_FILE_TABLE_MIN_RESP_BYTES);
     auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
 
     if (payloadLength != PLDM_GET_FILE_TABLE_REQ_BYTES)
@@ -622,9 +620,9 @@ Response rwFileByTypeIntoMemory(uint8_t cmd, const pldm_msg* request,
     uint32_t offset{};
     uint32_t length{};
     uint64_t address{};
-    auto rc = decode_rw_file_by_type_memory_req(request, payloadLength,
-                                                &fileType, &fileHandle, &offset,
-                                                &length, &address);
+    auto rc = decode_rw_file_by_type_memory_req(
+        request, payloadLength, &fileType, &fileHandle, &offset, &length,
+        &address);
     if (rc != PLDM_SUCCESS)
     {
         encode_rw_file_by_type_memory_resp(request->hdr.instance_id, cmd, rc, 0,

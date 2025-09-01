@@ -139,10 +139,9 @@ class EventManager
                                  const uint8_t* sensorData,
                                  size_t sensorDataLength);
 
-    virtual void createSensorThresholdLogEntry(const std::string& messageID,
-                                               const std::string& sensorName,
-                                               const double reading,
-                                               const double threshold);
+    virtual void createSensorThresholdLogEntry(
+        const std::string& messageID, const std::string& sensorName,
+        const double reading, const double threshold);
 
     /** @brief Reference of terminusManager */
     TerminusManager& terminusManager;

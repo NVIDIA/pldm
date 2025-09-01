@@ -122,9 +122,8 @@ struct MockObjectMapper : public ObjectMapper_inherit
         ObjectMapper_inherit(bus, path)
     {}
 
-    std::map<std::string, std::vector<std::string>>
-        getObject(std::string path,
-                  std::vector<std::string> interfaces) override
+    std::map<std::string, std::vector<std::string>> getObject(
+        std::string path, std::vector<std::string> interfaces) override
     {
         return std::map<std::string, std::vector<std::string>>();
     }
@@ -145,9 +144,9 @@ struct MockObjectMapper : public ObjectMapper_inherit
                         std::map<std::string, std::vector<std::string>>>();
     }
 
-    std::vector<std::string>
-        getSubTreePaths(std::string subtree, int32_t depth,
-                        std::vector<std::string> interfaces) override
+    std::vector<std::string> getSubTreePaths(
+        std::string subtree, int32_t depth,
+        std::vector<std::string> interfaces) override
     {
         return std::vector<std::string>();
     }
@@ -162,10 +161,9 @@ struct MockObjectMapper : public ObjectMapper_inherit
                         std::map<std::string, std::vector<std::string>>>();
     }
 
-    std::vector<std::string>
-        getAssociatedSubTreePaths(std::string path, std::string associationPath,
-                                  int32_t depth,
-                                  std::vector<std::string> interfaces) override
+    std::vector<std::string> getAssociatedSubTreePaths(
+        std::string path, std::string associationPath, int32_t depth,
+        std::vector<std::string> interfaces) override
     {
         return std::vector<std::string>();
     }
@@ -273,8 +271,8 @@ void encodeQueryDeviceIdentifiersResp(std::vector<uint8_t>& response)
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(queryDeviceIdentifiersResp1.data());
 
-    response.resize(getMctpHeaderSize() + sizeof(pldm_msg_hdr) +
-                    respPayloadLength1);
+    response.resize(
+        getMctpHeaderSize() + sizeof(pldm_msg_hdr) + respPayloadLength1);
 
     memcpy(response.data() + getMctpHeaderSize(), responseMsg1,
            respPayloadLength1);
@@ -295,8 +293,8 @@ void encodeFirmwareParametersResp(std::vector<uint8_t>& response)
     auto responseMsg1 =
         reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp1.data());
 
-    response.resize(getMctpHeaderSize() + sizeof(pldm_msg_hdr) +
-                    respPayloadLength1);
+    response.resize(
+        getMctpHeaderSize() + sizeof(pldm_msg_hdr) + respPayloadLength1);
 
     memcpy(response.data() + getMctpHeaderSize(), responseMsg1,
            respPayloadLength1);
@@ -553,7 +551,6 @@ void* runFuzzerReceiver(void*)
 
     while (true)
     {
-
         if (!skipNextRecv)
         {
             std::vector<uint8_t> buf(1024);
@@ -650,8 +647,7 @@ void* runFuzzerReceiver(void*)
         }
         else if ((pldmFwUpdateDeviceUpdaterTest || pldmInventoryOnlyTest) &&
                  idx == 0)
-        {
-        }
+        {}
         else if ((pldmFwUpdateDeviceUpdaterTest || pldmInventoryOnlyTest) &&
                  idx == 1)
         {
@@ -828,7 +824,6 @@ void* runObjMapperMock(void*)
 
 void* runMctpMock(void*)
 {
-
     pthread_mutex_lock(&mutex);
 
     auto bus = sdbusplus::bus::new_default();
@@ -918,9 +913,9 @@ void* runPldmdMock(void*)
                                                       sockManager, true);
 
     std::unique_ptr<fw_update::Manager> fwManager =
-        std::make_unique<fw_update::Manager>(event, reqHandler, dbusImplReq,
-                                             "fuzz_test_fw_update_config.json",
-                                             &dbusHandler, true);
+        std::make_unique<fw_update::Manager>(
+            event, reqHandler, dbusImplReq, "fuzz_test_fw_update_config.json",
+            &dbusHandler, true);
 
     pldm::mctp_socket::Handler sockHandler(
         event, reqHandler, invoker, *(fwManager.get()), sockManager, true);
@@ -959,7 +954,6 @@ void* runPldmdMock(void*)
 
 void* runActivationMock(void*)
 {
-
     LOG << "[runActivationMock] start" << std::endl;
 
     auto bus = sdbusplus::bus::new_default();

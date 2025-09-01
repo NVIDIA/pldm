@@ -107,7 +107,6 @@ void fillCompletionCode(uint8_t completionCode, ordered_json& data)
 
 void CommandInterface::exec()
 {
-
     instanceId = instanceIdDb.next(mctp_eid);
     auto [rc, requestMsg] = createRequestMsg();
     if (rc != PLDM_SUCCESS)

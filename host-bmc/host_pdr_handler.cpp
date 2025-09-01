@@ -106,7 +106,7 @@ HostPDRHandler::HostPDRHandler(
                 {
                     // Delete all the remote terminus information
                     std::erase_if(tlPDRInfo, [](const auto& item) {
-                        auto const& [key, value] = item;
+                        const auto& [key, value] = item;
                         return key != TERMINUS_HANDLE;
                     });
                     pldm_pdr_remove_remote_pdrs(repo);
@@ -142,8 +142,8 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
 {
     pdrFetchEvent.reset();
 
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_GET_PDR_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_GET_PDR_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     uint32_t recordHandle{};
     if (!nextRecordHandle)
@@ -309,9 +309,9 @@ void HostPDRHandler::sendPDRRepositoryChgEvent(std::vector<uint8_t>&& pdrTypes,
         return;
     }
     auto instanceId = instanceIdDb.next(mctp_eid);
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
-                                    actualSize);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
+        actualSize);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     rc = encode_platform_event_message_req(
         instanceId, 1, 0, PLDM_PDR_REPOSITORY_CHG_EVENT, eventDataVec.data(),
@@ -344,9 +344,8 @@ void HostPDRHandler::sendPDRRepositoryChgEvent(std::vector<uint8_t>&& pdrTypes,
         if (rc || completionCode)
         {
             std::cerr << "Failed to decode_platform_event_message_resp: "
-                      << "rc=" << rc
-                      << ", cc=" << static_cast<unsigned>(completionCode)
-                      << std::endl;
+                      << "rc=" << rc << ", cc="
+                      << static_cast<unsigned>(completionCode) << std::endl;
         }
     };
 
@@ -382,9 +381,8 @@ void HostPDRHandler::parseStateSensorPDRs(const PDRList& stateSensorPDRs)
     }
 }
 
-void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
-                                     const pldm_msg* response,
-                                     size_t respMsgLen)
+void HostPDRHandler::processHostPDRs(
+    mctp_eid_t /*eid*/, const pldm_msg* response, size_t respMsgLen)
 {
     static bool merged = false;
     static PDRList stateSensorPDRs{};
@@ -430,9 +428,8 @@ void HostPDRHandler::processHostPDRs(mctp_eid_t /*eid*/,
         if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
         {
             std::cerr << "Failed to decode_get_pdr_resp: "
-                      << "rc=" << rc
-                      << ", cc=" << static_cast<unsigned>(completionCode)
-                      << std::endl;
+                      << "rc=" << rc << ", cc="
+                      << static_cast<unsigned>(completionCode) << std::endl;
             return;
         }
         else
@@ -566,8 +563,8 @@ void HostPDRHandler::setHostFirmwareCondition()
 {
     responseReceived = false;
     auto instanceId = instanceIdDb.next(mctp_eid);
-    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) +
-                                    PLDM_GET_VERSION_REQ_BYTES);
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_GET_VERSION_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
     auto rc = encode_get_version_req(instanceId, 0, PLDM_GET_FIRSTPART,
                                      PLDM_BASE, request);
@@ -579,21 +576,21 @@ void HostPDRHandler::setHostFirmwareCondition()
         return;
     }
 
-    auto getPLDMVersionHandler = [this](mctp_eid_t /*eid*/,
-                                        const pldm_msg* response,
-                                        size_t respMsgLen) {
-        if (response == nullptr || !respMsgLen)
-        {
-            std::cerr << "Failed to receive response for "
-                      << "getPLDMVersion command, Host seems to be off \n";
-            return;
-        }
-        std::cout << "Getting the response. PLDM RC = " << std::hex
-                  << std::showbase
-                  << static_cast<uint16_t>(response->payload[0]) << "\n";
-        this->responseReceived = true;
-        getHostPDR();
-    };
+    auto getPLDMVersionHandler =
+        [this](mctp_eid_t /*eid*/, const pldm_msg* response,
+               size_t respMsgLen) {
+            if (response == nullptr || !respMsgLen)
+            {
+                std::cerr << "Failed to receive response for "
+                          << "getPLDMVersion command, Host seems to be off \n";
+                return;
+            }
+            std::cout << "Getting the response. PLDM RC = " << std::hex
+                      << std::showbase
+                      << static_cast<uint16_t>(response->payload[0]) << "\n";
+            this->responseReceived = true;
+            getHostPDR();
+        };
     rc = handler->registerRequest(mctp_eid, instanceId, PLDM_BASE,
                                   PLDM_GET_PLDM_VERSION, std::move(requestMsg),
                                   std::move(getPLDMVersionHandler));
@@ -725,8 +722,8 @@ void HostPDRHandler::setHostSensorState(const PDRList& stateSensorPDRs)
                             }
                             catch (const std::out_of_range& e)
                             {
-                                std::cerr << "No mapping for the events"
-                                          << std::endl;
+                                std::cerr
+                                    << "No mapping for the events" << std::endl;
                             }
                         }
 

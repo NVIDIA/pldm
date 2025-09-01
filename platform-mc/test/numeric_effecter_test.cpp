@@ -59,26 +59,26 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         0x0,
         0x0,
         0x0,
-        0x1,                       // record handle
-        0x1,                       // PDRHeaderVersion
-        PLDM_NUMERIC_EFFECTER_PDR, // PDRType
+        0x1,                                          // record handle
+        0x1,                                          // PDRHeaderVersion
+        PLDM_NUMERIC_EFFECTER_PDR,                    // PDRType
         0x0,
-        0x0, // recordChangeNumber
+        0x0,                                          // recordChangeNumber
         0,
-        54, // dataLength
+        54,                                           // dataLength
         0,
-        0, // PLDMTerminusHandle
+        0,                                            // PLDMTerminusHandle
         static_cast<uint8_t>(sensorId & 0xFF),
         static_cast<uint8_t>((sensorId >> 8) & 0xFF), // effecterID=0x0801
         PLDM_ENTITY_PROC_IO_MODULE,
-        0, // entityType
+        0,                                            // entityType
         1,
-        0, // entityInstanceNumber
+        0,                                            // entityInstanceNumber
         0x1,
-        0x0, // containerID=1
+        0x0,                                          // containerID=1
         0x0,
-        0x0,                         // effecterSematicID
-        PLDM_NO_INIT,                // effecterInit
+        0x0,                                          // effecterSematicID
+        PLDM_NO_INIT,                                 // effecterInit
         false,                       // effecterAuxiliaryNames PDR
         PLDM_SENSOR_UNIT_WATTS,      // baseUnit
         0,                           // unitModifier
