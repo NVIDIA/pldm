@@ -172,16 +172,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
-        uint8_t eventDataFormatVersion;
-        uint16_t eventId;
-        uint32_t dataTransferHandle;
-        auto rc = decode_pldm_message_poll_event_data(
-            eventData, eventDataSize, &eventDataFormatVersion, &eventId,
-            &dataTransferHandle);
+        pldm_message_poll_event poll_event{};
+        auto rc = decode_pldm_message_poll_event_data(eventData, eventDataSize,
+                                                      &poll_event);
         if (rc != PLDM_SUCCESS)
         {
             return PLDM_ERROR;
         }
+
+        uint8_t eventDataFormatVersion = poll_event.format_version;
 
         if (eventDataFormatVersion != 0x01)
         {

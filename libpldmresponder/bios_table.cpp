@@ -86,13 +86,9 @@ void appendPadAndChecksum(Table& table)
 {
     size_t payloadSize = table.size();
     table.resize(payloadSize + pldm_bios_table_pad_checksum_size(payloadSize));
-    // Not using the deprecated API: pldm_bios_table_append_pad_checksum.
-    // TODO: Might need a revisit once libpldm is synced with upstream, As
-    // upstream libpldm does have pldm_bios_table_append_pad_checksum as part of
-    // the stable ABI.
     // No validation of return value as preconditions are satisfied
-    pldm_bios_table_append_pad_checksum_check(table.data(), table.size(),
-                                              &payloadSize);
+    pldm_bios_table_append_pad_checksum(table.data(), table.size(),
+                                        &payloadSize);
 }
 
 namespace string
@@ -107,11 +103,9 @@ std::string decodeString(const pldm_bios_string_table_entry* entry)
 {
     auto strLength = pldm_bios_table_string_entry_decode_string_length(entry);
     std::vector<char> buffer(strLength + 1 /* sizeof '\0' */);
-    // Not using the deprecated API: pldm_bios_table_string_entry_decode_string
-    // TODO: Again, Might need a revisit after libpldm sync.
     // Preconditions are upheld therefore no error check necessary
-    pldm_bios_table_string_entry_decode_string_check(entry, buffer.data(),
-                                                     buffer.size());
+    pldm_bios_table_string_entry_decode_string(entry, buffer.data(),
+                                               buffer.size());
     return std::string(buffer.data(), buffer.data() + strLength);
 }
 const pldm_bios_string_table_entry* constructEntry(Table& table,
@@ -120,11 +114,9 @@ const pldm_bios_string_table_entry* constructEntry(Table& table,
     auto tableSize = table.size();
     auto entryLength = pldm_bios_table_string_entry_encode_length(str.length());
     table.resize(tableSize + entryLength);
-    // Not using the deprecated API: pldm_bios_table_string_entry_encode.
-    // TODO: Revisit after libpldm sync.
     // Preconditions are upheld therefore no error check necessary
-    pldm_bios_table_string_entry_encode_check(
-        table.data() + tableSize, entryLength, str.c_str(), str.length());
+    pldm_bios_table_string_entry_encode(table.data() + tableSize, entryLength,
+                                        str.c_str(), str.length());
     return reinterpret_cast<pldm_bios_string_table_entry*>(table.data() +
                                                            tableSize);
 }
@@ -165,8 +157,8 @@ const pldm_bios_attr_table_entry*
 
     auto tableSize = table.size();
     table.resize(tableSize + entryLength, 0);
-    int rc = pldm_bios_table_attr_entry_string_encode_check(
-        table.data() + tableSize, entryLength, info);
+    int rc = pldm_bios_table_attr_entry_string_encode(table.data() + tableSize,
+                                                      entryLength, info);
     if (rc != PLDM_SUCCESS)
     {
         error("Failed to encode BIOS table string entry, response code '{RC}'",
@@ -184,10 +176,8 @@ const pldm_bios_attr_table_entry*
     auto entryLength = pldm_bios_table_attr_entry_integer_encode_length();
     auto tableSize = table.size();
     table.resize(tableSize + entryLength, 0);
-    // Not using the deprecated API: pldm_bios_table_attr_entry_integer_encode
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_entry_integer_encode_check(
-        table.data() + tableSize, entryLength, info);
+    int rc = pldm_bios_table_attr_entry_integer_encode(table.data() + tableSize,
+                                                       entryLength, info);
     if (rc != PLDM_SUCCESS)
     {
         error(
@@ -206,10 +196,7 @@ StringField decodeStringEntry(const pldm_bios_attr_table_entry* entry)
     auto minLength = pldm_bios_table_attr_entry_string_decode_min_length(entry);
     auto maxLength = pldm_bios_table_attr_entry_string_decode_max_length(entry);
     uint16_t defLength;
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_entry_string_decode_def_string_length
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_entry_string_decode_def_string_length_check(
+    int rc = pldm_bios_table_attr_entry_string_decode_def_string_length(
         entry, &defLength);
     if (rc != PLDM_SUCCESS)
     {
@@ -245,11 +232,9 @@ const pldm_bios_attr_table_entry*
 
     auto tableSize = table.size();
     table.resize(tableSize + entryLength, 0);
-    // Not using the deprecated API: pldm_bios_table_attr_entry_enum_encode
-    // TODO: Please revisit after libpldm sync
     // Preconditions are upheld therefore no error check necessary
-    pldm_bios_table_attr_entry_enum_encode_check(table.data() + tableSize,
-                                                 entryLength, info);
+    pldm_bios_table_attr_entry_enum_encode(table.data() + tableSize,
+                                           entryLength, info);
 
     return reinterpret_cast<pldm_bios_attr_table_entry*>(table.data() +
                                                          tableSize);
@@ -258,10 +243,7 @@ const pldm_bios_attr_table_entry*
 EnumField decodeEnumEntry(const pldm_bios_attr_table_entry* entry)
 {
     uint8_t pvNum;
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_entry_enum_decode_pv_num.
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_entry_enum_decode_pv_num_check(entry, &pvNum);
+    int rc = pldm_bios_table_attr_entry_enum_decode_pv_num(entry, &pvNum);
     if (rc != PLDM_SUCCESS)
     {
         error(
@@ -271,18 +253,11 @@ EnumField decodeEnumEntry(const pldm_bios_attr_table_entry* entry)
             "Failed to decode the number of possible values for BIOS table enum entry");
     }
     std::vector<uint16_t> pvHdls(pvNum, 0);
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_entry_enum_decode_pv_hdls.
-    // TODO: Please revisit after libpldm sync
     // Preconditions are upheld therefore no error check necessary
-    pldm_bios_table_attr_entry_enum_decode_pv_hdls_check(entry, pvHdls.data(),
-                                                         pvNum);
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_entry_enum_decode_def_num.
-    // TODO: Please revisit after libpldm sync
+    pldm_bios_table_attr_entry_enum_decode_pv_hdls(entry, pvHdls.data(), pvNum);
     // Preconditions are upheld therefore no error check necessary
     uint8_t defNum;
-    pldm_bios_table_attr_entry_enum_decode_def_num_check(entry, &defNum);
+    pldm_bios_table_attr_entry_enum_decode_def_num(entry, &defNum);
     std::vector<uint8_t> defIndices(defNum, 0);
     pldm_bios_table_attr_entry_enum_decode_def_indices(entry, defIndices.data(),
                                                        defIndices.size());
@@ -335,10 +310,7 @@ const pldm_bios_attr_val_table_entry*
         pldm_bios_table_attr_value_entry_encode_string_length(strLen);
     auto tableSize = table.size();
     table.resize(tableSize + entryLength);
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_value_entry_encode_string
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_value_entry_encode_string_check(
+    int rc = pldm_bios_table_attr_value_entry_encode_string(
         table.data() + tableSize, entryLength, attrHandle, attrType, strLen,
         str.c_str());
     if (rc != PLDM_SUCCESS)
@@ -362,10 +334,7 @@ const pldm_bios_attr_val_table_entry* constructIntegerEntry(Table& table,
 
     auto tableSize = table.size();
     table.resize(tableSize + entryLength);
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_value_entry_encode_integer
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_value_entry_encode_integer_check(
+    int rc = pldm_bios_table_attr_value_entry_encode_integer(
         table.data() + tableSize, entryLength, attrHandle, attrType, value);
     if (rc != PLDM_SUCCESS)
     {
@@ -387,10 +356,7 @@ const pldm_bios_attr_val_table_entry*
         handleIndices.size());
     auto tableSize = table.size();
     table.resize(tableSize + entryLength);
-    // Not using the deprecated API:
-    // pldm_bios_table_attr_value_entry_encode_enum
-    // TODO: Please revisit after libpldm sync
-    int rc = pldm_bios_table_attr_value_entry_encode_enum_check(
+    int rc = pldm_bios_table_attr_value_entry_encode_enum(
         table.data() + tableSize, entryLength, attrHandle, attrType,
         handleIndices.size(), handleIndices.data());
     if (rc != PLDM_SUCCESS)
