@@ -18,6 +18,8 @@ class MmapStreamBuf : public std::streambuf
     char* dataStart;
     char* dataEnd;
 
+    friend class MmapStream;
+
   public:
     /**
      * @brief Construct a stream buffer for memory-mapped data
@@ -110,6 +112,24 @@ class MmapStream : public std::istream
     MmapStream(void* data, size_t size) : std::istream(&buf), buf(data, size)
     {
         clear();
+    }
+
+    /** @brief Get the raw data pointer for the memory-mapped data
+     *
+     *  @return Raw pointer to the memory-mapped data
+     */
+    const uint8_t* data() const
+    {
+        return reinterpret_cast<const uint8_t*>(buf.dataStart);
+    }
+
+    /** @brief Get the size of the memory-mapped data
+     *
+     *  @return Size of the memory-mapped data in bytes
+     */
+    size_t size() const
+    {
+        return buf.dataEnd - buf.dataStart;
     }
 };
 

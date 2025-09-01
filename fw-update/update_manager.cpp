@@ -17,6 +17,7 @@
 #include "update_manager.hpp"
 
 #include "activation.hpp"
+#include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
@@ -278,11 +279,13 @@ void UpdateManager::processStream(
         return;
     }
 
-    package.seekg(0);
-    std::vector<uint8_t> packageHeader(packageSize);
-    package.read(reinterpret_cast<char*>(packageHeader.data()), packageSize);
+    auto* mmapStream = dynamic_cast<pldm::MmapStream*>(&package);
 
-    parser = parsePkgHeader(packageHeader);
+    if (mmapStream != nullptr)
+    {
+        parser = parsePkgHeader(mmapStream->data(), mmapStream->size());
+    }
+
     if (parser == nullptr)
     {
         error("Invalid PLDM package header information");
@@ -291,10 +294,9 @@ void UpdateManager::processStream(
         return;
     }
 
-    package.seekg(0);
     try
     {
-        parser->parse(packageHeader, packageSize);
+        parser->parse(mmapStream->data(), packageSize);
     }
     catch (const std::exception& e)
     {

@@ -40,7 +40,7 @@ using InternalFailure =
 
 size_t PackageParser::parseFDIdentificationArea(
     DeviceIDRecordCount deviceIdRecCount, const std::vector<uint8_t>& pkgHdr,
-    size_t offset)
+    size_t offset, uint8_t formatVersion)
 {
     size_t pkgHdrRemainingSize = pkgHdr.size() - offset;
 
@@ -55,7 +55,8 @@ size_t PackageParser::parseFDIdentificationArea(
         auto rc = decode_firmware_device_id_record(
             pkgHdr.data() + offset, pkgHdrRemainingSize,
             componentBitmapBitLength, &deviceIdRecHeader, &applicableComponents,
-            &compImageSetVersionStr, &recordDescriptors, &fwDevicePkgData);
+            &compImageSetVersionStr, &recordDescriptors, &fwDevicePkgData,
+            formatVersion);
         if (rc)
         {
             error(
@@ -157,9 +158,9 @@ size_t PackageParser::parseFDIdentificationArea(
     return offset;
 }
 
-size_t PackageParser::parseCompImageInfoArea(ComponentImageCount compImageCount,
-                                             const std::vector<uint8_t>& pkgHdr,
-                                             size_t offset)
+size_t PackageParser::parseCompImageInfoArea(
+    ComponentImageCount compImageCount, const std::vector<uint8_t>& pkgHdr,
+    size_t offset, uint8_t formatVersion)
 {
     size_t pkgHdrRemainingSize = pkgHdr.size() - offset;
 
@@ -195,10 +196,16 @@ size_t PackageParser::parseCompImageInfoArea(ComponentImageCount compImageCount,
             compClassification, compIdentifier, compComparisonTime, compOptions,
             reqCompActivationMethod, compLocationOffset, compSize,
             utils::toString(compVersion)));
-        offset += sizeof(pldm_component_image_information) +
-                  compImageInfo.comp_version_string_length;
-        pkgHdrRemainingSize -= sizeof(pldm_component_image_information) +
-                               compImageInfo.comp_version_string_length;
+
+        auto sizeOfCompImageInfo = sizeof(pldm_component_image_information) +
+                                   compImageInfo.comp_version_string_length;
+        if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
+        {
+            // Skipping component opaque data length field
+            sizeOfCompImageInfo += sizeof(CompOpaqueDataLength);
+        }
+        offset += sizeOfCompImageInfo;
+        pkgHdrRemainingSize -= sizeOfCompImageInfo;
     }
 
     return offset;
@@ -252,17 +259,21 @@ void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
     }
 }
 
-void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
-                            [[maybe_unused]] uintmax_t pkgSize)
+void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
 {
-    if (pkgHeaderSize >= pkgHdr.size())
+    if (pkgData == nullptr || pkgHeaderSize > pkgSize)
     {
 #ifndef SKIP_PACKAGE_SIZE_CHECK
-        error("Invalid package header size '{PKG_HDR_SIZE}' ", "PKG_HDR_SIZE",
-              pkgHeaderSize);
+        error(
+            "Invalid package data or header size '{PKG_HDR_SIZE}' exceeds package size '{PKG_SIZE}'",
+            "PKG_HDR_SIZE", pkgHeaderSize, "PKG_SIZE", pkgSize);
         throw InternalFailure();
 #endif
     }
+
+    // Create a vector view of only the header portion - no copying of entire
+    // package
+    std::vector<uint8_t> pkgHdr(pkgData, pkgData + pkgHeaderSize);
 
     size_t offset = sizeof(pldm_package_header_information) + pkgVersion.size();
     if (offset + sizeof(DeviceIDRecordCount) >= pkgHeaderSize)
@@ -275,13 +286,32 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
     auto deviceIdRecCount = static_cast<DeviceIDRecordCount>(pkgHdr[offset]);
     offset += sizeof(DeviceIDRecordCount);
 
-    offset = parseFDIdentificationArea(deviceIdRecCount, pkgHdr, offset);
+    offset = parseFDIdentificationArea(deviceIdRecCount, pkgHdr, offset,
+                                       formatVersion);
     if (deviceIdRecCount != fwDeviceIDRecords.size())
     {
         error("Failed to find DeviceIDRecordCount {DREC_CNT} entries",
               "DREC_CNT", deviceIdRecCount);
         throw InternalFailure();
     }
+
+    if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR03H)
+    {
+        DownstreamDeviceIDRecordCount downstreamDeviceIdRecCount =
+            pkgHdr[offset];
+
+        // Downstream devices are not supported on OEM NVIDIA platforms
+        if (downstreamDeviceIdRecCount != 0)
+        {
+            error(
+                "Unexpected DownstreamDeviceIDRecordCount '{COUNT}' (expected 0)",
+                "COUNT", downstreamDeviceIdRecCount);
+            throw InternalFailure();
+        }
+
+        offset += sizeof(DownstreamDeviceIDRecordCount);
+    }
+
     if (offset + sizeof(ComponentImageCount) >= pkgHeaderSize)
     {
         error("Failed to parsing package header of size '{PKG_HDR_SIZE}'",
@@ -293,7 +323,8 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
         le16toh(pkgHdr[offset] | (pkgHdr[offset + 1] << 8)));
     offset += sizeof(ComponentImageCount);
 
-    offset = parseCompImageInfoArea(compImageCount, pkgHdr, offset);
+    offset =
+        parseCompImageInfoArea(compImageCount, pkgHdr, offset, formatVersion);
     if (compImageCount != componentImageInfos.size())
     {
         error("Failed to find ComponentImageCount '{COMP_IMG_CNT}' entries",
@@ -301,24 +332,36 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
         throw InternalFailure();
     }
 
-    if (offset + sizeof(PackageHeaderChecksum) != pkgHeaderSize)
+    size_t expectedChecksumSize = sizeof(PackageHeaderChecksum);
+    if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
+    {
+        expectedChecksumSize += sizeof(PackagePayloadChecksum);
+    }
+
+    if (offset + expectedChecksumSize != pkgHeaderSize)
     {
         error("Failed to parse package header of size '{PKG_HDR_SIZE}'",
               "PKG_HDR_SIZE", pkgHeaderSize);
         throw InternalFailure();
     }
 
-    auto calcChecksum = pldm_edac_crc32(pkgHdr.data(), offset);
-    auto checksum = static_cast<PackageHeaderChecksum>(
-        le32toh(pkgHdr[offset] | (pkgHdr[offset + 1] << 8) |
-                (pkgHdr[offset + 2] << 16) | (pkgHdr[offset + 3] << 24)));
-    if (calcChecksum != checksum)
+    offset += sizeof(PackageHeaderChecksum);
+
+    if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
     {
-        error(
-            "Failed to parse package header for calculated checksum '{CALCULATED_CHECKSUM}' and header checksum '{PACKAGE_HEADER_CHECKSUM}'",
-            "CALCULATED_CHECKSUM", calcChecksum, "PACKAGE_HEADER_CHECKSUM",
-            checksum);
-        throw InternalFailure();
+        auto checksum = static_cast<PackagePayloadChecksum>(
+            le32toh(pkgHdr[offset] | (pkgHdr[offset + 1] << 8) |
+                    (pkgHdr[offset + 2] << 16) | (pkgHdr[offset + 3] << 24)));
+        auto calcChecksum = pldm_edac_crc32(
+            pkgData + pkgHeaderSize, calculatePackageSize() - pkgHeaderSize);
+        if (calcChecksum != checksum)
+        {
+            error(
+                "Payload Checksum Verification failed. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_PAYLOAD_CHECKSUM}'",
+                "CALCULATED_CHECKSUM", calcChecksum, "PACKAGE_PAYLOAD_CHECKSUM",
+                checksum);
+            throw InternalFailure();
+        }
     }
 
 #ifndef SKIP_PACKAGE_SIZE_CHECK
@@ -328,17 +371,31 @@ void PackageParserV1::parse(const std::vector<uint8_t>& pkgHdr,
 #endif
 }
 
-std::unique_ptr<PackageParser> parsePkgHeader(std::vector<uint8_t>& pkgData)
+std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
+                                              size_t pkgSize)
 {
-    constexpr std::array<uint8_t, PLDM_FWUP_UUID_LENGTH> hdrIdentifierv1{
-        0xF0, 0x18, 0x87, 0x8C, 0xCB, 0x7D, 0x49, 0x43,
-        0x98, 0x00, 0xA0, 0x2F, 0x05, 0x9A, 0xCA, 0x02};
-    constexpr uint8_t pkgHdrVersion1 = 0x01;
+    static const std::map<uint8_t, std::array<uint8_t, PLDM_FWUP_UUID_LENGTH>>
+        supportedPackageVersions = {
+            {PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H,
+             PLDM_PACKAGE_HEADER_IDENTIFIER_V1_0},
+            {PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR02H,
+             PLDM_PACKAGE_HEADER_IDENTIFIER_V1_1},
+            {PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR03H,
+             PLDM_PACKAGE_HEADER_IDENTIFIER_V1_2},
+            {PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H,
+             PLDM_PACKAGE_HEADER_IDENTIFIER_V1_3},
+        };
+
+    if (pkgData == nullptr || pkgSize < sizeof(pldm_package_header_information))
+    {
+        error("Invalid package data or size {SIZE}", "SIZE", pkgSize);
+        return nullptr;
+    }
 
     pldm_package_header_information pkgHeader{};
     variable_field pkgVersion{};
-    auto rc = decode_pldm_package_header_info(pkgData.data(), pkgData.size(),
-                                              &pkgHeader, &pkgVersion);
+    auto rc = decode_pldm_package_header_info(pkgData, pkgSize, &pkgHeader,
+                                              &pkgVersion);
     if (rc)
     {
         error(
@@ -347,17 +404,27 @@ std::unique_ptr<PackageParser> parsePkgHeader(std::vector<uint8_t>& pkgData)
         return nullptr;
     }
 
-    if (std::equal(pkgHeader.uuid, pkgHeader.uuid + PLDM_FWUP_UUID_LENGTH,
-                   hdrIdentifierv1.begin(), hdrIdentifierv1.end()) &&
-        (pkgHeader.package_header_format_version == pkgHdrVersion1))
+    auto it =
+        supportedPackageVersions.find(pkgHeader.package_header_format_version);
+    if (it != supportedPackageVersions.end())
     {
-        PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
-        ComponentBitmapBitLength componentBitmapBitLength =
-            pkgHeader.component_bitmap_bit_length;
-        return std::make_unique<PackageParserV1>(
-            pkgHdrSize, utils::toString(pkgVersion), componentBitmapBitLength);
-    }
+        const auto& expectedUUID = it->second;
+        bool validPackage =
+            std::equal(pkgHeader.uuid, pkgHeader.uuid + PLDM_FWUP_UUID_LENGTH,
+                       expectedUUID.begin(), expectedUUID.end());
 
+        if (validPackage)
+        {
+            PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
+            ComponentBitmapBitLength componentBitmapBitLength =
+                pkgHeader.component_bitmap_bit_length;
+
+            return std::make_unique<PackageParser>(
+                pkgHdrSize, utils::toString(pkgVersion),
+                componentBitmapBitLength,
+                pkgHeader.package_header_format_version);
+        }
+    }
     return nullptr;
 }
 

@@ -60,13 +60,13 @@ TEST(PackageParser, ValidPkgSingleDescriptorSingleComponent)
     imageGenerate(compImage, pkgImageSize);
     imageInsert(fwPkgHdr, compImage);
     constexpr std::string_view pkgVersion{"VersionString1"};
-    auto parser = parsePkgHeader(fwPkgHdr);
+    auto parser = parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
     auto obj = parser.get();
-    EXPECT_EQ(typeid(*obj).name(), typeid(PackageParserV1).name());
+    EXPECT_EQ(typeid(*obj).name(), typeid(PackageParser).name());
     EXPECT_EQ(parser->pkgHeaderSize, pkgHeaderSize);
     EXPECT_EQ(parser->pkgVersion, pkgVersion);
 
-    parser->parse(fwPkgHdr, pkgSize);
+    parser->parse(fwPkgHdr.data(), pkgSize);
     auto outfwDeviceIDRecords = parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -129,13 +129,13 @@ TEST(PackageParser, ValidPkgMultipleDescriptorsMultipleComponents)
     imageInsert(fwPkgHdr, compImage2);
     imageInsert(fwPkgHdr, compImage3);
     constexpr std::string_view pkgVersion{"VersionString1"};
-    auto parser = parsePkgHeader(fwPkgHdr);
+    auto parser = parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
     auto obj = parser.get();
-    EXPECT_EQ(typeid(*obj).name(), typeid(PackageParserV1).name());
+    EXPECT_EQ(typeid(*obj).name(), typeid(PackageParser).name());
     EXPECT_EQ(parser->pkgHeaderSize, pkgHeaderSize);
     EXPECT_EQ(parser->pkgVersion, pkgVersion);
 
-    parser->parse(fwPkgHdr, pkgSize);
+    parser->parse(fwPkgHdr.data(), pkgSize);
     auto outfwDeviceIDRecords = parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -183,7 +183,7 @@ TEST(PackageParser, InvalidPkgHeaderInfoIncomplete)
                                   0x49, 0x43, 0x98, 0x00, 0xA0, 0x2F,
                                   0x05, 0x9A, 0xCA, 0x02};
 
-    auto parser = parsePkgHeader(fwPkgHdr);
+    auto parser = parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
     EXPECT_EQ(parser, nullptr);
 }
 
@@ -196,7 +196,7 @@ TEST(PackageParser, InvalidPkgNotSupportedHeaderFormat)
         0x07, 0x00, 0x08, 0x00, 0x01, 0x0E, 0x56, 0x65, 0x72, 0x73,
         0x69, 0x6F, 0x6E, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x31};
 
-    auto parser = parsePkgHeader(fwPkgHdr);
+    auto parser = parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
     EXPECT_EQ(parser, nullptr);
 }
 
@@ -222,7 +222,7 @@ TEST(PackageParser, InvalidPkgBadChecksum)
     std::vector<uint8_t> compImage;
     imageGenerate(compImage, pkgImageSize);
     imageInsert(fwPkgHdr, compImage);
-    EXPECT_EQ(parsePkgHeader(fwPkgHdr), nullptr);
+    EXPECT_EQ(parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size()), nullptr);
 }
 
 TEST(PackageParser, SkipPackageSizeCheck)
@@ -244,9 +244,9 @@ TEST(PackageParser, SkipPackageSizeCheck)
         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x0a};
 
     constexpr uintmax_t pkgSize = 151;
-    auto parser = parsePkgHeader(fwPkgHdr);
+    auto parser = parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
 
-    parser->parse(fwPkgHdr, pkgSize);
+    parser->parse(fwPkgHdr.data(), pkgSize);
     auto outfwDeviceIDRecords = parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {0,
@@ -291,16 +291,17 @@ class PackageParserMultipleDescSameType : public testing::Test
     static constexpr uintmax_t pkgHeaderSize = 182;
     static constexpr uintmax_t pkgSize = 184;
     std::string_view pkgVersion{"VersionString1"};
-    std::unique_ptr<PackageParser> parser = parsePkgHeader(fwPkgHdr);
+    std::unique_ptr<PackageParser> parser =
+        parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size());
 };
 
 TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
 {
     const auto& parserRef = *parser;
-    EXPECT_EQ(typeid(parserRef).name(), typeid(PackageParserV1).name());
+    EXPECT_EQ(typeid(parserRef).name(), typeid(PackageParser).name());
     EXPECT_EQ(parser->pkgHeaderSize, pkgHeaderSize);
     EXPECT_EQ(parser->pkgVersion, pkgVersion);
-    parser->parse(fwPkgHdr, pkgSize);
+    parser->parse(fwPkgHdr.data(), pkgSize);
     FirmwareDeviceIDRecords outfwDeviceIDRecords =
         parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords fwDeviceIDRecords{
@@ -325,7 +326,7 @@ TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
 
 TEST_F(PackageParserMultipleDescSameType, DescriptorsNoMatch)
 {
-    parser->parse(fwPkgHdr, pkgSize);
+    parser->parse(fwPkgHdr.data(), pkgSize);
     FirmwareDeviceIDRecords outfwDeviceIDRecords =
         parser->getFwDeviceIDRecords();
     FirmwareDeviceIDRecords incorrectfwDeviceIDRecords{

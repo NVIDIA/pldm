@@ -1553,17 +1553,14 @@ class PackageSignatureTest : public testing::Test
         package.read(reinterpret_cast<char*>(packageHeader.data()),
                      pkgHeaderSize);
 
-        auto parser = parsePkgHeader(packageHeader);
-        if (!parser)
-        {
-            throw std::runtime_error("Failed to parse package header");
-        }
+        auto parser =
+            parsePkgHeader(packageHeader.data(), packageHeader.size());
 
         std::vector<uint8_t> fullPackage(packageSize);
         package.seekg(0);
         package.read(reinterpret_cast<char*>(fullPackage.data()), packageSize);
 
-        parser->parse(fullPackage, packageSize);
+        parser->parse(fullPackage.data(), packageSize);
 
         return parser->calculatePackageSize();
     }

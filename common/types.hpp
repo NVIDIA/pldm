@@ -155,6 +155,7 @@ using PackageHeaderSize = size_t;
 using PackageVersion = std::string;
 using ComponentBitmapBitLength = uint16_t;
 using PackageHeaderChecksum = uint32_t;
+using PackagePayloadChecksum = uint32_t;
 
 // FirmwareDeviceIDRecords
 using DeviceIDRecordCount = uint8_t;
@@ -175,11 +176,14 @@ using CompOptions = std::bitset<16>;
 using ReqCompActivationMethod = std::bitset<16>;
 using CompLocationOffset = uint32_t;
 using CompSize = uint32_t;
+using CompOpaqueDataLength = uint32_t;
 using ComponentImageInfo =
     std::tuple<CompClassification, CompIdentifier, CompComparisonStamp,
                CompOptions, ReqCompActivationMethod, CompLocationOffset,
                CompSize, CompVersion>;
 using ComponentImageInfos = std::vector<ComponentImageInfo>;
+
+using DownstreamDeviceIDRecordCount = uint8_t;
 
 // DeviceInventory
 using DeviceObjPath = std::string;
