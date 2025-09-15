@@ -112,8 +112,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         auto& bus = pldm::utils::DBusHandler::getBus();
         std::string uuid;
         const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
-        auto getSubTreeResponse = utils::DBusHandler().getSubtree(
-            "/au/com/codeconstruct/mctp1/networks", 0, ifaceList);
+        pldm::utils::GetSubTreeResponse getSubTreeResponse;
+        try
+        {
+            getSubTreeResponse = utils::DBusHandler().getSubtree(
+                "/au/com/codeconstruct/mctp1/networks", 0, ifaceList);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            error(
+                "Failed to getSubtree call at path '{PATH}' and interface '{INTERFACE}', error - {ERROR} ",
+                "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPInterface);
+            return;
+        }
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
             for (const auto& [serviceName, interfaces] : mapperServiceMap)

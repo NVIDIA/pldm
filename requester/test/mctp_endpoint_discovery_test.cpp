@@ -32,12 +32,12 @@ using namespace std::chrono;
 
 using ::testing::_;
 
-TEST(MctpEndpointDiscoveryTest, SingleHandleMctpEndpoint)
+TEST(MctpEndpointDiscoveryTest, ZeroHandleMctpEndpoint)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
 
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(0);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});

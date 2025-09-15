@@ -206,6 +206,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
     {
         error("Error getting Endpoint UUID D-Bus interface, error - {ERROR}",
               "ERROR", e);
+        return;
     }
     for (const auto& [intfName, properties] : interfaces)
     {
@@ -342,6 +343,11 @@ void MctpDiscovery::removeEndpoints(sdbusplus::message_t&)
 
 void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
 {
+    if (mctpInfos.empty())
+    {
+        return;
+    }
+
     for (const auto& handler : handlers)
     {
         if (handler)
