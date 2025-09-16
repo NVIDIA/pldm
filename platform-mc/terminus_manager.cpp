@@ -115,8 +115,8 @@ static bool isPreferred(const MctpInfo& currentMctpInfo,
 {
     auto currentMedium = std::get<2>(currentMctpInfo);
     auto newMedium = std::get<2>(newMctpInfo);
-    auto currentBinding = std::get<4>(currentMctpInfo);
-    auto newBinding = std::get<4>(newMctpInfo);
+    auto currentBinding = std::get<5>(currentMctpInfo);
+    auto newBinding = std::get<5>(newMctpInfo);
 
     if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
     {
@@ -146,7 +146,7 @@ std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
                    (std::get<1>(v.second) == std::get<1>(mctpInfo)) &&
                    (std::get<2>(v.second) == std::get<2>(mctpInfo)) &&
                    (std::get<3>(v.second) == std::get<3>(mctpInfo)) &&
-                   (std::get<4>(v.second) == std::get<4>(mctpInfo));
+                   (std::get<5>(v.second) == std::get<5>(mctpInfo));
         });
     if (mctpInfoTableIterator != mctpInfoTable.end())
     {

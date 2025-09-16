@@ -74,7 +74,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      bool fwDebug) :
         inventoryMgr(handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
-                     descriptorMap, componentInfoMap, deviceInventoryInfo),
+                     descriptorMap, downstreamDescriptorMap, componentInfoMap, deviceInventoryInfo),
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
@@ -209,6 +209,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return;
     }
 
+    /** @brief Helper function to invoke registered handlers for
+     *  updating the availability status of the MCTP endpoint
+     *
+     *  @param[in] mctpInfo - information of the target endpoint
+     *  @param[in] availability - new availability status
+     */
+    void updateMctpEndpointAvailability(const MctpInfo&, Availability)
+    {
+        return;
+    }
+
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
      *
@@ -237,11 +248,25 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         // placeholder
     }
 
+    /** @brief Get Active EIDs.
+     *
+     *  @param[in] addr - MCTP address of terminus
+     *  @param[in] terminiNames - MCTP terminus name
+     */
+    std::optional<mctp_eid_t> getActiveEidByName(const std::string&)
+    {
+        return std::nullopt;
+    }
+
   private:
     /** @brief Descriptor information of all the discovered MCTP endpoints */
     DescriptorMap descriptorMap;
 
-    /** @brief Component information of all the discovered MCTP endpoints */
+    /** Downstream descriptor information of all the discovered MCTP endpoints
+     */
+    DownstreamDescriptorMap downstreamDescriptorMap;
+
+    /** Component information of all the discovered MCTP endpoints */
     ComponentInfoMap componentInfoMap;
 
     /** @brief PLDM firmware inventory manager */

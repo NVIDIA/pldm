@@ -77,6 +77,7 @@ constexpr auto mapperService = ObjectMapper::default_service;
 constexpr auto inventoryPath = "/xyz/openbmc_project/inventory";
 constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
 constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
+
 /** @struct CustomFD
  *
  *  RAII wrapper for file descriptor.
@@ -176,11 +177,12 @@ struct DBusMapping
     std::string propertyType; //!< D-Bus property type
 };
 
-using PropertyValue = std::variant<
-    bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-    double, std::string, std::vector<uint8_t>, std::vector<std::string>,
-    std::vector<std::tuple<std::string, std::string, std::string>>,
-    std::vector<sdbusplus::message::object_path>>;
+using PropertyValue =
+    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
+                 uint64_t, double, std::string, std::vector<uint8_t>,
+                 std::vector<uint64_t>, std::vector<std::string>,
+                 std::vector<std::tuple<std::string, std::string, std::string>>,
+                 std::vector<sdbusplus::message::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<
@@ -200,9 +202,18 @@ using Interfaces = std::vector<std::string>;
 using MapperServiceMap = std::vector<std::pair<ServiceName, Interfaces>>;
 using GetSubTreeResponse = std::vector<std::pair<ObjectPath, MapperServiceMap>>;
 using GetSubTreePathsResponse = std::vector<std::string>;
+using GetAssociatedSubTreeResponse =
+    std::map<std::string, std::map<std::string, std::vector<std::string>>>;
+using GetAncestorsResponse =
+    std::vector<std::pair<ObjectPath, MapperServiceMap>>;
 using PropertyMap = std::map<std::string, PropertyValue>;
 using InterfaceMap = std::map<std::string, PropertyMap>;
 using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
+
+using SensorPDR = std::vector<uint8_t>;
+using SensorPDRs = std::vector<SensorPDR>;
+using EffecterPDR = std::vector<uint8_t>;
+using EffecterPDRs = std::vector<EffecterPDR>;
 
 /**
  * @brief The interface for DBusHandler
@@ -222,6 +233,10 @@ class DBusHandlerInterface
         const std::string& objectPath, int depth,
         const std::vector<std::string>& ifaceList) const = 0;
 
+    virtual GetAncestorsResponse getAncestors(
+        const std::string& path,
+        const std::vector<std::string>& ifaceList) const = 0;
+
     virtual void setDbusProperty(const DBusMapping& dBusMap,
                                  const PropertyValue& value) const = 0;
 
@@ -232,9 +247,11 @@ class DBusHandlerInterface
     virtual PropertyMap getDbusPropertiesVariant(
         const char* serviceName, const char* objPath,
         const char* dbusInterface) const = 0;
-    virtual bool checkDbusPropertyVariant(const char* objPath,
-                                          const char* dbusProp,
-                                          const char* dbusInterface) const = 0;
+
+    virtual GetAssociatedSubTreeResponse getAssociatedSubTree(
+        const sdbusplus::message::object_path& objectPath,
+        const sdbusplus::message::object_path& subtree, int depth,
+        const std::vector<std::string>& ifaceList) const = 0;
 };
 
 /**
@@ -306,6 +323,21 @@ class DBusHandler : public DBusHandlerInterface
         const std::string& objectPath, int depth,
         const std::vector<std::string>& ifaceList) const override;
 
+    /**
+     *  @brief Get the Ancestors response from the mapper
+     *
+     *  @param[in] path - D-Bus object path
+     *  @param[in] ifaceList - an optional list of interfaces to constrain the
+     *                         search to queried from the mapper
+     *
+     *  @return GetAncestorsResponse - the mapper GetAncestors response
+     *
+     *  @throw sdbusplus::exception_t when it fails
+     */
+    GetAncestorsResponse getAncestors(
+        const std::string& path,
+        const std::vector<std::string>& ifaceList) const override;
+
     /** @brief Get property(type: variant) from the requested dbus
      *
      *  @param[in] objPath - The Dbus object path
@@ -357,6 +389,19 @@ class DBusHandler : public DBusHandlerInterface
             getDbusPropertyVariant(objPath, dbusProp, dbusInterface);
         return std::get<Property>(VariantValue);
     }
+
+    /** @brief Get the associated subtree from the mapper
+     *
+     * @param[in] path - The D-Bus object path
+     *
+     * @param[in] interface - The D-Bus interface
+     *
+     * @return GetAssociatedSubtreeResponse - The associated subtree
+     */
+    GetAssociatedSubTreeResponse getAssociatedSubTree(
+        const sdbusplus::message::object_path& objectPath,
+        const sdbusplus::message::object_path& subtree, int depth,
+        const std::vector<std::string>& ifaceList) const override;
 
     /** @brief Set Dbus property
      *
@@ -488,6 +533,51 @@ uint16_t findStateEffecterId(const pldm_pdr* pdrRepo, uint16_t entityType,
                              uint16_t entityInstance, uint16_t containerId,
                              uint16_t stateSetId, bool localOrRemote);
 
+/** @brief Method to find all state sensor PDRs by type
+ *
+ *  @param[in] entityType - the entity type
+ *  @param[in] repo - opaque pointer acting as a PDR repo handle
+ *
+ *  @return vector of vector of all state sensor PDRs
+ */
+SensorPDRs getStateSensorPDRsByType(uint16_t entityType, const pldm_pdr* repo);
+
+/** @brief method to find sensor IDs based on the pldm_entity
+ *
+ *  @param[in] pdrRepo - opaque pointer acting as a PDR repo handle
+ *  @param[in] entityType - the entity type
+ *  @param[in] entityInstance - the entity instance number
+ *  @param[in] containerId - the container ID
+ *
+ *  @return vector of all sensor IDs
+ */
+std::vector<pldm::pdr::SensorID> findSensorIds(
+    const pldm_pdr* pdrRepo, uint16_t entityType, uint16_t entityInstance,
+    uint16_t containerId);
+
+/** @brief Method to find all state effecter PDRs by type
+ *
+ *  @param[in] entityType - the entity type
+ *  @param[in] repo - opaque pointer acting as a PDR repo handle
+ *
+ *  @return vector of vector of all state effecter PDRs
+ */
+EffecterPDRs getStateEffecterPDRsByType(uint16_t entityType,
+                                        const pldm_pdr* repo);
+
+/** @brief method to find effecter IDs based on the pldm_entity
+ *
+ *  @param[in] pdrRepo - opaque pointer acting as a PDR repo handle
+ *  @param[in] entityType - the entity type
+ *  @param[in] entityInstance - the entity instance number
+ *  @param[in] containerId - the container ID
+ *
+ *  @return vector of all effecter IDs
+ */
+std::vector<pldm::pdr::EffecterID> findEffecterIds(
+    const pldm_pdr* pdrRepo, uint16_t entityType, uint16_t entityInstance,
+    uint16_t containerId);
+
 /** @brief Emit the sensor event signal
  *
  *	@param[in] tid - the terminus id
@@ -503,6 +593,12 @@ uint16_t findStateEffecterId(const pldm_pdr* pdrRepo, uint16_t entityType,
 int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
                                uint8_t sensorOffset, uint8_t eventState,
                                uint8_t previousEventState);
+
+/**
+ *  @brief call Recover() method to recover an MCTP Endpoint
+ *  @param[in] MCTP Endpoint's object path
+ */
+void recoverMctpEndpoint(const std::string& endpointObjPath);
 
 /** @brief Print the buffer
  *

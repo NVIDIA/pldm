@@ -4,6 +4,8 @@
 #include "common/utils.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
+#include "platform-mc/dbus_to_terminus_effecters.hpp"
+#include "platform-mc/manager.hpp"
 #include "platform-mc/pldmServiceReadyInterface.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -141,7 +143,7 @@ static std::optional<Response> processRxMsg(
         {
             uint8_t completion_code = PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
             response.resize(sizeof(pldm_msg_hdr));
-            auto responseHdr = reinterpret_cast<pldm_msg_hdr*>(response.data());
+            auto responseHdr = new (response.data()) pldm_msg_hdr;
             pldm_header_info header{};
             header.msg_type = PLDM_RESPONSE;
             header.instance = hdrFields.instance;
@@ -242,14 +244,14 @@ int main(int argc, char** argv)
     PldmTransport pldmTransport{};
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
-    sdbusplus::server::manager_t objManager(bus, "/");
-    sdbusplus::server::manager_t sensorsObjManager(
+    sdbusplus::server::manager_t objManager(bus,
+                                            "/xyz/openbmc_project/software");
+    sdbusplus::server::manager_t sensorObjManager(
         bus, "/xyz/openbmc_project/sensors");
 
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
 
     InstanceIdDb instanceIdDb;
-
     sdbusplus::server::manager_t inventoryManager(
         bus, "/xyz/openbmc_project/inventory");
 

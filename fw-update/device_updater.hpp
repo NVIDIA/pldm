@@ -35,6 +35,12 @@ namespace pldm
 namespace fw_update
 {
 
+/** @brief Type alias for component update status tracking
+ *         Maps component index to its update completion status (true indicates
+ *         successful completion, false indicates cancellation)
+ */
+using ComponentUpdateStatusMap = std::map<size_t, bool>;
+
 class UpdateManager;
 
 /** @enum Enumeration to represent the PLDM DeviceUpdater sequence in the

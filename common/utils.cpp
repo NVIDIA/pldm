@@ -27,6 +27,11 @@ namespace pldm
 namespace utils
 {
 
+using ObjectMapper = sdbusplus::client::xyz::openbmc_project::ObjectMapper<>;
+
+constexpr const char* MCTP_INTERFACE_CC = "au.com.codeconstruct.MCTP.Endpoint1";
+constexpr const char* MCTP_ENDPOINT_RECOVER_METHOD = "Recover";
+
 std::vector<std::vector<uint8_t>> findStateEffecterPDR(
     uint8_t /*tid*/, uint16_t entityID, uint16_t stateSetId,
     const pldm_pdr* repo)
@@ -43,16 +48,15 @@ std::vector<std::vector<uint8_t>> findStateEffecterPDR(
                                                   record, &outData, &size);
             if (record)
             {
-                auto pdr = reinterpret_cast<pldm_state_effecter_pdr*>(outData);
+                auto pdr = new (outData) pldm_state_effecter_pdr;
                 auto compositeEffecterCount = pdr->composite_effecter_count;
                 auto possible_states_start = pdr->possible_states;
 
                 for (auto effecters = 0x00; effecters < compositeEffecterCount;
                      effecters++)
                 {
-                    auto possibleStates =
-                        reinterpret_cast<state_effecter_possible_states*>(
-                            possible_states_start);
+                    auto possibleStates = new (possible_states_start)
+                        state_effecter_possible_states;
                     auto setId = possibleStates->state_set_id;
                     auto possibleStateSize =
                         possibleStates->possible_states_size;
@@ -95,16 +99,15 @@ std::vector<std::vector<uint8_t>> findStateSensorPDR(
                                                   record, &outData, &size);
             if (record)
             {
-                auto pdr = reinterpret_cast<pldm_state_sensor_pdr*>(outData);
+                auto pdr = new (outData) pldm_state_sensor_pdr;
                 auto compositeSensorCount = pdr->composite_sensor_count;
                 auto possible_states_start = pdr->possible_states;
 
                 for (auto sensors = 0x00; sensors < compositeSensorCount;
                      sensors++)
                 {
-                    auto possibleStates =
-                        reinterpret_cast<state_sensor_possible_states*>(
-                            possible_states_start);
+                    auto possibleStates = new (possible_states_start)
+                        state_sensor_possible_states;
                     auto setId = possibleStates->state_set_id;
                     auto possibleStateSize =
                         possibleStates->possible_states_size;
@@ -279,6 +282,20 @@ GetSubTreePathsResponse DBusHandler::getSubTreePaths(
     return paths;
 }
 
+GetAncestorsResponse DBusHandler::getAncestors(
+    const std::string& path, const std::vector<std::string>& ifaceList) const
+{
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    auto method = bus.new_method_call(ObjectMapper::default_service,
+                                      ObjectMapper::instance_path,
+                                      ObjectMapper::interface, "GetAncestors");
+    method.append(path, ifaceList);
+    auto reply = bus.call(method, dbusTimeout);
+    GetAncestorsResponse response;
+    reply.read(response);
+    return response;
+}
+
 void reportError(const char* errorMsg)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -372,6 +389,12 @@ void DBusHandler::setDbusProperty(const DBusMapping& dBusMap,
         std::variant<std::string> v = std::get<std::string>(value);
         setDbusValue(v);
     }
+    else if (dBusMap.propertyType == "array[string]")
+    {
+        std::variant<std::vector<std::string>> v =
+            std::get<std::vector<std::string>>(value);
+        setDbusValue(v);
+    }
     else if (dBusMap.propertyType == "array[object_path]")
     {
         std::variant<std::vector<sdbusplus::message::object_path>> v =
@@ -395,6 +418,22 @@ PropertyValue DBusHandler::getDbusPropertyVariant(
         bus.new_method_call(service.c_str(), objPath, dbusProperties, "Get");
     method.append(dbusInterface, dbusProp);
     return bus.call(method, dbusTimeout).unpack<PropertyValue>();
+}
+
+GetAssociatedSubTreeResponse DBusHandler::getAssociatedSubTree(
+    const sdbusplus::message::object_path& objectPath,
+    const sdbusplus::message::object_path& subtree, int depth,
+    const std::vector<std::string>& ifaceList) const
+{
+    auto& bus = DBusHandler::getBus();
+    auto method = bus.new_method_call(
+        ObjectMapper::default_service, ObjectMapper::instance_path,
+        ObjectMapper::interface, "GetAssociatedSubTree");
+    method.append(objectPath, subtree, depth, ifaceList);
+    auto reply = bus.call(method, dbusTimeout);
+    GetAssociatedSubTreeResponse response;
+    reply.read(response);
+    return response;
 }
 
 ObjectValueTree DBusHandler::getManagedObj(const char* service,
@@ -513,16 +552,15 @@ uint16_t findStateEffecterId(const pldm_pdr* pdrRepo, uint16_t entityType,
                                               record, &pdrData, &pdrSize);
         if (record && (localOrRemote ^ pldm_pdr_record_is_remote(record)))
         {
-            auto pdr = reinterpret_cast<pldm_state_effecter_pdr*>(pdrData);
+            auto pdr = new (pdrData) pldm_state_effecter_pdr;
             auto compositeEffecterCount = pdr->composite_effecter_count;
             auto possible_states_start = pdr->possible_states;
 
             for (auto effecters = 0x00; effecters < compositeEffecterCount;
                  effecters++)
             {
-                auto possibleStates =
-                    reinterpret_cast<state_effecter_possible_states*>(
-                        possible_states_start);
+                auto possibleStates = new (possible_states_start)
+                    state_effecter_possible_states;
                 auto setId = possibleStates->state_set_id;
                 auto possibleStateSize = possibleStates->possible_states_size;
 
@@ -564,6 +602,27 @@ int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
     return PLDM_SUCCESS;
 }
 
+void recoverMctpEndpoint(const std::string& endpointObjPath)
+{
+    auto& bus = DBusHandler::getBus();
+    try
+    {
+        std::string service = DBusHandler().getService(endpointObjPath.c_str(),
+                                                       MCTP_INTERFACE_CC);
+
+        auto method = bus.new_method_call(
+            service.c_str(), endpointObjPath.c_str(), MCTP_INTERFACE_CC,
+            MCTP_ENDPOINT_RECOVER_METHOD);
+        bus.call_noreply(method, dbusTimeout);
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "failed to make a D-Bus call to recover MCTP Endpoint, ERROR {ERR_EXCEP}",
+            "ERR_EXCEP", e);
+    }
+}
+
 uint16_t findStateSensorId(const pldm_pdr* pdrRepo, uint8_t tid,
                            uint16_t entityType, uint16_t entityInstance,
                            uint16_t containerId, uint16_t stateSetId)
@@ -571,15 +630,14 @@ uint16_t findStateSensorId(const pldm_pdr* pdrRepo, uint8_t tid,
     auto pdrs = findStateSensorPDR(tid, entityType, stateSetId, pdrRepo);
     for (auto pdr : pdrs)
     {
-        auto sensorPdr = reinterpret_cast<pldm_state_sensor_pdr*>(pdr.data());
+        auto sensorPdr = new (pdr.data()) pldm_state_sensor_pdr;
         auto compositeSensorCount = sensorPdr->composite_sensor_count;
         auto possible_states_start = sensorPdr->possible_states;
 
         for (auto sensors = 0x00; sensors < compositeSensorCount; sensors++)
         {
-            auto possibleStates =
-                reinterpret_cast<state_sensor_possible_states*>(
-                    possible_states_start);
+            auto possibleStates = new (possible_states_start)
+                state_sensor_possible_states;
             auto setId = possibleStates->state_set_id;
             auto possibleStateSize = possibleStates->possible_states_size;
             if (entityType == sensorPdr->entity_type &&
@@ -641,7 +699,7 @@ std::vector<std::string> split(std::string_view srcStr, std::string_view delim,
                                std::string_view trimStr)
 {
     std::vector<std::string> out;
-    size_t start;
+    size_t start = 0;
     size_t end = 0;
 
     while ((start = srcStr.find_first_not_of(delim, end)) != std::string::npos)
@@ -657,7 +715,7 @@ std::vector<std::string> split(std::string_view srcStr, std::string_view delim,
 
         if (!dstStr.empty())
         {
-            out.push_back(std::string(dstStr));
+            out.emplace_back(dstStr);
         }
     }
 
@@ -793,7 +851,6 @@ std::optional<std::string> fruFieldValuestring(const uint8_t* value,
 {
     if (!value || !length)
     {
-        error("Fru data to string invalid data.");
         return std::nullopt;
     }
 
@@ -813,5 +870,94 @@ std::optional<uint32_t> fruFieldParserU32(const uint8_t* value,
     std::memcpy(&ret, value, length);
     return ret;
 }
+
+SensorPDRs getStateSensorPDRsByType(uint16_t entityType, const pldm_pdr* repo)
+{
+    uint8_t* outData = nullptr;
+    uint32_t size{};
+    const pldm_pdr_record* record = nullptr;
+    SensorPDRs pdrs;
+
+    if (repo)
+    {
+        while ((record = pldm_pdr_find_record_by_type(
+                    repo, PLDM_STATE_SENSOR_PDR, record, &outData, &size)))
+        {
+            auto pdr = new (outData) pldm_state_sensor_pdr;
+            if (pdr && pdr->entity_type == entityType)
+            {
+                pdrs.emplace_back(outData, outData + size);
+            }
+        }
+    }
+
+    return pdrs;
+}
+
+std::vector<pldm::pdr::SensorID> findSensorIds(
+    const pldm_pdr* pdrRepo, uint16_t entityType, uint16_t entityInstance,
+    uint16_t containerId)
+{
+    std::vector<uint16_t> sensorIDs;
+    auto pdrs = getStateSensorPDRsByType(entityType, pdrRepo);
+
+    for (const auto& pdr : pdrs)
+    {
+        auto sensorPdr =
+            reinterpret_cast<const pldm_state_sensor_pdr*>(pdr.data());
+
+        if (sensorPdr && sensorPdr->entity_type == entityType &&
+            sensorPdr->entity_instance == entityInstance &&
+            sensorPdr->container_id == containerId)
+        {
+            sensorIDs.emplace_back(sensorPdr->sensor_id);
+        }
+    }
+
+    return sensorIDs;
+}
+
+EffecterPDRs getStateEffecterPDRsByType(uint16_t entityType,
+                                        const pldm_pdr* repo)
+{
+    uint8_t* outData = nullptr;
+    uint32_t size{};
+    const pldm_pdr_record* record = nullptr;
+    EffecterPDRs pdrs;
+    if (repo)
+    {
+        while ((record = pldm_pdr_find_record_by_type(
+                    repo, PLDM_STATE_EFFECTER_PDR, record, &outData, &size)))
+        {
+            auto pdr = new (outData) pldm_state_effecter_pdr;
+            if (pdr && pdr->entity_type == entityType)
+            {
+                pdrs.emplace_back(outData, outData + size);
+            }
+        }
+    }
+    return pdrs;
+}
+
+std::vector<pldm::pdr::EffecterID> findEffecterIds(
+    const pldm_pdr* pdrRepo, uint16_t entityType, uint16_t entityInstance,
+    uint16_t containerId)
+{
+    std::vector<uint16_t> effecterIDs;
+    auto pdrs = getStateEffecterPDRsByType(entityType, pdrRepo);
+    for (const auto& pdr : pdrs)
+    {
+        auto effecterPdr =
+            reinterpret_cast<const pldm_state_effecter_pdr*>(pdr.data());
+        if (effecterPdr && effecterPdr->entity_type == entityType &&
+            effecterPdr->entity_instance == entityInstance &&
+            effecterPdr->container_id == containerId)
+        {
+            effecterIDs.emplace_back(effecterPdr->effecter_id);
+        }
+    }
+    return effecterIDs;
+}
+
 } // namespace utils
 } // namespace pldm

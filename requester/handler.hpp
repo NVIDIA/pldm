@@ -288,7 +288,14 @@ class Handler
         }
 
         /* try to send new request if the endpoint is free */
-        pollEndpointQueue(eid);
+        auto rc = pollEndpointQueue(eid);
+        if (rc != PLDM_SUCCESS)
+        {
+            error(
+                "Failed to process request queue for EID {EID}, response code {RC}.",
+                "EID", eid, "RC", rc);
+            return rc;
+        }
 
         return PLDM_SUCCESS;
     }
@@ -391,14 +398,6 @@ class Handler
             endpointMessageQueues[eid]->activeRequest = false;
             /* try to send new request if the endpoint is free */
             pollEndpointQueue(eid);
-        }
-        else
-        {
-            // Got a response for a PLDM request message not registered with the
-            // request handler, so freeing up the instance ID, this can be other
-            // OpenBMC applications relying on PLDM D-Bus apis like
-            // openpower-occ-control and softoff
-            instanceIdDb.free(key.eid, key.instanceId);
         }
     }
 

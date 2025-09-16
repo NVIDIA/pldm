@@ -122,6 +122,9 @@ class InventoryManager
      *                                       create device/firmware inventory
      *  @param[out] descriptorMap - Populate the firmware identifers for the
      *                              FDs managed by the BMC.
+     *  @param[out] downstreamDescriptorMap - Populate the downstream
+     *                                        identifiers for the FDs managed
+     *                                        by the BMC.
      *  @param[out] componentInfoMap - Populate the component info for the FDs
      *                                 managed by the BMC.
      *  @param[in] deviceInventoryInfo - device inventory info for message
@@ -132,13 +135,15 @@ class InventoryManager
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
-        DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap,
+        DescriptorMap& descriptorMap,
+        DownstreamDescriptorMap& downstreamDescriptorMap,
+        ComponentInfoMap& componentInfoMap,
         DeviceInventoryInfo& deviceInventoryInfo,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
-        descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
+        descriptorMap(descriptorMap), downstreamDescriptorMap(downstreamDescriptorMap), componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
     {}
 
@@ -183,6 +188,33 @@ class InventoryManager
     exec::task<int> parseQueryDeviceIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution);
+
+    /** @brief Handler for QueryDownstreamDevices command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    void queryDownstreamDevices(mctp_eid_t eid, const pldm_msg* response,
+                                size_t respMsgLen);
+
+    /** @brief Handler for QueryDownstreamIdentifiers command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    void queryDownstreamIdentifiers(mctp_eid_t eid, const pldm_msg* response,
+                                    size_t respMsgLen);
+
+    /** @brief Handler for GetDownstreamFirmwareParameters command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    void getDownstreamFirmwareParameters(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief Handler for GetFirmwareParameters command response
      *
@@ -273,6 +305,34 @@ class InventoryManager
         dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
+        /** @brief Handler for QueryDownstreamDevices command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    virtual sdbusplus::async::task<int> parseQueryDownstreamDevicesResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
+    /** @brief Handler for QueryDownstreamIdentifiers command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
+    /** @brief Handler for GetDownstreamFirmwareParameters command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    virtual sdbusplus::async::task<int>
+        parseGetDownstreamFirmwareParametersResponse(
+            mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
 
@@ -284,6 +344,9 @@ class InventoryManager
 
     /** @brief Device identifiers of the managed FDs */
     DescriptorMap& descriptorMap;
+
+    /** @brief Downstream Device identifiers of the managed FDs */
+    DownstreamDescriptorMap& downstreamDescriptorMap;
 
     /** @brief Component information needed for the update of the managed FDs */
     ComponentInfoMap& componentInfoMap;

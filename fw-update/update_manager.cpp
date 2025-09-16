@@ -308,20 +308,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
 
     package.seekg(0);
-    std::vector<uint8_t> packageHeader(sizeof(pldm_package_header_information));
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 sizeof(pldm_package_header_information));
-
-    auto pkgHeaderInfo =
-        reinterpret_cast<const pldm_package_header_information*>(
-            packageHeader.data());
-    auto pkgHeaderInfoSize = sizeof(pldm_package_header_information) +
-                             pkgHeaderInfo->package_version_string_length;
-    packageHeader.clear();
-    packageHeader.resize(pkgHeaderInfoSize);
-    package.seekg(0);
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 pkgHeaderInfoSize);
+    std::vector<uint8_t> packageHeader(packageSize);
+    package.read(reinterpret_cast<char*>(packageHeader.data()), packageSize);
 
     parser = parsePkgHeader(packageHeader);
     if (parser == nullptr)
@@ -341,9 +329,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
     }
 
     package.seekg(0);
-    packageHeader.resize(parser->pkgHeaderSize);
-    package.read(reinterpret_cast<char*>(packageHeader.data()),
-                 parser->pkgHeaderSize);
     try
     {
         parser->parse(packageHeader, packageSize);
@@ -878,7 +863,7 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
         }
         else
         {
-            auto ptr = reinterpret_cast<pldm_msg*>(response.data());
+            auto ptr = new (response.data()) pldm_msg;
             auto rc = encode_cc_only_resp(
                 request->hdr.instance_id, request->hdr.type,
                 request->hdr.command, PLDM_ERROR_INVALID_DATA, ptr);
@@ -890,7 +875,7 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
         error(
             "RequestFirmwareData reported PLDM_FWUP_COMMAND_NOT_EXPECTED, eid={EID}",
             "EID", eid);
-        auto ptr = reinterpret_cast<pldm_msg*>(response.data());
+        auto ptr = new (response.data()) pldm_msg;
         auto rc = encode_cc_only_resp(request->hdr.instance_id,
                                       request->hdr.type, +request->hdr.command,
                                       PLDM_FWUP_COMMAND_NOT_EXPECTED, ptr);

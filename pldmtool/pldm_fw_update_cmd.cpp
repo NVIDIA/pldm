@@ -22,6 +22,8 @@
 #include <fmt/format.h>
 #include <libpldm/firmware_update.h>
 
+#include <format>
+
 namespace pldmtool
 {
 
@@ -89,18 +91,18 @@ const std::map<DescriptorType, const char*> descriptorName{
     {PLDM_FWUP_ACPI_PRODUCT_IDENTIFIER, "ACPI Product Identifier"},
     {PLDM_FWUP_VENDOR_DEFINED, "Vendor Defined"}};
 
-const std::map<const char*, pldm_self_contained_activation_req>
-    pldmSelfContainedActivation{
-        {"False", PLDM_NOT_ACTIVATE_SELF_CONTAINED_COMPONENTS},
-        {"True", PLDM_ACTIVATE_SELF_CONTAINED_COMPONENTS},
-    };
-
 const std::map<std::string, transfer_resp_flag> transferRespFlag{
     {"START", PLDM_START},
     {"MIDDLE", PLDM_MIDDLE},
     {"END", PLDM_END},
     {"STARTANDEND", PLDM_START_AND_END},
 };
+
+const std::map<const char*, pldm_self_contained_activation_req>
+    pldmSelfContainedActivation{
+        {"False", PLDM_NOT_ACTIVATE_SELF_CONTAINED_COMPONENTS},
+        {"True", PLDM_ACTIVATE_SELF_CONTAINED_COMPONENTS},
+    };
 
 /*
  * Convert PLDM Firmware String Type to uint8_t
@@ -111,7 +113,7 @@ const std::map<std::string, transfer_resp_flag> transferRespFlag{
  */
 uint8_t convertStringTypeToUInt8(std::string compImgVerStrType)
 {
-    std::map<std::string, pldm_firmware_update_string_type>
+    static const std::map<std::string, pldm_firmware_update_string_type>
         pldmFirmwareUpdateStringType{
             {"UNKNOWN", PLDM_STR_TYPE_UNKNOWN},
             {"ASCII", PLDM_STR_TYPE_ASCII},
@@ -127,7 +129,7 @@ uint8_t convertStringTypeToUInt8(std::string compImgVerStrType)
     }
     else
     {
-        return std::atoi(compImgVerStrType.c_str());
+        return static_cast<uint8_t>(std::stoi(compImgVerStrType));
     }
 }
 
@@ -147,7 +149,7 @@ class GetStatus : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + PLDM_GET_STATUS_REQ_BYTES);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
         auto rc = encode_get_status_req(instanceId, request,
                                         PLDM_GET_STATUS_REQ_BYTES);
         return {rc, requestMsg};
@@ -242,7 +244,7 @@ class GetFwParams : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
         auto rc = encode_get_firmware_parameters_req(
             instanceId, PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES, request);
         return {rc, requestMsg};
@@ -266,85 +268,66 @@ class GetFwParams : public CommandInterface
             return;
         }
 
-        ordered_json data;
-
-        fillCompletionCode(fwParams.completion_code, data);
-
-        if (fwParams.completion_code == PLDM_SUCCESS)
+        ordered_json capabilitiesDuringUpdate;
+        if (fwParams.capabilities_during_update.bits.bit0)
         {
-            ordered_json capabilitiesDuringUpdate;
-            if (fwParams.capabilities_during_update.bits.bit0)
-            {
-                capabilitiesDuringUpdate
-                    ["Component Update Failure Recovery Capability"] =
-                        "Device will not revert to previous component image upon "
-                        "failure, timeout or cancellation of the transfer.";
-            }
-            else
-            {
-                capabilitiesDuringUpdate
-                    ["Component Update Failure Recovery Capability"] =
-                        "Device will revert to previous component image upon failure, "
-                        "timeout or cancellation of the transfer.";
-            }
+            capabilitiesDuringUpdate
+                ["Component Update Failure Recovery Capability"] =
+                    "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer.";
+        }
+        else
+        {
+            capabilitiesDuringUpdate
+                ["Component Update Failure Recovery Capability"] =
+                    "Device will revert to previous component image upon failure, timeout or cancellation of the transfer.";
+        }
 
-            if (fwParams.capabilities_during_update.bits.bit1)
-            {
-                capabilitiesDuringUpdate
-                    ["Component Update Failure Retry Capability"] =
-                        "Device will not be able to update component again unless it exits "
-                        "update mode and the UA sends a new Request Update command.";
-            }
-            else
-            {
-                capabilitiesDuringUpdate
-                    ["Component Update Failure Retry Capability"] =
-                        " Device can have component updated again without exiting update "
-                        "mode and restarting transfer via RequestUpdate command.";
-            }
+        if (fwParams.capabilities_during_update.bits.bit1)
+        {
+            capabilitiesDuringUpdate["Component Update Failure Retry Capability"] =
+                "Device will not be able to update component again unless it exits update mode and the UA sends a new Request Update command.";
+        }
+        else
+        {
+            capabilitiesDuringUpdate["Component Update Failure Retry Capability"] =
+                " Device can have component updated again without exiting update mode and restarting transfer via RequestUpdate command.";
+        }
 
-            if (fwParams.capabilities_during_update.bits.bit2)
-            {
-                capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                    "Firmware Device can support a partial update, whereby a package "
-                    "which contains a component image set that is a subset of all "
-                    "components currently residing on the FD, can be transferred.";
-            }
-            else
-            {
-                capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
-                    "Firmware Device cannot accept a partial update and all components "
-                    "present on the FD shall be updated.";
-            }
+        if (fwParams.capabilities_during_update.bits.bit2)
+        {
+            capabilitiesDuringUpdate
+                ["Firmware Device Host Functionality during Firmware Update"] =
+                    "Device will not revert to previous component image upon failure, timeout or cancellation of the transfer";
+        }
+        else
+        {
+            capabilitiesDuringUpdate
+                ["Firmware Device Host Functionality during Firmware Update"] =
+                    "Device will revert to previous component image upon failure, timeout or cancellation of the transfer";
+        }
 
-            if (fwParams.capabilities_during_update.bits.bit3)
-            {
-                capabilitiesDuringUpdate
-                    ["Firmware Device Host Functionality during Firmware Update"] =
-                        "Device will not revert to previous component image upon "
-                        "failure, timeout or cancellation of the transfer";
-            }
-            else
-            {
-                capabilitiesDuringUpdate
-                    ["Firmware Device Host Functionality during Firmware Update"] =
-                        "Device will revert to previous component image upon failure, "
-                        "timeout or cancellation of the transfer";
-            }
+        if (fwParams.capabilities_during_update.bits.bit3)
+        {
+            capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
+                "Firmware Device can support a partial update, whereby a package which contains a component image set that is a subset of all components currently residing on the FD, can be transferred.";
+        }
+        else
+        {
+            capabilitiesDuringUpdate["Firmware Device Partial Updates"] =
+                "Firmware Device cannot accept a partial update and all components present on the FD shall be updated.";
+        }
 
-            if (fwParams.capabilities_during_update.bits.bit4)
-            {
-                capabilitiesDuringUpdate
-                    ["Firmware Device Update Mode Restrictions"] =
-                        "Firmware device unable to enter update mode if host OS "
-                        "environment is active.";
-            }
-            else
-            {
-                capabilitiesDuringUpdate
-                    ["Firmware Device Update Mode Restrictions"] =
-                        "No host OS environment restriction for update mode";
-            }
+        if (fwParams.capabilities_during_update.bits.bit4)
+        {
+            capabilitiesDuringUpdate["Firmware Device Update Mode Restrictions"] =
+                "Firmware device unable to enter update mode if host OS environment is active.";
+        }
+        else
+        {
+            capabilitiesDuringUpdate
+                ["Firmware Device Update Mode Restrictions"] =
+                    "No host OS environment restriction for update mode";
+        }
 
             data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
             data["ComponentCount"] = static_cast<uint16_t>(fwParams.comp_count);
@@ -613,7 +596,7 @@ std::pair<int, std::vector<uint8_t>> QueryDeviceIdentifiers::createRequestMsg()
 {
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
-    auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    auto request = new (requestMsg.data()) pldm_msg;
     auto rc = encode_query_device_identifiers_req(
         instanceId, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, request);
     return {rc, requestMsg};
@@ -708,164 +691,6 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
     pldmtool::helper::DisplayInJson(data);
 }
 
-class CancelUpdateComponent : public CommandInterface
-{
-  public:
-    ~CancelUpdateComponent() = default;
-    CancelUpdateComponent() = delete;
-    CancelUpdateComponent(const CancelUpdateComponent&) = delete;
-    CancelUpdateComponent(CancelUpdateComponent&&) = delete;
-    CancelUpdateComponent& operator=(const CancelUpdateComponent&) = delete;
-    CancelUpdateComponent& operator=(CancelUpdateComponent&&) = delete;
-
-    using CommandInterface::CommandInterface;
-
-    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
-    {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-        auto rc = encode_cancel_update_component_req(
-            instanceId, request, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
-        return {rc, requestMsg};
-    }
-
-    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
-    {
-        uint8_t cc = 0;
-
-        auto rc = decode_cancel_update_component_resp(responsePtr,
-                                                      payloadLength, &cc);
-        if (rc != PLDM_SUCCESS)
-        {
-            std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
-            return;
-        }
-
-        ordered_json data;
-        fillCompletionCode(cc, data);
-        pldmtool::helper::DisplayInJson(data);
-    }
-};
-
-class CancelUpdate : public CommandInterface
-{
-  public:
-    ~CancelUpdate() = default;
-    CancelUpdate() = delete;
-    CancelUpdate(const CancelUpdate&) = delete;
-    CancelUpdate(CancelUpdate&&) = delete;
-    CancelUpdate& operator=(const CancelUpdate&) = delete;
-    CancelUpdate& operator=(CancelUpdate&&) = delete;
-
-    using CommandInterface::CommandInterface;
-
-    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
-    {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-        auto rc = encode_cancel_update_req(instanceId, request,
-                                           PLDM_CANCEL_UPDATE_REQ_BYTES);
-
-        return {rc, requestMsg};
-    }
-
-    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
-    {
-        uint8_t cc = 0;
-        bool8_t nonFunctioningComponentIndication;
-        bitfield64_t nonFunctioningComponentBitmap{0};
-        auto rc = decode_cancel_update_resp(responsePtr, payloadLength, &cc,
-                                            &nonFunctioningComponentIndication,
-                                            &nonFunctioningComponentBitmap);
-        if (rc != PLDM_SUCCESS)
-        {
-            std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
-            return;
-        }
-
-        ordered_json data;
-        fillCompletionCode(cc, data);
-
-        if (cc == PLDM_SUCCESS)
-        {
-            data["NonFunctioningComponentIndication"] =
-                nonFunctioningComponentIndication ? "True" : "False";
-
-            if (nonFunctioningComponentIndication)
-            {
-                data["NonFunctioningComponentBitmap"] =
-                    std::to_string(nonFunctioningComponentBitmap.value);
-            }
-        }
-
-        pldmtool::helper::DisplayInJson(data);
-    }
-};
-
-class ActivateFirmware : public CommandInterface
-{
-  public:
-    ~ActivateFirmware() = default;
-    ActivateFirmware() = delete;
-    ActivateFirmware(const ActivateFirmware&) = delete;
-    ActivateFirmware(ActivateFirmware&&) = delete;
-    ActivateFirmware& operator=(const ActivateFirmware&) = delete;
-    ActivateFirmware& operator=(ActivateFirmware&&) = delete;
-
-    explicit ActivateFirmware(const char* type, const char* name,
-                              CLI::App* app) : CommandInterface(type, name, app)
-    {
-        app->add_option("--self_contained_activation_request",
-                        selfContainedActivRequest,
-                        "Self contained activation request")
-            ->required()
-            ->transform(CLI::CheckedTransformer(pldmSelfContainedActivation,
-                                                CLI::ignore_case));
-    }
-
-    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
-    {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-        auto rc = encode_activate_firmware_req(
-            instanceId, selfContainedActivRequest, request,
-            sizeof(pldm_activate_firmware_req));
-
-        return {rc, requestMsg};
-    }
-
-    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
-    {
-        uint8_t cc = 0;
-        uint16_t estimatedTimeForActivation = 0;
-
-        auto rc = decode_activate_firmware_resp(responsePtr, payloadLength, &cc,
-                                                &estimatedTimeForActivation);
-        if (rc != PLDM_SUCCESS)
-        {
-            std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
-            return;
-        }
-
-        ordered_json data;
-        fillCompletionCode(cc, data);
-
-        if (cc == PLDM_SUCCESS)
-        {
-            data["EstimatedTimeForSelfContainedActivation"] =
-                std::to_string(estimatedTimeForActivation) + "s";
-        }
-
-        pldmtool::helper::DisplayInJson(data);
-    }
-
-  private:
-    bool8_t selfContainedActivRequest;
-};
-
 class RequestUpdate : public CommandInterface
 {
   public:
@@ -881,32 +706,24 @@ class RequestUpdate : public CommandInterface
     {
         app->add_option(
                "--max_transfer_size", maxTransferSize,
-               "Specifies the maximum size, in bytes, of the variable "
-               "payload allowed to\n"
-               "be requested by the FD via the RequestFirmwareData "
-               "command that is contained\n"
-               "within a PLDM message. This value shall be equal to or "
-               "greater than firmware update\n"
+               "Specifies the maximum size, in bytes, of the variable payload allowed to\n"
+               "be requested by the FD via the RequestFirmwareData command that is contained\n"
+               "within a PLDM message. This value shall be equal to or greater than firmware update\n"
                "baseline transfer size.")
             ->required();
 
         app->add_option(
                "--num_comps", numComps,
-               "Specifies the number of components that will be passed to "
-               "the FD during the update.\n"
-               "The FD can use this value to compare against the number "
-               "of PassComponentTable\n"
+               "Specifies the number of components that will be passed to the FD during the update.\n"
+               "The FD can use this value to compare against the number of PassComponentTable\n"
                "commands received.")
             ->required();
 
         app->add_option(
                "--max_transfer_reqs", maxTransferReqs,
-               "Specifies the number of outstanding RequestFirmwareData "
-               "commands that can be\n"
-               "sent by the FD. The minimum required value is '1' which "
-               "the UA shall support.\n"
-               "It is optional for the UA to support a value higher than "
-               "'1' for this field.")
+               "Specifies the number of outstanding RequestFirmwareData commands that can be\n"
+               "sent by the FD. The minimum required value is '1' which the UA shall support.\n"
+               "It is optional for the UA to support a value higher than '1' for this field.")
             ->required();
 
         app->add_option(
@@ -922,10 +739,33 @@ class RequestUpdate : public CommandInterface
                "--comp_img_ver_str_type", compImgVerStrType,
                "The type of string used in the ComponentImageSetVersionString\n"
                "field. Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
-               "UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
-            ->required();
+            ->required()
+            ->check([](const std::string& value) -> std::string {
+                static const std::set<std::string> validStrings{
+                    "UNKNOWN", "ASCII",    "UTF_8",
+                    "UTF_16",  "UTF_16LE", "UTF_16BE"};
+
+                if (validStrings.contains(value))
+                {
+                    return "";
+                }
+
+                try
+                {
+                    int intValue = std::stoi(value);
+                    if (intValue >= 0 && intValue <= 255)
+                    {
+                        return "";
+                    }
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+                catch (const std::exception&)
+                {
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+            });
 
         app->add_option(
                "--comp_img_ver_str_len", compImgVerStrLen,
@@ -950,7 +790,7 @@ class RequestUpdate : public CommandInterface
             sizeof(pldm_msg_hdr) + sizeof(struct pldm_request_update_req) +
             compImgSetVerStrInfo.length);
 
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
 
         auto rc = encode_request_update_req(
             instanceId, maxTransferSize, numComps, maxTransferReqs,
@@ -979,15 +819,13 @@ class RequestUpdate : public CommandInterface
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_FWUP);
 
         if (cc == PLDM_SUCCESS)
         {
             data["FirmwareDeviceMetaDataLength"] = fdMetaDataLen;
-            // data["FDWillSendGetPackageDataCommend"] =
-            //     fmt::format("0x{:02X}", fdWillSendPkgData);
-            data["FDWillSendGetPackageDataCommend"] =
-                std::to_string(fdWillSendPkgData);
+            data["FDWillSendGetPackageDataCommand"] =
+                std::format("0x{:02X}", fdWillSendPkgData);
         }
         pldmtool::helper::DisplayInJson(data);
     }
@@ -1045,23 +883,43 @@ class PassComponentTable : public CommandInterface
 
         app->add_option(
                "--comp_compare_stamp", compCompareStamp,
-               "FD vendor selected value to use as a comparison value in "
-               "determining if a firmware\n"
-               "component is down-level or up-level. For the same component "
-               "identifier,\n"
-               "the greater of two component comparison stamps is considered "
-               "up-level compared\n"
+               "FD vendor selected value to use as a comparison value in determining if a firmware\n"
+               "component is down-level or up-level. For the same component identifier,\n"
+               "the greater of two component comparison stamps is considered up-level compared\n"
                "to the other when performing an unsigned integer comparison")
             ->required();
 
         app->add_option(
                "--comp_ver_str_type", compVerStrType,
-               "The type of strings used in the ComponentVersionString field.\n"
+               "The type of strings used in the ComponentVersionString\n"
                "Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
-               "UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
-            ->required();
+            ->required()
+            ->check([](const std::string& value) -> std::string {
+                static const std::set<std::string> validStrings{
+                    "UNKNOWN", "ASCII",    "UTF_8",
+                    "UTF_16",  "UTF_16LE", "UTF_16BE"};
+
+                if (validStrings.contains(value))
+                {
+                    return "";
+                }
+
+                try
+                {
+                    int intValue = std::stoi(value);
+                    if (intValue >= 0 && intValue <= 255)
+                    {
+                        return "";
+                    }
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+                catch (const std::exception&)
+                {
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+            });
 
         app->add_option("--comp_ver_str_len", compVerStrLen,
                         "The length, in bytes, of the ComponentVersionString")
@@ -1077,16 +935,17 @@ class PassComponentTable : public CommandInterface
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
         variable_field compVerStrInfo{};
-        compVerStrInfo.ptr =
-            reinterpret_cast<const uint8_t*>(compVerStr.data());
-        compVerStrInfo.length = static_cast<uint8_t>(compVerStr.size());
+        std::vector<uint8_t> compVerStrData(compVerStr.begin(),
+                                            compVerStr.end());
+        compVerStrInfo.ptr = compVerStrData.data();
+        compVerStrInfo.length = static_cast<uint8_t>(compVerStrData.size());
 
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) +
             sizeof(struct pldm_pass_component_table_req) +
             compVerStrInfo.length);
 
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
 
         auto rc = encode_pass_component_table_req(
             instanceId, transferFlag, compClassification, compIdentifier,
@@ -1115,7 +974,7 @@ class PassComponentTable : public CommandInterface
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_FWUP);
 
         if (cc == PLDM_SUCCESS)
         {
@@ -1123,9 +982,8 @@ class PassComponentTable : public CommandInterface
                 compResponse ? "Component may be updateable"
                              : "Component can be updated";
 
-            // data["ComponentResponse"] =
-            //     fmt::format("0x{:02X}", compResponseCode);
-            data["ComponentResponse"] = std::to_string(compResponseCode);
+            data["ComponentResponseCode"] =
+                std::format("0x{:02X}", compResponseCode);
         }
 
         pldmtool::helper::DisplayInJson(data);
@@ -1155,66 +1013,85 @@ class UpdateComponent : public CommandInterface
     explicit UpdateComponent(const char* type, const char* name,
                              CLI::App* app) : CommandInterface(type, name, app)
     {
-        app->add_option("--comp_classification", compClassification,
-                        "Classification value provided by the firmware package "
-                        "header information for\n"
-                        "the component to be transferred.\n"
-                        "Special values: 0x0000, 0xFFFF = reserved")
+        app->add_option(
+               "--component_classification", componentClassification,
+               "Classification value provided by the firmware package header information for\n"
+               "the component to be transferred.\n"
+               "Special values: 0x0000, 0xFFFF = reserved")
             ->required();
 
         app->add_option(
-               "--comp_identifier", compIdentifier,
-               "FD vendor selected unique value to distinguish between "
-               "component images")
-            ->required();
-
-        app->add_option("--comp_classification_idx", compClassificationIdx,
-                        "The component classification index which was obtained "
-                        "from the GetFirmwareParameters\n"
-                        "command to indicate which firmware component the "
-                        "information contained within this\n"
-                        "command is applicable for")
+               "--component_identifier", componentIdentifier,
+               "FD vendor selected unique value to distinguish between component images")
             ->required();
 
         app->add_option(
-               "--comp_compare_stamp", compCompareStamp,
-               "FD vendor selected value to use as a comparison value in "
-               "determining if a firmware\n"
-               "component is down-level or up-level. For the same "
-               "component identifier, the greater\n"
-               "of two component comparison stamps is considered up-level "
-               "compared to the other\n"
+               "--component_classification_index", componentClassificationIndex,
+               "The component classification index which was obtained from the GetFirmwareParameters\n"
+               "command to indicate which firmware component the information contained within this\n"
+               "command is applicable for")
+            ->required();
+
+        app->add_option(
+               "--component_comparison_stamp", componentComparisonStamp,
+               "FD vendor selected value to use as a comparison value in determining if a firmware\n"
+               "component is down-level or up-level. For the same component identifier, the greater\n"
+               "of two component comparison stamps is considered up-level compared to the other\n"
                "when performing an unsigned integer comparison")
             ->required();
 
-        app->add_option("--comp_img_size", compImgSize,
+        app->add_option("--component_image_size", componentImageSize,
                         "Size in bytes of the component image")
             ->required();
 
         app->add_option(
                "--update_option_flags", strUpdateOptionFlags,
-               "32 bits field, where each non-reserved bit represents an "
-               "update option that can be\n"
-               "requested by the UA to be enabled for the transfer of "
-               "this component image.\n"
-               "[0] – Request Force Update of component")
+               "32-bit field, where each non-reserved bit represents an update option that can be\n"
+               "requested by the UA to be enabled for the transfer of this component image.\n"
+               "[2] Security Revision Number Delayed Update\n"
+               "[1] Component Opaque Data\n"
+               "[0] Request Force Update of component")
             ->required();
 
         app->add_option(
-               "--comp_ver_str_type", compVerStrType,
-               "The type of strings used in the ComponentVersionString field\n"
+               "--component_version_string_type", componentVersionStringType,
+               "The type of strings used in the ComponentVersionString\n"
                "Possible values\n"
-               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, "
-               "UTF_16BE->5}\n"
+               "{UNKNOWN->0, ASCII->1, UTF_8->2, UTF_16->3, UTF_16LE->4, UTF_16BE->5}\n"
                "OR {0,1,2,3,4,5}")
-            ->required();
+            ->required()
+            ->check([](const std::string& value) -> std::string {
+                static const std::set<std::string> validStrings{
+                    "UNKNOWN", "ASCII",    "UTF_8",
+                    "UTF_16",  "UTF_16LE", "UTF_16BE"};
 
-        app->add_option("--comp_ver_str_len", compVerStrLen,
+                if (validStrings.contains(value))
+                {
+                    return "";
+                }
+
+                try
+                {
+                    int intValue = std::stoi(value);
+                    if (intValue >= 0 && intValue <= 255)
+                    {
+                        return "";
+                    }
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+                catch (const std::exception&)
+                {
+                    return "Invalid value. Must be one of UNKNOWN, ASCII, UTF_8, UTF_16, UTF_16LE, UTF_16BE, or a number between 0 and 255";
+                }
+            });
+
+        app->add_option("--component_version_string_length",
+                        componentVersionStringLength,
                         "The length, in bytes, of the ComponentVersionString")
             ->required();
 
         app->add_option(
-               "--comp_ver_str", compVerStr,
+               "--component_version_string", componentVersionString,
                "Firmware component version information up to 255 bytes.\n"
                "Contains a variable type string describing the component version")
             ->required();
@@ -1222,26 +1099,37 @@ class UpdateComponent : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        variable_field compVerStrInfo{};
+        variable_field componentVersionStringInfo{};
 
-        compVerStrInfo.ptr =
-            reinterpret_cast<const uint8_t*>(compVerStr.data());
-        compVerStrInfo.length = static_cast<uint8_t>(compVerStr.size());
+        componentVersionStringInfo.ptr =
+            reinterpret_cast<const uint8_t*>(componentVersionString.data());
+        componentVersionStringInfo.length =
+            static_cast<uint8_t>(componentVersionString.size());
 
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + sizeof(struct pldm_update_component_req) +
-            compVerStrInfo.length);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+            componentVersionStringInfo.length);
+
+        auto request = new (requestMsg.data()) pldm_msg;
 
         bitfield32_t updateOptionFlags;
-        sscanf(strUpdateOptionFlags.c_str(), "%x", &updateOptionFlags.value);
+        std::stringstream ss(strUpdateOptionFlags);
+        ss >> std::hex >> updateOptionFlags.value;
+        if (ss.fail())
+        {
+            std::cerr << "Failed to parse update option flags: "
+                      << strUpdateOptionFlags << "\n";
+            return {PLDM_ERROR_INVALID_DATA, std::vector<uint8_t>()};
+        }
 
         auto rc = encode_update_component_req(
-            instanceId, compClassification, compIdentifier,
-            compClassificationIdx, compCompareStamp, compImgSize,
-            updateOptionFlags, convertStringTypeToUInt8(compVerStrType),
-            compVerStrLen, &compVerStrInfo, request,
-            sizeof(pldm_update_component_req) + compVerStrInfo.length);
+            instanceId, componentClassification, componentIdentifier,
+            componentClassificationIndex, componentComparisonStamp,
+            componentImageSize, updateOptionFlags,
+            convertStringTypeToUInt8(componentVersionStringType),
+            componentVersionStringLength, &componentVersionStringInfo, request,
+            sizeof(pldm_update_component_req) +
+                componentVersionStringInfo.length);
 
         return {rc, requestMsg};
     }
@@ -1249,39 +1137,37 @@ class UpdateComponent : public CommandInterface
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
         uint8_t cc = 0;
-        uint8_t compCompatibilityResp = 0;
-        uint8_t compCompatibilityRespCode = 0;
+        uint8_t componentCompatibilityResp = 0;
+        uint8_t componentCompatibilityRespCode = 0;
         bitfield32_t updateOptionFlagsEnabled{};
         uint16_t timeBeforeReqFWData = 0;
 
         auto rc = decode_update_component_resp(
-            responsePtr, payloadLength, &cc, &compCompatibilityResp,
-            &compCompatibilityRespCode, &updateOptionFlagsEnabled,
+            responsePtr, payloadLength, &cc, &componentCompatibilityResp,
+            &componentCompatibilityRespCode, &updateOptionFlagsEnabled,
             &timeBeforeReqFWData);
 
         if (rc != PLDM_SUCCESS)
         {
-            std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
+            std::cerr << "Parsing UpdateComponent response failed: "
+                      << "rc=" << rc << ",cc=" << static_cast<int>(cc) << "\n";
             return;
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_FWUP);
 
         if (cc == PLDM_SUCCESS)
         {
-            // --> possible value:
+            // Possible values:
             // 0 – Component can be updated,
             // 1 – Component will not be updated
             data["ComponentCompatibilityResponse"] =
-                compCompatibilityResp ? "Component will not be updated"
-                                      : "Component can be updated";
+                componentCompatibilityResp ? "Component will not be updated"
+                                           : "Component can be updated";
 
-            // data["ComponentCompatibilityResponseCode"] =
-            //     fmt::format("0x{:02X}", compCompatibilityRespCode);
             data["ComponentCompatibilityResponseCode"] =
-                std::to_string(compCompatibilityRespCode);
+                std::format("0x{:02X}", componentCompatibilityRespCode);
             data["UpdateOptionFlagsEnabled"] =
                 std::to_string(updateOptionFlagsEnabled.value);
             data["EstimatedTimeBeforeSendingRequestFirmwareData"] =
@@ -1292,15 +1178,175 @@ class UpdateComponent : public CommandInterface
     }
 
   private:
-    uint16_t compClassification;
-    uint16_t compIdentifier;
-    uint8_t compClassificationIdx;
-    uint32_t compCompareStamp;
-    uint32_t compImgSize;
+    uint16_t componentClassification;
+    uint16_t componentIdentifier;
+    uint8_t componentClassificationIndex;
+    uint32_t componentComparisonStamp;
+    uint32_t componentImageSize;
     std::string strUpdateOptionFlags;
-    std::string compVerStrType;
-    uint8_t compVerStrLen;
-    std::string compVerStr;
+    std::string componentVersionStringType;
+    uint8_t componentVersionStringLength;
+    std::string componentVersionString;
+};
+
+class ActivateFirmware : public CommandInterface
+{
+  public:
+    ~ActivateFirmware() = default;
+    ActivateFirmware() = delete;
+    ActivateFirmware(const ActivateFirmware&) = delete;
+    ActivateFirmware(ActivateFirmware&&) = delete;
+    ActivateFirmware& operator=(const ActivateFirmware&) = delete;
+    ActivateFirmware& operator=(ActivateFirmware&&) = delete;
+
+    explicit ActivateFirmware(const char* type, const char* name,
+                              CLI::App* app) : CommandInterface(type, name, app)
+    {
+        app->add_option("--self_contained_activation_request",
+                        selfContainedActivRequest,
+                        "Self contained activation request")
+            ->required()
+            ->transform(CLI::CheckedTransformer(pldmSelfContainedActivation,
+                                                CLI::ignore_case));
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        auto request = new (requestMsg.data()) pldm_msg;
+        auto rc = encode_activate_firmware_req(
+            instanceId, selfContainedActivRequest, request,
+            sizeof(pldm_activate_firmware_req));
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t cc = 0;
+        uint16_t estimatedTimeForActivation = 0;
+
+        auto rc = decode_activate_firmware_resp(responsePtr, payloadLength, &cc,
+                                                &estimatedTimeForActivation);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Parsing ActivateFirmware response failed: "
+                      << "rc=" << rc << ",cc=" << static_cast<int>(cc) << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(cc, data, PLDM_FWUP);
+
+        if (cc == PLDM_SUCCESS)
+        {
+            data["EstimatedTimeForSelfContainedActivation"] =
+                std::to_string(estimatedTimeForActivation) + "s";
+        }
+
+        pldmtool::helper::DisplayInJson(data);
+    }
+
+  private:
+    bool8_t selfContainedActivRequest;
+};
+
+class CancelUpdateComponent : public CommandInterface
+{
+  public:
+    ~CancelUpdateComponent() = default;
+    CancelUpdateComponent() = delete;
+    CancelUpdateComponent(const CancelUpdateComponent&) = delete;
+    CancelUpdateComponent(CancelUpdateComponent&&) = delete;
+    CancelUpdateComponent& operator=(const CancelUpdateComponent&) = delete;
+    CancelUpdateComponent& operator=(CancelUpdateComponent&&) = delete;
+
+    using CommandInterface::CommandInterface;
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        auto request = new (requestMsg.data()) pldm_msg;
+        auto rc = encode_cancel_update_component_req(
+            instanceId, request, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t cc = 0;
+
+        auto rc = decode_cancel_update_component_resp(responsePtr,
+                                                      payloadLength, &cc);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Parsing CancelUpdateComponent response failed: "
+                      << "rc=" << rc << ",cc=" << static_cast<int>(cc) << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(cc, data, PLDM_FWUP);
+
+        pldmtool::helper::DisplayInJson(data);
+    }
+};
+
+class CancelUpdate : public CommandInterface
+{
+  public:
+    ~CancelUpdate() = default;
+    CancelUpdate() = delete;
+    CancelUpdate(const CancelUpdate&) = delete;
+    CancelUpdate(CancelUpdate&&) = delete;
+    CancelUpdate& operator=(const CancelUpdate&) = delete;
+    CancelUpdate& operator=(CancelUpdate&&) = delete;
+
+    using CommandInterface::CommandInterface;
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        auto request = new (requestMsg.data()) pldm_msg;
+        auto rc = encode_cancel_update_req(instanceId, request,
+                                           PLDM_CANCEL_UPDATE_REQ_BYTES);
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t cc = 0;
+        bool8_t nonFunctioningComponentIndication;
+        bitfield64_t nonFunctioningComponentBitmap{0};
+        auto rc = decode_cancel_update_resp(responsePtr, payloadLength, &cc,
+                                            &nonFunctioningComponentIndication,
+                                            &nonFunctioningComponentBitmap);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Parsing CancelUpdate response failed: "
+                      << "rc=" << rc << ",cc=" << static_cast<int>(cc) << "\n";
+            return;
+        }
+
+        ordered_json data;
+
+        fillCompletionCode(cc, data, PLDM_FWUP);
+
+        if (cc == PLDM_SUCCESS)
+        {
+            data["NonFunctioningComponentIndication"] =
+                nonFunctioningComponentIndication ? "True" : "False";
+
+            if (nonFunctioningComponentIndication)
+            {
+                data["NonFunctioningComponentBitmap"] =
+                    std::to_string(nonFunctioningComponentBitmap.value);
+            }
+        }
+
+        pldmtool::helper::DisplayInJson(data);
+    }
 };
 
 void registerCommand(CLI::App& app)
@@ -1323,21 +1369,6 @@ void registerCommand(CLI::App& app)
     commands.push_back(std::make_unique<QueryDeviceIdentifiers>(
         "fw_update", "QueryDeviceIdentifiers", queryDeviceIdentifiers));
 
-    auto cancelUpdateComp = fwUpdate->add_subcommand(
-        "CancelUpdateComponent", "To cancel component update");
-    commands.push_back(std::make_unique<CancelUpdateComponent>(
-        "fw_update", "CancelUpdateComponent", cancelUpdateComp));
-
-    auto cancelUpdate =
-        fwUpdate->add_subcommand("CancelUpdate", "To cancel update");
-    commands.push_back(std::make_unique<CancelUpdate>(
-        "fw_update", "CancelUpdate", cancelUpdate));
-
-    auto activateFirmware =
-        fwUpdate->add_subcommand("ActivateFirmware", "To activate firmware");
-    commands.push_back(std::make_unique<ActivateFirmware>(
-        "fw_update", "ActivateFirmware", activateFirmware));
-
     auto requestUpdate = fwUpdate->add_subcommand(
         "RequestUpdate", "To initiate a firmware update");
     commands.push_back(std::make_unique<RequestUpdate>(
@@ -1348,10 +1379,25 @@ void registerCommand(CLI::App& app)
     commands.push_back(std::make_unique<PassComponentTable>(
         "fw_update", "PassComponentTable", passCompTable));
 
-    auto updateComp =
-        fwUpdate->add_subcommand("UpdateComponent", "To update component");
+    auto updateComp = fwUpdate->add_subcommand(
+        "UpdateComponent", "To request updating a specific firmware component");
     commands.push_back(std::make_unique<UpdateComponent>(
         "fw_update", "UpdateComponent", updateComp));
+
+    auto activateFirmware =
+        fwUpdate->add_subcommand("ActivateFirmware", "To activate firmware");
+    commands.push_back(std::make_unique<ActivateFirmware>(
+        "fw_update", "ActivateFirmware", activateFirmware));
+
+    auto cancelUpdateComp = fwUpdate->add_subcommand(
+        "CancelUpdateComponent", "To cancel component update");
+    commands.push_back(std::make_unique<CancelUpdateComponent>(
+        "fw_update", "CancelUpdateComponent", cancelUpdateComp));
+
+    auto cancelUpdate =
+        fwUpdate->add_subcommand("CancelUpdate", "To cancel update");
+    commands.push_back(std::make_unique<CancelUpdate>(
+        "fw_update", "CancelUpdate", cancelUpdate));
 }
 
 } // namespace fw_update

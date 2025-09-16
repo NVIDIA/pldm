@@ -4,7 +4,7 @@
 #include "xyz/openbmc_project/Common/error.hpp"
 
 #include <libpldm/firmware_update.h>
-#include <libpldm/pldm.h>
+#include <libpldm/firmware_update.h>
 #include <libpldm/transport.h>
 #include <libpldm/transport/af-mctp.h>
 #include <libpldm/transport/mctp-demux.h>
@@ -24,85 +24,69 @@ namespace pldmtool
 namespace helper
 {
 
-/** @enum Enumeration to represent the PLDM completion codes
- */
-enum class CompletionCodes : uint8_t
-{
-    SUCCESS = PLDM_SUCCESS,
-    ERROR = PLDM_ERROR,
-    ERROR_INVALID_DATA = PLDM_ERROR_INVALID_DATA,
-    ERROR_INVALID_LENGTH = PLDM_ERROR_INVALID_LENGTH,
-    ERROR_NOT_READY = PLDM_ERROR_NOT_READY,
-    ERROR_UNSUPPORTED_PLDM_CMD = PLDM_ERROR_UNSUPPORTED_PLDM_CMD,
-    ERROR_INVALID_PLDM_TYPE = PLDM_ERROR_INVALID_PLDM_TYPE,
-    NOT_IN_UPDATE_MODE = PLDM_FWUP_NOT_IN_UPDATE_MODE,
-    ALREADY_IN_UPDATE_MODE = PLDM_FWUP_ALREADY_IN_UPDATE_MODE,
-    DATA_OUT_OF_RANGE = PLDM_FWUP_DATA_OUT_OF_RANGE,
-    INVALID_TRANSFER_LENGTH = PLDM_FWUP_INVALID_TRANSFER_LENGTH,
-    INVALID_STATE_FOR_COMMAND = PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
-    INCOMPLETE_UPDATE = PLDM_FWUP_INCOMPLETE_UPDATE,
-    BUSY_IN_BACKGROUND = PLDM_FWUP_BUSY_IN_BACKGROUND,
-    CANCEL_PENDING = PLDM_FWUP_CANCEL_PENDING,
-    COMMAND_NOT_EXPECTED = PLDM_FWUP_COMMAND_NOT_EXPECTED,
-    RETRY_REQUEST_FW_DATA = PLDM_FWUP_RETRY_REQUEST_FW_DATA,
-    UNABLE_TO_INITIATE_UPDATE = PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE,
-    ACTIVATION_NOT_REQUIRED = PLDM_FWUP_ACTIVATION_NOT_REQUIRED,
-    SELF_CONTAINED_ACTIVATION_NOT_PERMITTED =
-        PLDM_FWUP_SELF_CONTAINED_ACTIVATION_NOT_PERMITTED,
-    NO_DEVICE_METADATA = PLDM_FWUP_NO_DEVICE_METADATA,
-    RETRY_REQUEST_UPDATE = PLDM_FWUP_RETRY_REQUEST_UPDATE,
-    NO_PACKAGE_DATA = PLDM_FWUP_NO_PACKAGE_DATA,
-    INVALID_DATA_TRANSFER_HAND = PLDM_FWUP_INVALID_TRANSFER_HANDLE,
-    INVALID_TRANSFER_OPERATION_FLAG = PLDM_FWUP_INVALID_TRANSFER_OPERATION_FLAG,
-    ACTIVATE_PENDING_IMAGE_NOT_PERMITTED =
-        PLDM_FWUP_ACTIVATE_PENDING_IMAGE_NOT_PERMITTED,
-    PACKAGE_DATA_ERROR = PLDM_FWUP_PACKAGE_DATA_ERROR
-};
+static const std::map<uint8_t, std::string> genericCompletionCodes{
+    {PLDM_SUCCESS, "SUCCESS"},
+    {PLDM_ERROR, "ERROR"},
+    {PLDM_ERROR_INVALID_DATA, "ERROR_INVALID_DATA"},
+    {PLDM_ERROR_INVALID_LENGTH, "ERROR_INVALID_LENGTH"},
+    {PLDM_ERROR_NOT_READY, "ERROR_NOT_READY"},
+    {PLDM_ERROR_UNSUPPORTED_PLDM_CMD, "ERROR_UNSUPPORTED_PLDM_CMD"},
+    {PLDM_ERROR_INVALID_PLDM_TYPE, "ERROR_INVALID_PLDM_TYPE"},
+    {PLDM_ERROR_UNEXPECTED_TRANSFER_FLAG_OPERATION,
+     "ERROR_UNEXPECTED_TRANSFER_FLAG_OPERATION"}};
 
-std::map<CompletionCodes, std::string> completionCodesMap{
-    {CompletionCodes::SUCCESS, "SUCCESS"},
-    {CompletionCodes::ERROR, "ERROR"},
-    {CompletionCodes::ERROR_INVALID_DATA, "ERROR_INVALID_DATA"},
-    {CompletionCodes::ERROR_INVALID_LENGTH, "ERROR_INVALID_LENGTH"},
-    {CompletionCodes::ERROR_NOT_READY, "ERROR_NOT_READY"},
-    {CompletionCodes::ERROR_UNSUPPORTED_PLDM_CMD, "ERROR_UNSUPPORTED_PLDM_CMD"},
-    {CompletionCodes::ERROR_INVALID_PLDM_TYPE, "ERROR_INVALID_PLDM_TYPE"},
-    {CompletionCodes::NOT_IN_UPDATE_MODE, "NOT_IN_UPDATE_MODE"},
-    {CompletionCodes::ALREADY_IN_UPDATE_MODE, "ALREADY_IN_UPDATE_MODE"},
-    {CompletionCodes::DATA_OUT_OF_RANGE, "DATA_OUT_OF_RANGE"},
-    {CompletionCodes::INVALID_TRANSFER_LENGTH, "INVALID_TRANSFER_LENGTH"},
-    {CompletionCodes::INVALID_STATE_FOR_COMMAND, "INVALID_STATE_FOR_COMMAND"},
-    {CompletionCodes::INCOMPLETE_UPDATE, "INCOMPLETE_UPDATE"},
-    {CompletionCodes::BUSY_IN_BACKGROUND, "BUSY_IN_BACKGROUND"},
-    {CompletionCodes::CANCEL_PENDING, "CANCEL_PENDING"},
-    {CompletionCodes::COMMAND_NOT_EXPECTED, "COMMAND_NOT_EXPECTED"},
-    {CompletionCodes::RETRY_REQUEST_FW_DATA, "RETRY_REQUEST_FW_DATA"},
-    {CompletionCodes::UNABLE_TO_INITIATE_UPDATE, "UNABLE_TO_INITIATE_UPDATE"},
-    {CompletionCodes::ACTIVATION_NOT_REQUIRED, "ACTIVATION_NOT_REQUIRED"},
-    {CompletionCodes::SELF_CONTAINED_ACTIVATION_NOT_PERMITTED,
+static const std::map<uint8_t, std::string> fwupdateCompletionCodes{
+    {PLDM_FWUP_NOT_IN_UPDATE_MODE, "NOT_IN_UPDATE_MODE"},
+    {PLDM_FWUP_ALREADY_IN_UPDATE_MODE, "ALREADY_IN_UPDATE_MODE"},
+    {PLDM_FWUP_DATA_OUT_OF_RANGE, "DATA_OUT_OF_RANGE"},
+    {PLDM_FWUP_INVALID_TRANSFER_LENGTH, "INVALID_TRANSFER_LENGTH"},
+    {PLDM_FWUP_INVALID_STATE_FOR_COMMAND, "INVALID_STATE_FOR_COMMAND"},
+    {PLDM_FWUP_INCOMPLETE_UPDATE, "INCOMPLETE_UPDATE"},
+    {PLDM_FWUP_BUSY_IN_BACKGROUND, "BUSY_IN_BACKGROUND"},
+    {PLDM_FWUP_CANCEL_PENDING, "CANCEL_PENDING"},
+    {PLDM_FWUP_COMMAND_NOT_EXPECTED, "COMMAND_NOT_EXPECTED"},
+    {PLDM_FWUP_RETRY_REQUEST_FW_DATA, "RETRY_REQUEST_FW_DATA"},
+    {PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE, "UNABLE_TO_INITIATE_UPDATE"},
+    {PLDM_FWUP_ACTIVATION_NOT_REQUIRED, "ACTIVATION_NOT_REQUIRED"},
+    {PLDM_FWUP_SELF_CONTAINED_ACTIVATION_NOT_PERMITTED,
      "SELF_CONTAINED_ACTIVATION_NOT_PERMITTED"},
-    {CompletionCodes::NO_DEVICE_METADATA, "NO_DEVICE_METADATA"},
-    {CompletionCodes::RETRY_REQUEST_UPDATE, "RETRY_REQUEST_UPDATE"},
-    {CompletionCodes::NO_PACKAGE_DATA, "NO_PACKAGE_DATA"},
-    {CompletionCodes::INVALID_DATA_TRANSFER_HAND, "INVALID_DATA_TRANSFER_HAND"},
-    {CompletionCodes::INVALID_TRANSFER_OPERATION_FLAG,
-     "INVALID_TRANSFER_OPERATION_FLAG"}};
+    {PLDM_FWUP_NO_DEVICE_METADATA, "NO_DEVICE_METADATA"},
+    {PLDM_FWUP_RETRY_REQUEST_UPDATE, "RETRY_REQUEST_UPDATE"},
+    {PLDM_FWUP_NO_PACKAGE_DATA, "NO_PACKAGE_DATA"},
+    {PLDM_FWUP_INVALID_TRANSFER_HANDLE, "INVALID_TRANSFER_HANDLE"},
+    {PLDM_FWUP_INVALID_TRANSFER_OPERATION_FLAG,
+     "INVALID_TRANSFER_OPERATION_FLAG"},
+    {PLDM_FWUP_ACTIVATE_PENDING_IMAGE_NOT_PERMITTED,
+     "ACTIVATE_PENDING_IMAGE_NOT_PERMITTED"},
+    {PLDM_FWUP_PACKAGE_DATA_ERROR, "PACKAGE_DATA_ERROR"}};
 
-/*
- * Translate PLDM completion code as human-readable string.
- *
- */
-void fillCompletionCode(uint8_t completionCode, ordered_json& data)
+void fillCompletionCode(uint8_t completionCode, ordered_json& data,
+                        uint8_t pldmType)
 {
-    auto ccValue = static_cast<CompletionCodes>(completionCode);
-    if (completionCodesMap.contains(ccValue))
+    // Check generic completion codes first for all PLDM types
+    auto it = genericCompletionCodes.find(completionCode);
+    if (it != genericCompletionCodes.end())
     {
-        data["CompletionCode"] = completionCodesMap[ccValue];
+        data["CompletionCode"] = it->second;
+        return;
     }
-    else
+
+    // If not a generic code, check type-specific codes
+    switch (pldmType)
     {
-        data["CompletionCode"] = "UNKNOWN_COMPLETION_CODE";
+        case PLDM_FWUP:
+        {
+            auto typeIt = fwupdateCompletionCodes.find(completionCode);
+            if (typeIt != fwupdateCompletionCodes.end())
+            {
+                data["CompletionCode"] = typeIt->second;
+                return;
+            }
+            break;
+        }
     }
+
+    data["CompletionCode"] = "UNKNOWN_COMPLETION_CODE";
 }
 
 void CommandInterface::exec()

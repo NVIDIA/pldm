@@ -12,10 +12,6 @@ project(
     ],
 )
 
-if get_option('use_fuzz').enabled()
-    add_global_arguments('-DFUZZ_TEST', language: ['c', 'cpp'])
-endif
-
 # Wno-psabi reduces the number of "Note:" messages when cross-compiling some STL
 # stuff for ARM. See https://stackoverflow.com/questions/48149323/strange-gcc-warning-when-compiling-qt-project
 # Basically, gcc 6 and gcc 7 are not ABI compatible, but since the whole OpenBMC
@@ -30,6 +26,10 @@ add_project_arguments('-Wno-subobject-linkage', language: 'cpp')
 if (get_option('optimization') == '0')
     add_project_arguments('-U_FORTIFY_SOURCE', language: 'cpp')
     message('Disabling FORTIFY_SOURCE as optimization is set to 0')
+endif
+
+if get_option('use_fuzz').enabled()
+    add_global_arguments('-DFUZZ_TEST', language: ['c', 'cpp'])
 endif
 
 package_datadir = join_paths(
@@ -50,6 +50,8 @@ cpp = meson.get_compiler('cpp')
 if cpp.has_header('poll.h')
     conf_data.set('PLDM_HAS_POLL', 1)
 endif
+
+conf_data.set_quoted('HOST_JSONS_DIR', join_paths(package_datadir, 'host'))
 
 if get_option('omit-heartbeat').enabled()
     add_project_arguments('-DOMIT_HEARTBEAT', language: 'cpp')
@@ -158,18 +160,17 @@ if get_option('libpldmresponder').allowed()
         'ENTITY_MAP_JSON',
         join_paths(package_datadir, 'entityMap.json'),
     )
-    conf_data.set_quoted('HOST_JSONS_DIR', join_paths(package_datadir, 'host'))
+
     conf_data.set_quoted(
         'EVENTS_JSONS_DIR',
         join_paths(package_datadir, 'events'),
     )
-    conf_data.set('HEARTBEAT_TIMEOUT', get_option('heartbeat-timeout-seconds'))
     conf_data.set('TERMINUS_ID', get_option('terminus-id'))
     conf_data.set('TERMINUS_HANDLE', get_option('terminus-handle'))
-    conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
     add_project_arguments('-DLIBPLDMRESPONDER', language: 'cpp')
 endif
-
+conf_data.set('HEARTBEAT_TIMEOUT', get_option('heartbeat-timeout-seconds'))
+conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
 if get_option('softoff').allowed()
     conf_data.set(
         'SOFTOFF_TIMEOUT_SECONDS',
@@ -180,7 +181,6 @@ if get_option('softoff').allowed()
         join_paths(package_datadir, 'softoff'),
     )
 endif
-
 if get_option('oem-ibm').allowed()
     conf_data.set_quoted(
         'FILE_TABLE_JSON',
@@ -209,7 +209,6 @@ if get_option('oem-ibm').allowed()
     conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
     add_project_arguments('-DOEM_IBM', language: 'cpp')
 endif
-
 conf_data.set(
     'NUMBER_OF_REQUEST_RETRIES',
     get_option('number-of-request-retries'),
@@ -235,7 +234,6 @@ conf_data.set_quoted(
     'STATIC_EID_TABLE_PATH',
     join_paths(package_datadir, 'static_eid_table.json'),
 )
-conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
 conf_data.set_quoted(
     'PLDM_T2_CONFIG_JSON',
     join_paths(package_datadir, 'pldm_t2_config.json'),
@@ -244,7 +242,6 @@ conf_data.set_quoted(
     'PLDM_PACKAGE_VERIFICATION_KEY',
     get_option('pldm-package-verification-key'),
 )
-conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('LOCAL_EID_OVER_I2C', get_option('local-eid-over-i2c'))
 conf_data.set('LOCAL_EID_OVER_PCIE', get_option('local-eid-over-pcie'))
 conf_data.set(
@@ -262,6 +259,8 @@ conf_data.set(
     'DEFAULT_SENSOR_UPDATER_INTERVAL',
     get_option('default-sensor-update-interval'),
 )
+conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
+conf_data.set('UPDATE_TIMEOUT_SECONDS', get_option('update-timeout-seconds'))
 
 if get_option('platform-prefix') != ''
     conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
@@ -276,8 +275,6 @@ endif
 if get_option('nvidia-disable-edpp-effecters').enabled()
     conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
 endif
-
-conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
 conf_data.set_quoted(
@@ -341,7 +338,7 @@ libpldm_dep = dependency(
 
 openssl = dependency('openssl', required: true)
 
-if get_option('oem-ampere').enabled()
+if get_option('oem-ampere').allowed()
     add_project_arguments('-DOEM_AMPERE', language: 'cpp')
 endif
 
@@ -382,14 +379,15 @@ deps = [
 ]
 
 oem_files = []
-# if get_option('oem-ampere').enabled()
-#     subdir('oem/ampere')
-# endif
+if get_option('oem-ampere').allowed()
+    subdir('oem/ampere')
+endif
 
 if get_option('libpldmresponder').allowed()
     subdir('libpldmresponder')
     deps += [libpldmresponder_dep]
 endif
+
 source_files = [
     'pldmd/pldmd.cpp',
     'fw-update/fw_update_utility.cpp',
@@ -404,6 +402,7 @@ source_files = [
     'fw-update/device_inventory.cpp',
     'fw-update/firmware_inventory.cpp',
     'fw-update/package_signature.cpp',
+    oem_files,
     'requester/mctp_endpoint_discovery.cpp',
 ]
 
@@ -453,7 +452,7 @@ endif
 
 if get_option('systemd').allowed()
     systemd_system_unit_dir = dependency('systemd').get_variable(
-        'systemdsystemunitdir',
+        'systemd_system_unit_dir',
     )
     filesystem.copyfile(
         'pldmd/service_files/pldmd.service',

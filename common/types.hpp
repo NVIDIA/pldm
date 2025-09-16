@@ -9,7 +9,6 @@
 #include <set>
 #include <string>
 #include <tuple>
-#include <typeinfo>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -17,10 +16,7 @@
 namespace pldm
 {
 
-using UUID = std::string;
-using SKU = std::string;
 using Availability = bool;
-using EID = uint8_t;
 using eid = uint8_t;
 using UUID = std::string;
 using Request = std::vector<uint8_t>;
@@ -28,26 +24,34 @@ using Response = std::vector<uint8_t>;
 using MCTPMsgTypes = std::vector<uint8_t>;
 using Command = uint8_t;
 
-using tid_t = uint8_t;
-using VendorIANA = uint32_t;
 /** @brief MCTP Endpoint Medium type in string
  *         Reserved for future purpose
  */
 
 using MctpMedium = std::string;
-using MctpBinding = std::string;
 /** @brief Type definition of MCTP Network Index.
  *         uint32_t is used as defined in MCTP Endpoint D-Bus Interface
  */
 using NetworkId = uint32_t;
 
+/** @brief Type definition of MCTP name in string
+ */
+using MctpInfoName = std::optional<std::string>;
+
+/** @brief MCTP Endpoint Binding type in string ▎*/
+using MctpBinding = std::string;
+
 /** @brief Type definition of MCTP interface information between two endpoints.
  *         eid : Endpoint EID in byte. Defined to match with MCTP D-Bus
  *               interface
  *         UUID : Endpoint UUID which is used to different the endpoints
+ *         MctpMedium: Endpoint MCTP Medium info (Resersed)
  *         NetworkId: MCTP network index
+ *         name: Alias name of the endpoint, e.g. BMC, NIC, etc.
+ *         MctpBinding: The MCTP binding type of the endpoint
  */
-using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId, MctpBinding>;
+using MctpInfo =
+    std::tuple<eid, UUID, MctpMedium, NetworkId, MctpInfoName, MctpBinding>;
 
 /** @brief Type definition of MCTP endpoint D-Bus properties in
  *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
@@ -56,6 +60,8 @@ using MctpInfo = std::tuple<EID, UUID, MctpMedium, NetworkId, MctpBinding>;
  *         eid : Endpoint EID in byte. Defined to match with MCTP D-Bus
  *               interface
  *         MCTPMsgTypes: MCTP message types
+ *         MctpMedium: Endpoint MCTP Medium info
+ *         MctpBinding: The MCTP binding type of the endpoint
  */
 using MctpEndpointProps =
     std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding>;
@@ -63,6 +69,10 @@ using MctpEndpointProps =
 /** @brief Type defined for list of MCTP interface information
  */
 using MctpInfos = std::vector<MctpInfo>;
+
+using SKU = std::string;
+using tid_t = uint8_t;
+using VendorIANA = uint32_t;
 
 /**
  * In `Table 2 - Special endpoint IDs` of DSP0236.
@@ -88,13 +98,14 @@ using Interface = std::string;
 using Interfaces = std::vector<std::string>;
 using Property = std::string;
 using PropertyType = std::string;
-using Value =
-    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
-                 uint64_t, double, std::string, std::vector<uint8_t>>;
+using Value = std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                           int64_t, uint64_t, double, std::string,
+                           std::vector<uint8_t>, std::vector<uint64_t>>;
 
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
 using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
+
 using MctpInterfaces = std::map<UUID, InterfaceMap>;
 typedef struct _pathAssociation
 {
@@ -104,6 +115,10 @@ typedef struct _pathAssociation
 } PathAssociation;
 
 } // namespace dbus
+
+/** @brief Binding of MCTP endpoint EID to Entity Manager's D-Bus object path
+ */
+using Configurations = std::map<dbus::ObjectPath, MctpInfo>;
 
 namespace fw_update
 {
@@ -115,11 +130,15 @@ using VendorDefinedDescriptorTitle = std::string;
 using VendorDefinedDescriptorData = std::vector<uint8_t>;
 using VendorDefinedDescriptorInfo =
     std::tuple<VendorDefinedDescriptorTitle, VendorDefinedDescriptorData>;
-using DescriptorValue =
-    std::variant<DescriptorData, VendorDefinedDescriptorInfo>;
-using Descriptors = std::multiset<std::pair<DescriptorType, DescriptorValue>>;
+using Descriptors =
+    std::multimap<DescriptorType,
+                  std::variant<DescriptorData, VendorDefinedDescriptorInfo>>;
+using DownstreamDeviceIndex = uint16_t;
+using DownstreamDeviceInfo =
+    std::unordered_map<DownstreamDeviceIndex, Descriptors>;
 
-using DescriptorMap = std::unordered_map<EID, Descriptors>;
+using DescriptorMap = std::unordered_map<eid, Descriptors>;
+using DownstreamDescriptorMap = std::unordered_map<eid, DownstreamDeviceInfo>;
 
 // Component information
 using CompClassification = uint16_t;
@@ -129,7 +148,7 @@ using CompClassificationIndex = uint8_t;
 using CompVersion = std::string;
 using CompInfo = std::tuple<CompClassificationIndex, CompVersion>;
 using ComponentInfo = std::map<CompKey, CompInfo>;
-using ComponentInfoMap = std::unordered_map<EID, ComponentInfo>;
+using ComponentInfoMap = std::unordered_map<eid, ComponentInfo>;
 
 // PackageHeaderInformation
 using PackageHeaderSize = size_t;
@@ -186,7 +205,7 @@ using MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>;
 // ComponentInformation
 using MatchComponentNameMapInfo =
     std::vector<std::tuple<DBusIntfMatch, ComponentIdNameMap>>;
-using ComponentNameMap = std::unordered_map<EID, ComponentIdNameMap>;
+using ComponentNameMap = std::unordered_map<eid, ComponentIdNameMap>;
 
 /** @struct MatchEntryInfo
  *  @brief the template struct to find the matched configured info for an dbus
@@ -368,7 +387,6 @@ using EID = uint8_t;
 using TerminusHandle = uint16_t;
 using TerminusID = uint8_t;
 using SensorID = uint16_t;
-using EffecterID = uint16_t;
 using EntityType = uint16_t;
 using EntityInstance = uint16_t;
 using ContainerID = uint16_t;
@@ -377,6 +395,7 @@ using CompositeCount = uint8_t;
 using SensorOffset = uint8_t;
 using EventState = uint8_t;
 using TerminusValidity = uint8_t;
+using EffecterID = uint16_t;
 
 //!< Subset of the State Set that is supported by a effecter/sensor
 using PossibleStates = std::set<uint8_t>;
@@ -384,10 +403,11 @@ using PossibleStates = std::set<uint8_t>;
 //!< composite effecter/sensor
 using CompositeSensorStates = std::vector<PossibleStates>;
 using EntityInfo = std::tuple<ContainerID, EntityType, EntityInstance>;
-using StateSetData = std::tuple<StateSetId, PossibleStates>;
-using StateSetInfo = std::tuple<EntityInfo, std::vector<StateSetData>>;
 using SensorInfo =
     std::tuple<EntityInfo, CompositeSensorStates, std::vector<StateSetId>>;
+
+using StateSetData = std::tuple<StateSetId, PossibleStates>;
+using StateSetInfo = std::tuple<EntityInfo, std::vector<StateSetData>>;
 
 using DbusVariantType = std::variant<
     std::vector<std::tuple<std::string, std::string, std::string>>,

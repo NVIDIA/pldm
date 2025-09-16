@@ -1,1 +1,10 @@
-*
+# eslintignore file would contain files/patterns that should
+# be ignored by the eslint json validator
+#
+# The below mentioned json files and directories are purposefully
+# made invalid in order to execute the unit tests, thus thse are
+# required to be ignored by the json validator.
+/platform-mc/test/host_effecter_jsons/malformed/*
+/platform-mc/test/host_effecter_jsons/no_json/*
+/libpldmresponder/test/pdr_jsons/state_effecter/malformed/*
+/libpldmresponder/test/pdr_jsons/state_sensor/malformed/*

@@ -1,9 +1,10 @@
+#include "config.h"
+
 #include "mctp_endpoint_discovery.hpp"
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
-#include <libpldm/pldm.h>
 #include <linux/mctp.h>
 
 #include <nlohmann/json.hpp>
@@ -27,23 +28,37 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
-    bus(bus), mctpEndpointAddedSignal(
-                  bus, interfacesAdded(MCTPPath),
-                  std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
+    bus(bus),
+    mctpEndpointAddedSignal(
+        bus, interfacesAdded(MCTPPath),
+        [this](sdbusplus::message_t& msg) { this->discoverEndpoints(msg); }),
     mctpEndpointRemovedSignal(
         bus, interfacesRemoved(MCTPPath),
-        std::bind_front(&MctpDiscovery::removeEndpoints, this)),
+        [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
+    mctpEndpointPropChangedSignal(
+        bus, propertiesChangedNamespace(MCTPPath, MCTPInterfaceCC),
+        [this](sdbusplus::message_t& msg) { this->propertiesChangedCb(msg); }),
     handlers(list), staticEidTablePath(staticEidTablePath)
 {
-    getMctpInfos(existingMctpInfos);
+    std::map<MctpInfo, Availability> currentMctpInfoMap;
+    getMctpInfos(currentMctpInfoMap);
+    for (const auto& mapIt : currentMctpInfoMap)
+    {
+        if (mapIt.second)
+        {
+            // Only add the available endpoints to the terminus
+            // Let the propertiesChanged signal tells us when it comes back
+            // to Available again
+            addToExistingMctpInfos(MctpInfos(1, mapIt.first));
+        }
+    }
     loadStaticEndpoints(existingMctpInfos);
     handleMctpEndpoints(existingMctpInfos);
 }
 
-void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
+void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
 {
     // Find all implementations of the MCTP Endpoint interface
-    dbus::MctpInterfaces mctpInterfaces;
     pldm::utils::GetSubTreeResponse mapperResponse;
     try
     {
@@ -63,50 +78,39 @@ void MctpDiscovery::getMctpInfos(MctpInfos& mctpInfos)
         for (const auto& serviceIter : services)
         {
             const std::string& service = serviceIter.first;
-            std::string uuid{};
-            try
+            const MctpEndpointProps& epProps =
+                getMctpEndpointProps(service, path);
+            const UUID& uuid = getEndpointUUIDProp(service, path);
+            const Availability& availability =
+                getEndpointConnectivityProp(path);
+            auto types = std::get<MCTPMsgTypes>(epProps);
+            if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
+                types.end())
             {
-                const MctpEndpointProps& epProps =
-                    getMctpEndpointProps(service, path);
-                const UUID& uuid = getEndpointUUIDProp(service, path);
-                if (uuid.empty())
-                {
-                    continue;
-                }
-                auto types = std::get<2>(epProps);
-                if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
-                    types.end())
-                {
-                    mctpInfos.emplace_back(MctpInfo(
-                        std::get<1>(epProps), uuid, std::get<3>(epProps),
-                        std::get<0>(epProps), std::get<4>(epProps)));
-                }
-                else
-                {
-                    continue;
-                }
-                // watch PropertiesChanged signal from
-                // xyz.openbmc_project.Object.Enable PDI
-                if (enableMatches.find(path) == enableMatches.end())
-                {
-                    info("register match_t path:{OBJPATH}", "OBJPATH", path);
-                    enableMatches.emplace(
-                        path,
-                        sdbusplus::bus::match_t(
-                            bus,
-                            sdbusplus::bus::match::rules::propertiesChanged(
-                                path.c_str(),
-                                "au.com.codeconstruct.MCTP.Endpoint1"),
-                            std::bind_front(&MctpDiscovery::refreshEndpoints,
-                                            this)));
-                }
+                const auto& mctpBinding = std::get<4>(epProps);
+                auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, "",
+                                         std::get<NetworkId>(epProps),
+                                         std::nullopt, mctpBinding);
+                searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
+                mctpInfoMap[std::move(mctpInfo)] = availability;
             }
-            catch (const sdbusplus::exception_t& e)
+            else
             {
-                error(
-                    "Error reading MCTP Endpoint property at path '{PATH}' and service '{SERVICE}', error - {ERROR}",
-                    "ERROR", e, "SERVICE", service, "PATH", path);
-                return;
+                continue;
+            }
+            // Watch for PropertiesChanged signal from
+            // xyz.openbmc_project.Object.Enable PDI
+            if (enableMatches.find(path) == enableMatches.end())
+            {
+                info("register match_t path:{OBJPATH}", "OBJPATH", path);
+                enableMatches.emplace(
+                    path, sdbusplus::bus::match_t(
+                              bus,
+                              sdbusplus::bus::match::rules::propertiesChanged(
+                                  path.c_str(),
+                                  "au.com.codeconstruct.MCTP.Endpoint1"),
+                              std::bind_front(&MctpDiscovery::refreshEndpoints,
+                                              this)));
             }
         }
     }
@@ -132,7 +136,6 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
         auto types = std::get<std::vector<uint8_t>>(
             properties.at("SupportedMessageTypes"));
         auto mediumType = std::get<MctpMedium>(properties.at("MediumType"));
-
         auto binding = pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
             path.c_str(), "BindingType", MCTPBindingInterface);
 
@@ -171,15 +174,38 @@ UUID MctpDiscovery::getEndpointUUIDProp(const std::string& service,
     return static_cast<UUID>(emptyUUID);
 }
 
+Availability MctpDiscovery::getEndpointConnectivityProp(const std::string& path)
+{
+    Availability available = false;
+    try
+    {
+        pldm::utils::PropertyValue propertyValue =
+            pldm::utils::DBusHandler().getDbusPropertyVariant(
+                path.c_str(), MCTPConnectivityProp, MCTPInterfaceCC);
+        if (std::get<std::string>(propertyValue) == "Available")
+        {
+            available = true;
+        }
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        error(
+            "Error reading Endpoint Connectivity property at path '{PATH}', error - {ERROR}",
+            "PATH", path, "ERROR", e);
+    }
+
+    return available;
+}
+
 void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                                       MctpInfos& mctpInfos)
 {
     using ObjectPath = sdbusplus::message::object_path;
     ObjectPath objPath;
     using Property = std::string;
-    using PropertyMap = std::map<Property, pldm::dbus::Value>;
+    using PropertyMap = std::map<Property, dbus::Value>;
     std::map<std::string, PropertyMap> interfaces;
-    std::vector<uint8_t> address{};
+    std::string uuid = emptyUUID;
 
     try
     {
@@ -192,9 +218,9 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
             "ERROR", e);
         return;
     }
+    const Availability& availability = getEndpointConnectivityProp(objPath.str);
 
     /* Get UUID */
-    UUID uuid{};
     try
     {
         auto service = pldm::utils::DBusHandler().getService(
@@ -206,51 +232,64 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         error("Error getting Endpoint UUID D-Bus interface, error - {ERROR}",
               "ERROR", e);
     }
+
     for (const auto& [intfName, properties] : interfaces)
     {
         if (intfName == MCTPInterface)
         {
-            if (!properties.contains("NetworkId") or
-                !properties.contains("EID") or
-                !properties.contains("SupportedMessageTypes") or
-                !properties.contains("MediumType"))
+            if (properties.contains("NetworkId") &&
+                properties.contains("EID") &&
+                properties.contains("SupportedMessageTypes") &&
+                properties.contains("MediumType"))
             {
-                return;
-            }
+                auto networkId =
+                    std::get<NetworkId>(properties.at("NetworkId"));
+                auto eid = std::get<mctp_eid_t>(properties.at("EID"));
+                auto types = std::get<std::vector<uint8_t>>(
+                    properties.at("SupportedMessageTypes"));
+                auto mediumType =
+                    std::get<MctpMedium>(properties.at("MediumType"));
+                auto binding =
+                    pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
+                        objPath.str.c_str(), "BindingType",
+                        MCTPBindingInterface);
 
-            auto networkId = std::get<NetworkId>(properties.at("NetworkId"));
-            auto eid = std::get<mctp_eid_t>(properties.at("EID"));
-            auto types = std::get<std::vector<uint8_t>>(
-                properties.at("SupportedMessageTypes"));
-            auto mediumType = std::get<MctpMedium>(properties.at("MediumType"));
-            auto binding =
-                pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
-                    objPath.str.c_str(), "BindingType", MCTPBindingInterface);
-
-            if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
-                types.end())
-            {
-                info(
-                    "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
-                    "NETWORK", networkId, "EID", eid, "UUID", uuid);
-                mctpInfos.emplace_back(
-                    MctpInfo(eid, uuid, mediumType, networkId, binding));
-
-                // watch PropertiesChanged signal from
-                // au.com.codeconstruct.MCTP.Endpoint1 PDI
-                if (enableMatches.find(objPath.str) == enableMatches.end())
+                if (!availability)
                 {
-                    info("register match_t objectPath:{OBJPATH}", "OBJPATH",
-                         objPath.str);
-                    enableMatches.emplace(
-                        objPath.str,
-                        sdbusplus::bus::match_t(
-                            bus,
-                            sdbusplus::bus::match::rules::propertiesChanged(
-                                objPath.str,
-                                "au.com.codeconstruct.MCTP.Endpoint1"),
-                            std::bind_front(&MctpDiscovery::refreshEndpoints,
-                                            this)));
+                    // Log an error message here, but still add it to the
+                    // terminus
+                    error(
+                        "mctpd added a DEGRADED endpoint {EID} networkId {NET} to D-Bus",
+                        "NET", networkId, "EID", static_cast<unsigned>(eid));
+                }
+                if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
+                    types.end())
+                {
+                    info(
+                        "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
+                        "NETWORK", networkId, "EID", eid, "UUID", uuid);
+                    auto mctpInfo = MctpInfo(eid, uuid, "", networkId,
+                                             std::nullopt, binding);
+                    searchConfigurationFor(pldm::utils::DBusHandler(),
+                                           mctpInfo);
+                    mctpInfos.emplace_back(std::move(mctpInfo));
+
+                    // watch PropertiesChanged signal from
+                    // au.com.codeconstruct.MCTP.Endpoint1 PDI
+                    if (enableMatches.find(objPath.str) == enableMatches.end())
+                    {
+                        info("register match_t objectPath:{OBJPATH}", "OBJPATH",
+                             objPath.str);
+                        enableMatches.emplace(
+                            objPath.str,
+                            sdbusplus::bus::match_t(
+                                bus,
+                                sdbusplus::bus::match::rules::propertiesChanged(
+                                    objPath.str,
+                                    "au.com.codeconstruct.MCTP.Endpoint1"),
+                                std::bind_front(
+                                    &MctpDiscovery::refreshEndpoints, this)));
+                    }
                 }
             }
         }
@@ -289,34 +328,74 @@ void MctpDiscovery::removeFromExistingMctpInfos(MctpInfos& mctpInfos,
     }
 }
 
-void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
+void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
 {
-    if (!std::filesystem::exists(staticEidTablePath))
+    using Interface = std::string;
+    using Property = std::string;
+    using Value = std::string;
+    using Properties = std::map<Property, std::variant<Value>>;
+
+    Interface interface;
+    Properties properties;
+    std::string objPath{};
+    std::string service{};
+
+    try
     {
+        msg.read(interface, properties);
+        objPath = msg.get_path();
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        error(
+            "Error handling Connectivity property changed message, error - {ERROR}",
+            "ERROR", e);
         return;
     }
 
-    std::ifstream jsonFile(staticEidTablePath);
-    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
-    if (data.is_discarded())
+    for (const auto& [key, valueVariant] : properties)
     {
-        error("Parsing json file failed. FilePath={FILE_PATH}", "FILE_PATH",
-              std::string(staticEidTablePath));
-        return;
-    }
+        Value propVal = std::get<std::string>(valueVariant);
+        auto availability = (propVal == "Available") ? true : false;
 
-    const std::vector<nlohmann::json> emptyJsonArray{};
-    auto endpoints = data.value("Endpoints", emptyJsonArray);
-    for (const auto& endpoint : endpoints)
-    {
-        const std::vector<uint8_t> emptyUnit8Array;
-        const std::string emptyString;
-        auto eid = endpoint.value("EID", 0xFF);
-        auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
-        if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
+        if (key == MCTPConnectivityProp)
         {
-            error("Added Static MCTP Info for EID: {EID}", "EID", eid);
-            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, {}, {}, {}));
+            service = pldm::utils::DBusHandler().getService(objPath.c_str(),
+                                                            MCTPInterface);
+            const MctpEndpointProps& epProps =
+                getMctpEndpointProps(service, objPath);
+
+            auto types = std::get<MCTPMsgTypes>(epProps);
+            if (!std::ranges::contains(types, mctpTypePLDM))
+            {
+                return;
+            }
+            const UUID& uuid = getEndpointUUIDProp(service, objPath);
+            const auto& mctpBinding = std::get<4>(epProps);
+
+            MctpInfo mctpInfo(std::get<eid>(epProps), uuid, "",
+                              std::get<NetworkId>(epProps), std::nullopt,
+                              mctpBinding);
+            searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
+            if (!std::ranges::contains(existingMctpInfos, mctpInfo))
+            {
+                if (availability)
+                {
+                    // The endpoint not in existingMctpInfos and is
+                    // available Add it to existingMctpInfos
+                    info(
+                        "Adding Endpoint networkId {NETWORK} ID {EID} by propertiesChanged signal",
+                        "NETWORK", std::get<3>(mctpInfo), "EID",
+                        unsigned(std::get<0>(mctpInfo)));
+                    addToExistingMctpInfos(MctpInfos(1, mctpInfo));
+                    handleMctpEndpoints(MctpInfos(1, mctpInfo));
+                }
+            }
+            else
+            {
+                // The endpoint already in existingMctpInfos
+                updateMctpEndpointAvailability(mctpInfo, availability);
+            }
         }
     }
 }
@@ -334,9 +413,15 @@ void MctpDiscovery::removeEndpoints(sdbusplus::message_t&)
 {
     MctpInfos mctpInfos;
     MctpInfos removedInfos;
-    getMctpInfos(mctpInfos);
+    std::map<MctpInfo, Availability> currentMctpInfoMap;
+    getMctpInfos(currentMctpInfoMap);
+    for (const auto& mapIt : currentMctpInfoMap)
+    {
+        mctpInfos.push_back(mapIt.first);
+    }
     removeFromExistingMctpInfos(mctpInfos, removedInfos);
     handleRemovedMctpEndpoints(removedInfos);
+    removeConfigs(removedInfos);
 }
 
 void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
@@ -345,10 +430,136 @@ void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
     {
         if (handler)
         {
+            handler->handleConfigurations(configurations);
             handler->handleMctpEndpoints(mctpInfos);
         }
     }
 }
+
+void MctpDiscovery::handleRemovedMctpEndpoints(const MctpInfos& mctpInfos)
+{
+    for (const auto& handler : handlers)
+    {
+        if (handler)
+        {
+            handler->handleRemovedMctpEndpoints(mctpInfos);
+        }
+    }
+}
+
+void MctpDiscovery::updateMctpEndpointAvailability(const MctpInfo& mctpInfo,
+                                                   Availability availability)
+{
+    for (const auto& handler : handlers)
+    {
+        if (handler)
+        {
+            handler->updateMctpEndpointAvailability(mctpInfo, availability);
+        }
+    }
+}
+
+std::string MctpDiscovery::getNameFromProperties(
+    const utils::PropertyMap& properties)
+{
+    if (!properties.contains("Name"))
+    {
+        error("Missing name property");
+        return "";
+    }
+    return std::get<std::string>(properties.at("Name"));
+}
+
+std::string MctpDiscovery::constructMctpReactorObjectPath(
+    const MctpInfo& mctpInfo)
+{
+    const auto networkId = std::get<NetworkId>(mctpInfo);
+    const auto eid = std::get<pldm::eid>(mctpInfo);
+    return std::string{MCTPPath} + "/networks/" + std::to_string(networkId) +
+           "/endpoints/" + std::to_string(eid) + "/configured_by";
+}
+
+void MctpDiscovery::searchConfigurationFor(
+    const pldm::utils::DBusHandler& handler, MctpInfo& mctpInfo)
+{
+    const auto mctpReactorObjectPath = constructMctpReactorObjectPath(mctpInfo);
+    try
+    {
+        std::string associatedObjPath;
+        std::string associatedService;
+        std::string associatedInterface;
+        sdbusplus::message::object_path inventorySubtreePath(
+            inventorySubtreePathStr);
+
+        //"/{board or chassis type}/{board or chassis}/{device}"
+        auto constexpr subTreeDepth = 3;
+        auto response = handler.getAssociatedSubTree(
+            mctpReactorObjectPath, inventorySubtreePath, subTreeDepth,
+            interfaceFilter);
+        if (response.empty())
+        {
+            warning("No associated subtree found for path {PATH}", "PATH",
+                    mctpReactorObjectPath);
+            return;
+        }
+        // Assume the first entry is the one we want
+        auto subTree = response.begin();
+        associatedObjPath = subTree->first;
+        auto associatedServiceProp = subTree->second;
+        if (associatedServiceProp.empty())
+        {
+            warning("No associated service found for path {PATH}", "PATH",
+                    mctpReactorObjectPath);
+            return;
+        }
+        // Assume the first entry is the one we want
+        auto entry = associatedServiceProp.begin();
+        associatedService = entry->first;
+        auto dBusIntfList = entry->second;
+        auto associatedInterfaceItr = std::find_if(
+            dBusIntfList.begin(), dBusIntfList.end(), [](const auto& intf) {
+                return std::find(interfaceFilter.begin(), interfaceFilter.end(),
+                                 intf) != interfaceFilter.end();
+            });
+        if (associatedInterfaceItr == dBusIntfList.end())
+        {
+            error("No associated interface found for path {PATH}", "PATH",
+                  mctpReactorObjectPath);
+            return;
+        }
+        associatedInterface = *associatedInterfaceItr;
+        auto mctpTargetProperties = handler.getDbusPropertiesVariant(
+            associatedService.c_str(), associatedObjPath.c_str(),
+            associatedInterface.c_str());
+        auto name = getNameFromProperties(mctpTargetProperties);
+        if (!name.empty())
+        {
+            std::get<std::optional<std::string>>(mctpInfo) = name;
+        }
+        configurations.emplace(associatedObjPath, mctpInfo);
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "Error getting associated subtree for path {PATH}, error - {ERROR}",
+            "PATH", mctpReactorObjectPath, "ERROR", e);
+        return;
+    }
+}
+
+void MctpDiscovery::removeConfigs(const MctpInfos& removedInfos)
+{
+    for (const auto& mctpInfo : removedInfos)
+    {
+        auto eidToRemove = std::get<eid>(mctpInfo);
+        std::erase_if(configurations, [eidToRemove](const auto& config) {
+            auto& [__, mctpInfo] = config;
+            auto eidValue = std::get<eid>(mctpInfo);
+            return eidValue == eidToRemove;
+        });
+    }
+}
+
 void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
 {
     std::string interface;
@@ -398,13 +609,35 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
     }
 }
 
-void MctpDiscovery::handleRemovedMctpEndpoints(const MctpInfos& mctpInfos)
+void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
 {
-    for (const auto& handler : handlers)
+    if (!std::filesystem::exists(staticEidTablePath))
     {
-        if (handler)
+        return;
+    }
+
+    std::ifstream jsonFile(staticEidTablePath);
+    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
+    if (data.is_discarded())
+    {
+        error("Parsing json file failed. FilePath={FILE_PATH}", "FILE_PATH",
+              std::string(staticEidTablePath));
+        return;
+    }
+
+    const std::vector<nlohmann::json> emptyJsonArray{};
+    auto endpoints = data.value("Endpoints", emptyJsonArray);
+    for (const auto& endpoint : endpoints)
+    {
+        const std::vector<uint8_t> emptyUnit8Array;
+        const std::string emptyString;
+        auto eid = endpoint.value("EID", 0xFF);
+        auto types = endpoint.value("SupportedMessageTypes", emptyUnit8Array);
+        if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
-            handler->handleRemovedMctpEndpoints(mctpInfos);
+            error("Added Static MCTP Info for EID: {EID}", "EID", eid);
+            mctpInfos.emplace_back(
+                MctpInfo(eid, emptyUUID, {}, {}, std::nullopt, {}));
         }
     }
 }

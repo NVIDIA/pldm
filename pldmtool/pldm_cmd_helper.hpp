@@ -64,14 +64,14 @@ static inline void DisplayInJson(const ordered_json& data)
 }
 
 /**
- *  @brief Translate PLDM completion code as human-readable string
+ * @brief Maps numeric PLDM completion codes to human-readable strings
  *
- *  @param[in] completionCode - PLDM completion code
- *  @param[in] data - The JSON data to which the completion code is added.
- *
- *  @return - None.
+ * @param[in] completionCode - Numeric PLDM completion code returned in response
+ * @param[in] data - The JSON data to which the completion code is added.
+ * @param[in] pldmType - PLDM type
  */
-void fillCompletionCode(uint8_t completionCode, ordered_json& data);
+void fillCompletionCode(uint8_t completionCode, ordered_json& data,
+                        uint8_t pldmType);
 
 class CommandInterface
 {
