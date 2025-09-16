@@ -629,8 +629,6 @@ class PLDMUnpack:
 
         # Determine header size (up to checksum field)
         header_size = current_pos - 4  # Subtract 4 bytes for the checksum field itself
-        if int(self.header_map["PackageHeaderFormatRevision"]) >= 4:
-            header_size -= 4  # Subtract 4 bytes for payload checksum field if present
 
         header_data = self.fwpkg_fd.read(header_size)
         calculated_checksum = binascii.crc32(header_data) & 0xFFFFFFFF
