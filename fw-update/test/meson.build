@@ -1,6 +1,7 @@
 fw_update_test_src = declare_dependency(
     sources: [
         'fake_dbusutil.cpp',
+        '../activation.cpp',
         '../inventory_manager.cpp',
         '../package_parser.cpp',
         '../component_updater.cpp',

@@ -167,7 +167,7 @@ class GetPLDMTypes : public CommandInterface
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_BASE);
         if (cc == PLDM_SUCCESS)
         {
             printPLDMTypes(types, data);
@@ -244,7 +244,7 @@ class GetPLDMVersion : public CommandInterface
             return;
         }
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_BASE);
         if (cc == PLDM_SUCCESS)
         {
             char buffer[16] = {0};
@@ -300,7 +300,7 @@ class GetTID : public CommandInterface
         uint8_t tid = 0;
         std::vector<bitfield8_t> types(8);
         auto rc = decode_get_tid_resp(responsePtr, payloadLength, &cc, &tid);
-        if (rc != PLDM_SUCCESS)
+        if (rc != PLDM_SUCCESS || cc != PLDM_SUCCESS)
         {
             std::cerr << "Response Message Error: "
                       << "rc=" << rc << ",cc=" << (int)cc << "\n";
@@ -308,7 +308,7 @@ class GetTID : public CommandInterface
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_BASE);
         if (cc == PLDM_SUCCESS)
         {
             data["TID"] = tid;
@@ -316,56 +316,6 @@ class GetTID : public CommandInterface
 
         pldmtool::helper::DisplayInJson(data);
     }
-};
-
-class SetTID : public CommandInterface
-{
-  public:
-    ~SetTID() = default;
-    SetTID() = delete;
-    SetTID(const SetTID&) = delete;
-    SetTID(SetTID&&) = default;
-    SetTID& operator=(const SetTID&) = delete;
-    SetTID& operator=(SetTID&&) = delete;
-
-    explicit SetTID(const char* type, const char* name, CLI::App* app) :
-        CommandInterface(type, name, app)
-    {
-        app->add_option("--tid", tid, "Terminus Id")->required();
-    }
-
-    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
-    {
-        std::vector<uint8_t> requestMsg(
-            sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-        auto rc = encode_set_tid_req(instanceId, tid, request);
-        return {rc, requestMsg};
-    }
-
-    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
-    {
-        ordered_json data;
-
-        if (responsePtr == nullptr)
-        {
-            std::cerr << "Response Message Error: "
-                      << "responsePtr is nullptr\n";
-            return;
-        }
-        if (payloadLength != PLDM_SET_TID_RESP_BYTES)
-        {
-            std::cerr << "Response Message Error: "
-                      << "payloadLength =" << payloadLength << "\n";
-            return;
-        }
-
-        fillCompletionCode(responsePtr->payload[0], data);
-        pldmtool::helper::DisplayInJson(data);
-    }
-
-  private:
-    uint8_t tid;
 };
 
 class GetPLDMCommands : public CommandInterface
@@ -431,7 +381,7 @@ class GetPLDMCommands : public CommandInterface
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data);
+        fillCompletionCode(cc, data, PLDM_BASE);
         if (cc == PLDM_SUCCESS)
         {
             printPldmCommands(cmdTypes, pldmType, data);

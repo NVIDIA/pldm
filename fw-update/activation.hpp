@@ -38,6 +38,8 @@ namespace pldm
 namespace fw_update
 {
 
+class UpdateManager;
+
 using ActivationIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Software::server::Activation>;
 using ActivationProgressIntf = sdbusplus::server::object_t<
@@ -87,12 +89,14 @@ class Delete : public DeleteIntf
     Delete(sdbusplus::bus_t& bus, const std::string& objPath,
            UpdateManager* updateManager) :
         DeleteIntf(bus, objPath.c_str(), action::emit_interface_added),
-        updateManager(updateManager), objPath(objPath)
+        updateManager(updateManager)
     {}
+
+    /** @brief Delete the Activation D-Bus object for the FW update package */
+    void delete_() override;
 
   private:
     UpdateManager* updateManager;
-    const std::string objPath;
 };
 
 /** @class Activation
@@ -123,6 +127,10 @@ class Activation : public ActivationIntf
         activation;
     using sdbusplus::xyz::openbmc_project::Software::server::Activation::
         requestedActivation;
+
+    /** @brief Overriding Activation property setter function
+     */
+    Activations activation(Activations value) override;
 
     /** @brief Overriding RequestedActivations property setter function
      */

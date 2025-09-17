@@ -70,7 +70,7 @@ Manager::Manager(sdbusplus::bus::bus& bus,
     componentInfoMap(componentInfoMap)
 {}
 
-void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
+void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                           dbus::MctpInterfaces& mctpInterfaces)
 {
     FirmwareInfo fwInfoSearch;
@@ -141,7 +141,7 @@ void Manager::createEntry(pldm::EID eid, const pldm::UUID& uuid,
     }
 }
 
-void Manager::updateFWVersion(pldm::EID eid)
+void Manager::updateFWVersion(pldm::eid eid)
 {
     if (auto compInfoSearch = componentInfoMap.find(eid);
         compInfoSearch != componentInfoMap.end())

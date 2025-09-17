@@ -700,7 +700,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     TotalComponentUpdates& totalNumComponentUpdates)
 {
     using ComponentTargetList =
-        std::unordered_map<EID, std::vector<CompIdentifier>>;
+        std::unordered_map<eid, std::vector<CompIdentifier>>;
     ComponentTargetList compTargetList{};
 
     // Process target filtering

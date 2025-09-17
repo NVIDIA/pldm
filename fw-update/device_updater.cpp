@@ -455,15 +455,6 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     co_return PLDM_SUCCESS;
 }
 
-void DeviceUpdater::createRequestFwDataTimer()
-{
-    reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
-        componentUpdateStatus[componentIndex] = false;
-        sendCancelUpdateComponentRequest();
-        updateManager->updateDeviceCompletion(eid, false);
-    });
-}
-
 Response DeviceUpdater::requestFwData(const pldm_msg* request,
                                       size_t payloadLength)
 {
@@ -808,105 +799,6 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
         co_return PLDM_ERROR;
     }
     co_return PLDM_SUCCESS;
-}
-
-void DeviceUpdater::sendCancelUpdateComponentRequest()
-{
-    pldmRequest.reset();
-    auto instanceId = updateManager->instanceIdDb.next(eid);
-    Request request(sizeof(pldm_msg_hdr));
-    auto requestMsg = new (request.data()) pldm_msg;
-
-    auto rc = encode_cancel_update_component_req(
-        instanceId, requestMsg, PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
-    if (rc)
-    {
-        updateManager->instanceIdDb.free(eid, instanceId);
-        error(
-            "Failed to encode cancel update component request for endpoint ID '{EID}', component index '{COMPONENT_INDEX}', response code '{RC}'",
-            "EID", eid, "COMPONENT_INDEX", componentIndex, "RC", rc);
-        return;
-    }
-
-    rc = updateManager->handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_CANCEL_UPDATE_COMPONENT,
-        std::move(request),
-        [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
-            this->cancelUpdateComponent(eid, response, respMsgLen);
-        });
-    if (rc)
-    {
-        error(
-            "Failed to send cancel update component request for endpoint ID '{EID}', component index '{COMPONENT_INDEX}', response code '{RC}'",
-            "EID", eid, "COMPONENT_INDEX", componentIndex, "RC", rc);
-    }
-}
-
-void DeviceUpdater::cancelUpdateComponent(
-    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
-{
-    // Check if response is valid
-    if (response == nullptr || !respMsgLen)
-    {
-        error(
-            "No response received for cancel update component for endpoint ID '{EID}'",
-            "EID", eid);
-        return;
-    }
-
-    uint8_t completionCode = 0;
-    auto rc = decode_cancel_update_component_resp(response, respMsgLen,
-                                                  &completionCode);
-    if (rc)
-    {
-        error(
-            "Failed to decode cancel update component response for endpoint ID '{EID}', component index '{COMPONENT_INDEX}', completion code '{CC}'",
-            "EID", eid, "COMPONENT_INDEX", componentIndex, "CC",
-            completionCode);
-        return;
-    }
-    if (completionCode)
-    {
-        error(
-            "Failed to cancel update component for endpoint ID '{EID}', component index '{COMPONENT_INDEX}', completion code '{CC}'",
-            "EID", eid, "COMPONENT_INDEX", componentIndex, "CC",
-            completionCode);
-        return;
-    }
-
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    // Check if this is the last component being cancelled
-    if (componentIndex == applicableComponents.size() - 1)
-    {
-        for (auto& compStatus : componentUpdateStatus)
-        {
-            if (compStatus.second)
-            {
-                // If at least one component update succeeded, proceed with
-                // activation
-                componentIndex = 0;
-                componentUpdateStatus.clear();
-                pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-                    updateManager->event,
-                    std::bind(&DeviceUpdater::sendActivateFirmwareRequest,
-                              this));
-                return;
-            }
-        }
-        updateManager->updateDeviceCompletion(eid, false);
-    }
-    else
-    {
-        // Move to next component and update its status
-        componentIndex++;
-        componentUpdateStatus[componentIndex] = true;
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&DeviceUpdater::sendUpdateComponentRequest, this,
-                      componentIndex));
-    }
-    return;
 }
 
 } // namespace fw_update

@@ -74,13 +74,26 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return rc;
     }
 
-    void handleMctpEndpoints(const MctpInfos& mctpInfos)
+    void handleMctpEndpoints(const MctpInfos& mctpInfos) override
     {
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
+    void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos
+                                    [[maybe_unused]]) override
+    {
+        // TODO: Place holder
+    }
+
+    void updateMctpEndpointAvailability(
+        [[maybe_unused]] const MctpInfo& mctpInfo,
+        [[maybe_unused]] Availability availability) override
+    {
+        // TODO: Place holder
+    }
+
     void onlineMctpEndpoint(const UUID& uuid,
-                            [[maybe_unused]] const EID& eid) override
+                            [[maybe_unused]] const eid& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
         if (terminus && terminus->doesSupport(PLDM_PLATFORM))
@@ -90,13 +103,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     void offlineMctpEndpoint(const UUID& uuid,
-                             [[maybe_unused]] const EID& eid) override
+                             [[maybe_unused]] const eid& eid) override
     {
         auto terminus = terminusManager.getTerminus(uuid);
         if (terminus && terminus->doesSupport(PLDM_PLATFORM))
         {
             sensorManager.setOffline(terminus->getTid());
         }
+    }
+
+    std::optional<mctp_eid_t> getActiveEidByName(
+        [[maybe_unused]] const std::string& terminusName) override
+    {
+        return std::nullopt;
     }
 
     void startSensorPolling()

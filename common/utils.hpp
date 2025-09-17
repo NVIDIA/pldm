@@ -415,7 +415,7 @@ class DBusHandler : public DBusHandlerInterface
                          const PropertyValue& value) const override;
 
     bool checkDbusPropertyVariant(const char* objPath, const char* dbusProp,
-                                  const char* dbusInterface) const override;
+                                  const char* dbusInterface) const;
     /** @brief This function retrieves the properties of an object managed
      *         by the specified D-Bus service located at the given object path.
      *
@@ -472,7 +472,7 @@ uint8_t readHostEID();
  *
  * @return true if the MCTP EID is valid otherwise return false.
  */
-bool isValidEID(EID mctpEid);
+bool isValidEID(eid mctpEid);
 
 /** @brief Convert a value in the JSON to a D-Bus property value
  *

@@ -179,7 +179,7 @@ class GetStatus : public CommandInterface
 
         ordered_json data;
 
-        fillCompletionCode(completionCode, data);
+        fillCompletionCode(completionCode, data, PLDM_FWUP);
 
         if (completionCode == PLDM_SUCCESS)
         {
@@ -267,6 +267,10 @@ class GetFwParams : public CommandInterface
                       << "\n";
             return;
         }
+
+        ordered_json data;
+
+        fillCompletionCode(fwParams.completion_code, data, PLDM_FWUP);
 
         ordered_json capabilitiesDuringUpdate;
         if (fwParams.capabilities_during_update.bits.bit0)
@@ -479,7 +483,6 @@ class GetFwParams : public CommandInterface
                 compDataEntries.push_back(compData);
             }
             data["ComponentParameterEntries"] = compDataEntries;
-        }
 
         pldmtool::helper::DisplayInJson(data);
     }
@@ -629,7 +632,7 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
     }
     ordered_json data;
 
-    fillCompletionCode(completionCode, data);
+    fillCompletionCode(completionCode, data, PLDM_FWUP);
 
     data["EID"] = eid;
     ordered_json descriptors;

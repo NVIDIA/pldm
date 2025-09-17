@@ -123,14 +123,14 @@ class Manager
      *  @param[in] uuid - MCTP UUID
      *  @param[in] deviceObjPath - Object path of the device inventory object
      */
-    void createEntry(pldm::EID eid, const pldm::UUID& uuid,
+    void createEntry(pldm::eid eid, const pldm::UUID& uuid,
                      dbus::MctpInterfaces& mctpInterfaces);
 
     /** @brief Update firmware version
      *
      *  @param[in] eid - MCTP endpointID
      */
-    void updateFWVersion(pldm::EID eid);
+    void updateFWVersion(pldm::eid eid);
 
     const std::string swBasePath = "/xyz/openbmc_project/software";
 
@@ -144,7 +144,7 @@ class Manager
     const ComponentInfoMap& componentInfoMap;
 
     /** @brief Map to store firmware inventory objects */
-    std::map<std::pair<EID, CompIdentifier>, std::unique_ptr<Entry>>
+    std::map<std::pair<eid, CompIdentifier>, std::unique_ptr<Entry>>
         firmwareInventoryMap;
 
     /** @brief D-Bus signal match for objects to be updated with SoftwareID*/

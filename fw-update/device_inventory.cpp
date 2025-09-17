@@ -50,7 +50,7 @@ Manager::Manager(sdbusplus::bus::bus& bus,
 {}
 
 std::optional<sdbusplus::message::object_path> Manager::createEntry(
-    pldm::EID eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
+    pldm::eid eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
 {
     std::optional<sdbusplus::message::object_path> deviceObjPath{};
 

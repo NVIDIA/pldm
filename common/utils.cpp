@@ -162,7 +162,7 @@ uint8_t readHostEID()
     return eid;
 }
 
-bool isValidEID(EID mctpEid)
+bool isValidEID(eid mctpEid)
 {
     if (mctpEid == MCTP_ADDR_NULL || mctpEid < MCTP_START_VALID_EID ||
         mctpEid == MCTP_ADDR_ANY)

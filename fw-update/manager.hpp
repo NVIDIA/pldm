@@ -142,7 +142,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
-        for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
+        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
              mctpInfos)
         {
             ComponentIdNameMap componentIdNameMap;
@@ -160,7 +160,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
      */
-    void createInventory(EID eid, UUID uuid,
+    void createInventory(eid eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
         deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
@@ -181,7 +181,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *
      *  @param[in] eid - MCTP endpoint
      */
-    void updateFWInventory(EID eid)
+    void updateFWInventory(eid eid)
     {
         try
         {
@@ -237,13 +237,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                            [[maybe_unused]] const EID& eid) override
+                            [[maybe_unused]] const eid& eid) override
     {
         this->updateFWInventory(eid);
     }
 
     void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                             [[maybe_unused]] const EID& eid) override
+                             [[maybe_unused]] const eid& eid) override
     {
         // placeholder
     }

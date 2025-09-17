@@ -390,6 +390,7 @@ endif
 
 source_files = [
     'pldmd/pldmd.cpp',
+    'fw-update/activation.cpp',
     'fw-update/fw_update_utility.cpp',
     'fw-update/inventory_manager.cpp',
     'fw-update/package_parser.cpp',

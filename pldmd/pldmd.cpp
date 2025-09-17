@@ -4,7 +4,6 @@
 #include "common/utils.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
-#include "platform-mc/dbus_to_terminus_effecters.hpp"
 #include "platform-mc/manager.hpp"
 #include "platform-mc/pldmServiceReadyInterface.hpp"
 #include "requester/handler.hpp"

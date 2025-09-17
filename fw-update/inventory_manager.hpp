@@ -35,10 +35,10 @@ namespace fw_update
 {
 
 using CreateInventoryCallBack =
-    std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
-using UpdateFWVersionCallBack = std::function<void(EID)>;
+    std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
+using UpdateFWVersionCallBack = std::function<void(eid)>;
 using MctpEidMap =
-    std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
+    std::unordered_map<eid, std::tuple<UUID, MctpMedium, MctpBinding>>;
 
 using Priority = int;
 
@@ -64,7 +64,7 @@ static std::unordered_map<MctpBinding, Priority> bindingPriority = {
 
 struct MctpEidInfo
 {
-    EID eid;
+    pldm::eid eid;
     MctpMedium medium;
     MctpBinding binding;
 
@@ -189,33 +189,6 @@ class InventoryManager
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
         std::string& messageError, std::string& resolution);
 
-    /** @brief Handler for QueryDownstreamDevices command response
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    void queryDownstreamDevices(mctp_eid_t eid, const pldm_msg* response,
-                                size_t respMsgLen);
-
-    /** @brief Handler for QueryDownstreamIdentifiers command response
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    void queryDownstreamIdentifiers(mctp_eid_t eid, const pldm_msg* response,
-                                    size_t respMsgLen);
-
-    /** @brief Handler for GetDownstreamFirmwareParameters command response
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    void getDownstreamFirmwareParameters(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
-
     /** @brief Handler for GetFirmwareParameters command response
      *
      *  Handling the response of GetFirmwareParameters command and create
@@ -276,6 +249,38 @@ class InventoryManager
     exec::task<int> getActiveFirmwareVersion(
         mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces,
         UpdateFWVersionCallBack updateFWVersionCallback);
+
+    /**
+     * @brief Sends QueryDownstreamDevices request
+     *
+     * @param[in] eid - Remote MCTP endpoint
+     */
+    sdbusplus::async::task<int> queryDownstreamDevices(mctp_eid_t eid);
+
+    /**
+     * @brief Sends QueryDownstreamIdentifiers request
+     *
+     * The request format is defined at Table 16 – QueryDownstreamIdentifiers
+     * command format in DSP0267_1.1.0
+     *
+     * @param[in] eid - Remote MCTP endpoint
+     * @param[in] dataTransferHandle - Data transfer handle
+     * @param[in] transferOperationFlag - Transfer operation flag
+     */
+    virtual sdbusplus::async::task<int> queryDownstreamIdentifiers(
+        mctp_eid_t eid, uint32_t dataTransferHandle,
+        enum transfer_op_flag transferOperationFlag);
+
+    /**
+     * @brief Sends QueryDownstreamFirmwareParameters request
+     *
+     * @param[in] eid - Remote MCTP endpoint
+     * @param[in] dataTransferHandle - Data transfer handle
+     * @param[in] transferOperationFlag - Transfer operation flag
+     */
+    virtual sdbusplus::async::task<int> getDownstreamFirmwareParameters(
+        mctp_eid_t eid, uint32_t dataTransferHandle,
+        const enum transfer_op_flag transferOperationFlag);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -366,7 +371,7 @@ class InventoryManager
     std::queue<std::pair<MctpInfos, dbus::MctpInterfaces>> queuedMctpInfos{};
 
     /** @brief To send a PLDM request after the current command handling */
-    std::unordered_map<EID, std::unique_ptr<sdeventplus::source::Defer>>
+    std::unordered_map<eid, std::unique_ptr<sdeventplus::source::Defer>>
         pldmRequest;
 
     /** @brief coroutine handle of discoverFDsTask */

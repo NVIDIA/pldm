@@ -8,7 +8,7 @@ namespace fw_update
 {
 
 ActivationIntf::Activations Activation::activation(
-    ActivationIntf::Activations value) override
+    ActivationIntf::Activations value)
 {
         if (value == Activations::Activating)
         {
@@ -70,7 +70,7 @@ ActivationIntf::Activations Activation::activation(
         return ActivationIntf::activation(value);
 }
 
-void Delete::delete_() override
+void Delete::delete_()
 {
     updateManager->clearActivationInfo();
 }

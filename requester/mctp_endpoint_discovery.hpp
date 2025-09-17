@@ -55,10 +55,10 @@ class MctpDiscoveryHandlerIntf
     {}
     virtual ~MctpDiscoveryHandlerIntf() {}
     virtual void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                                    [[maybe_unused]] const EID& eid)
+                                    [[maybe_unused]] const eid& eid)
     {}
     virtual void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
-                                     [[maybe_unused]] const EID& eid)
+                                     [[maybe_unused]] const eid& eid)
     {}
 };
 

@@ -120,7 +120,7 @@ class Manager
      * object path is empty
      */
     std::optional<sdbusplus::message::object_path> createEntry(
-        pldm::EID eid, const pldm::UUID& uuid,
+        pldm::eid eid, const pldm::UUID& uuid,
         dbus::MctpInterfaces& mctpInterfaces);
 
   private:

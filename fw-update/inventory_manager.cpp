@@ -60,7 +60,7 @@ exec::task<int> InventoryManager::discoverFDsTask()
     while (!queuedMctpInfos.empty())
     {
         const auto& [mctpInfos, mctpInterfaces] = queuedMctpInfos.front();
-        for (const auto& [eid, uuid, mediumType, networkId, bindingType] :
+        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
              mctpInfos)
         {
             mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
@@ -663,36 +663,6 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
     co_return PLDM_SUCCESS;
 }
 
-void InventoryManager::sendQueryDownstreamDevicesRequest(mctp_eid_t eid)
-{
-    Request requestMsg(sizeof(pldm_msg_hdr));
-    auto instanceId = instanceIdDb.next(eid);
-    auto request = new (requestMsg.data()) pldm_msg;
-    auto rc = encode_query_downstream_devices_req(instanceId, request);
-    if (rc)
-    {
-        instanceIdDb.free(eid, instanceId);
-        error(
-            "Failed to encode query downstream devices request for endpoint ID EID {EID} with response code {RC}",
-            "EID", eid, "RC", rc);
-        throw std::runtime_error(
-            "Failed to encode query downstream devices request");
-    }
-
-    rc = handler.registerRequest(
-        eid, instanceId, PLDM_FWUP, PLDM_QUERY_DOWNSTREAM_DEVICES,
-        std::move(requestMsg),
-        [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
-            this->queryDownstreamDevices(eid, response, respMsgLen);
-        });
-    if (rc)
-    {
-        error(
-            "Failed to send QueryDownstreamDevices request for endpoint ID {EID} with response code {RC}",
-            "EID", eid, "RC", rc);
-    }
-}
-
 sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
     mctp_eid_t eid)
 {
@@ -713,7 +683,7 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
                                           &responseLen);
     if (rc)
     {
@@ -844,7 +814,7 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamIdentifiers(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
                                           &responseLen);
     if (rc)
     {
@@ -1046,7 +1016,7 @@ sdbusplus::async::task<int> InventoryManager::getDownstreamFirmwareParameters(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(eid, requestMsg, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
                                           &responseLen);
     if (rc)
     {
