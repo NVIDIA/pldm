@@ -50,6 +50,9 @@ extern "C"
         PLDM_STATE_SET_DEBUG_STATE_OFFLINE = 3
     };
 
+#define STATE_SENSOR_ID_MASK 0x0FFF
+#define STATE_SENSOR_CPU_POWER_BREAK 0x0240
+#define STATE_SENSOR_CPU_PERFORMANCE 0x0210
 #ifdef __cplusplus
 }
 #endif

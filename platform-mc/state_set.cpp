@@ -21,6 +21,7 @@
 #include "oem/nvidia/platform-mc/state_set/memoryPerformance.hpp"
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
 #include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
+#include "oem/nvidia/platform-mc/state_set/processorPowerBreak.hpp"
 #endif
 #include "libpldm/entity.h"
 #include "libpldm/platform.h"
@@ -76,6 +77,14 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     {
         return std::make_unique<StateSetMemoryPerformance>(
             stateSetId, compId, path, stateAssociation);
+    }
+    if (stateSetId == PLDM_STATESET_ID_PERFORMANCE &&
+        entityType == PLDM_ENTITY_PROC &&
+        ((sensor->sensorId & STATE_SENSOR_ID_MASK) ==
+         STATE_SENSOR_CPU_POWER_BREAK))
+    {
+        return std::make_unique<StateSetProcessorPowerBreak>(
+            stateSetId, compId, path, stateAssociation, *sensor);
     }
 #endif
 
