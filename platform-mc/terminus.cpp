@@ -454,8 +454,7 @@ exec::task<int> Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
     co_return PLDM_SUCCESS;
 }
 
-requester::Coroutine
-    Terminus::getSensorEventInfoFromEM(const std::string& objPath)
+exec::task<int> Terminus::getSensorEventInfoFromEM(const std::string& objPath)
 {
     try
     {
