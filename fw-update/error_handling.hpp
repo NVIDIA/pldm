@@ -194,13 +194,17 @@ static ErrorMapping getStatusMapping{
      {"Getting device status timed out", "Retry firmware update operation."}}};
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
-    {PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL,
+    {PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL,
      {"NvidiaUpdate.1.0.ComponentUpdateSkipped", "Component image is identical",
       "Retry firmware update operation with the force flag"}},
-    {PLDM_CRC_COMP_COMPARISON_STAMP_LOWER,
+    {PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER,
      {"ResourceEvent.1.0.ResourceErrorsDetected",
       "Component comparison stamp is lower than the firmware component comparison stamp in the FD",
       "Retry firmware update operation with the force flag"}},
+    {PLDM_CCRC_INCOMPLETE_COMP_IMAGE_SET,
+     {"ResourceEvent.1.0.ResourceErrorsDetected",
+      "Incomplete component image set",
+      "Retry Firmware Update with complete component image set"}},
 #ifdef OEM_NVIDIA
     {fwUpdateBlocked,
      {"ResourceEvent.1.0.ResourceErrorsDetected",
