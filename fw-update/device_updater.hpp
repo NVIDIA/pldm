@@ -499,6 +499,13 @@ class DeviceUpdater
     std::map<ComponentIndex, std::pair<std::unique_ptr<ComponentUpdater>, bool>>
         componentUpdaterMap;
 
+    /** @brief Check if a component already failed during verification/update
+     *
+     *  @param[in] compIndex - Component index to check
+     *  @return true if the component has already been marked as failed
+     */
+    bool isComponentFailed(size_t compIndex) const;
+
     /** @brief Check if all applicable components support self-contained
      * activation
      *

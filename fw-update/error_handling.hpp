@@ -287,7 +287,10 @@ static ErrorMapping activateFirmwareMapping{
       "Retry firmware update operation"}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted response for the firmware activation request; so the update failed.",
-      "Retry firmware update operation."}}};
+      "Retry firmware update operation."}},
+    {PLDM_FWUP_INCOMPLETE_UPDATE,
+     {"Firmware activation failed because a dependent component image update was unsuccessful.",
+      "Verify the contents of the FW package and retry firmware update operation"}}};
 
 /* get status command error mapping */
 static ErrorMapping getStatusMapping{
