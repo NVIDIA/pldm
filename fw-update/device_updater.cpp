@@ -619,6 +619,10 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
             for (size_t compIndex = 0; compIndex < applicableComponents.size();
                  compIndex++)
             {
+                if (isComponentFailed(compIndex))
+                {
+                    continue;
+                }
                 if (!logged)
                 {
                     updateManager->createMessageRegistry(
@@ -679,6 +683,10 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
             for (size_t compIndex = 0; compIndex < applicableComponents.size();
                  compIndex++)
             {
+                if (isComponentFailed(compIndex))
+                {
+                    continue;
+                }
                 updateManager->createMessageRegistry(
                     eid, fwDeviceIDRecord, compIndex, activateFailed, "",
                     PLDM_ACTIVATE_FIRMWARE, PLDM_ERROR);
@@ -711,8 +719,13 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
              compIndex++)
         {
-            updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                 compIndex, activateFailed);
+            if (isComponentFailed(compIndex))
+            {
+                continue;
+            }
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                PLDM_ACTIVATE_FIRMWARE, completionCode);
         }
         error("Failed to activate firmware response for endpoint ID '{EID}', "
               "completion code '{CC}'",
@@ -972,6 +985,12 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
     co_return PLDM_SUCCESS;
 }
 
+bool DeviceUpdater::isComponentFailed(size_t compIndex) const
+{
+    return componentUpdaterMap.contains(compIndex) &&
+           !componentUpdaterMap.at(compIndex).second;
+}
+
 bool DeviceUpdater::isLiveActivationSupported() const
 {
     const auto& applicableComponents =
@@ -1112,6 +1131,10 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
             for (size_t compIndex = 0; compIndex < applicableComponents.size();
                  compIndex++)
             {
+                if (isComponentFailed(compIndex))
+                {
+                    continue;
+                }
                 updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
                                                      compIndex, activateFailed);
             }
@@ -1130,6 +1153,10 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
     for (size_t compIndex = 0; compIndex < applicableComponents.size();
          compIndex++)
     {
+        if (isComponentFailed(compIndex))
+        {
+            continue;
+        }
         updateManager->createMessageRegistry(eid, fwDeviceIDRecord, compIndex,
                                              activateFailed);
     }
