@@ -358,31 +358,31 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
             if (std::holds_alternative<std::shared_ptr<NumericSensor>>(sensor))
             {
-                auto numericSesnor =
+                auto numericSensor =
                     std::get<std::shared_ptr<NumericSensor>>(sensor);
-                if (numericSesnor->needsUpdate(t1))
+                if (numericSensor->needsUpdate(t1))
                 {
-                    co_await getSensorReading(numericSesnor);
+                    co_await getSensorReading(numericSensor);
                     if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
                     }
-                    numericSesnor->setLastUpdatedTimeStamp(t1);
+                    numericSensor->setLastUpdatedTimeStamp(t1);
                 }
             }
             else if (std::holds_alternative<std::shared_ptr<StateSensor>>(
                          sensor))
             {
-                auto stateSesnor =
+                auto stateSensor =
                     std::get<std::shared_ptr<StateSensor>>(sensor);
-                if (stateSesnor->needsUpdate(t1))
+                if (stateSensor->needsUpdate(t1))
                 {
-                    co_await getStateSensorReadings(stateSesnor);
+                    co_await getStateSensorReadings(stateSensor);
                     if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
                     }
-                    stateSesnor->setLastUpdatedTimeStamp(t1);
+                    stateSensor->setLastUpdatedTimeStamp(t1);
                 }
             }
 
