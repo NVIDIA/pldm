@@ -789,6 +789,9 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
 {
     logComponentUpdateDuration();
 
+    deviceUpdater->accumulateActivationModifications(
+        compActivationModification);
+
     if (!updateManager->isStageOnlyUpdate)
     {
         updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
@@ -802,12 +805,6 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
     info(
         "Component endpoint ID '{EID}' with '{COMPONENT_VERSION}' apply complete.",
         "EID", eid, "COMPONENT_VERSION", compVersion);
-    if (!updateManager->isStageOnlyUpdate)
-    {
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, awaitToActivate,
-            updateManager->getActivationMethod(compActivationModification));
-    }
     // Restore the deferred event
     pldmRequest = std::make_unique<sdeventplus::source::Defer>(
         updateManager->event,

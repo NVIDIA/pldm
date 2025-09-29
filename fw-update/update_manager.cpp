@@ -126,9 +126,10 @@ UpdateManager::UpdateManager(
     RefreshDescriptorsCallback refreshDescriptorsCallback,
     const FirmwareInventoryInfo& firmwareInventoryInfo) :
     event(event), handler(handler), instanceIdDb(instanceIdDb),
-    fwDebug(fwDebug), descriptorMap(descriptorMap),
-    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    fwDebug(fwDebug),
     refreshDescriptorsCallback(std::move(refreshDescriptorsCallback)),
+    descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
+    componentNameMap(componentNameMap),
     firmwareInventoryInfo(firmwareInventoryInfo),
     updater(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
@@ -290,8 +291,11 @@ std::string UpdateManager::processStreamDefer(
     isStageOnlyUpdate = false;
 
     info(
-        "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}",
-        "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate);
+        "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}, ApplyTime: {APPLYTIME}",
+        "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate,
+        "APPLYTIME",
+        sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
+            requestedApplyTime));
 
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this, targets);

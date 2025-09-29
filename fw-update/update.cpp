@@ -19,10 +19,11 @@ namespace fw_update
 
 sdbusplus::message::object_path Update::startUpdate(
     sdbusplus::message::unix_fd image,
-    ApplyTimeIntf::RequestedApplyTimes applyTime [[maybe_unused]],
-    bool forceUpdate, std::vector<sdbusplus::message::object_path> targets)
+    ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
+    std::vector<sdbusplus::message::object_path> targets)
 {
     updateManager->clearExistingActivation();
+    updateManager->setRequestedApplyTime(applyTime);
 
     info("Starting update for image {FD}", "FD", image.fd);
 

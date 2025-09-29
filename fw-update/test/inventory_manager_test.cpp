@@ -222,9 +222,11 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     ComponentInfoMap componentInfoMap1{
         {1,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(2))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(2))}}}};
     EXPECT_EQ(outComponentInfoMap.size(), componentInfoMap1.size());
     EXPECT_EQ(outComponentInfoMap, componentInfoMap1);
 
@@ -253,12 +255,15 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     ComponentInfoMap componentInfoMap2{
         {1,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(2))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}},
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(2))}}},
         {2,
          {{std::make_pair(compClassification3, compIdentifier3),
-           std::make_tuple(compClassificationIndex3, activeCompVersion3)}}}};
+           std::make_tuple(compClassificationIndex3, activeCompVersion3,
+                           static_cast<uint16_t>(2))}}}};
     EXPECT_EQ(outComponentInfoMap.size(), componentInfoMap2.size());
     EXPECT_EQ(outComponentInfoMap, componentInfoMap2);
 }

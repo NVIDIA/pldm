@@ -638,20 +638,23 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
 
         auto compClassification = compEntry.comp_classification;
         auto compIdentifier = compEntry.comp_identifier;
+        auto compActivationMethods = compEntry.comp_activation_methods.value;
         componentInfo.emplace(
             std::make_pair(compClassification, compIdentifier),
             std::make_tuple(compEntry.comp_classification_index,
-                            utils::toString(activeCompVerStr)));
+                            utils::toString(activeCompVerStr),
+                            compActivationMethods));
 
-        paramsLog << "{Classification: " << static_cast<int>(compClassification)
-                  << ", ID: " << compIdentifier << ", Index: "
-                  << static_cast<int>(compEntry.comp_classification_index)
-                  << ", Active Version: " << utils::toString(activeCompVerStr)
-                  << ", ActiveCompStamp: "
-                  << compEntry.active_comp_comparison_stamp
-                  << ", Pending Version: " << utils::toString(pendingCompVerStr)
-                  << ", PendingCompStamp: "
-                  << compEntry.pending_comp_comparison_stamp << "}, ";
+        paramsLog
+            << "{Classification: " << static_cast<int>(compClassification)
+            << ", ID: " << compIdentifier << ", Index: "
+            << static_cast<int>(compEntry.comp_classification_index)
+            << ", Active Version: " << utils::toString(activeCompVerStr)
+            << ", ActiveCompStamp: " << compEntry.active_comp_comparison_stamp
+            << ", Pending Version: " << utils::toString(pendingCompVerStr)
+            << ", PendingCompStamp: " << compEntry.pending_comp_comparison_stamp
+            << ", ActivationMethods: 0x" << std::hex << compActivationMethods
+            << std::dec << "}, ";
 
         compParamPtr += sizeof(pldm_component_parameter_entry) +
                         activeCompVerStr.length + pendingCompVerStr.length;

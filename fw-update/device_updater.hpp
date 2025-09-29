@@ -27,6 +27,7 @@
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
+#include <chrono>
 #include <fstream>
 
 namespace pldm
@@ -42,6 +43,19 @@ namespace fw_update
 using ComponentUpdateStatusMap = std::map<size_t, bool>;
 
 class UpdateManager;
+
+/** @brief Polling interval for self-contained activation status check */
+constexpr auto activationPollInterval = std::chrono::seconds(5);
+
+/** @enum ActivationPollStatus
+ *  Status returned by polling the self-contained activation status
+ */
+enum class ActivationPollStatus
+{
+    InProgress, // Activation is still in progress
+    Success,    // Activation completed successfully
+    Failed      // Activation failed
+};
 
 /** @enum Enumeration to represent the PLDM DeviceUpdater sequence in the
  * firmware update flow
@@ -320,7 +334,23 @@ class DeviceUpdater
      */
     struct DeviceUpdaterState deviceUpdaterState;
 
+    /** @brief Accumulate component activation modifications from ApplyComplete
+     *         responses
+     *
+     *  @param[in] compActivationModification - Activation modification from
+     *                                          ApplyComplete response
+     */
+    void accumulateActivationModifications(
+        bitfield16_t compActivationModification)
+    {
+        componentActivationModifications.value |=
+            compActivationModification.value;
+    }
+
   private:
+    /** @brief Component activation method modifications from ApplyComplete
+     * responses */
+    bitfield16_t componentActivationModifications{0};
     /** @brief coroutine handle of discoverTerminusTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
         deviceUpdaterHandle{};
@@ -474,6 +504,26 @@ class DeviceUpdater
      */
     std::map<ComponentIndex, std::pair<std::unique_ptr<ComponentUpdater>, bool>>
         componentUpdaterMap;
+
+    /** @brief Check if all applicable components support self-contained
+     * activation
+     *
+     *  @return true if all components support self-contained activation, false
+     * otherwise
+     */
+    bool isLiveActivationSupported() const;
+
+    /** @brief Wait for self-contained activation to complete
+     *
+     *  @param[in] estimatedTime - Estimated time for activation in seconds
+     */
+    exec::task<void> waitForSelfContainedActivation(uint16_t estimatedTime);
+
+    /** @brief Poll the self-contained activation status without taking action
+     *
+     *  @return exec::task<ActivationPollStatus> - The current activation status
+     */
+    exec::task<ActivationPollStatus> pollSelfContainedActivationStatus();
 };
 
 } // namespace fw_update

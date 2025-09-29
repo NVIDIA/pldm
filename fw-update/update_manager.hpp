@@ -28,6 +28,8 @@
 #include <libpldm/base.h>
 #include <libpldm/pldm.h>
 
+#include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -142,6 +144,28 @@ class UpdateManager
     std::string processStreamDefer(
         std::istream& packageStream, uintmax_t packageSize, bool forceUpdate,
         std::vector<sdbusplus::message::object_path> targets);
+
+    /** @brief Set the RequestedApplyTime for the current update session
+     *
+     *  @param[in] applyTime - The requested apply time from StartUpdate
+     */
+    void setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes applyTime)
+    {
+        requestedApplyTime = applyTime;
+    }
+
+    /** @brief Check if RequestedApplyTime is set to Immediate
+     *
+     *  @return true if apply time is Immediate, false otherwise
+     */
+    bool isApplyTimeImmediate() const
+    {
+        return requestedApplyTime ==
+               sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+                   RequestedApplyTimes::Immediate;
+    }
 
     /** @brief Update firmware update completion status of each device
      *
@@ -372,6 +396,7 @@ class UpdateManager
     bool isStageOnlyUpdate;
 
     bool fwDebug;
+
     /**
      * @brief start pldm firmware update
      *
@@ -450,17 +475,23 @@ class UpdateManager
 
     std::unique_ptr<PackageSignature> packageSignatureParser;
 
+    /** @brief Callback to refresh device descriptors */
+    RefreshDescriptorsCallback refreshDescriptorsCallback;
+
   private:
+    /** @brief Requested apply time for the current update session */
+    sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+        RequestedApplyTimes requestedApplyTime;
+
     /** @brief Device identifiers of the managed FDs */
     const DescriptorMap& descriptorMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
-    /** @brief Callback to refresh device descriptors */
-    RefreshDescriptorsCallback refreshDescriptorsCallback;
     /** @brief Firmware inventory information from config file */
     const FirmwareInventoryInfo& firmwareInventoryInfo;
+
     std::unique_ptr<Activation> activation;
     std::unique_ptr<Update> updater;
     std::unique_ptr<ActivationProgress> activationProgress;

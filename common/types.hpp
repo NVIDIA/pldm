@@ -147,7 +147,9 @@ using CompIdentifier = uint16_t;
 using CompKey = std::pair<CompClassification, CompIdentifier>;
 using CompClassificationIndex = uint8_t;
 using CompVersion = std::string;
-using CompInfo = std::tuple<CompClassificationIndex, CompVersion>;
+using CompActivationMethods = uint16_t;
+using CompInfo =
+    std::tuple<CompClassificationIndex, CompVersion, CompActivationMethods>;
 using ComponentInfo = std::map<CompKey, CompInfo>;
 using ComponentInfoMap = std::unordered_map<eid, ComponentInfo>;
 

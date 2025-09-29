@@ -112,9 +112,11 @@ TEST(Manager, SingleMatch)
     ComponentInfoMap componentInfoMap{
         {eid,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(0))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(0))}}}};
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string compName1{"CompName1"};
@@ -167,9 +169,11 @@ TEST(Manager, SingleMatchTwoComponents)
     ComponentInfoMap componentInfoMap{
         {eid,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(0))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(0))}}}};
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     const std::string compName1{"CompName1"};
@@ -220,12 +224,15 @@ TEST(Manager, MulipleMatch)
     ComponentInfoMap componentInfoMap{
         {eid1,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(0))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}},
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(0))}}},
         {eid2,
          {{std::make_pair(compClassification3, compIdentifier3),
-           std::make_tuple(compClassificationIndex3, activeCompVersion3)}}}};
+           std::make_tuple(compClassificationIndex3, activeCompVersion3,
+                           static_cast<uint16_t>(0))}}}};
 
     // FirmwareInventoryInfo
     const UUID uuid1{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -327,9 +334,11 @@ TEST(Manager, test_private_method_updateSwId)
     ComponentInfoMap componentInfoMap{
         {eid,
          {{std::make_pair(compClassification1, compIdentifier1),
-           std::make_tuple(compClassificationIndex1, activeCompVersion1)},
+           std::make_tuple(compClassificationIndex1, activeCompVersion1,
+                           static_cast<uint16_t>(0))},
           {std::make_pair(compClassification2, compIdentifier2),
-           std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
+           std::make_tuple(compClassificationIndex2, activeCompVersion2,
+                           static_cast<uint16_t>(0))}}}};
 
     const std::string compName1{"CompName1"};
     const Associations associations1 = {
