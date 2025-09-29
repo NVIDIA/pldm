@@ -35,7 +35,9 @@ class MockEventManager : public EventManager
 
     MOCK_METHOD(void, createSensorThresholdLogEntry,
                 (const std::string& messageID, const std::string& sensorName,
-                 const double reading, const double threshold),
+                 const double reading, const double threshold,
+                 const std::string& eventId,
+                 const std::string& impactedComponent),
                 (override));
 };
 

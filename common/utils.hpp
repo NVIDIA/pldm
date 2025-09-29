@@ -169,6 +169,15 @@ T decimalToBcd(T decimal)
     return bcd;
 }
 
+/**
+ * @brief Struct to hold Sensor Event Info from EM
+ */
+struct SensorEventInfo
+{
+    std::string impactedComponent;
+    std::unordered_map<std::string, std::string> eventIdsMap;
+};
+
 struct DBusMapping
 {
     std::string objectPath;   //!< D-Bus object path

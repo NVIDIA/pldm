@@ -141,29 +141,31 @@ class StateSetPciePortLinkState : public StateSet
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("Active"), Level::Informational};
+                    std::string("Active"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Inactive"), Level::Informational};
+                std::string("Inactive"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error"), Level::Informational};
+                std::string("Error"), Level::Informational, "", ""};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational};
+                    std::string("Unknown"), Level::Informational, "", ""};
         }
     }
 

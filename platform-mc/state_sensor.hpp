@@ -20,6 +20,7 @@
 #include "libpldm/pldm.h"
 
 #include "common/types.hpp"
+#include "common/utils.hpp"
 #include "state_set.hpp"
 
 #include <sdbusplus/server/object.hpp>
@@ -55,7 +56,8 @@ class StateSensor
   public:
     StateSensor(const uint8_t tid, const bool sensorDisabled,
                 const uint16_t sensorId, StateSetInfo sensorInfo,
-                AuxiliaryNames* sensorNames, std::string& associationPath);
+                AuxiliaryNames* sensorNames, std::string& associationPath,
+                std::shared_ptr<utils::SensorEventInfo> sensorEventInfo);
     ~StateSensor() {};
 
     /** @brief The function called by Sensor Manager to set sensor to
@@ -131,6 +133,12 @@ class StateSensor
     void createLogEntry(std::string& messageID, std::string& arg1,
                         std::string& arg2, std::string& resolution,
                         Level level = Level::Informational);
+    void createLogEntryAdditionalOEMArgs(std::string& messageID,
+                                         std::string& arg1, std::string& arg2,
+                                         std::string& resolution,
+                                         std::string& eventId,
+                                         std::string& impactedComponent,
+                                         Level level = Level::Informational);
 
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to
      */
@@ -192,6 +200,19 @@ class StateSensor
         return defaultInventoryAssociated;
     }
 
+    /** @brief  getter of sensorEventInfo */
+    std::shared_ptr<utils::SensorEventInfo> getSensorEventInfo()
+    {
+        return sensorEventInfo;
+    }
+
+    /** @brief  update sensorEventInfo */
+    void updateSensorEventInfo(
+        std::shared_ptr<utils::SensorEventInfo> sensorEventInfo)
+    {
+        this->sensorEventInfo = sensorEventInfo;
+    }
+
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
@@ -201,6 +222,9 @@ class StateSensor
 
     /** @brief flag to indicate if default inventory is associated */
     bool defaultInventoryAssociated;
+
+    /** @brief State sensor event info */
+    std::shared_ptr<utils::SensorEventInfo> sensorEventInfo = nullptr;
 };
 } // namespace platform_mc
 } // namespace pldm

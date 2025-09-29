@@ -23,6 +23,7 @@
 #endif
 
 #include "common/types.hpp"
+#include "common/utils.hpp"
 #include "platform-mc/oem_base.hpp"
 
 #include <sdbusplus/server/object.hpp>
@@ -87,7 +88,8 @@ class NumericSensor
   public:
     NumericSensor(const tid_t tid, const bool sensorDisabled,
                   std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
-                  std::string& sensorName, std::string& associationPath);
+                  std::string& sensorName, std::string& associationPath,
+                  std::shared_ptr<utils::SensorEventInfo> sensorEventInfo);
 #ifdef OEM_NVIDIA
     NumericSensor(
         const tid_t tid, const bool sensorDisabled,
@@ -285,6 +287,19 @@ class NumericSensor
         return sensorNameSpace;
     }
 
+    /** @brief  getter of sensorEventInfo */
+    std::shared_ptr<utils::SensorEventInfo> getSensorEventInfo()
+    {
+        return sensorEventInfo;
+    }
+
+    /** @brief  update sensorEventInfo */
+    void updateSensorEventInfo(
+        std::shared_ptr<utils::SensorEventInfo> sensorEventInfo)
+    {
+        this->sensorEventInfo = sensorEventInfo;
+    }
+
     /** @brief indicate that the sensor should be included in sensorMetrics */
     bool inSensorMetrics;
 
@@ -403,6 +418,9 @@ class NumericSensor
 
     /** @brief flag to indicate if default inventory is associated */
     bool defaultInventoryAssociated;
+
+    /** @brief sensor event info */
+    std::shared_ptr<utils::SensorEventInfo> sensorEventInfo;
 };
 } // namespace platform_mc
 } // namespace pldm

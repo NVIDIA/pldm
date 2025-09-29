@@ -8,6 +8,7 @@ test_src = declare_dependency(
         '../../fw-update/component_updater.cpp',
         '../../fw-update/device_updater.cpp',
         '../../fw-update/update_manager.cpp',
+        '../../fw-update/update.cpp',
         '../../fw-update/config.cpp',
         '../../fw-update/device_inventory.cpp',
         '../../fw-update/firmware_inventory.cpp',

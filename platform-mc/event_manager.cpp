@@ -381,7 +381,8 @@ void EventManager::notifyCPERLogger(std::span<const unsigned char> data)
 
 void EventManager::createSensorThresholdLogEntry(
     const std::string& messageId, const std::string& sensorName,
-    const double reading, const double threshold)
+    const double reading, const double threshold, const std::string& eventId,
+    const std::string& impactedComponent)
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -420,9 +421,19 @@ void EventManager::createSensorThresholdLogEntry(
     addData["REDFISH_MESSAGE_ARGS"] =
         sensorName + "," + std::to_string(reading) + "," +
         std::to_string(threshold);
+#ifdef OEM_NVIDIA
+    if (!eventId.empty())
+    {
+        addData["xyz.openbmc_project.Logging.Entry.EventId"] = eventId;
+    }
+    if (!impactedComponent.empty())
+    {
+        addData["DEVICE_NAME"] = impactedComponent;
+    }
+#endif
 
-    if (messageId == SensorThresholdWarningLowGoingHigh ||
-        messageId == SensorThresholdWarningHighGoingLow)
+        if (messageId == SensorThresholdWarningLowGoingHigh ||
+            messageId == SensorThresholdWarningHighGoingLow)
     {
         level = Level::Informational;
     }
@@ -473,8 +484,11 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
             {
                 continue;
             }
-            std::string messageId =
-                getSensorThresholdMessageId(previousEventState, eventState);
+
+            auto sensorEventInfo = sensor->getSensorEventInfo();
+            auto [messageId, eventId, impactedComponent] =
+                getSensorThresholdEventData(previousEventState, eventState,
+                                            sensorEventInfo);
             double threshold = std::numeric_limits<double>::quiet_NaN();
             double reading = std::numeric_limits<double>::quiet_NaN();
 
@@ -531,14 +545,19 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
             createSensorThresholdLogEntry(
                 messageId, sensor->getSensorName(),
                 sensor->unitModifier(sensor->conversionFormula(reading)),
-                threshold);
+                threshold, eventId, impactedComponent);
         }
     }
 }
 
-std::string EventManager::getSensorThresholdMessageId(
-    uint8_t previousEventState, uint8_t eventState)
+std::tuple<std::string, std::string, std::string>
+    EventManager::getSensorThresholdEventData(
+        uint8_t previousEventState, uint8_t eventState,
+        std::shared_ptr<utils::SensorEventInfo> sensorEventInfo)
 {
+    std::string messageId;
+    std::string eventId;
+    std::string impactedComponent;
     switch (previousEventState)
     {
         case PLDM_SENSOR_UPPERFATAL:
@@ -547,16 +566,21 @@ std::string EventManager::getSensorThresholdMessageId(
             {
                 case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
-                    return SensorThresholdCriticalHighGoingHigh;
+                    messageId = SensorThresholdCriticalHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_UPPERWARNING:
-                    return SensorThresholdCriticalHighGoingLow;
+                    messageId = SensorThresholdCriticalHighGoingLow;
+                    break;
                 case PLDM_SENSOR_NORMAL:
-                    return SensorThresholdWarningHighGoingLow;
+                    messageId = SensorThresholdWarningHighGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERWARNING:
-                    return SensorThresholdWarningLowGoingLow;
+                    messageId = SensorThresholdWarningLowGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERCRITICAL:
                 case PLDM_SENSOR_LOWERFATAL:
-                    return SensorThresholdCriticalLowGoingLow;
+                    messageId = SensorThresholdCriticalLowGoingLow;
+                    break;
                 default:
                     break;
             }
@@ -566,16 +590,21 @@ std::string EventManager::getSensorThresholdMessageId(
             {
                 case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
-                    return SensorThresholdCriticalHighGoingHigh;
+                    messageId = SensorThresholdCriticalHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_UPPERWARNING:
-                    return SensorThresholdWarningHighGoingHigh;
+                    messageId = SensorThresholdWarningHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_NORMAL:
-                    return SensorThresholdWarningHighGoingLow;
+                    messageId = SensorThresholdWarningHighGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERWARNING:
-                    return SensorThresholdWarningLowGoingLow;
+                    messageId = SensorThresholdWarningLowGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERCRITICAL:
                 case PLDM_SENSOR_LOWERFATAL:
-                    return SensorThresholdCriticalLowGoingLow;
+                    messageId = SensorThresholdCriticalLowGoingLow;
+                    break;
                 default:
                     break;
             }
@@ -586,16 +615,20 @@ std::string EventManager::getSensorThresholdMessageId(
             {
                 case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
-                    return SensorThresholdCriticalHighGoingHigh;
+                    messageId = SensorThresholdCriticalHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_UPPERWARNING:
-                    return SensorThresholdWarningHighGoingHigh;
+                    messageId = SensorThresholdWarningHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_NORMAL:
                     break;
                 case PLDM_SENSOR_LOWERWARNING:
-                    return SensorThresholdWarningLowGoingLow;
+                    messageId = SensorThresholdWarningLowGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERCRITICAL:
                 case PLDM_SENSOR_LOWERFATAL:
-                    return SensorThresholdCriticalLowGoingLow;
+                    messageId = SensorThresholdCriticalLowGoingLow;
+                    break;
                 default:
                     break;
             }
@@ -605,16 +638,21 @@ std::string EventManager::getSensorThresholdMessageId(
             {
                 case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
-                    return SensorThresholdCriticalHighGoingHigh;
+                    messageId = SensorThresholdCriticalHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_UPPERWARNING:
-                    return SensorThresholdWarningHighGoingHigh;
+                    messageId = SensorThresholdWarningHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_NORMAL:
-                    return SensorThresholdWarningLowGoingHigh;
+                    messageId = SensorThresholdWarningLowGoingHigh;
+                    break;
                 case PLDM_SENSOR_LOWERWARNING:
-                    return SensorThresholdWarningLowGoingLow;
+                    messageId = SensorThresholdWarningLowGoingLow;
+                    break;
                 case PLDM_SENSOR_LOWERCRITICAL:
                 case PLDM_SENSOR_LOWERFATAL:
-                    return SensorThresholdCriticalLowGoingLow;
+                    messageId = SensorThresholdCriticalLowGoingLow;
+                    break;
                 default:
                     break;
             }
@@ -625,22 +663,102 @@ std::string EventManager::getSensorThresholdMessageId(
             {
                 case PLDM_SENSOR_UPPERFATAL:
                 case PLDM_SENSOR_UPPERCRITICAL:
-                    return SensorThresholdCriticalHighGoingHigh;
+                    messageId = SensorThresholdCriticalHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_UPPERWARNING:
-                    return SensorThresholdWarningHighGoingHigh;
+                    messageId = SensorThresholdWarningHighGoingHigh;
+                    break;
                 case PLDM_SENSOR_NORMAL:
-                    return SensorThresholdWarningLowGoingHigh;
+                    messageId = SensorThresholdWarningLowGoingHigh;
+                    break;
                 case PLDM_SENSOR_LOWERWARNING:
-                    return SensorThresholdCriticalLowGoingHigh;
+                    messageId = SensorThresholdCriticalLowGoingHigh;
+                    break;
                 case PLDM_SENSOR_LOWERCRITICAL:
                 case PLDM_SENSOR_LOWERFATAL:
-                    return SensorThresholdCriticalLowGoingLow;
+                    messageId = SensorThresholdCriticalLowGoingLow;
+                    break;
                 default:
                     break;
             }
             break;
     }
-    return std::string{};
+
+    if (sensorEventInfo)
+    {
+        switch (eventState)
+        {
+            case PLDM_SENSOR_UPPERFATAL:
+            {
+                auto it =
+                    sensorEventInfo->eventIdsMap.find("PLDM_SENSOR_UPPERFATAL");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            case PLDM_SENSOR_UPPERCRITICAL:
+            {
+                auto it = sensorEventInfo->eventIdsMap.find(
+                    "PLDM_SENSOR_UPPERCRITICAL");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            case PLDM_SENSOR_UPPERWARNING:
+            {
+                auto it = sensorEventInfo->eventIdsMap.find(
+                    "PLDM_SENSOR_UPPERWARNING");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            case PLDM_SENSOR_LOWERWARNING:
+            {
+                auto it = sensorEventInfo->eventIdsMap.find(
+                    "PLDM_SENSOR_LOWERWARNING");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            case PLDM_SENSOR_LOWERCRITICAL:
+            {
+                auto it = sensorEventInfo->eventIdsMap.find(
+                    "PLDM_SENSOR_LOWERCRITICAL");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            case PLDM_SENSOR_LOWERFATAL:
+            {
+                auto it =
+                    sensorEventInfo->eventIdsMap.find("PLDM_SENSOR_LOWERFATAL");
+                if (it != sensorEventInfo->eventIdsMap.end())
+                {
+                    eventId = it->second;
+                }
+                impactedComponent = sensorEventInfo->impactedComponent;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return std::make_tuple(messageId, eventId, impactedComponent);
 }
 
 void EventManager::processStateSensorEvent(tid_t tid, uint16_t sensorId,

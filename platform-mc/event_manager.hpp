@@ -90,8 +90,10 @@ class EventManager
                             const uint8_t* eventData, size_t eventDataSize,
                             uint8_t& platformEventStatus);
 
-    std::string getSensorThresholdMessageId(uint8_t previousEventState,
-                                            uint8_t eventState);
+    std::tuple<std::string, std::string, std::string>
+        getSensorThresholdEventData(
+            uint8_t previousEventState, uint8_t eventState,
+            std::shared_ptr<utils::SensorEventInfo> sensorEventInfo);
 
     /** @brief A Coroutine to poll all events from terminus
      *
@@ -141,7 +143,8 @@ class EventManager
 
     virtual void createSensorThresholdLogEntry(
         const std::string& messageID, const std::string& sensorName,
-        const double reading, const double threshold);
+        const double reading, const double threshold,
+        const std::string& eventId, const std::string& impactedComponent);
 
     /** @brief Reference of terminusManager */
     TerminusManager& terminusManager;

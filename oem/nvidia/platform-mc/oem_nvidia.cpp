@@ -548,6 +548,21 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
                 }
             }
         }
+
+        auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
+        if (sensorEventInfo)
+        {
+            sensor->updateSensorEventInfo(sensorEventInfo);
+        }
+    }
+
+    for (auto sensor : terminus.numericSensors)
+    {
+        auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
+        if (sensorEventInfo)
+        {
+            sensor->updateSensorEventInfo(sensorEventInfo);
+        }
     }
     co_return PLDM_SUCCESS;
 }

@@ -98,8 +98,10 @@ class StateSet
         return id;
     }
     virtual std::string getStringStateType() const = 0;
-    virtual std::tuple<std::string, std::string, Level> getEventData()
-        const = 0;
+    virtual std::tuple<std::string, std::string, Level, std::string,
+                       std::string>
+        getEventData(
+            [[maybe_unused]] utils::SensorEventInfo* sensorEventInfo) const = 0;
     virtual void updateSensorName([[maybe_unused]] std::string name) {};
 };
 

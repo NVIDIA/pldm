@@ -157,17 +157,19 @@ class StateSetClearNonvolatileVariable : public StateSet
         return state;
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (ValueIntf->clear())
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("True"), Level::Informational};
+                    std::string("True"), Level::Informational, "", ""};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("False"), Level::Informational};
+                    std::string("False"), Level::Informational, "", ""};
         }
     }
 

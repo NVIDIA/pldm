@@ -18,8 +18,6 @@
 
 #include "libpldm/platform.h"
 
-#include "common/utils.hpp"
-
 #include <phosphor-logging/lg2.hpp>
 #include <tal.hpp>
 
@@ -31,15 +29,16 @@ namespace pldm
 namespace platform_mc
 {
 
-NumericSensor::NumericSensor(const tid_t tid, const bool sensorDisabled,
-                             std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr,
-                             std::string& sensorName,
-                             std::string& associationPath) :
+NumericSensor::NumericSensor(
+    const tid_t tid, const bool sensorDisabled,
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr, std::string& sensorName,
+    std::string& associationPath,
+    std::shared_ptr<utils::SensorEventInfo> sensorEventInfo) :
     tid(tid), sensorId(pdr->sensor_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance_num)),
     inSensorMetrics(false), isPriority(false), baseUnit(pdr->base_unit),
-    sensorName(sensorName)
+    sensorName(sensorName), sensorEventInfo(sensorEventInfo)
 {
     sensorUnit = SensorUnit::DegreesC;
     hasValueIntf = true;
@@ -552,15 +551,18 @@ double NumericSensor::unitModifier(double value)
 
 void NumericSensor::updateReading(bool available, bool functional, double value)
 {
-    if (available != availabilityIntf->available())
-        lg2::error("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
-                   sensorName, "OLD", availabilityIntf->available(), "NEW",
-                   available);
+    if (valueIntf)
+    {
+        if (available != availabilityIntf->available())
+            lg2::error("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
+                       sensorName, "OLD", availabilityIntf->available(), "NEW",
+                       available);
 
-    if (functional != operationalStatusIntf->functional())
-        lg2::error("Functionality of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
-                   sensorName, "OLD", operationalStatusIntf->functional(),
-                   "NEW", functional);
+        if (functional != operationalStatusIntf->functional())
+            lg2::error("Functionality of sensor {NAME}: {OLD} -> {NEW}.",
+                       "NAME", sensorName, "OLD",
+                       operationalStatusIntf->functional(), "NEW", functional);
+    }
 
     rawValue = value;
     availabilityIntf->available(available);

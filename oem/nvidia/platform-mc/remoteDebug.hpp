@@ -80,27 +80,29 @@ class StateSetDebugState : public StateSet
         return std::string("DebugState");
     }
 
-    std::tuple<std::string, std::string, Level> getEventData() const override
+    std::tuple<std::string, std::string, Level, std::string, std::string>
+        getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
+            const override
     {
         if (value == PLDM_STATE_SET_DEBUG_STATE_DISABLED)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Disable"), Level::Informational};
+                    std::string("Disable"), Level::Informational, "", ""};
         }
         else if (value == PLDM_STATE_SET_DEBUG_STATE_ENABLED)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Enabled"), Level::Informational};
+                    std::string("Enabled"), Level::Informational, "", ""};
         }
         else if (value == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Offline"), Level::Informational};
+                    std::string("Offline"), Level::Informational, "", ""};
         }
         else
         {
             return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational};
+                    std::string("Unknown"), Level::Informational, "", ""};
         }
     }
 

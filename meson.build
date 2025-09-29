@@ -396,7 +396,7 @@ source_files = [
     'fw-update/package_parser.cpp',
     'fw-update/component_updater.cpp',
     'fw-update/device_updater.cpp',
-    'fw-update/watch.cpp',
+    'fw-update/update.cpp',
     'fw-update/update_manager.cpp',
     'fw-update/other_device_update_manager.cpp',
     'fw-update/config.cpp',

@@ -19,11 +19,11 @@
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "device_updater.hpp"
+#include "fw-update/update.hpp"
 #include "other_device_update_manager.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
 #include "requester/handler.hpp"
-#include "watch.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/pldm.h>
@@ -98,7 +98,46 @@ class UpdateManager
     Response handleRequest(mctp_eid_t eid, uint8_t command,
                            const pldm_msg* request, size_t reqMsgLen);
 
-    int processPackage(const std::filesystem::path& packageFilePath);
+    /** @brief Process the firmware update package stream
+     *
+     *  Parses the firmware package header, validates the package format,
+     *  associates firmware components with target devices, and initiates
+     *  the update process for matched devices.
+     *
+     *  @param[in] packageStream - Input file stream containing the firmware
+     *                             package data, opened from memfd via
+     *                             /proc/self/fd/ for zero-copy access
+     *  @param[in] packageSize - Total size of the firmware package in bytes
+     *  @param[in] targets - Optional list of specific target components to
+     *                       update. Empty list means update all compatible
+     *                       components.
+     *
+     *  @throw sdbusplus::error if package is invalid or incompatible
+     */
+    void processStream(
+        std::istream& packageStream, uintmax_t packageSize,
+        std::vector<sdbusplus::message::object_path> targets = {});
+
+    /** @brief Defers processing of the package stream to the event loop
+     *
+     *  Creates the Update D-Bus interface and schedules the actual package
+     *  processing asynchronously. This allows the D-Bus method call to
+     *  return immediately while processing continues in the background.
+     *
+     *  @param[in] packageStream - Input file stream containing the firmware
+     *                             package data
+     *  @param[in] packageSize - Total size of the firmware package in bytes
+     *  @param[in] forceUpdate - If true, bypasses version checks and forces
+     *                           the update even if target has same/newer
+     * version
+     *  @param[in] targets - Optional list of specific target components to
+     * update
+     *
+     *  @return D-Bus object path of the created Software update object
+     */
+    std::string processStreamDefer(
+        std::istream& packageStream, uintmax_t packageSize, bool forceUpdate,
+        std::vector<sdbusplus::message::object_path> targets);
 
     /** @brief Update firmware update completion status of each device
      *
@@ -208,18 +247,19 @@ class UpdateManager
         size_t compIndex, const std::string& messageID,
         const std::string& messageError, const std::string& resolution);
 
+    /** @brief Generate a unique software ID based on current timestamp
+     *
+     *  This is used to create the D-Bus object path returned by StartUpdate.
+     *
+     *  @return String representation of the current timestamp in seconds
+     */
+    static std::string getSwId();
+
     const std::string swRootPath{"/xyz/openbmc_project/software/"};
     Event& event; //!< reference to PLDM daemon's main event loop
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
     InstanceIdDb& instanceIdDb; //!< reference to Requester object
-
-    /**
-     * @brief Create a Activation Object object
-     *
-     * @return bool true if successfully created
-     */
-    bool createActivationObject();
 
     /**
      * @brief Callback to be called by other device manager to signal that all
@@ -287,9 +327,12 @@ class UpdateManager
      */
     void resetActivationBlocksTransition();
 
-    /**
-     * @brief Remove firmware update package from update directory
+    /** @brief Clear the firmware update package stream and free resources
      *
+     *  Calls the Update object's clearImageStream() method to close the
+     *  ifstream and release the associated file descriptor. This ensures
+     *  that the memfd is properly closed and memory is freed after the
+     *  firmware update completes or is aborted.
      */
     void clearFirmwareUpdatePackage();
     /**
@@ -374,6 +417,13 @@ class UpdateManager
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
 
+    /** @brief Clear any existing activation if present
+     *
+     *  This method checks if activation exists and clears it.
+     *  If activation is in "Activating" state, it logs an error.
+     */
+    void clearExistingActivation();
+
     std::unique_ptr<PackageSignature> packageSignatureParser;
 
   private:
@@ -383,16 +433,13 @@ class UpdateManager
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
-    Watch watch;
     std::unique_ptr<Activation> activation;
+    std::unique_ptr<Update> updater;
     std::unique_ptr<ActivationProgress> activationProgress;
     std::unique_ptr<ActivationBlocksTransition> activationBlocksTransition;
-    std::unique_ptr<UpdatePolicy> updatePolicy;
     std::string objPath;
 
-    std::filesystem::path fwPackageFilePath;
     std::unique_ptr<PackageParser> parser;
-    std::ifstream package;
 
     std::unordered_map<mctp_eid_t, std::unique_ptr<DeviceUpdater>>
         deviceUpdaterMap;
@@ -452,6 +499,22 @@ class UpdateManager
      *
      */
     void createProgressUpdateTimer();
+
+    /**
+     * @brief Defer handler for update
+     *
+     */
+    std::unique_ptr<sdeventplus::source::Defer> updateDeferHandler;
+
+    /** @brief Handle invalid firmware package error by logging and setting
+     *         activation state
+     *
+     *  This helper method encapsulates the common error handling logic for
+     *  invalid firmware packages. It creates a log entry with the standard
+     *  error message, clears the firmware update package, and sets the
+     *  activation state to Invalid.
+     */
+    void handleInvalidPackageError();
 };
 
 } // namespace fw_update

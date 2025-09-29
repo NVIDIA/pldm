@@ -236,7 +236,7 @@ class DeviceUpdater
      *                             device
      */
     explicit DeviceUpdater(
-        mctp_eid_t eid, std::ifstream& package,
+        mctp_eid_t eid, std::istream& package,
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos, const ComponentInfo compInfo,
         const ComponentIdNameMap compIdNameInfo, uint32_t maxTransferSize,
@@ -404,8 +404,8 @@ class DeviceUpdater
      */
     std::unique_ptr<sdbusplus::Timer> updateModeIdleTimer;
 
-    /** @brief File stream for firmware update package */
-    std::ifstream& package;
+    /** @brief Stream for firmware update package */
+    std::istream& package;
 
     /** @brief Component image information for all the components in the fw
      *         update package
