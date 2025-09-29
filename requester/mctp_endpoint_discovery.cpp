@@ -88,7 +88,8 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
                 types.end())
             {
                 const auto& mctpBinding = std::get<4>(epProps);
-                auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, "",
+                const auto& mctpMedium = std::get<3>(epProps);
+                auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
                                          std::get<NetworkId>(epProps),
                                          std::nullopt, mctpBinding);
                 searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
