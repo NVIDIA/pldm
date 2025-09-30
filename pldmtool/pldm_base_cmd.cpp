@@ -523,9 +523,6 @@ void registerCommand(CLI::App& app)
     auto getPLDMTID = base->add_subcommand("GetTID", "get Terminus ID (TID)");
     commands.push_back(std::make_unique<GetTID>("base", "GetTID", getPLDMTID));
 
-    auto setPLDMTID = base->add_subcommand("SetTID", "set Terminus ID (TID)");
-    commands.push_back(std::make_unique<SetTID>("base", "SetTID", setPLDMTID));
-
     auto getPLDMCommands = base->add_subcommand(
         "GetPLDMCommands", "get supported commands of pldm type");
     commands.push_back(std::make_unique<GetPLDMCommands>(
