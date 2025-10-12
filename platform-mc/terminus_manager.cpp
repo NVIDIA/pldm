@@ -20,7 +20,12 @@
 
 #include <stdio.h>
 
+#include <nlohmann/json.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
+
+#include <filesystem>
+#include <fstream>
 
 namespace pldm
 {
@@ -208,6 +213,75 @@ void TerminusManager::unmapTid(const tid_t& tid)
     }
 }
 
+void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
+{
+    namespace fs = std::filesystem;
+    using Json = nlohmann::json;
+
+    if (!fs::exists(configPath))
+    {
+        lg2::info(
+            "Static PLDM terminus configuration file does not exist, PATH={PATH}",
+            "PATH", configPath);
+        return;
+    }
+
+    try
+    {
+        std::ifstream jsonFile(configPath);
+        auto data = Json::parse(jsonFile, nullptr, false);
+        if (data.is_discarded())
+        {
+            lg2::error(
+                "Failed to parse static PLDM terminus configuration file, PATH={PATH}",
+                "PATH", configPath);
+            return;
+        }
+
+        const std::vector<Json> emptyJsonArray{};
+        auto termini = data.value("PLDMTermini", emptyJsonArray);
+
+        for (const auto& terminus : termini)
+        {
+            auto eid = terminus.value("EID", 0xFF);
+            auto name = terminus.value("Name", std::string(""));
+            auto terminusName = terminus.value("TerminusName", std::string(""));
+
+            if (eid == 0xFF || name.empty())
+            {
+                lg2::warning(
+                    "Invalid terminus configuration entry, skipping. NAME={NAME}, EID={EID}",
+                    "NAME", name, "EID", eid);
+                continue;
+            }
+
+            lg2::info(
+                "Loading static PLDM terminus config: NAME={NAME}, TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+                "NAME", name, "TERMINUS_NAME", terminusName, "EID", eid);
+
+            // Store EID to TerminusName mapping for runtime check
+            // This will be used when the actual MCTP endpoint is discovered
+            if (!terminusName.empty())
+            {
+                eidToTerminusNameMap[eid] = terminusName;
+                lg2::info(
+                    "Stored EID to TerminusName mapping for future discovery: EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                    "EID", eid, "TERMINUS_NAME", terminusName);
+            }
+        }
+
+        lg2::info(
+            "Loaded {COUNT} static PLDM terminus name mappings from configuration",
+            "COUNT", eidToTerminusNameMap.size());
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "Exception while loading static PLDM terminus configuration: {ERROR}",
+            "ERROR", e.what());
+    }
+}
+
 void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
 {
     queuedMctpInfos.emplace(mctpInfos);
@@ -324,6 +398,23 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, uuid, *this);
+
+    // Runtime check: Match EID with configured EID and set terminus name
+    auto eidMappingIt = eidToTerminusNameMap.find(eid);
+    if (eidMappingIt != eidToTerminusNameMap.end())
+    {
+        const std::string& configuredTerminusName = eidMappingIt->second;
+        termini[tid]->setTerminusName(configuredTerminusName);
+        lg2::info(
+            "Matched EID with configuration and set terminus name: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+            "TID", tid, "EID", eid, "TERMINUS_NAME", configuredTerminusName);
+    }
+    else
+    {
+        lg2::info("No configured terminus name found for TID={TID}, EID={EID}",
+                  "TID", tid, "EID", eid);
+    }
+
     co_return PLDM_SUCCESS;
 }
 

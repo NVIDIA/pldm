@@ -25,6 +25,7 @@
 #include "terminus.hpp"
 
 #include <queue>
+#include <unordered_map>
 
 namespace pldm
 {
@@ -69,6 +70,12 @@ class TerminusManager
      *  @param[in] mctpInfos - list of mctpInfo to be checked
      */
     void discoverMctpTerminus(const MctpInfos& mctpInfos);
+
+    /** @brief Load static PLDM terminus configuration from JSON file
+     *
+     *  @param[in] configPath - path to the configuration JSON file
+     */
+    void loadStaticTerminusConfig(const std::string& configPath);
 
     /** @brief Send request PLDM message to tid. The function will
      *         return when received the response message from terminus.
@@ -185,6 +192,9 @@ class TerminusManager
     std::vector<bool> tidPool;
     std::map<tid_t, SupportedTransportLayer> transportLayerTable;
     std::map<tid_t, MctpInfo> mctpInfoTable;
+
+    /** @brief Mapping of EID to configured terminus name from JSON config */
+    std::unordered_map<mctp_eid_t, std::string> eidToTerminusNameMap;
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};

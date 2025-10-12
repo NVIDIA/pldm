@@ -273,6 +273,12 @@ int main(int argc, char** argv)
             event, reqHandler, instanceIdDb, *(fwManager.get()), verbose,
             numericSensorsWithoutAuxName);
 
+    // Load static PLDM terminus name configuration
+    // This only loads EID->TerminusName mappings without triggering discovery
+    // Actual terminus discovery will happen when MCTP endpoints are detected
+    platformManager->getTerminusManager().loadStaticTerminusConfig(
+        PLDM_STATIC_CONFIG_JSON);
+
     // Initializing telemetry for pldmd
     if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,
                                                 "pldmd"))

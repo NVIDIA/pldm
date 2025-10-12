@@ -263,6 +263,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return PLDM_SUCCESS;
     }
 
+    /** @brief Get reference to TerminusManager
+     *
+     *  @return TerminusManager& - Reference to the terminus manager
+     */
+    TerminusManager& getTerminusManager()
+    {
+        return terminusManager;
+    }
+
   private:
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>> termini{};

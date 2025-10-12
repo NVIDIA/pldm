@@ -327,6 +327,22 @@ class Terminus
         return uuid;
     }
 
+    /** @brief The setter to set terminus's name */
+    void setTerminusName(const std::string& tName)
+    {
+        terminusName = tName;
+    }
+
+    /** @brief The getter to get terminus's name */
+    std::optional<std::string_view> getTerminusName()
+    {
+        if (terminusName.empty())
+        {
+            return std::nullopt;
+        }
+        return terminusName;
+    }
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr> parseNumericSensorPDR(
         const std::vector<uint8_t>& pdrData);
@@ -366,6 +382,9 @@ class Terminus
     std::bitset<64> supportedTypes;
 
     UUID uuid;
+
+    /** @brief Terminus name from configuration */
+    std::string terminusName;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};

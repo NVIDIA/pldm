@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include <filesystem>
+#include <format>
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/oem_nvidia.hpp"
@@ -1218,7 +1219,16 @@ exec::task<int> Terminus::updateAssociations()
         auto name = getAuxNameForNumericSensor(ptr->sensorId);
         if (name)
         {
-            ptr->updateSensorName(*name);
+            // Prepend terminus name if available and name is not from Entity
+            // Manager
+            std::string updatedName = *name;
+            if (!terminusName.empty() &&
+                sensorAuxNameOverwriteTbl.find(ptr->sensorId) ==
+                    sensorAuxNameOverwriteTbl.end())
+            {
+                updatedName = std::format("{}_{}", terminusName, updatedName);
+            }
+            ptr->updateSensorName(updatedName);
         }
         else
         {
@@ -1397,6 +1407,15 @@ void Terminus::addNumericSensor(
     sensorEventInfo = getSensorEventInfo(pdr->sensor_id);
 #endif
 
+    // Prepend terminus name if available and name is not from Entity Manager
+    // Names from Entity Manager are stored in sensorAuxNameOverwriteTbl
+    if (!terminusName.empty() &&
+        sensorAuxNameOverwriteTbl.find(pdr->sensor_id) ==
+            sensorAuxNameOverwriteTbl.end())
+    {
+        sensorName = std::format("{}_{}", terminusName, sensorName);
+    }
+
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
@@ -1472,6 +1491,12 @@ void Terminus::addNumericEffecter(
         }
     }
 
+    // Prepend terminus name if available (names from PDRs only)
+    if (!terminusName.empty())
+    {
+        effecterName = std::format("{}_{}", terminusName, effecterName);
+    }
+
     try
     {
         auto effecter = std::make_shared<NumericEffecter>(
@@ -1492,9 +1517,31 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
 
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
     AuxiliaryNames* sensorNames = nullptr;
+    std::shared_ptr<AuxiliaryNames> prependedSensorNames;
+
     if (sensorAuxiliaryNames)
     {
         sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
+
+        // Prepend terminus name to auxiliary names if available and not from EM
+        if (!terminusName.empty() && sensorAuxNameOverwriteTbl.find(sId) ==
+                                         sensorAuxNameOverwriteTbl.end())
+        {
+            prependedSensorNames = std::make_shared<AuxiliaryNames>();
+            for (const auto& compositeSensorNames : *sensorNames)
+            {
+                std::vector<std::pair<NameLanguageTag, SensorName>>
+                    prependedCompositeNames;
+                for (const auto& [tag, name] : compositeSensorNames)
+                {
+                    prependedCompositeNames.emplace_back(
+                        tag, std::format("{}_{}", terminusName, name));
+                }
+                prependedSensorNames->emplace_back(
+                    std::move(prependedCompositeNames));
+            }
+            sensorNames = prependedSensorNames.get();
+        }
     }
 
     std::shared_ptr<utils::SensorEventInfo> stateSensorEventInfo = nullptr;
@@ -1522,11 +1569,32 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
         "PLDM_Effecter_" + std::to_string(eId) + "_" + std::to_string(tid);
 
     auto effecterAuxiliaryNames = getEffecterAuxiliaryNames(eId);
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>*
-        effecterNames = nullptr;
+    AuxiliaryNames* effecterNames = nullptr;
+    std::shared_ptr<AuxiliaryNames> prependedEffecterNames;
+
     if (effecterAuxiliaryNames)
     {
         effecterNames = &(std::get<2>(*effecterAuxiliaryNames));
+
+        // Prepend terminus name to auxiliary names if available (from PDRs
+        // only)
+        if (!terminusName.empty())
+        {
+            prependedEffecterNames = std::make_shared<AuxiliaryNames>();
+            for (const auto& compositeEffecterNames : *effecterNames)
+            {
+                std::vector<std::pair<NameLanguageTag, SensorName>>
+                    prependedCompositeNames;
+                for (const auto& [tag, name] : compositeEffecterNames)
+                {
+                    prependedCompositeNames.emplace_back(
+                        tag, std::format("{}_{}", terminusName, name));
+                }
+                prependedEffecterNames->emplace_back(
+                    std::move(prependedCompositeNames));
+            }
+            effecterNames = prependedEffecterNames.get();
+        }
     }
 
     try
@@ -1538,7 +1606,7 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to create NumericEffecter:{EFFECTERNAME}, {ERROR}.",
+        lg2::error("Failed to create StateEffecter:{EFFECTERNAME}, {ERROR}.",
                    "EFFECTERNAME", effecterName, "ERROR", e);
     }
 }
