@@ -43,7 +43,10 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
 
         if (inventoryCoRoutineHandlers.contains(eid))
         {
-            inventoryCoRoutineHandlers[eid].destroy();
+            if (inventoryCoRoutineHandlers[eid].done())
+            {
+                inventoryCoRoutineHandlers[eid].destroy();
+            }
             inventoryCoRoutineHandlers[eid] = co.handle;
         }
         else
@@ -210,7 +213,10 @@ requester::Coroutine InventoryManager::initiateRefreshFDInventory(
 
     if (inventoryCoRoutineHandlers.contains(eid))
     {
-        inventoryCoRoutineHandlers[eid].destroy();
+        if (inventoryCoRoutineHandlers[eid].done())
+        {
+            inventoryCoRoutineHandlers[eid].destroy();
+        }
         inventoryCoRoutineHandlers[eid] = co.handle;
     }
     else
