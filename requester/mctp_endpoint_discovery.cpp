@@ -89,9 +89,9 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
             {
                 const auto& mctpBinding = std::get<4>(epProps);
                 const auto& mctpMedium = std::get<3>(epProps);
-                auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
-                                         std::get<NetworkId>(epProps),
-                                         std::nullopt, mctpBinding);
+                auto mctpInfo = MctpInfo(
+                    std::get<eid>(epProps), uuid, mctpMedium,
+                    std::get<NetworkId>(epProps), std::nullopt, mctpBinding);
                 searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
                 mctpInfoMap[std::move(mctpInfo)] = availability;
             }
@@ -374,8 +374,9 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
             }
             const UUID& uuid = getEndpointUUIDProp(service, objPath);
             const auto& mctpBinding = std::get<4>(epProps);
+            const auto& mctpMedium = std::get<3>(epProps);
 
-            MctpInfo mctpInfo(std::get<eid>(epProps), uuid, "",
+            MctpInfo mctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
                               std::get<NetworkId>(epProps), std::nullopt,
                               mctpBinding);
             searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
