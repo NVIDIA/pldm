@@ -738,6 +738,12 @@ class GetPDR : public CommandInterface
             case PLDM_SENSOR_DATA_SIZE_SINT32:
                 output["hysteresis"] = signed(pdr.hysteresis.value_s32);
                 break;
+            case PLDM_SENSOR_DATA_SIZE_UINT64:
+                output["hysteresis"] = std::to_string(pdr.hysteresis.value_u64);
+                break;
+            case PLDM_SENSOR_DATA_SIZE_SINT64:
+                output["hysteresis"] = std::to_string(pdr.hysteresis.value_s64);
+                break;
             default:
                 break;
         }
@@ -774,6 +780,18 @@ class GetPDR : public CommandInterface
             case PLDM_SENSOR_DATA_SIZE_SINT32:
                 output["maxReadable"] = signed(pdr.max_readable.value_s32);
                 output["minReadable"] = signed(pdr.min_readable.value_s32);
+                break;
+            case PLDM_SENSOR_DATA_SIZE_UINT64:
+                output["maxReadable"] =
+                    std::to_string(pdr.max_readable.value_u64);
+                output["minReadable"] =
+                    std::to_string(pdr.min_readable.value_u64);
+                break;
+            case PLDM_SENSOR_DATA_SIZE_SINT64:
+                output["maxReadable"] =
+                    std::to_string(pdr.max_readable.value_s64);
+                output["minReadable"] =
+                    std::to_string(pdr.min_readable.value_s64);
                 break;
             default:
                 break;
@@ -860,6 +878,38 @@ class GetPDR : public CommandInterface
                 output["criticalLow"] = float(pdr.critical_low.value_f32);
                 output["fatalHigh"] = float(pdr.fatal_high.value_f32);
                 output["fatalLow"] = float(pdr.fatal_low.value_f32);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT64:
+                output["nominalValue"] =
+                    std::to_string(pdr.nominal_value.value_u64);
+                output["normalMax"] = std::to_string(pdr.normal_max.value_u64);
+                output["normalMin"] = std::to_string(pdr.normal_min.value_u64);
+                output["warningHigh"] =
+                    std::to_string(pdr.warning_high.value_u64);
+                output["warningLow"] =
+                    std::to_string(pdr.warning_low.value_u64);
+                output["criticalHigh"] =
+                    std::to_string(pdr.critical_high.value_u64);
+                output["criticalLow"] =
+                    std::to_string(pdr.critical_low.value_u64);
+                output["fatalHigh"] = std::to_string(pdr.fatal_high.value_u64);
+                output["fatalLow"] = std::to_string(pdr.fatal_low.value_u64);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT64:
+                output["nominalValue"] =
+                    std::to_string(pdr.nominal_value.value_s64);
+                output["normalMax"] = std::to_string(pdr.normal_max.value_s64);
+                output["normalMin"] = std::to_string(pdr.normal_min.value_s64);
+                output["warningHigh"] =
+                    std::to_string(pdr.warning_high.value_s64);
+                output["warningLow"] =
+                    std::to_string(pdr.warning_low.value_s64);
+                output["criticalHigh"] =
+                    std::to_string(pdr.critical_high.value_s64);
+                output["criticalLow"] =
+                    std::to_string(pdr.critical_low.value_s64);
+                output["fatalHigh"] = std::to_string(pdr.fatal_high.value_s64);
+                output["fatalLow"] = std::to_string(pdr.fatal_low.value_s64);
                 break;
             default:
                 break;
@@ -1099,6 +1149,26 @@ class GetPDR : public CommandInterface
                 data += sizeof(pdr.min_settable.value_s32);
                 output["minSettable"] = signed(pdr.min_settable.value_s32);
                 break;
+            case PLDM_EFFECTER_DATA_SIZE_UINT64:
+                pdr.max_settable.value_u64 = *((uint64_t*)data);
+                data += sizeof(pdr.max_settable.value_u64);
+                output["maxSettable"] =
+                    std::to_string(pdr.max_settable.value_u64);
+                pdr.min_settable.value_u64 = *((uint64_t*)data);
+                data += sizeof(pdr.min_settable.value_u64);
+                output["minSettable"] =
+                    std::to_string(pdr.min_settable.value_u64);
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_SINT64:
+                pdr.max_settable.value_s64 = *((int64_t*)data);
+                data += sizeof(pdr.max_settable.value_s64);
+                output["maxSettable"] =
+                    std::to_string(pdr.max_settable.value_s64);
+                pdr.min_settable.value_s64 = *((int64_t*)data);
+                data += sizeof(pdr.min_settable.value_s64);
+                output["minSettable"] =
+                    std::to_string(pdr.min_settable.value_s64);
+                break;
             default:
                 break;
         }
@@ -1229,6 +1299,42 @@ class GetPDR : public CommandInterface
                 pdr.rated_min.value_f32 = le32toh(*((real32_t*)data));
                 data += sizeof(pdr.rated_min.value_f32);
                 output["ratedMin"] = float(pdr.rated_min.value_f32);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT64:
+                pdr.nominal_value.value_u64 = le64toh(*((uint64_t*)data));
+                data += sizeof(pdr.nominal_value.value_u64);
+                output["nominalValue"] =
+                    std::to_string(pdr.nominal_value.value_u64);
+                pdr.normal_max.value_u64 = le64toh(*((uint64_t*)data));
+                data += sizeof(pdr.normal_max.value_u64);
+                output["normalMax"] = std::to_string(pdr.normal_max.value_u64);
+                pdr.normal_min.value_u64 = le64toh(*((uint64_t*)data));
+                data += sizeof(pdr.normal_min.value_u64);
+                output["normalMin"] = std::to_string(pdr.normal_min.value_u64);
+                pdr.rated_max.value_u64 = le64toh(*((uint64_t*)data));
+                data += sizeof(pdr.rated_max.value_u64);
+                output["ratedMax"] = std::to_string(pdr.rated_max.value_u64);
+                pdr.rated_min.value_u64 = le64toh(*((uint64_t*)data));
+                data += sizeof(pdr.rated_min.value_u64);
+                output["ratedMin"] = std::to_string(pdr.rated_min.value_u64);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT64:
+                pdr.nominal_value.value_s64 = le64toh(*((int64_t*)data));
+                data += sizeof(pdr.nominal_value.value_s64);
+                output["nominalValue"] =
+                    std::to_string(pdr.nominal_value.value_s64);
+                pdr.normal_max.value_s64 = le64toh(*((int64_t*)data));
+                data += sizeof(pdr.normal_max.value_s64);
+                output["normalMax"] = std::to_string(pdr.normal_max.value_s64);
+                pdr.normal_min.value_s64 = le64toh(*((int64_t*)data));
+                data += sizeof(pdr.normal_min.value_s64);
+                output["normalMin"] = std::to_string(pdr.normal_min.value_s64);
+                pdr.rated_max.value_s64 = le64toh(*((int64_t*)data));
+                data += sizeof(pdr.rated_max.value_s64);
+                output["ratedMax"] = std::to_string(pdr.rated_max.value_s64);
+                pdr.rated_min.value_s64 = le64toh(*((int64_t*)data));
+                data += sizeof(pdr.rated_min.value_s64);
+                output["ratedMin"] = std::to_string(pdr.rated_min.value_s64);
                 break;
             default:
                 break;
@@ -1496,7 +1602,7 @@ class SetNumericEffecterValue : public CommandInterface
         app->add_option("-s, --size", effecterDataSize,
                         "The bit width and format of the setting value for the "
                         "effecter. enum value: {uint8, sint8, uint16, sint16, "
-                        "uint32, sint32}\n")
+                        "uint32, sint32, uint64, sint64}\n")
             ->required();
         app->add_option("-d,--data", maxEffecterValue,
                         "The setting value of numeric effecter being "
@@ -1508,7 +1614,7 @@ class SetNumericEffecterValue : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) +
-            PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3);
+            PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7);
 
         uint8_t* effecterValue = (uint8_t*)&maxEffecterValue;
 
@@ -1524,6 +1630,11 @@ class SetNumericEffecterValue : public CommandInterface
             effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT32)
         {
             payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
+        }
+        if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT64 ||
+            effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT64)
+        {
+            payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
         }
         auto rc = encode_set_numeric_effecter_value_req(
             0, effecterId, effecterDataSize, effecterValue, request,

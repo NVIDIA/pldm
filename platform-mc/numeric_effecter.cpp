@@ -109,6 +109,14 @@ NumericEffecter::NumericEffecter(
             maxValue = pdr->max_settable.value_s32;
             minValue = pdr->min_settable.value_s32;
             break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            maxValue = pdr->max_settable.value_u64;
+            minValue = pdr->min_settable.value_u64;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+            maxValue = pdr->max_settable.value_s64;
+            minValue = pdr->min_settable.value_s64;
+            break;
     }
 
     dataSize = pdr->effecter_data_size;
@@ -338,9 +346,17 @@ exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
             payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
             break;
         case PLDM_EFFECTER_DATA_SIZE_SINT32:
-        default:
             effecterValueRaw.value_s32 = static_cast<int32_t>(effecterValue);
             payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            effecterValueRaw.value_u64 = static_cast<uint64_t>(effecterValue);
+            payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+        default:
+            effecterValueRaw.value_s64 = static_cast<int64_t>(effecterValue);
+            payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
             break;
     }
     auto rc = encode_set_numeric_effecter_value_req(
@@ -465,6 +481,14 @@ exec::task<int> NumericEffecter::getNumericEffecterValue()
         case PLDM_EFFECTER_DATA_SIZE_SINT32:
             pendingValue = static_cast<double>(pendingValueRaw.value_s32);
             presentValue = static_cast<double>(presentValueRaw.value_s32);
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            pendingValue = static_cast<double>(pendingValueRaw.value_u64);
+            presentValue = static_cast<double>(presentValueRaw.value_u64);
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+            pendingValue = static_cast<double>(pendingValueRaw.value_s64);
+            presentValue = static_cast<double>(presentValueRaw.value_s64);
             break;
         default:
             pendingValue = std::numeric_limits<double>::quiet_NaN();

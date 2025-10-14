@@ -541,13 +541,21 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
                                              const uint8_t* sensorData,
                                              size_t sensorDataLength)
 {
-    uint8_t eventState = 0;
-    uint8_t previousEventState = 0;
-    uint8_t sensorDataSize = 0;
-    uint32_t presentReading;
-    decode_numeric_sensor_data(sensorData, sensorDataLength, &eventState,
-                               &previousEventState, &sensorDataSize,
-                               &presentReading);
+    pldm_numeric_sensor_event_data eventData{};
+    auto rc = decode_numeric_sensor_event_data(sensorData, sensorDataLength,
+                                               &eventData);
+    if (rc != PLDM_SUCCESS)
+    {
+        lg2::error(
+            "Failed to decode numeric sensor event data for TID {TID}, Sensor ID {SENSOR}, rc={RC}",
+            "TID", tid, "SENSOR", sensorId, "RC", rc);
+        return;
+    }
+
+    uint8_t eventState = eventData.event_state;
+    uint8_t previousEventState = eventData.previous_event_state;
+    uint8_t sensorDataSize = eventData.sensor_data_size;
+    union_sensor_data_size presentReading = eventData.present_reading;
 
     for (auto& [terminusId, terminus] : termini)
     {
@@ -592,29 +600,29 @@ void EventManager::processNumericSensorEvent(tid_t tid, uint16_t sensorId,
 
             switch (sensorDataSize)
             {
-                case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
-                    reading = static_cast<double>(
-                        static_cast<uint8_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_UINT8:
+                    reading = static_cast<double>(presentReading.value_u8);
                     break;
-                case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
-                    reading = static_cast<double>(
-                        static_cast<int8_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_SINT8:
+                    reading = static_cast<double>(presentReading.value_s8);
                     break;
-                case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
-                    reading = static_cast<double>(
-                        static_cast<uint16_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_UINT16:
+                    reading = static_cast<double>(presentReading.value_u16);
                     break;
-                case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
-                    reading = static_cast<double>(
-                        static_cast<int16_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_SINT16:
+                    reading = static_cast<double>(presentReading.value_s16);
                     break;
-                case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
-                    reading = static_cast<double>(
-                        static_cast<uint32_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_UINT32:
+                    reading = static_cast<double>(presentReading.value_u32);
                     break;
-                case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
-                    reading = static_cast<double>(
-                        static_cast<int32_t>(presentReading));
+                case PLDM_SENSOR_DATA_SIZE_SINT32:
+                    reading = static_cast<double>(presentReading.value_s32);
+                    break;
+                case PLDM_SENSOR_DATA_SIZE_UINT64:
+                    reading = static_cast<double>(presentReading.value_u64);
+                    break;
+                case PLDM_SENSOR_DATA_SIZE_SINT64:
+                    reading = static_cast<double>(presentReading.value_s64);
                     break;
                 default:
                     break;

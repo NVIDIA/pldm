@@ -519,13 +519,13 @@ exec::task<int> SensorManager::getSensorReading(
     }
 
     uint8_t completionCode = PLDM_SUCCESS;
-    uint8_t sensorDataSize = PLDM_SENSOR_OEM_DATA_SIZE_SINT32;
+    uint8_t sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT32;
     uint8_t sensorOperationalState = 0;
     uint8_t sensorEventMessageEnable = 0;
     uint8_t presentState = 0;
     uint8_t previousState = 0;
     uint8_t eventState = 0;
-    union_sensor_oem_data_size presentReading;
+    union_sensor_data_size presentReading;
 
     if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO)
     {
@@ -547,7 +547,7 @@ exec::task<int> SensorManager::getSensorReading(
 #ifdef OEM_NVIDIA
     else if (pollingIndicator == POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM)
     {
-        sensorDataSize = PLDM_SENSOR_OEM_DATA_SIZE_SINT64;
+        sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT64;
         rc = decode_get_oem_energy_count_sensor_reading_resp(
             responseMsg, responseLen, &completionCode, &sensorDataSize,
             &sensorOperationalState,
@@ -595,28 +595,28 @@ exec::task<int> SensorManager::getSensorReading(
     double value;
     switch (sensorDataSize)
     {
-        case PLDM_SENSOR_OEM_DATA_SIZE_UINT8:
+        case PLDM_SENSOR_DATA_SIZE_UINT8:
             value = static_cast<double>(presentReading.value_u8);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_SINT8:
+        case PLDM_SENSOR_DATA_SIZE_SINT8:
             value = static_cast<double>(presentReading.value_s8);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_UINT16:
+        case PLDM_SENSOR_DATA_SIZE_UINT16:
             value = static_cast<double>(presentReading.value_u16);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_SINT16:
+        case PLDM_SENSOR_DATA_SIZE_SINT16:
             value = static_cast<double>(presentReading.value_s16);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_UINT32:
+        case PLDM_SENSOR_DATA_SIZE_UINT32:
             value = static_cast<double>(presentReading.value_u32);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_SINT32:
+        case PLDM_SENSOR_DATA_SIZE_SINT32:
             value = static_cast<double>(presentReading.value_s32);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_UINT64:
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
             value = static_cast<double>(presentReading.value_u64);
             break;
-        case PLDM_SENSOR_OEM_DATA_SIZE_SINT64:
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
             value = static_cast<double>(presentReading.value_s64);
             break;
         default:

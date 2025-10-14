@@ -169,6 +169,32 @@ std::pair<int, std::optional<pldm::utils::PropertyValue>> getEffecterRawValue(
             }
             break;
         }
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+        {
+            auto rawValue = static_cast<uint64_t>(
+                round(effecterValue - pdr->offset) / pdr->resolution);
+            if (pdr->min_settable.value_u64 < pdr->max_settable.value_u64 &&
+                (rawValue < pdr->min_settable.value_u64 ||
+                 rawValue > pdr->max_settable.value_u64))
+            {
+                rc = PLDM_ERROR_INVALID_DATA;
+            }
+            value = rawValue;
+            break;
+        }
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+        {
+            auto rawValue = static_cast<int64_t>(
+                round(effecterValue - pdr->offset) / pdr->resolution);
+            if (pdr->min_settable.value_s64 < pdr->max_settable.value_s64 &&
+                (rawValue < pdr->min_settable.value_s64 ||
+                 rawValue > pdr->max_settable.value_s64))
+            {
+                rc = PLDM_ERROR_INVALID_DATA;
+            }
+            value = rawValue;
+            break;
+        }
     }
 
     return {rc, std::make_optional(std::move(value))};
@@ -218,6 +244,17 @@ std::pair<int, std::optional<pldm::utils::PropertyValue>> convertToDbusValue(
     {
         int32_t currentValue = *(reinterpret_cast<int32_t*>(&effecterValue[0]));
         return getEffecterRawValue<int32_t>(pdr, currentValue, propertyType);
+    }
+    else if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT64)
+    {
+        uint64_t currentValue =
+            *(reinterpret_cast<uint64_t*>(&effecterValue[0]));
+        return getEffecterRawValue<uint64_t>(pdr, currentValue, propertyType);
+    }
+    else if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT64)
+    {
+        int64_t currentValue = *(reinterpret_cast<int64_t*>(&effecterValue[0]));
+        return getEffecterRawValue<int64_t>(pdr, currentValue, propertyType);
     }
     else
     {

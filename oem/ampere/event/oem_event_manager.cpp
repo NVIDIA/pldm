@@ -387,19 +387,59 @@ int OemEventManager::processNumericSensorEvent(
     pldm_tid_t tid, uint16_t sensorId, const uint8_t* sensorData,
     size_t sensorDataLength)
 {
-    uint8_t eventState = 0;
-    uint8_t previousEventState = 0;
-    uint8_t sensorDataSize = 0;
-    uint32_t presentReading;
-    auto rc = decode_numeric_sensor_data(
-        sensorData, sensorDataLength, &eventState, &previousEventState,
-        &sensorDataSize, &presentReading);
+    pldm_numeric_sensor_event_data eventData{};
+    auto rc = decode_numeric_sensor_event_data(sensorData, sensorDataLength,
+                                               &eventData);
     if (rc)
     {
         lg2::error(
             "Failed to decode numericSensorState event for terminus ID {TID}, error {RC} ",
             "TID", tid, "RC", rc);
         return rc;
+    }
+
+    uint8_t eventState = eventData.event_state;
+    uint8_t previousEventState = eventData.previous_event_state;
+    uint8_t sensorDataSize = eventData.sensor_data_size;
+
+    // Convert union to uint32_t for existing handler functions
+    // Note: For 64-bit sensors, this will truncate the value
+    uint32_t presentReading = 0;
+    switch (sensorDataSize)
+    {
+        case PLDM_SENSOR_DATA_SIZE_UINT8:
+            presentReading = eventData.present_reading.value_u8;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT8:
+            presentReading =
+                static_cast<uint32_t>(eventData.present_reading.value_s8);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT16:
+            presentReading = eventData.present_reading.value_u16;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT16:
+            presentReading =
+                static_cast<uint32_t>(eventData.present_reading.value_s16);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT32:
+            presentReading = eventData.present_reading.value_u32;
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT32:
+            presentReading =
+                static_cast<uint32_t>(eventData.present_reading.value_s32);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_UINT64:
+            presentReading =
+                static_cast<uint32_t>(eventData.present_reading.value_u64);
+            break;
+        case PLDM_SENSOR_DATA_SIZE_SINT64:
+            presentReading =
+                static_cast<uint32_t>(eventData.present_reading.value_s64);
+            break;
+        default:
+            lg2::error("Unknown sensor data size {SIZE} for terminus ID {TID}",
+                       "SIZE", sensorDataSize, "TID", tid);
+            return PLDM_ERROR_INVALID_DATA;
     }
 
     // DIMMx_Status sensorID 4+2*index (index 0 -> maxDIMMInstantNum-1)
