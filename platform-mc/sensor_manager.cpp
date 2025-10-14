@@ -121,6 +121,13 @@ void SensorManager::stopPolling(tid_t tid)
 
     auto terminus = termini[tid];
     terminus->stopPolling = true;
+
+    if (terminus->doSensorPollingTaskHandle.has_value())
+    {
+        auto& [scope, rcOpt] = *terminus->doSensorPollingTaskHandle;
+        scope.request_stop();
+        terminus->doSensorPollingTaskHandle.reset();
+    }
 }
 
 void SensorManager::startPolling()
@@ -160,7 +167,6 @@ void SensorManager::doSensorPolling(tid_t tid)
                        "TID", tid);
             return;
         }
-        stdexec::sync_wait(scope.on_empty());
         terminus->doSensorPollingTaskHandle.reset();
     }
     auto& [scope, rcOpt] = terminus->doSensorPollingTaskHandle.emplace();
