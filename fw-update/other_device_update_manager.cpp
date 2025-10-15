@@ -420,7 +420,8 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
             ComponentImageInfoPos::CompIdentifierPos)>(componentImageInfo);
 
         const auto& compIdString = std::to_string(compIdentifier);
-        const std::string destinationDir = dirPath + "/" + compIdString;
+        std::string destinationDir = dirPath;
+        destinationDir += "/" + compIdString;
 
         const auto transferState = txSingleComponent(
             destinationDir, componentImageInfo, package, objPath, uuid);

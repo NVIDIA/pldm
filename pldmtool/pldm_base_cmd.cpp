@@ -434,12 +434,12 @@ class GetPLDMCommands : public CommandInterface
                     case PLDM_FWUP:
                         printCommand(pldmFwUpdateCmds, i, cmdinfo);
                         break;
-                    case PLDM_OEM:
 #ifdef OEM_IBM
+                    case PLDM_OEM:
                         printCommand(pldmIBMHostCmds, i, cmdinfo);
                         printCommand(pldmIBMFileIOCmds, i, cmdinfo);
-#endif
                         break;
+#endif
                     default:
                         break;
                 }

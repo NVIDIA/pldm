@@ -39,10 +39,10 @@
 namespace pldm
 {
 
+class MctpDiscoveryHandlerIntf;
+
 namespace fw_update
 {
-
-class MctpDiscoveryHandlerIntf;
 
 /** @class Manager
  *

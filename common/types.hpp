@@ -332,7 +332,8 @@ struct MatchEntryInfo
             if (interfaceMap.contains(cfgIntfName))
             {
                 if (std::all_of(cfgProps.begin(), cfgProps.end(),
-                                [&, cfgIntfName](const auto& cfgProperty) {
+                                [&, cfgIntfName = cfgIntfName](
+                                    const auto& cfgProperty) {
                                     return isPropertyMatch(
                                         interfaceMap, cfgProperty, cfgIntfName);
                                 }))

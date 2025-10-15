@@ -326,13 +326,13 @@ class PackageSignature
     PackageSignatureVersion version = 0;
 
     /** @brief Minor Version of FW Update Package Signature Format */
-    PackageSignatureMinorVersion minorVersion;
+    PackageSignatureMinorVersion minorVersion = 0;
 
     /** @brief Security version for the package */
     PackageSignatureSecurityVersion securityVersion = 0;
 
     /** @brief offset to the signature */
-    PackageSignatureOffsetToSignature offsetToSignature;
+    PackageSignatureOffsetToSignature offsetToSignature = 0;
 
     /** @brief Size of the FW Update Package being signed */
     PackageSignaturePayloadSize payloadSize = 0;
@@ -341,7 +341,7 @@ class PackageSignature
     PackageSignatureSignatureType signatureType = 0;
 
     /** @brief offset to the public key */
-    PackageSignatureOffsetToPublicKey offsetToPublicKey;
+    PackageSignatureOffsetToPublicKey offsetToPublicKey = 0;
 
     /** @brief Size of the signature */
     PackageSignatureSignatureSize signatureSize = 0;
@@ -350,7 +350,7 @@ class PackageSignature
     PackageSignatureSignature signature;
 
     /** @brief Size of the public key */
-    PackageSignaturePublicKeySize publicKeySize;
+    PackageSignaturePublicKeySize publicKeySize = 0;
 
     /** @brief Public key */
     PackageSignaturePublicKey publicKeyData;

@@ -1657,6 +1657,7 @@ TEST_F(PackageSignatureTest, signatureV3ParseHeaderCorruptedMajorVersion)
         std::make_unique<PackageSignatureV3>(
             signHeaderV3WithoutPaddingCorruptedMajorVersion);
 
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.PureVirtualCall)
     EXPECT_THROW(packageSignatureParser->parseHeader(), InternalFailure);
 }
 
@@ -1688,7 +1689,7 @@ TEST_F(PackageSignatureTest, signatureV3IntegrityCheck)
     std::unique_ptr<PackageSignatureV3> packageSignatureParser;
     if (ptrPackageSignatureParser != nullptr)
     {
-        packageSignatureParserBase.release();
+        [[maybe_unused]] auto released = packageSignatureParserBase.release();
         packageSignatureParser.reset(ptrPackageSignatureParser);
     }
 
@@ -1749,7 +1750,7 @@ TEST_F(PackageSignatureTest, signatureV3Verification)
     std::unique_ptr<PackageSignatureV3> packageSignatureParser;
     if (ptrPackageSignatureParser != nullptr)
     {
-        packageSignatureParserBase.release();
+        [[maybe_unused]] auto released = packageSignatureParserBase.release();
         packageSignatureParser.reset(ptrPackageSignatureParser);
     }
 
@@ -1799,6 +1800,7 @@ TEST_F(PackageSignatureTest, signatureV3IncorrectSignatureVersion)
     std::unique_ptr<PackageSignature> packageSignatureParser =
         std::make_unique<PackageSignatureV3>(signHeaderV3IncorrectVersion);
 
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.PureVirtualCall)
     EXPECT_THROW(packageSignatureParser->parseHeader(), InternalFailure);
 }
 

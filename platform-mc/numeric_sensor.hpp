@@ -83,6 +83,7 @@ enum polling_method_indicator
  * This class handles sensor reading updated by sensor manager and export
  * status to D-Bus interface.
  */
+// NOLINTBEGIN(clang-analyzer-optin.performance.Padding)
 class NumericSensor
 {
   public:
@@ -422,5 +423,6 @@ class NumericSensor
     /** @brief sensor event info */
     std::shared_ptr<utils::SensorEventInfo> sensorEventInfo;
 };
+// NOLINTEND(clang-analyzer-optin.performance.Padding)
 } // namespace platform_mc
 } // namespace pldm
