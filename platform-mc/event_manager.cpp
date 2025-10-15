@@ -432,8 +432,8 @@ void EventManager::createSensorThresholdLogEntry(
     }
 #endif
 
-        if (messageId == SensorThresholdWarningLowGoingHigh ||
-            messageId == SensorThresholdWarningHighGoingLow)
+    if (messageId == SensorThresholdWarningLowGoingHigh ||
+        messageId == SensorThresholdWarningHighGoingLow)
     {
         level = Level::Informational;
     }

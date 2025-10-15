@@ -36,7 +36,8 @@ class InventoryManagerTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         inventoryManager(reqHandler, instanceIdDb, nullptr, outDescriptorMap,
-                         outComponentInfoMap, outDownstreamDescriptorMap, deviceInventoryInfo)
+                         outDownstreamDescriptorMap, outComponentInfoMap,
+                         deviceInventoryInfo)
     {}
 
     int fd = -1;

@@ -333,156 +333,148 @@ class GetFwParams : public CommandInterface
                     "No host OS environment restriction for update mode";
         }
 
-            data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
-            data["ComponentCount"] = static_cast<uint16_t>(fwParams.comp_count);
-            data["ActiveComponentImageSetVersionString"] =
-                pldm::utils::toString(activeCompImageSetVersion);
-            data["PendingComponentImageSetVersionString"] =
-                pldm::utils::toString(pendingCompImageSetVersion);
+        data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
+        data["ComponentCount"] = static_cast<uint16_t>(fwParams.comp_count);
+        data["ActiveComponentImageSetVersionString"] =
+            pldm::utils::toString(activeCompImageSetVersion);
+        data["PendingComponentImageSetVersionString"] =
+            pldm::utils::toString(pendingCompImageSetVersion);
 
-            auto compParamPtr = compParameterTable.ptr;
-            auto compParamTableLen = compParameterTable.length;
-            pldm_component_parameter_entry compEntry{};
-            variable_field activeCompVerStr{};
-            variable_field pendingCompVerStr{};
-            ordered_json compDataEntries;
+        auto compParamPtr = compParameterTable.ptr;
+        auto compParamTableLen = compParameterTable.length;
+        pldm_component_parameter_entry compEntry{};
+        variable_field activeCompVerStr{};
+        variable_field pendingCompVerStr{};
+        ordered_json compDataEntries;
 
-            while ((compParamTableLen > 0) && (fwParams.comp_count--))
+        while ((compParamTableLen > 0) && (fwParams.comp_count--))
+        {
+            ordered_json compData;
+            auto rc = decode_get_firmware_parameters_resp_comp_entry(
+                compParamPtr, compParamTableLen, &compEntry, &activeCompVerStr,
+                &pendingCompVerStr);
+            if (rc)
             {
-                ordered_json compData;
-                auto rc = decode_get_firmware_parameters_resp_comp_entry(
-                    compParamPtr, compParamTableLen, &compEntry,
-                    &activeCompVerStr, &pendingCompVerStr);
-                if (rc)
-                {
-                    std::cerr
-                        << "Decoding component parameter table entry failed, RC="
-                        << rc << "\n";
-                    return;
-                }
-
-                if (componentClassification.contains(
-                        compEntry.comp_classification))
-                {
-                    compData["ComponentClassification"] =
-                        componentClassification.at(
-                            compEntry.comp_classification);
-                }
-                else
-                {
-                    compData["ComponentClassification"] =
-                        static_cast<uint16_t>(compEntry.comp_classification);
-                }
-                compData["ComponentIdentifier"] =
-                    static_cast<uint16_t>(compEntry.comp_identifier);
-                compData["ComponentClassificationIndex"] =
-                    static_cast<uint8_t>(compEntry.comp_classification_index);
-                compData["ActiveComponentComparisonStamp"] =
-                    static_cast<uint32_t>(
-                        compEntry.active_comp_comparison_stamp);
-
-                // ActiveComponentReleaseData
-                std::array<uint8_t, 8> noReleaseData{0x00, 0x00, 0x00, 0x00,
-                                                     0x00, 0x00, 0x00, 0x00};
-                if (std::equal(noReleaseData.begin(), noReleaseData.end(),
-                               compEntry.active_comp_release_date))
-                {
-                    compData["ActiveComponentReleaseDate"] = "";
-                }
-                else
-                {
-                    std::string activeComponentReleaseDate(
-                        reinterpret_cast<const char*>(
-                            compEntry.active_comp_release_date),
-                        sizeof(compEntry.active_comp_release_date));
-                    compData["ActiveComponentReleaseDate"] =
-                        activeComponentReleaseDate;
-                }
-
-                compData["PendingComponentComparisonStamp"] =
-                    static_cast<uint32_t>(
-                        compEntry.pending_comp_comparison_stamp);
-
-                // PendingComponentReleaseData
-                if (std::equal(noReleaseData.begin(), noReleaseData.end(),
-                               compEntry.pending_comp_release_date))
-                {
-                    compData["PendingComponentReleaseDate"] = "";
-                }
-                else
-                {
-                    std::string pendingComponentReleaseDate(
-                        reinterpret_cast<const char*>(
-                            compEntry.pending_comp_release_date),
-                        sizeof(compEntry.pending_comp_release_date));
-                    compData["PendingComponentReleaseDate"] =
-                        pendingComponentReleaseDate;
-                }
-
-                // ComponentActivationMethods
-                ordered_json componentActivationMethods;
-                if (compEntry.comp_activation_methods.bits.bit0)
-                {
-                    componentActivationMethods.push_back("Automatic");
-                }
-                if (compEntry.comp_activation_methods.bits.bit1)
-                {
-                    componentActivationMethods.push_back("Self-Contained");
-                }
-                if (compEntry.comp_activation_methods.bits.bit2)
-                {
-                    componentActivationMethods.push_back(
-                        "Medium-specific reset");
-                }
-                if (compEntry.comp_activation_methods.bits.bit3)
-                {
-                    componentActivationMethods.push_back("System reboot");
-                }
-                if (compEntry.comp_activation_methods.bits.bit4)
-                {
-                    componentActivationMethods.push_back("DC power cycle");
-                }
-                if (compEntry.comp_activation_methods.bits.bit5)
-                {
-                    componentActivationMethods.push_back("AC power cycle");
-                }
-                compData["ComponentActivationMethods"] =
-                    componentActivationMethods;
-
-                // CapabilitiesDuringUpdate
-                ordered_json compCapabilitiesDuringUpdate;
-                if (compEntry.capabilities_during_update.bits.bit0)
-                {
-                    compCapabilitiesDuringUpdate
-                        ["Firmware Device apply state functionality"] =
-                            "Firmware Device performs an auto-apply during transfer "
-                            "phase and apply step will be completed immediately.";
-                }
-                else
-                {
-                    compCapabilitiesDuringUpdate
-                        ["Firmware Device apply state functionality"] =
-                            " Firmware Device will execute an operation during the APPLY "
-                            "state which will include migrating the new component image "
-                            "to its final non-volatile storage destination.";
-                }
-                compData["CapabilitiesDuringUpdate"] =
-                    compCapabilitiesDuringUpdate;
-
-                compData["ActiveComponentVersionString"] =
-                    pldm::utils::toString(activeCompVerStr);
-                compData["PendingComponentVersionString"] =
-                    pldm::utils::toString(pendingCompVerStr);
-
-                compParamPtr += sizeof(pldm_component_parameter_entry) +
-                                activeCompVerStr.length +
-                                pendingCompVerStr.length;
-                compParamTableLen -=
-                    sizeof(pldm_component_parameter_entry) +
-                    activeCompVerStr.length + pendingCompVerStr.length;
-                compDataEntries.push_back(compData);
+                std::cerr
+                    << "Decoding component parameter table entry failed, RC="
+                    << rc << "\n";
+                return;
             }
-            data["ComponentParameterEntries"] = compDataEntries;
+
+            if (componentClassification.contains(compEntry.comp_classification))
+            {
+                compData["ComponentClassification"] =
+                    componentClassification.at(compEntry.comp_classification);
+            }
+            else
+            {
+                compData["ComponentClassification"] =
+                    static_cast<uint16_t>(compEntry.comp_classification);
+            }
+            compData["ComponentIdentifier"] =
+                static_cast<uint16_t>(compEntry.comp_identifier);
+            compData["ComponentClassificationIndex"] =
+                static_cast<uint8_t>(compEntry.comp_classification_index);
+            compData["ActiveComponentComparisonStamp"] =
+                static_cast<uint32_t>(compEntry.active_comp_comparison_stamp);
+
+            // ActiveComponentReleaseData
+            std::array<uint8_t, 8> noReleaseData{0x00, 0x00, 0x00, 0x00,
+                                                 0x00, 0x00, 0x00, 0x00};
+            if (std::equal(noReleaseData.begin(), noReleaseData.end(),
+                           compEntry.active_comp_release_date))
+            {
+                compData["ActiveComponentReleaseDate"] = "";
+            }
+            else
+            {
+                std::string activeComponentReleaseDate(
+                    reinterpret_cast<const char*>(
+                        compEntry.active_comp_release_date),
+                    sizeof(compEntry.active_comp_release_date));
+                compData["ActiveComponentReleaseDate"] =
+                    activeComponentReleaseDate;
+            }
+
+            compData["PendingComponentComparisonStamp"] =
+                static_cast<uint32_t>(compEntry.pending_comp_comparison_stamp);
+
+            // PendingComponentReleaseData
+            if (std::equal(noReleaseData.begin(), noReleaseData.end(),
+                           compEntry.pending_comp_release_date))
+            {
+                compData["PendingComponentReleaseDate"] = "";
+            }
+            else
+            {
+                std::string pendingComponentReleaseDate(
+                    reinterpret_cast<const char*>(
+                        compEntry.pending_comp_release_date),
+                    sizeof(compEntry.pending_comp_release_date));
+                compData["PendingComponentReleaseDate"] =
+                    pendingComponentReleaseDate;
+            }
+
+            // ComponentActivationMethods
+            ordered_json componentActivationMethods;
+            if (compEntry.comp_activation_methods.bits.bit0)
+            {
+                componentActivationMethods.push_back("Automatic");
+            }
+            if (compEntry.comp_activation_methods.bits.bit1)
+            {
+                componentActivationMethods.push_back("Self-Contained");
+            }
+            if (compEntry.comp_activation_methods.bits.bit2)
+            {
+                componentActivationMethods.push_back("Medium-specific reset");
+            }
+            if (compEntry.comp_activation_methods.bits.bit3)
+            {
+                componentActivationMethods.push_back("System reboot");
+            }
+            if (compEntry.comp_activation_methods.bits.bit4)
+            {
+                componentActivationMethods.push_back("DC power cycle");
+            }
+            if (compEntry.comp_activation_methods.bits.bit5)
+            {
+                componentActivationMethods.push_back("AC power cycle");
+            }
+            compData["ComponentActivationMethods"] = componentActivationMethods;
+
+            // CapabilitiesDuringUpdate
+            ordered_json compCapabilitiesDuringUpdate;
+            if (compEntry.capabilities_during_update.bits.bit0)
+            {
+                compCapabilitiesDuringUpdate
+                    ["Firmware Device apply state functionality"] =
+                        "Firmware Device performs an auto-apply during transfer "
+                        "phase and apply step will be completed immediately.";
+            }
+            else
+            {
+                compCapabilitiesDuringUpdate
+                    ["Firmware Device apply state functionality"] =
+                        " Firmware Device will execute an operation during the APPLY "
+                        "state which will include migrating the new component image "
+                        "to its final non-volatile storage destination.";
+            }
+            compData["CapabilitiesDuringUpdate"] = compCapabilitiesDuringUpdate;
+
+            compData["ActiveComponentVersionString"] =
+                pldm::utils::toString(activeCompVerStr);
+            compData["PendingComponentVersionString"] =
+                pldm::utils::toString(pendingCompVerStr);
+
+            compParamPtr += sizeof(pldm_component_parameter_entry) +
+                            activeCompVerStr.length + pendingCompVerStr.length;
+            compParamTableLen -=
+                sizeof(pldm_component_parameter_entry) +
+                activeCompVerStr.length + pendingCompVerStr.length;
+            compDataEntries.push_back(compData);
+        }
+        data["ComponentParameterEntries"] = compDataEntries;
 
         pldmtool::helper::DisplayInJson(data);
     }

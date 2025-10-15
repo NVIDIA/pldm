@@ -4,7 +4,6 @@
 #include "xyz/openbmc_project/Common/error.hpp"
 
 #include <libpldm/firmware_update.h>
-#include <libpldm/firmware_update.h>
 #include <libpldm/transport.h>
 #include <libpldm/transport/af-mctp.h>
 #include <libpldm/transport/mctp-demux.h>

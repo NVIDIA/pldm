@@ -683,8 +683,8 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
-                                          &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg,
+                                          &responseMsg, &responseLen);
     if (rc)
     {
         error(
@@ -814,8 +814,8 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamIdentifiers(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
-                                          &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg,
+                                          &responseMsg, &responseLen);
     if (rc)
     {
         error(
@@ -1016,8 +1016,8 @@ sdbusplus::async::task<int> InventoryManager::getDownstreamFirmwareParameters(
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
 
-    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg, &responseMsg,
-                                          &responseLen);
+    rc = co_await sendRecvPldmMsgOverMctp(handler, eid, requestMsg,
+                                          &responseMsg, &responseLen);
     if (rc)
     {
         error(

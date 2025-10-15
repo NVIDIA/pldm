@@ -696,8 +696,8 @@ std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
     return nullptr;
 }
 
-std::shared_ptr<utils::SensorEventInfo>
-    Terminus::getSensorEventInfo(SensorID id)
+std::shared_ptr<utils::SensorEventInfo> Terminus::getSensorEventInfo(
+    SensorID id)
 {
     auto it = sensorEventInfoOverwriteTbl.find(id);
     if (it != sensorEventInfoOverwriteTbl.end())

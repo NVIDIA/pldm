@@ -133,12 +133,10 @@ class StateSensor
     void createLogEntry(std::string& messageID, std::string& arg1,
                         std::string& arg2, std::string& resolution,
                         Level level = Level::Informational);
-    void createLogEntryAdditionalOEMArgs(std::string& messageID,
-                                         std::string& arg1, std::string& arg2,
-                                         std::string& resolution,
-                                         std::string& eventId,
-                                         std::string& impactedComponent,
-                                         Level level = Level::Informational);
+    void createLogEntryAdditionalOEMArgs(
+        std::string& messageID, std::string& arg1, std::string& arg2,
+        std::string& resolution, std::string& eventId,
+        std::string& impactedComponent, Level level = Level::Informational);
 
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to
      */

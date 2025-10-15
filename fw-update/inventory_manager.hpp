@@ -143,7 +143,9 @@ class InventoryManager
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
-        descriptorMap(descriptorMap), downstreamDescriptorMap(downstreamDescriptorMap), componentInfoMap(componentInfoMap),
+        descriptorMap(descriptorMap),
+        downstreamDescriptorMap(downstreamDescriptorMap),
+        componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
     {}
 
@@ -310,7 +312,7 @@ class InventoryManager
         dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
-        /** @brief Handler for QueryDownstreamDevices command response
+    /** @brief Handler for QueryDownstreamDevices command response
      *
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] response - PLDM response message
