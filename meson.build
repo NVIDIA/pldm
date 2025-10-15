@@ -18,10 +18,6 @@ project(
 # project uses the same compiler, we can safely ignmore these info notes.
 add_project_arguments('-Wno-psabi', language: 'cpp')
 
-# Disable subobject-linkage warning for coroutine frames with lambda expressions
-# This warning occurs when using lambda expressions with stdexec::then() in coroutines
-add_project_arguments('-Wno-subobject-linkage', language: 'cpp')
-
 # Disable FORTIFY_SOURCE when compiling with no optimization
 if (get_option('optimization') == '0')
     add_project_arguments('-U_FORTIFY_SOURCE', language: 'cpp')
@@ -45,6 +41,12 @@ package_localstatedir = join_paths(
 
 conf_data = configuration_data()
 cpp = meson.get_compiler('cpp')
+
+# Disable subobject-linkage warning for coroutine frames with lambda expressions
+# This warning occurs when using lambda expressions with stdexec::then() in coroutines
+if cpp.has_argument('-Wno-subobject-linkage')
+    add_project_arguments('-Wno-subobject-linkage', language: 'cpp')
+endif
 
 # Enable POSIX poll APIs in libpldm
 if cpp.has_header('poll.h')
