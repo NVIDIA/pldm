@@ -61,9 +61,9 @@ TEST(Manager, SingleMatchForECSKU)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
@@ -77,7 +77,7 @@ TEST(Manager, SingleMatchForECSKU)
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
     Manager manager(busMock, deviceInventoryInfo, descriptorMap);
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
+    EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKU)
@@ -91,9 +91,9 @@ TEST(Manager, SingleMatchForAPSKU)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
@@ -105,7 +105,7 @@ TEST(Manager, SingleMatchForAPSKU)
     Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
+    EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
@@ -119,9 +119,9 @@ TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {objPath}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
@@ -135,7 +135,7 @@ TEST(Manager, SingleMatchForAPSKUwithUpdateSecond)
     Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
+    EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, SingleMatchForAPSKUwithUpdate)
@@ -149,9 +149,9 @@ TEST(Manager, SingleMatchForAPSKUwithUpdate)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {objPath}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
@@ -163,7 +163,7 @@ TEST(Manager, SingleMatchForAPSKUwithUpdate)
     Manager manager(busMock, deviceInventoryInfo, descriptorMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
+    EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, MultipleMatch)
@@ -183,8 +183,8 @@ TEST(Manager, MultipleMatch)
           {{objPath2,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid1 = 1;
-    const EID eid2 = 1;
+    const eid eid1 = 1;
+    const eid eid2 = 1;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
@@ -220,9 +220,9 @@ TEST(Manager, MultiPropertyMatch)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}}};
 
@@ -235,7 +235,7 @@ TEST(Manager, MultiPropertyMatch)
         {uuid,
          {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice",
            {{"Address", uint32_t(0)}, {"Bus", uint32_t(16)}}}}}};
-    EXPECT_EQ(manager.createEntry(eid, uuid, mctpInterfaces), objPath);
+    EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
 }
 
 TEST(Manager, NoMatch)
@@ -249,7 +249,7 @@ TEST(Manager, NoMatch)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid1 = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
@@ -282,9 +282,9 @@ TEST(Manager, MultiPropertyNoMatch)
           {{objPath,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
-    const EID eid = 1;
+    const eid eid1 = 1;
     const DescriptorMap descriptorMap{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}}};
 
@@ -298,5 +298,5 @@ TEST(Manager, MultiPropertyNoMatch)
         {uuid,
          {{"xyz.openbmc_project.Inventory.Decorator.I2CDevice",
            {{"Address", uint32_t(1)}, {"Bus", uint32_t(17)}}}}}};
-    EXPECT_FALSE(manager.createEntry(eid, uuid, mctpInterfaces).has_value());
+    EXPECT_FALSE(manager.createEntry(eid1, uuid, mctpInterfaces).has_value());
 }

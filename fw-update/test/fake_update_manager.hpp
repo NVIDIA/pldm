@@ -35,6 +35,15 @@ software::Activation::Activations resultPerformSecurityChecksOnComplete =
     software::Activation::Activations::NotReady;
 bool securityChecksStatus = true;
 
+} // namespace testing
+
+// This macro replaces UpdateManager with FakeUpdateManager
+// It must be defined before activation.hpp is included
+#define UpdateManager FakeUpdateManager
+
+namespace pldm::fw_update
+{
+
 class FakeUpdateManager
 {
   public:
@@ -43,7 +52,7 @@ class FakeUpdateManager
 
     software::Activation::Activations activatePackage()
     {
-        return updateManagerActivatePackageResult;
+        return testing::updateManagerActivatePackageResult;
     }
 
     void clearActivationInfo()
@@ -75,22 +84,21 @@ class FakeUpdateManager
             onError)
     {
         onComplete = this->performSecurityChecksOnComplete;
-        onComplete(securityChecksStatus);
+        onComplete(testing::securityChecksStatus);
     }
     std::function<void(bool)> performSecurityChecksOnComplete =
         [](bool result) {
             if (result)
             {
-                resultPerformSecurityChecksOnComplete =
+                testing::resultPerformSecurityChecksOnComplete =
                     software::Activation::Activations::Active;
             }
             else
             {
-                resultPerformSecurityChecksOnComplete =
+                testing::resultPerformSecurityChecksOnComplete =
                     software::Activation::Activations::Failed;
             }
         };
 };
-} // namespace testing
 
-#define UpdateManager testing::FakeUpdateManager
+} // namespace pldm::fw_update

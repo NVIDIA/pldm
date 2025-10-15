@@ -3,6 +3,7 @@ test_src = declare_dependency(
         '../mctp_endpoint_discovery.cpp',
         '../../common/utils.cpp',
         '../../common/transport.cpp',
+        '../../fw-update/activation.cpp',
         '../../fw-update/inventory_manager.cpp',
         '../../fw-update/package_parser.cpp',
         '../../fw-update/component_updater.cpp',

@@ -287,16 +287,18 @@ class PackageParserMultipleDescSameType : public testing::Test
         0x64, 0x00, 0xFE, 0xFF, 0xFF, 0xFF, 0x02, 0x00, 0x00, 0x00, 0xB6, 0x00,
         0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x0E, 0x56, 0x65, 0x72, 0x73,
         0x69, 0x6F, 0x6E, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x35, 0x11, 0x16,
-        0x1E, 0x1B};
-    uintmax_t pkgSize = 184;
+        0x1E, 0x1B, 0xFF, 0xFF};
+    static constexpr uintmax_t pkgHeaderSize = 182;
+    static constexpr uintmax_t pkgSize = 184;
     std::string_view pkgVersion{"VersionString1"};
     std::unique_ptr<PackageParser> parser = parsePkgHeader(fwPkgHdr);
 };
 
 TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
 {
-    EXPECT_EQ(typeid(*parser).name(), typeid(PackageParserV1).name());
-    EXPECT_EQ(parser->pkgHeaderSize, fwPkgHdr.size());
+    const auto& parserRef = *parser;
+    EXPECT_EQ(typeid(parserRef).name(), typeid(PackageParserV1).name());
+    EXPECT_EQ(parser->pkgHeaderSize, pkgHeaderSize);
     EXPECT_EQ(parser->pkgVersion, pkgVersion);
     parser->parse(fwPkgHdr, pkgSize);
     FirmwareDeviceIDRecords outfwDeviceIDRecords =
@@ -314,9 +316,9 @@ TEST_F(PackageParserMultipleDescSameType, DescriptorsMatch)
           {PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x10, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
-           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x56})},
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x12, 0x34})},
           {PLDM_FWUP_VENDOR_DEFINED,
-           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x12, 0x34})}},
+           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x56})}},
          {}}};
     EXPECT_EQ(outfwDeviceIDRecords, fwDeviceIDRecords);
 }
@@ -339,9 +341,9 @@ TEST_F(PackageParserMultipleDescSameType, DescriptorsNoMatch)
           {PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x47, 0x16, 0x10, 0x00}},
           {PLDM_FWUP_VENDOR_DEFINED,
-           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x57})},
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x12, 0x34})},
           {PLDM_FWUP_VENDOR_DEFINED,
-           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x12, 0x34})}},
+           std::make_tuple("SKU", std::vector<uint8_t>{0x12, 0x34, 0x57})}},
          {}}};
     EXPECT_NE(outfwDeviceIDRecords, incorrectfwDeviceIDRecords);
 }

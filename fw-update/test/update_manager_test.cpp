@@ -517,7 +517,7 @@ TEST_F(UpdateManagerTest, resetActivationBlocksTransition)
 
 TEST_F(UpdateManagerTest, getComponentName)
 {
-    EID eid = 0;
+    eid eid1 = 0;
     const std::string componentName{"Component1"};
 
     const std::string activeCompVersion1{"Comp1v2.0"};
@@ -529,14 +529,14 @@ TEST_F(UpdateManagerTest, getComponentName)
     constexpr uint16_t compIdentifier2 = 301;
     constexpr uint8_t compClassificationIndex2 = 30;
     ComponentInfoMap componentInfoMap2{
-        {eid,
+        {eid1,
          {{std::make_pair(compClassification1, compIdentifier1),
            std::make_tuple(compClassificationIndex1, activeCompVersion1)},
           {std::make_pair(compClassification2, compIdentifier2),
            std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
 
     const DescriptorMap descriptorMap2{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
           {PLDM_FWUP_UUID,
@@ -547,7 +547,7 @@ TEST_F(UpdateManagerTest, getComponentName)
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
     ComponentNameMap componentNameMap2{
-        {eid, {{compIdentifier1, componentName}}}};
+        {eid1, {{compIdentifier1, componentName}}}};
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap2, componentNameMap2, true);
@@ -566,13 +566,13 @@ TEST_F(UpdateManagerTest, getComponentName)
     updateManager.processPackage("./test_pkg");
 
     std::string componentNameResult =
-        updateManager.getComponentName(eid, fwDeviceIDRecord, componentIndex);
+        updateManager.getComponentName(eid1, fwDeviceIDRecord, componentIndex);
     EXPECT_EQ(componentNameResult, componentName);
 }
 
 TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
 {
-    EID eid = 0;
+    eid eid1 = 0;
     const std::string componentName{"Component1"};
 
     const std::string activeCompVersion1{"Comp1v2.0"};
@@ -584,14 +584,14 @@ TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
     constexpr uint16_t compIdentifier2 = 301;
     constexpr uint8_t compClassificationIndex2 = 30;
     ComponentInfoMap componentInfoMap2{
-        {eid,
+        {eid1,
          {{std::make_pair(compClassification1, compIdentifier1),
            std::make_tuple(compClassificationIndex1, activeCompVersion1)},
           {std::make_pair(compClassification2, compIdentifier2),
            std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
 
     const DescriptorMap descriptorMap2{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
           {PLDM_FWUP_UUID,
@@ -602,7 +602,7 @@ TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
            std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
 
     ComponentNameMap componentNameMap2{
-        {eid, {{compIdentifier1, componentName}}}};
+        {eid1, {{compIdentifier1, componentName}}}};
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap2, componentNameMap2, true);
@@ -621,13 +621,13 @@ TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
     updateManager.processPackage("./test_pkg");
 
     std::string componentNameResult =
-        updateManager.getComponentName(eid, fwDeviceIDRecord, componentIndex);
+        updateManager.getComponentName(eid1, fwDeviceIDRecord, componentIndex);
     EXPECT_EQ(componentNameResult, "");
 }
 
 TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
 {
-    EID eid = 0;
+    eid eid1 = 0;
     const std::string componentName{"Component1"};
 
     const std::string activeCompVersion1{"Comp1v2.0"};
@@ -639,14 +639,14 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
     constexpr uint16_t compIdentifier2 = 301;
     constexpr uint8_t compClassificationIndex2 = 30;
     ComponentInfoMap componentInfoMap2{
-        {eid,
+        {eid1,
          {{std::make_pair(compClassification1, compIdentifier1),
            std::make_tuple(compClassificationIndex1, activeCompVersion1)},
           {std::make_pair(compClassification2, compIdentifier2),
            std::make_tuple(compClassificationIndex2, activeCompVersion2)}}}};
 
     const DescriptorMap descriptorMap2{
-        {eid,
+        {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
            std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}},
           {PLDM_FWUP_UUID,
@@ -673,7 +673,7 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
     updateManager.processPackage("./test_pkg");
 
     EXPECT_NO_THROW({
-        updateManager.getComponentName(eid, fwDeviceIDRecord, componentIndex);
+        updateManager.getComponentName(eid1, fwDeviceIDRecord, componentIndex);
     });
 }
 

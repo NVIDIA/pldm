@@ -228,6 +228,15 @@ class InventoryManager
      */
     exec::task<int> getPLDMTypes(mctp_eid_t eid, uint64_t& supportedTypes);
 
+    /** @brief Handler for QueryDownstreamIdentifiers command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
      * message handlers */
@@ -319,15 +328,6 @@ class InventoryManager
      *  @param[in] respMsgLen - Response message length
      */
     virtual sdbusplus::async::task<int> parseQueryDownstreamDevicesResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
-
-    /** @brief Handler for QueryDownstreamIdentifiers command response
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief Handler for GetDownstreamFirmwareParameters command response

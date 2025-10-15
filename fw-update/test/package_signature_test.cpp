@@ -1542,26 +1542,28 @@ class PackageSignatureTest : public testing::Test
             reinterpret_cast<const pldm_package_header_information*>(
                 packageHeader.data());
 
-        auto pkgHeaderInfoSize = sizeof(pldm_package_header_information) +
-                                 pkgHeaderInfo->package_version_string_length;
+        auto pkgHeaderSize = pkgHeaderInfo->package_header_size;
 
         packageHeader.clear();
 
-        packageHeader.resize(pkgHeaderInfoSize);
+        packageHeader.resize(pkgHeaderSize);
 
         package.seekg(0);
 
         package.read(reinterpret_cast<char*>(packageHeader.data()),
-                     pkgHeaderInfoSize);
+                     pkgHeaderSize);
 
         auto parser = parsePkgHeader(packageHeader);
+        if (!parser)
+        {
+            throw std::runtime_error("Failed to parse package header");
+        }
 
+        std::vector<uint8_t> fullPackage(packageSize);
         package.seekg(0);
-        packageHeader.resize(parser->pkgHeaderSize);
-        package.read(reinterpret_cast<char*>(packageHeader.data()),
-                     parser->pkgHeaderSize);
+        package.read(reinterpret_cast<char*>(fullPackage.data()), packageSize);
 
-        parser->parse(packageHeader, packageSize);
+        parser->parse(fullPackage, packageSize);
 
         return parser->calculatePackageSize();
     }

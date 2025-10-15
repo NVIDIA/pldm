@@ -15,7 +15,14 @@
  * limitations under the License.
  */
 #include "common/test/mocked_utils.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
 #define private public
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "fw-update/firmware_inventory.hpp"
 
 #include <sdbusplus/bus.hpp>
@@ -93,7 +100,7 @@ TEST(Manager, SingleMatch)
     sdbusplus::SdBusMock sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
-    EID eid = 1;
+    eid eid = 1;
     const std::string activeCompVersion1{"Comp1v2.0"};
     const std::string activeCompVersion2{"Comp2v3.0"};
     constexpr uint16_t compClassification1 = 10;
@@ -146,7 +153,7 @@ TEST(Manager, SingleMatchTwoComponents)
     sdbusplus::SdBusMock sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
-    EID eid = 1;
+    eid eid = 1;
     const std::string activeCompVersion1{"Comp1v2.0"};
     const std::string activeCompVersion2{"Comp2v3.0"};
     constexpr uint16_t compClassification1 = 10;
@@ -192,8 +199,8 @@ TEST(Manager, MulipleMatch)
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     // ComponentInfoMap
-    EID eid1 = 1;
-    EID eid2 = 2;
+    eid eid1 = 1;
+    eid eid2 = 2;
     const std::string activeCompVersion1{"Comp1v2.0"};
     const std::string activeCompVersion2{"Comp2v3.0"};
     const std::string activeCompVersion3{"Comp2v4.0"};
@@ -302,7 +309,7 @@ TEST(Manager, test_private_method_updateSwId)
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
 
-    EID eid = 1;
+    eid eid = 1;
     const std::string activeCompVersion1{"Comp1v2.0"};
     const std::string activeCompVersion2{"Comp2v3.0"};
     constexpr uint16_t compClassification1 = 10;

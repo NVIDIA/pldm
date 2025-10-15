@@ -19,7 +19,6 @@
 #include "requester/test/mock_request.hpp"
 #include "test/test_instance_id.hpp"
 
-#include <stddef.h>
 #include <systemd/sd-bus.h>
 #include <systemd/sd-event.h>
 
@@ -28,6 +27,8 @@
 #include <sdbusplus/message.hpp>
 #include <sdbusplus/sdbus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
+
+#include <cstddef>
 
 #include <gtest/gtest.h>
 
@@ -76,7 +77,8 @@ TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
                                                       updatePolicy.targets());
 
     std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
-                 uint64_t, double, std::string, std::vector<uint8_t>>
+                 uint64_t, double, std::string, std::vector<uint8_t>,
+                 std::vector<uint64_t>>
         value{"test"};
 
     pldm::dbus::PropertyMap properties;
@@ -85,7 +87,7 @@ TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
         std::pair<std::string,
                   std::variant<bool, uint8_t, int16_t, uint16_t, int32_t,
                                uint32_t, int64_t, uint64_t, double, std::string,
-                               std::vector<uint8_t>>>(
+                               std::vector<uint8_t>, std::vector<uint64_t>>>(
             "/xyz/openbmc_project/pldm", value));
 
     EXPECT_NO_THROW({

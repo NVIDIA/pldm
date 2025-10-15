@@ -97,8 +97,8 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
 
 TEST_F(PackageAssociationEmptyTargetFiltering, MatchingDescriptors)
 {
-    constexpr EID eid1 = 13;
-    constexpr EID eid2 = 24;
+    constexpr eid eid1 = 13;
+    constexpr eid eid2 = 24;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_UUID,
@@ -164,9 +164,9 @@ TEST_F(PackageAssociationEmptyTargetFiltering, MatchingDescriptors)
 TEST_F(PackageAssociationEmptyTargetFiltering,
        MatchingDescriptorsMultipleDevices)
 {
-    constexpr EID eid1 = 13;
-    constexpr EID eid2 = 14;
-    constexpr EID eid3 = 24;
+    constexpr eid eid1 = 13;
+    constexpr eid eid2 = 14;
+    constexpr eid eid3 = 24;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_UUID,
@@ -287,8 +287,8 @@ class PackageAssociationTargetFiltering : public testing::Test
 
     // Discovered two endpoints that match with the Device 1 & Device2
     // descriptors.
-    const EID eid1 = 1;
-    const EID eid2 = 2;
+    const eid eid1 = 1;
+    const eid eid2 = 2;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_IANA_ENTERPRISE_ID,
@@ -443,8 +443,8 @@ class PackageAssociationMultipleDescSameType : public testing::Test
 
 TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsMatch)
 {
-    constexpr EID eid1 = 13;
-    constexpr EID eid2 = 24;
+    constexpr eid eid1 = 13;
+    constexpr eid eid2 = 24;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_UUID,
@@ -513,8 +513,8 @@ TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsMatch)
 
 TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsNoMatch)
 {
-    constexpr EID eid1 = 13;
-    constexpr EID eid2 = 24;
+    constexpr eid eid1 = 13;
+    constexpr eid eid2 = 24;
     const DescriptorMap descriptorMap{
         {eid1,
          {{PLDM_FWUP_UUID,

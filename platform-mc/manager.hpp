@@ -267,12 +267,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief List of discovered termini */
     std::map<tid_t, std::shared_ptr<Terminus>> termini{};
 
-    fw_update::Manager& fwUpdateManager;
+    [[maybe_unused]] fw_update::Manager& fwUpdateManager;
     TerminusManager terminusManager;
     PlatformManager platformManager;
     SensorManager sensorManager;
     EventManager eventManager;
-    bool verbose;
+    [[maybe_unused]] bool verbose;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -248,6 +248,33 @@ struct MatchEntryInfo
     }
 
     /**
+     * @brief Helper template to compare two values
+     */
+    template <typename T1, typename T2>
+    static bool compareValues(const T1& val1, const T2& val2)
+    {
+        if constexpr (std::is_same_v<T1, T2>)
+        {
+            if constexpr (std::is_arithmetic_v<T1>)
+            {
+                return static_cast<int64_t>(val1) == static_cast<int64_t>(val2);
+            }
+            else
+            {
+                return val1 == val2;
+            }
+        }
+        else if constexpr (std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2>)
+        {
+            return static_cast<int64_t>(val1) == static_cast<int64_t>(val2);
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    /**
      * @brief Method to compare individual property from json are matching with
      * D-Bus property.
      *
@@ -277,27 +304,10 @@ struct MatchEntryInfo
 
         bool matches = false;
         std::visit(
-            [&](const auto& expected) {
-                using ExpectedType = std::decay_t<decltype(expected)>;
+            [&matches, &propIt](const auto& expected) {
                 std::visit(
-                    [&](const auto& actual) {
-                        using ActualType = std::decay_t<decltype(actual)>;
-                        if constexpr (std::is_arithmetic_v<ExpectedType> &&
-                                      std::is_arithmetic_v<ActualType>)
-                        {
-                            // Convert both to int64_t for comparison
-                            matches = static_cast<int64_t>(expected) ==
-                                      static_cast<int64_t>(actual);
-                        }
-                        else if constexpr (std::is_same_v<ExpectedType,
-                                                          ActualType>)
-                        {
-                            matches = expected == actual;
-                        }
-                        else
-                        {
-                            matches = false;
-                        }
+                    [&matches, &expected](const auto& actual) {
+                        matches = compareValues(expected, actual);
                     },
                     propIt->second);
             },

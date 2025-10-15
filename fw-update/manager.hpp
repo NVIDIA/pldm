@@ -227,7 +227,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] mctpInfo - information of the target endpoint
      *  @param[in] availability - new availability status
      */
-    void updateMctpEndpointAvailability(const MctpInfo&, Availability)
+    void updateMctpEndpointAvailability(const MctpInfo&, Availability) override
     {
         return;
     }
@@ -265,7 +265,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] addr - MCTP address of terminus
      *  @param[in] terminiNames - MCTP terminus name
      */
-    std::optional<mctp_eid_t> getActiveEidByName(const std::string&)
+    std::optional<mctp_eid_t> getActiveEidByName(const std::string&) override
     {
         return std::nullopt;
     }

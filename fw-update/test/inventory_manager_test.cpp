@@ -143,8 +143,10 @@ TEST_F(InventoryManagerTest, handleQueryDownstreamIdentifierResponse)
             0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0xa0, 0x15};
     auto responseMsg = new (queryDownstreamIdentifiersResp.data()) pldm_msg;
 
-    inventoryManager.queryDownstreamIdentifiers(eid, responseMsg,
-                                                respPayloadLength);
+    [[maybe_unused]] auto co =
+        inventoryManager.parseQueryDownstreamIdentifiersResponse(
+            eid, responseMsg, respPayloadLength);
+    stdexec::sync_wait(std::move(co));
 
     DownstreamDeviceInfo downstreamDevices = {
         {0,
@@ -167,8 +169,10 @@ TEST_F(InventoryManagerTest, handleQueryDownstreamIdentifierResponseErrorCC)
     const auto responseMsg =
         new (const_cast<unsigned char*>(queryDownstreamIdentifiersResp.data()))
             pldm_msg;
-    inventoryManager.queryDownstreamIdentifiers(1, responseMsg,
-                                                respPayloadLength);
+    [[maybe_unused]] auto co =
+        inventoryManager.parseQueryDownstreamIdentifiersResponse(
+            1, responseMsg, respPayloadLength);
+    stdexec::sync_wait(std::move(co));
 
     ASSERT_EQ(outDownstreamDescriptorMap.size(), 0);
 }
@@ -218,8 +222,6 @@ TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
     EXPECT_EQ(outComponentInfoMap.size(), componentInfoMap1.size());
     EXPECT_EQ(outComponentInfoMap, componentInfoMap1);
 
-    // constexpr uint16_t compCount = 1;
-    constexpr std::string_view activeCompImageSetVersion{"DeviceVer2.0"};
     const std::string activeCompVersion3{"Comp3v4.0"};
     constexpr uint16_t compClassification3 = 2;
     constexpr uint16_t compIdentifier3 = 302;

@@ -17,7 +17,14 @@
 #include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
 #define private public
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "fw-update/component_updater.hpp"
 #include "fw-update/device_updater.hpp"
 #include "fw-update/package_parser.hpp"

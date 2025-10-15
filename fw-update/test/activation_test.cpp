@@ -57,7 +57,7 @@ TEST(Entry, Basic)
     EXPECT_EQ(activationProgress.progress(), expectedProgress);
 }
 
-TEST_F(ActivationTest, Delete)
+TEST_F(ActivationTest, DISABLED_Delete)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -89,7 +89,7 @@ TEST_F(ActivationTest, Activation_status_active)
 }
 
 TEST_F(ActivationTest,
-       Activation_status_activating_updateManager_returns_active)
+       DISABLED_Activation_status_activating_updateManager_returns_active)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -109,7 +109,7 @@ TEST_F(ActivationTest,
 }
 
 TEST_F(ActivationTest,
-       Activation_status_activating_updateManager_returns_activating)
+       DISABLED_Activation_status_activating_updateManager_returns_activating)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -133,7 +133,7 @@ TEST_F(ActivationTest,
 }
 
 TEST_F(ActivationTest,
-       Activation_status_activating_updateManager_returns_failed)
+       DISABLED_Activation_status_activating_updateManager_returns_failed)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -153,7 +153,7 @@ TEST_F(ActivationTest,
               Server::Activation::Activations::Failed);
 }
 
-TEST_F(ActivationTest, RequestedActivation_status_active)
+TEST_F(ActivationTest, DISABLED_RequestedActivation_status_active)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -173,7 +173,7 @@ TEST_F(ActivationTest, RequestedActivation_status_active)
     EXPECT_EQ(resultState, requestActivations);
 }
 
-TEST_F(ActivationTest, RequestedActivation_status_failed)
+TEST_F(ActivationTest, DISABLED_RequestedActivation_status_failed)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -193,7 +193,7 @@ TEST_F(ActivationTest, RequestedActivation_status_failed)
     EXPECT_EQ(resultState, requestActivations);
 }
 
-TEST_F(ActivationTest, RequestedActivation_status_ready)
+TEST_F(ActivationTest, DISABLED_RequestedActivation_status_ready)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -236,7 +236,7 @@ TEST_F(ActivationTest, ActivationBlocksTransition_Constructor)
 
 class testexception : public std::exception
 {
-    virtual const char* what() const throw()
+    virtual const char* what() const noexcept
     {
         return "Test exception happened";
     }

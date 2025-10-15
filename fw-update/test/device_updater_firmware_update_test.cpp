@@ -17,7 +17,14 @@
 #include "libpldm/firmware_update.h"
 
 #include "common/utils.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
 #define private public
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "fw-update/device_updater.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
@@ -28,6 +35,8 @@
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <sdeventplus/test/sdevent.hpp>
+
+#include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -66,8 +75,8 @@ class DeviceUpdaterTestWithMockedFirmwareUpdateFunctions : public testing::Test
                           {12, "ComponentName3"},
                           {66666, "ComponentName4"}};
 
-        _mockedFirmwareUpdateFunction.reset(
-            new ::testing::NiceMock<MockedFirmwareUpdateFunction>());
+        _mockedFirmwareUpdateFunction = std::make_unique<
+            ::testing::NiceMock<MockedFirmwareUpdateFunction>>();
     }
 
     ~DeviceUpdaterTestWithMockedFirmwareUpdateFunctions()
