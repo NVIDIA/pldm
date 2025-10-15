@@ -1,6 +1,10 @@
 pldmd_inc = include_directories('../')
 test_src = declare_dependency(include_directories: pldmd_inc)
 
+if get_option('use_fuzz').enabled()
+    subdir('fuzz')
+endif
+
 tests = ['pldmd_registration_test']
 
 foreach t : tests

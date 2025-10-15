@@ -499,7 +499,3 @@ if get_option('tests').enabled()
         subdir('mockup-responder/test')
     endif
 endif
-
-if get_option('use_fuzz').enabled()
-    subdir('test/fuzz')
-endif
