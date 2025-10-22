@@ -38,7 +38,8 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false)
+                      componentInfoMap, componentNameMap, false, nullptr,
+                      firmwareInventoryInfo)
     {}
 
     sdeventplus::Event event;
@@ -47,6 +48,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
+    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     // Package to firmware device associations, the FD identifer records via
@@ -122,8 +124,10 @@ TEST_F(PackageAssociationEmptyTargetFiltering, MatchingDescriptors)
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};
@@ -199,8 +203,10 @@ TEST_F(PackageAssociationEmptyTargetFiltering,
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{
@@ -259,13 +265,15 @@ class PackageAssociationTargetFiltering : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false)
+                      componentInfoMap, componentNameMap, false, nullptr,
+                      firmwareInventoryInfo)
     {}
 
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
     const ComponentInfoMap componentInfoMap;
+    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     // Device1 - ApplicableComponents{compIdentifer1, compIdentifer2}
@@ -327,8 +335,10 @@ TEST_F(PackageAssociationTargetFiltering, MatchingTwoComponents)
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
@@ -361,8 +371,10 @@ TEST_F(PackageAssociationTargetFiltering, MatchingOneComponent)
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     const FirmwareDeviceIDRecords expectFwDeviceIDRecords{
@@ -389,7 +401,8 @@ class PackageAssociationMultipleDescSameType : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false)
+                      componentInfoMap, componentNameMap, false, nullptr,
+                      firmwareInventoryInfo)
     {}
 
     sdeventplus::Event event;
@@ -398,6 +411,7 @@ class PackageAssociationMultipleDescSameType : public testing::Test
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
+    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     const FirmwareDeviceIDRecords inFwDeviceIDRecords{
@@ -470,8 +484,10 @@ TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsMatch)
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};
@@ -544,8 +560,10 @@ TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsNoMatch)
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
-        inFwDeviceIDRecords, descriptorMap, compImageInfos, componentNameMap,
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
     DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};

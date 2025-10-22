@@ -120,6 +120,75 @@ std::optional<sdbusplus::message::object_path> Manager::createEntry(
     return deviceObjPath;
 }
 
+std::optional<sdbusplus::message::object_path> Manager::updateEntry(
+    pldm::eid eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
+{
+    if (auto deviceEntry = deviceEntryMap.find(uuid);
+        deviceEntry != deviceEntryMap.end())
+    {
+        DeviceInfo deviceInfo;
+        if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
+            deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                    deviceInfo) &&
+            descriptorMap.contains(eid))
+        {
+            auto descSearch = descriptorMap.find(eid);
+            std::string ecsku{};
+            std::string apsku{};
+            for (const auto& [descType, descValue] : descSearch->second)
+            {
+                if (descType == PLDM_FWUP_VENDOR_DEFINED)
+                {
+                    const auto& [vendorDescTitle, vendorDescInfo] =
+                        std::get<VendorDefinedDescriptorInfo>(descValue);
+                    if (vendorDescTitle == "ECSKU" &&
+                        vendorDescInfo.size() == 4)
+                    {
+                        ecsku =
+                            fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                                        vendorDescInfo[0], vendorDescInfo[1],
+                                        vendorDescInfo[2], vendorDescInfo[3]);
+                    }
+                    if (vendorDescTitle == "APSKU" &&
+                        vendorDescInfo.size() == 4)
+                    {
+                        apsku =
+                            fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                                        vendorDescInfo[0], vendorDescInfo[1],
+                                        vendorDescInfo[2], vendorDescInfo[3]);
+                    }
+                }
+            }
+
+            if (!ecsku.empty())
+            {
+                deviceEntry->second->sku(ecsku);
+            }
+
+            const auto& updateObjPath = std::get<UpdateDeviceInfo>(deviceInfo);
+            if (!apsku.empty() && !updateObjPath.empty())
+            {
+                updateSKU(updateObjPath, apsku);
+            }
+
+            const auto& objPath =
+                std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
+
+            lg2::info(
+                "Device inventory already exists for UUID={UUID}, updated SKU if needed",
+                "UUID", uuid);
+
+            return objPath;
+        }
+        return std::nullopt;
+    }
+
+    lg2::info(
+        "Device inventory not found for UUID={UUID} during refresh, skipping update",
+        "UUID", uuid);
+    return std::nullopt;
+}
+
 void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
 {
     if (objPath.empty())
@@ -148,8 +217,8 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
     propertySet.detach();
 
     skuLookup.emplace(objPath, sku);
-    updateSKUMatch.emplace_back(
-        bus,
+    updateSKUMatch.try_emplace(
+        objPath, bus,
         sdbusplus::bus::match::rules::interfacesAdded() +
             sdbusplus::bus::match::rules::argNpath(0, objPath),
         std::bind_front(&Manager::updateSKUOnMatch, this));

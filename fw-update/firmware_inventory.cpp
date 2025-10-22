@@ -141,6 +141,45 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
     }
 }
 
+void Manager::updateEntry(pldm::eid eid,
+                          [[maybe_unused]] const pldm::UUID& uuid,
+                          [[maybe_unused]] dbus::MctpInterfaces& mctpInterfaces)
+{
+    if (!componentInfoMap.contains(eid))
+    {
+        lg2::info(
+            "Skipping firmware inventory update: EID not found in component info map, EID={EID}",
+            "EID", eid);
+        return;
+    }
+
+    auto compInfoSearch = componentInfoMap.find(eid);
+    bool anyEntryUpdated = false;
+
+    for (const auto& [compKey, compInfo] : compInfoSearch->second)
+    {
+        auto key = std::make_pair(eid, compKey.second);
+        if (auto inventoryEntry = firmwareInventoryMap.find(key);
+            inventoryEntry != firmwareInventoryMap.end())
+        {
+            inventoryEntry->second->setVersion(std::get<1>(compInfo));
+
+            lg2::info(
+                "Updated firmware inventory: EID={EID}, component_id={ID}, version={VERSION}",
+                "EID", eid, "ID", compKey.second, "VERSION",
+                std::get<1>(compInfo));
+            anyEntryUpdated = true;
+        }
+    }
+
+    if (!anyEntryUpdated)
+    {
+        lg2::info(
+            "No firmware inventory entries found for EID={EID} during refresh, skipping update",
+            "EID", eid);
+    }
+}
+
 void Manager::updateFWVersion(pldm::eid eid)
 {
     if (auto compInfoSearch = componentInfoMap.find(eid);

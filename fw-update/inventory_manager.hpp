@@ -36,6 +36,8 @@ namespace fw_update
 
 using CreateInventoryCallBack =
     std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
+using UpdateInventoryCallBack =
+    std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(eid)>;
 using MctpEidMap =
     std::unordered_map<eid, std::tuple<UUID, MctpMedium, MctpBinding>>;
@@ -120,6 +122,8 @@ class InventoryManager
      *  @param[in] instanceIdDb - Managing instance ID for PLDM requests
      *  @param[in] createInventoryCallBack - Optional callback function to
      *                                       create device/firmware inventory
+     *  @param[in] updateInventoryCallBack - Optional callback function to
+     *                                       update device/firmware inventory
      *  @param[out] descriptorMap - Populate the firmware identifers for the
      *                              FDs managed by the BMC.
      *  @param[out] downstreamDescriptorMap - Populate the downstream
@@ -135,6 +139,7 @@ class InventoryManager
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
+        UpdateInventoryCallBack updateInventoryCallBack,
         DescriptorMap& descriptorMap,
         DownstreamDescriptorMap& downstreamDescriptorMap,
         ComponentInfoMap& componentInfoMap,
@@ -143,6 +148,7 @@ class InventoryManager
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
+        updateInventoryCallBack(updateInventoryCallBack),
         descriptorMap(descriptorMap),
         downstreamDescriptorMap(downstreamDescriptorMap),
         componentInfoMap(componentInfoMap),
@@ -236,6 +242,26 @@ class InventoryManager
      */
     virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
+    /** @brief Refresh PLDM T5 descriptors and component information
+     *
+     *  Performs full discovery flow (QueryDeviceIdentifiers and
+     *  GetFirmwareParameters) for the given EIDs to update descriptors,
+     *  component info, and device/firmware inventory. Used before firmware
+     *  update to ensure all device information is current.
+     *
+     *  @param[in] eids - List of MCTP endpoints to refresh
+     *  @param[in] mctpInterfaces - MCTP interface information for inventory
+     *  @param[in] compTargetList - Component target list to determine log
+     * severity
+     *  @param[in] hasTargetFiltering - Whether target filtering was requested
+     *  @return coroutine return_value - PLDM_SUCCESS if all queries succeed,
+     *                                   PLDM_ERROR otherwise
+     */
+    exec::task<int> refreshFirmwareInventory(
+        const std::vector<mctp_eid_t>& eids,
+        dbus::MctpInterfaces& mctpInterfaces,
+        const ComponentTargetList& compTargetList);
 
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
@@ -349,7 +375,8 @@ class InventoryManager
      */
     void logDiscoveryFailedMessage(
         const mctp_eid_t& eid, const std::string& messageError,
-        const std::string& resolution, dbus::MctpInterfaces mctpInterfaces);
+        const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
+        const std::string& logNamespace = "", bool overrideSeverity = false);
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
@@ -359,6 +386,9 @@ class InventoryManager
 
     /** @brief Optional callback function to create device/firmware inventory*/
     CreateInventoryCallBack createInventoryCallBack;
+
+    /** @brief Optional callback function to update device/firmware inventory*/
+    UpdateInventoryCallBack updateInventoryCallBack;
 
     /** @brief Device identifiers of the managed FDs */
     DescriptorMap& descriptorMap;

@@ -44,14 +44,45 @@ namespace fw_update
 
 namespace fs = std::filesystem;
 
+/** @brief Extract expected EIDs from firmware inventory configuration
+ *
+ *  @param[in] firmwareInventoryInfo - Firmware inventory configuration info
+ *  @return Set of expected EIDs from the configuration
+ */
+static std::vector<mctp_eid_t> getExpectedEids(
+    const FirmwareInventoryInfo& firmwareInventoryInfo)
+{
+    std::vector<mctp_eid_t> expectedEids;
+
+    for (const auto& [matchInfo, firmwareInfo] : firmwareInventoryInfo.infos)
+    {
+        const auto& [interface, propertyMap] = matchInfo;
+
+        auto eidIt = propertyMap.find("EID");
+        if (eidIt != propertyMap.end())
+        {
+            if (std::holds_alternative<uint8_t>(eidIt->second))
+            {
+                auto eid = std::get<uint8_t>(eidIt->second);
+                expectedEids.emplace_back(eid);
+            }
+        }
+    }
+    return expectedEids;
+}
+
 UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
-    ComponentNameMap& componentNameMap, bool fwDebug) :
+    ComponentNameMap& componentNameMap, bool fwDebug,
+    RefreshDescriptorsCallback refreshDescriptorsCallback,
+    const FirmwareInventoryInfo& firmwareInventoryInfo) :
     event(event), handler(handler), instanceIdDb(instanceIdDb),
     fwDebug(fwDebug), descriptorMap(descriptorMap),
     componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    refreshDescriptorsCallback(std::move(refreshDescriptorsCallback)),
+    firmwareInventoryInfo(firmwareInventoryInfo),
     updater(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
@@ -249,13 +280,16 @@ std::string UpdateManager::processStreamDefer(
     updateDeferHandler = std::make_unique<sdeventplus::source::Defer>(
         event, [this, &package, packageSize,
                 targets](sdeventplus::source::EventBase&) {
-            this->processStream(package, packageSize, targets);
+            // Start processStream coroutine in detached mode
+            stdexec::start_detached(
+                this->processStream(package, packageSize, targets),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
         });
 
     return objPath;
 }
 
-void UpdateManager::processStream(
+exec::task<void> UpdateManager::processStream(
     std::istream& package, uintmax_t packageSize,
     std::vector<sdbusplus::message::object_path> targets)
 {
@@ -267,7 +301,7 @@ void UpdateManager::processStream(
     {
         error("Package stream is not in a valid state");
         handleInvalidPackageError();
-        return;
+        co_return;
     }
 
     if (packageSize < sizeof(pldm_package_header_information))
@@ -277,7 +311,7 @@ void UpdateManager::processStream(
             "SIZE", packageSize, "PACKAGE_HEADER_INFO_SIZE",
             sizeof(pldm_package_header_information));
         handleInvalidPackageError();
-        return;
+        co_return;
     }
 
     auto* mmapStream = dynamic_cast<pldm::MmapStream*>(&package);
@@ -292,7 +326,7 @@ void UpdateManager::processStream(
         error("Invalid PLDM package header information");
         handleInvalidPackageHeaderError();
         parser.reset();
-        return;
+        co_return;
     }
 
     try
@@ -305,20 +339,41 @@ void UpdateManager::processStream(
         error("Firmware package checksum validation failed");
         handlePayloadChecksumError();
         parser.reset();
-        return;
+        co_return;
     }
     catch (const std::exception& e)
     {
         error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
         handleInvalidPackageError();
         parser.reset();
-        return;
+        co_return;
+    }
+
+    info("Refreshing firmware inventory before firmware update");
+
+    ComponentTargetList compTargetList =
+        getComponentTargetList(componentNameMap, targets);
+
+    auto expectedEids = getExpectedEids(firmwareInventoryInfo);
+
+    if (!expectedEids.empty() && refreshDescriptorsCallback)
+    {
+        auto rc =
+            co_await refreshDescriptorsCallback(expectedEids, compTargetList);
+        if (rc != PLDM_SUCCESS)
+        {
+            warning("Firmware inventory refresh completed with errors");
+        }
+        else
+        {
+            info("Firmware inventory refresh completed successfully");
+        }
     }
 
     const auto& compImageInfos = parser->getComponentImageInfos();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
-        componentNameMap, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+        compTargetList, targets, fwDeviceIDRecords, totalNumComponentUpdates);
 
     info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
          "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
@@ -658,20 +713,12 @@ void UpdateManager::verifyPackageAsync(
     }
 }
 
-DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
-    const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
-    const DescriptorMap& descriptorMap,
-    const ComponentImageInfos& compImageInfos,
+ComponentTargetList UpdateManager::getComponentTargetList(
     const ComponentNameMap& componentNameMap,
-    const std::vector<sdbusplus::message::object_path>& objectPaths,
-    FirmwareDeviceIDRecords& outFwDeviceIDRecords,
-    TotalComponentUpdates& totalNumComponentUpdates)
+    const std::vector<sdbusplus::message::object_path>& objectPaths)
 {
-    using ComponentTargetList =
-        std::unordered_map<eid, std::vector<CompIdentifier>>;
     ComponentTargetList compTargetList{};
 
-    // Process target filtering
     if (!objectPaths.empty())
     {
         auto targets =
@@ -709,6 +756,18 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
         }
     }
 
+    return compTargetList;
+}
+
+DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
+    const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
+    const DescriptorMap& descriptorMap,
+    const ComponentImageInfos& compImageInfos,
+    const ComponentTargetList& compTargetList,
+    const std::vector<sdbusplus::message::object_path>& objectPaths,
+    FirmwareDeviceIDRecords& outFwDeviceIDRecords,
+    TotalComponentUpdates& totalNumComponentUpdates)
+{
     DeviceUpdaterInfos deviceUpdaterInfos;
     for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
     {
@@ -734,7 +793,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
                 {
                     if (compTargetList.contains(eid))
                     {
-                        auto compList = compTargetList[eid];
+                        auto compList = compTargetList.at(eid);
                         auto applicableComponents =
                             std::get<ApplicableComponents>(
                                 inFwDeviceIDRecords[index]);

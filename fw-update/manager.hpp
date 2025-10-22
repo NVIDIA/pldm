@@ -74,10 +74,26 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      bool fwDebug) :
         inventoryMgr(handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
+                     std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap,
                      deviceInventoryInfo),
-        updateManager(event, handler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, fwDebug),
+        updateManager(
+            event, handler, instanceIdDb, descriptorMap, componentInfoMap,
+            componentNameMap, fwDebug,
+            [this](
+                const std::vector<mctp_eid_t>& eids,
+                const ComponentTargetList& compTargetList) -> exec::task<int> {
+                info(
+                    "Starting firmware inventory refresh for {COUNT} endpoints",
+                    "COUNT", eids.size());
+
+                dbus::MctpInterfaces mctpInterfaces;
+                getMctpInterfaces(mctpInterfaces);
+
+                co_return co_await inventoryMgr.refreshFirmwareInventory(
+                    eids, mctpInterfaces, compTargetList);
+            },
+            fwInventoryInfo),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
@@ -102,56 +118,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     void handleMctpEndpoints(const MctpInfos& mctpInfos) override
     {
-        std::vector<mctp_eid_t> eids;
-        for (auto& mctpInfo : mctpInfos)
-        {
-            eids.emplace_back(std::get<0>(mctpInfo));
-        }
-        dbus::ObjectValueTree objects;
-        std::set<dbus::Service> mctpCtrlServices;
         dbus::MctpInterfaces mctpInterfaces;
-        auto& bus = pldm::utils::DBusHandler::getBus();
-        std::string uuid;
-        const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
-        pldm::utils::GetSubTreeResponse getSubTreeResponse;
-        try
-        {
-            getSubTreeResponse = utils::DBusHandler().getSubtree(
-                "/au/com/codeconstruct/mctp1/networks", 0, ifaceList);
-        }
-        catch (const sdbusplus::exception_t& e)
-        {
-            error(
-                "Failed to getSubtree call at path '{PATH}' and interface '{INTERFACE}', error - {ERROR} ",
-                "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPInterface);
-            return;
-        }
-        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
-        {
-            for (const auto& [serviceName, interfaces] : mapperServiceMap)
-            {
-                mctpCtrlServices.emplace(serviceName);
-            }
-        }
-        for (const auto& service : mctpCtrlServices)
-        {
-            auto method = bus.new_method_call(
-                service.c_str(), "/au/com/codeconstruct/mctp1",
-                "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
-            auto reply = bus.call(method);
-            reply.read(objects);
-            for (const auto& [objectPath, interfaces] : objects)
-            {
-                for (const auto& [intfName, properties] : interfaces)
-                {
-                    if (intfName == EndpointUUID)
-                    {
-                        uuid = std::get<std::string>(properties.at("UUID"));
-                        mctpInterfaces[uuid] = interfaces;
-                    }
-                }
-            }
-        }
+        getMctpInterfaces(mctpInterfaces);
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
@@ -179,6 +147,23 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
+        }
+    }
+
+    /** @brief Update device and firmware inventory based on refreshed
+     *         descriptor and firmware parameter information
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @param[in] uuid - MCTP UUID
+     *  @param[in] mctpInterfaces - MCTP interface information
+     */
+    void updateInventory(eid eid, UUID uuid,
+                         dbus::MctpInterfaces& mctpInterfaces)
+    {
+        deviceInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
+        if (componentInfoMap.contains(eid))
+        {
+            fwInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
         }
     }
 
@@ -271,6 +256,75 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
   private:
+    /** @brief Get MCTP interfaces from D-Bus
+     *
+     *  Queries D-Bus for MCTP endpoint information and builds the
+     *  mctpInterfaces map used for inventory operations.
+     *
+     *  @param[out] mctpInterfaces - Map of UUID to interface properties
+     */
+    void getMctpInterfaces(dbus::MctpInterfaces& mctpInterfaces)
+    {
+        dbus::ObjectValueTree objects;
+        std::set<dbus::Service> mctpCtrlServices;
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        const dbus::Interfaces ifaceList{"xyz.openbmc_project.MCTP.Endpoint"};
+        pldm::utils::GetSubTreeResponse getSubTreeResponse;
+
+        try
+        {
+            getSubTreeResponse = utils::DBusHandler().getSubtree(
+                "/au/com/codeconstruct/mctp1/networks", 0, ifaceList);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            error(
+                "Failed to getSubtree call at path '{PATH}' and interface '{INTERFACE}', error - {ERROR} ",
+                "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPInterface);
+            return;
+        }
+
+        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
+        {
+            for (const auto& [serviceName, interfaces] : mapperServiceMap)
+            {
+                mctpCtrlServices.emplace(serviceName);
+            }
+        }
+
+        for (const auto& service : mctpCtrlServices)
+        {
+            try
+            {
+                auto method = bus.new_method_call(
+                    service.c_str(), "/au/com/codeconstruct/mctp1",
+                    "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+                auto reply = bus.call(method);
+                reply.read(objects);
+            }
+            catch (const sdbusplus::exception_t& e)
+            {
+                error(
+                    "Failed to GetManagedObjects call at path '{PATH}' and service '{SERVICE}', error - {ERROR} ",
+                    "ERROR", e, "PATH", MCTPPath, "SERVICE", service);
+                continue;
+            }
+
+            for (const auto& [objectPath, interfaces] : objects)
+            {
+                for (const auto& [intfName, properties] : interfaces)
+                {
+                    if (intfName == EndpointUUID)
+                    {
+                        std::string uuid =
+                            std::get<std::string>(properties.at("UUID"));
+                        mctpInterfaces[uuid] = interfaces;
+                    }
+                }
+            }
+        }
+    }
+
     /** @brief Descriptor information of all the discovered MCTP endpoints */
     DescriptorMap descriptorMap;
 

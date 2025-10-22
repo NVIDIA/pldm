@@ -53,6 +53,8 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
+using RefreshDescriptorsCallback = std::function<exec::task<int>(
+    const std::vector<mctp_eid_t>&, const ComponentTargetList&)>;
 
 class Activation;
 class ActivationProgress;
@@ -83,7 +85,9 @@ class UpdateManager
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
-        ComponentNameMap& componentNameMap, bool fwDebug);
+        ComponentNameMap& componentNameMap, bool fwDebug,
+        RefreshDescriptorsCallback refreshDescriptorsCallback,
+        const FirmwareInventoryInfo& firmwareInventoryInfo);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -114,7 +118,7 @@ class UpdateManager
      *
      *  @throw sdbusplus::error if package is invalid or incompatible
      */
-    void processStream(
+    exec::task<void> processStream(
         std::istream& packageStream, uintmax_t packageSize,
         std::vector<sdbusplus::message::object_path> targets = {});
 
@@ -166,6 +170,25 @@ class UpdateManager
 
     void clearActivationInfo();
 
+    /** @brief Get the list of component targets for each EID based on object
+     * paths
+     *
+     *  Processes the target filtering to determine which components on which
+     * EIDs should be updated. This is used both for target filtering in the
+     * update process and for adjusting log severity during descriptor refresh.
+     *
+     *  @param[in] componentNameMap - Match components on a device to component
+     *                                name and will be used for target filtering
+     *  @param[in] objectPaths - Software object paths used for target filtering
+     *
+     *  @return ComponentTargetList - Map of EID to list of component
+     * identifiers that are targets for update. Empty if no target filtering is
+     * applied.
+     */
+    ComponentTargetList getComponentTargetList(
+        const ComponentNameMap& componentNameMap,
+        const std::vector<sdbusplus::message::object_path>& objectPaths);
+
     /** @brief Associate firmware update package to devices and components that
      *         will be updated. The package to firmware device association is
      *         as per DSP0267. The target filtering can be used to override the
@@ -177,9 +200,10 @@ class UpdateManager
      *  @param[in] descriptorMap - Descriptor information of all the discovered
      *                             MCTP endpoints
      *  @param[in] compImageInfos - Component image information in the package
-     *  @param[in] componentNameMap - Match components on a device to component
-     *                                name and will be used for target filtering
-     *  @param[in] objectPaths - Software object paths used for target filtering
+     *  @param[in] compTargetList - Pre-computed component target list for
+     * filtering
+     *  @param[in] objectPaths - Software object paths (used to check if
+     * filtering is enabled)
      *  @param[out] outFwDeviceIDRecords - Firmware device descriptors derived
      *                                     from the package after applying
      *                                     target filtering
@@ -193,7 +217,7 @@ class UpdateManager
         const FirmwareDeviceIDRecords& inFwDeviceIDRecords,
         const DescriptorMap& descriptorMap,
         const ComponentImageInfos& compImageInfos,
-        const ComponentNameMap& componentNameMap,
+        const ComponentTargetList& compTargetList,
         const std::vector<sdbusplus::message::object_path>& objectPaths,
         FirmwareDeviceIDRecords& outFwDeviceIDRecords,
         TotalComponentUpdates& totalNumComponentUpdates);
@@ -433,6 +457,10 @@ class UpdateManager
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
+    /** @brief Callback to refresh device descriptors */
+    RefreshDescriptorsCallback refreshDescriptorsCallback;
+    /** @brief Firmware inventory information from config file */
+    const FirmwareInventoryInfo& firmwareInventoryInfo;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<Update> updater;
     std::unique_ptr<ActivationProgress> activationProgress;

@@ -210,6 +210,8 @@ using MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>;
 using MatchComponentNameMapInfo =
     std::vector<std::tuple<DBusIntfMatch, ComponentIdNameMap>>;
 using ComponentNameMap = std::unordered_map<eid, ComponentIdNameMap>;
+using ComponentTargetList =
+    std::unordered_map<eid, std::vector<CompIdentifier>>;
 
 /** @struct MatchEntryInfo
  *  @brief the template struct to find the matched configured info for an dbus

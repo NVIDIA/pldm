@@ -35,9 +35,9 @@ class InventoryManagerTest : public testing::Test
         event(sdeventplus::Event::get_default()), instanceIdDb(),
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
-        inventoryManager(reqHandler, instanceIdDb, nullptr, outDescriptorMap,
-                         outDownstreamDescriptorMap, outComponentInfoMap,
-                         deviceInventoryInfo)
+        inventoryManager(reqHandler, instanceIdDb, nullptr, nullptr,
+                         outDescriptorMap, outDownstreamDescriptorMap,
+                         outComponentInfoMap, deviceInventoryInfo)
     {}
 
     int fd = -1;

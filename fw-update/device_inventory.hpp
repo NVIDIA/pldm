@@ -123,6 +123,19 @@ class Manager
         pldm::eid eid, const pldm::UUID& uuid,
         dbus::MctpInterfaces& mctpInterfaces);
 
+    /** @brief Update existing device inventory object
+     *
+     *  @param[in] eid - MCTP endpointID
+     *  @param[in] uuid - MCTP UUID of the device
+     *  @param[in] mctpInterfaces - MCTP interface information
+     *
+     *  @return Object path of the device inventory object, std::nullopt if
+     * object path is empty
+     */
+    std::optional<sdbusplus::message::object_path> updateEntry(
+        pldm::eid eid, const pldm::UUID& uuid,
+        dbus::MctpInterfaces& mctpInterfaces);
+
   private:
     sdbusplus::bus::bus& bus;
 
@@ -138,7 +151,7 @@ class Manager
     std::map<pldm::UUID, std::unique_ptr<Entry>> deviceEntryMap;
 
     /** @brief D-Bus signal match for objects to be updated with SKU*/
-    std::vector<sdbusplus::bus::match_t> updateSKUMatch;
+    std::map<dbus::ObjectPath, sdbusplus::bus::match_t> updateSKUMatch;
 
     /** @brief Lookup table to find the SKU for the input D-Bus object
      */

@@ -126,6 +126,15 @@ class Manager
     void createEntry(pldm::eid eid, const pldm::UUID& uuid,
                      dbus::MctpInterfaces& mctpInterfaces);
 
+    /** @brief Update existing firmware inventory objects
+     *
+     *  @param[in] eid - MCTP endpointID
+     *  @param[in] uuid - MCTP UUID
+     *  @param[in] mctpInterfaces - MCTP interface information
+     */
+    void updateEntry(pldm::eid eid, const pldm::UUID& uuid,
+                     dbus::MctpInterfaces& mctpInterfaces);
+
     /** @brief Update firmware version
      *
      *  @param[in] eid - MCTP endpointID

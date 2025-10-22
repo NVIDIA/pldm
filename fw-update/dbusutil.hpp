@@ -94,11 +94,12 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
  *  @param[in] arg1 - argument 1
  *  @param[in] resolution - Resolution field
  *  @param[in] logNamespace - Logging namespace, default is FWUpdate
+ *  @param[in] overrideSeverity - Overwrites the severity for the Log
  */
-inline void createLogEntry(const std::string& messageID,
-                           const std::string& arg0, const std::string& arg1,
-                           const std::string& resolution,
-                           const std::string logNamespace = "FWUpdate")
+inline void createLogEntry(
+    const std::string& messageID, const std::string& arg0,
+    const std::string& arg1, const std::string& resolution,
+    const std::string logNamespace = "FWUpdate", bool overrideSeverity = false)
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -127,7 +128,14 @@ inline void createLogEntry(const std::string& messageID,
     else if (messageID == resourceErrorDetected)
     {
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
-        level = Level::Critical;
+        if (overrideSeverity)
+        {
+            level = Level::Informational;
+        }
+        else
+        {
+            level = Level::Critical;
+        }
     }
     else
     {
