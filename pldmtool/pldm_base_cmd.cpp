@@ -497,7 +497,7 @@ class SetTID : public CommandInterface
             completionCode = responsePtr->payload[0];
         }
         ordered_json data;
-        data["completionCode"] = completionCode;
+        fillCompletionCode(completionCode, data, PLDM_BASE);
         pldmtool::helper::DisplayInJson(data);
     }
 
