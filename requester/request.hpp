@@ -62,7 +62,11 @@ class RequestRetryTimer
         auto rc = send();
         if (rc)
         {
-            return rc;
+            warning("Failed to send request. Return code - {RC}", "RC", rc);
+            if (!numRetries)
+            {
+                return rc;
+            }
         }
 
         try

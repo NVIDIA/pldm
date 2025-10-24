@@ -93,13 +93,3 @@ TEST_F(RequestIntfTest, 9Retries100msTimeoutRequestStoppedAfter1sec)
 
     waitEventExpiry(milliseconds(500));
 }
-
-TEST_F(RequestIntfTest, 2Retries100msTimeoutsendReturnsError)
-{
-    std::vector<uint8_t> requestMsg;
-    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 2,
-                        milliseconds(100), false);
-    EXPECT_CALL(request, send()).Times(Exactly(1)).WillOnce(Return(PLDM_ERROR));
-    auto rc = request.start();
-    EXPECT_EQ(rc, PLDM_ERROR);
-}
