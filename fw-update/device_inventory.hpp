@@ -26,6 +26,7 @@
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Location/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/SKU/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Chassis/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/SPDMResponder/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/Health/server.hpp>
@@ -42,6 +43,8 @@ using SPDMResponderIntf =
     sdbusplus::xyz::openbmc_project::Inventory::Item::server::SPDMResponder;
 using DecoratorAssetIntf =
     sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset;
+using SKUIntf =
+    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::SKU;
 using LocationCodeIntf =
     sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Location;
 using DecoratorHealthIntf =
@@ -49,7 +52,7 @@ using DecoratorHealthIntf =
 
 using Ifaces = sdbusplus::server::object::object<
     ChassisIntf, UUIDIntf, AssociationIntf, SPDMResponderIntf,
-    DecoratorAssetIntf, LocationCodeIntf, DecoratorHealthIntf>;
+    DecoratorAssetIntf, SKUIntf, LocationCodeIntf, DecoratorHealthIntf>;
 
 /** @class Entry
  *
@@ -61,7 +64,8 @@ using Ifaces = sdbusplus::server::object::object<
  *  c) xyz.openbmc_project.Association.Definitions
  *  d) xyz.openbmc_project.Inventory.Item.SPDMResponder
  *  e) xyz.openbmc_project.Inventory.Decorator.Asset
- *  f) xyz.openbmc_project.Inventory.Decorator.LocationCode
+ *  f) xyz.openbmc_project.Inventory.Decorator.SKU
+ *  g) xyz.openbmc_project.Inventory.Decorator.LocationCode
  */
 class Entry : public Ifaces
 {

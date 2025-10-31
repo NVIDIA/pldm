@@ -34,6 +34,7 @@
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/SKU/server.hpp>
 
 #include <filesystem>
 #include <format>
@@ -615,7 +616,7 @@ void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
             sku = dbusHandler.getDbusProperty<std::string>(
                 objPath.c_str(), "SKU",
                 sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
-                    Asset::interface);
+                    SKU::interface);
         }
         catch (const std::exception&)
         {

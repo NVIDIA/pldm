@@ -35,7 +35,10 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
     Ifaces::type(ChassisType::Component, true);
     Ifaces::uuid(mctpUUID, true);
     Ifaces::associations(assocs, true);
-    Ifaces::sku(sku, true);
+    if (!sku.empty())
+    {
+        SKUIntf::sku(sku, true);
+    }
     Ifaces::manufacturer("NVIDIA", true);
     Ifaces::locationType(LocationTypes::Embedded, true);
     Ifaces::emit_object_added();
@@ -198,7 +201,7 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
 
     utils::PropertyValue value{sku};
     utils::DBusMapping dbusMapping{
-        objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+        objPath, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU",
         "string"};
     std::thread propertySet([dbusMapping, value] {
         try
@@ -230,7 +233,7 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
     dbus::InterfaceMap interfaces;
     msg.read(objPath, interfaces);
 
-    if (!interfaces.contains("xyz.openbmc_project.Inventory.Decorator.Asset"))
+    if (!interfaces.contains("xyz.openbmc_project.Inventory.Decorator.SKU"))
     {
         return;
     }
@@ -241,7 +244,7 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
 
         utils::PropertyValue value{search->second};
         utils::DBusMapping dbusMapping{
-            objPath, "xyz.openbmc_project.Inventory.Decorator.Asset", "SKU",
+            objPath, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU",
             "string"};
         std::thread propertySet([dbusMapping, value] {
             try
