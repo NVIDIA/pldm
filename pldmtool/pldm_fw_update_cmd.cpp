@@ -945,7 +945,7 @@ class PassComponentTable : public CommandInterface
         auto rc = encode_pass_component_table_req(
             instanceId, transferFlag, compClassification, compIdentifier,
             compClassificationIdx, compCompareStamp,
-            convertStringTypeToUInt8(compVerStrType), compVerStrInfo.length,
+            convertStringTypeToUInt8(compVerStrType), compVerStrLen,
             &compVerStrInfo, request,
             sizeof(pldm_pass_component_table_req) + compVerStrInfo.length);
 
