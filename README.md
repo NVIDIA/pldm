@@ -74,6 +74,24 @@ rm /etc/default/pldmd
 systemctl restart pldmd
 ```
 
+### To enable firmware update debug logging (fw-update logs)
+
+`--fw-debug` is not enabled by default. You can turn it on at runtime via the service environment file and a service restart:
+
+```bash
+# Enable fw-update debug logging
+sudo sh -c 'echo "FWDEBUG=--fw-debug" >> /etc/default/pldm_verbosity'
+sudo systemctl restart pldmd
+```
+
+To disable it again:
+
+```bash
+sudo sed -i '/^FWDEBUG=/d' /etc/default/pldm_verbosity
+# Or set it empty: sudo sh -c 'echo "FWDEBUG=" >> /etc/default/pldm_verbosity'
+sudo systemctl restart pldmd
+```
+
 ## Documentation
 
 For complete documentation on the functionality and usage of this repository,

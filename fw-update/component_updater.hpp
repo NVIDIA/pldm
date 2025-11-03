@@ -24,6 +24,7 @@
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
+#include <chrono>
 #include <fstream>
 
 namespace pldm
@@ -461,6 +462,14 @@ class ComponentUpdater
         bitfield16_t compActivationModification);
 
     /**
+     * @brief handle logging for request FW data
+     *
+     * @param[in] offset
+     * @param[in] length
+     */
+    void handleLogging(uint32_t offset, uint32_t length);
+
+    /**
      * @brief UA_T6 complete command timout timer
      *
      */
@@ -476,6 +485,16 @@ class ComponentUpdater
     /** @brief coroutine handle of discoverTerminusTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
         updateCompletionCoHandle{};
+    // This is to track request FW update data state
+    uint32_t nextExpectedOffset = 0;
+    std::chrono::steady_clock::time_point lastRequestTime{};
+    std::chrono::milliseconds totalInterRequestTime{};
+    uint32_t interRequestSamples = 0;
+    std::chrono::milliseconds totalInterRequestTimeGlobal{};
+    uint32_t interRequestSamplesGlobal = 0;
+    uint32_t lastOffsetRequested = UINT32_MAX;
+
+    uint32_t lastAvgPrintedMBIndex = 0;
 };
 
 } // namespace fw_update

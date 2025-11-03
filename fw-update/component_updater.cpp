@@ -366,6 +366,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         }
         return response;
     }
+    handleLogging(offset, length);
 
     size_t padBytes = 0;
     if (offset + length > compSize)
@@ -487,6 +488,18 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     const auto& comp = compImageInfos[applicableComponents[componentIndex]];
     const auto& compVersion = std::get<7>(comp);
+
+    // Print final average inter-request time for this component
+    if (interRequestSamplesGlobal > 0)
+    {
+        double avgMs =
+            static_cast<double>(totalInterRequestTimeGlobal.count()) /
+            static_cast<double>(interRequestSamplesGlobal);
+        info(
+            "FinalAvgInterReqMs={AVGMS}, Samples={SAMPLES}, EID={EID}, ComponentIndex={COMPONENTINDEX}",
+            "AVGMS", avgMs, "SAMPLES", interRequestSamplesGlobal, "EID", eid,
+            "COMPONENTINDEX", componentIndex);
+    }
 
     if (transferResult == PLDM_FWUP_TRANSFER_SUCCESS)
     {
@@ -1158,6 +1171,78 @@ void ComponentUpdater::handleComponentUpdateFailure(
     std::function<void()> failureCallback)
 {
     failureCallback();
+}
+
+void ComponentUpdater::handleLogging(uint32_t offset, uint32_t length)
+{
+    constexpr uint64_t oneMegaByte = 1024ULL * 1024ULL;
+
+    if (offset == 0)
+    {
+        info(
+            "Firmware Update started for component {COMPONENTINDEX} on endpoint id {EID} at offset {OFFSET} with length {LENGTH}",
+            "COMPONENTINDEX", componentIndex, "EID", eid, "OFFSET", offset,
+            "LENGTH", length);
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    if (lastRequestTime != std::chrono::steady_clock::time_point{})
+    {
+        auto delta = (now - lastRequestTime);
+        totalInterRequestTime +=
+            std::chrono::duration_cast<std::chrono::milliseconds>(delta);
+        interRequestSamples++;
+        totalInterRequestTimeGlobal +=
+            std::chrono::duration_cast<std::chrono::milliseconds>(delta);
+        interRequestSamplesGlobal++;
+    }
+    lastRequestTime = now;
+
+    if (offset == lastOffsetRequested)
+    {
+        info(
+            "Retry EID={EID}, ComponentIndex={COMPONENTINDEX}, Offset={OFFSET} Length={LENGTH}",
+            "EID", eid, "COMPONENTINDEX", componentIndex, "OFFSET", offset,
+            "LENGTH", length);
+    }
+    else
+    {
+        if (offset > nextExpectedOffset)
+        {
+            info(
+                "OutOfOrderRequest EID={EID}, ComponentIndex={COMPONENTINDEX}, RequestedOffset={REQUESTED}, Length={LENGTH}, SkippedStart={SKIPSTART}, SkippedEnd={SKIPEND}",
+                "EID", eid, "COMPONENTINDEX", componentIndex, "REQUESTED",
+                offset, "LENGTH", length, "SKIPSTART", nextExpectedOffset,
+                "SKIPEND", offset - 1);
+        }
+
+        if (offset < nextExpectedOffset)
+        {
+            info(
+                "OutOfOrderRequest EID={EID}, ComponentIndex={COMPONENTINDEX}, RequestedOffset={REQUESTED}, Length={LENGTH}, ExpectedOffset={EXPECTED}",
+                "EID", eid, "COMPONENTINDEX", componentIndex, "REQUESTED",
+                offset, "LENGTH", length, "EXPECTED", nextExpectedOffset);
+        }
+        lastOffsetRequested = offset;
+    }
+    nextExpectedOffset = offset + length;
+
+    if (interRequestSamples > 0 && (offset % oneMegaByte) == 0)
+    {
+        uint64_t mbIndex = static_cast<uint64_t>(offset) / oneMegaByte;
+        if (mbIndex != lastAvgPrintedMBIndex)
+        {
+            double avgMs = static_cast<double>(totalInterRequestTime.count()) /
+                           static_cast<double>(interRequestSamples);
+            info(
+                "AvgInterReqMs={AVGMS}, Samples={SAMPLES}, EID={EID}, ComponentIndex={COMPONENTINDEX}, Offset={OFFSET}",
+                "AVGMS", avgMs, "SAMPLES", interRequestSamples, "EID", eid,
+                "COMPONENTINDEX", componentIndex, "OFFSET", offset);
+            lastAvgPrintedMBIndex = mbIndex;
+        }
+        interRequestSamples = 0;
+        totalInterRequestTime = std::chrono::milliseconds{0};
+    }
 }
 
 } // namespace fw_update
