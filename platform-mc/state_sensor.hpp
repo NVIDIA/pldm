@@ -58,7 +58,7 @@ class StateSensor
                 const uint16_t sensorId, StateSetInfo sensorInfo,
                 AuxiliaryNames* sensorNames, std::string& associationPath,
                 std::shared_ptr<utils::SensorEventInfo> sensorEventInfo);
-    ~StateSensor() {};
+    ~StateSensor();
 
     /** @brief The function called by Sensor Manager to set sensor to
      * error status.

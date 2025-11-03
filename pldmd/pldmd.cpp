@@ -47,6 +47,7 @@
 PHOSPHOR_LOG2_USING;
 
 #ifdef PLDM_TYPE2
+#include "common/platform_defs.hpp"
 #include "platform-mc/manager.hpp"
 #endif
 
@@ -387,6 +388,15 @@ int main(int argc, char** argv)
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
          }}},
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handleTelemetryManagementEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
         {PLDM_MESSAGE_POLL_EVENT,
          {[&platformManager](const pldm_msg* request, size_t payloadLength,
                              uint8_t formatVersion, uint8_t tid,
@@ -407,7 +417,7 @@ int main(int argc, char** argv)
          }}}};
 #endif
 
-    auto platformHandler = std::make_unique<platform::Handler>(
+    auto platformHandler = std::make_unique<pldm::responder::platform::Handler>(
         &dbusHandler, PDR_JSONS_DIR, pdrRepo.get(), hostPDRHandler.get(),
         dbusToPLDMEventHandler.get(), fruHandler.get(),
         oemPlatformHandler.get(), event, true

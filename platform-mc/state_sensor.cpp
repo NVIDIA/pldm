@@ -92,6 +92,15 @@ StateSensor::StateSensor(
     }
 }
 
+StateSensor::~StateSensor()
+{
+    // D-Bus interface cleanup in reverse order of creation
+    // Ensures proper unregistration of D-Bus objects
+    stateSets.clear();
+    operationalStatusIntf.reset();
+    availabilityIntf.reset();
+}
+
 void StateSensor::handleErrGetSensorReading()
 {
     operationalStatusIntf->functional(false);

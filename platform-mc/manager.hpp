@@ -19,6 +19,7 @@
 #include "libpldm/pldm.h"
 
 #include "common/instance_id.hpp"
+#include "common/platform_defs.hpp"
 #include "common/types.hpp"
 #include "event_manager.hpp"
 #include "platform_manager.hpp"
@@ -32,6 +33,7 @@ namespace pldm
 namespace platform_mc
 {
 using namespace pldm::pdr;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 
 /**
  * @brief Manager
@@ -59,7 +61,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                         LOCAL_EID_OVER_I2C, this, numericSensorsWithoutAuxName),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, this, verbose),
-        eventManager(terminusManager, termini, fwUpdateManager, verbose),
+        eventManager(terminusManager, termini, fwUpdateManager, platformManager,
+                     sensorManager, verbose),
         verbose(verbose)
     {}
 
@@ -176,6 +179,35 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
         eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFC,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
+     * @brief Handles the Telemetry Management Event (0xFD).
+     *
+     * This event is used for terminus-initiated PLDM Type 2 telemetry
+     * management, supporting operations like Live Firmware Activation
+     * (LFA) where telemetry monitoring needs to be paused and resumed.
+     *
+     * @param request Pointer to the PLDM message.
+     * @param payloadLength Length of the payload in the PLDM message.
+     * @param formatVersion Format version of the PLDM message (unused).
+     * @param tid PLDM Terminus ID.
+     * @param eventDataOffset Offset in the message where event data begins.
+     * @param[out] platformEventStatus Status of platform event.
+     * @return int Returns PLDM_SUCCESS on success, or an error code on failure.
+     */
+    int handleTelemetryManagementEvent(
+        const pldm_msg* request, size_t payloadLength,
+        uint8_t /* formatVersion */, uint8_t tid, size_t eventDataOffset,
+        uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFD,
                                          eventData, eventDataSize,
                                          platformEventStatus);
         return PLDM_SUCCESS;

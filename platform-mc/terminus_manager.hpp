@@ -116,6 +116,14 @@ class TerminusManager
         return localEid;
     }
 
+    /** @brief Get the event loop reference
+     *  @return Reference to the sdeventplus event loop
+     */
+    sdeventplus::Event& getEvent()
+    {
+        return event;
+    }
+
     /** @brief return terminus by uuid
      */
     std::shared_ptr<Terminus> getTerminus(const UUID& uuid);

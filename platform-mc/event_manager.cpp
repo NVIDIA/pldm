@@ -19,20 +19,32 @@
 #include "libpldm/platform.h"
 #include "libpldm/utils.h"
 
+#include "common/sleep.hpp"
 #include "fw-update/manager.hpp"
+#include "platform_manager.hpp"
+#include "sensor_manager.hpp"
 #include "smbios_mdr.hpp"
 #include "terminus_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+#include <algorithm>
 #include <cerrno>
+#include <queue>
+#include <variant>
 
 namespace pldm
 {
 namespace platform_mc
 {
 namespace fs = std::filesystem;
+
+// Use OEM event constants from common platform definitions
+using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
+using pldm::platform::PLDM_TELEMETRY_PAUSE;
+using pldm::platform::PLDM_TELEMETRY_REDISCOVER;
+using pldm::platform::PLDM_TELEMETRY_RESUME;
 
 int EventManager::handlePlatformEvent(
     tid_t tid, uint8_t eventClass, const uint8_t* eventData,
@@ -155,6 +167,71 @@ int EventManager::handlePlatformEvent(
         if (!mdr::syncSmbiosData())
         {
             lg2::error("Failed to trigger SMBIOS MDR sync");
+            return PLDM_ERROR;
+        }
+    }
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFD)
+    {
+        // Handle Telemetry Management Event from terminus
+        // Used for scenarios like Live Firmware Activation (LFA)
+        // Supports: Pause (0x00), Rediscover (0x01), Resume (0x02)
+        //
+        // Event Data Format:
+        // Byte 0:    Version
+        // Byte 1:    Telemetry State (0x00=Pause, 0x01=Rediscover, 0x02=Resume)
+
+        constexpr size_t MIN_EVENT_DATA_SIZE = 2;
+
+        if (eventDataSize < MIN_EVENT_DATA_SIZE)
+        {
+            lg2::error(
+                "Invalid event data size for OEM event 0xFD, size={SIZE}, expected at least {MIN}",
+                "SIZE", eventDataSize, "MIN", MIN_EVENT_DATA_SIZE);
+            return PLDM_ERROR;
+        }
+
+        // Parse event data header
+        uint8_t version = eventData[0];
+        uint8_t telemetryState = eventData[1];
+
+        lg2::info("OEM Event 0xFD: tid={TID}, version={VER}, state={STATE}",
+                  "TID", tid, "VER", static_cast<unsigned int>(version),
+                  "STATE", static_cast<unsigned int>(telemetryState));
+
+        if (telemetryState == PLDM_TELEMETRY_PAUSE)
+        {
+            // Pause PLDM Type 2 Telemetry monitoring
+            lg2::info(
+                "Received telemetry PAUSE event from tid={TID}, stopping Type 2 monitoring",
+                "TID", tid);
+            processTelemetryPauseEvent(tid);
+        }
+        else if (telemetryState == PLDM_TELEMETRY_REDISCOVER)
+        {
+            // Rediscover PLDM Type 2 - teardown and reinitialize
+            lg2::info(
+                "Received telemetry REDISCOVER event from tid={TID}, initiating Type 2 rediscovery",
+                "TID", tid);
+
+            // Trigger async rediscovery task
+            stdexec::start_detached(
+                processTelemetryRediscoveryEvent(tid),
+                exec::default_task_context<int>(exec::inline_scheduler{}));
+        }
+        else if (telemetryState == PLDM_TELEMETRY_RESUME)
+        {
+            // Resume PLDM Type 2 monitoring without rediscovery
+            lg2::info(
+                "Received telemetry RESUME event from tid={TID}, resuming Type 2 monitoring",
+                "TID", tid);
+            processTelemetryResumeEvent(tid);
+        }
+        else
+        {
+            lg2::error(
+                "Unknown telemetry state in OEM event 0xFD, tid={TID}, state={STATE}",
+                "TID", tid, "STATE", telemetryState);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;
         }
     }
@@ -800,6 +877,175 @@ void EventManager::processStateSensorEvent(tid_t tid, uint16_t sensorId,
     }
     (*sensorIterator)
         ->handleSensorEvent(sensorOffset, eventState, previousEventState);
+}
+
+void EventManager::processTelemetryPauseEvent(tid_t tid)
+{
+    lg2::info("Processing telemetry pause event for tid={TID}", "TID", tid);
+
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::error("processTelemetryPauseEvent: terminus tid={TID} not found",
+                   "TID", tid);
+        return;
+    }
+
+    // Stop sensor polling for this terminus completely
+    // This terminates the polling task and frees resources
+    sensorManager.stopPolling(tid);
+
+    lg2::info(
+        "Telemetry monitoring stopped for terminus tid={TID}, waiting for rediscovery event",
+        "TID", tid);
+}
+
+exec::task<int> EventManager::processTelemetryRediscoveryEvent(tid_t tid)
+{
+    lg2::info("Processing telemetry rediscovery event for tid={TID}", "TID",
+              tid);
+
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::error(
+            "processTelemetryRediscoveryEvent: terminus tid={TID} not found",
+            "TID", tid);
+        co_return PLDM_ERROR;
+    }
+
+    auto terminus = it->second;
+
+    // Stop polling - the coroutine will exit asynchronously
+    sensorManager.stopPolling(tid);
+
+    // Clear prioritySensors and roundRobinSensors to release sensor references
+    terminus->prioritySensors.clear();
+
+    // Clear roundRobinSensors queue by manually popping all elements
+    // In coroutines, local variables persist in the coroutine frame, so we
+    // can't use std::swap with a local variable. Manually pop to immediately
+    // release references.
+    size_t queueSize = terminus->roundRobinSensors.size();
+    for (size_t i = 0; i < queueSize; ++i)
+    {
+        terminus->roundRobinSensors.pop();
+    }
+
+    // Wait for polling coroutine to exit and release all sensor references
+    // stopPolling() only requests the stop; the coroutine may still be
+    // processing sensors. We need use_count=1 (only held by numericSensors
+    // vector) before calling clear() to ensure destructors run immediately.
+    constexpr int maxRetries = 30;              // Up to 15 seconds
+    constexpr uint64_t retryDelayUsec = 500000; // 500ms per check
+    bool allReferencesReleased = false;
+
+    for (int retry = 0; retry < maxRetries; ++retry)
+    {
+        int sensorsWithExtraRefs = 0;
+
+        for (size_t i = 0; i < terminus->numericSensors.size(); ++i)
+        {
+            if (terminus->numericSensors[i] &&
+                terminus->numericSensors[i].use_count() > 1)
+            {
+                sensorsWithExtraRefs++;
+            }
+        }
+
+        if (sensorsWithExtraRefs == 0)
+        {
+            allReferencesReleased = true;
+            break;
+        }
+
+        if (retry % 4 == 0)
+        {
+            lg2::info(
+                "Waiting for polling coroutine to release sensor references: {COUNT}/{TOTAL} sensors in use",
+                "COUNT", sensorsWithExtraRefs, "TOTAL",
+                terminus->numericSensors.size());
+        }
+
+        co_await timer::Sleep(terminusManager.getEvent(), retryDelayUsec,
+                              timer::NonPriority);
+    }
+
+    if (!allReferencesReleased)
+    {
+        lg2::error(
+            "Timed out waiting for sensor references to be released after {TIME}s for tid={TID}",
+            "TIME", maxRetries * 500 / 1000, "TID", tid);
+    }
+
+    // Clear all Type 2 objects - sensors, effecters, PDRs
+    // D-Bus interface cleanup happens automatically in sensor/effecter
+    // destructors
+    terminus->numericSensors.clear();
+    terminus->stateSensors.clear();
+    terminus->numericEffecters.clear();
+    terminus->stateEffecters.clear();
+    terminus->pdrs.clear();
+
+    // Mark terminus as not initialized so it will be re-initialized
+    terminus->initalized = false;
+    terminus->resumed = false;
+    terminus->initSensorList = true;
+
+    lg2::info("Cleared Type 2 telemetry objects for tid={TID}", "TID", tid);
+
+    // Wait for D-Bus to complete asynchronous unregistration
+    // After destructors are called (during clear() above), D-Bus still needs
+    // time to process the unregistration messages asynchronously. The D-Bus
+    // daemon processes unregister requests asynchronously with no way to poll
+    // for completion, so we use a conservative fixed delay to ensure all
+    // objects are fully unregistered before creating new ones.
+    constexpr uint64_t dbusCleanupDelayUsec = 10000000; // 10 seconds
+
+    co_await timer::Sleep(terminusManager.getEvent(), dbusCleanupDelayUsec,
+                          timer::NonPriority);
+
+    // Trigger Type 2 reinitialization via platformManager
+    // platformManager.initTerminus() will reinitialize termini with
+    // initalized=false
+    auto rc = co_await platformManager.initTerminus();
+
+    if (rc != PLDM_SUCCESS)
+    {
+        lg2::error(
+            "Failed to reinitialize terminus tid={TID} after rediscovery, rc={RC}",
+            "TID", tid, "RC", rc);
+        co_return rc;
+    }
+
+    // Restart sensor polling for this terminus with new PDRs
+    sensorManager.startPolling(tid);
+    terminus->resumed = true;
+
+    lg2::info("Type 2 telemetry rediscovery completed for tid={TID}", "TID",
+              tid);
+
+    co_return PLDM_SUCCESS;
+}
+
+void EventManager::processTelemetryResumeEvent(tid_t tid)
+{
+    lg2::info("Processing telemetry resume event for tid={TID}", "TID", tid);
+
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::error("processTelemetryResumeEvent: terminus tid={TID} not found",
+                   "TID", tid);
+        return;
+    }
+
+    // Simply restart sensor polling without clearing or reinitializing
+    // Assumes PDRs and sensors are still valid
+    sensorManager.startPolling(tid);
+
+    lg2::info("Telemetry monitoring resumed for terminus tid={TID}", "TID",
+              tid);
 }
 
 } // namespace platform_mc

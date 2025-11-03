@@ -20,6 +20,7 @@
 #include "libpldm/pldm.h"
 
 #include "common/instance_id.hpp"
+#include "common/platform_defs.hpp"
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
 #include "requester/handler.hpp"
@@ -34,6 +35,11 @@ namespace pldm
 {
 namespace platform_mc
 {
+
+// Forward declaration
+class Manager;
+class PlatformManager;
+class SensorManager;
 
 const std::string SensorThresholdCriticalHighGoingHigh{
     "OpenBMC.0.2.SensorThresholdCriticalHighGoingHigh"};
@@ -73,9 +79,11 @@ class EventManager
     explicit EventManager(
         TerminusManager& terminusManager,
         std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
-        fw_update::Manager& fwUpdateManager, bool verbose = false) :
+        fw_update::Manager& fwUpdateManager, PlatformManager& platformManager,
+        SensorManager& sensorManager, bool verbose = false) :
         terminusManager(terminusManager), termini(termini),
-        fwUpdateManager(fwUpdateManager), verbose(verbose) {};
+        fwUpdateManager(fwUpdateManager), platformManager(platformManager),
+        sensorManager(sensorManager), verbose(verbose) {};
 
     /** @brief Handle platform event
      *
@@ -141,6 +149,12 @@ class EventManager
                                  const uint8_t* sensorData,
                                  size_t sensorDataLength);
 
+    void processTelemetryPauseEvent(tid_t tid);
+
+    exec::task<int> processTelemetryRediscoveryEvent(tid_t tid);
+
+    void processTelemetryResumeEvent(tid_t tid);
+
     virtual void createSensorThresholdLogEntry(
         const std::string& messageID, const std::string& sensorName,
         const double reading, const double threshold,
@@ -153,6 +167,12 @@ class EventManager
     std::map<tid_t, std::shared_ptr<Terminus>>& termini;
 
     fw_update::Manager& fwUpdateManager;
+
+    /** @brief Reference of platformManager */
+    PlatformManager& platformManager;
+
+    /** @brief Reference of sensorManager */
+    SensorManager& sensorManager;
 
     /** @brief verbose tracing flag */
     bool verbose;

@@ -536,6 +536,20 @@ NumericSensor::NumericSensor(
 }
 #endif
 
+NumericSensor::~NumericSensor()
+{
+    // D-Bus interface cleanup in reverse order of creation
+    // Ensures proper unregistration of D-Bus objects
+    inventoryDecoratorAreaIntf.reset();
+    thresholdFatalIntf.reset();
+    thresholdCriticalIntf.reset();
+    thresholdWarningIntf.reset();
+    operationalStatusIntf.reset();
+    availabilityIntf.reset();
+    valueIntf.reset();
+    associationDefinitionsIntf.reset();
+}
+
 double NumericSensor::conversionFormula(double value)
 {
     double convertedValue = value;

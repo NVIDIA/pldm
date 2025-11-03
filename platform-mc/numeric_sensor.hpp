@@ -98,7 +98,7 @@ class NumericSensor
         std::string& sensorName, std::string& associationPath,
         uint8_t oemIndicator);
 #endif
-    ~NumericSensor() {};
+    ~NumericSensor();
 
     /** @brief The function called by Sensor Manager to set sensor to
      * error status.
