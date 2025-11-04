@@ -105,6 +105,13 @@ class RequestRetryTimer
         timeout;            //!< time to wait between each retry in milliseconds
     sdbusplus::Timer timer; //!< manages starting timers and handling timeouts
 
+    /** @brief Hook invoked before attempting a retry
+     *
+     *  This function can be overridden to provide additional logging or other
+     *  functionality before a retry attempt.
+     */
+    virtual void onRetry() {}
+
     /** @brief Sends the PLDM request message
      *
      *  @return return PLDM_SUCCESS on success and PLDM_ERROR otherwise
@@ -114,8 +121,10 @@ class RequestRetryTimer
     /** @brief Callback function invoked when the timeout happens */
     void callback()
     {
-        if (numRetries--)
+        if (numRetries > 0)
         {
+            onRetry();
+            --numRetries;
             send();
         }
         else
@@ -170,11 +179,29 @@ class Request final : public RequestRetryTimer
     pldm::Request requestMsg;     //!< PLDM request message
     bool verbose;                 //!< verbose tracing flag
 
+    /** @brief Log retry only for T5 (firmware update) requests */
+    void onRetry() override
+    {
+        const struct pldm_msg_hdr* hdr =
+            (struct pldm_msg_hdr*)(requestMsg.data());
+        pldm_header_info hdrFields{};
+        if (PLDM_SUCCESS != unpack_pldm_header(hdr, &hdrFields))
+        {
+            return;
+        }
+
+        if (hdrFields.pldm_type == PLDM_FWUP)
+        {
+            warning("Retrying PLDM T5 request. EID={EID}", "EID", eid);
+            pldm::utils::printBuffer(pldm::utils::Tx, requestMsg);
+        }
+    }
+
     /** @brief Sends the PLDM request message on the socket
      *
      *  @return return PLDM_SUCCESS on success and PLDM_ERROR otherwise
      */
-    int send() const
+    int send() const override
     {
         if (verbose)
         {
