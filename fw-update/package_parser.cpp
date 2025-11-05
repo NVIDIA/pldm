@@ -24,6 +24,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Software/Update/server.hpp>
 
 #include <memory>
 
@@ -360,7 +361,8 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
                 "Payload Checksum Verification failed. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_PAYLOAD_CHECKSUM}'",
                 "CALCULATED_CHECKSUM", calcChecksum, "PACKAGE_PAYLOAD_CHECKSUM",
                 checksum);
-            throw InternalFailure();
+            throw sdbusplus::error::xyz::openbmc_project::software::update::
+                InvalidSignature();
         }
     }
 

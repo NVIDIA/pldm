@@ -515,6 +515,26 @@ class UpdateManager
      *  activation state to Invalid.
      */
     void handleInvalidPackageError();
+
+    /** @brief Handle Payload checksum validation failure by logging and
+     *         setting the activation state
+     *
+     *  This helper method encapsulates the common error handling logic for
+     *  payload checksum failures. It creates a log entry with the standard
+     *  error message, clears the firmware update package, and sets the
+     *  activation state to Invalid.
+     */
+    void handlePayloadChecksumError();
+
+    /** @brief Handle header parse failures by logging and setting the
+     *         activation state
+     *
+     *  This helper method encapsulates the common error handling logic for
+     *  header parsing failures. It creates a log entry with the standard
+     *  error message, clears the firmware update package, and sets the
+     *  activation state to Invalid.
+     */
+    void handleInvalidPackageHeaderError();
 };
 
 } // namespace fw_update

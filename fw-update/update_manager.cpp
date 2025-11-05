@@ -24,6 +24,7 @@
 #include "package_signature.hpp"
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/exception.hpp>
 
 #include <bitset>
 #include <cassert>
@@ -289,7 +290,7 @@ void UpdateManager::processStream(
     if (parser == nullptr)
     {
         error("Invalid PLDM package header information");
-        handleInvalidPackageError();
+        handleInvalidPackageHeaderError();
         parser.reset();
         return;
     }
@@ -297,6 +298,14 @@ void UpdateManager::processStream(
     try
     {
         parser->parse(mmapStream->data(), packageSize);
+    }
+    catch (const sdbusplus::error::xyz::openbmc_project::software::update::
+               InvalidSignature&)
+    {
+        error("Firmware package checksum validation failed");
+        handlePayloadChecksumError();
+        parser.reset();
+        return;
     }
     catch (const std::exception& e)
     {
@@ -1145,6 +1154,48 @@ void UpdateManager::handleInvalidPackageError()
 {
     std::string compName = "Firmware Update Service";
     std::string messageError = "Invalid FW Package";
+    std::string resolution =
+        "Retry firmware update operation with valid FW package.";
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+    clearFirmwareUpdatePackage();
+
+    if (activation)
+    {
+        activation->activation(software::Activation::Activations::Failed);
+    }
+    else
+    {
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Failed, this);
+    }
+}
+
+void UpdateManager::handlePayloadChecksumError()
+{
+    std::string compName = "Firmware Update Service";
+    std::string messageError = "FW package payload checksum validation failed";
+    std::string resolution =
+        "Retry firmware update operation with valid FW package.";
+    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
+    clearFirmwareUpdatePackage();
+
+    if (activation)
+    {
+        activation->activation(software::Activation::Activations::Failed);
+    }
+    else
+    {
+        activation = std::make_unique<Activation>(
+            pldm::utils::DBusHandler::getBus(), objPath,
+            software::Activation::Activations::Failed, this);
+    }
+}
+
+void UpdateManager::handleInvalidPackageHeaderError()
+{
+    std::string compName = "Firmware Update Service";
+    std::string messageError = "Invalid FW Package header";
     std::string resolution =
         "Retry firmware update operation with valid FW package.";
     createLogEntry(resourceErrorDetected, compName, messageError, resolution);
