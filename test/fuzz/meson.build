@@ -377,7 +377,6 @@ executable(
 #    '../../../pldmd/dbus_impl_requester.cpp',
 #    '../../../pldmd/instance_id.cpp',
 #    '../../other_device_update_manager.cpp',
-#    '../../watch.cpp',
 #     'pldmd_mockup.cpp'
 #]
 

@@ -14,7 +14,6 @@ test_src = declare_dependency(
         '../../fw-update/device_inventory.cpp',
         '../../fw-update/firmware_inventory.cpp',
         '../../fw-update/other_device_update_manager.cpp',
-        '../../fw-update/watch.cpp',
         '../../fw-update/fw_update_utility.cpp',
         '../../fw-update/package_signature.cpp',
     ],

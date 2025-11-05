@@ -31,7 +31,6 @@
 #include "fw-update/package_parser.hpp"
 #include "fw-update/package_signature.hpp"
 #include "fw-update/update_manager.hpp"
-#include "fw-update/watch.hpp"
 #include "mock_event_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"

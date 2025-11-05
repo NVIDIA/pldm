@@ -23,7 +23,6 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "update_manager.hpp"
-#include "watch.hpp"
 
 #include <unistd.h>
 

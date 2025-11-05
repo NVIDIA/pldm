@@ -122,21 +122,6 @@ conf_data.set(
     get_option('flightrecorder-max-entries'),
 )
 conf_data.set('FIRMWARE_UPDATE_TIME', get_option('firmware-update-time'))
-if get_option('firmware-package-staging-dir').endswith('/')
-    conf_data.set_quoted(
-        'FIRMWARE_PACKAGE_STAGING_DIR',
-        get_option('firmware-package-staging-dir').substring(0, -1),
-    )
-else
-    conf_data.set_quoted(
-        'FIRMWARE_PACKAGE_STAGING_DIR',
-        get_option('firmware-package-staging-dir'),
-    )
-endif
-conf_data.set_quoted(
-    'FIRMWARE_PACKAGE_STAGING_DIR_MOUNT_SERVICE',
-    get_option('firmware-package-staging-dir-mount-service'),
-)
 conf_data.set(
     'PROGRESS_UPDATE_INTERVAL',
     get_option('progress-percent-updater-interval'),

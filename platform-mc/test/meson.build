@@ -21,7 +21,6 @@ dep_src_files = [
     '../../fw-update/config.cpp',
     '../../fw-update/firmware_inventory.cpp',
     '../../fw-update/package_parser.cpp',
-    '../../fw-update/watch.cpp',
     '../../fw-update/device_inventory.cpp',
     '../../fw-update/inventory_manager.cpp',
     '../../fw-update/package_signature.cpp',
