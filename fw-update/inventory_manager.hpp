@@ -340,6 +340,17 @@ class InventoryManager
         parseGetDownstreamFirmwareParametersResponse(
             mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
+    /**
+     * @brief log devicediscovery failed messages
+     *
+     * @param[in] eid - mctp end point
+     * @param[in] messageError - message error
+     * @param[in] resolution - recommended resolution
+     */
+    void logDiscoveryFailedMessage(
+        const mctp_eid_t& eid, const std::string& messageError,
+        const std::string& resolution, dbus::MctpInterfaces mctpInterfaces);
+
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>& handler;
 

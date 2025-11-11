@@ -158,6 +158,11 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
         error(
             "Failed to execute the 'queryDeviceIdentifiers' function., EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
+        if (!messageError.empty() && !resolution.empty())
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
+        }
         co_return rc;
     }
 
@@ -184,6 +189,11 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
         error("Failed to execute the 'getFirmwareParameters' function., "
               "EID={EID}, RC={RC} ",
               "EID", eid, "RC", rc);
+        if (!messageError.empty() && !resolution.empty())
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
+        }
     }
 
     co_return rc;
@@ -242,6 +252,11 @@ exec::task<int> InventoryManager::getActiveFirmwareVersion(
     error(
         "Failed to attempt the execute of 'getFirmwareParameters' function., EID={EID}, RC={RC} ",
         "EID", eid, "RC", rc);
+    if (!messageError.empty() && !resolution.empty())
+    {
+        logDiscoveryFailedMessage(eid, messageError, resolution,
+                                  mctpInterfaces);
+    }
 
     co_return rc;
 }
@@ -1106,6 +1121,27 @@ sdbusplus::async::task<int>
         }
     }
     co_return PLDM_SUCCESS;
+}
+
+void InventoryManager::logDiscoveryFailedMessage(
+    const mctp_eid_t& eid, const std::string& messageError,
+    const std::string& resolution, dbus::MctpInterfaces mctpInterfaces)
+{
+    if (mctpEidMap.contains(eid))
+    {
+        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
+        DeviceInfo deviceInfo;
+        if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                    deviceInfo))
+        {
+            const auto& deviceObjPath =
+                std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
+            std::string compName =
+                std::filesystem::path(deviceObjPath).filename();
+            createLogEntry(resourceErrorDetected, compName, messageError,
+                           resolution);
+        }
+    }
 }
 
 } // namespace fw_update
