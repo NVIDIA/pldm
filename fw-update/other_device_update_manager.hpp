@@ -240,8 +240,11 @@ class OtherDeviceUpdateManager
      * @brief Fetches UUID and SKU from the package
      *
      * @param fwDeviceIDRecord - Firmware Record of the current image
+     * @return pair of UUID and SKU. If SKU descriptor not present in package,
+     * SKU is empty. Returns std::nullopt if SKU descriptor is present but
+     * corrupted.
      */
-    std::pair<UUID, SKU> fetchDescriptorsFromPackage(
+    std::optional<std::pair<UUID, SKU>> fetchDescriptorsFromPackage(
         const FirmwareDeviceIDRecord& fwDeviceIDRecord);
 
     /**

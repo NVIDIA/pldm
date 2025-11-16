@@ -25,7 +25,6 @@
 #include "update_manager.hpp"
 #include "watch.hpp"
 
-#include <fmt/format.h>
 #include <unistd.h>
 
 #include <boost/uuid/uuid.hpp>
@@ -38,6 +37,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <map>
 #include <tuple>
@@ -308,8 +308,9 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     }
 }
 
-std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
-    const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+std::optional<std::pair<UUID, SKU>>
+    OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord)
 {
     const auto& deviceIDDescriptors = std::get<Descriptors>(fwDeviceIDRecord);
     UUID uuid{};
@@ -336,14 +337,29 @@ std::pair<UUID, SKU> OtherDeviceUpdateManager::fetchDescriptorsFromPackage(
                 std::get<VendorDefinedDescriptorInfo>(descriptorValue);
             if (vendorDescTitle == "APSKU")
             {
-                sku = fmt::format("0X{:02X}{:02X}{:02X}{:02X}",
-                                  vendorDescData[0], vendorDescData[1],
-                                  vendorDescData[2], vendorDescData[3]);
+                if (vendorDescData.size() == 4)
+                {
+                    sku = std::format("0X{:02X}{:02X}{:02X}{:02X}",
+                                      vendorDescData[0], vendorDescData[1],
+                                      vendorDescData[2], vendorDescData[3]);
+                }
+                else
+                {
+                    std::string descBytes;
+                    for (const auto& byte : vendorDescData)
+                    {
+                        descBytes += std::format("{:02x}", byte);
+                    }
+                    error(
+                        "APSKU descriptor has invalid size {SIZE} bytes (must be 4 bytes), data: 0x{DATA}",
+                        "SIZE", vendorDescData.size(), "DATA", descBytes);
+                    return std::nullopt;
+                }
             }
         }
     }
 
-    return {uuid, sku};
+    return {{uuid, sku}};
 }
 
 TransferPackageState OtherDeviceUpdateManager::txComponentImage(
@@ -450,17 +466,16 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
     {
         const auto& fwDeviceIDRecord = fwDeviceIDRecords[index];
 
-        const auto& [uuid, sku] = fetchDescriptorsFromPackage(fwDeviceIDRecord);
-
-        if (uuid.empty())
+        auto packageDescriptors = fetchDescriptorsFromPackage(fwDeviceIDRecord);
+        if (!packageDescriptors)
         {
             continue;
         }
 
-        if (sku.empty())
+        const auto& [uuid, sku] = *packageDescriptors;
+        if (uuid.empty())
         {
-            warning("No Sku descriptor found in package for UUID {UUID}",
-                    "UUID", uuid);
+            continue;
         }
 
         auto it = otherDeviceDescriptorMap.find({uuid, sku});
