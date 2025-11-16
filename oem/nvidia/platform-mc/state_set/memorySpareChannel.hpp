@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set.hpp"
 
 #include <com/nvidia/MemorySpareChannel/server.hpp>
@@ -39,12 +40,15 @@ class StateSetMemorySpareChannel : public StateSet
   private:
     uint8_t compId = 0;
     std::string objPath;
+    const StateSensor& stateSensor;
 
   public:
     StateSetMemorySpareChannel(uint16_t stateSetId, uint8_t compId,
                                std::string& objectPath,
-                               dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), compId(compId), objPath(objectPath)
+                               dbus::PathAssociation& stateAssociation,
+                               StateSensor& sensorRef) :
+        StateSet(stateSetId), compId(compId), objPath(objectPath),
+        stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -86,7 +90,8 @@ class StateSetMemorySpareChannel : public StateSet
             if (forward == "chassis" && reverse == "all_states")
             {
                 endpoint = std::get<2>(assoc);
-                if (endpoint.size() > 0)
+                if ((endpoint.size() > 0) &&
+                    (!stateSensor.isDefaultInventoryAssociated()))
                 {
                     tal::TelemetryAggregator::updateTelemetry(
                         objPath, ifaceName, propertyName, rawPropValue,

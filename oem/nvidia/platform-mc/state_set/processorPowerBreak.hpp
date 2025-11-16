@@ -47,12 +47,11 @@ class StateSetProcessorPowerBreak : public StateSet
     const StateSensor& stateSensor;
 
   public:
-    StateSetProcessorPowerBreak(uint16_t stateSetId, uint8_t compId,
-                                std::string& objectPath,
-                                dbus::PathAssociation& stateAssociation,
-                                StateSensor& sensorRef) :
-        StateSet(stateSetId),
-        objPath(objectPath), compId(compId), stateSensor(sensorRef)
+    StateSetProcessorPowerBreak(
+        uint16_t stateSetId, uint8_t compId, std::string& objectPath,
+        dbus::PathAssociation& stateAssociation, StateSensor& sensorRef) :
+        StateSet(stateSetId), objPath(objectPath), compId(compId),
+        stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -130,7 +129,7 @@ class StateSetProcessorPowerBreak : public StateSet
 
     std::tuple<std::string, std::string, Level, std::string, std::string>
         getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
-        const override
+            const override
     {
         if (ValueIntf->value() == PowerBreakStates::Normal)
         {

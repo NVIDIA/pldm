@@ -42,6 +42,7 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     systemInventoryPath = PLATFORM_CHASSIS_PATH;
     maxBufferSize = 256;
     needRefresh = false;
+    inventoriesPopulated = false;
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
@@ -1101,6 +1102,18 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
                            std::move(data));
 }
 
+exec::task<int> Terminus::getInventoryParent(const std::string objPath)
+{
+    auto parents = co_await utils::coGetDbusProperty<std::vector<std::string>>(
+        objPath + "/parent_chassis", "endpoints",
+        "xyz.openbmc_project.Association", pldm::utils::mapperService);
+    if (parents.size())
+    {
+        inventoryParentMap[objPath] = parents[0];
+    }
+    co_return PLDM_SUCCESS;
+}
+
 exec::task<int> Terminus::scanInventories()
 {
     std::vector<std::string> interestedInterfaces;
@@ -1118,6 +1131,7 @@ exec::task<int> Terminus::scanInventories()
         systemInventoryPath = PLATFORM_CHASSIS_PATH;
 
         inventories.clear();
+        inventoryParentMap.clear();
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
             EntityType type = 0;
@@ -1162,6 +1176,7 @@ exec::task<int> Terminus::scanInventories()
             if (rc == PLDM_SUCCESS)
             {
                 inventories.emplace_back(objPath, type, instanceNumber);
+                co_await getInventoryParent(objPath);
                 if (type != (PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC))
                 {
                     continue;
@@ -1193,6 +1208,7 @@ exec::task<int> Terminus::scanInventories()
                         }
                         inventories.emplace_back(assocPath, type,
                                                  instanceNumber);
+                        co_await getInventoryParent(assocPath);
                     }
                 }
                 catch (const std::exception& e)
@@ -1201,6 +1217,19 @@ exec::task<int> Terminus::scanInventories()
                                "P", objPath, "ERR", e);
                 }
             }
+        }
+        bool noParent = false;
+        for (auto& [path, typ, number] : inventories)
+        {
+            if (inventoryParentMap.find(path) == inventoryParentMap.end() &&
+                number != 0xFFFF)
+            {
+                noParent = true;
+            }
+        }
+        if (!noParent && inventories.size() > 1)
+        {
+            inventoriesPopulated = true;
         }
     }
     catch (const std::exception& e)
@@ -1270,7 +1299,10 @@ exec::task<int> Terminus::updateAssociations()
         {
             inventoryPaths = findInventory(entityInfo);
         }
-        ptr->setInventoryPaths(inventoryPaths, false);
+        if (inventoriesPopulated)
+        {
+            ptr->setInventoryPaths(inventoryPaths, false);
+        }
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1290,7 +1322,10 @@ exec::task<int> Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath, false);
+        if (inventoriesPopulated)
+        {
+            ptr->setInventoryPaths(inventoryPath, false);
+        }
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
@@ -1358,7 +1393,9 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
         {
             for (const auto& containerPath : ContainerInventoryPaths)
             {
-                if (candidate.starts_with(containerPath))
+                const auto& it = inventoryParentMap.find(candidate);
+                if (it != inventoryParentMap.end() &&
+                    it->second == containerPath)
                 {
                     inventoryPaths.emplace_back(candidate);
                 }
@@ -1744,9 +1781,9 @@ exec::task<int> Terminus::refreshAssociationsTask()
         needRefresh = false;
         // Update inventory list
         co_await scanInventories();
-        // Update Sensor PDIs
-        co_await updateAssociations();
     }
+    // Update Sensor PDIs after scans are done
+    co_await updateAssociations();
     co_return PLDM_SUCCESS;
 }
 

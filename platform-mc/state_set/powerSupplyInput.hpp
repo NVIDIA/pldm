@@ -35,12 +35,16 @@ class StateSetPowerSupplyInput : public StateSet
 {
   private:
     std::string objPath;
+    uint8_t compId = 0;
+    const StateSensor& stateSensor;
 
   public:
     StateSetPowerSupplyInput(uint16_t stateSetId, uint8_t compId,
                              std::string& objectPath,
-                             dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), objPath(objectPath), compId(compId)
+                             dbus::PathAssociation& stateAssociation,
+                             StateSensor& sensorRef) :
+        StateSet(stateSetId), objPath(objectPath), compId(compId),
+        stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -81,7 +85,8 @@ class StateSetPowerSupplyInput : public StateSet
             if (forward == "chassis" && reverse == "all_states")
             {
                 endpoint = std::get<2>(assoc);
-                if (endpoint.size() > 0)
+                if ((endpoint.size() > 0) &&
+                    (!stateSensor.isDefaultInventoryAssociated()))
                 {
                     tal::TelemetryAggregator::updateTelemetry(
                         objPath, ifaceName, propertyName, rawPropValue,
@@ -141,7 +146,6 @@ class StateSetPowerSupplyInput : public StateSet
 
   private:
     std::unique_ptr<PowerSupplyValueIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
 };
 
 } // namespace platform_mc
