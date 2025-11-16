@@ -205,18 +205,50 @@ void DebugToken::updateDebugToken(
             return;
         }
     }
-    activationMatches.emplace_back(
-        bus,
-        MatchRules::propertiesChanged(tokenPath, Server::Activation::interface),
-        std::bind(&DebugToken::onActivationChangedMsg, this,
-                  std::placeholders::_1));
 
-    activationMatches.emplace_back(
-        bus,
-        MatchRules::propertiesChanged(tokenPath,
-                                      Server::ActivationProgress::interface),
-        std::bind(&DebugToken::onActivationChangedMsg, this,
-                  std::placeholders::_1));
+    try
+    {
+        activationMatches.emplace_back(
+            bus,
+            MatchRules::propertiesChanged(tokenPath,
+                                          Server::Activation::interface),
+            std::bind(&DebugToken::onActivationChangedMsg, this,
+                      std::placeholders::_1));
+    }
+    catch (const std::exception& e)
+    {
+        /* emplace_back function will call constructor of
+        std::vector<sdbusplus::bus::match_t>, which in some cases throws
+        an exception. For example, when tokenpath is empty, the generated match
+        rule is invalid and causes an exception when creating match_t */
+        error(
+            "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
+            "FAILED_MATCH", Server::Activation::interface, "TOKENPATH",
+            tokenPath, "ERROR", e.what());
+        startUpdate();
+        return;
+    }
+
+    try
+    {
+        activationMatches.emplace_back(
+            bus,
+            MatchRules::propertiesChanged(
+                tokenPath, Server::ActivationProgress::interface),
+            std::bind(&DebugToken::onActivationChangedMsg, this,
+                      std::placeholders::_1));
+    }
+    catch (const std::exception& e)
+    {
+        /* Catch potential exception like the previous emplace_back call */
+        error(
+            "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
+            "FAILED_MATCH", Server::ActivationProgress::interface, "TOKENPATH",
+            tokenPath, "ERROR", e.what());
+        startUpdate();
+        return;
+    }
+
     setVersion();
     if (!activate())
     {
