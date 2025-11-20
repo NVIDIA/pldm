@@ -1,5 +1,6 @@
 #pragma once
 
+#include <com/nvidia/State/DeviceState/server.hpp>
 #include <sdbusplus/message/types.hpp>
 
 #include <algorithm>
@@ -212,6 +213,17 @@ using MatchComponentNameMapInfo =
 using ComponentNameMap = std::unordered_map<eid, ComponentIdNameMap>;
 using ComponentTargetList =
     std::unordered_map<eid, std::vector<CompIdentifier>>;
+
+// DeviceStatus return type
+using AdditionalData = std::map<std::string, std::string>;
+using DeviceStatusErrorCode = int64_t;
+using DeviceState = sdbusplus::server::com::nvidia::state::DeviceState;
+using DeviceStatusMap = std::map<
+    DeviceState::StatusType,
+    std::tuple<
+        DeviceState::DeviceHealth,
+        std::vector<std::tuple<DeviceStatusErrorCode, DeviceState::ErrorClass,
+                               AdditionalData>>>>;
 
 /** @struct MatchEntryInfo
  *  @brief the template struct to find the matched configured info for an dbus

@@ -262,8 +262,9 @@ class ComponentUpdater
      *  @param[in] respMsgLen - Response message length
      *  @param[in] retryCount - retry count for decode failures
      */
-    int processUpdateComponentResponse(mctp_eid_t eid, const pldm_msg* response,
-                                       size_t respMsgLen, uint8_t retryCount);
+    exec::task<int> processUpdateComponentResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t retryCount);
 
     /** @brief Handler for RequestFirmwareData request
      *
@@ -316,7 +317,7 @@ class ComponentUpdater
      * @param[in] response - cancel update response
      * @param[in] respMsgLen - response length
      */
-    int processCancelUpdateComponentResponse(
+    exec::task<int> processCancelUpdateComponentResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
     /** @brief FirmwareDeviceIDRecord in the fw update package that matches this
@@ -358,9 +359,9 @@ class ComponentUpdater
      * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
-    int processGetStatusResponse(mctp_eid_t eid, const pldm_msg* response,
-                                 size_t respMsgLen, uint8_t& currentFDState,
-                                 uint8_t& progressPercent, uint8_t retryCount);
+    exec::task<int> processGetStatusResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t& currentFDState, uint8_t& progressPercent, uint8_t retryCount);
 
     exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
                                             const pldm_msg** responseMsg,

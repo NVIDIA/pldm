@@ -147,12 +147,20 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
         error("Error while sending mctp request for ComponentUpdate."
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
+        {
+            if (rc == PLDM_ERROR_NOT_READY)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+                    PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
+            }
+        }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -160,7 +168,8 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
                       ComponentUpdateStatus::UpdateFailed));
         co_return rc;
     }
-    rc = processUpdateComponentResponse(eid, response, respMsgLen, retryCount);
+    rc = co_await processUpdateComponentResponse(eid, response, respMsgLen,
+                                                 retryCount);
     if (rc == PLDM_ERROR_INVALID_DATA)
     {
         if (retryCount < maxDecodeFailureRetries)
@@ -182,24 +191,29 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
     co_return rc;
 }
 
-int ComponentUpdater::processUpdateComponentResponse(
+exec::task<int> ComponentUpdater::processUpdateComponentResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_UPDATE_COMPONENT, PLDM_FWUP_TIME_OUT);
         error(
             "No response received for update component with endpoint ID {EID}",
             "EID", eid);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
+        {
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+                PLDM_UPDATE_COMPONENT, PLDM_FWUP_TIME_OUT);
+        }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
             std::bind(&ComponentUpdater::updateComponentComplete, this,
                       ComponentUpdateStatus::UpdateFailed));
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
@@ -238,7 +252,7 @@ int ComponentUpdater::processUpdateComponentResponse(
                 std::bind(&ComponentUpdater::updateComponentComplete, this,
                           ComponentUpdateStatus::UpdateFailed));
         }
-        return PLDM_ERROR_INVALID_DATA;
+        co_return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -255,7 +269,7 @@ int ComponentUpdater::processUpdateComponentResponse(
             updateManager->event,
             std::bind(&ComponentUpdater::updateComponentComplete, this,
                       ComponentUpdateStatus::UpdateFailed));
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
     if (compCompatibilityResp)
     {
@@ -294,14 +308,14 @@ int ComponentUpdater::processUpdateComponentResponse(
                 std::bind(&ComponentUpdater::updateComponentComplete, this,
                           ComponentUpdateStatus::UpdateFailed));
         }
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
 
     componentUpdaterState.nextState(componentUpdaterState.current);
 
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          transferringToComponent);
-    return PLDM_SUCCESS;
+    co_return PLDM_SUCCESS;
 }
 
 Response ComponentUpdater::requestFwData(const pldm_msg* request,
@@ -932,25 +946,42 @@ void ComponentUpdater::createRequestFwDataTimer()
             "ComponentIndex={COMPONENTINDEX}",
             "EID", eid, "COMPONENTINDEX", componentIndex, "EXPECTEDTIME",
             updateTimeoutSeconds);
-        updateManager->createMessageRegistry(
-            eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-            PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
-        componentUpdaterState.set(
-            ComponentUpdaterSequence::CancelUpdateComponent);
-        if (discoverMctpTerminusTaskHandle.has_value())
-        {
-            auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
-            if (!rcOpt.has_value())
+
+        auto queryAndCancelTask = [this]() -> exec::task<void> {
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (!logged)
             {
-                return;
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
+                    PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
             }
-            stdexec::sync_wait(scope.on_empty());
-            discoverMctpTerminusTaskHandle.reset();
-        }
-        auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+            else
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, componentIndex, transferFailed);
+            }
+
+            componentUpdaterState.set(
+                ComponentUpdaterSequence::CancelUpdateComponent);
+            if (discoverMctpTerminusTaskHandle.has_value())
+            {
+                auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+                if (!rcOpt.has_value())
+                {
+                    co_return;
+                }
+                stdexec::sync_wait(scope.on_empty());
+                discoverMctpTerminusTaskHandle.reset();
+            }
+            auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+            stdexec::start_detached(
+                sendcancelUpdateComponentRequest() |
+                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
+        };
+
         stdexec::start_detached(
-            sendcancelUpdateComponentRequest() |
-                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+            queryAndCancelTask(),
             exec::default_task_context<void>(exec::inline_scheduler{}));
     });
 }
@@ -991,37 +1022,50 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
               "ComponentIndex={COMPONENTINDEX}",
               "CMD", commandName, "EID", eid, "COMPONENTINDEX", componentIndex);
 
-        if (commandName.empty())
-        {
-            error("Unexpected state during complete commands timeout: {STATE}",
-                  "STATE", static_cast<int>(componentUpdaterState.current));
-        }
-        else
-        {
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, componentIndex, stateFailedMessageId, "",
-                timedOutCommand, PLDM_FWUP_TIME_OUT);
-        }
-
-        componentUpdaterState.set(
-            ComponentUpdaterSequence::CancelUpdateComponent);
-
-        if (discoverMctpTerminusTaskHandle.has_value())
-        {
-            auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
-            if (!rcOpt.has_value())
+        auto queryAndCancelTask = [this, timedOutCommand, commandName,
+                                   stateFailedMessageId]() -> exec::task<void> {
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (commandName.empty())
             {
-                return;
+                error(
+                    "Unexpected state during complete commands timeout: {STATE}",
+                    "STATE", static_cast<int>(componentUpdaterState.current));
             }
-            stdexec::sync_wait(scope.on_empty());
-            discoverMctpTerminusTaskHandle.reset();
-        }
-        auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+            if (logged)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, componentIndex,
+                    stateFailedMessageId);
+            }
+            else
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, componentIndex, stateFailedMessageId,
+                    "", timedOutCommand, PLDM_FWUP_TIME_OUT);
+            }
+
+            componentUpdaterState.set(
+                ComponentUpdaterSequence::CancelUpdateComponent);
+            if (discoverMctpTerminusTaskHandle.has_value())
+            {
+                auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+                if (!rcOpt.has_value())
+                {
+                    co_return;
+                }
+                stdexec::sync_wait(scope.on_empty());
+                discoverMctpTerminusTaskHandle.reset();
+            }
+            auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+            stdexec::start_detached(
+                sendcancelUpdateComponentRequest() |
+                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
+        };
+
         stdexec::start_detached(
-            sendcancelUpdateComponentRequest() |
-                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+            queryAndCancelTask(),
             exec::default_task_context<void>(exec::inline_scheduler{}));
-        return;
     });
 }
 
@@ -1057,11 +1101,15 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
         error("Error while sending mctp request for ComponentUpdate."
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
+
+        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
         co_return rc;
     }
-    rc = processCancelUpdateComponentResponse(eid, response, respMsgLen);
+    rc = co_await processCancelUpdateComponentResponse(eid, response,
+                                                       respMsgLen);
     if (rc)
     {
         error("Error while processing cancel update response."
@@ -1074,15 +1122,18 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
     co_return rc;
 }
 
-int ComponentUpdater::processCancelUpdateComponentResponse(
+exec::task<int> ComponentUpdater::processCancelUpdateComponentResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
     if (response == nullptr || !respMsgLen)
     {
         error("No response received for CancelUpdateComponent, EID={EID}",
               "EID", eid);
+
+        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
@@ -1099,7 +1150,7 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
               "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
               completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return rc;
+        co_return rc;
     }
     if (completionCode)
     {
@@ -1108,9 +1159,9 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
               "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
               completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
-    return PLDM_SUCCESS;
+    co_return PLDM_SUCCESS;
 }
 
 void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
@@ -1178,17 +1229,25 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
-        auto [messageStatus, oemMessageId, oemMessageError,
-              oemResolution] = getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
-        if (messageStatus)
-        {
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                oemMessageError, oemResolution);
-        }
         error("Error while sending mctp request for ComponentUpdate."
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
+        {
+            {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+                if (messageStatus)
+                {
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                        oemMessageError, oemResolution);
+                }
+            }
+        }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         getStatusCallback(0);
         co_return rc;
@@ -1196,8 +1255,8 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
 
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
-    rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,
-                                  progressPercent, retryCount);
+    rc = co_await processGetStatusResponse(
+        eid, response, respMsgLen, currentFDState, progressPercent, retryCount);
     if (rc == PLDM_ERROR_INVALID_DATA)
     {
         if (retryCount < maxDecodeFailureRetries)
@@ -1221,14 +1280,17 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     co_return rc;
 }
 
-int ComponentUpdater::processGetStatusResponse(
+exec::task<int> ComponentUpdater::processGetStatusResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t& currentFDState, uint8_t& progressPercent, uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
         error("No response received for GetStatus, EID={EID}", "EID", eid);
-        return PLDM_ERROR;
+
+        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+
+        co_return PLDM_ERROR;
     }
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
@@ -1263,7 +1325,7 @@ int ComponentUpdater::processGetStatusResponse(
                   completionCode);
             componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         }
-        return PLDM_ERROR_INVALID_DATA;
+        co_return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -1272,9 +1334,9 @@ int ComponentUpdater::processGetStatusResponse(
               "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
               completionCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return PLDM_ERROR;
+        co_return PLDM_ERROR;
     }
-    return PLDM_SUCCESS;
+    co_return PLDM_SUCCESS;
 }
 
 void ComponentUpdater::handleLogging(uint32_t offset, uint32_t length)

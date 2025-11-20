@@ -161,16 +161,25 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
         error("Failed to send request update for endpoint ID '{EID}', response "
               "code '{RC}'",
               "EID", eid, "RC", rc);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
+
+        if (rc == PLDM_ERROR_NOT_READY)
         {
-            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-                getOemMessage(PLDM_REQUEST_UPDATE, COMMAND_TIMEOUT);
-            if (messageStatus)
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (!logged)
             {
-                updateManager->createMessageRegistryResourceErrors(
-                    eid, fwDeviceIDRecord, compIndex, oemMessageId,
-                    oemMessageError, oemResolution);
+                for (size_t compIndex = 0;
+                     compIndex < applicableComponents.size(); compIndex++)
+                {
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
+                        getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
+                    if (messageStatus)
+                    {
+                        updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                            oemMessageError, oemResolution);
+                    }
+                }
             }
         }
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
@@ -202,22 +211,28 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
 {
     if (response == nullptr || !respMsgLen)
     {
-        const auto& applicableComponents =
-            std::get<ApplicableComponents>(fwDeviceIDRecord);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
-        {
-            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-                getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
-            if (messageStatus)
-            {
-                updateManager->createMessageRegistryResourceErrors(
-                    eid, fwDeviceIDRecord, compIndex, oemMessageId,
-                    oemMessageError, oemResolution);
-            }
-        }
         error("No response received for request update for endpoint ID '{EID}'",
               "EID", eid);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
+        {
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
+                if (messageStatus)
+                {
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                        oemMessageError, oemResolution);
+                }
+            }
+        }
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
@@ -389,13 +404,22 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
     if (rc)
     {
         error("Error while sending mctp request for PassCompTable.");
-        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(PLDM_PASS_COMPONENT_TABLE, COMMAND_TIMEOUT);
-        if (messageStatus)
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
         {
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                oemMessageError, oemResolution);
+            if (rc == PLDM_ERROR_NOT_READY)
+            {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] = getOemMessage(PLDM_PASS_COMPONENT_TABLE,
+                                                     PLDM_FWUP_TIME_OUT);
+                if (messageStatus)
+                {
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                        oemMessageError, oemResolution);
+                }
+            }
         }
         co_return rc;
     }
@@ -428,17 +452,22 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
 {
     if (response == nullptr || !respMsgLen)
     {
-        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getOemMessage(PLDM_PASS_COMPONENT_TABLE, PLDM_FWUP_TIME_OUT);
-        if (messageStatus)
-        {
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                oemMessageError, oemResolution);
-        }
         error(
             "No response received for pass component table for endpoint ID '{EID}'",
             "EID", eid);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+        if (!logged)
+        {
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_PASS_COMPONENT_TABLE, PLDM_FWUP_TIME_OUT);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+        }
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
@@ -603,17 +632,26 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
             "Error while sending mctp request for ActivateFirmware. EID={EID}",
             "EID", eid);
 
+        bool logged = queryDeviceStatusAndLog(eid);
+
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-
         const auto& applicableComponents =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
              compIndex++)
         {
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, compIndex, activateFailed, "",
-                PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+            if (!logged)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                    PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+            }
+            else
+            {
+                updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
+                                                     compIndex, activateFailed);
+            }
         }
 
         co_return rc;
@@ -651,16 +689,22 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         error(
             "No response received for activate firmware for endpoint ID '{EID}'",
             "EID", eid);
+
+        bool logged = queryDeviceStatusAndLog(eid);
+
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        const auto& applicableComponents =
-            std::get<ApplicableComponents>(fwDeviceIDRecord);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
+        if (!logged)
         {
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, compIndex, activateFailed, "",
-                PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                    PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+            }
         }
         co_return PLDM_ERROR;
     }
@@ -848,6 +892,9 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
     {
         error("Error while sending mctp request for CancelUpdate. EID={EID}",
               "EID", eid);
+
+        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+
         co_return rc;
     }
     rc = co_await processCancelUpdateResponse(eid, response, respMsgLen);
@@ -866,6 +913,9 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
     {
         // Handle error scenario
         error("No response received for CancelUpdate, EID={EID}", "EID", eid);
+
+        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }

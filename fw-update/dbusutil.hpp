@@ -18,9 +18,16 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <libpldm/pldm.h>
+
+#include <com/nvidia/State/DeviceState/server.hpp>
+#include <phosphor-logging/device_error_log.hpp>
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
+
+#include <optional>
 
 PHOSPHOR_LOG2_USING;
 
@@ -141,6 +148,7 @@ inline void createLogEntry(
     {
         info("Generic message ID using default ordering for args", "MESSAGEID",
              messageID);
+        level = Level::Critical;
         addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
     }
 
@@ -171,4 +179,173 @@ inline void createLogEntry(
         "xyz.openbmc_project.Logging.Create", "Create", messageID, severity,
         addData);
     return;
+}
+
+<<<<<<< Updated upstream
+/** @brief Helper to get component name from component index
+ *
+ *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord for the device
+ *  @param[in] compImageInfos - Component image information
+ *  @param[in] compIndex - Component index
+ *  @param[in] compIdNameInfo - Component ID to name mapping
+ *  @return Component name string from fw update config if component exists,
+ *          else returns the string 0xFFFF
+ */
+inline std::string getComponentName(
+    const pldm::fw_update::FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    const pldm::fw_update::ComponentImageInfos& compImageInfos,
+    size_t compIndex, const pldm::fw_update::ComponentIdNameMap& compIdNameInfo)
+{
+    const auto& applicableComponents =
+        std::get<pldm::fw_update::ApplicableComponents>(fwDeviceIDRecord);
+    const auto& comp = compImageInfos[applicableComponents[compIndex]];
+    pldm::fw_update::CompIdentifier compIdentifier =
+        std::get<static_cast<size_t>(
+            pldm::fw_update::ComponentImageInfoPos::CompIdentifierPos)>(comp);
+
+    if (compIdNameInfo.contains(compIdentifier))
+    {
+        auto compIdSearch = compIdNameInfo.find(compIdentifier);
+        return compIdSearch->second;
+    }
+    return std::to_string(compIdentifier);
+}
+
+=======
+>>>>>>> Stashed changes
+/** @brief Simple structure to hold Redfish error information */
+struct RedfishErrorInfo
+{
+    std::string messageId;
+    std::string arg0;
+    std::string arg1;
+    std::string resolution;
+};
+
+/** @brief Query device status via D-Bus and get Redfish error info
+ *
+ *  @param[in] eid - endpoint ID of the device
+ *  @return vector of Redfish error info for all errors found, empty if no
+ * errors
+ */
+inline std::vector<RedfishErrorInfo> queryDeviceStatusError(
+    mctp_eid_t eid) noexcept
+{
+    using DeviceState = sdbusplus::server::com::nvidia::state::DeviceState;
+
+    std::string objectPath = "/com/nvidia/state/device_status/" +
+                             std::to_string(static_cast<unsigned int>(eid));
+
+    static constexpr auto deviceStatusInterface =
+        "com.nvidia.State.DeviceState";
+
+    std::variant<pldm::fw_update::DeviceStatusMap> propertyValue;
+
+    try
+    {
+        auto service = pldm::utils::DBusHandler().getService(
+            objectPath.c_str(), deviceStatusInterface);
+
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        auto method =
+            bus.new_method_call(service.c_str(), objectPath.c_str(),
+                                "org.freedesktop.DBus.Properties", "Get");
+        method.append(deviceStatusInterface, "DeviceStatus");
+
+        auto reply = bus.call(method);
+
+        reply.read(propertyValue);
+    }
+    catch (const std::exception& e)
+    {
+        error("Failed to query device status for EID {EID}: {ERROR}", "EID",
+              eid, "ERROR", e.what());
+        return {};
+    }
+
+    auto statusMap = std::get<pldm::fw_update::DeviceStatusMap>(propertyValue);
+
+    auto commIt = statusMap.find(DeviceState::StatusType::Communication);
+    if (commIt == statusMap.end())
+    {
+        return {};
+    }
+
+    DeviceState::DeviceHealth health = std::get<0>(commIt->second);
+    if (health == DeviceState::DeviceHealth::Healthy)
+    {
+        return {};
+    }
+
+    const auto& errors = std::get<1>(commIt->second);
+    if (errors.empty())
+    {
+        return {};
+    }
+
+    std::vector<RedfishErrorInfo> errorInfos;
+    for (const auto& error : errors)
+    {
+        const auto& additionalData = std::get<2>(error);
+
+        auto messageIdIt = additionalData.find("REDFISH_MESSAGE_ID");
+        auto messageArgsIt = additionalData.find("REDFISH_MESSAGE_ARGS");
+
+        if (messageIdIt != additionalData.end())
+        {
+            RedfishErrorInfo errorInfo;
+            errorInfo.messageId = messageIdIt->second;
+
+            std::string messageArgs = (messageArgsIt != additionalData.end())
+                                          ? messageArgsIt->second
+                                          : "";
+
+            size_t commaPos = messageArgs.find(',');
+            if (commaPos != std::string::npos)
+            {
+                errorInfo.arg0 = messageArgs.substr(0, commaPos);
+                errorInfo.arg1 = messageArgs.substr(commaPos + 1);
+                errorInfo.arg1.erase(0,
+                                     errorInfo.arg1.find_first_not_of(" \t"));
+                errorInfo.arg1.erase(
+                    errorInfo.arg1.find_last_not_of(" \t") + 1);
+            }
+            else
+            {
+                errorInfo.arg0 = "";
+                errorInfo.arg1 = messageArgs;
+            }
+            if (additionalData.find("REDFISH_RESOLUTION") !=
+                additionalData.end())
+            {
+                errorInfo.resolution = additionalData.at("REDFISH_RESOLUTION");
+            }
+
+            errorInfos.push_back(errorInfo);
+        }
+    }
+
+    return errorInfos;
+}
+
+/** @brief Query device status via D-Bus and create event logs for timeouts
+ *         for a specific component
+ *
+ *  @param[in] eid - endpoint ID of the device
+ *  @return bool - true if error was logged, false otherwise
+ */
+inline bool queryDeviceStatusAndLog(mctp_eid_t eid)
+{
+    auto errorInfos = queryDeviceStatusError(eid);
+    if (errorInfos.empty())
+    {
+        return false;
+    }
+
+    for (const auto& errorInfo : errorInfos)
+    {
+        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1,
+                       errorInfo.resolution);
+    }
+    return true;
 }
