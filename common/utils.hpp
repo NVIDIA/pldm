@@ -724,5 +724,29 @@ std::optional<std::string> fruFieldValuestring(const uint8_t* value,
 std::optional<uint32_t> fruFieldParserU32(const uint8_t* value,
                                           const uint8_t& length);
 
+/**
+ * @brief Get PLDM type name from type code
+ *
+ * Converts a PLDM type code to a human-readable string.
+ *
+ * @param[in] pldmType - PLDM type code (0-63)
+ * @return String representation of PLDM type (e.g., "Base/Control",
+ * "FW_Update(Type5)")
+ */
+const char* getPldmTypeName(uint8_t pldmType);
+
+/**
+ * @brief Get PLDM command name from type and command code
+ *
+ * Converts PLDM type and command code to a human-readable string.
+ * Returns "Cmd_0xXX" format if command is not recognized.
+ *
+ * @param[in] pldmType - PLDM type code (0-63)
+ * @param[in] commandCode - PLDM command code (0-255)
+ * @return String representation of command name (e.g.,
+ * "QueryDeviceIdentifiers", "GetPDR")
+ */
+std::string getPldmCommandName(uint8_t pldmType, uint8_t commandCode);
+
 } // namespace utils
 } // namespace pldm

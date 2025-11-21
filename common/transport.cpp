@@ -1,10 +1,13 @@
 #include "common/transport.hpp"
 
+#include "common/mctp_error_handling.hpp"
+
 #include <libpldm/transport.h>
 #include <libpldm/transport/af-mctp.h>
 #include <libpldm/transport/mctp-demux.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <ranges>
 #include <system_error>
 
@@ -155,4 +158,22 @@ pldm_requester_rc_t PldmTransport::sendRecvMsg(
     pldm_tid_t tid, const void* tx, size_t txLen, void*& rx, size_t& rxLen)
 {
     return pldm_transport_send_recv_msg(transport, tid, tx, txLen, &rx, &rxLen);
+}
+
+int PldmTransport::enableErrorQueue()
+{
+    if (pfd.fd < 0)
+    {
+        return -EINVAL;
+    }
+
+    int val = 1;
+    int rc = setsockopt(pfd.fd, SOL_MCTP, MCTP_OPT_ENABLE_ERRQUEUE, &val,
+                        sizeof(val));
+    if (rc < 0)
+    {
+        return -errno;
+    }
+
+    return 0;
 }

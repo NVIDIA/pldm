@@ -151,14 +151,22 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
 
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            if (rc == PLDM_ERROR_NOT_READY)
+            handleTransportError(updateManager->handler, eid,
+                                 "UpdateComponent");
+        }
+        else
+        {
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (!logged)
             {
-                updateManager->createMessageRegistry(
-                    eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                    PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
+                if (rc == PLDM_ERROR_NOT_READY)
+                {
+                    updateManager->createMessageRegistry(
+                        eid, fwDeviceIDRecord, componentIndex, transferFailed,
+                        "", PLDM_UPDATE_COMPONENT, COMMAND_TIMEOUT);
+                }
             }
         }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
@@ -1102,7 +1110,15 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
 
-        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(updateManager->handler, eid,
+                                 "CancelUpdateComponent");
+        }
+        else
+        {
+            [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+        }
 
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         updateComponentComplete(ComponentUpdateStatus::UpdateFailed);
@@ -1233,18 +1249,25 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
 
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
+            handleTransportError(updateManager->handler, eid, "GetStatus");
+        }
+        else
+        {
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (!logged)
             {
-                auto [messageStatus, oemMessageId, oemMessageError,
-                      oemResolution] =
-                    getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
-                if (messageStatus)
                 {
-                    updateManager->createMessageRegistryResourceErrors(
-                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                        oemMessageError, oemResolution);
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
+                        getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+                    if (messageStatus)
+                    {
+                        updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                            oemMessageError, oemResolution);
+                    }
                 }
             }
         }

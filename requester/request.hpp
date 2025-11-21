@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/flight_recorder.hpp"
+#include "common/mctp_error_handling.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
@@ -16,6 +17,7 @@
 #include <chrono>
 #include <functional>
 #include <iostream>
+#include <string>
 
 PHOSPHOR_LOG2_USING;
 
@@ -226,9 +228,34 @@ class Request final : public RequestRetryTimer
                                          requestMsg.data(), requestMsg.size());
         if (rc < 0)
         {
-            error(
-                "Failed to send pldmTransport message, response code '{RC}' and error - {ERROR}",
-                "RC", rc, "ERROR", errno);
+            int savedErrno = errno;
+
+            if (numRetries == 0)
+            {
+                pldm_header_info hdrFields{};
+                if (PLDM_SUCCESS == unpack_pldm_header(hdr, &hdrFields))
+                {
+                    std::string commandName = pldm::utils::getPldmCommandName(
+                        hdrFields.pldm_type, hdrFields.command);
+
+                    pldm::transport::createMctpTransportRedfishEvent(
+                        eid, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
+                        MCTP_DIR_TX);
+                }
+                else
+                {
+                    error(
+                        "Failed to send pldmTransport message after all retries, response code '{RC}' and error - {ERROR}",
+                        "RC", rc, "ERROR", savedErrno);
+                }
+            }
+            else
+            {
+                warning(
+                    "Failed to send pldmTransport message to EID {EID}, response code '{RC}' and error - {ERROR}, retries remaining: {RETRIES}",
+                    "EID", eid, "RC", rc, "ERROR", savedErrno, "RETRIES",
+                    numRetries);
+            }
             return PLDM_ERROR;
         }
         return PLDM_SUCCESS;

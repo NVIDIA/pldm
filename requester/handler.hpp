@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/instance_id.hpp"
+#include "common/mctp_error_handling.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
 #include "request.hpp"
@@ -20,9 +21,11 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 PHOSPHOR_LOG2_USING;
 
@@ -106,6 +109,24 @@ struct EndpointMessageQueue
     }
 };
 
+/** @struct TransportErrorInfo
+ *
+ *  This struct stores MCTP transport error information for an endpoint.
+ *  Used to distinguish between timeout (no response) and transport failure
+ *  (e.g., device unreachable, link down).
+ */
+struct TransportErrorInfo
+{
+    uint32_t errorCode;   //!< errno from MCTP (ETIMEDOUT, EHOSTUNREACH, etc.)
+    uint8_t binding;      //!< MCTP binding type (USB, I2C, PCIe)
+    uint8_t direction;    //!< TX (0) or RX (1)
+    uint8_t srcEid;       //!< Source EID
+    uint8_t destEid;      //!< Destination EID
+    uint64_t timestampNs; //!< When error occurred (nanoseconds)
+    uint8_t pldmType;     //!< PLDM Type from request (0xFF if not PLDM/unknown)
+    std::vector<uint8_t> requestPayload; //!< Request payload bytes from error
+};
+
 /** @class Handler
  *
  *  This class handles the lifecycle of the PLDM request message based on the
@@ -169,8 +190,24 @@ class Handler
                     "Failed to stop the instance ID expiry timer, response code '{RC}'",
                     "RC", rc);
             }
-            // Call response handler with an empty response to indicate no
-            // response
+
+            auto transportErrorIt = transportErrors.find(eid);
+            if (transportErrorIt != transportErrors.end())
+            {
+                const auto& errInfo = transportErrorIt->second;
+                error("Request to EID {EID} failed due to MCTP transport error "
+                      "(errno={ERRNO})",
+                      "EID", eid, "ERRNO", errInfo.errorCode);
+            }
+            else
+            {
+                error("Request to EID {EID} timed out - no response received",
+                      "EID", eid);
+            }
+
+            // Call response handler with an empty response to indicate failure
+            // The handler can check transportErrors to distinguish timeout vs
+            // transport error
             responseHandler(eid, nullptr, 0);
             this->removeRequestContainer.emplace(
                 key,
@@ -205,6 +242,10 @@ class Handler
         endpointMessageQueues[eid]->activeRequest = true;
         auto requestMsg = endpointMessageQueues[eid]->requestQueue.front();
         endpointMessageQueues[eid]->requestQueue.pop_front();
+
+        // Clear any stale transport error from previous operations to this EID
+        // This prevents old errors from affecting new requests
+        clearTransportError(eid);
 
         auto request = std::make_unique<RequestInterface>(
             pldmTransport, requestMsg->key.eid, event,
@@ -445,6 +486,14 @@ class Handler
                        RequestKeyHasher>
         removeRequestContainer;
 
+    /** @brief Container to store MCTP transport errors per endpoint
+     *
+     *  Stores the last transport error detected for each EID. This allows
+     *  distinguishing between timeout (no error stored) and transport failure
+     *  (error stored) when instance ID expires.
+     */
+    std::unordered_map<mctp_eid_t, TransportErrorInfo> transportErrors;
+
     /** @brief Remove request entry for which the instance ID expired
      *
      *  @param[in] key - key for the Request
@@ -458,6 +507,98 @@ class Handler
             handlers.erase(key);
             removeRequestContainer.erase(key);
         }
+    }
+
+  public:
+    /** @brief Store transport error for an EID
+     *
+     *  Called from pldmd event loop when POLLERR is detected with an MCTP
+     *  transport error. The error is stored silently and later retrieved by
+     *  requester with context about which command failed.
+     *
+     *  @param[in] mctpError - MCTP error structure from error queue
+     */
+    void storeTransportError(const pldm::transport::MctpError& mctpError)
+    {
+        uint8_t direction = mctpError.direction;
+        uint8_t srcEid = mctpError.src_eid;
+        uint8_t destEid = mctpError.dest_eid;
+        uint32_t errorCode = mctpError.error_code;
+        uint8_t binding = mctpError.binding;
+        uint64_t timestampNs = mctpError.timestamp_ns;
+        uint16_t payloadLen = mctpError.payload_len;
+
+        mctp_eid_t affectedEid = (direction == MCTP_DIR_TX) ? destEid : srcEid;
+
+        uint8_t pldmType = pldm::transport::extractPldmType(mctpError);
+
+        std::vector<uint8_t> requestPayload(mctpError.payload,
+                                            mctpError.payload + payloadLen);
+
+        TransportErrorInfo errInfo;
+        errInfo.errorCode = errorCode;
+        errInfo.binding = binding;
+        errInfo.direction = direction;
+        errInfo.srcEid = srcEid;
+        errInfo.destEid = destEid;
+        errInfo.timestampNs = timestampNs;
+        errInfo.pldmType = pldmType;
+        errInfo.requestPayload = requestPayload;
+
+        transportErrors[affectedEid] = errInfo;
+    }
+
+    /** @brief Get transport error details for an EID
+     *
+     *  Allows application code to query transport error details after
+     *  a request fails with PLDM_REQUESTER_MCTP_TRANSPORT_ERROR.
+     *
+     *  Optionally filters by PLDM type to ensure T5 firmware update operations
+     *  only see T5 errors (not T2 platform monitoring errors, etc.)
+     *
+     *  @param[in] eid - endpoint ID
+     *  @param[in] expectedPldmType - Optional PLDM type filter (0xFF = any
+     * type)
+     *
+     *  @return std::optional<TransportErrorInfo> - Error info if found and
+     * matches filter, std::nullopt otherwise
+     */
+    std::optional<TransportErrorInfo> getTransportError(
+        mctp_eid_t eid, uint8_t expectedPldmType = 0xFF) const
+    {
+        auto it = transportErrors.find(eid);
+        if (it != transportErrors.end())
+        {
+            if (expectedPldmType != 0xFF && it->second.pldmType != 0xFF &&
+                it->second.pldmType != expectedPldmType)
+            {
+                return std::nullopt;
+            }
+
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    /** @brief Clear transport error for an EID
+     *
+     *  Clears stored transport error after it has been handled by application.
+     *
+     *  @param[in] eid - endpoint ID to clear error for
+     */
+    void clearTransportError(mctp_eid_t eid)
+    {
+        transportErrors.erase(eid);
+    }
+
+    /** @brief Check if transport error exists for an EID
+     *
+     *  @param[in] eid - endpoint ID
+     *  @return true if transport error exists for this EID, false otherwise
+     */
+    bool hasTransportError(mctp_eid_t eid) const
+    {
+        return transportErrors.find(eid) != transportErrors.end();
     }
 };
 
@@ -552,13 +693,20 @@ struct SendRecvMsgOperation
     {
         stopCallback.reset();
         assert(eid == this->requestKey.eid);
-        auto rc = PLDM_SUCCESS;
+        int rc = PLDM_SUCCESS;
         if (!response && !respMsgLen)
         {
-            rc = PLDM_ERROR_NOT_READY;
+            if (handler.hasTransportError(eid))
+            {
+                rc = PLDM_REQUESTER_MCTP_TRANSPORT_ERROR;
+            }
+            else
+            {
+                rc = PLDM_ERROR_NOT_READY;
+            }
         }
-        return stdexec::set_value(std::move(receiver), static_cast<int>(rc),
-                                  response, respMsgLen);
+        return stdexec::set_value(std::move(receiver), rc, response,
+                                  respMsgLen);
     }
 
   private:
@@ -648,7 +796,10 @@ struct SendRecvMsgSender
  *
  *  @return Return [PLDM_ERROR, _, _] if registerRequest fails.
  *          Return [PLDM_ERROR_NOT_READY, nullptr, 0] if timed out.
- *          Return [PLDM_SUCCESS, resp, len] if succeeded
+ *          Return [PLDM_REQUESTER_MCTP_TRANSPORT_ERROR, _, _] if MCTP transport
+ *                 layer reports an error (e.g., EHOSTUNREACH, ETIMEDOUT).
+ *                 Use getTransportError() to retrieve detailed error
+ * information. Return [PLDM_SUCCESS, resp, len] if succeeded
  */
 template <class RequestInterface>
 stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto

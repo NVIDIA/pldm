@@ -162,22 +162,30 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
               "code '{RC}'",
               "EID", eid, "RC", rc);
 
-        if (rc == PLDM_ERROR_NOT_READY)
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(updateManager->handler, eid, "RequestUpdate");
+        }
+        else
         {
             bool logged = queryDeviceStatusAndLog(eid);
             if (!logged)
             {
-                for (size_t compIndex = 0;
-                     compIndex < applicableComponents.size(); compIndex++)
+                if (rc == PLDM_ERROR_NOT_READY)
                 {
-                    auto [messageStatus, oemMessageId, oemMessageError,
-                          oemResolution] =
-                        getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
-                    if (messageStatus)
+                    for (size_t compIndex = 0;
+                         compIndex < applicableComponents.size(); compIndex++)
                     {
-                        updateManager->createMessageRegistryResourceErrors(
-                            eid, fwDeviceIDRecord, compIndex, oemMessageId,
-                            oemMessageError, oemResolution);
+                        auto [messageStatus, oemMessageId, oemMessageError,
+                              oemResolution] =
+                            getOemMessage(PLDM_REQUEST_UPDATE,
+                                          PLDM_FWUP_TIME_OUT);
+                        if (messageStatus)
+                        {
+                            updateManager->createMessageRegistryResourceErrors(
+                                eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                                oemMessageError, oemResolution);
+                        }
                     }
                 }
             }
@@ -405,19 +413,28 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
     {
         error("Error while sending mctp request for PassCompTable.");
 
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            if (rc == PLDM_ERROR_NOT_READY)
+            handleTransportError(updateManager->handler, eid,
+                                 "PassComponentTable");
+        }
+        else
+        {
+            bool logged = queryDeviceStatusAndLog(eid);
+            if (!logged)
             {
-                auto [messageStatus, oemMessageId, oemMessageError,
-                      oemResolution] = getOemMessage(PLDM_PASS_COMPONENT_TABLE,
-                                                     PLDM_FWUP_TIME_OUT);
-                if (messageStatus)
+                if (rc == PLDM_ERROR_NOT_READY)
                 {
-                    updateManager->createMessageRegistryResourceErrors(
-                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                        oemMessageError, oemResolution);
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
+                        getOemMessage(PLDM_PASS_COMPONENT_TABLE,
+                                      PLDM_FWUP_TIME_OUT);
+                    if (messageStatus)
+                    {
+                        updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                            oemMessageError, oemResolution);
+                    }
                 }
             }
         }
@@ -631,29 +648,35 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
         error(
             "Error while sending mctp request for ActivateFirmware. EID={EID}",
             "EID", eid);
-
-        bool logged = queryDeviceStatusAndLog(eid);
-
-        updateManager->updateDeviceCompletion(eid, false);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        const auto& applicableComponents =
-            std::get<ApplicableComponents>(fwDeviceIDRecord);
-        for (size_t compIndex = 0; compIndex < applicableComponents.size();
-             compIndex++)
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            if (!logged)
+            handleTransportError(updateManager->handler, eid,
+                                 "ActivateFirmware");
+        }
+        else
+        {
+            bool logged = queryDeviceStatusAndLog(eid);
+
+            updateManager->updateDeviceCompletion(eid, false);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
             {
-                updateManager->createMessageRegistry(
-                    eid, fwDeviceIDRecord, compIndex, activateFailed, "",
-                    PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
-            }
-            else
-            {
-                updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                                     compIndex, activateFailed);
+                if (!logged)
+                {
+                    updateManager->createMessageRegistry(
+                        eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                        PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+                }
+                else
+                {
+                    updateManager->createMessageRegistry(
+                        eid, fwDeviceIDRecord, compIndex, activateFailed);
+                }
             }
         }
-
         co_return rc;
     }
     rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen,
@@ -893,8 +916,14 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
         error("Error while sending mctp request for CancelUpdate. EID={EID}",
               "EID", eid);
 
-        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
-
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(updateManager->handler, eid, "CancelUpdate");
+        }
+        else
+        {
+            [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
+        }
         co_return rc;
     }
     rc = co_await processCancelUpdateResponse(eid, response, respMsgLen);

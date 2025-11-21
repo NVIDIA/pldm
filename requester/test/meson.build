@@ -3,7 +3,9 @@ test_src = declare_dependency(
         '../mctp_endpoint_discovery.cpp',
         '../../common/utils.cpp',
         '../../common/transport.cpp',
+        '../../common/mctp_error_handling.cpp',
         '../../fw-update/activation.cpp',
+        '../../fw-update/fw_update_utility.cpp',
         '../../fw-update/inventory_manager.cpp',
         '../../fw-update/package_parser.cpp',
         '../../fw-update/component_updater.cpp',
@@ -14,7 +16,6 @@ test_src = declare_dependency(
         '../../fw-update/device_inventory.cpp',
         '../../fw-update/firmware_inventory.cpp',
         '../../fw-update/other_device_update_manager.cpp',
-        '../../fw-update/fw_update_utility.cpp',
         '../../fw-update/package_signature.cpp',
     ],
 )

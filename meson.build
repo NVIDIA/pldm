@@ -337,7 +337,10 @@ libpldmutils_headers = ['.']
 libpldmutils = library(
     'pldmutils',
     'common/transport.cpp',
+    'common/mctp_error_handling.cpp',
     'common/utils.cpp',
+    'fw-update/fw_update_utility.cpp',
+    'fw-update/config.cpp',
     version: meson.project_version(),
     dependencies: [
         libpldm_dep,
@@ -345,6 +348,7 @@ libpldmutils = library(
         phosphor_logging_dep,
         nlohmann_json_dep,
         sdbusplus,
+        sdeventplus,
     ],
     install: true,
     include_directories: include_directories(libpldmutils_headers),
@@ -381,8 +385,9 @@ endif
 
 source_files = [
     'pldmd/pldmd.cpp',
+    'common/transport.cpp',
+    'common/mctp_error_handling.cpp',
     'fw-update/activation.cpp',
-    'fw-update/fw_update_utility.cpp',
     'fw-update/inventory_manager.cpp',
     'fw-update/package_parser.cpp',
     'fw-update/component_updater.cpp',
@@ -394,6 +399,7 @@ source_files = [
     'fw-update/device_inventory.cpp',
     'fw-update/firmware_inventory.cpp',
     'fw-update/package_signature.cpp',
+    'fw-update/fw_update_utility.cpp',
     oem_files,
     'requester/mctp_endpoint_discovery.cpp',
 ]

@@ -186,4 +186,229 @@ void parseConfig(const fs::path& jsonPath,
     }
 }
 
+namespace
+{
+
+/**
+ * @brief Extract EID value from a dbus::Value variant
+ *
+ * Handles both uint8_t (Type "y") and unsigned int (Type "u") variants.
+ *
+ * @param[in] value - The dbus::Value variant containing the EID
+ * @return optional<uint8_t> - The extracted EID value, or nullopt if extraction
+ * fails or value exceeds uint8_t range
+ */
+std::optional<uint8_t> extractEid(const pldm::dbus::Value& value)
+{
+    try
+    {
+        // Try uint8_t first (Type "y")
+        return std::get<uint8_t>(value);
+    }
+    catch (const std::bad_variant_access&)
+    {
+        try
+        {
+            // Try unsigned int (Type "u")
+            auto eidValue = std::get<unsigned int>(value);
+            if (eidValue <= 255)
+            {
+                return static_cast<uint8_t>(eidValue);
+            }
+            error("EID value {EID} exceeds uint8_t range, skipping", "EID",
+                  eidValue);
+        }
+        catch (const std::bad_variant_access&)
+        {
+            // EID property is neither uint8_t nor unsigned int
+        }
+    }
+    return std::nullopt;
+}
+
+/**
+ * @brief Build a map of EID to device/component name from config
+ *
+ * Parses the fw_update_config.json and builds a cached lookup map.
+ * Primary source: device_inventory.create.object_path
+ * Fallback: First firmware component name from firmware_inventory
+ *
+ * @return unordered_map of mctp_eid_t to device name string
+ */
+std::unordered_map<mctp_eid_t, std::string> buildEidToNameMap()
+{
+    std::unordered_map<mctp_eid_t, std::string> map;
+
+    try
+    {
+        // Parse the fw_update_config.json file
+        DeviceInventoryInfo deviceInventoryInfo;
+        FirmwareInventoryInfo fwInventoryInfo;
+        ComponentNameMapInfo componentNameMapInfo;
+
+        parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
+                    componentNameMapInfo);
+
+        // Build component_id → component_name map for fallback lookups
+        std::unordered_map<uint8_t, std::unordered_map<uint16_t, std::string>>
+            eidToComponentNameMap;
+        for (const auto& entry : componentNameMapInfo.infos)
+        {
+            const auto& [dbusIntfMatch, componentMap] = entry;
+            const auto& [interface, propertyMap] = dbusIntfMatch;
+
+            auto eidProp = propertyMap.find("EID");
+            if (eidProp != propertyMap.end())
+            {
+                auto eidOpt = extractEid(eidProp->second);
+                if (eidOpt.has_value() && *eidOpt != 0)
+                {
+                    eidToComponentNameMap[*eidOpt] = componentMap;
+                }
+            }
+        }
+
+        // Build EID→name map from parsed config
+        // deviceInventoryInfo.infos is vector<tuple<DBusIntfMatch, DeviceInfo>>
+        for (const auto& entry : deviceInventoryInfo.infos)
+        {
+            const auto& [dbusIntfMatch, deviceInfo] = entry;
+            const auto& [interface, propertyMap] = dbusIntfMatch;
+
+            // Look for EID property in the match criteria
+            auto eidProp = propertyMap.find("EID");
+            if (eidProp == propertyMap.end())
+            {
+                continue;
+            }
+
+            // Extract EID value - can be Type "y" (uint8_t) or "u" (unsigned
+            // int)
+            auto configEidOpt = extractEid(eidProp->second);
+            if (!configEidOpt.has_value())
+            {
+                continue;
+            }
+            uint8_t configEid = *configEidOpt;
+
+            // Extract device object path from DeviceInfo
+            // Try "create" section first, then "update" section
+            const auto& [createDeviceInfo, updateDeviceInfo] = deviceInfo;
+            const auto& [createDeviceObjPath, associations] = createDeviceInfo;
+
+            std::string deviceObjPath;
+            if (!createDeviceObjPath.empty())
+            {
+                deviceObjPath = createDeviceObjPath;
+            }
+            else if (!updateDeviceInfo.empty())
+            {
+                deviceObjPath = updateDeviceInfo;
+            }
+
+            if (!deviceObjPath.empty())
+            {
+                // Extract device name from object path (filename)
+                std::string deviceName =
+                    std::filesystem::path(deviceObjPath).filename();
+
+                if (!deviceName.empty())
+                {
+                    map[configEid] = deviceName;
+                }
+            }
+        }
+
+        // FALLBACK: For EIDs without device_inventory section, try
+        // firmware_inventory. This handles cases like EID 14, 24 which only
+        // have firmware components
+        for (const auto& entry : fwInventoryInfo.infos)
+        {
+            const auto& [dbusIntfMatch, fwInfo] = entry;
+            const auto& [interface, propertyMap] = dbusIntfMatch;
+
+            // Look for EID property
+            auto eidProp = propertyMap.find("EID");
+            if (eidProp == propertyMap.end())
+            {
+                continue;
+            }
+
+            // Extract EID value
+            auto configEidOpt = extractEid(eidProp->second);
+            if (!configEidOpt.has_value())
+            {
+                continue;
+            }
+            uint8_t configEid = *configEidOpt;
+
+            // Skip if we already have a device name from device_inventory
+            if (map.find(configEid) != map.end())
+            {
+                continue;
+            }
+
+            // Extract device name from first firmware component name
+            // fwInfo is tuple<FirmwareInventoryMap,
+            // UpdatedFirmwareInventoryMap>
+            const auto& [createFwInfo, updateFwInfo] = fwInfo;
+
+            // createFwInfo is a map of component_id (uint16_t) → component
+            // details
+            if (!createFwInfo.empty())
+            {
+                // Get the first component ID
+                uint16_t firstComponentId = createFwInfo.begin()->first;
+
+                // Look up the component name from componentNameMapInfo
+                auto eidCompMapIt = eidToComponentNameMap.find(configEid);
+                if (eidCompMapIt != eidToComponentNameMap.end())
+                {
+                    const auto& compNameMap = eidCompMapIt->second;
+                    auto compNameIt = compNameMap.find(firstComponentId);
+                    if (compNameIt != compNameMap.end())
+                    {
+                        const std::string& componentName = compNameIt->second;
+                        if (!componentName.empty())
+                        {
+                            map[configEid] = componentName;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!map.empty())
+        {
+            info("Loaded {COUNT} EID→device name mappings from config", "COUNT",
+                 map.size());
+        }
+    }
+    catch (const std::exception& e)
+    {
+        error("Failed to load EID→name map from config: {ERROR}", "ERROR",
+              e.what());
+    }
+
+    return map;
+}
+
+} // anonymous namespace
+
+std::optional<std::string> getDeviceNameFromEid(mctp_eid_t eid)
+{
+    // Static map cached on first call - thread-safe initialization per C++11
+    static std::unordered_map<mctp_eid_t, std::string> eidToNameMap =
+        buildEidToNameMap();
+
+    // Fast lookup in cached map
+    auto it = eidToNameMap.find(eid);
+    if (it != eidToNameMap.end())
+    {
+        return it->second;
+    }
+
+    return std::nullopt; // EID not found in config
+}
+
 } // namespace pldm::fw_update

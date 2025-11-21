@@ -18,6 +18,7 @@
 
 #include "common/utils.hpp"
 #include "dbusutil.hpp"
+#include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
 #include "xyz/openbmc_project/Software/Version/server.hpp"
 
@@ -95,6 +96,10 @@ exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
     {
         error("Failed to send GetPLDMTypes request, EID={EID}, RC={RC} ", "EID",
               eid, "RC", rc);
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid, "GetPLDMTypes", PLDM_BASE);
+        }
         co_return rc;
     }
 
@@ -334,6 +339,10 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
                 "The device did not respond to the device identifiers request, and the communication timed out.";
             resolution = "Reset the baseboard and retry the operation.";
         }
+        else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid, "QueryDeviceIdentifiers");
+        }
         co_return rc;
     }
 
@@ -531,6 +540,10 @@ exec::task<int> InventoryManager::getFirmwareParameters(
             messageError =
                 "The device did not respond to the firmware information request, and the communication timed out.";
             resolution = "Reset the baseboard and retry the operation.";
+        }
+        else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid, "GetFirmwareParameters");
         }
         co_return rc;
     }
@@ -765,6 +778,10 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
         error(
             "Failed to send QueryDownstreamDevices request for endpoint ID {EID}, response code {RC}",
             "EID", eid, "RC", rc);
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid, "QueryDownstreamDevices");
+        }
         co_return rc;
     }
 
@@ -896,6 +913,10 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamIdentifiers(
         error(
             "Failed to send QueryDownstreamIdentifiers request for endpoint ID {EID} with response code {RC}",
             "EID", eid, "RC", rc);
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid, "QueryDownstreamIdentifiers");
+        }
         co_return rc;
     }
 
@@ -1096,8 +1117,13 @@ sdbusplus::async::task<int> InventoryManager::getDownstreamFirmwareParameters(
     if (rc)
     {
         error(
-            "Failed to send QueryDownstreamFirmwareParameters request for endpoint ID {EID} with response code {RC}",
+            "Failed to send GetDownstreamFirmwareParameters request for endpoint ID {EID}, response code {RC}",
             "EID", eid, "RC", rc);
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(handler, eid,
+                                 "QueryDownstreamFirmwareParameters");
+        }
         co_return rc;
     }
 

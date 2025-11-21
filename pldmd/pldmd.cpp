@@ -1,7 +1,9 @@
 #include "common/flight_recorder.hpp"
 #include "common/instance_id.hpp"
+#include "common/mctp_error_handling.hpp"
 #include "common/transport.hpp"
 #include "common/utils.hpp"
+#include "fw-update/fw_update_utility.hpp"
 #include "fw-update/manager.hpp"
 #include "invoker.hpp"
 #include "platform-mc/manager.hpp"
@@ -103,6 +105,47 @@ void requestPLDMServiceName()
         error("Failed to request D-Bus name {NAME} with error {ERROR}.", "NAME",
               PLDMService, "ERROR", e);
     }
+}
+
+/** @brief Handle MCTP transport error from async EPOLLERR (responder path)
+ *
+ *  Called when an async transport error occurs for a response that was
+ *  previously queued for TX. This handles the case where sendMsg() succeeded
+ *  but the actual transmission failed later (e.g., multi-packet response
+ *  where a later packet fails).
+ *
+ *  @param[in] mctpErr - MCTP error structure from error queue
+ */
+static void handleResponderMCTPTransportError(
+    const pldm::transport::MctpError& mctpErr)
+{
+    mctp_eid_t eid = mctpErr.dest_eid;
+
+    // Copy packed struct fields to avoid reference binding issues
+    uint32_t errorCode = mctpErr.error_code;
+    uint16_t payloadLen = mctpErr.payload_len;
+
+    // Parse PLDM header from payload to get type and command
+    if (payloadLen < sizeof(pldm_msg_hdr))
+    {
+        error(
+            "MCTP Transport Error (Responder TX Async) - Incomplete PLDM header "
+            "to EID {EID} (errno={ERRNO})",
+            "EID", eid, "ERRNO", errorCode);
+        return;
+    }
+
+    uint8_t pldmType = pldm::transport::extractPldmType(mctpErr);
+    uint8_t command = mctpErr.payload[2];
+
+    std::string commandName =
+        pldm::utils::getPldmCommandName(pldmType, command);
+
+    uint8_t binding = mctpErr.binding;
+    uint8_t direction = mctpErr.direction;
+
+    pldm::transport::createMctpTransportRedfishEvent(
+        eid, commandName, errorCode, binding, direction);
 }
 
 static std::optional<Response> processRxMsg(
@@ -242,6 +285,21 @@ int main(int argc, char** argv)
      * and use the correct TIDs */
     pldm_tid_t TID = hostEID;
     PldmTransport pldmTransport{};
+
+    // Enable MCTP error queue for transport error reporting
+    int rc = pldmTransport.enableErrorQueue();
+    if (rc < 0)
+    {
+        warning(
+            "Failed to enable MCTP error queue: {ERROR}. Transport errors will not be reported.",
+            "ERROR", std::strerror(-rc));
+        // Non-fatal, continue without error queue support
+    }
+    else if (verbose)
+    {
+        info("MCTP error queue enabled for transport error reporting");
+    }
+
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
     sdbusplus::server::manager_t objManager(bus,
@@ -477,9 +535,57 @@ int main(int argc, char** argv)
             });
     auto callback = [verbose, &invoker, &reqHandler, &fwManager, &pldmTransport,
                      TID](IO& io, int fd, uint32_t revents) mutable {
-        if (revents & (POLLHUP | POLLERR))
+        // Handle MCTP transport error queue first
+        if (revents & EPOLLERR)
         {
-            warning("Transport Socket hang-up or error. IO Exiting.");
+            pldm::transport::MctpError mctpErr;
+            int rc = pldm::transport::readMctpErrorQueue(fd, mctpErr);
+            if (rc == 0)
+            {
+                // Determine if this is a response (responder path) or request
+                // (requester path) libpldm little-endian bitfield: bit 7 =
+                // request bit Bit 7 = 1: REQUEST, Bit 7 = 0: RESPONSE
+                bool isResponse = (mctpErr.payload_len >= 1) &&
+                                  ((mctpErr.payload[0] & 0x80) == 0);
+
+                // Check if this is an async responder TX error
+                // (response that was queued but failed during transmission)
+                if (mctpErr.direction == MCTP_DIR_TX && isResponse)
+                {
+                    // Async responder TX error - log immediately with full
+                    // context These errors would otherwise be lost since
+                    // there's no pending request/timer to correlate with
+                    handleResponderMCTPTransportError(mctpErr);
+                }
+                else
+                {
+                    // Requester error (TX request or RX response) - store for
+                    // correlation The requester handler will log this when the
+                    // request times out
+                    //
+                    // Handle both TX and RX direction errors:
+                    // - TX: Failed sends of outgoing requests (EHOSTUNREACH,
+                    // etc.)
+                    // - RX: Reassembly failures, protocol errors, packet drops
+                    // on incoming responses
+
+                    // Store error - requester will log when it discovers
+                    // request failed
+                    reqHandler.storeTransportError(mctpErr);
+                }
+            }
+
+            // If we only have EPOLLERR and no EPOLLIN, return
+            // Otherwise, continue to process incoming messages
+            if (!(revents & EPOLLIN))
+            {
+                return;
+            }
+        }
+
+        if (revents & EPOLLHUP)
+        {
+            warning("Transport Socket hang-up. IO Exiting.");
             io.get_event().exit(0);
             return;
         }
@@ -508,6 +614,7 @@ int main(int argc, char** argv)
             {
                 printBuffer(Rx, requestMsgVec);
             }
+
             // process message and send response
             auto response = processRxMsg(requestMsgVec, invoker, reqHandler,
                                          fwManager.get(), TID);
@@ -523,9 +630,19 @@ int main(int argc, char** argv)
                                                    (*response).size());
                 if (returnCode != PLDM_REQUESTER_SUCCESS)
                 {
-                    warning(
-                        "Failed to send pldmTransport message for TID '{TID}', response code '{RETURN_CODE}'",
-                        "TID", TID, "RETURN_CODE", returnCode);
+                    int savedErrno = errno;
+
+                    pldm_header_info reqHdrFields{};
+                    auto reqHdr = reinterpret_cast<const pldm_msg_hdr*>(
+                        requestMsgVec.data());
+                    unpack_pldm_header(reqHdr, &reqHdrFields);
+
+                    std::string commandName = pldm::utils::getPldmCommandName(
+                        reqHdrFields.pldm_type, reqHdrFields.command);
+
+                    pldm::transport::createMctpTransportRedfishEvent(
+                        TID, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
+                        MCTP_DIR_TX);
                 }
             }
         }
@@ -565,7 +682,10 @@ int main(int argc, char** argv)
               PLDMService, "ERROR", e);
     }
 #endif
-    IO io(event, pldmTransport.getEventSource(), EPOLLIN, std::move(callback));
+    // Register for EPOLLIN (incoming messages) and EPOLLERR (error queue
+    // events)
+    IO io(event, pldmTransport.getEventSource(), EPOLLIN | EPOLLERR,
+          std::move(callback));
 #ifdef LIBPLDMRESPONDER
     if (hostPDRHandler)
     {

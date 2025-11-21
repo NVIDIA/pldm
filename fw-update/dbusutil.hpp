@@ -17,6 +17,7 @@
 #pragma once
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "config.hpp"
 
 #include <libpldm/pldm.h>
 
@@ -94,63 +95,22 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
     bus.call_noreply(method);
 }
 
-/** @brief Create the D-Bus log entry for message registry
+/** @brief Create log entry with explicit severity and pre-formatted args
  *
  *  @param[in] messageID - Message ID
- *  @param[in] arg0 - argument 0
- *  @param[in] arg1 - argument 1
+ *  @param[in] messageArgs - Pre-formatted message arguments string
  *  @param[in] resolution - Resolution field
- *  @param[in] logNamespace - Logging namespace, default is FWUpdate
- *  @param[in] overrideSeverity - Overwrites the severity for the Log
+ *  @param[in] logNamespace - Logging namespace
+ *  @param[in] level - Severity level for the log entry
  */
 inline void createLogEntry(
-    const std::string& messageID, const std::string& arg0,
-    const std::string& arg1, const std::string& resolution,
-    const std::string logNamespace = "FWUpdate", bool overrideSeverity = false)
+    const std::string& messageID, const std::string& messageArgs,
+    const std::string& resolution, const std::string& logNamespace,
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level)
 {
-    using namespace sdbusplus::xyz::openbmc_project::Logging::server;
-    using Level =
-        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-
     std::map<std::string, std::string> addData;
     addData["REDFISH_MESSAGE_ID"] = messageID;
-    Level level = Level::Informational;
-
-    if (messageID == targetDetermined || messageID == updateSuccessful ||
-        messageID == componentUpdateSkipped || messageID == stageSuccessful)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
-    }
-    else if (messageID == transferFailed || messageID == verificationFailed ||
-             messageID == applyFailed || messageID == activateFailed)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (arg1 + "," + arg0);
-        level = Level::Critical;
-    }
-    else if (messageID == transferringToComponent ||
-             messageID == awaitToActivate)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (arg1 + "," + arg0);
-    }
-    else if (messageID == resourceErrorDetected)
-    {
-        addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
-        if (overrideSeverity)
-        {
-            level = Level::Informational;
-        }
-        else
-        {
-            level = Level::Critical;
-        }
-    }
-    else
-    {
-        info("Generic message ID using default ordering for args", "MESSAGEID",
-             messageID);
-        level = Level::Critical;
-        addData["REDFISH_MESSAGE_ARGS"] = (arg0 + "," + arg1);
-    }
+    addData["REDFISH_MESSAGE_ARGS"] = messageArgs;
 
     if (!resolution.empty())
     {
@@ -178,7 +138,66 @@ inline void createLogEntry(
         "xyz.openbmc_project.Logging", "/xyz/openbmc_project/logging",
         "xyz.openbmc_project.Logging.Create", "Create", messageID, severity,
         addData);
-    return;
+}
+
+/** @brief Create the D-Bus log entry for message registry
+ *
+ *  @param[in] messageID - Message ID
+ *  @param[in] arg0 - argument 0
+ *  @param[in] arg1 - argument 1
+ *  @param[in] resolution - Resolution field
+ *  @param[in] logNamespace - Logging namespace, default is FWUpdate
+ *  @param[in] overrideSeverity - Overwrites the severity for the Log
+ */
+inline void createLogEntry(
+    const std::string& messageID, const std::string& arg0,
+    const std::string& arg1, const std::string& resolution,
+    const std::string logNamespace = "FWUpdate", bool overrideSeverity = false)
+{
+    using namespace sdbusplus::xyz::openbmc_project::Logging::server;
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+
+    std::string messageArgs;
+    Level level = Level::Informational;
+
+    if (messageID == targetDetermined || messageID == updateSuccessful ||
+        messageID == componentUpdateSkipped || messageID == stageSuccessful)
+    {
+        messageArgs = arg0 + "," + arg1;
+    }
+    else if (messageID == transferFailed || messageID == verificationFailed ||
+             messageID == applyFailed || messageID == activateFailed)
+    {
+        messageArgs = arg1 + "," + arg0;
+        level = Level::Critical;
+    }
+    else if (messageID == transferringToComponent ||
+             messageID == awaitToActivate)
+    {
+        messageArgs = arg1 + "," + arg0;
+    }
+    else if (messageID == resourceErrorDetected)
+    {
+        messageArgs = arg0 + "," + arg1;
+        if (overrideSeverity)
+        {
+            level = Level::Informational;
+        }
+        else
+        {
+            level = Level::Critical;
+        }
+    }
+    else
+    {
+        info("Generic message ID using default ordering for args", "MESSAGEID",
+             messageID);
+        level = Level::Critical;
+        messageArgs = arg0 + "," + arg1;
+    }
+
+    createLogEntry(messageID, messageArgs, resolution, logNamespace, level);
 }
 
 /** @brief Simple structure to hold Redfish error information */

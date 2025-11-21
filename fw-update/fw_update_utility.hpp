@@ -91,6 +91,33 @@ exec::task<int> sendRecvPldmMsgOverMctp(
     RequesterHandler& handle, mctp_eid_t eid, Request& request,
     const pldm_msg** responseMsg, size_t* responseLen);
 
+/** @brief Handle PLDM transport error for firmware update requests
+ *
+ *  This function logs MCTP transport errors with full context (command name,
+ *  EID, payload, error details). It queries the handler for Type 5 transport
+ *  errors and logs them appropriately.
+ *
+ *  Transport errors are infrastructure/connectivity issues:
+ *  - EHOSTUNREACH, ETIMEDOUT, EPROTO, reassembly failures
+ *  - Both TX and RX direction errors
+ *  - Logged to journal only, no message registry created
+ *  - Examples: Device unreachable, link down, packet reassembly failure
+ *
+ *  This function should ONLY be called when rc ==
+ * PLDM_REQUESTER_MCTP_TRANSPORT_ERROR. Timeout and other application errors
+ * should be handled separately by caller.
+ *
+ *  @param[in] handler - Requester handler with transport error tracking
+ *  @param[in] eid - Endpoint ID that failed
+ *  @param[in] commandName - Name of PLDM command for logging (e.g.,
+ * "RequestUpdate")
+ *  @param[in] pldmType - PLDM type to filter errors (default: PLDM_FWUP for
+ * Type 5, can also use PLDM_BASE for Type 0)
+ */
+void handleTransportError(RequesterHandler& handler, mctp_eid_t eid,
+                          const std::string& commandName,
+                          uint8_t pldmType = PLDM_FWUP);
+
 } // namespace fw_update
 
 } // namespace pldm

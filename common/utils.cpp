@@ -1,6 +1,11 @@
 #include "utils.hpp"
 
+#include <libpldm/base.h>
+#include <libpldm/bios.h>
+#include <libpldm/firmware_update.h>
+#include <libpldm/fru.h>
 #include <libpldm/pdr.h>
+#include <libpldm/platform.h>
 #include <libpldm/pldm_types.h>
 #include <linux/mctp.h>
 
@@ -13,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <ctime>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -957,6 +963,142 @@ std::vector<pldm::pdr::EffecterID> findEffecterIds(
         }
     }
     return effecterIDs;
+}
+
+const char* getPldmTypeName(uint8_t pldmType)
+{
+    switch (pldmType)
+    {
+        case PLDM_BASE:
+            return "Base/Control";
+        case PLDM_PLATFORM:
+            return "Platform(Type2)";
+        case PLDM_BIOS:
+            return "BIOS";
+        case PLDM_FRU:
+            return "FRU";
+        case PLDM_FWUP:
+            return "FW_Update(Type5)";
+        case PLDM_RDE:
+            return "RDE";
+        case PLDM_OEM:
+            return "OEM";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string getPldmCommandName(uint8_t pldmType, uint8_t commandCode)
+{
+    switch (pldmType)
+    {
+        case PLDM_BASE:
+            switch (commandCode)
+            {
+                case PLDM_GET_TID:
+                    return "GetTID";
+                case PLDM_GET_PLDM_VERSION:
+                    return "GetPLDMVersion";
+                case PLDM_GET_PLDM_TYPES:
+                    return "GetPLDMTypes";
+                case PLDM_GET_PLDM_COMMANDS:
+                    return "GetPLDMCommands";
+                default:
+                    break;
+            }
+            break;
+
+        case PLDM_PLATFORM:
+            switch (commandCode)
+            {
+                case PLDM_SET_STATE_EFFECTER_STATES:
+                    return "SetStateEffecterStates";
+                case PLDM_GET_STATE_SENSOR_READINGS:
+                    return "GetStateSensorReadings";
+                case PLDM_GET_SENSOR_READING:
+                    return "GetSensorReading";
+                case PLDM_GET_PDR:
+                    return "GetPDR";
+                case PLDM_PLATFORM_EVENT_MESSAGE:
+                    return "PlatformEventMessage";
+                case PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE:
+                    return "PollForPlatformEventMessage";
+                default:
+                    break;
+            }
+            break;
+
+        case PLDM_FWUP:
+            switch (commandCode)
+            {
+                case PLDM_QUERY_DEVICE_IDENTIFIERS:
+                    return "QueryDeviceIdentifiers";
+                case PLDM_GET_FIRMWARE_PARAMETERS:
+                    return "GetFirmwareParameters";
+                case PLDM_REQUEST_UPDATE:
+                    return "RequestUpdate";
+                case PLDM_PASS_COMPONENT_TABLE:
+                    return "PassComponentTable";
+                case PLDM_UPDATE_COMPONENT:
+                    return "UpdateComponent";
+                case PLDM_REQUEST_FIRMWARE_DATA:
+                    return "RequestFirmwareData";
+                case PLDM_TRANSFER_COMPLETE:
+                    return "TransferComplete";
+                case PLDM_VERIFY_COMPLETE:
+                    return "VerifyComplete";
+                case PLDM_APPLY_COMPLETE:
+                    return "ApplyComplete";
+                case PLDM_ACTIVATE_FIRMWARE:
+                    return "ActivateFirmware";
+                case PLDM_GET_STATUS:
+                    return "GetStatus";
+                case PLDM_CANCEL_UPDATE_COMPONENT:
+                    return "CancelUpdateComponent";
+                case PLDM_CANCEL_UPDATE:
+                    return "CancelUpdate";
+                default:
+                    break;
+            }
+            break;
+
+        case PLDM_BIOS:
+            switch (commandCode)
+            {
+                case PLDM_GET_BIOS_TABLE:
+                    return "GetBIOSTable";
+                case PLDM_SET_BIOS_TABLE:
+                    return "SetBIOSTable";
+                case PLDM_SET_BIOS_ATTRIBUTE_CURRENT_VALUE:
+                    return "SetBIOSAttributeCurrentValue";
+                case PLDM_GET_BIOS_ATTRIBUTE_CURRENT_VALUE_BY_HANDLE:
+                    return "GetBIOSAttributeCurrentValueByHandle";
+                case PLDM_GET_DATE_TIME:
+                    return "GetDateTime";
+                case PLDM_SET_DATE_TIME:
+                    return "SetDateTime";
+                default:
+                    break;
+            }
+            break;
+
+        case PLDM_FRU:
+            switch (commandCode)
+            {
+                case PLDM_GET_FRU_RECORD_TABLE_METADATA:
+                    return "GetFRURecordTableMetadata";
+                case PLDM_GET_FRU_RECORD_TABLE:
+                    return "GetFRURecordTable";
+                default:
+                    break;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    return std::format("Cmd_0x{:02x}", commandCode);
 }
 
 } // namespace utils

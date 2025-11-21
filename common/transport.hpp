@@ -88,6 +88,16 @@ class PldmTransport
     pldm_requester_rc_t sendRecvMsg(pldm_tid_t tid, const void* tx,
                                     size_t txLen, void*& rx, size_t& rxLen);
 
+    /** @brief Enable MCTP error queue on the transport socket
+     *
+     * Enables the kernel's MCTP error queue feature which allows retrieval
+     * of detailed transport-level error information via MSG_ERRQUEUE.
+     * This is essential for diagnosing MCTP transport failures.
+     *
+     * @return 0 on success, negative errno on failure
+     */
+    int enableErrorQueue();
+
   private:
     /** @brief A pollfd object for holding a file descriptor from the libpldm
      *         transport implementation
