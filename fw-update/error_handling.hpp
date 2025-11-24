@@ -66,7 +66,7 @@ ErrorCode constexpr fwUpdateBlocked = 0xD0;
 /* request update error mapping */
 static ErrorMapping requestUpdateMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Initiating firmware update timed out",
+     {"The device did not respond to the update request, so the update failed.",
       "Retry firmware update operation"}},
     {PLDM_FWUP_ALREADY_IN_UPDATE_MODE,
      {"Device is already in update mode", "Retry firmware update operation"}},
@@ -83,7 +83,7 @@ static ErrorMapping requestUpdateMapping{
 /* pass component table error mapping */
 static ErrorMapping passComponentTblMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Initiating firmware update timed out",
+     {"The device did not respond to the request containing the list of components to be updated, so the update failed.",
       "Retry firmware update operation"}},
     {PLDM_FWUP_NOT_IN_UPDATE_MODE,
      {"Device is not in update mode", "Retry firmware update operation"}},
@@ -93,7 +93,7 @@ static ErrorMapping passComponentTblMapping{
 /* update component error mapping */
 static ErrorMapping updateComponentMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Initiating component update timed out",
+     {"The device did not respond to the request to update the component, so the update failed.",
       "Retry firmware update operation"}},
     {PLDM_FWUP_NOT_IN_UPDATE_MODE,
      {"Device is not in update mode", "Retry firmware update operation"}},
@@ -107,14 +107,16 @@ static ErrorMapping updateComponentMapping{
 /* request firmware data error mapping */
 static ErrorMapping requestFwDataMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Transferring component timed out", "Retry firmware update operation"}}};
+     {"The device stopped requesting component data during the download, so the update failed.",
+      "Retry firmware update operation"}}};
 
 /* transfer complete error mapping */
 static ErrorMapping transferCompleteMapping{
     {PLDM_FWUP_TRANSFER_ERROR_VERSION_MISMATCH,
-     {"No Matching Version", "Verify the contents of the FW package"}},
+     {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
-     {"Transferring component timed out", "Retry firmware update operation"}},
+     {"The device did not send the request indicating that the component data transfer was complete within the operation timeout, so the update failed.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {reqGrantError,
      {"SPI Access Error",
@@ -133,7 +135,8 @@ static ErrorMapping verifyCompleteMapping{
     {PLDM_FWUP_VERIFY_ERROR_VERSION_MISMATCH,
      {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
-     {"Verifying component timed out", "Retry firmware update operation"}},
+     {"The device did not send the request indicating that the verification of the component image was complete within the operation timeout, so the update failed.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
      {"Component image is identical",
@@ -172,7 +175,8 @@ static ErrorMapping verifyCompleteMapping{
 /* apply complete command error mapping */
 static ErrorMapping applyCompleteMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Complete Commands Timeout", "Retry firmware update operation."}},
+     {"The device did not send the request indicating that the component image was applied within the operation timeout, so the update failed.",
+      "Retry firmware update operation"}},
     {PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE,
      {"Applying the image failed due to write operation failure",
       "Retry firmware update operation."}},
@@ -186,12 +190,14 @@ static ErrorMapping applyCompleteMapping{
 /* activate firmware error mapping */
 static ErrorMapping activateFirmwareMapping{
     {PLDM_FWUP_TIME_OUT,
-     {"Activating firmware timed out", "Retry firmware update operation."}}};
+     {"The device did not respond to the activation request, so the update failed.",
+      "Retry firmware update operation"}}};
 
 /* apply complete command error mapping */
 static ErrorMapping getStatusMapping{
     {COMMAND_TIMEOUT,
-     {"Getting device status timed out", "Retry firmware update operation."}}};
+     {"The device did not respond to the device status request, and the communication timed out.",
+      "Retry firmware update operation."}}};
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
     {PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL,

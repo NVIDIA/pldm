@@ -26,7 +26,8 @@ using namespace pldm::fw_update;
 TEST(error_handling, getOemMessage_request_update)
 {
     const std::string oemMessageId = "ResourceEvent.1.0.ResourceErrorsDetected";
-    const std::string oemMessageError = "Initiating firmware update timed out";
+    const std::string oemMessageError =
+        "The device did not respond to the update request, so the update failed.";
     const std::string oemResolution = "Retry firmware update operation";
     const bool oemMessageStatus = true;
 
