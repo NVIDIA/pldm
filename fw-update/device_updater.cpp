@@ -543,6 +543,20 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
         error(
             "Error while sending mctp request for ActivateFirmware. EID={EID}",
             "EID", eid);
+
+        updateManager->updateDeviceCompletion(eid, false);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(fwDeviceIDRecord);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
+        }
+
         co_return rc;
     }
     rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen);
