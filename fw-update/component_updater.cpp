@@ -366,6 +366,27 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         }
         return response;
     }
+    else if (offset + length >= compSize)
+    {
+        info("Last chunk of firmware data sent for EID={EID}, "
+             "ComponentIndex={COMPONENTINDEX}. Starting UA_T6 timer.",
+             "EID", eid, "COMPONENTINDEX", componentIndex);
+
+        if (reqFwDataTimer)
+        {
+            reqFwDataTimer->stop();
+            reqFwDataTimer.reset();
+        }
+
+        createCompleteCommandsTimeoutTimer();
+
+        if (completeCommandsTimeoutTimer)
+        {
+            completeCommandsTimeoutTimer->start(
+                std::chrono::seconds(completeCommandsTimeoutSeconds), false);
+        }
+    }
+
     handleLogging(offset, length);
 
     size_t padBytes = 0;
@@ -449,6 +470,27 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         return response;
     }
 
+    if (!completeCommandsTimeoutTimer)
+    {
+        error(
+            "Received Transfer complete request from endpoint ID '{EID}' before all the data has been transferred",
+            "EID", eid);
+
+        if (reqFwDataTimer)
+        {
+            reqFwDataTimer->stop();
+            reqFwDataTimer.reset();
+        }
+
+        createCompleteCommandsTimeoutTimer();
+
+        if (completeCommandsTimeoutTimer)
+        {
+            completeCommandsTimeoutTimer->start(
+                std::chrono::seconds(completeCommandsTimeoutSeconds), false);
+        }
+    }
+
     if (componentUpdaterState.expectedState(
             ComponentUpdaterSequence::TransferComplete) ==
         ComponentUpdaterSequence::Invalid)
@@ -473,16 +515,6 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         }
         return response;
     }
-    if (reqFwDataTimer)
-    {
-        reqFwDataTimer->stop();
-        reqFwDataTimer.reset();
-    }
-    // create and start UA_T6 timer
-    info("Progress percent is not supported. Starting UA_T6 timer");
-    createCompleteCommandsTimeoutTimer();
-    completeCommandsTimeoutTimer->start(
-        std::chrono::seconds(completeCommandsTimeoutSeconds), false);
 
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -903,36 +935,72 @@ void ComponentUpdater::createRequestFwDataTimer()
 
 void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 {
-    completeCommandsTimeoutTimer =
-        std::make_unique<sdbusplus::Timer>([this]() -> void {
-            if (updateManager->fwDebug)
-            {
-                error("Complete Commands Timeout. EID={EID}, "
-                      "ComponentIndex={COMPONENTINDEX}",
-                      "EID", eid, "COMPONENTINDEX", componentIndex);
-            }
+    completeCommandsTimeoutTimer = std::make_unique<
+        sdbusplus::Timer>([this]() -> void {
+        pldm_firmware_update_commands timedOutCommand;
+        std::string commandName{};
+        std::string stateFailedMessageId{};
+
+        if (componentUpdaterState.current ==
+                ComponentUpdaterSequence::TransferComplete or
+            componentUpdaterState.current ==
+                ComponentUpdaterSequence::RequestFirmwareData)
+        {
+            timedOutCommand = PLDM_TRANSFER_COMPLETE;
+            commandName = "TransferComplete";
+            stateFailedMessageId = transferFailed;
+        }
+        else if (componentUpdaterState.current ==
+                 ComponentUpdaterSequence::VerifyComplete)
+        {
+            timedOutCommand = PLDM_VERIFY_COMPLETE;
+            commandName = "VerifyComplete";
+            stateFailedMessageId = verificationFailed;
+        }
+        else if (componentUpdaterState.current ==
+                 ComponentUpdaterSequence::ApplyComplete)
+        {
+            timedOutCommand = PLDM_APPLY_COMPLETE;
+            commandName = "ApplyComplete";
+            stateFailedMessageId = applyFailed;
+        }
+
+        error("{CMD} Command Timeout. EID={EID}, "
+              "ComponentIndex={COMPONENTINDEX}",
+              "CMD", commandName, "EID", eid, "COMPONENTINDEX", componentIndex);
+
+        if (commandName.empty())
+        {
+            error("Unexpected state during complete commands timeout: {STATE}",
+                  "STATE", static_cast<int>(componentUpdaterState.current));
+        }
+        else
+        {
             updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                PLDM_APPLY_COMPLETE, PLDM_FWUP_TIME_OUT);
-            componentUpdaterState.set(
-                ComponentUpdaterSequence::CancelUpdateComponent);
-            if (discoverMctpTerminusTaskHandle.has_value())
+                eid, fwDeviceIDRecord, componentIndex, stateFailedMessageId, "",
+                timedOutCommand, PLDM_FWUP_TIME_OUT);
+        }
+
+        componentUpdaterState.set(
+            ComponentUpdaterSequence::CancelUpdateComponent);
+
+        if (discoverMctpTerminusTaskHandle.has_value())
+        {
+            auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
+            if (!rcOpt.has_value())
             {
-                auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
-                if (!rcOpt.has_value())
-                {
-                    return;
-                }
-                stdexec::sync_wait(scope.on_empty());
-                discoverMctpTerminusTaskHandle.reset();
+                return;
             }
-            auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(
-                sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
-            return;
-        });
+            stdexec::sync_wait(scope.on_empty());
+            discoverMctpTerminusTaskHandle.reset();
+        }
+        auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
+        stdexec::start_detached(
+            sendcancelUpdateComponentRequest() |
+                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+            exec::default_task_context<void>(exec::inline_scheduler{}));
+        return;
+    });
 }
 
 exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
