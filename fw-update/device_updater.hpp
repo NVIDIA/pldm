@@ -345,26 +345,31 @@ class DeviceUpdater
     /**
      * @brief send request update
      *
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
-    exec::task<int> sendRequestUpdate();
+    exec::task<int> sendRequestUpdate(uint8_t retryCount = 0);
     /**
      * @brief process request update response
      *
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response length
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
     exec::task<int> processRequestUpdateResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t retryCount);
 
     /** @brief Send PassComponentTable command request
      *
      *  @param[in] compOffset - component offset in compImageInfos
+     *  @param[in] retryCount - retry count for decode failures
      *  @return exec::task<int>
      */
-    exec::task<int> sendPassCompTableRequest(size_t offset);
+    exec::task<int> sendPassCompTableRequest(size_t offset,
+                                             uint8_t retryCount = 0);
 
     /**
      * @brief process pass component table response
@@ -372,17 +377,20 @@ class DeviceUpdater
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response length
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
     exec::task<int> processPassCompTableResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t retryCount);
 
     /**
      * @brief Send ActivateFirmware command request
      *
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
-    exec::task<int> sendActivateFirmwareRequest();
+    exec::task<int> sendActivateFirmwareRequest(uint8_t retryCount = 0);
 
     /**
      * @brief process activate firmware response
@@ -390,10 +398,12 @@ class DeviceUpdater
      * @param[in] eid - mctp end point
      * @param[in] response - pldm response
      * @param[in] respMsgLen - response size
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
     exec::task<int> processActivateFirmwareResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t retryCount);
 
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;

@@ -72,7 +72,8 @@ exec::task<int> ComponentUpdater::startComponentUpdater()
     co_return rc;
 }
 
-exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
+exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
+                                                             uint8_t retryCount)
 {
     pldmRequest.reset();
 
@@ -160,19 +161,31 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset)
                       ComponentUpdateStatus::UpdateFailed));
         co_return rc;
     }
-    rc = processUpdateComponentResponse(eid, response, respMsgLen);
+    rc = processUpdateComponentResponse(eid, response, respMsgLen, retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA)
+    {
+        if (retryCount < maxDecodeFailureRetries)
+        {
+            warning(
+                "Decode failure for UpdateComponent, retry {RETRY} of {MAX}, EID={EID}",
+                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+                eid);
+            co_return co_await sendUpdateComponentRequest(offset,
+                                                          retryCount + 1);
+        }
+    }
     if (rc)
     {
         error("Error while processing component update response."
               " EID={EID}, ComponentIndex={COMPONENTINDEX}",
               "EID", eid, "COMPONENTINDEX", componentIndex);
-        co_return rc;
     }
     co_return rc;
 }
 
 int ComponentUpdater::processUpdateComponentResponse(
-    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -208,11 +221,26 @@ int ComponentUpdater::processUpdateComponentResponse(
         &timeBeforeReqFWData);
     if (rc)
     {
-        error(
-            "Failed to decode update request response for endpoint ID '{EID}', response code '{RC}'",
-            "EID", eid, "RC", rc);
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return rc;
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_UPDATE_COMPONENT, PLDM_ERROR);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+            error(
+                "Failed to decode update request response for endpoint ID '{EID}', response code '{RC}'",
+                "EID", eid, "RC", rc);
+            componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+                updateManager->event,
+                std::bind(&ComponentUpdater::updateComponentComplete, this,
+                          ComponentUpdateStatus::UpdateFailed));
+        }
+        return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -290,8 +318,22 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                                                &length);
     if (rc)
     {
+        /* Since the UA does not dictate the retries for the FD, the UA could
+         send
+         * multiple invalid/corrupted requests thereby flooding the task log.
+
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getOemMessage(PLDM_REQUEST_FIRMWARE_DATA, PLDM_ERROR);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+
+        */
         error(
-            "Failed to decode request firmware date request for endpoint ID '{EID}', response code '{RC}'",
+            "Failed to decode request firmware data request for endpoint ID '{EID}', response code '{RC}'",
             "EID", eid, "RC", rc);
         rc = encode_request_firmware_data_resp(
             request->hdr.instance_id, PLDM_ERROR_INVALID_DATA, responseMsg,
@@ -455,6 +497,14 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         decode_transfer_complete_req(request, payloadLength, &transferResult);
     if (rc)
     {
+        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+            getOemMessage(PLDM_TRANSFER_COMPLETE, PLDM_ERROR);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         error(
             "Failed to decode TransferComplete request for endpoint ID '{EID}', response code '{RC}'",
             "EID", eid, "RC", rc);
@@ -467,6 +517,12 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
                 "Failed to encode TransferComplete response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
         }
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event, [this](EventBase&) {
+                completeFailedStatusHandler(transferFailed,
+                                            PLDM_TRANSFER_COMPLETE,
+                                            PLDM_ERROR_INVALID_DATA);
+            });
         return response;
     }
 
@@ -547,42 +603,15 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
     {
         componentUpdaterState.nextState(componentUpdaterState.current);
         // verify the status once by sending GetStatus before failing the update
-        auto transferFailedStatusHandler = [this, transferResult,
-                                            compVersion]() {
-            // TransferComplete Failed
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                PLDM_TRANSFER_COMPLETE, transferResult);
-            error(
-                "Failure in transfer of the component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' with transfer result - {RESULT}",
-                "EID", eid, "COMPONENT_VERSION", compVersion, "RESULT",
-                transferResult);
-            componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-            if (completeCommandsTimeoutTimer)
-            {
-                completeCommandsTimeoutTimer->stop();
-                completeCommandsTimeoutTimer.reset();
-            }
-            if (discoverMctpTerminusTaskHandle.has_value())
-            {
-                auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
-                if (!rcOpt.has_value())
-                {
-                    return;
-                }
-                stdexec::sync_wait(scope.on_empty());
-                discoverMctpTerminusTaskHandle.reset();
-            }
-            auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(
-                sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
-        };
+        error(
+            "Failure in transfer of the component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' with transfer result - {RESULT}",
+            "EID", eid, "COMPONENT_VERSION", compVersion, "RESULT",
+            transferResult);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::handleComponentUpdateFailure, this,
-                      transferFailedStatusHandler));
+            updateManager->event, [this, transferResult](EventBase&) {
+                completeFailedStatusHandler(
+                    transferFailed, PLDM_TRANSFER_COMPLETE, transferResult);
+            });
     }
 
     rc = encode_transfer_complete_resp(request->hdr.instance_id, completionCode,
@@ -613,6 +642,14 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
     auto rc = decode_verify_complete_req(request, payloadLength, &verifyResult);
     if (rc)
     {
+        auto [messageStatus, oemMessageId, oemMessageError,
+              oemResolution] = getOemMessage(PLDM_VERIFY_COMPLETE, PLDM_ERROR);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         error(
             "Failed to decode verify complete request of endpoint ID '{EID}', response code '{RC}'",
             "EID", eid, "RC", rc);
@@ -625,6 +662,12 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
                 "Failed to encode verify complete response of endpoint ID '{EID}', response code '{RC}'.",
                 "EID", eid, "RC", rc);
         }
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event, [this](EventBase&) {
+                completeFailedStatusHandler(verificationFailed,
+                                            PLDM_VERIFY_COMPLETE,
+                                            PLDM_ERROR_INVALID_DATA);
+            });
         return response;
     }
 
@@ -669,41 +712,15 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
     }
     else
     {
-        auto verifyFailedStatusHandler = [this, verifyResult, compVersion]() {
-            // VerifyComplete Failed
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, componentIndex, verificationFailed, "",
-                PLDM_VERIFY_COMPLETE, verifyResult);
-            error(
-                "Failed to verify component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' with transfer result - '{RESULT}'",
-                "EID", eid, "COMPONENT_VERSION", compVersion, "RESULT",
-                verifyResult);
-            componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-            if (completeCommandsTimeoutTimer)
-            {
-                completeCommandsTimeoutTimer->stop();
-                completeCommandsTimeoutTimer.reset();
-            }
-            if (discoverMctpTerminusTaskHandle.has_value())
-            {
-                auto& [scope, rcOpt] = *discoverMctpTerminusTaskHandle;
-                if (!rcOpt.has_value())
-                {
-                    return;
-                }
-                stdexec::sync_wait(scope.on_empty());
-                discoverMctpTerminusTaskHandle.reset();
-            }
-            auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(
-                sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
-        };
+        error(
+            "Failed to verify component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' with verify result - {RESULT}",
+            "EID", eid, "COMPONENT_VERSION", compVersion, "RESULT",
+            verifyResult);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::handleComponentUpdateFailure, this,
-                      verifyFailedStatusHandler));
+            updateManager->event, [this, verifyResult](EventBase&) {
+                completeFailedStatusHandler(verificationFailed,
+                                            PLDM_VERIFY_COMPLETE, verifyResult);
+            });
     }
 
     rc = encode_verify_complete_resp(request->hdr.instance_id, completionCode,
@@ -718,14 +735,12 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
     return response;
 }
 
-void ComponentUpdater::applyCompleteFailedStatusHandler(uint8_t applyResult)
+void ComponentUpdater::completeFailedStatusHandler(
+    const std::string& messageId, pldm_firmware_update_commands command,
+    uint8_t result)
 {
-    updateManager->createMessageRegistry(
-        eid, fwDeviceIDRecord, componentIndex, applyFailed, "",
-        PLDM_APPLY_COMPLETE, applyResult);
-    error(
-        "Failed to apply component endpoint ID '{EID}' and version '{COMPONENT_VERSION}', error - {ERROR}",
-        "EID", eid, "ERROR", applyResult);
+    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
+                                         messageId, "", command, result);
     componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
     if (completeCommandsTimeoutTimer)
     {
@@ -807,6 +822,14 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                                         &compActivationModification);
     if (rc)
     {
+        auto [messageStatus, oemMessageId, oemMessageError,
+              oemResolution] = getOemMessage(PLDM_APPLY_COMPLETE, PLDM_ERROR);
+        if (messageStatus)
+        {
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                oemMessageError, oemResolution);
+        }
         error(
             "Failed to decode apply complete request for endpoint ID '{EID}', response code '{RC}'",
             "EID", eid, "RC", rc);
@@ -819,6 +842,11 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 "Failed to encode apply complete response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
         }
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event, [this](EventBase&) {
+                completeFailedStatusHandler(applyFailed, PLDM_APPLY_COMPLETE,
+                                            PLDM_ERROR_INVALID_DATA);
+            });
         return response;
     }
 
@@ -854,19 +882,24 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
     if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
         applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
     {
-        auto validateApplyStatusSuccess =
-            [this, applyResult, compVersion,
-             compActivationModification](uint8_t currentFDState) {
-                if (currentFDState == PLDM_FD_STATE_READY_XFER)
-                {
-                    applyCompleteSucceededStatusHandler(
-                        compVersion, compActivationModification);
-                }
-                else
-                {
-                    applyCompleteFailedStatusHandler(applyResult);
-                }
-            };
+        auto validateApplyStatusSuccess = [this, applyResult, compVersion,
+                                           compActivationModification](
+                                              uint8_t currentFDState) {
+            if (currentFDState == PLDM_FD_STATE_READY_XFER)
+            {
+                applyCompleteSucceededStatusHandler(compVersion,
+                                                    compActivationModification);
+            }
+            else
+            {
+                error(
+                    "Failed to apply component endpoint ID '{EID}' and version '{COMPONENT_VERSION}', error - {ERROR}",
+                    "EID", eid, "COMPONENT_VERSION", compVersion, "ERROR",
+                    applyResult);
+                completeFailedStatusHandler(applyFailed, PLDM_APPLY_COMPLETE,
+                                            applyResult);
+            }
+        };
 
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -877,14 +910,14 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
     else
     {
         // verify the status once by sending GetStatus before failing the update
-        auto applyFailedStatusHandler = [this, applyResult]() {
-            // ApplyComplete Failed
-            applyCompleteFailedStatusHandler(applyResult);
-        };
+        error(
+            "Failed to apply component endpoint ID '{EID}' and version '{COMPONENT_VERSION}', error - {ERROR}",
+            "EID", eid, "COMPONENT_VERSION", compVersion, "ERROR", applyResult);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::handleComponentUpdateFailure, this,
-                      applyFailedStatusHandler));
+            updateManager->event, [this, applyResult](EventBase&) {
+                completeFailedStatusHandler(applyFailed, PLDM_APPLY_COMPLETE,
+                                            applyResult);
+            });
     }
 
     rc = encode_apply_complete_resp(request->hdr.instance_id, completionCode,
@@ -1133,7 +1166,7 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
 }
 
 exec::task<int> ComponentUpdater::sendGetStatusRequest(
-    std::function<void(uint8_t)> getStatusCallback)
+    std::function<void(uint8_t)> getStatusCallback, uint8_t retryCount)
 {
     auto instanceId = updateManager->instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
@@ -1178,7 +1211,19 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
     rc = processGetStatusResponse(eid, response, respMsgLen, currentFDState,
-                                  progressPercent);
+                                  progressPercent, retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA)
+    {
+        if (retryCount < maxDecodeFailureRetries)
+        {
+            warning(
+                "Decode failure for GetStatus, retry {RETRY} of {MAX}, EID={EID}",
+                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+                eid);
+            co_return co_await sendGetStatusRequest(getStatusCallback,
+                                                    retryCount + 1);
+        }
+    }
     if (rc)
     {
         error("Error while processing get request response."
@@ -1192,7 +1237,7 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
 
 int ComponentUpdater::processGetStatusResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
-    uint8_t& currentFDState, uint8_t& progressPercent)
+    uint8_t& currentFDState, uint8_t& progressPercent, uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -1216,12 +1261,23 @@ int ComponentUpdater::processGetStatusResponse(
         &updateOptionFlagsEnabled);
     if (rc)
     {
-        error("Decoding GetStatus response failed, EID={EID}, "
-              "ComponentIndex={COMPONENTINDEX}, CC={CC}",
-              "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
-              completionCode);
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        return rc;
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            auto [messageStatus, oemMessageId, oemMessageError,
+                  oemResolution] = getOemMessage(PLDM_GET_STATUS, PLDM_ERROR);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
+            error("Decoding GetStatus response failed, EID={EID}, "
+                  "ComponentIndex={COMPONENTINDEX}, CC={CC}",
+                  "EID", eid, "COMPONENTINDEX", componentIndex, "CC",
+                  completionCode);
+            componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        }
+        return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -1233,12 +1289,6 @@ int ComponentUpdater::processGetStatusResponse(
         return PLDM_ERROR;
     }
     return PLDM_SUCCESS;
-}
-
-void ComponentUpdater::handleComponentUpdateFailure(
-    std::function<void()> failureCallback)
-{
-    failureCallback();
 }
 
 void ComponentUpdater::handleLogging(uint32_t offset, uint32_t length)

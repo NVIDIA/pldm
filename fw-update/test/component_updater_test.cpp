@@ -469,6 +469,7 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     size_t componentOffset = 0;
     uint8_t currentFDState = 0;
     uint8_t progressPercent = 0x65;
+    uint8_t retryCount = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
         compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
@@ -482,7 +483,7 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.processGetStatusResponse(
             eid, pldmmsg, sizeof(pldm_get_status_resp), currentFDState,
-            progressPercent);
+            progressPercent, retryCount);
     });
 }
 

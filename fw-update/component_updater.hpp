@@ -19,6 +19,8 @@
 #include "common/types.hpp"
 #include "requester/handler.hpp"
 
+#include <libpldm/firmware_update.h>
+
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
@@ -247,9 +249,11 @@ class ComponentUpdater
     /** @brief Send UpdateComponent command request
      *
      *  @param[in] compOffset - component offset in compImageInfos
+     *  @param[in] retryCount - retry count for decode failures
      *  @return exec::task<int>
      */
-    exec::task<int> sendUpdateComponentRequest(size_t offset);
+    exec::task<int> sendUpdateComponentRequest(size_t offset,
+                                               uint8_t retryCount = 0);
 
     /** @brief Handler for UpdateComponent command response
      *
@@ -259,9 +263,10 @@ class ComponentUpdater
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] response - PLDM response message
      *  @param[in] respMsgLen - Response message length
+     *  @param[in] retryCount - retry count for decode failures
      */
     int processUpdateComponentResponse(mctp_eid_t eid, const pldm_msg* response,
-                                       size_t respMsgLen);
+                                       size_t respMsgLen, uint8_t retryCount);
 
     /** @brief Handler for RequestFirmwareData request
      *
@@ -339,10 +344,11 @@ class ComponentUpdater
      * @brief send get status request coroutine
      *
      * @param[in] getStatusCallback - callback to handle the response
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
     exec::task<int> sendGetStatusRequest(
-        std::function<void(uint8_t)> getStatusCallback);
+        std::function<void(uint8_t)> getStatusCallback, uint8_t retryCount = 0);
 
     /**
      * @brief process get status response
@@ -352,18 +358,12 @@ class ComponentUpdater
      * @param[in] respMsgLen
      * @param[out] currentFDState
      * @param[out] progressPercent
+     * @param[in] retryCount - retry count for decode failures
      * @return exec::task<int>
      */
     int processGetStatusResponse(mctp_eid_t eid, const pldm_msg* response,
                                  size_t respMsgLen, uint8_t& currentFDState,
-                                 uint8_t& progressPercent);
-
-    /**
-     * @brief run get status coroutine
-     *
-     * @param getStatusCallback
-     */
-    void handleComponentUpdateFailure(std::function<void()> failureCallback);
+                                 uint8_t& progressPercent, uint8_t retryCount);
 
     exec::task<int> sendRecvPldmMsgOverMctp(mctp_eid_t eid, Request& request,
                                             const pldm_msg** responseMsg,
@@ -443,12 +443,21 @@ class ComponentUpdater
      */
     void createCompleteCommandsTimeoutTimer();
 
-    /** @brief Handler for the Failed Status of the ApplyComplete request.
+    /** @brief Generic handler for failed status of Complete requests.
      *
-     *  @param[in] applyResult - Apply Result
-     *  @return None
+     *  Handles failures from TransferComplete, VerifyComplete, and
+     * ApplyComplete by logging the error, creating message registry entries,
+     * and initiating cancel update component.
+     *
+     *  @param[in] messageId - Message registry ID (transferFailed,
+     *                         verificationFailed, applyFailed)
+     *  @param[in] command - PLDM command type (PLDM_TRANSFER_COMPLETE,
+     *                       PLDM_VERIFY_COMPLETE, PLDM_APPLY_COMPLETE)
+     *  @param[in] result - Result code from the complete request
      */
-    void applyCompleteFailedStatusHandler(uint8_t applyResult);
+    void completeFailedStatusHandler(const std::string& messageId,
+                                     pldm_firmware_update_commands command,
+                                     uint8_t result);
 
     /** @brief Handler for the Succeeded Status of the ApplyComplete request.
      *

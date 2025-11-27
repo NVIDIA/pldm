@@ -130,10 +130,12 @@ TEST_F(DeviceUpdaterTest, requestUpdate)
                      0x00, 0x00, 0x02, 0x00, 0x00};
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+    uint8_t retryCount = 0;
 
     EXPECT_NO_THROW({
         auto co = deviceUpdater.processRequestUpdateResponse(
-            eid, requestMsg, sizeof(struct pldm_request_update_resp));
+            eid, requestMsg, sizeof(struct pldm_request_update_resp),
+            retryCount);
         stdexec::sync_wait(std::move(co));
     });
 }
@@ -178,10 +180,12 @@ TEST_F(DeviceUpdaterTest, passCompTable)
                      0x00, 0x00, 0x02, 0x00, 0x00};
 
     auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+    uint8_t retryCount = 0;
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = deviceUpdater.processPassCompTableResponse(
-            eid, requestMsg, sizeof(struct pldm_pass_component_table_resp));
+            eid, requestMsg, sizeof(struct pldm_pass_component_table_resp),
+            retryCount);
     });
 }
 
@@ -200,11 +204,13 @@ TEST_F(DeviceUpdaterTest, activateFirmware)
 
     auto requestMsg =
         reinterpret_cast<const pldm_msg*>(activateFirmwareReq.data());
+    uint8_t retryCount = 0;
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
             deviceUpdater.processActivateFirmwareResponse(
-                eid, requestMsg, sizeof(struct pldm_activate_firmware_resp));
+                eid, requestMsg, sizeof(struct pldm_activate_firmware_resp),
+                retryCount);
     });
 }
 

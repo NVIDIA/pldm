@@ -110,7 +110,7 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
     co_return PLDM_SUCCESS;
 }
 
-exec::task<int> DeviceUpdater::sendRequestUpdate()
+exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
 {
     auto instanceId = updateManager->instanceIdDb.next(eid);
     // NumberOfComponents
@@ -177,7 +177,19 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return rc;
     }
-    rc = co_await processRequestUpdateResponse(eid, response, respMsgLen);
+    rc = co_await processRequestUpdateResponse(eid, response, respMsgLen,
+                                               retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA)
+    {
+        if (retryCount < maxDecodeFailureRetries)
+        {
+            warning(
+                "Decode failure for RequestUpdate, retry {RETRY} of {MAX}, EID={EID}",
+                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+                eid);
+            co_return co_await sendRequestUpdate(retryCount + 1);
+        }
+    }
     if (rc)
     {
         error("Error while processing RequestUpdateResponse");
@@ -186,7 +198,8 @@ exec::task<int> DeviceUpdater::sendRequestUpdate()
 }
 
 exec::task<int> DeviceUpdater::processRequestUpdateResponse(
-    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -224,12 +237,31 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
                                          &fdMetaDataLen, &fdWillSendPkgData);
     if (rc)
     {
-        error(
-            "Failed to decode request update response for endpoint ID '{EID}', "
-            "response code '{RC}'",
-            "EID", eid, "RC", rc);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_REQUEST_UPDATE, PLDM_ERROR);
+                if (messageStatus)
+                {
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                        oemMessageError, oemResolution);
+                }
+            }
+            error(
+                "Failed to decode request update response for endpoint ID '{EID}', "
+                "response code '{RC}'",
+                "EID", eid, "RC", rc);
+            updateManager->updateDeviceCompletion(eid, false);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        }
+        co_return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -255,7 +287,8 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
     co_return PLDM_SUCCESS;
 }
 
-exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
+exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
+                                                        uint8_t retryCount)
 {
     pldmRequest.reset();
 
@@ -370,10 +403,21 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
         co_return rc;
     }
 
-    rc = co_await processPassCompTableResponse(eid, response, respMsgLen);
+    rc = co_await processPassCompTableResponse(eid, response, respMsgLen,
+                                               retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA)
+    {
+        if (retryCount < maxDecodeFailureRetries)
+        {
+            warning(
+                "Decode failure for PassCompTable, retry {RETRY} of {MAX}, EID={EID}",
+                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+                eid);
+            co_return co_await sendPassCompTableRequest(offset, retryCount + 1);
+        }
+    }
     if (rc)
     {
-        // Handle error scenario
         error("Failed to send pass component table request for endpoint ID "
               "'{EID}', response code '{RC}'",
               "EID", eid, "RC", rc);
@@ -382,7 +426,8 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset)
 }
 
 exec::task<int> DeviceUpdater::processPassCompTableResponse(
-    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -417,12 +462,31 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
                                          &compResponse, &compResponseCode);
     if (rc)
     {
-        // Handle error scenario
-        error("Failed to decode pass component table response for endpoint ID "
-              "'{EID}', response code '{RC}'",
-              "EID", eid, "RC", rc);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return rc;
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_PASS_COMPONENT_TABLE, PLDM_ERROR);
+                if (messageStatus)
+                {
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                        oemMessageError, oemResolution);
+                }
+            }
+            error(
+                "Failed to decode pass component table response for endpoint ID "
+                "'{EID}', response code '{RC}'",
+                "EID", eid, "RC", rc);
+            updateManager->updateDeviceCompletion(eid, false);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        }
+        co_return PLDM_ERROR_INVALID_DATA;
     }
     if (completionCode)
     {
@@ -511,7 +575,7 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
     }
 }
 
-exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
+exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
 {
     pldmRequest.reset();
     auto instanceId = updateManager->instanceIdDb.next(eid);
@@ -559,7 +623,19 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
 
         co_return rc;
     }
-    rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen);
+    rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen,
+                                                  retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA)
+    {
+        if (retryCount < maxDecodeFailureRetries)
+        {
+            warning(
+                "Decode failure for ActivateFirmware, retry {RETRY} of {MAX}, EID={EID}",
+                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+                eid);
+            co_return co_await sendActivateFirmwareRequest(retryCount + 1);
+        }
+    }
     if (rc)
     {
         error(
@@ -571,7 +647,8 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest()
 }
 
 exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
-    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t retryCount)
 {
     if (response == nullptr || !respMsgLen)
     {
@@ -601,21 +678,34 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
     uint8_t completionCode = 0;
     uint16_t estimatedTimeForActivation = 0;
 
-    // On receiving ActivateFirmware response success/failure make the UA state
-    // to Invalid to further not responds to any PLDM Type 5 requests from FD.
-    deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-
     auto rc = decode_activate_firmware_resp(
         response, respMsgLen, &completionCode, &estimatedTimeForActivation);
     if (rc)
     {
-        // Handle error scenario
-        error("Failed to decode activate firmware response for endpoint ID "
-              "'{EID}', response code '{RC}'",
-              "EID", eid, "RC", rc);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            const auto& applicableComponents =
+                std::get<ApplicableComponents>(fwDeviceIDRecord);
+            for (size_t compIndex = 0; compIndex < applicableComponents.size();
+                 compIndex++)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, compIndex, activateFailed, "",
+                    PLDM_ACTIVATE_FIRMWARE, PLDM_ERROR);
+            }
+            error("Failed to decode activate firmware response for endpoint ID "
+                  "'{EID}', response code '{RC}'",
+                  "EID", eid, "RC", rc);
+            updateManager->updateDeviceCompletion(eid, false);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        }
+        co_return PLDM_ERROR_INVALID_DATA;
     }
+
+    // On receiving ActivateFirmware response success/failure make the UA state
+    // to Invalid to further not responds to any PLDM Type 5 requests from FD.
+    deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+
     if (completionCode)
     {
         const auto& applicableComponents =

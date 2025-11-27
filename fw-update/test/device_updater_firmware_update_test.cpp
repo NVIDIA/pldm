@@ -317,6 +317,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
        passCompTabl_decode_pass_component_table_resp_rc)
 {
     mctp_eid_t eid = 0;
+    uint8_t retryCount = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
@@ -335,7 +336,8 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = deviceUpdater.processPassCompTableResponse(
-            eid, requestMsg, sizeof(struct pldm_pass_component_table_resp));
+            eid, requestMsg, sizeof(struct pldm_pass_component_table_resp),
+            retryCount);
     });
 }
 
@@ -344,6 +346,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
 {
     mctp_eid_t eid = 0;
     size_t componentOffset = 0;
+    uint8_t retryCount = 0;
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
                                 false);
@@ -366,7 +369,8 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
             componentUpdater.processUpdateComponentResponse(
-                eid, requestMsg, sizeof(struct pldm_update_component_resp));
+                eid, requestMsg, sizeof(struct pldm_update_component_resp),
+                retryCount);
     });
 }
 
@@ -417,6 +421,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
        requestUpdate_decode_request_update_resp_rc)
 {
     mctp_eid_t eid = 0;
+    uint8_t retryCount = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
                                 compInfo, compIdNameInfo, 512, &updateManager,
@@ -439,7 +444,8 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = deviceUpdater.processRequestUpdateResponse(
-            eid, requestMsg, sizeof(struct pldm_request_update_resp));
+            eid, requestMsg, sizeof(struct pldm_request_update_resp),
+            retryCount);
     });
 }
 

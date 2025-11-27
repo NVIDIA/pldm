@@ -45,6 +45,8 @@ using CommandMapping = std::map<pldm_firmware_update_commands, ErrorMapping>;
 using CommandToCompCompatibilityMap =
     std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
 
+constexpr uint8_t maxDecodeFailureRetries = 3;
+
 #ifdef OEM_NVIDIA
 ErrorCode constexpr unableToInitiateUpdate = 0x8A;
 ErrorCode constexpr reqGrantError = 0x70;
@@ -73,6 +75,9 @@ static ErrorMapping requestUpdateMapping{
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted response for the update request; so the update failed.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {unableToInitiateUpdate,
      {"ERoT is busy", "Wait for background copy operation to complete and rate"
@@ -89,6 +94,9 @@ static ErrorMapping passComponentTblMapping{
      {"Device is not in update mode", "Retry firmware update operation"}},
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted response for the request containing the list of components to be updated; so the update failed.",
       "Retry firmware update operation"}}};
 /* update component error mapping */
 static ErrorMapping updateComponentMapping{
@@ -102,12 +110,18 @@ static ErrorMapping updateComponentMapping{
       "Retry firmware update operation"}},
     {PLDM_FWUP_BUSY_IN_BACKGROUND,
      {"Cannot execute command because device performing other critical tasks",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted response for the request to update the component; so the update failed.",
       "Retry firmware update operation"}}};
 
 /* request firmware data error mapping */
 static ErrorMapping requestFwDataMapping{
     {PLDM_FWUP_TIME_OUT,
      {"The device stopped requesting component data during the download, so the update failed.",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted request to fetch component data; so the update failed.",
       "Retry firmware update operation"}}};
 
 /* transfer complete error mapping */
@@ -116,6 +130,9 @@ static ErrorMapping transferCompleteMapping{
      {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
      {"The device did not send the request indicating that the component data transfer was complete within the operation timeout, so the update failed.",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted request for the component transfer status; so the update failed.",
       "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {reqGrantError,
@@ -136,6 +153,9 @@ static ErrorMapping verifyCompleteMapping{
      {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
      {"The device did not send the request indicating that the verification of the component image was complete within the operation timeout, so the update failed.",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted request for the component verification status; so the update failed.",
       "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
@@ -180,6 +200,9 @@ static ErrorMapping applyCompleteMapping{
     {PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE,
      {"Applying the image failed due to write operation failure",
       "Retry firmware update operation."}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted request for the component apply status; so the update failed.",
+      "Retry firmware update operation."}},
 #ifdef OEM_NVIDIA
     {applyAuthFailure,
      {"Authentication failed after applying the image",
@@ -191,12 +214,18 @@ static ErrorMapping applyCompleteMapping{
 static ErrorMapping activateFirmwareMapping{
     {PLDM_FWUP_TIME_OUT,
      {"The device did not respond to the activation request, so the update failed.",
-      "Retry firmware update operation"}}};
+      "Retry firmware update operation"}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted response for the firmware activation request; so the update failed.",
+      "Retry firmware update operation."}}};
 
 /* apply complete command error mapping */
 static ErrorMapping getStatusMapping{
     {COMMAND_TIMEOUT,
      {"The device did not respond to the device status request, and the communication timed out.",
+      "Retry firmware update operation."}},
+    {PLDM_ERROR,
+     {"Received an invalid or corrupted response for the device status request; so the update failed.",
       "Retry firmware update operation."}}};
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
