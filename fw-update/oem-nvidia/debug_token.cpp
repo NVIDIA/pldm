@@ -268,23 +268,43 @@ std::pair<std::string, std::string> DebugToken::getFilePath(
     auto dbusHandler = pldm::utils::DBusHandler();
     for (auto& obj : paths)
     {
-        auto u = dbusHandler.getDbusProperty<std::string>(
-            obj.c_str(), "UUID",
-            sdbusplus::xyz::openbmc_project::Common::server::UUID::interface);
-        if (u != "")
+        try
         {
-            transform(u.begin(), u.end(), u.begin(), ::toupper);
-            if (u == uuid)
+            auto u = dbusHandler.getDbusProperty<std::string>(
+                obj.c_str(), "UUID",
+                sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                    interface);
+            if (u != "")
             {
-                auto p = dbusHandler.getDbusProperty<std::string>(
-                    obj.c_str(), "Path",
-                    sdbusplus::xyz::openbmc_project::Common::server::FilePath::
-                        interface);
-                if (p != "")
+                transform(u.begin(), u.end(), u.begin(), ::toupper);
+                if (u == uuid)
                 {
-                    return {std::filesystem::path(p).parent_path(), obj};
+                    try
+                    {
+                        auto p = dbusHandler.getDbusProperty<std::string>(
+                            obj.c_str(), "Path",
+                            sdbusplus::xyz::openbmc_project::Common::server::
+                                FilePath::interface);
+                        if (p != "")
+                        {
+                            return {std::filesystem::path(p).parent_path(),
+                                    obj};
+                        }
+                    }
+                    catch (const std::exception& e)
+                    {
+                        error(
+                            "Failed to get D-Bus property 'Path': OBJ={OBJ} ERROR={ERROR}",
+                            "OBJ", obj, "ERROR", e);
+                    }
                 }
             }
+        }
+        catch (const std::exception& e)
+        {
+            error(
+                "Failed to get D-Bus property 'UUID': OBJ={OBJ} ERROR={ERROR}",
+                "OBJ", obj, "ERROR", e);
         }
     }
     return {};
