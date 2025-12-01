@@ -59,8 +59,10 @@ class StateSetEthIBPortLinkState : public StateSet
   public:
     StateSetEthIBPortLinkState(uint16_t stateSetId, uint8_t compId,
                                std::string& objectPath,
-                               dbus::PathAssociation& stateAssociation) :
-        StateSet(stateSetId), compId(compId), objectPath(objectPath)
+                               dbus::PathAssociation& stateAssociation,
+                               uint16_t entityInstance = 0) :
+        StateSet(stateSetId), compId(compId), portNumber(entityInstance),
+        objectPath(objectPath)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -71,6 +73,7 @@ class StateSetEthIBPortLinkState : public StateSet
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
         ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
+        ValuePortIntf->portNumber(portNumber);
         ValuePortInfoIntf =
             std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
         ValuePortStateIntf =
@@ -312,6 +315,7 @@ class StateSetEthIBPortLinkState : public StateSet
         if (ValuePortIntf)
         {
             ValuePortIntf = std::make_unique<PortIntf>(bus, path.c_str());
+            ValuePortIntf->portNumber(portNumber);
         }
 
         if (ValuePortInfoIntf)
@@ -336,6 +340,7 @@ class StateSetEthIBPortLinkState : public StateSet
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =
         nullptr;
     uint8_t compId = 0;
+    uint16_t portNumber = 0;
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
 #ifdef OEM_NVIDIA
     std::shared_ptr<oem_nvidia::SwitchBandwidthSensor> switchBandwidthSensor =

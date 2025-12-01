@@ -106,7 +106,7 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
               entityType == PLDM_ENTITY_INFINIBAND))
     {
         return std::make_unique<StateSetEthIBPortLinkState>(
-            stateSetId, compId, path, stateAssociation);
+            stateSetId, compId, path, stateAssociation, entityInstance);
     }
     else if (stateSetId == PLDM_STATESET_ID_HEALTHSTATE)
     {
