@@ -366,6 +366,16 @@ class InventoryManager
         parseGetDownstreamFirmwareParametersResponse(
             mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
+    /** @brief Log device status errors with component name
+     *  @param[in] eid - endpoint ID
+     *  @param[in] overrideSeverity - override severity to informational
+     *  @param[in] logNamespace - namespace for the log
+     *  @return bool - true if errors were logged, false otherwise
+     */
+    bool logDeviceStatusErrors(const mctp_eid_t eid,
+                               bool overrideSeverity = false,
+                               const std::string& logNamespace = "");
+
     /**
      * @brief log devicediscovery failed messages
      *
@@ -374,7 +384,7 @@ class InventoryManager
      * @param[in] resolution - recommended resolution
      */
     void logDiscoveryFailedMessage(
-        const mctp_eid_t& eid, const std::string& messageError,
+        const mctp_eid_t eid, const std::string& messageError,
         const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
         const std::string& logNamespace = "", bool overrideSeverity = false);
 

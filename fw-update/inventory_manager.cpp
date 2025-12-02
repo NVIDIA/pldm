@@ -160,8 +160,19 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
             "EID", eid, "RC", rc);
         if (!messageError.empty() && !resolution.empty())
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces);
+            if (rc == PLDM_ERROR_INVALID_DATA)
+            {
+                logDiscoveryFailedMessage(eid, messageError, resolution,
+                                          mctpInterfaces);
+            }
+            else
+            {
+                if (!logDeviceStatusErrors(eid))
+                {
+                    logDiscoveryFailedMessage(eid, messageError, resolution,
+                                              mctpInterfaces);
+                }
+            }
         }
         co_return rc;
     }
@@ -191,8 +202,19 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
               "EID", eid, "RC", rc);
         if (!messageError.empty() && !resolution.empty())
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces);
+            if (rc == PLDM_ERROR_INVALID_DATA)
+            {
+                logDiscoveryFailedMessage(eid, messageError, resolution,
+                                          mctpInterfaces);
+            }
+            else
+            {
+                if (!logDeviceStatusErrors(eid))
+                {
+                    logDiscoveryFailedMessage(eid, messageError, resolution,
+                                              mctpInterfaces);
+                }
+            }
         }
     }
 
@@ -254,8 +276,19 @@ exec::task<int> InventoryManager::getActiveFirmwareVersion(
         "EID", eid, "RC", rc);
     if (!messageError.empty() && !resolution.empty())
     {
-        logDiscoveryFailedMessage(eid, messageError, resolution,
-                                  mctpInterfaces);
+        if (rc == PLDM_ERROR_INVALID_DATA)
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces);
+        }
+        else
+        {
+            if (!logDeviceStatusErrors(eid))
+            {
+                logDiscoveryFailedMessage(eid, messageError, resolution,
+                                          mctpInterfaces);
+            }
+        }
     }
 
     co_return rc;
@@ -295,6 +328,12 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
         error(
             "Failed to send QueryDeviceIdentifiers request, EID={EID}, RC={RC} ",
             "EID", eid, "RC", rc);
+        if (rc == PLDM_ERROR_NOT_READY)
+        {
+            messageError =
+                "The device did not respond to the device identifiers request, and the communication timed out.";
+            resolution = "Reset the baseboard and retry the operation.";
+        }
         co_return rc;
     }
 
@@ -321,7 +360,8 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
         error(
             "No response received for query device identifiers for endpoint ID {EID}",
             "EID", eid);
-        messageError = "Discovery Timed Out";
+        messageError =
+            "The device did not respond to the device identifiers request, and the communication timed out.";
         resolution = "Reset the baseboard and retry the operation.";
         co_return PLDM_ERROR;
     }
@@ -340,10 +380,10 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
             "Failed to decode query device identifiers response for endpoint ID {EID} and descriptor count {DESCRIPTOR_COUNT}, response code {RC}",
             "EID", eid, "DESCRIPTOR_COUNT", descriptorCount, "RC", rc);
         messageError =
-            "Failed to discover: decoding QueryDeviceIdentifiers response failed";
+            "Received an invalid or corrupted response for the device identifiers request.";
         resolution = "Reset the baseboard and retry the operation.";
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-        co_return PLDM_ERROR;
+        co_return PLDM_ERROR_INVALID_DATA;
     }
 
     if (completionCode)
@@ -351,10 +391,11 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
         error(
             "Failed to query device identifiers response for endpoint ID {EID}, completion code {CC}",
             "EID", eid, "CC", completionCode);
-        messageError = "Failed to discover";
+        messageError =
+            "Received an invalid or corrupted response for the device identifiers request.";
         resolution = "Reset the baseboard and retry the operation.";
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-        co_return PLDM_ERROR;
+        co_return PLDM_ERROR_INVALID_DATA;
     }
 
     Descriptors descriptors{};
@@ -373,8 +414,11 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
                 "Failed to decode descriptor type {TYPE}, length {LENGTH} and value for endpoint ID {EID}, response code {RC}",
                 "TYPE", descriptorType, "LENGTH", deviceIdentifiersLen, "EID",
                 eid, "RC", rc);
+            messageError =
+                "Received an invalid or corrupted response for the device identifiers request.";
+            resolution = "Reset the baseboard and retry the operation.";
             pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-            co_return PLDM_ERROR;
+            co_return PLDM_ERROR_INVALID_DATA;
         }
 
         if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
@@ -407,8 +451,11 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
                 error(
                     "Failed to decode vendor-defined descriptor value for endpoint ID {EID}, response code {RC}",
                     "EID", eid, "RC", rc);
+                messageError =
+                    "Received an invalid or corrupted response for the device identifiers request.";
+                resolution = "Reset the baseboard and retry the operation.";
                 pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-                co_return PLDM_ERROR;
+                co_return PLDM_ERROR_INVALID_DATA;
             }
 
             auto vendorDefinedDescriptorTitleStr =
@@ -479,6 +526,12 @@ exec::task<int> InventoryManager::getFirmwareParameters(
         error(
             "Failed to send get firmware parameters request for endpoint ID {EID}, response code {RC}",
             "EID", eid, "RC", rc);
+        if (rc == PLDM_ERROR_NOT_READY)
+        {
+            messageError =
+                "The device did not respond to the firmware information request, and the communication timed out.";
+            resolution = "Reset the baseboard and retry the operation.";
+        }
         co_return rc;
     }
 
@@ -505,7 +558,8 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
         error(
             "No response received for get firmware parameters for endpoint ID {EID}",
             "EID", eid);
-        messageError = "Discovery Timed Out";
+        messageError =
+            "The device did not respond to the firmware information request, and the communication timed out.";
         resolution = "Reset the baseboard and retry the operation.";
         co_return PLDM_ERROR;
     }
@@ -523,11 +577,11 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
         error(
             "Failed to decode get firmware parameters response for endpoint ID {EID}, response code {RC}",
             "EID", eid, "RC", rc);
-        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
         messageError =
-            "Failed to discover: decoding GetFirmwareParameters response failed";
+            "Received an invalid or corrupted response for the firmware information request.";
         resolution = "Reset the baseboard and retry the operation.";
-        co_return rc;
+        pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
+        co_return PLDM_ERROR_INVALID_DATA;
     }
 
     if (fwParams.completion_code)
@@ -536,10 +590,11 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
         error(
             "Failed to get firmware parameters response for endpoint ID {EID}, completion code {CC}",
             "EID", eid, "CC", fw_param_cc);
-        messageError = "Failed to discover";
+        messageError =
+            "Received an invalid or corrupted response for the firmware information request.";
         resolution = "Reset the baseboard and retry the operation.";
         pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-        co_return PLDM_ERROR;
+        co_return PLDM_ERROR_INVALID_DATA;
     }
 
     auto compParamPtr = compParamTable.ptr;
@@ -562,11 +617,10 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
                 "Failed to decode component parameter table entry for endpoint ID {EID}, response code {RC}",
                 "EID", eid, "RC", rc);
             messageError =
-                "Failed to discover: decoding component parameter table entry failed";
+                "Device responded with invalid or corrupted response for GetFirmwareParameters request";
             resolution = "Reset the baseboard and retry the operation.";
-
             pldm::utils::printBuffer(pldm::utils::Rx, response, respMsgLen);
-            co_return PLDM_ERROR;
+            co_return PLDM_ERROR_INVALID_DATA;
         }
 
         auto compClassification = compEntry.comp_classification;
@@ -1123,8 +1177,26 @@ sdbusplus::async::task<int>
     co_return PLDM_SUCCESS;
 }
 
+bool InventoryManager::logDeviceStatusErrors(const mctp_eid_t eid,
+                                             bool overrideSeverity,
+                                             const std::string& logNamespace)
+{
+    auto errorInfos = queryDeviceStatusError(eid);
+    if (errorInfos.empty())
+    {
+        return false;
+    }
+
+    for (const auto& errorInfo : errorInfos)
+    {
+        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1, "",
+                       logNamespace, overrideSeverity);
+    }
+    return true;
+}
+
 void InventoryManager::logDiscoveryFailedMessage(
-    const mctp_eid_t& eid, const std::string& messageError,
+    const mctp_eid_t eid, const std::string& messageError,
     const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
     const std::string& logNamespace, bool forceInformational)
 {
@@ -1156,29 +1228,40 @@ exec::task<int> InventoryManager::refreshFirmwareInventory(
     for (const auto& eid : eids)
     {
         std::string messageError{};
-        std::string resolution{};
+        // discoveryResolution captures the resolution message from discovery
+        // functions (queryDeviceIdentifiers/getFirmwareParameters). It is not
+        // used because FW Update operations require a specific resolution
+        // message defined in `resolution` below.
+        std::string discoveryResolution{};
+        std::string resolution{
+            "Retry firmware update operation, if problem persists, follow FW upgrade recovery flow."};
 
         auto isTarget = compTargetList.contains(eid);
 
-        auto rc =
-            co_await queryDeviceIdentifiers(eid, messageError, resolution);
+        auto rc = co_await queryDeviceIdentifiers(eid, messageError,
+                                                  discoveryResolution);
         if (rc != PLDM_SUCCESS)
         {
-            if (isTarget)
+            if (rc == PLDM_ERROR_INVALID_DATA or
+                !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
             {
-                error(
-                    "Failed to refresh descriptors for target endpoint ID {EID}, RC={RC}",
-                    "EID", eid, "RC", rc);
-                logDiscoveryFailedMessage(eid, messageError, resolution,
-                                          mctpInterfaces, "FWUpdate", false);
-            }
-            else
-            {
-                warning(
-                    "Failed to refresh descriptors for endpoint ID {EID}, RC={RC}",
-                    "EID", eid, "RC", rc);
-                logDiscoveryFailedMessage(eid, messageError, resolution,
-                                          mctpInterfaces, "FWUpdate", true);
+                if (isTarget)
+                {
+                    error(
+                        "Failed to refresh descriptors for target endpoint ID {EID}, RC={RC}",
+                        "EID", eid, "RC", rc);
+                    logDiscoveryFailedMessage(eid, messageError, resolution,
+                                              mctpInterfaces, "FWUpdate",
+                                              false);
+                }
+                else
+                {
+                    warning(
+                        "Failed to refresh descriptors for endpoint ID {EID}, RC={RC}",
+                        "EID", eid, "RC", rc);
+                    logDiscoveryFailedMessage(eid, messageError, resolution,
+                                              mctpInterfaces, "FWUpdate", true);
+                }
             }
             descriptorMap.erase(eid);
             componentInfoMap.erase(eid);
@@ -1186,25 +1269,28 @@ exec::task<int> InventoryManager::refreshFirmwareInventory(
             continue;
         }
 
-        rc = co_await getFirmwareParameters(eid, messageError, resolution,
-                                            mctpInterfaces, true);
+        rc = co_await getFirmwareParameters(
+            eid, messageError, discoveryResolution, mctpInterfaces, true);
         if (rc != PLDM_SUCCESS)
         {
-            if (isTarget)
+            if (rc == PLDM_ERROR_INVALID_DATA or
+                !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
             {
-                error(
-                    "Failed to refresh firmware parameters for target endpoint ID {EID}, RC={RC}",
-                    "EID", eid, "RC", rc);
                 logDiscoveryFailedMessage(eid, messageError, resolution,
-                                          mctpInterfaces, "FWUpdate", false);
-            }
-            else
-            {
-                warning(
-                    "Failed to refresh firmware parameters for endpoint ID {EID}, RC={RC}",
-                    "EID", eid, "RC", rc);
-                logDiscoveryFailedMessage(eid, messageError, resolution,
-                                          mctpInterfaces, "FWUpdate", true);
+                                          mctpInterfaces, "FWUpdate",
+                                          !isTarget);
+                if (isTarget)
+                {
+                    error(
+                        "Failed to refresh firmware parameters for target endpoint ID {EID}, RC={RC}",
+                        "EID", eid, "RC", rc);
+                }
+                else
+                {
+                    warning(
+                        "Failed to refresh firmware parameters for endpoint ID {EID}, RC={RC}",
+                        "EID", eid, "RC", rc);
+                }
             }
             descriptorMap.erase(eid);
             componentInfoMap.erase(eid);

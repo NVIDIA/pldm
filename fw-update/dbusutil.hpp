@@ -181,38 +181,6 @@ inline void createLogEntry(
     return;
 }
 
-<<<<<<< Updated upstream
-/** @brief Helper to get component name from component index
- *
- *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord for the device
- *  @param[in] compImageInfos - Component image information
- *  @param[in] compIndex - Component index
- *  @param[in] compIdNameInfo - Component ID to name mapping
- *  @return Component name string from fw update config if component exists,
- *          else returns the string 0xFFFF
- */
-inline std::string getComponentName(
-    const pldm::fw_update::FirmwareDeviceIDRecord& fwDeviceIDRecord,
-    const pldm::fw_update::ComponentImageInfos& compImageInfos,
-    size_t compIndex, const pldm::fw_update::ComponentIdNameMap& compIdNameInfo)
-{
-    const auto& applicableComponents =
-        std::get<pldm::fw_update::ApplicableComponents>(fwDeviceIDRecord);
-    const auto& comp = compImageInfos[applicableComponents[compIndex]];
-    pldm::fw_update::CompIdentifier compIdentifier =
-        std::get<static_cast<size_t>(
-            pldm::fw_update::ComponentImageInfoPos::CompIdentifierPos)>(comp);
-
-    if (compIdNameInfo.contains(compIdentifier))
-    {
-        auto compIdSearch = compIdNameInfo.find(compIdentifier);
-        return compIdSearch->second;
-    }
-    return std::to_string(compIdentifier);
-}
-
-=======
->>>>>>> Stashed changes
 /** @brief Simple structure to hold Redfish error information */
 struct RedfishErrorInfo
 {
