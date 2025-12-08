@@ -937,7 +937,7 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 {
     completeCommandsTimeoutTimer = std::make_unique<
         sdbusplus::Timer>([this]() -> void {
-        pldm_firmware_update_commands timedOutCommand;
+        pldm_firmware_update_commands timedOutCommand{};
         std::string commandName{};
         std::string stateFailedMessageId{};
 
