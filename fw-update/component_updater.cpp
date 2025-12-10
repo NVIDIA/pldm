@@ -143,8 +143,7 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
 
     printBuffer(pldm::utils::Tx, request,
                 ("Send UpdateComponent for EID=" + std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
     {
@@ -206,8 +205,7 @@ int ComponentUpdater::processUpdateComponentResponse(
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received Response for UpdateComponent from EID=" +
                  std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t completionCode = 0;
     uint8_t compCompatibilityResp = 0;
@@ -495,8 +493,7 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
                 ("Received transferComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t transferResult = 0;
     auto rc =
@@ -597,12 +594,9 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
 
     if (transferResult == PLDM_FWUP_TRANSFER_SUCCESS)
     {
-        if (updateManager->fwDebug)
-        {
-            info(
-                "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' transfer complete.",
-                "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
+        info(
+            "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' transfer complete.",
+            "EID", eid, "COMPONENT_VERSION", compVersion);
         componentUpdaterState.nextState(componentUpdaterState.current);
     }
     else
@@ -641,8 +635,7 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
                 ("Received verifyComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t verifyResult = 0;
     auto rc = decode_verify_complete_req(request, payloadLength, &verifyResult);
@@ -708,12 +701,9 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
 
     if (verifyResult == PLDM_FWUP_VERIFY_SUCCESS)
     {
-        if (updateManager->fwDebug)
-        {
-            info(
-                "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' verification complete.",
-                "EID", eid, "COMPONENT_VERSION", compVersion);
-        }
+        info(
+            "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' verification complete.",
+            "EID", eid, "COMPONENT_VERSION", compVersion);
         componentUpdaterState.nextState(componentUpdaterState.current);
     }
     else
@@ -783,12 +773,9 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
         updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
                                              componentIndex, stageSuccessful);
     }
-    if (updateManager->fwDebug)
-    {
-        info(
-            "Component endpoint ID '{EID}' with '{COMPONENT_VERSION}' apply complete.",
-            "EID", eid, "COMPONENT_VERSION", compVersion);
-    }
+    info(
+        "Component endpoint ID '{EID}' with '{COMPONENT_VERSION}' apply complete.",
+        "EID", eid, "COMPONENT_VERSION", compVersion);
     if (!updateManager->isStageOnlyUpdate)
     {
         updateManager->createMessageRegistry(
@@ -818,8 +805,7 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
 
     printBuffer(pldm::utils::Rx, request, payloadLength,
                 ("Received applyComplete from EID=" + std::to_string(eid) +
-                 ", ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 ", ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t applyResult = 0;
     bitfield16_t compActivationModification{};
@@ -941,14 +927,11 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
 void ComponentUpdater::createRequestFwDataTimer()
 {
     reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
-        if (updateManager->fwDebug)
-        {
-            error(
-                "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
-                "ComponentIndex={COMPONENTINDEX}",
-                "EID", eid, "COMPONENTINDEX", componentIndex, "EXPECTEDTIME",
-                updateTimeoutSeconds);
-        }
+        error(
+            "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
+            "ComponentIndex={COMPONENTINDEX}",
+            "EID", eid, "COMPONENTINDEX", componentIndex, "EXPECTEDTIME",
+            updateTimeoutSeconds);
         updateManager->createMessageRegistry(
             eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
             PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
@@ -1064,10 +1047,9 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
         co_return PLDM_ERROR;
     }
 
-    printBuffer(
-        pldm::utils::Tx, request,
-        ("Send CancelUpdateComponentRequest for EID=" + std::to_string(eid)),
-        updateManager->fwDebug);
+    printBuffer(pldm::utils::Tx, request,
+                ("Send CancelUpdateComponentRequest for EID=" +
+                 std::to_string(eid)));
 
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
@@ -1105,8 +1087,7 @@ int ComponentUpdater::processCancelUpdateComponentResponse(
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received CancelUpdateComponent Response from EID=" +
-                 std::to_string(eid)),
-                updateManager->fwDebug);
+                 std::to_string(eid)));
 
     uint8_t completionCode = 0;
     auto rc = decode_cancel_update_component_resp(response, respMsgLen,
@@ -1192,8 +1173,7 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
         co_return rc;
     }
     printBuffer(pldm::utils::Tx, request,
-                ("Send GetStatusRequest for EID=" + std::to_string(eid)),
-                updateManager->fwDebug);
+                ("Send GetStatusRequest for EID=" + std::to_string(eid)));
 
     rc = co_await sendRecvPldmMsgOverMctp(eid, request, &response, &respMsgLen);
     if (rc)
@@ -1252,8 +1232,8 @@ int ComponentUpdater::processGetStatusResponse(
     }
 
     printBuffer(pldm::utils::Rx, response, respMsgLen,
-                ("Received GetStatus Response from EID=" + std::to_string(eid)),
-                updateManager->fwDebug);
+                ("Received GetStatus Response from EID=" +
+                 std::to_string(eid)));
 
     uint8_t completionCode = 0;
     uint8_t previousState = 0;

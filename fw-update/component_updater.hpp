@@ -69,9 +69,9 @@ enum class ComponentUpdaterSequence
  */
 struct ComponentUpdaterState
 {
-    ComponentUpdaterState(bool fwDebug = false) :
+    ComponentUpdaterState() :
         prev(ComponentUpdaterSequence::UpdateComponent),
-        current(ComponentUpdaterSequence::UpdateComponent), fwDebug(fwDebug)
+        current(ComponentUpdaterSequence::UpdateComponent)
     {}
 
     /** @brief To get next action of the PLDM sequence as per the flow
@@ -122,14 +122,12 @@ struct ComponentUpdaterState
             }
         };
 
-        if (fwDebug)
-        {
-            info("ComponentUpdater:prevSeq = {PREVSEQ}, command = "
-                 "{COMMAND}, currentSeq = {CURRENTSEQ}",
-                 "PREVSEQ", static_cast<size_t>(current), "COMMAND",
-                 static_cast<size_t>(command), "CURRENTSEQ",
-                 static_cast<size_t>(current));
-        }
+        info("ComponentUpdater:prevSeq = {PREVSEQ}, command = "
+             "{COMMAND}, currentSeq = {CURRENTSEQ}",
+             "PREVSEQ", static_cast<size_t>(current), "COMMAND",
+             static_cast<size_t>(command), "CURRENTSEQ",
+             static_cast<size_t>(current));
+
         return current;
     }
 
@@ -187,7 +185,6 @@ struct ComponentUpdaterState
 
     ComponentUpdaterSequence prev;
     ComponentUpdaterSequence current;
-    bool fwDebug;
 };
 
 /** @class ComponentUpdater
@@ -230,13 +227,13 @@ class ComponentUpdater
         const ComponentImageInfos& compImageInfos,
         const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
         uint32_t maxTransferSize, UpdateManager* updateManager,
-        DeviceUpdater* deviceUpdater, size_t componentIndex, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(fwDebug),
-        eid(eid), package(package), compImageInfos(compImageInfos),
-        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
-        maxTransferSize(maxTransferSize), updateManager(updateManager),
-        deviceUpdater(deviceUpdater), componentIndex(componentIndex),
-        reqFwDataTimer(nullptr), completeCommandsTimeoutTimer(nullptr)
+        DeviceUpdater* deviceUpdater, size_t componentIndex) :
+        fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(), eid(eid),
+        package(package), compImageInfos(compImageInfos), compInfo(compInfo),
+        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
+        updateManager(updateManager), deviceUpdater(deviceUpdater),
+        componentIndex(componentIndex), reqFwDataTimer(nullptr),
+        completeCommandsTimeoutTimer(nullptr)
     {}
 
     /**

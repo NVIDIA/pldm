@@ -91,7 +91,7 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
         std::make_unique<ComponentUpdater>(
             eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
             compIdNameInfo, maxTransferSize, updateManager, this,
-            componentIndex, updateManager->fwDebug);
+            componentIndex);
     componentUpdaterMap.emplace(componentIndex,
                                 std::make_pair(std::move(compUpdater), false));
     // start the first component updater, once component update is complete,
@@ -152,8 +152,7 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
     }
 
     printBuffer(pldm::utils::Tx, request,
-                ("Send RequestUpdate for EID=" + std::to_string(eid)),
-                updateManager->fwDebug);
+                ("Send RequestUpdate for EID=" + std::to_string(eid)));
     rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
                                           &response, &respMsgLen);
     if (rc)
@@ -224,10 +223,9 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
         co_return PLDM_ERROR;
     }
 
-    printBuffer(
-        pldm::utils::Rx, response, respMsgLen,
-        ("Received requestUpdate Response from EID=" + std::to_string(eid)),
-        updateManager->fwDebug);
+    printBuffer(pldm::utils::Rx, response, respMsgLen,
+                ("Received requestUpdate Response from EID=" +
+                 std::to_string(eid)));
 
     uint8_t completionCode = 0;
     uint16_t fdMetaDataLen = 0;
@@ -384,8 +382,7 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
 
     printBuffer(pldm::utils::Tx, request,
                 ("Send PassCompTable for EID=" + std::to_string(eid) +
-                 " ,ComponentIndex=" + std::to_string(componentIndex)),
-                updateManager->fwDebug);
+                 " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
                                           &response, &respMsgLen);
@@ -450,8 +447,7 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     printBuffer(
         pldm::utils::Rx, response, respMsgLen,
         ("Received Response for PassCompTable from EID=" + std::to_string(eid) +
-         " ,ComponentIndex=" + std::to_string(componentIndex)),
-        updateManager->fwDebug);
+         " ,ComponentIndex=" + std::to_string(componentIndex)));
 
     uint8_t completionCode = 0;
     uint8_t compResponse = 0;
@@ -598,8 +594,7 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
     }
 
     printBuffer(pldm::utils::Tx, request,
-                ("Send ActivateFirmware for EID=" + std::to_string(eid)),
-                updateManager->fwDebug);
+                ("Send ActivateFirmware for EID=" + std::to_string(eid)));
     rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
                                           &response, &respMsgLen);
     if (rc)
@@ -670,10 +665,9 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         co_return PLDM_ERROR;
     }
 
-    printBuffer(
-        pldm::utils::Rx, response, respMsgLen,
-        ("Received ActivateFirmware Response from EID=" + std::to_string(eid)),
-        updateManager->fwDebug);
+    printBuffer(pldm::utils::Rx, response, respMsgLen,
+                ("Received ActivateFirmware Response from EID=" +
+                 std::to_string(eid)));
 
     uint8_t completionCode = 0;
     uint16_t estimatedTimeForActivation = 0;
@@ -757,7 +751,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
             std::make_unique<ComponentUpdater>(
                 eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
                 compIdNameInfo, maxTransferSize, updateManager, this,
-                componentIndex, updateManager->fwDebug);
+                componentIndex);
         componentUpdaterMap.emplace(
             componentIndex, std::make_pair(std::move(compUpdater), false));
         auto rc = co_await componentUpdaterMap[componentIndex]
@@ -847,8 +841,7 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
     }
 
     printBuffer(pldm::utils::Tx, request,
-                ("Send CancelUpdate for EID=" + std::to_string(eid)),
-                updateManager->fwDebug);
+                ("Send CancelUpdate for EID=" + std::to_string(eid)));
     rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
                                           &response, &respMsgLen);
     if (rc)
@@ -877,10 +870,9 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
         co_return PLDM_ERROR;
     }
 
-    printBuffer(
-        pldm::utils::Rx, response, respMsgLen,
-        ("Received CancelUpdate Response from EID=" + std::to_string(eid)),
-        updateManager->fwDebug);
+    printBuffer(pldm::utils::Rx, response, respMsgLen,
+                ("Received CancelUpdate Response from EID=" +
+                 std::to_string(eid)));
 
     uint8_t completionCode = 0;
     bool8_t nonFunctioningComponentIndication;

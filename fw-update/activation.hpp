@@ -229,11 +229,8 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
      */
     void enableRebootGuard()
     {
-        if (updateManager->fwDebug)
-        {
-            info("Activating PLDM firmware update package - BMC reboots are "
-                 "disabled.");
-        }
+        info("Activating PLDM firmware update package - BMC reboots are "
+             "disabled.");
         try
         {
             auto method = bus.new_method_call(systemdBusname, systemdPath,
@@ -253,19 +250,15 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
      */
     void disableRebootGuard()
     {
-        if (updateManager->fwDebug)
+        if (updateManager->isStageOnlyUpdate)
         {
-            if (updateManager->isStageOnlyUpdate)
-            {
-                info("PLDM firmware update package is staged - BMC reboots are "
-                     "re-enabled.");
-            }
-            else
-            {
-                info(
-                    "Activating PLDM firmware update package - BMC reboots are "
-                    "re-enabled.");
-            }
+            info("PLDM firmware update package is staged - BMC reboots are "
+                 "re-enabled.");
+        }
+        else
+        {
+            info("Activating PLDM firmware update package - BMC reboots are "
+                 "re-enabled.");
         }
         try
         {

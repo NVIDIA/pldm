@@ -59,7 +59,7 @@ class DeviceUpdaterTest : public testing::Test
                       componentInfoMap, componentNameMap, true, nullptr,
                       firmwareInventoryInfo),
         deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos, compInfo,
-                      compIdNameInfo, 512, &updateManager, false)
+                      compIdNameInfo, 512, &updateManager)
     {
         fwDeviceIDRecord = {
             1,
@@ -262,9 +262,9 @@ TEST(DeviceUpdaterSequence, command_Invalid)
     EXPECT_EQ(sequence, DeviceUpdaterSequence::Invalid);
 }
 
-TEST(DeviceUpdaterSequence, command_Invalid_fwDebug)
+TEST(DeviceUpdaterSequence, command_Invalid_state)
 {
-    struct DeviceUpdaterState deviceUpdaterState(true);
+    struct DeviceUpdaterState deviceUpdaterState;
 
     DeviceUpdaterSequence sequence =
         deviceUpdaterState.nextState(DeviceUpdaterSequence::Invalid, 0, 0);
@@ -274,7 +274,7 @@ TEST(DeviceUpdaterSequence, command_Invalid_fwDebug)
 
 TEST(DeviceUpdaterSequence, command_ActivateFirmware)
 {
-    struct DeviceUpdaterState deviceUpdaterState(true);
+    struct DeviceUpdaterState deviceUpdaterState;
 
     DeviceUpdaterSequence sequence = deviceUpdaterState.nextState(
         DeviceUpdaterSequence::ActivateFirmware, 0, 0);
@@ -284,7 +284,7 @@ TEST(DeviceUpdaterSequence, command_ActivateFirmware)
 
 TEST(DeviceUpdaterSequence, command_RetryRequest)
 {
-    struct DeviceUpdaterState deviceUpdaterState(true);
+    struct DeviceUpdaterState deviceUpdaterState;
 
     DeviceUpdaterSequence sequence =
         deviceUpdaterState.nextState(DeviceUpdaterSequence::Valid, 0, 0);
@@ -331,7 +331,7 @@ TEST_F(DeviceUpdaterTest, updateComponentCompletion)
         std::make_unique<ComponentUpdater>(
             eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
             compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset, false);
+            componentOffset);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
     EXPECT_NO_THROW({

@@ -448,8 +448,7 @@ exec::task<void> UpdateManager::processStream(
                 std::make_unique<DeviceUpdater>(
                     deviceUpdaterInfo.first, package, fwDeviceIDRecord,
                     compImageInfos, search->second,
-                    compIdNameInfoSearch->second, MAXIMUM_TRANSFER_SIZE, this,
-                    fwDebug));
+                    compIdNameInfoSearch->second, MAXIMUM_TRANSFER_SIZE, this));
         }
     }
 
@@ -1188,21 +1187,15 @@ void UpdateManager::createProgressUpdateTimer()
         updateInterval += 1;
         auto progressPercent = static_cast<uint8_t>(
             std::floor((100 * updateInterval) / totalInterval));
-        if (fwDebug)
-        {
-            info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
-                 progressPercent);
-        }
+        info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
+             progressPercent);
         activationProgress->progress(progressPercent);
         // percent update should always be less than 100 when task is
         // aborted/cancelled. Setting to 100 percent will cause redfish task
         // service to show running and 100 percent
         if (updateInterval == totalInterval - 1)
         {
-            if (fwDebug)
-            {
-                error("Firmware update timeout");
-            }
+            error("Firmware update timeout");
             progressTimer->stop();
         }
         return;

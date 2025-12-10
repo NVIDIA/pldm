@@ -34,47 +34,39 @@ using RequesterHandler = requester::Handler<pldm::requester::Request>;
 using ComponentIndex = size_t;
 
 /**
- * @brief Print debug logs for firmware update when firmware debug option is
- enabled. This variant of printBuffer takes integer vector as an input
+ * @brief Print debug logs for firmware update.
+ * This variant of printBuffer takes integer vector as an input
  *
  * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
- if the buffer is an incoming PLDM message
+ * if the buffer is an incoming PLDM message
  * @param[in] buffer - integer vector buffer to log
  * @param[in] message - Message string for logging
- * @param[in] fwDebug - firmware debug flag
  */
 inline void printBuffer(bool isTx, const std::vector<uint8_t>& buffer,
-                        const std::string& message, bool fwDebug)
+                        const std::string& message)
 {
-    if (fwDebug)
-    {
-        info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
-        pldm::utils::printBuffer(isTx, buffer);
-    }
+    info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
+    pldm::utils::printBuffer(isTx, buffer);
 }
 
 /**
- * @brief Print debug logs for firmware update when firmware debug option is
- * enabled. This variant of printBuffer takes pldm_msg* buffer as an input.
+ * @brief Print debug logs for firmware update.
+ * This variant of printBuffer takes pldm_msg* buffer as an input.
  *
  * @param[in] isTx - True if the buffer is an outgoing PLDM message, false
  * if the buffer is an incoming PLDM message
  * @param[in] buffer - pldm message buffer to log
  * @param[in] bufferLen - pldm message buffer length
  * @param[in] message - Message string for logging
- * @param[in] fwDebug - firmware debug flag
  */
 inline void printBuffer(bool isTx, const pldm_msg* buffer, size_t bufferLen,
-                        const std::string& message, bool fwDebug)
+                        const std::string& message)
 {
-    if (fwDebug)
-    {
-        info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
-        auto ptr = reinterpret_cast<const uint8_t*>(buffer);
-        auto outBuffer =
-            std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
-        pldm::utils::printBuffer(isTx, outBuffer);
-    }
+    info("{INFO_MESSAGE}", "INFO_MESSAGE", message);
+    auto ptr = reinterpret_cast<const uint8_t*>(buffer);
+    auto outBuffer =
+        std::vector<uint8_t>(ptr, ptr + (sizeof(pldm_msg_hdr) + bufferLen));
+    pldm::utils::printBuffer(isTx, outBuffer);
 }
 
 /** @brief Send COMMAND_NOT_EXPECTED response sent by DeviceUpdater when it

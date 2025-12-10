@@ -64,9 +64,9 @@ enum class DeviceUpdaterSequence
  */
 struct DeviceUpdaterState
 {
-    DeviceUpdaterState(bool fwDebug = false) :
+    DeviceUpdaterState() :
         current(DeviceUpdaterSequence::RequestUpdate),
-        prev(DeviceUpdaterSequence::Valid), fwDebug(fwDebug)
+        prev(DeviceUpdaterSequence::Valid)
     {}
 
     /** @brief To get next action of the PLDM sequence as per the flow
@@ -125,16 +125,13 @@ struct DeviceUpdaterState
             }
         };
 
-        if (fwDebug)
-        {
-            info("DeviceUpdater: prevSeq = {PREVSEQ}, command = {COMMAND},"
-                 " currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX},"
-                 " numComps = {NUMCOMPS}",
-                 "PREVSEQ", static_cast<size_t>(prev), "COMMAND",
-                 static_cast<size_t>(command), "CURRENTSEQ",
-                 static_cast<size_t>(current), "COMPINDEX", compIndex,
-                 "NUMCOMPS", numComps);
-        }
+        info("DeviceUpdater: prevSeq = {PREVSEQ}, command = {COMMAND},"
+             " currentSeq = {CURRENTSEQ}, compIndex = {COMPINDEX},"
+             " numComps = {NUMCOMPS}",
+             "PREVSEQ", static_cast<size_t>(prev), "COMMAND",
+             static_cast<size_t>(command), "CURRENTSEQ",
+             static_cast<size_t>(current), "COMPINDEX", compIndex, "NUMCOMPS",
+             numComps);
         return current;
     }
 
@@ -187,7 +184,6 @@ struct DeviceUpdaterState
 
     DeviceUpdaterSequence current;
     DeviceUpdaterSequence prev;
-    bool fwDebug;
 };
 
 /** @class DeviceUpdater
@@ -240,11 +236,11 @@ class DeviceUpdater
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos, const ComponentInfo compInfo,
         const ComponentIdNameMap compIdNameInfo, uint32_t maxTransferSize,
-        UpdateManager* updateManager, bool fwDebug) :
-        fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(fwDebug),
-        eid(eid), package(package), compImageInfos(compImageInfos),
-        compInfo(compInfo), compIdNameInfo(compIdNameInfo),
-        maxTransferSize(maxTransferSize), updateManager(updateManager)
+        UpdateManager* updateManager) :
+        fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(), eid(eid),
+        package(package), compImageInfos(compImageInfos), compInfo(compInfo),
+        compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
+        updateManager(updateManager)
     {}
 
     /** @brief Start the firmware update flow for the FD

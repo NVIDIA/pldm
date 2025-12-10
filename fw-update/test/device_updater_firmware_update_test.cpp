@@ -271,8 +271,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions, startFwUpdateFlow)
         .WillRepeatedly(testing::Return(0));
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 64, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 64, &updateManager);
     EXPECT_NO_THROW({ deviceUpdater.startFwUpdateFlow(); });
 }
 
@@ -286,8 +285,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 64, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 64, &updateManager);
 
     EXPECT_NO_THROW({ deviceUpdater.startFwUpdateFlow(); });
 }
@@ -299,8 +297,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     size_t offset = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
 
     EXPECT_CALL(
         *_mockedFirmwareUpdateFunction,
@@ -320,8 +317,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     uint8_t retryCount = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -348,12 +344,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     size_t componentOffset = 0;
     uint8_t retryCount = 0;
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_update_component_resp)>
@@ -380,12 +374,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     mctp_eid_t eid = 0;
     size_t componentOffset = 0;
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
@@ -424,8 +416,7 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     uint8_t retryCount = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -456,12 +447,10 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
     size_t componentOffset = 0;
 
     DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                                compInfo, compIdNameInfo, 512, &updateManager,
-                                false);
+                                compInfo, compIdNameInfo, 512, &updateManager);
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     EXPECT_CALL(*_mockedFirmwareUpdateFunction,
                 encode_update_component_req(_, _, _, _, _, _, _, _, _, _, _, _))

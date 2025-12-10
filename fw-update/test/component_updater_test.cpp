@@ -57,10 +57,10 @@ class ComponentUpdaterTest : public testing::Test
                       componentInfoMap, componentNameMap, true, nullptr,
                       firmwareInventoryInfo),
         deviceUpdater(0x1, package, fwDeviceIDRecord, compImageInfos, compInfo,
-                      compIdNameInfo, 512, &updateManager, false),
+                      compIdNameInfo, 512, &updateManager),
         componentUpdater(0x1, package, fwDeviceIDRecord, compImageInfos,
                          compInfo, compIdNameInfo, 512, &updateManager,
-                         &deviceUpdater, 0, false)
+                         &deviceUpdater, 0)
     {
         fwDeviceIDRecord = {
             1,
@@ -215,8 +215,7 @@ TEST_F(ComponentUpdaterTest, transferComplete)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     {
         constexpr std::array<uint8_t,
@@ -277,8 +276,7 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     {
         constexpr std::array<uint8_t,
@@ -339,8 +337,7 @@ TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
@@ -354,8 +351,7 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
@@ -370,8 +366,7 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
         cancelCompUpdateResponse{0x80, 0x05, 0x1c};
 
@@ -437,7 +432,7 @@ TEST_F(ComponentUpdaterTest, command_ApplyComplete)
 
 TEST_F(ComponentUpdaterTest, command_DefaultState)
 {
-    struct ComponentUpdaterState componentUpdaterState(true);
+    struct ComponentUpdaterState componentUpdaterState;
     componentUpdaterState.set(ComponentUpdaterSequence::ApplyComplete);
     ComponentUpdaterSequence sequence =
         componentUpdaterState.nextState(ComponentUpdaterSequence::Invalid);
@@ -447,7 +442,7 @@ TEST_F(ComponentUpdaterTest, command_DefaultState)
 
 TEST_F(ComponentUpdaterTest, expectedState_RetryRequest)
 {
-    struct ComponentUpdaterState componentUpdaterState(true);
+    struct ComponentUpdaterState componentUpdaterState;
     ComponentUpdaterSequence sequence = componentUpdaterState.expectedState(
         ComponentUpdaterSequence::UpdateComponent);
 
@@ -456,7 +451,7 @@ TEST_F(ComponentUpdaterTest, expectedState_RetryRequest)
 
 TEST_F(ComponentUpdaterTest, expectedState_InvalidState)
 {
-    struct ComponentUpdaterState componentUpdaterState(true);
+    struct ComponentUpdaterState componentUpdaterState;
     ComponentUpdaterSequence sequence = componentUpdaterState.expectedState(
         ComponentUpdaterSequence::ApplyComplete);
 
@@ -472,8 +467,7 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     uint8_t retryCount = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_get_status_resp)>
         getStatusResponse{0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03,
@@ -493,8 +487,7 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset,
-        false);
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.startComponentUpdater();
