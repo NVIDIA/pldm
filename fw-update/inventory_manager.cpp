@@ -680,6 +680,12 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
             {
                 info("Fastest path to UUID={UUID} is already set to EID={EID}",
                      "UUID", uuid, "EID", eid);
+                // WAR: For when an already discovered EID is processed again
+                // from an InterfacesAdded signal
+                if (updateInventoryCallBack)
+                {
+                    updateInventoryCallBack(eid, uuid, mctpInterfaces);
+                }
                 co_return PLDM_SUCCESS;
             }
 
