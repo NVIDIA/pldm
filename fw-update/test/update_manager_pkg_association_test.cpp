@@ -604,3 +604,66 @@ TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsNoMatch)
     EXPECT_NE(outFwDeviceIDRecords, expectFwDeviceIDRecords);
     EXPECT_NE(totalNumComponentUpdates, expectTotalComponents);
 }
+
+// Test case for vendor-defined descriptors with different insertion order
+// between package and device. Package has [PSID, APSKU] order while device
+// reports [APSKU, PSID]. The match should succeed because the descriptorsMatch
+// function performs order-independent matching.
+TEST_F(PackageAssociationMultipleDescSameType,
+       VendorDefinedDescriptorsDifferentOrder)
+{
+    // Package descriptors: PSID first, then APSKU
+    const FirmwareDeviceIDRecords pkgFwDeviceIDRecords{
+        {1,
+         {0, 1},
+         "VersionString1",
+         {{PLDM_FWUP_PCI_VENDOR_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple(
+               "PSID", std::vector<uint8_t>{0x4d, 0x54, 0x5f, 0x30, 0x30, 0x30,
+                                            0x30, 0x30, 0x30, 0x31, 0x35, 0x35,
+                                            0x30, 0x00, 0x00, 0x00})},
+          {PLDM_FWUP_PCI_DEVICE_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_PCI_SUBSYSTEM_VENDOR_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_PCI_SUBSYSTEM_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU",
+                           std::vector<uint8_t>{0x50, 0x15, 0x00, 0x00})}},
+         {}}};
+
+    constexpr eid eid1 = 53;
+    // Device descriptors: APSKU first, then PSID (different order than package)
+    const DescriptorMap deviceDescriptorMap{
+        {eid1,
+         {{PLDM_FWUP_PCI_VENDOR_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU",
+                           std::vector<uint8_t>{0x50, 0x15, 0x00, 0x00})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple(
+               "PSID", std::vector<uint8_t>{0x4d, 0x54, 0x5f, 0x30, 0x30, 0x30,
+                                            0x30, 0x30, 0x30, 0x31, 0x35, 0x35,
+                                            0x30, 0x00, 0x00, 0x00})},
+          {PLDM_FWUP_PCI_DEVICE_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_PCI_SUBSYSTEM_VENDOR_ID, std::vector<uint8_t>{0x00, 0x00}},
+          {PLDM_FWUP_PCI_SUBSYSTEM_ID, std::vector<uint8_t>{0x00, 0x00}}}}};
+
+    FirmwareDeviceIDRecords outFwDeviceIDRecords;
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        pkgFwDeviceIDRecords, deviceDescriptorMap, compImageInfos,
+        compTargetList, targets, outFwDeviceIDRecords,
+        totalNumComponentUpdates);
+
+    // Should match despite different vendor-defined descriptor order
+    DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}};
+    constexpr TotalComponentUpdates expectTotalComponents = 2;
+
+    EXPECT_EQ(deviceUpdaterInfos, expectDeviceUpdaterInfos);
+    EXPECT_EQ(totalNumComponentUpdates, expectTotalComponents);
+}

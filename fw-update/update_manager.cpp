@@ -44,6 +44,53 @@ namespace fw_update
 
 namespace fs = std::filesystem;
 
+/** @brief Check if package descriptors are a subset of device descriptor
+ *
+ *  Determines whether a firmware package is applicable to a device by
+ *  verifying that every descriptor required by the package exists in the
+ *  device's descriptor set. The package descriptors represent the minimum
+ *  requirements; the device may have additional descriptors that are not
+ *  specified in the package.
+ *
+ *  Relationship:
+ *  @code
+ *  +---------------------------------------------+
+ *  |           Device Descriptors                |
+ *  |  +-------------------------------+          |
+ *  |  |    Package Descriptors        |          |
+ *  |  |    (must all be present)      |          |
+ *  |  +-------------------------------+          |
+ *  |         (extra descriptors OK)              |
+ *  +---------------------------------------------+
+ *
+ *  Package ⊆ Device  →  MATCH (returns true)
+ *  @endcode
+ *
+ *  @param[in] deviceDescriptors - Descriptors reported by the device
+ *  @param[in] pkgDescriptors - Descriptors from the firmware package
+ *  @return true if all package descriptors exist in device descriptors
+ */
+static bool descriptorsMatch(const Descriptors& deviceDescriptors,
+                             const Descriptors& pkgDescriptors)
+{
+    for (const auto& pkgDesc : pkgDescriptors)
+    {
+        const auto& pkgDescriptorType = pkgDesc.first;
+        const auto& pkgDescriptorValue = pkgDesc.second;
+        auto range = deviceDescriptors.equal_range(pkgDescriptorType);
+        bool found =
+            std::any_of(range.first, range.second,
+                        [&pkgDescriptorValue](const auto& deviceDesc) {
+                            return deviceDesc.second == pkgDescriptorValue;
+                        });
+        if (!found)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 /** @brief Extract expected EIDs from firmware inventory configuration
  *
  *  @param[in] firmwareInventoryInfo - Firmware inventory configuration info
@@ -774,9 +821,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
             std::get<Descriptors>(inFwDeviceIDRecords[index]);
         for (const auto& [eid, descriptors] : descriptorMap)
         {
-            if (std::includes(descriptors.begin(), descriptors.end(),
-                              deviceIDDescriptors.begin(),
-                              deviceIDDescriptors.end()))
+            if (descriptorsMatch(descriptors, deviceIDDescriptors))
             {
                 if (compTargetList.empty() && objectPaths.empty())
                 {
