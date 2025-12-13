@@ -270,7 +270,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     info(
                         "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
                         "NETWORK", networkId, "EID", eid, "UUID", uuid);
-                    auto mctpInfo = MctpInfo(eid, uuid, "", networkId,
+                    auto mctpInfo = MctpInfo(eid, uuid, mediumType, networkId,
                                              std::nullopt, binding);
                     searchConfigurationFor(pldm::utils::DBusHandler(),
                                            mctpInfo);
