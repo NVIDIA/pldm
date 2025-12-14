@@ -83,15 +83,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             [this](
                 const std::vector<mctp_eid_t>& eids,
                 const ComponentTargetList& compTargetList) -> exec::task<int> {
-                info(
-                    "Starting firmware inventory refresh for {COUNT} endpoints",
-                    "COUNT", eids.size());
+                if constexpr (0)
+                {
+                    info(
+                        "Starting firmware inventory refresh for {COUNT} endpoints",
+                        "COUNT", eids.size());
 
-                dbus::MctpInterfaces mctpInterfaces;
-                getMctpInterfaces(mctpInterfaces);
+                    dbus::MctpInterfaces mctpInterfaces;
+                    getMctpInterfaces(mctpInterfaces);
 
-                co_return co_await inventoryMgr.refreshFirmwareInventory(
-                    eids, mctpInterfaces, compTargetList);
+                    co_return co_await inventoryMgr.refreshFirmwareInventory(
+                        eids, mctpInterfaces, compTargetList);
+                }
+                co_return PLDM_SUCCESS;
             },
             fwInventoryInfo),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
