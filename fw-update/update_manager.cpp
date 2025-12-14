@@ -485,18 +485,25 @@ exec::task<void> UpdateManager::processStream(
         const auto& fwDeviceIDRecord =
             fwDeviceIDRecords[deviceUpdaterInfo.second];
         auto search = componentInfoMap.find(deviceUpdaterInfo.first);
+        if (search == componentInfoMap.end())
+        {
+            continue;
+        }
+
         auto compIdNameInfoSearch =
             componentNameMap.find(deviceUpdaterInfo.first);
-        if (search != componentInfoMap.end() &&
-            compIdNameInfoSearch != componentNameMap.end())
+        ComponentIdNameMap compIdNameInfo{};
+        if (compIdNameInfoSearch != componentNameMap.end())
         {
-            deviceUpdaterMap.emplace(
-                deviceUpdaterInfo.first,
-                std::make_unique<DeviceUpdater>(
-                    deviceUpdaterInfo.first, package, fwDeviceIDRecord,
-                    compImageInfos, search->second,
-                    compIdNameInfoSearch->second, MAXIMUM_TRANSFER_SIZE, this));
+            compIdNameInfo = compIdNameInfoSearch->second;
         }
+
+        deviceUpdaterMap.emplace(
+            deviceUpdaterInfo.first,
+            std::make_unique<DeviceUpdater>(
+                deviceUpdaterInfo.first, package, fwDeviceIDRecord,
+                compImageInfos, search->second, compIdNameInfo,
+                MAXIMUM_TRANSFER_SIZE, this));
     }
 
     // delay activation object creation if there are non-pldm updates
