@@ -319,7 +319,7 @@ void DebugToken::getValidPaths(std::vector<std::string>& paths)
         auto method = bus.new_method_call(
             pldm::utils::mapperService, pldm::utils::mapperPath,
             pldm::utils::mapperInterface, "GetSubTreePaths");
-        method.append("/xyz/openbmc_project/software");
+        method.append("/xyz/openbmc_project/software/other");
         method.append(0); // Depth 0 to search all
         method.append(std::vector<std::string>(
             {sdbusplus::xyz::openbmc_project::Common::server::UUID::
