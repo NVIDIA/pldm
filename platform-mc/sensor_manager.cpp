@@ -203,11 +203,27 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
         if (manager && !terminus->resumed)
         {
             co_await manager->resumeTerminus(tid);
+            // Check if terminus still exists after co_await
+            if (termini.find(tid) == termini.end())
+            {
+                lg2::info(
+                    "Terminus {TID} removed during resumeTerminus, stopping sensor polling.",
+                    "TID", tid);
+                co_return PLDM_SUCCESS;
+            }
         }
 
         if (manager && terminus->pollEvent)
         {
             co_await manager->pollForPlatformEvent(tid);
+            // Check if terminus still exists after co_await
+            if (termini.find(tid) == termini.end())
+            {
+                lg2::info(
+                    "Terminus {TID} removed during pollForPlatformEvent, stopping sensor polling.",
+                    "TID", tid);
+                co_return PLDM_SUCCESS;
+            }
         }
 
         for (auto effector : terminus->numericEffecters)
@@ -221,6 +237,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             if (effector->needUpdate)
             {
                 co_await effector->getNumericEffecterValue();
+                // Check if terminus still exists after co_await
+                if (termini.find(tid) == termini.end())
+                {
+                    lg2::info(
+                        "Terminus {TID} removed during getNumericEffecterValue, stopping sensor polling.",
+                        "TID", tid);
+                    co_return PLDM_SUCCESS;
+                }
                 if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
@@ -241,6 +265,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             if (effector->needUpdate || effector->isUpdatePending())
             {
                 co_await effector->getStateEffecterStates();
+                // Check if terminus still exists after co_await
+                if (termini.find(tid) == termini.end())
+                {
+                    lg2::info(
+                        "Terminus {TID} removed during getStateEffecterStates, stopping sensor polling.",
+                        "TID", tid);
+                    co_return PLDM_SUCCESS;
+                }
                 if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
@@ -260,6 +292,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             if (sensor->needUpdate)
             {
                 co_await getStateSensorReadings(sensor);
+                // Check if terminus still exists after co_await
+                if (termini.find(tid) == termini.end())
+                {
+                    lg2::info(
+                        "Terminus {TID} removed during getStateSensorReadings, stopping sensor polling.",
+                        "TID", tid);
+                    co_return PLDM_SUCCESS;
+                }
                 if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
@@ -290,6 +330,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             if (sensor->needsUpdate(t1))
             {
                 co_await getSensorReading(sensor);
+                // Check if terminus still exists after co_await
+                if (termini.find(tid) == termini.end())
+                {
+                    lg2::info(
+                        "Terminus {TID} removed during priority getSensorReading, stopping sensor polling.",
+                        "TID", tid);
+                    co_return PLDM_SUCCESS;
+                }
                 if (terminus->stopPolling)
                 {
                     co_return PLDM_ERROR;
@@ -369,6 +417,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 if (numericSensor->needsUpdate(t1))
                 {
                     co_await getSensorReading(numericSensor);
+                    // Check if terminus still exists after co_await
+                    if (termini.find(tid) == termini.end())
+                    {
+                        lg2::info(
+                            "Terminus {TID} removed during roundRobin getSensorReading, stopping sensor polling.",
+                            "TID", tid);
+                        co_return PLDM_SUCCESS;
+                    }
                     if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
@@ -384,6 +440,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 if (stateSensor->needsUpdate(t1))
                 {
                     co_await getStateSensorReadings(stateSensor);
+                    // Check if terminus still exists after co_await
+                    if (termini.find(tid) == termini.end())
+                    {
+                        lg2::info(
+                            "Terminus {TID} removed during roundRobin getStateSensorReadings, stopping sensor polling.",
+                            "TID", tid);
+                        co_return PLDM_SUCCESS;
+                    }
                     if (terminus->stopPolling)
                     {
                         co_return PLDM_ERROR;
@@ -438,6 +502,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
         }
 
         co_await timer::Sleep(event, sleepDeltaInUsec, timer::Priority);
+        // Check if terminus still exists after sleep
+        if (termini.find(tid) == termini.end())
+        {
+            lg2::info(
+                "Terminus {TID} removed during sleep, stopping sensor polling.",
+                "TID", tid);
+            co_return PLDM_SUCCESS;
+        }
 
     } while (true);
 
