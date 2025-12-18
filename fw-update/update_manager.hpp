@@ -55,8 +55,8 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
-using RefreshDescriptorsCallback = std::function<exec::task<int>(
-    const std::vector<mctp_eid_t>&, const ComponentTargetList&)>;
+using RefreshSingleEndpointCallback =
+    std::function<exec::task<int>(mctp_eid_t, bool)>;
 
 class Activation;
 class ActivationProgress;
@@ -88,8 +88,7 @@ class UpdateManager
         InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap, bool fwDebug,
-        RefreshDescriptorsCallback refreshDescriptorsCallback,
-        const FirmwareInventoryInfo& firmwareInventoryInfo);
+        RefreshSingleEndpointCallback refreshSingleEndpointCallback);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -475,8 +474,8 @@ class UpdateManager
 
     std::unique_ptr<PackageSignature> packageSignatureParser;
 
-    /** @brief Callback to refresh device descriptors */
-    RefreshDescriptorsCallback refreshDescriptorsCallback;
+    /** @brief Callback to refresh a single endpoint's descriptors */
+    RefreshSingleEndpointCallback refreshSingleEndpointCallback;
 
   private:
     /** @brief Requested apply time for the current update session */
@@ -489,9 +488,6 @@ class UpdateManager
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
-    /** @brief Firmware inventory information from config file */
-    const FirmwareInventoryInfo& firmwareInventoryInfo;
-
     std::unique_ptr<Activation> activation;
     std::unique_ptr<Update> updater;
     std::unique_ptr<ActivationProgress> activationProgress;

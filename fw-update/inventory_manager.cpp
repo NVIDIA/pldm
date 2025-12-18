@@ -1252,100 +1252,85 @@ void InventoryManager::logDiscoveryFailedMessage(
     }
 }
 
-exec::task<int> InventoryManager::refreshFirmwareInventory(
-    const std::vector<mctp_eid_t>& eids, dbus::MctpInterfaces& mctpInterfaces,
-    const ComponentTargetList& compTargetList)
+exec::task<int> InventoryManager::refreshSingleEndpoint(
+    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget)
 {
-    info("Refreshing firmware inventory for {COUNT} endpoints", "COUNT",
-         eids.size());
+    std::string messageError{};
+    // discoveryResolution captures the resolution message from discovery
+    // functions (queryDeviceIdentifiers/getFirmwareParameters). It is not
+    // used because FW Update operations require a specific resolution
+    // message defined in `resolution` below.
+    std::string discoveryResolution{};
+    std::string resolution{
+        "Retry firmware update operation, if problem persists, follow FW upgrade recovery flow."};
 
-    int overallRc = PLDM_SUCCESS;
-    for (const auto& eid : eids)
+    info("Refreshing descriptors for endpoint ID {EID}", "EID", eid);
+
+    auto rc =
+        co_await queryDeviceIdentifiers(eid, messageError, discoveryResolution);
+    if (rc != PLDM_SUCCESS)
     {
-        std::string messageError{};
-        // discoveryResolution captures the resolution message from discovery
-        // functions (queryDeviceIdentifiers/getFirmwareParameters). It is not
-        // used because FW Update operations require a specific resolution
-        // message defined in `resolution` below.
-        std::string discoveryResolution{};
-        std::string resolution{
-            "Retry firmware update operation, if problem persists, follow FW upgrade recovery flow."};
-
-        auto isTarget = compTargetList.contains(eid);
-
-        auto rc = co_await queryDeviceIdentifiers(eid, messageError,
-                                                  discoveryResolution);
-        if (rc != PLDM_SUCCESS)
+        if (rc == PLDM_ERROR_INVALID_DATA or
+            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
         {
-            if (rc == PLDM_ERROR_INVALID_DATA or
-                !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces, "FWUpdate", !isTarget);
+            if (isTarget)
             {
-                if (isTarget)
-                {
-                    error(
-                        "Failed to refresh descriptors for target endpoint ID {EID}, RC={RC}",
-                        "EID", eid, "RC", rc);
-                    logDiscoveryFailedMessage(eid, messageError, resolution,
-                                              mctpInterfaces, "FWUpdate",
-                                              false);
-                }
-                else
-                {
-                    warning(
-                        "Failed to refresh descriptors for endpoint ID {EID}, RC={RC}",
-                        "EID", eid, "RC", rc);
-                    logDiscoveryFailedMessage(eid, messageError, resolution,
-                                              mctpInterfaces, "FWUpdate", true);
-                }
+                error(
+                    "Failed to refresh descriptors for target endpoint ID {EID}, RC={RC}",
+                    "EID", eid, "RC", rc);
             }
-            descriptorMap.erase(eid);
-            componentInfoMap.erase(eid);
-            overallRc = PLDM_ERROR;
-            continue;
-        }
-
-        rc = co_await getFirmwareParameters(
-            eid, messageError, discoveryResolution, mctpInterfaces, true);
-        if (rc != PLDM_SUCCESS)
-        {
-            if (rc == PLDM_ERROR_INVALID_DATA or
-                !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+            else
             {
-                logDiscoveryFailedMessage(eid, messageError, resolution,
-                                          mctpInterfaces, "FWUpdate",
-                                          !isTarget);
-                if (isTarget)
-                {
-                    error(
-                        "Failed to refresh firmware parameters for target endpoint ID {EID}, RC={RC}",
-                        "EID", eid, "RC", rc);
-                }
-                else
-                {
-                    warning(
-                        "Failed to refresh firmware parameters for endpoint ID {EID}, RC={RC}",
-                        "EID", eid, "RC", rc);
-                }
+                warning(
+                    "Failed to refresh descriptors for endpoint ID {EID}, RC={RC}",
+                    "EID", eid, "RC", rc);
             }
-            descriptorMap.erase(eid);
-            componentInfoMap.erase(eid);
-            overallRc = PLDM_ERROR;
-            continue;
         }
-
-        if (updateInventoryCallBack && mctpEidMap.contains(eid))
-        {
-            const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
-            info("Updating inventory for endpoint ID {EID} with UUID {UUID}",
-                 "EID", eid, "UUID", uuid);
-            updateInventoryCallBack(eid, uuid, mctpInterfaces);
-        }
-
-        info("Successfully refreshed firmware inventory for endpoint ID {EID}",
-             "EID", eid);
+        descriptorMap.erase(eid);
+        componentInfoMap.erase(eid);
+        co_return rc;
     }
 
-    co_return overallRc;
+    rc = co_await getFirmwareParameters(eid, messageError, discoveryResolution,
+                                        mctpInterfaces, true);
+    if (rc != PLDM_SUCCESS)
+    {
+        if (rc == PLDM_ERROR_INVALID_DATA or
+            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+        {
+            logDiscoveryFailedMessage(eid, messageError, resolution,
+                                      mctpInterfaces, "FWUpdate", !isTarget);
+            if (isTarget)
+            {
+                error(
+                    "Failed to refresh firmware parameters for target endpoint ID {EID}, RC={RC}",
+                    "EID", eid, "RC", rc);
+            }
+            else
+            {
+                warning(
+                    "Failed to refresh firmware parameters for endpoint ID {EID}, RC={RC}",
+                    "EID", eid, "RC", rc);
+            }
+        }
+        descriptorMap.erase(eid);
+        componentInfoMap.erase(eid);
+        co_return rc;
+    }
+
+    if (updateInventoryCallBack && mctpEidMap.contains(eid))
+    {
+        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
+        info("Updating inventory for endpoint ID {EID} with UUID {UUID}", "EID",
+             eid, "UUID", uuid);
+        updateInventoryCallBack(eid, uuid, mctpInterfaces);
+    }
+
+    info("Successfully refreshed firmware inventory for endpoint ID {EID}",
+         "EID", eid);
+    co_return PLDM_SUCCESS;
 }
 
 } // namespace fw_update

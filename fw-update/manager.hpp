@@ -78,27 +78,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap,
                      deviceInventoryInfo),
-        updateManager(
-            event, handler, instanceIdDb, descriptorMap, componentInfoMap,
-            componentNameMap, fwDebug,
-            [this](
-                const std::vector<mctp_eid_t>& eids,
-                const ComponentTargetList& compTargetList) -> exec::task<int> {
-                if constexpr (0)
-                {
-                    info(
-                        "Starting firmware inventory refresh for {COUNT} endpoints",
-                        "COUNT", eids.size());
+        updateManager(event, handler, instanceIdDb, descriptorMap,
+                      componentInfoMap, componentNameMap, fwDebug,
+                      [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
+                          dbus::MctpInterfaces mctpInterfaces;
+                          getMctpInterfaces(mctpInterfaces);
 
-                    dbus::MctpInterfaces mctpInterfaces;
-                    getMctpInterfaces(mctpInterfaces);
-
-                    co_return co_await inventoryMgr.refreshFirmwareInventory(
-                        eids, mctpInterfaces, compTargetList);
-                }
-                co_return PLDM_SUCCESS;
-            },
-            fwInventoryInfo),
+                          co_return co_await inventoryMgr.refreshSingleEndpoint(
+                              eid, mctpInterfaces, isTarget);
+                      }),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,

@@ -49,14 +49,13 @@ class UpdateManagerTest : public testing::Test
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
 };
 
 TEST_F(UpdateManagerTest, getActivationMethod_Automatic)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "Automatic";
 
@@ -72,7 +71,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_SelfContained)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "Self-Contained";
 
@@ -88,7 +87,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_AutomaticOrSelfContained)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "Automatic or Self-Contained";
 
@@ -104,7 +103,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_MediumSpecificReset)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "Medium-specific reset";
 
@@ -120,7 +119,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_SystemReboot)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "System reboot";
 
@@ -136,7 +135,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_AcPowerCycle)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult = "AC power cycle";
 
@@ -152,7 +151,7 @@ TEST_F(UpdateManagerTest, getActivationMethod_DcOrAcPowerCycle)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const std::string activationMethodResult =
         "DC power cycle or AC power cycle";
@@ -169,7 +168,7 @@ TEST_F(UpdateManagerTest, clearFirmwareUpdatePackage)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.clearFirmwareUpdatePackage(); });
 }
@@ -181,7 +180,7 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     std::vector<ComponentName> successCompNames = {
         "TestComponentName1", "TestComponentName2", "TestComponentName3"};
@@ -198,7 +197,7 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion_withStatusEqualsFalse)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.updateDeviceCompletion(eid, status); });
 }
@@ -210,7 +209,7 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion_withoutSuccessCompNames)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.updateDeviceCompletion(eid, status); });
 }
@@ -219,7 +218,7 @@ TEST_F(UpdateManagerTest, updateActivationProgress)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.updateActivationProgress(); });
 }
@@ -228,7 +227,7 @@ TEST_F(UpdateManagerTest, clearActivationInfo)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.clearActivationInfo(); });
 }
@@ -237,7 +236,7 @@ TEST_F(UpdateManagerTest, activatePackage_throw_exception)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_THROW(updateManager.activatePackage(),
                  sdbusplus::exception::SdBusError);
@@ -247,7 +246,7 @@ TEST_F(UpdateManagerTest, processPackage_empty_descriptorMap)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     updateManager.processPackage("./test_pkg");
 }
@@ -268,7 +267,7 @@ TEST_F(UpdateManagerTest, processPackage_no_matching_devices_found)
     ComponentNameMap componentNameMap;
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     updateManager.processPackage("./test_pkg");
 }
@@ -291,9 +290,9 @@ TEST_F(UpdateManagerTest, processPackage_new)
                                 0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6,
                                 0x75}}}}};
 
-    UpdateManager updateManager(
-        event, reqHandler2, instanceIdDb, descriptorMap2, componentInfoMap,
-        componentNameMap, true, nullptr, firmwareInventoryInfo);
+    UpdateManager updateManager(event, reqHandler2, instanceIdDb,
+                                descriptorMap2, componentInfoMap,
+                                componentNameMap, true, nullptr);
 
     int result = updateManager.processPackage("./test_pkg");
 
@@ -306,7 +305,7 @@ TEST_F(UpdateManagerTest, handleRequest_empty_descriptorMap)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     mctp_eid_t eid = 0;
 
@@ -342,7 +341,7 @@ TEST_F(UpdateManagerTest, handleRequest_request_fw_data)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -377,7 +376,7 @@ TEST_F(UpdateManagerTest, handleRequest_transfer_complete)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -413,7 +412,7 @@ TEST_F(UpdateManagerTest, handleRequest_verify_complete)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -449,7 +448,7 @@ TEST_F(UpdateManagerTest, handleRequest_apply_complete)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -485,7 +484,7 @@ TEST_F(UpdateManagerTest, handleRequest_not_supported_command)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
                                       sizeof(pldm_request_firmware_data_req)>
@@ -507,7 +506,7 @@ TEST_F(UpdateManagerTest, setActivationStatus)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     const Server::Activation::Activations activationState =
         Server::Activation::Activations::Active;
@@ -521,7 +520,7 @@ TEST_F(UpdateManagerTest, updateOtherDeviceComponents)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     std::unordered_map<std::string, bool> otherDeviceMap = {
         {"device1", true}, {"device2", false}, {"device3", true}};
@@ -536,7 +535,7 @@ TEST_F(UpdateManagerTest, resetActivationBlocksTransition)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     EXPECT_NO_THROW({ updateManager.resetActivationBlocksTransition(); });
 }
@@ -579,7 +578,7 @@ TEST_F(UpdateManagerTest, getComponentName)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap2, componentNameMap2, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -637,7 +636,7 @@ TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap2, componentNameMap2, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -692,7 +691,7 @@ TEST_F(UpdateManagerTest, getComponentName_ForEmptyComponentNameMap)
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
                                 componentInfoMap2, componentNameMap, true,
-                                nullptr, firmwareInventoryInfo);
+                                nullptr);
 
     FirmwareDeviceIDRecord fwDeviceIDRecord = {
         1,
@@ -729,9 +728,9 @@ TEST_F(UpdateManagerTest, processPackage_Package_v3_truncated)
                                 0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6,
                                 0x75}}}}};
 
-    UpdateManager updateManager(
-        event, reqHandler2, instanceIdDb, descriptorMap2, componentInfoMap,
-        componentNameMap, true, nullptr, firmwareInventoryInfo);
+    UpdateManager updateManager(event, reqHandler2, instanceIdDb,
+                                descriptorMap2, componentInfoMap,
+                                componentNameMap, true, nullptr);
 
     int result = updateManager.processPackage("./test_pkg_v3_signed_truncated");
 

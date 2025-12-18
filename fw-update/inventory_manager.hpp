@@ -243,25 +243,18 @@ class InventoryManager
     virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
-    /** @brief Refresh PLDM T5 descriptors and component information
+    /** @brief Refresh descriptors for a single endpoint
      *
-     *  Performs full discovery flow (QueryDeviceIdentifiers and
-     *  GetFirmwareParameters) for the given EIDs to update descriptors,
-     *  component info, and device/firmware inventory. Used before firmware
-     *  update to ensure all device information is current.
+     *  Helper function to refresh QueryDeviceIdentifiers and
+     *  GetFirmwareParameters for a single endpoint. Used by parallel refresh.
      *
-     *  @param[in] eids - List of MCTP endpoints to refresh
-     *  @param[in] mctpInterfaces - MCTP interface information for inventory
-     *  @param[in] compTargetList - Component target list to determine log
-     * severity
-     *  @param[in] hasTargetFiltering - Whether target filtering was requested
-     *  @return coroutine return_value - PLDM_SUCCESS if all queries succeed,
-     *                                   PLDM_ERROR otherwise
+     *  @param[in] eid - MCTP endpoint to refresh
+     *  @param[in] mctpInterfaces - MCTP interface information
+     *  @param[in] isTarget - Whether this endpoint is a target for update
+     *  @return PLDM_SUCCESS on success, error code otherwise
      */
-    exec::task<int> refreshFirmwareInventory(
-        const std::vector<mctp_eid_t>& eids,
-        dbus::MctpInterfaces& mctpInterfaces,
-        const ComponentTargetList& compTargetList);
+    exec::task<int> refreshSingleEndpoint(
+        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *

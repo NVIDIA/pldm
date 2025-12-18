@@ -38,8 +38,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false, nullptr,
-                      firmwareInventoryInfo)
+                      componentInfoMap, componentNameMap, false, nullptr)
     {}
 
     sdeventplus::Event event;
@@ -48,7 +47,6 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     // Package to firmware device associations, the FD identifer records via
@@ -265,15 +263,13 @@ class PackageAssociationTargetFiltering : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false, nullptr,
-                      firmwareInventoryInfo)
+                      componentInfoMap, componentNameMap, false, nullptr)
     {}
 
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
     const ComponentInfoMap componentInfoMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     // Device1 - ApplicableComponents{compIdentifer1, compIdentifer2}
@@ -401,8 +397,7 @@ class PackageAssociationMultipleDescSameType : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, false, nullptr,
-                      firmwareInventoryInfo)
+                      componentInfoMap, componentNameMap, false, nullptr)
     {}
 
     sdeventplus::Event event;
@@ -411,7 +406,6 @@ class PackageAssociationMultipleDescSameType : public testing::Test
     const DescriptorMap descriptorMap;
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 
     const FirmwareDeviceIDRecords inFwDeviceIDRecords{

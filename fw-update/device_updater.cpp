@@ -836,13 +836,14 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                 updateManager->updateDeviceCompletion(eid, true,
                                                       successCompNames);
 
-                if (updateManager && updateManager->refreshDescriptorsCallback)
+                if (updateManager &&
+                    updateManager->refreshSingleEndpointCallback)
                 {
                     info("Refreshing firmware version for EID={EID} after "
                          "activation",
                          "EID", eid);
-                    co_await updateManager->refreshDescriptorsCallback(
-                        {eid}, ComponentTargetList{});
+                    co_await updateManager->refreshSingleEndpointCallback(
+                        eid, true);
                 }
 
                 deviceUpdaterState.nextState(deviceUpdaterState.current,
@@ -1184,13 +1185,13 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
                     eid, fwDeviceIDRecord, compIndex, activateSuccessful);
             }
 
-            if (updateManager && updateManager->refreshDescriptorsCallback)
+            if (updateManager && updateManager->refreshSingleEndpointCallback)
             {
                 info("Refreshing firmware version for EID={EID} after "
                      "activation",
                      "EID", eid);
-                co_await updateManager->refreshDescriptorsCallback(
-                    {eid}, ComponentTargetList{});
+                co_await updateManager->refreshSingleEndpointCallback(
+                    eid, true);
             }
 
             updateManager->updateDeviceCompletion(eid, true, successCompNames);

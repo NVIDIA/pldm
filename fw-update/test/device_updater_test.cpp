@@ -56,8 +56,7 @@ class DeviceUpdaterTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, true, nullptr,
-                      firmwareInventoryInfo),
+                      componentInfoMap, componentNameMap, true, nullptr),
         deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos, compInfo,
                       compIdNameInfo, 512, &updateManager)
     {
@@ -93,7 +92,6 @@ class DeviceUpdaterTest : public testing::Test
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
     DeviceUpdater deviceUpdater;
 };

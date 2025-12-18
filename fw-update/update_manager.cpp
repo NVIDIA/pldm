@@ -91,46 +91,17 @@ static bool descriptorsMatch(const Descriptors& deviceDescriptors,
     return true;
 }
 
-/** @brief Extract expected EIDs from firmware inventory configuration
- *
- *  @param[in] firmwareInventoryInfo - Firmware inventory configuration info
- *  @return Set of expected EIDs from the configuration
- */
-static std::vector<mctp_eid_t> getExpectedEids(
-    const FirmwareInventoryInfo& firmwareInventoryInfo)
-{
-    std::vector<mctp_eid_t> expectedEids;
-
-    for (const auto& [matchInfo, firmwareInfo] : firmwareInventoryInfo.infos)
-    {
-        const auto& [interface, propertyMap] = matchInfo;
-
-        auto eidIt = propertyMap.find("EID");
-        if (eidIt != propertyMap.end())
-        {
-            if (std::holds_alternative<uint8_t>(eidIt->second))
-            {
-                auto eid = std::get<uint8_t>(eidIt->second);
-                expectedEids.emplace_back(eid);
-            }
-        }
-    }
-    return expectedEids;
-}
-
 UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug,
-    RefreshDescriptorsCallback refreshDescriptorsCallback,
-    const FirmwareInventoryInfo& firmwareInventoryInfo) :
+    RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
     event(event), handler(handler), instanceIdDb(instanceIdDb),
     fwDebug(fwDebug),
-    refreshDescriptorsCallback(std::move(refreshDescriptorsCallback)),
+    refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
     componentNameMap(componentNameMap),
-    firmwareInventoryInfo(firmwareInventoryInfo),
     updater(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
@@ -400,25 +371,37 @@ exec::task<void> UpdateManager::processStream(
         co_return;
     }
 
-    info("Refreshing firmware inventory before firmware update");
-
     ComponentTargetList compTargetList =
         getComponentTargetList(componentNameMap, targets);
 
-    auto expectedEids = getExpectedEids(firmwareInventoryInfo);
-
-    if (!expectedEids.empty() && refreshDescriptorsCallback)
+    if (refreshSingleEndpointCallback && !descriptorMap.empty())
     {
-        auto rc =
-            co_await refreshDescriptorsCallback(expectedEids, compTargetList);
-        if (rc != PLDM_SUCCESS)
+        info("Refreshing firmware inventory for {COUNT} discovered endpoints",
+             "COUNT", descriptorMap.size());
+
+        // Copy EIDs to avoid iterator invalidation and from modifications to
+        // descriptorMap during refresh
+        std::vector<mctp_eid_t> eids;
+        eids.reserve(descriptorMap.size());
+        for (const auto& [eid, _] : descriptorMap)
         {
-            warning("Firmware inventory refresh completed with errors");
+            eids.push_back(eid);
         }
-        else
+
+        exec::async_scope refreshScope;
+        for (const auto& eid : eids)
         {
-            info("Firmware inventory refresh completed successfully");
+            bool isTarget = compTargetList.contains(eid);
+            refreshScope.spawn(
+                stdexec::just() |
+                stdexec::let_value([this, eid, isTarget]() -> exec::task<void> {
+                    [[maybe_unused]] auto rc =
+                        co_await refreshSingleEndpointCallback(eid, isTarget);
+                }));
         }
+        co_await refreshScope.on_empty();
+
+        info("Firmware inventory refresh completed");
     }
 
     const auto& compImageInfos = parser->getComponentImageInfos();

@@ -46,8 +46,7 @@ class OtherDeviceUpdateManagerTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, true, nullptr,
-                      firmwareInventoryInfo)
+                      componentInfoMap, componentNameMap, true, nullptr)
     {}
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
@@ -59,7 +58,6 @@ class OtherDeviceUpdateManagerTest : public testing::Test
     DescriptorMap descriptorMap;
     ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
-    FirmwareInventoryInfo firmwareInventoryInfo;
     UpdateManager updateManager;
 };
 
