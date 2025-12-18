@@ -108,6 +108,13 @@ void SensorManager::startPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
+    if (!terminus->doesSupport(PLDM_PLATFORM))
+    {
+        lg2::warning("TID: {TID} doesn't support PLDM T2. "
+                     "Polling skipped for this terminus.",
+                     "TID", tid);
+        return;
+    }
     terminus->stopPolling = false;
     doSensorPolling(tid);
 }
