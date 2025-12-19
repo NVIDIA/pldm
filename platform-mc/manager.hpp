@@ -82,17 +82,35 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
-    void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos
-                                    [[maybe_unused]]) override
+    void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) override
     {
-        // TODO: Place holder
+        for (const auto& mctpInfo : mctpInfos)
+        {
+            const auto& uuid = std::get<1>(mctpInfo);
+            auto terminus = terminusManager.getTerminus(uuid);
+            if (terminus && terminus->doesSupport(PLDM_PLATFORM))
+            {
+                sensorManager.setOffline(terminus->getTid());
+            }
+        }
     }
 
-    void updateMctpEndpointAvailability(
-        [[maybe_unused]] const MctpInfo& mctpInfo,
-        [[maybe_unused]] Availability availability) override
+    void updateMctpEndpointAvailability(const MctpInfo& mctpInfo,
+                                        Availability availability) override
     {
-        // TODO: Place holder
+        const auto& uuid = std::get<1>(mctpInfo);
+        auto terminus = terminusManager.getTerminus(uuid);
+        if (terminus && terminus->doesSupport(PLDM_PLATFORM))
+        {
+            if (availability)
+            {
+                sensorManager.setOnline(terminus->getTid());
+            }
+            else
+            {
+                sensorManager.setOffline(terminus->getTid());
+            }
+        }
     }
 
     void onlineMctpEndpoint(const UUID& uuid,

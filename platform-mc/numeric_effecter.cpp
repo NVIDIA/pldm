@@ -267,6 +267,14 @@ void NumericEffecter::handleErrGetNumericEffecterValue()
     }
 }
 
+void NumericEffecter::setAvailable(bool available)
+{
+    if (availabilityIntf)
+    {
+        availabilityIntf->available(available);
+    }
+}
+
 exec::task<int> NumericEffecter::setNumericEffecterEnable(
     pldm_effecter_oper_state state)
 {

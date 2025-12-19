@@ -1657,7 +1657,21 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
 
 void Terminus::setOnline()
 {
-    // placeholder
+    // Restore availability for effecters that were marked unavailable by
+    // setOffline(). Sensors already have available=true after setOffline().
+    // The actual functional state and values will be restored by sensor polling
+    // when it reads fresh data from the terminus.
+    for (auto& numericEffecter : numericEffecters)
+    {
+        numericEffecter->setAvailable(true);
+        numericEffecter->needUpdate = true;
+    }
+
+    for (auto& stateEffecter : stateEffecters)
+    {
+        stateEffecter->setAvailable(true);
+        stateEffecter->needUpdate = true;
+    }
 }
 
 void Terminus::setOffline()

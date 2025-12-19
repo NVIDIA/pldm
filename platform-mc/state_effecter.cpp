@@ -102,6 +102,14 @@ void StateEffecter::handleErrGetStateEffecterStates()
     }
 }
 
+void StateEffecter::setAvailable(bool available)
+{
+    if (availabilityIntf)
+    {
+        availabilityIntf->available(available);
+    }
+}
+
 void StateEffecter::updateReading(uint8_t compEffecterIndex,
                                   pldm_effecter_oper_state effecterOperState,
                                   uint8_t pendingValue, uint8_t presentValue)

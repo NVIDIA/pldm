@@ -136,6 +136,11 @@ class StateEffecter
      */
     void handleErrGetStateEffecterStates();
 
+    /** @brief Set the availability state of the effecter
+     *  @param[in] available - the availability state to set
+     */
+    void setAvailable(bool available);
+
     /** @brief Updating the sensor status to D-Bus interface
      */
     void updateReading(uint8_t compEffecterIndex,

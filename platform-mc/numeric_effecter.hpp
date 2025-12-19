@@ -79,6 +79,11 @@ class NumericEffecter
      */
     void handleErrGetNumericEffecterValue();
 
+    /** @brief Set the availability state of the effecter
+     *  @param[in] available - the availability state to set
+     */
+    void setAvailable(bool available);
+
     /** @brief Updating the effecter status to D-Bus interface
      */
     void updateValue(pldm_effecter_oper_state effecterOperState,
