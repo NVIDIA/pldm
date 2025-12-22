@@ -219,11 +219,22 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Helper function to invoke registered handlers for
      *         the removed MCTP endpoints
      *
+     *  Clears cached data associated with the removed endpoints:
+     *  - descriptorMap
+     *  - mctpEidMap
+     *
+     *  D-Bus objects (device/firmware inventory) are intentionally
+     *  preserved as they were created during initial discovery.
+     *
      *  @param[in] mctpInfos - information of removed MCTP endpoints
      */
-    void handleRemovedMctpEndpoints(const MctpInfos&) override
+    void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) override
     {
-        return;
+        for (const auto& mctpInfo : mctpInfos)
+        {
+            auto eid = std::get<pldm::eid>(mctpInfo);
+            inventoryMgr.cleanUpResources(eid);
+        }
     }
 
     /** @brief Helper function to invoke registered handlers for

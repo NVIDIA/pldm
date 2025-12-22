@@ -263,6 +263,12 @@ class InventoryManager
         dbus::MctpInterfaces& mctpInterfaces,
         const ComponentTargetList& compTargetList);
 
+    /** @brief Cleans up mctpEidMap and descriptorMap
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     */
+    void cleanUpResources(mctp_eid_t eid);
+
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
      * message handlers */
@@ -318,12 +324,6 @@ class InventoryManager
     virtual sdbusplus::async::task<int> getDownstreamFirmwareParameters(
         mctp_eid_t eid, uint32_t dataTransferHandle,
         const enum transfer_op_flag transferOperationFlag);
-
-    /** @brief Cleans up mctpEidMap and descriptorMap
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     */
-    void cleanUpResources(mctp_eid_t eid);
 
     /** @brief Send QueryDeviceIdentifiers command request
      *

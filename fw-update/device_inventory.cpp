@@ -57,21 +57,29 @@ std::optional<sdbusplus::message::object_path> Manager::createEntry(
 {
     std::optional<sdbusplus::message::object_path> deviceObjPath{};
 
+    auto descIt = descriptorMap.find(eid);
+    if (descIt == descriptorMap.end())
+    {
+        lg2::info(
+            "Skipping device inventory creation: descriptor not found, EID={EID}, UUID={UUID}",
+            "EID", eid, "UUID", uuid);
+        return deviceObjPath;
+    }
+    const auto descriptors = descIt->second;
+
     DeviceInfo deviceInfo;
 
     if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
         deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                deviceInfo) &&
-        descriptorMap.contains(eid))
+                                                deviceInfo))
     {
         const auto& objPath =
             std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
         const auto& assocs =
             std::get<Associations>(std::get<CreateDeviceInfo>(deviceInfo));
-        auto descSearch = descriptorMap.find(eid);
         std::string ecsku{};
         std::string apsku{};
-        for (const auto& [descType, descValue] : descSearch->second)
+        for (const auto& [descType, descValue] : descriptors)
         {
             if (descType == PLDM_FWUP_VENDOR_DEFINED)
             {
@@ -129,16 +137,21 @@ std::optional<sdbusplus::message::object_path> Manager::updateEntry(
     if (auto deviceEntry = deviceEntryMap.find(uuid);
         deviceEntry != deviceEntryMap.end())
     {
+        auto descIt = descriptorMap.find(eid);
+        if (descIt == descriptorMap.end())
+        {
+            return std::nullopt;
+        }
+        const auto descriptors = descIt->second;
+
         DeviceInfo deviceInfo;
         if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
             deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                    deviceInfo) &&
-            descriptorMap.contains(eid))
+                                                    deviceInfo))
         {
-            auto descSearch = descriptorMap.find(eid);
             std::string ecsku{};
             std::string apsku{};
-            for (const auto& [descType, descValue] : descSearch->second)
+            for (const auto& [descType, descValue] : descriptors)
             {
                 if (descType == PLDM_FWUP_VENDOR_DEFINED)
                 {
