@@ -27,6 +27,7 @@
 #include <sdeventplus/event.hpp>
 
 #include <queue>
+#include <unordered_set>
 
 namespace pldm
 {
@@ -39,65 +40,7 @@ using CreateInventoryCallBack =
 using UpdateInventoryCallBack =
     std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(eid)>;
-using MctpEidMap =
-    std::unordered_map<eid, std::tuple<UUID, MctpMedium, MctpBinding>>;
-
-using Priority = int;
-
-static std::unordered_map<MctpMedium, Priority> mediumPriority = {
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB", 1},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SPI", 2},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.I3C", 3},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.KCS", 4},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 5},
-    {"xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 6}};
-
-/**
- * @brief MCTP Binding Type priority table ordering by bandwidth
- */
-static std::unordered_map<MctpBinding, Priority> bindingPriority = {
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", 0},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.USB", 1},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SPI", 2},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.KCS", 3},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
-    {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
-
-struct MctpEidInfo
-{
-    pldm::eid eid;
-    MctpMedium medium;
-    MctpBinding binding;
-
-    friend bool operator<(const MctpEidInfo& lhs, const MctpEidInfo& rhs)
-    {
-        if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
-        {
-            return (bindingPriority.at(lhs.binding) >
-                    bindingPriority.at(rhs.binding));
-        }
-        else
-        {
-            return (mediumPriority.at(lhs.medium) >
-                    mediumPriority.at(rhs.medium));
-        }
-    }
-};
-
-struct MCTPEidInfoPriorityQueue : std::priority_queue<MctpEidInfo>
-{
-    auto begin() const
-    {
-        return c.begin();
-    }
-    auto end() const
-    {
-        return c.end();
-    }
-};
-
-using MctpInfoMap = std::map<UUID, MCTPEidInfoPriorityQueue>;
+using MctpEidMap = std::unordered_map<eid, UUID>;
 
 /** @class InventoryManager
  *
@@ -319,7 +262,7 @@ class InventoryManager
         mctp_eid_t eid, uint32_t dataTransferHandle,
         const enum transfer_op_flag transferOperationFlag);
 
-    /** @brief Cleans up mctpEidMap and descriptorMap
+    /** @brief Cleans up mctpEidMap, inventoryCreatedEids, and descriptorMap
      *
      *  @param[in] eid - Remote MCTP endpoint
      */
@@ -415,7 +358,8 @@ class InventoryManager
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;
 
-    MctpInfoMap mctpInfoMap;
+    /** @brief Tracks EIDs for which inventory has been created */
+    std::unordered_set<eid> inventoryCreatedEids;
 
     /** @brief Inventory command attempt count */
     uint8_t numAttempts;

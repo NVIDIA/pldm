@@ -60,10 +60,11 @@ exec::task<int> InventoryManager::discoverFDsTask()
     while (!queuedMctpInfos.empty())
     {
         const auto& [mctpInfos, mctpInterfaces] = queuedMctpInfos.front();
-        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
-             mctpInfos)
+        for (const auto& mctpInfo : mctpInfos)
         {
-            mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
+            const auto& eid = std::get<0>(mctpInfo);
+            const auto& uuid = std::get<1>(mctpInfo);
+            mctpEidMap[eid] = uuid;
             co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
         }
         queuedMctpInfos.pop();
@@ -297,6 +298,7 @@ exec::task<int> InventoryManager::getActiveFirmwareVersion(
 void InventoryManager::cleanUpResources(mctp_eid_t eid)
 {
     mctpEidMap.erase(eid);
+    inventoryCreatedEids.erase(eid);
     descriptorMap.erase(eid);
 }
 
@@ -655,79 +657,19 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
     }
     componentInfoMap.emplace(eid, std::move(componentInfo));
 
-    // If there are multiple endpoints associated with the same device, then
-    // based on a policy one MCTP endpoint is picked for firmware update, the
-    // remaining endpoints are cleared from DescriptorMap and ComponentInfoMap
-    // The default policy is to pick the MCTP endpoint where the outgoing
-    // physical medium is the fastest. Skip firmware/device inventory for the
-    // next endpoints after discovering the first endpoint associated with the
-    // UUID. The logic to calculate fastest EID to the PLDM FD is not
-    // needed when FW versions are refreshed.
     if (mctpEidMap.contains(eid) && !refreshFWVersionOnly)
     {
-        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
-        // This condition is met, if an additional eid is discovered for a
-        // device(same UUID) that is already discovered.
-        if (mctpInfoMap.contains(uuid))
+        const auto& uuid = mctpEidMap[eid];
+        if (inventoryCreatedEids.contains(eid))
         {
-            auto search = mctpInfoMap.find(uuid);
-
-            const auto& curTop = search->second.top();
-            auto curFastestEid = curTop.eid;
-            // Check if eid is already the fastest, this can happen on a
-            // rediscovery of the MCTP endpoint
-            if (curFastestEid == eid)
+            if (updateInventoryCallBack)
             {
-                info("Fastest path to UUID={UUID} is already set to EID={EID}",
-                     "UUID", uuid, "EID", eid);
-                // WAR: For when an already discovered EID is processed again
-                // from an InterfacesAdded signal
-                if (updateInventoryCallBack)
-                {
-                    updateInventoryCallBack(eid, uuid, mctpInterfaces);
-                }
-                co_return PLDM_SUCCESS;
+                updateInventoryCallBack(eid, uuid, mctpInterfaces);
             }
-
-            // Insert eid into priority queue, to identify the new fastest EID
-            search->second.push({eid, mediumType, bindingType});
-
-            const auto& newTop = search->second.top();
-            auto newFastestEid = newTop.eid;
-            // Check if eid is the fastest eid after comparison
-            if (eid != newFastestEid)
-            {
-                info(
-                    "Fastest path to UUID={UUID} is set to EID={EID}, removed DELETED_EID={DELETED_EID}",
-                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID", eid);
-                descriptorMap.erase(eid);
-                componentInfoMap.erase(eid);
-            }
-            else if (eid == newFastestEid)
-            {
-                info(
-                    "Fastest path to UUID={UUID} is set to EID={EID}, DELETED_EID={DELETED_EID}",
-                    "UUID", uuid, "EID", newFastestEid, "DELETED_EID",
-                    curFastestEid);
-                descriptorMap.erase(curFastestEid);
-                componentInfoMap.erase(curFastestEid);
-            }
-
-            // Trim priority queue to have only the fastest eid, remove the
-            // second entry.
-            const auto& currTop = search->second.top();
-            auto topEID = currTop.eid;
-            auto topMediumType = currTop.medium;
-            auto topBindingType = currTop.binding;
-            search->second.pop();
-            search->second.pop();
-            search->second.push({topEID, topMediumType, topBindingType});
         }
         else
         {
-            std::priority_queue<MctpEidInfo> mctpEidInfo;
-            mctpEidInfo.push({eid, mediumType, bindingType});
-            mctpInfoMap.emplace(uuid, std::move(mctpEidInfo));
+            inventoryCreatedEids.insert(eid);
             if (createInventoryCallBack)
             {
                 createInventoryCallBack(eid, uuid, mctpInterfaces);
@@ -1208,7 +1150,7 @@ void InventoryManager::logDiscoveryFailedMessage(
 {
     if (mctpEidMap.contains(eid))
     {
-        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
+        const auto& uuid = mctpEidMap[eid];
         DeviceInfo deviceInfo;
         if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
                                                     deviceInfo))
@@ -1306,7 +1248,7 @@ exec::task<int> InventoryManager::refreshFirmwareInventory(
 
         if (updateInventoryCallBack && mctpEidMap.contains(eid))
         {
-            const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
+            const auto& uuid = mctpEidMap[eid];
             info("Updating inventory for endpoint ID {EID} with UUID {UUID}",
                  "EID", eid, "UUID", uuid);
             updateInventoryCallBack(eid, uuid, mctpInterfaces);

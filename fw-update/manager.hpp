@@ -126,9 +126,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         getMctpInterfaces(mctpInterfaces);
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
-        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
-             mctpInfos)
+        for (const auto& mctpInfo : mctpInfos)
         {
+            const auto& eid = std::get<0>(mctpInfo);
+            const auto& uuid = std::get<1>(mctpInfo);
             ComponentIdNameMap componentIdNameMap;
             if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
                                                          componentIdNameMap))
