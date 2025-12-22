@@ -1101,5 +1101,10 @@ std::string getPldmCommandName(uint8_t pldmType, uint8_t commandCode)
     return std::format("Cmd_0x{:02x}", commandCode);
 }
 
+long int generateSwId()
+{
+    return random() % 10000;
+}
+
 } // namespace utils
 } // namespace pldm

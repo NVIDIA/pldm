@@ -73,14 +73,29 @@ Manager::Manager(sdbusplus::bus::bus& bus,
 void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                           dbus::MctpInterfaces& mctpInterfaces)
 {
-    FirmwareInfo fwInfoSearch;
-    if (mctpInterfaces.find(uuid) != mctpInterfaces.end() &&
-        firmwareInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                  fwInfoSearch) &&
-        componentInfoMap.contains(eid))
+    if (!componentInfoMap.contains(eid))
     {
-        auto compInfoSearch = componentInfoMap.find(eid);
+        lg2::info(
+            "Skipping firmware inventory creation: no component info available, EID={EID}",
+            "EID", eid);
+        return;
+    }
 
+    auto compInfoSearch = componentInfoMap.find(eid);
+    FirmwareInfo fwInfoSearch;
+
+    if (mctpInterfaces.find(uuid) == mctpInterfaces.end())
+    {
+        lg2::info(
+            "Skipping firmware inventory creation: UUID not found in mctpInterfaces, EID={EID}",
+            "EID", eid);
+        return;
+    }
+
+    // Check if we have a config JSON match
+    if (firmwareInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
+                                                  fwInfoSearch))
+    {
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
             if ((std::get<0>(fwInfoSearch)).contains(compKey.second))
@@ -133,11 +148,28 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
     }
     else
     {
-        // Skip if UUID is not present or firmware inventory information from
-        // firmware update config JSON is empty
-        lg2::info(
-            "Skipping firmware inventory creation: UUID not found or empty firmware inventory config, EID={EID}",
-            "EID", eid);
+        // No firmware inventory config JSON found for this endpoint.
+        // Create software objects using default path derived from EID and
+        // component identifier.
+        for (const auto& [compKey, compInfo] : compInfoSearch->second)
+        {
+            std::string objPath =
+                fmt::format("{}/PLDM_Device_Firmware_Device_{}_Component_{}_{}",
+                            swBasePath, static_cast<int>(eid), compKey.second,
+                            pldm::utils::generateSwId());
+
+            auto swId = fmt::format("0x{:04X}", compKey.second);
+            auto entry = std::make_unique<Entry>(bus, objPath,
+                                                 std::get<1>(compInfo), swId);
+            entry->createUpdateableAssociation(swBasePath);
+
+            lg2::info(
+                "Created software D-Bus object (no config): path={PATH}, component_id={ID}, version={VERSION}",
+                "PATH", objPath, "ID", swId, "VERSION", std::get<1>(compInfo));
+
+            firmwareInventoryMap.emplace(std::make_pair(eid, compKey.second),
+                                         std::move(entry));
+        }
     }
 }
 

@@ -748,5 +748,15 @@ const char* getPldmTypeName(uint8_t pldmType);
  */
 std::string getPldmCommandName(uint8_t pldmType, uint8_t commandCode);
 
+/**
+ * @brief Get a random ID for firmware inventory entry
+ *
+ * Generates a random ID suitable for use in firmware inventory
+ * D-Bus object paths to ensure uniqueness.
+ *
+ * @return Random ID as long integer
+ */
+long int generateSwId();
+
 } // namespace utils
 } // namespace pldm
