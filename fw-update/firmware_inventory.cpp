@@ -65,9 +65,10 @@ void Entry::setVersion(const std::string& versionStr)
 
 Manager::Manager(sdbusplus::bus::bus& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
-                 const ComponentInfoMap& componentInfoMap) :
+                 const ComponentInfoMap& componentInfoMap,
+                 const ComponentNameMap& componentNameMap) :
     bus(bus), firmwareInventoryInfo(firmwareInventoryInfo),
-    componentInfoMap(componentInfoMap)
+    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap)
 {}
 
 void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
@@ -148,15 +149,13 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
     }
     else
     {
-        // No firmware inventory config JSON found for this endpoint.
-        // Create software objects using default path derived from EID and
-        // component identifier.
+        // No config JSON - use generated names from componentNameMap
+        // (populated by createInventory() before this call).
+        const auto& compIdNameMap = componentNameMap.at(eid);
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
             std::string objPath =
-                fmt::format("{}/PLDM_Device_Firmware_Device_{}_Component_{}_{}",
-                            swBasePath, static_cast<int>(eid), compKey.second,
-                            pldm::utils::generateSwId());
+                swBasePath + "/" + compIdNameMap.at(compKey.second);
 
             auto swId = fmt::format("0x{:04X}", compKey.second);
             auto entry = std::make_unique<Entry>(bus, objPath,

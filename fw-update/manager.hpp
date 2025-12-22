@@ -33,6 +33,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#include <format>
 #include <unordered_map>
 #include <vector>
 
@@ -101,7 +102,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
-                           componentInfoMap)
+                           componentInfoMap, componentNameMap)
     {
         try
         {
@@ -150,6 +151,21 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         if (componentInfoMap.contains(eid))
         {
+            // If no config JSON match, populate componentNameMap with
+            // generated names for target filtering, logging, and D-Bus object
+            // path consistency
+            if (!componentNameMap.contains(eid))
+            {
+                ComponentIdNameMap componentIdNameMap;
+                for (const auto& [compKey, compInfo] : componentInfoMap[eid])
+                {
+                    componentIdNameMap[compKey.second] = std::format(
+                        "PLDM_Device_Firmware_Device_{}_Component_{}_{}",
+                        static_cast<int>(eid), compKey.second,
+                        pldm::utils::generateSwId());
+                }
+                componentNameMap[eid] = std::move(componentIdNameMap);
+            }
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         }
     }

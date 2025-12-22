@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -1103,7 +1104,8 @@ std::string getPldmCommandName(uint8_t pldmType, uint8_t commandCode)
 
 long int generateSwId()
 {
-    return random() % 10000;
+    static auto gen = std::mt19937{std::random_device{}()};
+    return std::uniform_int_distribution<long int>{0, 9999}(gen);
 }
 
 } // namespace utils

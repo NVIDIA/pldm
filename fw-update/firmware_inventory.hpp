@@ -112,10 +112,12 @@ class Manager
      *  @param[in] bus  - Bus to attach to
      *  @param[in] firmwareInventoryInfo - Config info for firmware inventory
      *  @param[in] componentInfoMap - Component information of managed FDs
+     *  @param[in] componentNameMap - Component name map for D-Bus paths
      */
     explicit Manager(sdbusplus::bus::bus& bus,
                      const FirmwareInventoryInfo& firmwareInventoryInfo,
-                     const ComponentInfoMap& componentInfoMap);
+                     const ComponentInfoMap& componentInfoMap,
+                     const ComponentNameMap& componentNameMap);
 
     /** @brief Create firmware inventory object
      *
@@ -151,6 +153,9 @@ class Manager
 
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentInfoMap& componentInfoMap;
+
+    /** @brief Component name map for D-Bus object paths */
+    const ComponentNameMap& componentNameMap;
 
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<eid, CompIdentifier>, std::unique_ptr<Entry>>
