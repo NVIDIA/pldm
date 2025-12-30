@@ -36,6 +36,8 @@ namespace fw_update
 
 using CreateInventoryCallBack =
     std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
+using UpdateInventoryCallBack =
+    std::function<void(EID, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateFWVersionCallBack = std::function<void(EID)>;
 using MctpEidMap =
     std::unordered_map<EID, std::tuple<UUID, MctpMedium, MctpBinding>>;
@@ -120,6 +122,8 @@ class InventoryManager
      *  @param[in] instanceIdDb - Managing instance ID for PLDM requests
      *  @param[in] createInventoryCallBack - Optional callback function to
      *                                       create device/firmware inventory
+     *  @param[in] updateInventoryCallBack - Optional callback function to
+     *                                       update device/firmware inventory
      *  @param[out] descriptorMap - Populate the firmware identifers for the
      *                              FDs managed by the BMC.
      *  @param[out] componentInfoMap - Populate the component info for the FDs
@@ -132,12 +136,14 @@ class InventoryManager
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
+        UpdateInventoryCallBack updateInventoryCallBack,
         DescriptorMap& descriptorMap, ComponentInfoMap& componentInfoMap,
         DeviceInventoryInfo& deviceInventoryInfo,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
+        updateInventoryCallBack(updateInventoryCallBack),
         descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
         deviceInventoryInfo(deviceInventoryInfo), numAttempts(numAttempts)
     {}
@@ -284,6 +290,9 @@ class InventoryManager
 
     /** @brief Optional callback function to create device/firmware inventory*/
     CreateInventoryCallBack createInventoryCallBack;
+
+    /** @brief Optional callback function to update device/firmware inventory*/
+    UpdateInventoryCallBack updateInventoryCallBack;
 
     /** @brief Device identifiers of the managed FDs */
     DescriptorMap& descriptorMap;

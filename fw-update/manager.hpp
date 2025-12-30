@@ -74,6 +74,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      bool fwDebug) :
         inventoryMgr(handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
+                     std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, componentInfoMap, deviceInventoryInfo),
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug),
@@ -178,6 +179,23 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
+        }
+    }
+
+    /** @brief Update device and firmware inventory based on refreshed
+     *         descriptor and firmware parameter information
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @param[in] uuid - MCTP UUID
+     *  @param[in] mctpInterfaces - MCTP interface information
+     */
+    void updateInventory(EID eid, UUID uuid,
+                         dbus::MctpInterfaces& mctpInterfaces)
+    {
+        deviceInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
+        if (componentInfoMap.contains(eid))
+        {
+            fwInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
         }
     }
 
