@@ -225,17 +225,15 @@ inline std::vector<RedfishErrorInfo> queryDeviceStatusError(
 
     static constexpr auto deviceStatusInterface =
         "com.nvidia.State.DeviceState";
+    static constexpr auto deviceStatusService = "xyz.openbmc_project.Logging";
 
     std::variant<pldm::fw_update::DeviceStatusMap> propertyValue;
 
     try
     {
-        auto service = pldm::utils::DBusHandler().getService(
-            objectPath.c_str(), deviceStatusInterface);
-
         auto& bus = pldm::utils::DBusHandler::getBus();
         auto method =
-            bus.new_method_call(service.c_str(), objectPath.c_str(),
+            bus.new_method_call(deviceStatusService, objectPath.c_str(),
                                 "org.freedesktop.DBus.Properties", "Get");
         method.append(deviceStatusInterface, "DeviceStatus");
 
@@ -313,6 +311,17 @@ inline std::vector<RedfishErrorInfo> queryDeviceStatusError(
     }
 
     return errorInfos;
+}
+
+/** @brief Query device status via D-Bus to check if device has errors
+ *
+ *  @param[in] eid - endpoint ID of the device
+ *  @return bool - true if device has errors, false otherwise
+ */
+inline bool queryDeviceStatus(mctp_eid_t eid)
+{
+    auto errorInfos = queryDeviceStatusError(eid);
+    return !errorInfos.empty();
 }
 
 /** @brief Query device status via D-Bus and create event logs for timeouts

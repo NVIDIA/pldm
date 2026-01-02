@@ -148,10 +148,11 @@ void createMctpTransportRedfishEvent(
 
     if (registry)
     {
-        if (registry->isDeviceError)
+        // MCTP transport sync APIs errors can be ignored if the device communication is already bad
+        if (registry->isDeviceError && !isAsync)
         {
-            auto hasErrors = queryDeviceStatusAndLog(eid);
-            if (hasErrors && !isAsync)
+            auto hasErrors = queryDeviceStatus(eid);
+            if (hasErrors)
             {
                 lg2::info(
                     "Device has errors, skipping transport error Redfish event "
