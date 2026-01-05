@@ -30,10 +30,10 @@ MctpDiscovery::MctpDiscovery(
     const std::filesystem::path& staticEidTablePath) :
     bus(bus),
     mctpEndpointAddedSignal(
-        bus, interfacesAdded(MCTPPath),
+        bus, interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPService),
         [this](sdbusplus::message_t& msg) { this->discoverEndpoints(msg); }),
     mctpEndpointRemovedSignal(
-        bus, interfacesRemoved(MCTPPath),
+        bus, interfacesRemovedAtPath(MCTPNetworksPath) + sender(MCTPService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
     mctpEndpointPropChangedSignal(
         bus, propertiesChangedNamespace(MCTPPath, MCTPInterfaceCC),
