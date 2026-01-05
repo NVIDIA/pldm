@@ -20,6 +20,16 @@ constexpr const char* MCTPInterface = "xyz.openbmc_project.MCTP.Endpoint";
 constexpr const char* MCTPBindingInterface = "xyz.openbmc_project.MCTP.Binding";
 constexpr const char* EndpointUUID = "xyz.openbmc_project.Common.UUID";
 constexpr const char* MCTPPath = "/au/com/codeconstruct/mctp1";
+constexpr const char* MCTPNetworksPath =
+    "/au/com/codeconstruct/mctp1/networks/";
+constexpr const char* MCTPInterfaceCC = "au.com.codeconstruct.MCTP.Endpoint1";
+constexpr const char* MCTPConnectivityProp = "Connectivity";
+constexpr const char* inventorySubtreePathStr =
+    "/xyz/openbmc_project/inventory/system";
+
+const std::vector<std::string> interfaceFilter = {
+    "xyz.openbmc_project.Configuration.MCTPI2CTarget",
+    "xyz.openbmc_project.Configuration.MCTPI3CTarget"};
 
 /** @class MctpDiscoveryHandlerIntf
  *
