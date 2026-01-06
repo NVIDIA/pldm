@@ -27,14 +27,6 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath) :
-<<<<<<< HEAD
-    bus(bus), mctpEndpointAddedSignal(
-                  bus, interfacesAdded(MCTPPath),
-                  std::bind_front(&MctpDiscovery::discoverEndpoints, this)),
-    mctpEndpointRemovedSignal(
-        bus, interfacesRemoved(MCTPPath),
-        std::bind_front(&MctpDiscovery::removeEndpoints, this)),
-=======
     bus(bus),
     mctpEndpointAddedSignal(
         bus, interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPService),
@@ -42,10 +34,6 @@ MctpDiscovery::MctpDiscovery(
     mctpEndpointRemovedSignal(
         bus, interfacesRemovedAtPath(MCTPNetworksPath) + sender(MCTPService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
-    mctpEndpointPropChangedSignal(
-        bus, propertiesChangedNamespace(MCTPPath, MCTPInterfaceCC),
-        [this](sdbusplus::message_t& msg) { this->propertiesChangedCb(msg); }),
->>>>>>> 8e693a40 (requester: Narrow down match criteria for InterfacesAdded)
     handlers(list), staticEidTablePath(staticEidTablePath)
 {
     getMctpInfos(existingMctpInfos);
