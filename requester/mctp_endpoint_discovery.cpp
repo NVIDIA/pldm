@@ -163,6 +163,9 @@ UUID MctpDiscovery::getEndpointUUIDProp(const std::string& service,
         {
             return std::get<UUID>(properties.at("UUID"));
         }
+        error(
+            "UUID property not found for endpoint at path '{PATH}' and service '{SERVICE}'",
+            "PATH", path, "SERVICE", service);
     }
     catch (const sdbusplus::exception_t& e)
     {
@@ -230,8 +233,9 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
     }
     catch (const sdbusplus::exception_t& e)
     {
-        error("Error getting Endpoint UUID D-Bus interface, error - {ERROR}",
-              "ERROR", e);
+        error(
+            "Error getting Endpoint UUID D-Bus interface for {PATH}, error - {ERROR}",
+            "PATH", objPath.str, "ERROR", e);
         return;
     }
 
@@ -251,10 +255,22 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     properties.at("SupportedMessageTypes"));
                 auto mediumType =
                     std::get<MctpMedium>(properties.at("MediumType"));
-                auto binding =
-                    pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
-                        objPath.str.c_str(), "BindingType",
-                        MCTPBindingInterface);
+
+                MctpBinding binding{};
+                try
+                {
+                    binding =
+                        pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
+                            objPath.str.c_str(), "BindingType",
+                            MCTPBindingInterface);
+                }
+                catch (const sdbusplus::exception_t& e)
+                {
+                    error(
+                        "Error getting BindingType for endpoint {PATH}, error - {ERROR}",
+                        "PATH", objPath.str, "ERROR", e);
+                    continue;
+                }
 
                 if (!availability)
                 {
@@ -620,8 +636,9 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
             }
             catch (const std::exception& e)
             {
-                error("refreshEndpoints: failed to get UUID,  {ERROR}", "ERROR",
-                      e);
+                error(
+                    "refreshEndpoints: failed to get UUID for {PATH}, error - {ERROR}",
+                    "PATH", objPath, "ERROR", e);
             }
         }
     }
