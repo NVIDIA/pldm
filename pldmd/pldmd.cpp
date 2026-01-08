@@ -138,6 +138,11 @@ static void handleResponderMCTPTransportError(
     uint8_t pldmType = pldm::transport::extractPldmType(mctpErr);
     uint8_t command = mctpErr.payload[2];
 
+    if (pldmType != PLDM_FWUP)
+    {
+        return;
+    }
+
     std::string commandName =
         pldm::utils::getPldmCommandName(pldmType, command);
 
@@ -636,13 +641,16 @@ int main(int argc, char** argv)
                     auto reqHdr = reinterpret_cast<const pldm_msg_hdr*>(
                         requestMsgVec.data());
                     unpack_pldm_header(reqHdr, &reqHdrFields);
+                    if (reqHdrFields.pldm_type == PLDM_FWUP)
+                    {
+                        std::string commandName =
+                            pldm::utils::getPldmCommandName(
+                                reqHdrFields.pldm_type, reqHdrFields.command);
 
-                    std::string commandName = pldm::utils::getPldmCommandName(
-                        reqHdrFields.pldm_type, reqHdrFields.command);
-
-                    pldm::transport::createMctpTransportRedfishEvent(
-                        TID, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
-                        MCTP_DIR_TX);
+                        pldm::transport::createMctpTransportRedfishEvent(
+                            TID, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
+                            MCTP_DIR_TX);
+                    }
                 }
             }
         }

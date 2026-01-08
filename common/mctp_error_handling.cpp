@@ -148,7 +148,8 @@ void createMctpTransportRedfishEvent(
 
     if (registry)
     {
-        // MCTP transport sync APIs errors can be ignored if the device communication is already bad
+        // MCTP transport sync APIs errors can be ignored if the device
+        // communication is already bad
         if (registry->isDeviceError && !isAsync)
         {
             auto hasErrors = queryDeviceStatus(eid);

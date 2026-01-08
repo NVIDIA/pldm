@@ -235,12 +235,16 @@ class Request final : public RequestRetryTimer
                 pldm_header_info hdrFields{};
                 if (PLDM_SUCCESS == unpack_pldm_header(hdr, &hdrFields))
                 {
-                    std::string commandName = pldm::utils::getPldmCommandName(
-                        hdrFields.pldm_type, hdrFields.command);
+                    if (hdrFields.pldm_type == PLDM_FWUP)
+                    {
+                        std::string commandName =
+                            pldm::utils::getPldmCommandName(hdrFields.pldm_type,
+                                                            hdrFields.command);
 
-                    pldm::transport::createMctpTransportRedfishEvent(
-                        eid, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
-                        MCTP_DIR_TX);
+                        pldm::transport::createMctpTransportRedfishEvent(
+                            eid, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
+                            MCTP_DIR_TX);
+                    }
                 }
                 else
                 {
