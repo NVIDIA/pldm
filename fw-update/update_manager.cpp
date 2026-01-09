@@ -318,7 +318,7 @@ std::string UpdateManager::processStreamDefer(
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
 
-        activation->activation(software::Activation::Activations::Active);
+        activation->activation(software::Activation::Activations::Failed);
         activationProgress->progress(100);
 
         return objPath;
@@ -1035,7 +1035,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         }
         activationBlocksTransition.reset();
         clearFirmwareUpdatePackage();
-        return software::Activation::Activations::Active;
+        return software::Activation::Activations::Failed;
     }
     if (!otherDeviceUpdateManager->activate())
     {
