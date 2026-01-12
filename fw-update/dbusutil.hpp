@@ -51,6 +51,7 @@ const std::string componentUpdateSkipped{
 const std::string stageSuccessful{"NvidiaUpdate.1.0.StageSuccessful"};
 const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
+const std::string componentUpdateTime{"NvidiaUpdate.1.0.ComponentUpdateTime"};
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -162,7 +163,8 @@ inline void createLogEntry(
     Level level = Level::Informational;
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
-        messageID == componentUpdateSkipped || messageID == stageSuccessful)
+        messageID == componentUpdateSkipped || messageID == stageSuccessful ||
+        messageID == componentUpdateTime)
     {
         messageArgs = arg0 + "," + arg1;
     }

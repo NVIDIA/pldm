@@ -24,6 +24,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#include <format>
 #include <functional>
 
 namespace pldm
@@ -62,6 +63,7 @@ exec::task<int> ComponentUpdater::sendRecvPldmMsgOverMctp(
 
 exec::task<int> ComponentUpdater::startComponentUpdater()
 {
+    componentUpdateStartTime = std::chrono::steady_clock::now();
     auto rc = co_await sendUpdateComponentRequest(componentIndex);
     if (rc)
     {
@@ -785,6 +787,8 @@ void ComponentUpdater::completeFailedStatusHandler(
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
     const std::string& compVersion, bitfield16_t compActivationModification)
 {
+    logComponentUpdateDuration();
+
     if (!updateManager->isStageOnlyUpdate)
     {
         updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
@@ -1432,6 +1436,31 @@ void ComponentUpdater::handleLogging(uint32_t offset, uint32_t length)
         interRequestSamples = 0;
         totalInterRequestTime = std::chrono::milliseconds{0};
     }
+}
+
+void ComponentUpdater::logComponentUpdateDuration()
+{
+    if (componentUpdateStartTime == std::chrono::steady_clock::time_point{})
+    {
+        return;
+    }
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto durationSec =
+        std::chrono::duration<double>(endTime - componentUpdateStartTime)
+            .count();
+
+    std::string compName =
+        updateManager->getComponentName(eid, fwDeviceIDRecord, componentIndex);
+
+    std::string durationStr = std::format("{:.0f} s", durationSec);
+
+    info(
+        "Component update time: {UPDATE_TIME}, EID={EID}, ComponentIndex={COMPONENTINDEX}, ComponentName={COMPNAME}",
+        "UPDATE_TIME", durationStr, "EID", eid, "COMPONENTINDEX",
+        componentIndex, "COMPNAME", compName);
+
+    createLogEntry(componentUpdateTime, compName, durationStr, "");
 }
 
 } // namespace fw_update

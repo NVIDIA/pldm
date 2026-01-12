@@ -502,6 +502,16 @@ class ComponentUpdater
     uint32_t lastOffsetRequested = UINT32_MAX;
 
     uint32_t lastAvgPrintedMBIndex = 0;
+
+    /** @brief Start time of the component update for timing measurement */
+    std::chrono::steady_clock::time_point componentUpdateStartTime{};
+
+    /** @brief Log component update duration to message registry
+     *
+     *  Creates a message registry entry with the time taken to update the
+     *  component. Called only on successful component update.
+     */
+    void logComponentUpdateDuration();
 };
 
 } // namespace fw_update
