@@ -258,15 +258,10 @@ std::string UpdateManager::processStreamDefer(
     objPath = swRootPath + swId;
     forceUpdate = forceUpdateFlag;
 
-    // TODO: Currently stage-only update is not supported via D-Bus API
-    isStageOnlyUpdate = false;
-
-    info(
-        "UpdatePolicy- ForceUpdate: {FORCEUPDATE}, StageOnlyUpdate: {STAGEONLYUPDATE}, ApplyTime: {APPLYTIME}",
-        "FORCEUPDATE", forceUpdate, "STAGEONLYUPDATE", isStageOnlyUpdate,
-        "APPLYTIME",
-        sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
-            requestedApplyTime));
+    info("UpdatePolicy- ForceUpdate: {FORCEUPDATE}, ApplyTime: {APPLYTIME}",
+         "FORCEUPDATE", forceUpdate, "APPLYTIME",
+         sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
+             requestedApplyTime));
 
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this, targets);
@@ -441,19 +436,10 @@ exec::task<void> UpdateManager::processStream(
     package.seekg(0, std::ios::beg);
 
     // get non-pldm components, add to total component count
-    size_t otherDevicesImageCount = 0;
-    if (!isStageOnlyUpdate)
-    {
-        otherDevicesImageCount =
-            otherDeviceUpdateManager->extractOtherDevicePkgs(
-                parser->getFwDeviceIDRecords(),
-                parser->getComponentImageInfos(), package);
-    }
-    else
-    {
-        info(
-            "Non-PLDM device updates are skipped as they do not support firmware staging.");
-    }
+    size_t otherDevicesImageCount =
+        otherDeviceUpdateManager->extractOtherDevicePkgs(
+            parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
+            package);
     totalNumComponentUpdates += otherDevicesImageCount;
 
     // Log if no matching devices found (but don't set activation state -
@@ -956,7 +942,7 @@ software::Activation::Activations UpdateManager::activatePackage()
     createProgressUpdateTimer();
     progressTimer->start(std::chrono::minutes(PROGRESS_UPDATE_INTERVAL), true);
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
-        pldm::utils::DBusHandler::getBus(), objPath, this);
+        pldm::utils::DBusHandler::getBus(), objPath);
 #ifdef DEBUG_TOKEN
     debugToken =
         std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);

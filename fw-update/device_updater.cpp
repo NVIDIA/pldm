@@ -935,30 +935,11 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
             // Activate firmware if atleast one component update is success.
             if (compUpdater.second.second == true)
             {
-                if (updateManager->isStageOnlyUpdate)
+                auto rc = co_await sendActivateFirmwareRequest();
+                if (rc)
                 {
-                    updateModeIdleTimer = std::make_unique<
-                        sdbusplus::Timer>([this]() {
-                        info(
-                            "Firmware images are successfully staged, EID={EID}",
-                            "EID", eid);
-                        updateManager->updateDeviceCompletion(eid, true,
-                                                              successCompNames);
-                        deviceUpdaterState.nextState(deviceUpdaterState.current,
-                                                     componentIndex,
-                                                     numComponents);
-                    });
-                    updateModeIdleTimer->start(
-                        std::chrono::seconds(UPDATE_MODE_IDLE_TIMEOUT), false);
-                }
-                else
-                {
-                    auto rc = co_await sendActivateFirmwareRequest();
-                    if (rc)
-                    {
-                        error("Error while sending ActivateFirmware.");
-                        co_return PLDM_ERROR;
-                    }
+                    error("Error while sending ActivateFirmware.");
+                    co_return PLDM_ERROR;
                 }
                 co_return PLDM_SUCCESS;
             }

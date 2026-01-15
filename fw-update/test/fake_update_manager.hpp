@@ -48,7 +48,6 @@ class FakeUpdateManager
 {
   public:
     bool fwDebug = true;
-    bool isStageOnlyUpdate = false;
     RefreshSingleEndpointCallback refreshSingleEndpointCallback = nullptr;
 
     software::Activation::Activations activatePackage()

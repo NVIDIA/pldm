@@ -62,7 +62,6 @@ ErrorCode constexpr skuMismatch = 0x97;
 ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
 ErrorCode constexpr apReqGrantOnHold = 0x99;
 ErrorCode constexpr applyAuthFailure = 0xB0;
-ErrorCode constexpr stageImageDowngrade = 0x9C;
 ErrorCode constexpr fwUpdateBlocked = 0xD0;
 #endif
 
@@ -256,10 +255,7 @@ static ErrorMapping verifyCompleteMapping{
      {"Firmware image size is incorrect",
       "Verify the contents of the FW package"}},
     {apReqGrantOnHold,
-     {"AP request grant on hold", "Retry firmware update operation"}},
-    {stageImageDowngrade,
-     {"Component comparison stamp is lower than that of the staged firmware",
-      "Retry firmware update staging operation with the force flag"}}
+     {"AP request grant on hold", "Retry firmware update operation"}}
 #endif
 };
 

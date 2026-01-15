@@ -198,14 +198,12 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
      *
      * @param bus
      * @param path
-     * @param updateManager
      */
     ActivationBlocksTransition(sdbusplus::bus::bus& bus,
-                               const std::string& path,
-                               UpdateManager* updateManager) :
+                               const std::string& path) :
         ActivationBlocksTransitionInherit(bus, path.c_str(),
                                           action::emit_interface_added),
-        bus(bus), updateManager(updateManager)
+        bus(bus)
     {
         enableRebootGuard();
     }
@@ -221,7 +219,6 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
 
   private:
     sdbusplus::bus::bus& bus;
-    UpdateManager* updateManager;
 
     /**
      * @brief Enable rebootguard
@@ -250,16 +247,8 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
      */
     void disableRebootGuard()
     {
-        if (updateManager->isStageOnlyUpdate)
-        {
-            info("PLDM firmware update package is staged - BMC reboots are "
-                 "re-enabled.");
-        }
-        else
-        {
-            info("Activating PLDM firmware update package - BMC reboots are "
-                 "re-enabled.");
-        }
+        info("Activating PLDM firmware update package - BMC reboots are "
+             "re-enabled.");
         try
         {
             auto method = bus.new_method_call(systemdBusname, systemdPath,

@@ -48,7 +48,6 @@ const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
 const std::string componentUpdateSkipped{
     "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
-const std::string stageSuccessful{"NvidiaUpdate.1.0.StageSuccessful"};
 const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
 const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
@@ -164,7 +163,7 @@ inline void createLogEntry(
     Level level = Level::Informational;
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
-        messageID == componentUpdateSkipped || messageID == stageSuccessful ||
+        messageID == componentUpdateSkipped ||
         messageID == componentUpdateTime || messageID == activateSuccessful ||
         messageID == debugTokenEraseFailed)
     {

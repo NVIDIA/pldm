@@ -792,16 +792,8 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
     deviceUpdater->accumulateActivationModifications(
         compActivationModification);
 
-    if (!updateManager->isStageOnlyUpdate)
-    {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex, updateSuccessful);
-    }
-    else
-    {
-        updateManager->createMessageRegistry(eid, fwDeviceIDRecord,
-                                             componentIndex, stageSuccessful);
-    }
+    updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
+                                         updateSuccessful);
     info(
         "Component endpoint ID '{EID}' with '{COMPONENT_VERSION}' apply complete.",
         "EID", eid, "COMPONENT_VERSION", compVersion);
