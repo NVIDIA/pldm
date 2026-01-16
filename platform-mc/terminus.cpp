@@ -1366,7 +1366,12 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
         }
     }
 
-    const auto& [containerId, entityType, entityInstance] = entityInfo;
+    const auto& [containerId, entityType, instance] = entityInfo;
+    auto entityInstance = instance;
+    if (entityType == PLDM_ENTITY_PROC_IO_MODULE && getInstance())
+    {
+        entityInstance = *getInstance();
+    }
     auto ContainerInventoryPaths = findInventory(containerId);
 
     // Search for possible inventory paths

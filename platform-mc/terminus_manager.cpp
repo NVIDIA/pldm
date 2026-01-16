@@ -246,8 +246,9 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
             auto eid = terminus.value("EID", 0xFF);
             auto name = terminus.value("Name", std::string(""));
             auto terminusName = terminus.value("TerminusName", std::string(""));
+            auto inst = terminus.value("Instance", 0);
 
-            if (eid == 0xFF || name.empty())
+            if (eid == 0xFF || name.empty() || inst < 0)
             {
                 lg2::warning(
                     "Invalid terminus configuration entry, skipping. NAME={NAME}, EID={EID}",
@@ -263,10 +264,13 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
             // This will be used when the actual MCTP endpoint is discovered
             if (!terminusName.empty())
             {
-                eidToTerminusNameMap[eid] = terminusName;
+                eidToTerminusNameMap[eid] =
+                    std::pair<int, std::string>(inst, terminusName);
                 lg2::info(
-                    "Stored EID to TerminusName mapping for future discovery: EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-                    "EID", eid, "TERMINUS_NAME", terminusName);
+                    "Stored EID to TerminusName mapping for future discovery: EID={EID},"
+                    "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
+                    "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
+                    terminusName);
             }
         }
 
@@ -403,7 +407,9 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto eidMappingIt = eidToTerminusNameMap.find(eid);
     if (eidMappingIt != eidToTerminusNameMap.end())
     {
-        const std::string& configuredTerminusName = eidMappingIt->second;
+        auto inst = eidMappingIt->second.first;
+        termini[tid]->setInstance(inst);
+        const std::string& configuredTerminusName = eidMappingIt->second.second;
         termini[tid]->setTerminusName(configuredTerminusName);
         lg2::info(
             "Matched EID with configuration and set terminus name: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",

@@ -345,6 +345,18 @@ class Terminus
         return terminusName;
     }
 
+    /** @brief The setter to set terminus's instance */
+    void setInstance(uint8_t inst)
+    {
+        instance = inst;
+    }
+
+    /** @brief The getter to get terminus's instance */
+    std::optional<uint8_t> getInstance()
+    {
+        return instance;
+    }
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr> parseNumericSensorPDR(
         const std::vector<uint8_t>& pdrData);
@@ -387,6 +399,9 @@ class Terminus
 
     /** @brief Terminus name from configuration */
     std::string terminusName;
+
+    /** @brief Terminus instance from configuration */
+    std::optional<uint8_t> instance;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
