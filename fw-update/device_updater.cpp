@@ -514,6 +514,11 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
 Response DeviceUpdater::requestFwData(const pldm_msg* request,
                                       size_t payloadLength)
 {
+    if (timeoutCancellationRequested)
+    {
+        return sendCommandNotExpectedResponse(request, payloadLength);
+    }
+
     if (componentUpdaterMap.contains(componentIndex))
     {
         return componentUpdaterMap[componentIndex].first->requestFwData(
@@ -528,6 +533,11 @@ Response DeviceUpdater::requestFwData(const pldm_msg* request,
 Response DeviceUpdater::transferComplete(const pldm_msg* request,
                                          size_t payloadLength)
 {
+    if (timeoutCancellationRequested)
+    {
+        return sendCommandNotExpectedResponse(request, payloadLength);
+    }
+
     if (componentUpdaterMap.contains(componentIndex))
     {
         return componentUpdaterMap[componentIndex].first->transferComplete(
@@ -542,6 +552,11 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
 Response DeviceUpdater::verifyComplete(const pldm_msg* request,
                                        size_t payloadLength)
 {
+    if (timeoutCancellationRequested)
+    {
+        return sendCommandNotExpectedResponse(request, payloadLength);
+    }
+
     if (componentUpdaterMap.contains(componentIndex))
     {
         return componentUpdaterMap[componentIndex].first->verifyComplete(
@@ -556,6 +571,11 @@ Response DeviceUpdater::verifyComplete(const pldm_msg* request,
 Response DeviceUpdater::applyComplete(const pldm_msg* request,
                                       size_t payloadLength)
 {
+    if (timeoutCancellationRequested)
+    {
+        return sendCommandNotExpectedResponse(request, payloadLength);
+    }
+
     if (componentUpdaterMap.contains(componentIndex))
     {
         return componentUpdaterMap[componentIndex].first->applyComplete(
@@ -569,6 +589,11 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
 
 void DeviceUpdater::onResponseSendComplete(bool success)
 {
+    if (timeoutCancellationRequested)
+    {
+        return;
+    }
+
     if (componentUpdaterMap.contains(componentIndex))
     {
         componentUpdaterMap[componentIndex].first->onResponseSendComplete(
@@ -843,6 +868,11 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
 exec::task<int> DeviceUpdater::updateComponentCompletion(
     const size_t compIndex, const ComponentUpdateStatus compStatus)
 {
+    if (timeoutCancellationRequested)
+    {
+        co_return PLDM_SUCCESS;
+    }
+
     if (compStatus == ComponentUpdateStatus::UpdateComplete)
     {
         componentUpdaterMap[compIndex].second = true;
@@ -1286,6 +1316,66 @@ exec::task<ActivationPollStatus>
               "AUXSTATUS", auxStateStatus);
         co_return ActivationPollStatus::Failed;
     }
+}
+
+void DeviceUpdater::handleUpdateTimeout()
+{
+    if (timeoutCancellationRequested)
+    {
+        return;
+    }
+
+    timeoutCancellationRequested = true;
+
+    for (auto& [_, compUpdater] : componentUpdaterMap)
+    {
+        if (compUpdater.first)
+        {
+            compUpdater.first->stopComponentUpdateTimers();
+        }
+    }
+
+    stdexec::start_detached(
+        cancelUpdateAfterTimeout(),
+        exec::default_task_context<void>(exec::inline_scheduler{}));
+}
+
+exec::task<int> DeviceUpdater::cancelUpdateAfterTimeout()
+{
+    static const std::string errorMessage =
+        "Firmware update timed out and was cancelled";
+    static const std::string resolution =
+        "Perform force recovery and retry firmware update operation.";
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+
+    for (size_t compIndex = 0; compIndex < applicableComponents.size();
+         compIndex++)
+    {
+        auto it = componentUpdaterMap.find(compIndex);
+        if (it != componentUpdaterMap.end() && it->second.second)
+        {
+            continue;
+        }
+
+        std::string compName =
+            updateManager->getComponentName(eid, fwDeviceIDRecord, compIndex);
+
+        createLogEntry(resourceErrorDetected, compName, errorMessage,
+                       resolution);
+    }
+
+    auto rc = co_await sendCancelUpdateRequest();
+    if (rc)
+    {
+        error("CancelUpdate failed for EID={EID}, RC={RC}", "EID", eid, "RC",
+              rc);
+    }
+
+    deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+    updateManager->updateDeviceCompletion(eid, false);
+
+    co_return rc;
 }
 
 } // namespace fw_update

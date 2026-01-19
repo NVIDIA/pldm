@@ -560,6 +560,16 @@ class UpdateManager
     void createProgressUpdateTimer();
 
     /**
+     * @brief Cancel all in-progress firmware updates due to timeout.
+     *
+     * This method is called when the firmware update timeout is reached.
+     * It sends CancelUpdate requests to all devices that are still in-progress
+     * (not in deviceUpdateCompletionMap) asynchronously and cleans up
+     * resources.
+     */
+    void cancelAllUpdates();
+
+    /**
      * @brief Defer handler for update
      *
      */

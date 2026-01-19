@@ -897,6 +897,15 @@ void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status,
     const std::vector<ComponentName>& successCompNames)
 {
+    const auto [it, inserted] = deviceUpdateCompletionMap.emplace(eid, status);
+    if (!inserted)
+    {
+        warning(
+            "Ignoring duplicate device completion update for EID={EID}, existing status={STATUS}",
+            "EID", eid, "STATUS", it->second);
+        return;
+    }
+
     // Update listCompNames with the components successfully updated
     if (status && !successCompNames.empty())
     {
@@ -912,9 +921,6 @@ void UpdateManager::updateDeviceCompletion(
             }
         }
     }
-
-    /* update completion map */
-    deviceUpdateCompletionMap.emplace(eid, status);
 
     updateActivationProgress();
     /* Update package completion */
@@ -1134,8 +1140,11 @@ void UpdateManager::updateActivationProgress()
     compUpdateCompletedCount++;
     if (compUpdateCompletedCount == totalNumComponentUpdates)
     {
-        progressTimer->stop();
-        progressTimer.reset();
+        if (progressTimer)
+        {
+            progressTimer->stop();
+            progressTimer.reset();
+        }
         activationProgress->progress(100);
     }
 }
@@ -1259,21 +1268,37 @@ void UpdateManager::createProgressUpdateTimer()
     updateInterval = 0;
     progressTimer = std::make_unique<sdbusplus::Timer>([this]() {
         updateInterval += 1;
+        // Cancel in-progress updates when firmware update time is reached
+        // percent update should always be less than 100 when task is
+        // aborted/cancelled. Setting to 100 percent will cause redfish task
+        // service to show running and 100 percent
+        if (updateInterval == totalInterval)
+        {
+            error("Firmware update timeout - cancelling in-progress updates");
+            progressTimer->stop();
+            cancelAllUpdates();
+            return;
+        }
         auto progressPercent = static_cast<uint8_t>(
             std::floor((100 * updateInterval) / totalInterval));
         info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
              progressPercent);
         activationProgress->progress(progressPercent);
-        // percent update should always be less than 100 when task is
-        // aborted/cancelled. Setting to 100 percent will cause redfish task
-        // service to show running and 100 percent
-        if (updateInterval == totalInterval - 1)
-        {
-            error("Firmware update timeout");
-            progressTimer->stop();
-        }
         return;
     });
+}
+
+void UpdateManager::cancelAllUpdates()
+{
+    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
+    {
+        if (!deviceUpdaterPtr || deviceUpdateCompletionMap.contains(eid))
+        {
+            continue;
+        }
+
+        deviceUpdaterPtr->handleUpdateTimeout();
+    }
 }
 
 void UpdateManager::handleInvalidPackageError()

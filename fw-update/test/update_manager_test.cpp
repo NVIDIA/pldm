@@ -1533,7 +1533,7 @@ TEST_F(UpdateManagerTest, createProgressUpdateTimerStopsAtTimeoutBoundary)
     updateManager.progressTimer->start(std::chrono::milliseconds(1), true);
     waitEventExpiry(std::chrono::milliseconds(20));
 
-    EXPECT_EQ(updateManager.updateInterval, 1U);
+    EXPECT_EQ(updateManager.updateInterval, 2U);
 }
 
 TEST_F(UpdateManagerTest, startNonPLDMUpdateWithPLDMDeviceReturnsActivating)
@@ -1566,6 +1566,25 @@ TEST_F(UpdateManagerTest, updateOtherDeviceCompletionStoresResult)
     });
     EXPECT_TRUE(updateManager.otherDeviceCompleted.contains("UUID_1"));
     EXPECT_EQ(updateManager.listCompNames, "CompA");
+}
+
+TEST_F(UpdateManagerTest, updateDeviceCompletionIgnoresDuplicateCompletion)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath = "/xyz/openbmc_project/software/progress_duplicate";
+    updateManager.activationProgress =
+        std::make_unique<ActivationProgress>(busMock, updateManager.objPath);
+    updateManager.totalNumComponentUpdates = 2;
+
+    updateManager.updateDeviceCompletion(0x01, false);
+    updateManager.updateDeviceCompletion(0x01, true, {"CompA"});
+
+    ASSERT_EQ(updateManager.deviceUpdateCompletionMap.size(), 1U);
+    EXPECT_FALSE(updateManager.deviceUpdateCompletionMap.at(0x01));
+    EXPECT_EQ(updateManager.compUpdateCompletedCount, 1U);
+    EXPECT_TRUE(updateManager.listCompNames.empty());
 }
 
 TEST_F(UpdateManagerTest, clearExistingActivationNoActivationObjectNoop)

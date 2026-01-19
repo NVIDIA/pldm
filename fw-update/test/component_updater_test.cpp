@@ -1919,6 +1919,38 @@ TEST_F(ComponentUpdaterTest, requestFwDataTimerCallbackCompletesCancelTask)
     waitForUpdateCompletionTask();
 }
 
+TEST_F(ComponentUpdaterTest, timeoutCancellationSkipsTimerCancelCallbacks)
+{
+    initializeFromParsedPackage();
+    deviceUpdater.timeoutCancellationRequested = true;
+
+    componentUpdater.createRequestFwDataTimer();
+    ASSERT_NE(componentUpdater.reqFwDataTimer, nullptr);
+    componentUpdater.reqFwDataTimer->start(std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+    EXPECT_TRUE(reqHandler.handlers.empty());
+}
+
 TEST_F(ComponentUpdaterTest,
        completeFailedStatusHandlerResetsCompletedCancelTaskHandle)
 {

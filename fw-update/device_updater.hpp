@@ -354,6 +354,24 @@ class DeviceUpdater
             compActivationModification.value;
     }
 
+    /** @brief Check whether timeout-driven cancellation has made the device
+     *         update terminal.
+     *
+     *  Once set, the normal component update flow must not continue.
+     */
+    bool isTimeoutCancellationRequested() const noexcept
+    {
+        return timeoutCancellationRequested;
+    }
+
+    /**
+     * @brief Cancel firmware update due to timeout.
+     *
+     * Logs timeout error for pending components, stops component-level timers,
+     * and sends CancelUpdate to the FD.
+     */
+    void handleUpdateTimeout();
+
   private:
     /** @brief Component activation method modifications from ApplyComplete
      * responses */
@@ -361,6 +379,9 @@ class DeviceUpdater
     /** @brief coroutine handle of discoverTerminusTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
         deviceUpdaterHandle{};
+    /** @brief True once timeout handling has made the device update terminal.
+     */
+    bool timeoutCancellationRequested = false;
 
     /**
      * @brief device update handler
@@ -492,6 +513,13 @@ class DeviceUpdater
      */
     exec::task<int> processCancelUpdateResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
+    /** @brief Coroutine body for timeout-driven device cancellation.
+     *
+     *  This is scheduled through handleUpdateTimeout() and must only run once
+     *  per device update.
+     */
+    exec::task<int> cancelUpdateAfterTimeout();
 
     /**
      * @brief List of components successfully updated

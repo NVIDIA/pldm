@@ -748,6 +748,12 @@ void ComponentUpdater::completeFailedStatusHandler(
     const std::string& messageId, pldm_firmware_update_commands command,
     uint8_t result)
 {
+    if (deviceUpdater != nullptr &&
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          messageId, "", command, result);
     componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
@@ -776,6 +782,12 @@ void ComponentUpdater::completeFailedStatusHandler(
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
     const std::string& compVersion, bitfield16_t compActivationModification)
 {
+    if (deviceUpdater == nullptr ||
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     logComponentUpdateDuration();
 
     deviceUpdater->accumulateActivationModifications(
@@ -949,9 +961,33 @@ void ComponentUpdater::onResponseSendComplete(bool success)
     }
 }
 
+void ComponentUpdater::stopComponentUpdateTimers()
+{
+    pendingPostResponseAction = nullptr;
+    pldmRequest.reset();
+
+    if (reqFwDataTimer)
+    {
+        reqFwDataTimer->stop();
+        reqFwDataTimer.reset();
+    }
+
+    if (completeCommandsTimeoutTimer)
+    {
+        completeCommandsTimeoutTimer->stop();
+        completeCommandsTimeoutTimer.reset();
+    }
+}
+
 void ComponentUpdater::createRequestFwDataTimer()
 {
     reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
+        if (deviceUpdater != nullptr &&
+            deviceUpdater->isTimeoutCancellationRequested())
+        {
+            return;
+        }
+
         error(
             "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
             "ComponentIndex={COMPONENTINDEX}",
@@ -1006,6 +1042,12 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 {
     completeCommandsTimeoutTimer = std::make_unique<
         sdbusplus::Timer>([this]() -> void {
+        if (deviceUpdater != nullptr &&
+            deviceUpdater->isTimeoutCancellationRequested())
+        {
+            return;
+        }
+
         pldm_firmware_update_commands timedOutCommand{};
         std::string commandName{};
         std::string stateFailedMessageId{};
@@ -1183,6 +1225,12 @@ exec::task<int> ComponentUpdater::processCancelUpdateComponentResponse(
 
 void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
 {
+    if (deviceUpdater != nullptr &&
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     if (updateCompletionCoHandle.has_value())
     {
         auto& [scope, rcOpt] = *updateCompletionCoHandle;
