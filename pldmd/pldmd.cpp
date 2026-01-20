@@ -460,6 +460,33 @@ int main(int argc, char** argv)
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
          }}},
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handleErrorCounterEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handlePcieTelemetryEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handlePcieLtssmEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
         {PLDM_MESSAGE_POLL_EVENT,
          {[&platformManager](const pldm_msg* request, size_t payloadLength,
                              uint8_t formatVersion, uint8_t tid,

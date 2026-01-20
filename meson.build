@@ -414,6 +414,7 @@ if get_option('pldm-type2').enabled()
         'platform-mc/numeric_effecter.cpp',
         'platform-mc/state_sensor.cpp',
         'platform-mc/event_manager.cpp',
+        'platform-mc/oem_events.cpp',
         'platform-mc/state_set.cpp',
         'platform-mc/state_effecter.cpp',
         'platform-mc/state_set.cpp',

@@ -21,6 +21,7 @@
 
 #include "common/sleep.hpp"
 #include "fw-update/manager.hpp"
+#include "oem_events.hpp"
 #include "platform_manager.hpp"
 #include "sensor_manager.hpp"
 #include "smbios_mdr.hpp"
@@ -42,15 +43,26 @@ namespace fs = std::filesystem;
 
 // Use OEM event constants from common platform definitions
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
 using pldm::platform::PLDM_TELEMETRY_PAUSE;
 using pldm::platform::PLDM_TELEMETRY_REDISCOVER;
 using pldm::platform::PLDM_TELEMETRY_RESUME;
+
+// Default terminus name used when actual name cannot be determined
+constexpr auto DEFAULT_TERMINUS_NAME = "ProcessorModule_0";
 
 int EventManager::handlePlatformEvent(
     tid_t tid, uint8_t eventClass, const uint8_t* eventData,
     size_t eventDataSize, uint8_t& platformEventStatus)
 {
     platformEventStatus = PLDM_EVENT_NO_LOGGING;
+
+    lg2::debug(
+        "handlePlatformEvent: tid={TID}, eventClass={EC:#x}, size={SIZE}",
+        "TID", tid, "EC", eventClass, "SIZE", eventDataSize);
+
     if (eventClass == PLDM_SENSOR_EVENT)
     {
         uint16_t sensorId = 0;
@@ -167,6 +179,70 @@ int EventManager::handlePlatformEvent(
         if (!mdr::syncSmbiosData())
         {
             lg2::error("Failed to trigger SMBIOS MDR sync");
+            return PLDM_ERROR;
+        }
+    }
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_ERROR_COUNTER ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_LTSSM)
+    {
+        // Helper to get terminus name from tid
+        auto getTerminusName = [this](tid_t tid) -> std::string {
+            auto it = termini.find(tid);
+            if (it != termini.end() && it->second)
+            {
+                auto name = it->second->getTerminusName();
+                if (name.has_value())
+                {
+                    return std::string(name.value());
+                }
+            }
+            lg2::warning(
+                "Terminus name not found for tid={TID}, using default: {DEF}",
+                "TID", tid, "DEF", DEFAULT_TERMINUS_NAME);
+            return DEFAULT_TERMINUS_NAME;
+        };
+
+        std::string terminusName = getTerminusName(tid);
+        bool success = false;
+
+        switch (eventClass)
+        {
+            case PLDM_OEM_EVENT_CLASS_ERROR_COUNTER:
+                // CPER Error Counter Event (0xF0)
+                lg2::info(
+                    "Received CPER Error Counter Event ({EC:#x}) from tid={TID}",
+                    "EC", eventClass, "TID", tid);
+                success = oem_events::handleCperErrorCountEvent(
+                    terminusName, eventData, eventDataSize);
+                break;
+
+            case PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY:
+                // PCIe Telemetry Event (0xF1)
+                lg2::info(
+                    "Received PCIe Telemetry Event ({EC:#x}) from tid={TID}",
+                    "EC", eventClass, "TID", tid);
+                success = oem_events::handlePcieTelemetryEvent(
+                    terminusName, eventData, eventDataSize);
+                break;
+
+            case PLDM_OEM_EVENT_CLASS_PCIE_LTSSM:
+                // PCIe LTSSM Event (0xF2)
+                lg2::info("Received PCIe LTSSM Event ({EC:#x}) from tid={TID}",
+                          "EC", eventClass, "TID", tid);
+                success = oem_events::handlePcieLtssmEvent(
+                    terminusName, eventData, eventDataSize);
+                break;
+
+            default:
+                // Should not reach here due to outer else-if condition
+                break;
+        }
+
+        if (!success)
+        {
+            lg2::error("Failed to handle OEM event {EC:#x}", "EC", eventClass);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;
         }
     }

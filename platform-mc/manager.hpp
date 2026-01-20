@@ -34,6 +34,9 @@ namespace platform_mc
 {
 using namespace pldm::pdr;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
 
 /**
  * @brief Manager
@@ -269,6 +272,75 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         auto eventDataSize = payloadLength - eventDataOffset;
         eventManager.handlePlatformEvent(tid, PLDM_SENSOR_EVENT, eventData,
                                          eventDataSize, platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
+     * @brief Handles the CPER Error Counter Event (0xF0).
+     *
+     * This event is sent by SatMC containing CPER error counter data.
+     */
+    int handleErrorCounterEvent(const pldm_msg* request, size_t payloadLength,
+                                uint8_t /* formatVersion */, uint8_t tid,
+                                size_t eventDataOffset,
+                                uint8_t& platformEventStatus)
+    {
+        if (eventDataOffset > payloadLength)
+        {
+            return PLDM_ERROR_INVALID_LENGTH;
+        }
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(
+            tid, PLDM_OEM_EVENT_CLASS_ERROR_COUNTER, eventData, eventDataSize,
+            platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
+     * @brief Handles the PCIe Telemetry Event (0xF1).
+     *
+     * This event is sent by SatMC containing PCIe telemetry data.
+     */
+    int handlePcieTelemetryEvent(const pldm_msg* request, size_t payloadLength,
+                                 uint8_t /* formatVersion */, uint8_t tid,
+                                 size_t eventDataOffset,
+                                 uint8_t& platformEventStatus)
+    {
+        if (eventDataOffset > payloadLength)
+        {
+            return PLDM_ERROR_INVALID_LENGTH;
+        }
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(
+            tid, PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY, eventData, eventDataSize,
+            platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
+     * @brief Handles the PCIe LTSSM Event (0xF2).
+     *
+     * This event is sent by SatMC containing PCIe LTSSM history data.
+     */
+    int handlePcieLtssmEvent(const pldm_msg* request, size_t payloadLength,
+                             uint8_t /* formatVersion */, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus)
+    {
+        if (eventDataOffset > payloadLength)
+        {
+            return PLDM_ERROR_INVALID_LENGTH;
+        }
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_PCIE_LTSSM,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
         return PLDM_SUCCESS;
     }
 
