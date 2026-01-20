@@ -18,6 +18,7 @@
 
 #include "common/types.hpp"
 
+#include <libpldm/base.h>
 #include <libpldm/firmware_update.h>
 
 #include <phosphor-logging/lg2.hpp>
@@ -75,8 +76,23 @@ static ErrorMapping requestUpdateMapping{
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE,
+     {"Device is not able to enter into update mode to start firmware update",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_RETRY_REQUEST_UPDATE,
+     {"Device needs more time to prepare for firmware update",
+      "Retry firmware update operation"}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted response for the update request; so the update failed.",
+      "Retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_DATA,
+     {"Received a response with invalid data for the update request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_LENGTH,
+     {"Received a response with invalid length for the update request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_NOT_READY,
+     {"Device is not ready to process the update request",
       "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {unableToInitiateUpdate,
@@ -95,9 +111,22 @@ static ErrorMapping passComponentTblMapping{
     {PLDM_FWUP_INVALID_STATE_FOR_COMMAND,
      {"Invalid state in FD while initiating firmware update",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_PACKAGE_DATA_ERROR,
+     {"Device received invalid package data for the component table request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted response for the request containing the list of components to be updated; so the update failed.",
-      "Retry firmware update operation"}}};
+      "Retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_DATA,
+     {"Received a response with invalid data for the component table request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_LENGTH,
+     {"Received a response with invalid length for the component table request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_NOT_READY,
+     {"Device is not ready to process the component table request",
+      "Retry firmware update operation"}},
+};
 /* update component error mapping */
 static ErrorMapping updateComponentMapping{
     {PLDM_FWUP_TIME_OUT,
@@ -113,7 +142,17 @@ static ErrorMapping updateComponentMapping{
       "Retry firmware update operation"}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted response for the request to update the component; so the update failed.",
-      "Retry firmware update operation"}}};
+      "Retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_DATA,
+     {"Received a response with invalid data for the update component request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_INVALID_LENGTH,
+     {"Received a response with invalid length for the update component request; so the update failed.",
+      "Verify the contents of the FW package and retry firmware update operation"}},
+    {PLDM_ERROR_NOT_READY,
+     {"Device is not ready to process the update component request",
+      "Retry firmware update operation"}},
+};
 
 /* request firmware data error mapping */
 static ErrorMapping requestFwDataMapping{
@@ -134,6 +173,26 @@ static ErrorMapping transferCompleteMapping{
     {PLDM_ERROR,
      {"Received an invalid or corrupted request for the component transfer status; so the update failed.",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_TRANSFER_ERROR_IMAGE_CORRUPT,
+     {"Component image is corrupt", "Verify the contents of the FW package"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER,
+     {"Component image transfer aborted by FD",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER_LOW_POWER_STATE,
+     {"Component image transfer aborted due to low power state",
+      "Ensure device has sufficient power and retry firmware update operation"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER_RESET_NEEDED,
+     {"Component image transfer aborted because reset is needed",
+      "Reset the device and retry firmware update operation"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER_STORAGE_ISSUE,
+     {"Component image transfer aborted due to storage issue",
+      "Retry firmware update operation"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER_INVALID_COMPONENT_OPAQUE_DATA,
+     {"Component image transfer aborted due to invalid component opaque data",
+      "Verify the contents of the FW package"}},
+    {PLDM_FWUP_FD_ABORTED_TRANSFER_SECURITY_REVISION_ERROR,
+     {"Component image transfer aborted due to security revision error",
+      "Verify the contents of the FW package"}},
 #ifdef OEM_NVIDIA
     {reqGrantError,
      {"SPI Access Error",
@@ -157,6 +216,18 @@ static ErrorMapping verifyCompleteMapping{
     {PLDM_ERROR,
      {"Received an invalid or corrupted request for the component verification status; so the update failed.",
       "Retry firmware update operation"}},
+    {PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE,
+     {"Component image verification failed",
+      "Verify the contents of the FW package"}},
+    {PLDM_FWUP_VERIFY_FAILED_FD_SECURITY_CHECKS,
+     {"Component image verification failed due to device security checks",
+      "Verify the contents of the FW package"}},
+    {PLDM_FWUP_VERIFY_ERROR_IMAGE_INCOMPLETE,
+     {"Component image verification failed due to incomplete image transfer",
+      "Verify the contents of the FW package"}},
+    {PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR,
+     {"Component image verification failed due to security revision error",
+      "Verify the contents of the FW package"}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
      {"Component image is identical",
@@ -203,6 +274,9 @@ static ErrorMapping applyCompleteMapping{
     {PLDM_ERROR,
      {"Received an invalid or corrupted request for the component apply status; so the update failed.",
       "Retry firmware update operation."}},
+    {PLDM_FWUP_APPLY_FAILURE_SECURITY_REVISION_ERROR,
+     {"Applying the image failed due to security revision error",
+      "Verify the contents of the FW package"}},
 #ifdef OEM_NVIDIA
     {applyAuthFailure,
      {"Authentication failed after applying the image",
@@ -219,7 +293,7 @@ static ErrorMapping activateFirmwareMapping{
      {"Received an invalid or corrupted response for the firmware activation request; so the update failed.",
       "Retry firmware update operation."}}};
 
-/* apply complete command error mapping */
+/* get status command error mapping */
 static ErrorMapping getStatusMapping{
     {COMMAND_TIMEOUT,
      {"The device did not respond to the device status request, and the communication timed out.",
