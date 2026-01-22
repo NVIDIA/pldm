@@ -1307,8 +1307,17 @@ exec::task<int> Terminus::updateAssociations()
     for (const auto& ptr : stateSensors)
     {
         auto entityInfo = ptr->getEntityInfo();
-        auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath, false);
+        std::vector<ParentObjPath> inventoryPaths;
+        auto inventoryPath = getInventoryPath(ptr->sensorId);
+        if (inventoryPath)
+        {
+            inventoryPaths.push_back(*inventoryPath);
+        }
+        else
+        {
+            inventoryPaths = findInventory(entityInfo);
+        }
+        ptr->setInventoryPaths(inventoryPaths, false);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
