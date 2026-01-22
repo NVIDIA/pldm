@@ -62,9 +62,22 @@ bool DebugToken::activate()
     {
         error("Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
               "OBJPATH", tokenPath, "ERROR", e);
-        createLogEntry(transferFailed,
-                       std::filesystem::path(tokenPath).filename(),
-                       tokenVersion, transferFailedResolution);
+
+        auto componentName = std::filesystem::path(tokenPath).filename();
+        if (componentName == "HGX_FW_Debug_Token_Erase")
+        {
+            auto eraseResolution =
+                "No action required. If there are other"
+                " component failures in task, retry the firmware update"
+                " operation and if issue still persists reset the baseboard.";
+            createLogEntry(debugTokenEraseFailed, componentName,
+                           "Operation timed out.", eraseResolution);
+        }
+        else
+        {
+            createLogEntry(transferFailed, componentName, tokenVersion,
+                           transferFailedResolution);
+        }
         activationStatus = false;
     }
     return activationStatus;
@@ -198,9 +211,9 @@ void DebugToken::updateDebugToken(
         }
         catch (const sdbusplus::exception::SdBusError& e)
         {
-            error("failed to get filepath.", "ERROR", e);
-            createLogEntry(transferFailed, "HGX_FW_Debug_Token_Erase", "0.0",
-                           transferFailedResolution);
+            error("Failed to get D-Bus object path.", "ERROR", e);
+            createLogEntry(debugTokenEraseFailed, "HGX_FW_Debug_Token_Erase",
+                           "0.0", transferFailedResolution);
             startUpdate();
             return;
         }

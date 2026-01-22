@@ -48,7 +48,7 @@ class DebugToken
      * @brief Timeout for debug token install or erase operation
      *
      */
-    auto static constexpr debugTokenTimeout = std::chrono::seconds(180);
+    auto static constexpr debugTokenTimeout = std::chrono::seconds(60);
 
     DebugToken() = delete;
     DebugToken(const DebugToken&) = delete;

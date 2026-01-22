@@ -165,7 +165,8 @@ inline void createLogEntry(
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
         messageID == componentUpdateSkipped || messageID == stageSuccessful ||
-        messageID == componentUpdateTime || messageID == activateSuccessful)
+        messageID == componentUpdateTime || messageID == activateSuccessful ||
+        messageID == debugTokenEraseFailed)
     {
         messageArgs = arg0 + "," + arg1;
     }
