@@ -1356,7 +1356,16 @@ exec::task<int> Terminus::updateAssociations()
     for (const auto& ptr : stateSensors)
     {
         auto entityInfo = ptr->getEntityInfo();
-        auto inventoryPath = findInventory(entityInfo);
+        std::vector<ParentObjPath> inventoryPaths;
+        auto inventoryPath = getInventoryPath(ptr->sensorId);
+        if (inventoryPath)
+        {
+            inventoryPaths.push_back(*inventoryPath);
+        }
+        else
+        {
+            inventoryPaths = findInventory(entityInfo);
+        }
 
         // Workaround: MEMORY_CONTROLLER state sensors (e.g.
         // MemorySpareChannelPresence) are CPU-global; associate with CPU
@@ -1373,13 +1382,13 @@ exec::task<int> Terminus::updateAssociations()
                     auto cpuPaths = findInventory(containerEntity, true);
                     if (!cpuPaths.empty())
                     {
-                        inventoryPath = cpuPaths;
+                        inventoryPaths = cpuPaths;
                     }
                 }
             }
         }
 
-        ptr->setInventoryPaths(inventoryPath, false);
+        ptr->setInventoryPaths(inventoryPaths, false);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
