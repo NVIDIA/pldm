@@ -164,9 +164,8 @@ class Terminus
 
     bool stopPolling = false;
 
-    /** @brief coroutine handle of doSensorPollingTask */
-    std::optional<std::pair<exec::async_scope, std::optional<int>>>
-        doSensorPollingTaskHandle;
+    /** @brief Return code of the sensor polling task */
+    std::optional<int> sensorPollingTaskRc{0};
 
 #ifdef OEM_NVIDIA
     /** @brief A list of parsed OEM energyCount numeric sensor PDRs */

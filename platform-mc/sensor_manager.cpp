@@ -128,13 +128,6 @@ void SensorManager::stopPolling(tid_t tid)
 
     auto terminus = termini[tid];
     terminus->stopPolling = true;
-
-    if (terminus->doSensorPollingTaskHandle.has_value())
-    {
-        auto& [scope, rcOpt] = *terminus->doSensorPollingTaskHandle;
-        scope.request_stop();
-        terminus->doSensorPollingTaskHandle.reset();
-    }
 }
 
 void SensorManager::startPolling()
@@ -165,21 +158,24 @@ void SensorManager::doSensorPolling(tid_t tid)
     }
 
     auto terminus = termini[tid];
-    if (terminus->doSensorPollingTaskHandle.has_value())
+    if (!terminus->sensorPollingTaskRc.has_value())
     {
-        auto& [scope, rcOpt] = *terminus->doSensorPollingTaskHandle;
-        if (!rcOpt.has_value())
-        {
-            lg2::error("Sensor polling already in progress for TID {TID}.",
-                       "TID", tid);
-            return;
-        }
-        terminus->doSensorPollingTaskHandle.reset();
+        lg2::error("Sensor polling already in progress for TID {TID}.", "TID",
+                   tid);
+        return;
     }
-    auto& [scope, rcOpt] = terminus->doSensorPollingTaskHandle.emplace();
+
+    terminus->sensorPollingTaskRc.reset();
     stdexec::start_detached(
-        doSensorPollingTask(tid) |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+        doSensorPollingTask(tid) | stdexec::then([terminus](int rc) {
+            if (terminus)
+            {
+                lg2::info(
+                    "Sensor Polling Task exited for TID {TID} with RC: {RC}",
+                    "TID", terminus->getTid(), "RC", rc);
+                terminus->sensorPollingTaskRc.emplace(rc);
+            }
+        }),
         exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
