@@ -207,6 +207,11 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
 
         auto& terminus = termini[tid];
 
+        if (terminus->stopPolling)
+        {
+            co_return PLDM_SUCCESS;
+        }
+
         if (manager && !terminus->resumed)
         {
             co_await manager->resumeTerminus(tid);
