@@ -213,15 +213,6 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_ready)
     EXPECT_EQ(resultState, requestActivations);
 }
 
-TEST_F(ActivationTest, UpdatePolicy_Constructor)
-{
-    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
-    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
-    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-
-    EXPECT_NO_THROW({ UpdatePolicy updatePolicy(busMock, objPath); });
-}
-
 TEST_F(ActivationTest, ActivationBlocksTransition_Constructor)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;

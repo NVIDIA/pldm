@@ -60,7 +60,6 @@ using RefreshSingleEndpointCallback =
 
 class Activation;
 class ActivationProgress;
-class UpdatePolicy;
 class ActivationBlocksTransition;
 
 /** @enum Enumeration to represent the types of security checks

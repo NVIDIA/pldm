@@ -25,7 +25,6 @@
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationBlocksTransition/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
-#include <xyz/openbmc_project/Software/UpdatePolicy/server.hpp>
 
 #include <string>
 constexpr auto systemdBusname = "org.freedesktop.systemd1";
@@ -46,8 +45,6 @@ using ActivationProgressIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Software::server::ActivationProgress>;
 using DeleteIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Object::server::Delete>;
-using UpdatePolicyIntf = sdbusplus::server::object::object<
-    sdbusplus::xyz::openbmc_project::Software::server::UpdatePolicy>;
 using ActivationBlocksTransitionInherit = sdbusplus::server::object::object<
     sdbusplus::xyz::openbmc_project::Software::server::
         ActivationBlocksTransition>;
@@ -164,26 +161,6 @@ class Activation : public ActivationIntf
     const std::string objPath;
     UpdateManager* updateManager;
     std::unique_ptr<Delete> deleteImpl;
-};
-
-/** @class UpdatePolicy
- *
- *  Concrete implementation of xyz.openbmc_project.Software.UpdatePolicy D-Bus
- *  interface
- */
-class UpdatePolicy : public UpdatePolicyIntf
-{
-  public:
-    /** @brief Constructor
-     *
-     *  @param[in] bus - Bus to attach to
-     *  @param[in] objPath - D-Bus object path
-     *  @param[in] updateManager - Reference to FW update manager
-     */
-    UpdatePolicy(sdbusplus::bus::bus& bus, const std::string& objPath) :
-        UpdatePolicyIntf(bus, objPath.c_str(), action::emit_interface_added)
-
-    {}
 };
 
 /**

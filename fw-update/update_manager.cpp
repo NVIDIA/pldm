@@ -258,10 +258,11 @@ std::string UpdateManager::processStreamDefer(
     objPath = swRootPath + swId;
     forceUpdate = forceUpdateFlag;
 
-    info("UpdatePolicy- ForceUpdate: {FORCEUPDATE}, ApplyTime: {APPLYTIME}",
-         "FORCEUPDATE", forceUpdate, "APPLYTIME",
-         sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
-             requestedApplyTime));
+    info(
+        "Update Parameters: ForceUpdate: {FORCEUPDATE}, ApplyTime: {APPLYTIME}",
+        "FORCEUPDATE", forceUpdate, "APPLYTIME",
+        sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
+            requestedApplyTime));
 
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this, targets);
