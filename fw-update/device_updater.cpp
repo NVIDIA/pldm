@@ -219,35 +219,6 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t retryCount)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error("No response received for request update for endpoint ID '{EID}'",
-              "EID", eid);
-
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
-        {
-            const auto& applicableComponents =
-                std::get<ApplicableComponents>(fwDeviceIDRecord);
-            for (size_t compIndex = 0; compIndex < applicableComponents.size();
-                 compIndex++)
-            {
-                auto [messageStatus, oemMessageId, oemMessageError,
-                      oemResolution] =
-                    getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
-                if (messageStatus)
-                {
-                    updateManager->createMessageRegistryResourceErrors(
-                        eid, fwDeviceIDRecord, compIndex, oemMessageId,
-                        oemMessageError, oemResolution);
-                }
-            }
-        }
-        updateManager->updateDeviceCompletion(eid, false);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received requestUpdate Response from EID=" +
                  std::to_string(eid)));
@@ -469,29 +440,6 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t retryCount)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error(
-            "No response received for pass component table for endpoint ID '{EID}'",
-            "EID", eid);
-
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
-        {
-            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-                getOemMessage(PLDM_PASS_COMPONENT_TABLE, PLDM_FWUP_TIME_OUT);
-            if (messageStatus)
-            {
-                updateManager->createMessageRegistryResourceErrors(
-                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                    oemMessageError, oemResolution);
-            }
-        }
-        updateManager->updateDeviceCompletion(eid, false);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(
         pldm::utils::Rx, response, respMsgLen,
         ("Received Response for PassCompTable from EID=" + std::to_string(eid) +
@@ -713,32 +661,6 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t retryCount)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        // Handle error scenario
-        error(
-            "No response received for activate firmware for endpoint ID '{EID}'",
-            "EID", eid);
-
-        bool logged = queryDeviceStatusAndLog(eid);
-
-        updateManager->updateDeviceCompletion(eid, false);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        if (!logged)
-        {
-            const auto& applicableComponents =
-                std::get<ApplicableComponents>(fwDeviceIDRecord);
-            for (size_t compIndex = 0; compIndex < applicableComponents.size();
-                 compIndex++)
-            {
-                updateManager->createMessageRegistry(
-                    eid, fwDeviceIDRecord, compIndex, activateFailed, "",
-                    PLDM_ACTIVATE_FIRMWARE, PLDM_FWUP_TIME_OUT);
-            }
-        }
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received ActivateFirmware Response from EID=" +
                  std::to_string(eid)));
@@ -1016,17 +938,6 @@ exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
 exec::task<int> DeviceUpdater::processCancelUpdateResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        // Handle error scenario
-        error("No response received for CancelUpdate, EID={EID}", "EID", eid);
-
-        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
-
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received CancelUpdate Response from EID=" +
                  std::to_string(eid)));

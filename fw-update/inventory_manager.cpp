@@ -364,17 +364,6 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     std::string& messageError, std::string& resolution)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error(
-            "No response received for query device identifiers for endpoint ID {EID}",
-            "EID", eid);
-        messageError =
-            "The device did not respond to the device identifiers request, and the communication timed out.";
-        resolution = "Reset the baseboard and retry the operation.";
-        co_return PLDM_ERROR;
-    }
-
     uint8_t completionCode = PLDM_SUCCESS;
     uint32_t deviceIdentifiersLen = 0;
     uint8_t descriptorCount = 0;
@@ -566,17 +555,6 @@ exec::task<int> InventoryManager::parseGetFWParametersResponse(
     std::string& messageError, std::string& resolution,
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error(
-            "No response received for get firmware parameters for endpoint ID {EID}",
-            "EID", eid);
-        messageError =
-            "The device did not respond to the firmware information request, and the communication timed out.";
-        resolution = "Reset the baseboard and retry the operation.";
-        co_return PLDM_ERROR;
-    }
-
     pldm_get_firmware_parameters_resp fwParams{};
     variable_field activeCompImageSetVerStr{};
     variable_field pendingCompImageSetVerStr{};
@@ -804,14 +782,6 @@ sdbusplus::async::task<int>
     InventoryManager::parseQueryDownstreamDevicesResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
-    if (!response || !respMsgLen)
-    {
-        error(
-            "No response received for QueryDownstreamDevices for endpoint ID {EID}",
-            "EID", eid);
-        co_return PLDM_ERROR;
-    }
-
     pldm_query_downstream_devices_resp downstreamDevicesResp{};
     auto rc = decode_query_downstream_devices_resp(response, respMsgLen,
                                                    &downstreamDevicesResp);
@@ -939,15 +909,6 @@ sdbusplus::async::task<int>
     InventoryManager::parseQueryDownstreamIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
-    if (!response || !respMsgLen)
-    {
-        error(
-            "No response received for QueryDownstreamIdentifiers for endpoint ID {EID}",
-            "EID", eid);
-        descriptorMap.erase(eid);
-        co_return PLDM_ERROR;
-    }
-
     pldm_query_downstream_identifiers_resp downstreamIds{};
     pldm_downstream_device_iter devs{};
 
@@ -1146,15 +1107,6 @@ sdbusplus::async::task<int>
     InventoryManager::parseGetDownstreamFirmwareParametersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
-    if (!response || !respMsgLen)
-    {
-        error(
-            "No response received for QueryDownstreamFirmwareParameters for endpoint ID {EID}",
-            "EID", eid);
-        descriptorMap.erase(eid);
-        co_return PLDM_ERROR;
-    }
-
     pldm_get_downstream_firmware_parameters_resp resp{};
     pldm_downstream_device_parameters_iter params{};
     pldm_downstream_device_parameters_entry entry{};

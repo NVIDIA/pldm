@@ -206,27 +206,6 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t retryCount)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error(
-            "No response received for update component with endpoint ID {EID}",
-            "EID", eid);
-
-        bool logged = queryDeviceStatusAndLog(eid);
-        if (!logged)
-        {
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                PLDM_UPDATE_COMPONENT, PLDM_FWUP_TIME_OUT);
-        }
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            std::bind(&ComponentUpdater::updateComponentComplete, this,
-                      ComponentUpdateStatus::UpdateFailed));
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received Response for UpdateComponent from EID=" +
                  std::to_string(eid) +
@@ -1144,17 +1123,6 @@ exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
 exec::task<int> ComponentUpdater::processCancelUpdateComponentResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error("No response received for CancelUpdateComponent, EID={EID}",
-              "EID", eid);
-
-        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
-
-        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received CancelUpdateComponent Response from EID=" +
                  std::to_string(eid)));
@@ -1310,15 +1278,6 @@ exec::task<int> ComponentUpdater::processGetStatusResponse(
     mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
     uint8_t& currentFDState, uint8_t& progressPercent, uint8_t retryCount)
 {
-    if (response == nullptr || !respMsgLen)
-    {
-        error("No response received for GetStatus, EID={EID}", "EID", eid);
-
-        [[maybe_unused]] bool logged = queryDeviceStatusAndLog(eid);
-
-        co_return PLDM_ERROR;
-    }
-
     printBuffer(pldm::utils::Rx, response, respMsgLen,
                 ("Received GetStatus Response from EID=" +
                  std::to_string(eid)));
