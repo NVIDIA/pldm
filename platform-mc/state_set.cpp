@@ -18,6 +18,7 @@
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
+#include "oem/nvidia/platform-mc/state_set/cpuDiagnosticsRefresh.hpp"
 #include "oem/nvidia/platform-mc/state_set/memoryPerformance.hpp"
 #include "oem/nvidia/platform-mc/state_set/memorySpareChannel.hpp"
 #include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
@@ -150,6 +151,12 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
     else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
     {
         return std::make_unique<oem_nvidia::StateSetDebugState>(
+            stateSetId, compId, path, stateAssociation, effecter);
+    }
+    else if (stateSetId ==
+             oem_nvidia::PLDM_NVIDIA_OEM_STATE_SET_CPU_DIAG_REFRESH)
+    {
+        return std::make_unique<oem_nvidia::StateSetCpuDiagnosticsRefresh>(
             stateSetId, compId, path, stateAssociation, effecter);
     }
 #endif
