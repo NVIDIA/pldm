@@ -173,9 +173,10 @@ void createMctpTransportRedfishEvent(
             }
             argsStr += registry->args[i];
         }
-
+        using Level =
+            sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
         createLogEntry(registry->registryId, argsStr, registry->resolution,
-                       logNamespace, registry->severity);
+                       logNamespace, Level::Informational);
     }
 }
 
