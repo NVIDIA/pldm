@@ -408,8 +408,6 @@ class ComponentUpdater
      */
     size_t componentIndex = 0;
 
-    [[maybe_unused]] size_t numComponents = 0;
-
     /** @brief To send a PLDM request after the current command handling */
     std::unique_ptr<sdeventplus::source::Defer> pldmRequest;
 
