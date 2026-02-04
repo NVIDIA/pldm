@@ -444,7 +444,6 @@ class Terminus
     void refreshAssociations();
     exec::task<int> refreshAssociationsTask();
     bool needRefresh;
-    bool inventoriesPopulated;
 };
 } // namespace platform_mc
 } // namespace pldm

@@ -42,7 +42,6 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     systemInventoryPath = PLATFORM_CHASSIS_PATH;
     maxBufferSize = 256;
     needRefresh = false;
-    inventoriesPopulated = false;
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
@@ -1177,7 +1176,10 @@ exec::task<int> Terminus::scanInventories()
             {
                 inventories.emplace_back(objPath, type, instanceNumber);
                 co_await getInventoryParent(objPath);
-                if (type != (PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC))
+                // Strip LOGICAL flag for comparison
+                uint16_t rawType = type & 0x7FFF;
+                if (rawType != PLDM_ENTITY_PROC &&
+                    rawType != PLDM_ENTITY_PROC_IO_MODULE)
                 {
                     continue;
                 }
@@ -1217,19 +1219,6 @@ exec::task<int> Terminus::scanInventories()
                                "P", objPath, "ERR", e);
                 }
             }
-        }
-        bool noParent = false;
-        for (auto& [path, typ, number] : inventories)
-        {
-            if (inventoryParentMap.find(path) == inventoryParentMap.end() &&
-                number != 0xFFFF)
-            {
-                noParent = true;
-            }
-        }
-        if (!noParent && inventories.size() > 1)
-        {
-            inventoriesPopulated = true;
         }
     }
     catch (const std::exception& e)
@@ -1299,10 +1288,7 @@ exec::task<int> Terminus::updateAssociations()
         {
             inventoryPaths = findInventory(entityInfo);
         }
-        if (inventoriesPopulated)
-        {
-            ptr->setInventoryPaths(inventoryPaths, false);
-        }
+        ptr->setInventoryPaths(inventoryPaths, false);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1322,10 +1308,7 @@ exec::task<int> Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
-        if (inventoriesPopulated)
-        {
-            ptr->setInventoryPaths(inventoryPath, false);
-        }
+        ptr->setInventoryPaths(inventoryPath, false);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
@@ -1368,7 +1351,14 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
 
     const auto& [containerId, entityType, instance] = entityInfo;
     auto entityInstance = instance;
-    if (entityType == PLDM_ENTITY_PROC_IO_MODULE && getInstance())
+    // Strip LOGICAL flag for comparison - PDRs may use either raw or LOGICAL
+    // types
+    uint16_t rawEntityType = entityType & 0x7FFF;
+    // Use terminus instance from static config for CPU and ProcessorModule
+    // entities
+    if ((rawEntityType == PLDM_ENTITY_PROC ||
+         rawEntityType == PLDM_ENTITY_PROC_IO_MODULE) &&
+        getInstance())
     {
         entityInstance = *getInstance();
     }
@@ -1379,7 +1369,10 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
     for (const auto& [candidatePath, candidateType, candidateInstance] :
          inventories)
     {
-        if ((entityType == candidateType) &&
+        // Strip LOGICAL flag from both for comparison - PDRs may use
+        // LOGICAL|type while inventory uses raw type
+        uint16_t rawCandidateType = candidateType & 0x7FFF;
+        if ((rawEntityType == rawCandidateType) &&
             (entityInstance == candidateInstance))
         {
             candidates.push_back(candidatePath);
@@ -1391,9 +1384,16 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
     {
         inventoryPaths.clear();
     }
+    else if (rawEntityType == PLDM_ENTITY_PROC ||
+             rawEntityType == PLDM_ENTITY_PROC_IO_MODULE)
+    {
+        // For CPU and ProcessorModule entities, return ALL matching candidates
+        // These may have all_processors associations that link multiple paths
+        inventoryPaths = candidates;
+    }
     else
     {
-        // multiple inventories matched, find the one under parent path
+        // For other entities, find the one under parent path
         for (const auto& candidate : candidates)
         {
             for (const auto& containerPath : ContainerInventoryPaths)
@@ -1445,8 +1445,9 @@ std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
     auto itr = entityAssociations.find(containerId);
     if (itr == entityAssociations.end())
     {
-        lg2::error("cannot find containerId:{CONTAINERID}", "CONTAINERID",
-                   containerId);
+        lg2::error(
+            "cannot find containerId:{CID}, returning systemInventoryPath",
+            "CID", containerId);
         return inventoryPath;
     }
     const auto& [containerEntity, containedEntities] = itr->second;
