@@ -17,6 +17,7 @@ test_src = declare_dependency(
         '../../fw-update/firmware_inventory.cpp',
         '../../fw-update/other_device_update_manager.cpp',
         '../../fw-update/package_signature.cpp',
+        '../../fw-update/oem-nvidia/debug_token.cpp',
     ],
 )
 

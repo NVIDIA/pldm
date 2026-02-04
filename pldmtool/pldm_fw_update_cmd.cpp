@@ -19,7 +19,6 @@
 #include "common/utils.hpp"
 #include "pldm_cmd_helper.hpp"
 
-#include <fmt/format.h>
 #include <libpldm/firmware_update.h>
 
 #include <format>

@@ -85,10 +85,10 @@ TEST(Entry, BasicEntryCreateAssociation)
                     NotNull()))
         .Times(2)
         .WillRepeatedly(
-            Invoke([=](sd_bus*, const char*, const char*, const char** names) {
+            [=](sd_bus*, const char*, const char*, const char** names) {
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
-            }));
+            });
 
     Entry entry(busMock, objPath, version, swId);
     entry.createAssociation(fwdAssociation, revAssociation, swObjectPath1);
@@ -138,10 +138,10 @@ TEST(Manager, SingleMatch)
                     NotNull()))
         .Times(2)
         .WillRepeatedly(
-            Invoke([=](sd_bus*, const char*, const char*, const char** names) {
+            [=](sd_bus*, const char*, const char*, const char** names) {
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
-            }));
+            });
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
@@ -273,10 +273,10 @@ TEST(Manager, MulipleMatch)
                     NotNull()))
         .Times(2)
         .WillRepeatedly(
-            Invoke([=](sd_bus*, const char*, const char*, const char** names) {
+            [=](sd_bus*, const char*, const char*, const char** names) {
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
-            }));
+            });
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath2)))
         .Times(1);
     EXPECT_CALL(sdbusMock,
@@ -286,10 +286,10 @@ TEST(Manager, MulipleMatch)
                     NotNull()))
         .Times(2)
         .WillRepeatedly(
-            Invoke([=](sd_bus*, const char*, const char*, const char** names) {
+            [=](sd_bus*, const char*, const char*, const char** names) {
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
-            }));
+            });
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath3)))
         .Times(1);
     EXPECT_CALL(sdbusMock,
@@ -299,10 +299,10 @@ TEST(Manager, MulipleMatch)
                     NotNull()))
         .Times(2)
         .WillRepeatedly(
-            Invoke([=](sd_bus*, const char*, const char*, const char** names) {
+            [=](sd_bus*, const char*, const char*, const char** names) {
                 EXPECT_STREQ("Associations", names[0]);
                 return 0;
-            }));
+            });
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,

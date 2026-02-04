@@ -29,8 +29,6 @@ executable(
     'request_update_fuzz_test',
     sources: source_files_request_update,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -41,8 +39,6 @@ executable(
     'request_firmware_data_fuzz_test',
     sources: sources_files_request_firmware_data,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -53,8 +49,6 @@ executable(
     'transfer_complete_fuzz_test',
     sources: sources_files_transfer_complete,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -65,8 +59,6 @@ executable(
     'verify_complete_fuzz_test',
     sources: sources_files_verify_complete,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -77,8 +69,6 @@ executable(
     'apply_complete_fuzz_test',
     sources: sources_files_apply_complete,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -89,8 +79,6 @@ executable(
     'pdr_update_fuzz_test',
     sources: sources_files_pdr_update,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -101,8 +89,6 @@ executable(
     'pdr_access_fuzz_test',
     sources: sources_files_pdr_access,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -113,8 +99,6 @@ executable(
     'bios_get_date_time_fuzz_test',
     sources: sources_files_bios_get_date_time,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -125,8 +109,6 @@ executable(
     'bios_set_date_time_fuzz_test',
     sources: sources_files_set_date_time,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -137,8 +119,6 @@ executable(
     'bios_get_set_table_fuzz_test',
     sources: sources_files_bios_get_set_table,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -149,8 +129,6 @@ executable(
     'bios_get_set_attr_fuzz_test',
     sources: sources_files_bios_get_set_attr,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -163,8 +141,6 @@ executable(
     'platform_set_state_effecter_states_fuzz_test',
     sources: sources_files_platform_set_state_effecter_states,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -175,8 +151,6 @@ executable(
     'platform_get_pdr_fuzz_test',
     sources: sources_files_platform_get_pdr,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -189,8 +163,6 @@ executable(
     'get_pdr_repository_info_fuzz_test',
     sources: sources_files_get_pdr_repository_info,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -203,8 +175,6 @@ executable(
     'get_set_numeric_effecter_value_fuzz_test',
     sources: sources_files_get_set_numeric_effecter_value,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -215,8 +185,6 @@ executable(
     'platform_event_message_fuzz_test',
     sources: sources_files_platform_event_message,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -229,8 +197,6 @@ executable(
     'pldm_pdr_repository_chg_event_event_fuzz_test',
     sources: sources_files_pldm_pdr_repository_chg_event_event,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -241,8 +207,6 @@ executable(
     'get_sensor_reading_fuzz_test',
     sources: sources_files_get_sensor_reading,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -255,8 +219,6 @@ executable(
     'event_message_supported_fuzz_test',
     sources: sources_files_event_message_supported,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -267,8 +229,6 @@ executable(
     'time_legal_test_fuzz_test',
     sources: sources_files_time_legal_test,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -279,8 +239,6 @@ executable(
     'mock_numeric_sensor_fuzz_test',
     sources: sources_files_mock_numeric_sensor,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -291,8 +249,6 @@ executable(
     'mock_sensor_manager_fuzz_test',
     sources: sources_files_mock_sensor_manager,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -303,8 +259,6 @@ executable(
     'mock_terminus_manager_fuzz_test',
     sources: sources_files_mock_terminus_manager,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -317,8 +271,6 @@ executable(
     'mctp_endpoint_discovery_fuzz_test',
     sources: sources_files_mctp_endpoint_discovery,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -329,8 +281,6 @@ executable(
     'pldm_registration_test_fuzz_test',
     sources: sources_files_pldm_registration_test,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -343,8 +293,6 @@ executable(
     'get_state_sensor_readings_fuzz_test',
     sources: sources_files_get_state_sensor_readings_fuzz_test,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )
@@ -355,8 +303,6 @@ executable(
     'pdr_entities_fuzz_test',
     sources: sources_files_pdr_entities_fuzz_test,
     implicit_include_directories: false,
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: false,
 )

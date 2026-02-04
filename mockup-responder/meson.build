@@ -33,8 +33,6 @@ executable(
     sources: sources_mockup_responder,
     implicit_include_directories: false,
     include_directories: include_directories(pldm_headers),
-    link_args: dynamic_linker,
-    build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
     dependencies: deps,
     install: true,
 )

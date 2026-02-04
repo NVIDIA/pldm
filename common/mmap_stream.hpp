@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <istream>
 #include <streambuf>
 

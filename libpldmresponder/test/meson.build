@@ -2,7 +2,6 @@ tests = [
     'libpldmresponder_base_test',
     'libpldmresponder_bios_test',
     'libpldmresponder_bios_attribute_test',
-    'libpldmresponder_bios_config_test',
     'libpldmresponder_bios_enum_attribute_test',
     'libpldmresponder_bios_integer_attribute_test',
     'libpldmresponder_bios_string_attribute_test',
@@ -13,18 +12,20 @@ tests = [
     'libpldmresponder_pdr_sensor_test',
 ]
 
-if get_option('oem-ibm').enabled()
+
+if get_option('oem-ibm').allowed()
     tests += [
         '../../oem/ibm/test/libpldmresponder_fileio_test',
         '../../oem/ibm/test/libpldmresponder_oem_platform_test',
+        '../../oem/ibm/test/host_bmc_lamp_test',
     ]
 endif
 
-dep_src_files = ['../../test/test_instance_id.hpp']
-dep_src = declare_dependency(
-    sources: dep_src_files,
-    include_directories: '../../requester',
-)
+if get_option('system-specific-bios-json').allowed()
+    tests += ['libpldmresponder_systemspecific_bios_test']
+else
+    tests += ['libpldmresponder_bios_config_test']
+endif
 
 foreach t : tests
     test(
@@ -33,17 +34,16 @@ foreach t : tests
             t.underscorify(),
             t + '.cpp',
             implicit_include_directories: false,
-            link_args: dynamic_linker,
-            link_with: libpldmresponder,
-            build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
+            include_directories: ['../../requester', '../../pldmd'],
             dependencies: [
-                dep_src,
                 libpldm_dep,
+                libpldmresponder_dep,
                 libpldmutils,
                 gtest,
                 gmock,
-                nlohmann_json,
+                nlohmann_json_dep,
                 phosphor_dbus_interfaces,
+                phosphor_logging_dep,
                 sdeventplus,
                 sdbusplus,
             ],

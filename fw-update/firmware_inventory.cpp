@@ -18,10 +18,9 @@
 
 #include "dbusutil.hpp"
 
-#include <fmt/format.h>
-
 #include <phosphor-logging/lg2.hpp>
 
+#include <format>
 #include <iostream>
 #include <thread>
 
@@ -107,7 +106,7 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                     swBasePath + "/" +
                     std::get<ComponentName>(componentObject->second);
 
-                auto swId = fmt::format("0x{:04X}", compKey.second);
+                auto swId = std::format("0x{:04X}", compKey.second);
                 auto entry = std::make_unique<Entry>(
                     bus, objPath, std::get<1>(compInfo), swId);
                 entry->createUpdateableAssociation(swBasePath);
@@ -138,7 +137,7 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                 auto componentName =
                     (std::get<1>(fwInfoSearch)).find(compKey.second);
                 std::string objPath = swBasePath + "/" + componentName->second;
-                auto swId = fmt::format("0x{:04X}", compKey.second);
+                auto swId = std::format("0x{:04X}", compKey.second);
                 updateSwId(objPath, swId);
 
                 lg2::info(
@@ -157,7 +156,7 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
             std::string objPath =
                 swBasePath + "/" + compIdNameMap.at(compKey.second);
 
-            auto swId = fmt::format("0x{:04X}", compKey.second);
+            auto swId = std::format("0x{:04X}", compKey.second);
             auto entry = std::make_unique<Entry>(bus, objPath,
                                                  std::get<1>(compInfo), swId);
             entry->createUpdateableAssociation(swBasePath);

@@ -20,8 +20,7 @@
 
 #include "dbusutil.hpp"
 
-#include <fmt/format.h>
-
+#include <format>
 #include <thread>
 
 namespace pldm::fw_update::device_inventory
@@ -88,13 +87,13 @@ std::optional<sdbusplus::message::object_path> Manager::createEntry(
                 if ((vendorDescTitle == "ECSKU") &&
                     (vendorDescInfo.size() == 4))
                 {
-                    ecsku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                    ecsku = std::format("0x{:02X}{:02X}{:02X}{:02X}",
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                 }
                 if (vendorDescTitle == "APSKU" && vendorDescInfo.size() == 4)
                 {
-                    apsku = fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                    apsku = std::format("0x{:02X}{:02X}{:02X}{:02X}",
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                 }
@@ -161,7 +160,7 @@ std::optional<sdbusplus::message::object_path> Manager::updateEntry(
                         vendorDescInfo.size() == 4)
                     {
                         ecsku =
-                            fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                            std::format("0x{:02X}{:02X}{:02X}{:02X}",
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                     }
@@ -169,7 +168,7 @@ std::optional<sdbusplus::message::object_path> Manager::updateEntry(
                         vendorDescInfo.size() == 4)
                     {
                         apsku =
-                            fmt::format("0x{:02X}{:02X}{:02X}{:02X}",
+                            std::format("0x{:02X}{:02X}{:02X}{:02X}",
                                         vendorDescInfo[0], vendorDescInfo[1],
                                         vendorDescInfo[2], vendorDescInfo[3]);
                     }
