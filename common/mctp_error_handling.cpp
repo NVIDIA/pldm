@@ -26,6 +26,7 @@
 #include <phosphor-logging/lg2.hpp>
 #include <phosphor-logging/mctp_error_registry.hpp>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <format>
@@ -123,6 +124,26 @@ uint8_t extractPldmType(const MctpError& error)
     uint8_t pldmType = typeAndVersion & 0x3F;
 
     return pldmType;
+}
+
+MctpError createMctpErrorObject(mctp_eid_t destEid, int errorCode,
+                                uint8_t binding,
+                                const std::vector<uint8_t>& payload)
+{
+    MctpError mctpErr{};
+    mctpErr.msg_type = MCTP_MSG_TYPE_PLDM;
+    mctpErr.direction = MCTP_DIR_TX;
+    mctpErr.src_eid = 0; // BMC (local)
+    mctpErr.dest_eid = destEid;
+    mctpErr.error_code = errorCode;
+    mctpErr.binding = binding;
+    mctpErr.timestamp_ns = 0;
+    mctpErr.payload_len =
+        std::min(payload.size(), static_cast<size_t>(MCTP_ERROR_PAYLOAD_SIZE));
+    std::copy(payload.begin(), payload.begin() + mctpErr.payload_len,
+              mctpErr.payload);
+
+    return mctpErr;
 }
 
 void createMctpTransportRedfishEvent(

@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // TODO: Remove fallback definitions when sysroot kernel headers are updated
 
@@ -94,6 +95,23 @@ int readMctpErrorQueue(int fd, MctpError& error);
  * @return PLDM type (0-63), or 0xFF if not PLDM/unknown
  */
 uint8_t extractPldmType(const MctpError& error);
+
+/**
+ * @brief Create MctpError structure for immediate sendMsg failures
+ *
+ * Constructs an MctpError structure when sendMsg() fails immediately
+ * (before queuing). This allows storing the error for later correlation
+ * with timeout handlers, preventing error flooding.
+ *
+ * @param[in] destEid - Destination endpoint ID
+ * @param[in] errorCode - errno value from sendMsg failure
+ * @param[in] binding - MCTP binding type
+ * @param[in] payload - Request/response payload that failed to send
+ * @return MctpError structure ready for storage
+ */
+MctpError createMctpErrorObject(mctp_eid_t destEid, int errorCode,
+                                uint8_t binding,
+                                const std::vector<uint8_t>& payload);
 
 /**
  * @brief Create a Redfish event for MCTP transport errors

@@ -20,6 +20,7 @@
 
 #include "activation.hpp"
 #include "error_handling.hpp"
+#include "fw_update_utility.hpp"
 #include "update_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -949,6 +950,11 @@ void ComponentUpdater::createRequestFwDataTimer()
             updateTimeoutSeconds);
 
         auto queryAndCancelTask = [this]() -> exec::task<void> {
+            // Check for transport errors first
+            handleTransportError(updateManager->handler, eid,
+                                 "RequestFirmwareData");
+
+            // Then check device status
             bool logged = queryDeviceStatusAndLog(eid);
             if (!logged)
             {
@@ -1025,6 +1031,10 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 
         auto queryAndCancelTask = [this, timedOutCommand, commandName,
                                    stateFailedMessageId]() -> exec::task<void> {
+            // Check for transport errors first
+            handleTransportError(updateManager->handler, eid, commandName);
+
+            // Then check device status
             bool logged = queryDeviceStatusAndLog(eid);
             if (commandName.empty())
             {

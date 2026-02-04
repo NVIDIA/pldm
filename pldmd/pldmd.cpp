@@ -107,52 +107,6 @@ void requestPLDMServiceName()
     }
 }
 
-/** @brief Handle MCTP transport error from async EPOLLERR (responder path)
- *
- *  Called when an async transport error occurs for a response that was
- *  previously queued for TX. This handles the case where sendMsg() succeeded
- *  but the actual transmission failed later (e.g., multi-packet response
- *  where a later packet fails).
- *
- *  @param[in] mctpErr - MCTP error structure from error queue
- */
-static void handleResponderMCTPTransportError(
-    const pldm::transport::MctpError& mctpErr)
-{
-    mctp_eid_t eid = mctpErr.dest_eid;
-
-    // Copy packed struct fields to avoid reference binding issues
-    uint32_t errorCode = mctpErr.error_code;
-    uint16_t payloadLen = mctpErr.payload_len;
-
-    // Parse PLDM header from payload to get type and command
-    if (payloadLen < sizeof(pldm_msg_hdr))
-    {
-        error(
-            "MCTP Transport Error (Responder TX Async) - Incomplete PLDM header "
-            "to EID {EID} (errno={ERRNO})",
-            "EID", eid, "ERRNO", errorCode);
-        return;
-    }
-
-    uint8_t pldmType = pldm::transport::extractPldmType(mctpErr);
-    uint8_t command = mctpErr.payload[2];
-
-    if (pldmType != PLDM_FWUP)
-    {
-        return;
-    }
-
-    std::string commandName =
-        pldm::utils::getPldmCommandName(pldmType, command);
-
-    uint8_t binding = mctpErr.binding;
-    uint8_t direction = mctpErr.direction;
-
-    pldm::transport::createMctpTransportRedfishEvent(
-        eid, commandName, errorCode, binding, direction);
-}
-
 static std::optional<Response> processRxMsg(
     const std::vector<uint8_t>& requestMsg, Invoker& invoker,
     requester::Handler<requester::Request>& handler,
@@ -574,35 +528,9 @@ int main(int argc, char** argv)
             int rc = pldm::transport::readMctpErrorQueue(fd, mctpErr);
             if (rc == 0)
             {
-                // Determine if this is a response (responder path) or request
-                // (requester path) libpldm little-endian bitfield: bit 7 =
-                // request bit Bit 7 = 1: REQUEST, Bit 7 = 0: RESPONSE
-                bool isResponse = (mctpErr.payload_len >= 1) &&
-                                  ((mctpErr.payload[0] & 0x80) == 0);
-
-                // Check if this is an async responder TX error
-                // (response that was queued but failed during transmission)
-                if (mctpErr.direction == MCTP_DIR_TX && isResponse)
+                uint8_t pldmType = pldm::transport::extractPldmType(mctpErr);
+                if (pldmType == PLDM_FWUP)
                 {
-                    // Async responder TX error - log immediately with full
-                    // context These errors would otherwise be lost since
-                    // there's no pending request/timer to correlate with
-                    handleResponderMCTPTransportError(mctpErr);
-                }
-                else
-                {
-                    // Requester error (TX request or RX response) - store for
-                    // correlation The requester handler will log this when the
-                    // request times out
-                    //
-                    // Handle both TX and RX direction errors:
-                    // - TX: Failed sends of outgoing requests (EHOSTUNREACH,
-                    // etc.)
-                    // - RX: Reassembly failures, protocol errors, packet drops
-                    // on incoming responses
-
-                    // Store error - requester will log when it discovers
-                    // request failed
                     reqHandler.storeTransportError(mctpErr);
                 }
             }
@@ -670,13 +598,10 @@ int main(int argc, char** argv)
                     unpack_pldm_header(reqHdr, &reqHdrFields);
                     if (reqHdrFields.pldm_type == PLDM_FWUP)
                     {
-                        std::string commandName =
-                            pldm::utils::getPldmCommandName(
-                                reqHdrFields.pldm_type, reqHdrFields.command);
-
-                        pldm::transport::createMctpTransportRedfishEvent(
-                            TID, commandName, savedErrno, MCTP_BINDING_UNKNOWN,
-                            MCTP_DIR_TX);
+                        auto mctpErr = pldm::transport::createMctpErrorObject(
+                            TID, savedErrno, MCTP_BINDING_UNKNOWN,
+                            requestMsgVec);
+                        reqHandler.storeTransportError(mctpErr);
                     }
                 }
             }
