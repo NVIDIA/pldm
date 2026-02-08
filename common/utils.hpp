@@ -326,7 +326,8 @@ class DBusHandler : public DBusHandlerInterface
      *
      *  @return std::string - the dbus service name
      *
-     *  @throw sdbusplus::exception_t when it fails
+     *  @throw sdbusplus::exception_t when the D-Bus lookup fails, including
+     *         when the mapper returns no owning service
      */
     std::string getService(const char* path,
                            const char* interface) const override;

@@ -2470,6 +2470,26 @@ TEST_F(DBusHandlerDirectTest, getServiceNullInterface)
     EXPECT_EQ(result, service);
 }
 
+TEST_F(DBusHandlerDirectTest, getServiceThrowsWhenMapperReplyIsEmpty)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetObject");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectCloseContainer();
+    expectBusCallWithReply();
+    expectReadEmptyMapLikeContainer();
+
+    EXPECT_THROW(directHandler.getService(objectPath, interface),
+                 sdbusplus::exception::SdBusError);
+}
+
 TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsTrue)
 {
     // Exercises the "property found → return true" branch at line 484
@@ -2607,9 +2627,30 @@ TEST(EmitStateSensorEventSignal, returnsStatus)
     EXPECT_TRUE(rc == PLDM_SUCCESS || rc == PLDM_ERROR);
 }
 
-TEST(CheckForFruPresence, returnsFalseWhenMissing)
+TEST_F(DBusHandlerDirectTest, checkForFruPresenceReturnsFalseWhenMissing)
 {
-    auto isPresent = checkForFruPresence("/xyz/openbmc_project/does_not_exist");
+    constexpr auto* objectPath = "/xyz/openbmc_project/does_not_exist";
+    constexpr auto* interface = "xyz.openbmc_project.Inventory.Item";
+
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetObject");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce([](sd_bus*, sd_bus_message*, uint64_t, sd_bus_error*,
+                     sd_bus_message** reply) {
+            if (reply != nullptr)
+            {
+                *reply = nullptr;
+            }
+            return -EINVAL;
+        });
+
+    auto isPresent = checkForFruPresence(objectPath);
     EXPECT_FALSE(isPresent);
 }
 

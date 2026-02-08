@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cerrno>
 #include <ctime>
 #include <format>
 #include <fstream>
@@ -255,6 +256,13 @@ std::string DBusHandler::getService(const char* path,
 
     auto mapperResponseMsg = bus.call(mapper, dbusTimeout);
     mapperResponseMsg.read(mapperResponse);
+    if (mapperResponse.empty())
+    {
+        auto message = std::format(
+            "No D-Bus service found for path '{}' and interface '{}'", path,
+            interface ? interface : "<any>");
+        throw sdbusplus::exception::SdBusError(ENOENT, message.c_str());
+    }
     return mapperResponse.begin()->first;
 }
 

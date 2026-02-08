@@ -610,7 +610,7 @@ class Handler
      */
     bool hasTransportError(mctp_eid_t eid) const
     {
-        return transportErrors.find(eid) != transportErrors.end();
+        return transportErrors.contains(eid);
     }
 };
 

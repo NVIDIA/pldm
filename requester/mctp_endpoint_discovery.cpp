@@ -24,10 +24,18 @@ PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
+
+pldm::utils::DBusHandlerInterface& MctpDiscovery::defaultDbusHandler()
+{
+    static pldm::utils::DBusHandler handler;
+    return handler;
+}
+
 MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
-    const std::filesystem::path& staticEidTablePath) :
+    const std::filesystem::path& staticEidTablePath,
+    pldm::utils::DBusHandlerInterface& dbusHandler) :
     bus(bus),
     mctpEndpointAddedSignal(
         bus, interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPService),
@@ -38,7 +46,8 @@ MctpDiscovery::MctpDiscovery(
     mctpEndpointPropChangedSignal(
         bus, propertiesChangedNamespace(MCTPPath, MCTPInterfaceCC),
         [this](sdbusplus::message_t& msg) { this->propertiesChangedCb(msg); }),
-    handlers(list), staticEidTablePath(staticEidTablePath)
+    handlers(list), staticEidTablePath(staticEidTablePath),
+    dbusHandler(dbusHandler)
 {
     std::map<MctpInfo, Availability> currentMctpInfoMap;
     getMctpInfos(currentMctpInfoMap);
@@ -62,7 +71,7 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
     pldm::utils::GetSubTreeResponse mapperResponse;
     try
     {
-        mapperResponse = pldm::utils::DBusHandler().getSubtree(
+        mapperResponse = dbusHandler.getSubtree(
             MCTPPath, 0, std::vector<std::string>({MCTPInterface}));
     }
     catch (const sdbusplus::exception_t& e)
@@ -92,7 +101,7 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
                 auto mctpInfo = MctpInfo(
                     std::get<eid>(epProps), uuid, mctpMedium,
                     std::get<NetworkId>(epProps), std::nullopt, mctpBinding);
-                searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
+                searchConfigurationFor(mctpInfo);
                 mctpInfoMap[std::move(mctpInfo)] = availability;
             }
             else
@@ -122,7 +131,7 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
 {
     try
     {
-        auto properties = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+        auto properties = dbusHandler.getDbusPropertiesVariant(
             service.c_str(), path.c_str(), MCTPInterface);
 
         if (!properties.contains("NetworkId") or !properties.contains("EID") or
@@ -137,8 +146,8 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
         auto types = std::get<std::vector<uint8_t>>(
             properties.at("SupportedMessageTypes"));
         auto mediumType = std::get<MctpMedium>(properties.at("MediumType"));
-        auto binding = pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
-            path.c_str(), "BindingType", MCTPBindingInterface);
+        auto binding = std::get<MctpBinding>(dbusHandler.getDbusPropertyVariant(
+            path.c_str(), "BindingType", MCTPBindingInterface));
 
         return MctpEndpointProps(networkId, eid, types, mediumType, binding);
     }
@@ -156,7 +165,7 @@ UUID MctpDiscovery::getEndpointUUIDProp(const std::string& service,
 {
     try
     {
-        auto properties = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+        auto properties = dbusHandler.getDbusPropertiesVariant(
             service.c_str(), path.c_str(), EndpointUUID);
 
         if (properties.contains("UUID"))
@@ -184,7 +193,7 @@ Availability MctpDiscovery::getEndpointConnectivityProp(const std::string& path)
     try
     {
         pldm::utils::PropertyValue propertyValue =
-            pldm::utils::DBusHandler().getDbusPropertyVariant(
+            dbusHandler.getDbusPropertyVariant(
                 path.c_str(), MCTPConnectivityProp, MCTPInterfaceCC);
         if (std::get<std::string>(propertyValue) == "Available")
         {
@@ -227,8 +236,8 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
     /* Get UUID */
     try
     {
-        auto service = pldm::utils::DBusHandler().getService(
-            objPath.str.c_str(), EndpointUUID);
+        auto service =
+            dbusHandler.getService(objPath.str.c_str(), EndpointUUID);
         uuid = getEndpointUUIDProp(service, objPath.str);
     }
     catch (const sdbusplus::exception_t& e)
@@ -259,10 +268,10 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                 MctpBinding binding{};
                 try
                 {
-                    binding =
-                        pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
+                    binding = std::get<MctpBinding>(
+                        dbusHandler.getDbusPropertyVariant(
                             objPath.str.c_str(), "BindingType",
-                            MCTPBindingInterface);
+                            MCTPBindingInterface));
                 }
                 catch (const sdbusplus::exception_t& e)
                 {
@@ -288,8 +297,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                         "NETWORK", networkId, "EID", eid, "UUID", uuid);
                     auto mctpInfo = MctpInfo(eid, uuid, mediumType, networkId,
                                              std::nullopt, binding);
-                    searchConfigurationFor(pldm::utils::DBusHandler(),
-                                           mctpInfo);
+                    searchConfigurationFor(mctpInfo);
                     mctpInfos.emplace_back(std::move(mctpInfo));
 
                     // watch PropertiesChanged signal from
@@ -380,8 +388,8 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
         {
             try
             {
-                service = pldm::utils::DBusHandler().getService(objPath.c_str(),
-                                                                MCTPInterface);
+                service =
+                    dbusHandler.getService(objPath.c_str(), MCTPInterface);
                 const MctpEndpointProps& epProps =
                     getMctpEndpointProps(service, objPath);
 
@@ -397,7 +405,7 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
                 MctpInfo mctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
                                   std::get<NetworkId>(epProps), std::nullopt,
                                   mctpBinding);
-                searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
+                searchConfigurationFor(mctpInfo);
                 if (!std::ranges::contains(existingMctpInfos, mctpInfo))
                 {
                     if (availability)
@@ -513,8 +521,7 @@ std::string MctpDiscovery::constructMctpReactorObjectPath(
            "/endpoints/" + std::to_string(eid) + "/configured_by";
 }
 
-void MctpDiscovery::searchConfigurationFor(
-    const pldm::utils::DBusHandler& handler, MctpInfo& mctpInfo)
+void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
 {
     const auto mctpReactorObjectPath = constructMctpReactorObjectPath(mctpInfo);
     try
@@ -527,7 +534,7 @@ void MctpDiscovery::searchConfigurationFor(
 
         //"/{board or chassis type}/{board or chassis}/{device}"
         auto constexpr subTreeDepth = 3;
-        auto response = handler.getAssociatedSubTree(
+        auto response = dbusHandler.getAssociatedSubTree(
             mctpReactorObjectPath, inventorySubtreePath, subTreeDepth,
             interfaceFilter);
         if (response.empty())
@@ -562,7 +569,7 @@ void MctpDiscovery::searchConfigurationFor(
             return;
         }
         associatedInterface = *associatedInterfaceItr;
-        auto mctpTargetProperties = handler.getDbusPropertiesVariant(
+        auto mctpTargetProperties = dbusHandler.getDbusPropertiesVariant(
             associatedService.c_str(), associatedObjPath.c_str(),
             associatedInterface.c_str());
         auto name = getNameFromProperties(mctpTargetProperties);
@@ -616,14 +623,14 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
             try
             {
                 const auto uuid =
-                    pldm::utils::DBusHandler().getDbusProperty<std::string>(
+                    std::get<std::string>(dbusHandler.getDbusPropertyVariant(
                         objPath.c_str(), "UUID",
-                        "xyz.openbmc_project.Common.UUID");
+                        "xyz.openbmc_project.Common.UUID"));
 
                 const auto eid =
-                    pldm::utils::DBusHandler().getDbusProperty<uint8_t>(
+                    std::get<uint8_t>(dbusHandler.getDbusPropertyVariant(
                         objPath.c_str(), "EID",
-                        "xyz.openbmc_project.MCTP.Endpoint");
+                        "xyz.openbmc_project.MCTP.Endpoint"));
 
                 if (connectivity == "Available")
                 {

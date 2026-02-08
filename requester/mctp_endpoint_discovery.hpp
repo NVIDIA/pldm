@@ -80,12 +80,13 @@ class MctpDiscovery
      *  @param[in] bus - reference to systemd bus
      *  @param[in] list - initializer list to the MctpDiscoveryHandlerIntf
      *  @param[in] staticEidTablePath - Path to Static EID Table file
+     *  @param[in] dbusHandler - D-Bus handler for discovery lookups
      */
     explicit MctpDiscovery(
         sdbusplus::bus_t& bus,
         std::initializer_list<MctpDiscoveryHandlerIntf*> list,
-        const std::filesystem::path& staticEidTablePath =
-            STATIC_EID_TABLE_PATH);
+        const std::filesystem::path& staticEidTablePath = STATIC_EID_TABLE_PATH,
+        pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler());
 
     /** @brief reference to the systemd bus */
     sdbusplus::bus_t& bus;
@@ -108,6 +109,9 @@ class MctpDiscovery
 
     /** @brief Path of static eid table config file */
     std::filesystem::path staticEidTablePath;
+
+    /** @brief D-Bus handler used for endpoint discovery lookups */
+    pldm::utils::DBusHandlerInterface& dbusHandler;
     /**
      * @brief matcher rule for property changes of
      * xyz.openbmc_project.Object.Enable dbus object
@@ -235,6 +239,8 @@ class MctpDiscovery
      */
     Availability getEndpointConnectivityProp(const std::string& path);
 
+    static pldm::utils::DBusHandlerInterface& defaultDbusHandler();
+
     static constexpr uint8_t mctpTypePLDM = 1;
 
     /** @brief Construct the MCTP reactor object path
@@ -249,8 +255,7 @@ class MctpDiscovery
      *
      *  @param[in] mctpInfo - information of discovered MCTP endpoint
      */
-    void searchConfigurationFor(const pldm::utils::DBusHandler& handler,
-                                MctpInfo& mctpInfo);
+    void searchConfigurationFor(MctpInfo& mctpInfo);
 
     /** @brief Remove configuration associated with the removed MCTP endpoint.
      *

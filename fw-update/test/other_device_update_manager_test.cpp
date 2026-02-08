@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -58,9 +59,29 @@ class OtherDeviceUpdateManagerTest : public testing::Test
                       componentInfoMap, componentNameMap, true, nullptr)
     {}
 
+    void swapStaticDbusBus()
+    {
+        auto& staticBus = pldm::utils::DBusHandler::getBus();
+        savedStaticBus.emplace(std::move(staticBus));
+        staticBus = sdbusplus::get_mocked_new(&sdbusMock);
+        staticBusSwapped = true;
+    }
+
+    void TearDown() override
+    {
+        if (staticBusSwapped)
+        {
+            pldm::utils::DBusHandler::getBus() = std::move(*savedStaticBus);
+            savedStaticBus.reset();
+            staticBusSwapped = false;
+        }
+    }
+
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     sdbusplus::bus::bus busMock;
     std::vector<sdbusplus::message::object_path> updatePolicyTargets;
+    std::optional<sdbusplus::bus_t> savedStaticBus;
+    bool staticBusSwapped = false;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
@@ -115,6 +136,17 @@ TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicy)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
+    swapStaticDbusBus();
+    EXPECT_CALL(sdbusMock, sd_bus_call(testing::_, testing::_, dbusTimeout,
+                                       testing::_, testing::_))
+        .WillOnce([](sd_bus*, sd_bus_message*, uint64_t, sd_bus_error*,
+                     sd_bus_message** reply) {
+            if (reply != nullptr)
+            {
+                *reply = nullptr;
+            }
+            return -EINVAL;
+        });
 
     bool result =
         otherDeviceUpdateManager.setUpdatePolicy("/xyz/openbmc_project/pldm");
@@ -458,8 +490,15 @@ TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsgIgnoresUnknownPath)
 
 TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedAddsTrackedOtherDevice)
 {
-    OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
-                                                      updatePolicyTargets);
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(testing::AtLeast(2));
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
     otherDeviceUpdateManager.startWatchingInterfaceAddition();
     ASSERT_NE(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
 

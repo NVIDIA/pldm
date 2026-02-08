@@ -24,7 +24,7 @@ class PldmTransport
     PldmTransport(const PldmTransport&& other) = delete;
     PldmTransport& operator=(const PldmTransport& other) = delete;
     PldmTransport& operator=(const PldmTransport&& other) = delete;
-    ~PldmTransport();
+    virtual ~PldmTransport();
 
     /** @brief Provides a file descriptor that can be polled for readiness.
      *
@@ -46,7 +46,8 @@ class PldmTransport
      * @return PLDM_REQUESTER_SUCCESS on success, otherwise an appropriate
      *         PLDM_REQUESTER_* error code.
      */
-    pldm_requester_rc_t sendMsg(pldm_tid_t tid, const void* tx, size_t len);
+    virtual pldm_requester_rc_t sendMsg(pldm_tid_t tid, const void* tx,
+                                        size_t len);
 
     /** @brief Asynchronously receive a PLDM message addressed to the local
      * terminus
@@ -97,6 +98,14 @@ class PldmTransport
      * @return 0 on success, negative errno on failure
      */
     int enableErrorQueue();
+
+  protected:
+    /** @brief Constructor that skips transport initialization.
+     *         Used by derived test mocks that override virtual methods.
+     */
+    struct NoInit
+    {};
+    explicit PldmTransport(NoInit) : pfd{}, impl{}, transport(nullptr) {}
 
   private:
     /** @brief A pollfd object for holding a file descriptor from the libpldm

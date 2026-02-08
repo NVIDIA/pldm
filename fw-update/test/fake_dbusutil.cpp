@@ -14,8 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "common/utils.hpp"
+
 #include <iostream>
 #include <string>
+
+void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
+                     const std::string& value)
+{
+    (void)dbusMap;
+    (void)value;
+}
 
 void createLogEntry(const std::string& messageID, const std::string& arg0,
                     const std::string& arg1, const std::string& resolution,
