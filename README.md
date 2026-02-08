@@ -56,6 +56,39 @@ Alternatively, tests can be run in the OpenBMC CI docker container using
 [these](https://github.com/openbmc/docs/blob/master/testing/local-ci-build.md)
 steps.
 
+### Generate coverage report
+
+Use Meson/Ninja coverage targets with coverage instrumentation enabled:
+
+```bash
+# 1) Configure with tests and coverage
+CC=gcc-13 CXX=g++-13 meson setup --wipe build -Dtests=enabled -Db_coverage=true
+
+# 2) Run tests to generate .gcda data
+meson test -C build --print-errorlogs
+
+# 3) Generate HTML coverage report (Meson/Ninja target)
+GCOV=gcov-13 ninja -C build coverage-html
+```
+
+The HTML report is generated at:
+
+```text
+build/meson-logs/coveragereport/index.html
+```
+
+Optional text report:
+
+```bash
+GCOV=gcov-13 ninja -C build coverage-text
+```
+
+Text report path:
+
+```text
+build/meson-logs/coverage.txt
+```
+
 ### To enable pldm verbosity
 
 pldm daemon accepts a command line argument `--verbose` or `--v` or `-v` to
