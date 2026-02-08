@@ -16,6 +16,7 @@
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/event.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <deque>
@@ -393,27 +394,21 @@ class Handler
         {
             if (!endpointMessageQueues.contains(eid))
             {
-                error("Can't find request for EID '{EID}' is using InstanceID "
-                      "'{INSTANCEID}' in Endpoint message Queue",
-                      "EID", (unsigned)eid, "INSTANCEID", (unsigned)instanceId);
+                error(
+                    "Can't find request for EID '{EID}' using InstanceID '{INSTANCEID}' in the endpoint message queue."
+                    "'{INSTANCEID}' in Endpoint message Queue",
+                    "EID", (unsigned)eid, "INSTANCEID", (unsigned)instanceId);
                 return PLDM_ERROR;
             }
-            auto requestMsg = endpointMessageQueues[eid]->requestQueue;
-            /* Find the registered request in the requestQueue */
-            for (auto it = requestMsg.begin(); it != requestMsg.end();)
+            auto& requestQueue = endpointMessageQueues[eid]->requestQueue;
+            if (auto it = std::ranges::find_if(
+                    requestQueue,
+                    [&key](const auto& msg) { return msg->key == key; });
+                it != requestQueue.end())
             {
-                auto msg = *it;
-                if (msg->key == key)
-                {
-                    // erase and get the next valid iterator
-                    it = endpointMessageQueues[eid]->requestQueue.erase(it);
-                    instanceIdDb.free(key.eid, key.instanceId);
-                    return PLDM_SUCCESS;
-                }
-                else
-                {
-                    ++it; // increment iterator only if not erasing
-                }
+                requestQueue.erase(it);
+                instanceIdDb.free(key.eid, key.instanceId);
+                return PLDM_SUCCESS;
             }
         }
 
