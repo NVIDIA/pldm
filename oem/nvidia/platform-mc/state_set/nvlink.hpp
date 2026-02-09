@@ -236,8 +236,8 @@ class StateSetNvlink : public StateSet
         return std::string("NVLink");
     }
 
-    virtual void setAssociation(
-        std::vector<dbus::PathAssociation>& stateAssociations)
+    void setAssociation(
+        std::vector<dbus::PathAssociation>& stateAssociations) override
     {
         if (!associationDefinitionsIntf)
         {

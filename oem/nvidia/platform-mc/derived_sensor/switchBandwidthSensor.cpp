@@ -21,10 +21,9 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
-#include <math.h>
-
 #include <phosphor-logging/lg2.hpp>
 
+#include <cmath>
 #include <limits>
 #include <regex>
 
@@ -50,6 +49,7 @@ SwitchBandwidthSensor::SwitchBandwidthSensor(
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
     std::vector<std::tuple<std::string, std::string, std::string>>
         associationsList;
+    associationsList.reserve(associations.size());
     for (const auto& association : associations)
     {
         associationsList.emplace_back(association.forward, association.reverse,
@@ -61,6 +61,7 @@ SwitchBandwidthSensor::SwitchBandwidthSensor(
     switchIntf->enabled(true);
     switchIntf->type(SwitchIntf::convertSwitchTypeFromString(switchType));
     std::vector<SwitchIntf::SwitchType> supportedProtocol;
+    supportedProtocol.reserve(switchProtocols.size());
     for (const auto& protocol : switchProtocols)
     {
         supportedProtocol.emplace_back(

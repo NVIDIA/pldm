@@ -37,7 +37,6 @@ namespace platform_mc
 {
 
 // Forward declaration
-class Manager;
 class PlatformManager;
 class SensorManager;
 

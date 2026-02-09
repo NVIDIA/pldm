@@ -137,18 +137,19 @@ class BIOSConfig
     BaseBIOSTable baseBIOSTableMaps;
 
     /** @brief socket descriptor to communicate to host */
-    int fd;
+    [[maybe_unused]] int fd;
 
     /** @brief MCTP EID of host firmware */
-    uint8_t eid;
+    [[maybe_unused]] uint8_t eid;
 
     /** @brief pointer to InstanceIdDb object, primarily used to access API to
      *  obtain PLDM instance id.
      */
-    InstanceIdDb* instanceIdDb;
+    [[maybe_unused]] InstanceIdDb* instanceIdDb;
 
     /** @brief PLDM request handler */
-    pldm::requester::Handler<pldm::requester::Request>* handler;
+    [[maybe_unused]] pldm::requester::Handler<pldm::requester::Request>*
+        handler;
 
     // vector persists all attributes
     using BIOSAttributes = std::vector<std::unique_ptr<BIOSAttribute>>;

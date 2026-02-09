@@ -34,11 +34,11 @@ foreach t : tests
             t + '.cpp',
             implicit_include_directories: false,
             link_args: dynamic_linker,
+            link_with: libpldmresponder,
             build_rpath: get_option('oe-sdk').enabled() ? rpath : '',
             dependencies: [
                 dep_src,
                 libpldm_dep,
-                libpldmresponder,
                 libpldmutils,
                 gtest,
                 gmock,

@@ -47,20 +47,17 @@ class TerminusManagerTest : public testing::Test
     TerminusManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
         mockTerminusManager(event, reqHandler, instanceIdDb, termini,
                             mockTerminusManagerLocalEid, nullptr)
-    {
-        reqHandler.setSocketHandler(nullptr);
-    }
+    {}
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
-    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
     pldm::platform_mc::MockTerminusManager mockTerminusManager;
@@ -71,7 +68,7 @@ TEST_F(TerminusManagerTest, mapTidTest)
 {
     pldm::MctpInfo mctpInfo1(
         1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
 
     // look up a unmapped mctpInfo, returned tid should be null
@@ -99,19 +96,19 @@ TEST_F(TerminusManagerTest, preferredMediumAndBindingTest)
 {
     pldm::MctpInfo mctpInfo1(
         1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus", 0, std::nullopt,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus");
     pldm::MctpInfo mctpInfo1_Faster(
         2, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
     pldm::MctpInfo mctpInfo1_Slower(
         3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.Serial", 0, std::nullopt,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial");
     pldm::MctpInfo mctpInfo1_SameMediumSlowerBinding(
         3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial");
 
     // assign tid to mctpInfo, the returned tid should not be null
@@ -143,17 +140,17 @@ TEST_F(TerminusManagerTest, preferredMediumAndBindingTest)
 TEST_F(TerminusManagerTest, negativeMapTidTest)
 {
     // map null EID(0) to TID
-    pldm::MctpInfo m0(0, "", "", 0, "");
+    pldm::MctpInfo m0(0, "", "", 0, std::nullopt, "");
     auto mappedTid = terminusManager.mapTid(m0);
     EXPECT_EQ(mappedTid, std::nullopt);
 
     // map broadcast EID(0xff) to TID
-    pldm::MctpInfo m1(0xff, "", "", 0, "");
+    pldm::MctpInfo m1(0xff, "", "", 0, std::nullopt, "");
     mappedTid = terminusManager.mapTid(m1);
     EXPECT_EQ(mappedTid, std::nullopt);
 
     // look up an unmapped MctpInfo to TID
-    pldm::MctpInfo m2(1, "", "", 0, "");
+    pldm::MctpInfo m2(1, "", "", 0, std::nullopt, "");
     mappedTid = terminusManager.toTid(m2);
     EXPECT_EQ(mappedTid, std::nullopt);
 
@@ -187,7 +184,7 @@ TEST_F(TerminusManagerTest, negativeMapTidTest)
     // map same mctpInfo twice
     pldm::MctpInfo m5(13, "f72d6f90-5675-11ed-9b6a-0242ac120013",
                       "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 3,
-                      "");
+                      std::nullopt, "");
     auto mappedTid5 = terminusManager.mapTid(m5);
     auto mappedTid6 = terminusManager.mapTid(m5);
     EXPECT_EQ(mappedTid5.value(), mappedTid6.value());
@@ -229,7 +226,7 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::MctpInfos mctpInfos{};
-    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, ""));
+    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, std::nullopt, ""));
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(1, termini.size());
 
@@ -267,7 +264,7 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm::MctpInfos mctpInfos{};
-    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, ""));
+    mctpInfos.emplace_back(pldm::MctpInfo(12, "", "", 1, std::nullopt, ""));
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(0, termini.size());
 

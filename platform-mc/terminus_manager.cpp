@@ -18,12 +18,11 @@
 
 #include "manager.hpp"
 
-#include <stdio.h>
-
 #include <nlohmann/json.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 

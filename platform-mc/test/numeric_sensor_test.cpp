@@ -34,17 +34,14 @@ class NumericSensorTest : public testing::Test
     NumericSensorTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr)
-    {
-        reqHandler.setSocketHandler(nullptr);
-    }
+    {}
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
-    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
@@ -52,43 +49,42 @@ class NumericSensorTest : public testing::Test
 
 TEST_F(NumericSensorTest, conversionFormula)
 {
-    std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
-                       terminusManager);
     std::vector<uint8_t> pdr1{
+        0x1,
         0x0,
         0x0,
+        0x0,                     // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
-        0x0,
-        0x0,                         // recordChangeNumber
-        0x0,
-        56,                          // dataLength
+        0x0,                     // recordChangeNumber
+        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
+        0,                             // dataLength
         0,
-        0,                           // PLDMTerminusHandle
+        0,                             // PLDMTerminusHandle
         0x1,
-        0x0,                         // sensorID=1
+        0x0,                           // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0,                           // entityType=Power Supply(120)
+        0,                             // entityType=Power Supply(120)
         1,
-        0,                           // entityInstanceNumber
+        0,                             // entityInstanceNumber
         0x1,
-        0x0,                         // containerID=1
-        PLDM_NO_INIT,                // sensorInit
-        false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
-        0,                           // unitModifier = 0
-        0,                           // rateUnit
-        0,                           // baseOEMUnitHandle
-        0,                           // auxUnit
-        0,                           // auxUnitModifier
-        0,                           // auxRateUnit
-        0,                           // rel
-        0,                           // auxOEMUnitHandle
-        true,                        // isLinear
-        PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
+        0x0,                           // containerID=1
+        PLDM_NO_INIT,                  // sensorInit
+        false,                         // sensorAuxiliaryNamesPDR
+        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUint(2)=degrees C
+        1,                             // unitModifier = 1
+        0,                             // rateUnit
+        0,                             // baseOEMUnitHandle
+        0,                             // auxUnit
+        0,                             // auxUnitModifier
+        0,                             // auxRateUnit
+        0,                             // rel
+        0,                             // auxOEMUnitHandle
+        true,                          // isLinear
+        PLDM_RANGE_FIELD_FORMAT_SINT8, // sensorDataSize
         0,
         0,
         0xc0,
@@ -127,61 +123,64 @@ TEST_F(NumericSensorTest, conversionFormula)
         0                              // fatalLow
     };
 
-    t1.pdrs.emplace_back(pdr1);
-    auto rc = t1.parsePDRs();
-    auto numericSensorPdr = t1.numericSensorPdrs[0];
-    EXPECT_EQ(true, rc);
-    EXPECT_EQ(1, t1.numericSensorPdrs.size());
+    auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    std::printf("pdr size=%ld\n", pdr1.size());
+    auto rc = decode_numeric_sensor_pdr_data(pdr1.data(), pdr1.size(),
+                                             numericSensorPdr.get());
+    EXPECT_EQ(rc, PLDM_SUCCESS);
 
     std::string sensorName{"test1"};
     std::string inventoryPath{
         "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
     NumericSensor sensor(0x01, true, numericSensorPdr, sensorName,
-                         inventoryPath);
-    auto convertedValue = sensor.conversionFormula(40);
-    // (40*1.5 + 1.0 ) * 10^0 = 61
-    EXPECT_EQ(61, convertedValue);
+                         inventoryPath, nullptr);
+    double reading = 40.0;
+    double convertedValue = 0;
+    convertedValue = sensor.conversionFormula(reading);
+    convertedValue = sensor.unitModifier(convertedValue);
+
+    // (40*1.5 + 1.0 ) * 10^1 = 610
+    EXPECT_EQ(610, convertedValue);
 }
 
 TEST_F(NumericSensorTest, checkThreshold)
 {
-    std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
-                       terminusManager);
     std::vector<uint8_t> pdr1{
+        0x1,
         0x0,
         0x0,
+        0x0,                     // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
-        0x0,
-        0x0,                         // recordChangeNumber
-        0x0,
-        56,                          // dataLength
+        0x0,                     // recordChangeNumber
+        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
+        0,                             // dataLength
         0,
-        0,                           // PLDMTerminusHandle
+        0,                             // PLDMTerminusHandle
         0x1,
-        0x0,                         // sensorID=1
+        0x0,                           // sensorID=1
         PLDM_ENTITY_POWER_SUPPLY,
-        0,                           // entityType=Power Supply(120)
+        0,                             // entityType=Power Supply(120)
         1,
-        0,                           // entityInstanceNumber
+        0,                             // entityInstanceNumber
         0x1,
-        0x0,                         // containerID=1
-        PLDM_NO_INIT,                // sensorInit
-        false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
-        0,                           // unitModifier = 0
-        0,                           // rateUnit
-        0,                           // baseOEMUnitHandle
-        0,                           // auxUnit
-        0,                           // auxUnitModifier
-        0,                           // auxRateUnit
-        0,                           // rel
-        0,                           // auxOEMUnitHandle
-        true,                        // isLinear
-        PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
+        0x0,                           // containerID=1
+        PLDM_NO_INIT,                  // sensorInit
+        false,                         // sensorAuxiliaryNamesPDR
+        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUint(2)=degrees C
+        1,                             // unitModifier = 1
+        0,                             // rateUnit
+        0,                             // baseOEMUnitHandle
+        0,                             // auxUnit
+        0,                             // auxUnitModifier
+        0,                             // auxRateUnit
+        0,                             // rel
+        0,                             // auxOEMUnitHandle
+        true,                          // isLinear
+        PLDM_RANGE_FIELD_FORMAT_SINT8, // sensorDataSize
         0,
         0,
         0xc0,
@@ -220,14 +219,15 @@ TEST_F(NumericSensorTest, checkThreshold)
         0                              // fatalLow
     };
 
-    t1.pdrs.emplace_back(pdr1);
-    t1.parsePDRs();
-    auto numericSensorPdr = t1.numericSensorPdrs[0];
+    auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    auto rc = decode_numeric_sensor_pdr_data(pdr1.data(), pdr1.size(),
+                                             numericSensorPdr.get());
+    EXPECT_EQ(rc, PLDM_SUCCESS);
     std::string sensorName{"test1"};
     std::string inventoryPath{
         "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
-    NumericSensor sensor(0x01, true, numericSensorPdr, sensorName,
-                         inventoryPath);
+    pldm::platform_mc::NumericSensor sensor(0x01, true, numericSensorPdr,
+                                            sensorName, inventoryPath, nullptr);
 
     bool highAlarm = false;
     bool lowAlarm = false;
@@ -311,22 +311,26 @@ TEST_F(NumericSensorTest, checkThreshold)
     EXPECT_EQ(false, lowAlarm);
 }
 
-TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
+TEST_F(NumericSensorTest, MemoryPageRetirementSensor)
 {
     std::string uuid1("00000000-0000-0000-0000-000000000001");
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
                        terminusManager);
+    // Same PDR layout as checkThreshold/conversionFormula: LE record handle,
+    // dataLength = MIN_LENGTH (69), body 61 bytes so decode accepts it.
     std::vector<uint8_t> pdr1{
+        0x1,
         0x0,
         0x0,
+        0x0,                     // record handle (little-endian)
+        0x1,                     // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR, // PDRType
         0x0,
-        0x1,                         // record handle
-        0x1,                         // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,     // PDRType
-        0x0,
-        0x0,                         // recordChangeNumber
-        0x0,
-        56,                          // dataLength
+        0x0,                     // recordChangeNumber
+        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
+        0,                           // dataLength
         0,
         0,                           // PLDMTerminusHandle
         0x1,
@@ -390,9 +394,9 @@ TEST_F(NumericSensorTest, MemeoryPageRetirementSensor)
 
     t1.pdrs.emplace_back(pdr1);
     auto rc = t1.parsePDRs();
-    EXPECT_EQ(true, rc);
-    EXPECT_EQ(1, t1.numericSensorPdrs.size());
-    EXPECT_EQ(1, t1.numericSensors.size());
+    EXPECT_TRUE(rc);
+    EXPECT_EQ(1u, t1.numericSensorPdrs.size());
+    EXPECT_EQ(1u, t1.numericSensors.size());
 
     auto numericSensor = t1.numericSensors[0];
     EXPECT_EQ(1, numericSensor->oemIntfs.size());

@@ -8,6 +8,7 @@ dep_src_files = [
     '../state_effecter.cpp',
     '../state_set.cpp',
     '../event_manager.cpp',
+    '../oem_events.cpp',
     '../smbios_mdr.cpp',
     '../state_effecter.cpp',
     '../numeric_effecter.cpp',
@@ -18,6 +19,8 @@ dep_src_files = [
     '../../fw-update/device_updater.cpp',
     '../../fw-update/other_device_update_manager.cpp',
     '../../fw-update/update_manager.cpp',
+    '../../fw-update/update.cpp',
+    '../../fw-update/activation.cpp',
     '../../fw-update/config.cpp',
     '../../fw-update/firmware_inventory.cpp',
     '../../fw-update/package_parser.cpp',
@@ -31,7 +34,6 @@ dep_src_files = [
 dep_src_files += [
     '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
-    '../../oem/nvidia/libpldm/energy_count_numeric_sensor_oem.c',
 ]
 
 dep_src_headers = ['../../requester', '../../oem/nvidia']

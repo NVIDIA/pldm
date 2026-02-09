@@ -4,14 +4,13 @@
 
 #include "libpldm/pldm.h"
 
-#include <assert.h>
-
 #include <nlohmann/json.hpp>
 #include <sdeventplus/clock.hpp>
 #include <sdeventplus/exception.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/time.hpp>
 
+#include <cassert>
 #include <fstream>
 
 namespace pldm
@@ -46,13 +45,14 @@ uint16_t extractTerminusHandle(std::vector<uint8_t>& pdr)
 }
 
 HostPDRHandler::HostPDRHandler(
-    int mctp_fd, uint8_t mctp_eid, sdeventplus::Event& event, pldm_pdr* repo,
-    const std::string& eventsJsonsDir, pldm_entity_association_tree* entityTree,
+    [[maybe_unused]] int mctp_fd, uint8_t mctp_eid, sdeventplus::Event& event,
+    pldm_pdr* repo, const std::string& eventsJsonsDir,
+    pldm_entity_association_tree* entityTree,
     pldm_entity_association_tree* bmcEntityTree, InstanceIdDb& instanceIdDb,
     pldm::requester::Handler<pldm::requester::Request>* handler) :
-    mctp_fd(mctp_fd), mctp_eid(mctp_eid), event(event), repo(repo),
+    mctp_eid(mctp_eid), event(event), repo(repo),
     stateSensorHandler(eventsJsonsDir), entityTree(entityTree),
-    bmcEntityTree(bmcEntityTree), instanceIdDb(instanceIdDb), handler(handler)
+    instanceIdDb(instanceIdDb), handler(handler)
 {
     fs::path hostFruJson(fs::path(HOST_JSONS_DIR) / fruJson);
     if (fs::exists(hostFruJson))
@@ -173,7 +173,7 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
     rc = handler->registerRequest(
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_GET_PDR,
         std::move(requestMsg),
-        std::move(std::bind_front(&HostPDRHandler::processHostPDRs, this)));
+        std::bind_front(&HostPDRHandler::processHostPDRs, this));
     if (rc)
     {
         std::cerr << "Failed to send the GetPDR request to Host \n";
@@ -543,7 +543,7 @@ void HostPDRHandler::_processPDRRepoChgEvent(
 {
     deferredPDRRepoChgEvent.reset();
     this->sendPDRRepositoryChgEvent(
-        std::move(std::vector<uint8_t>(1, PLDM_PDR_ENTITY_ASSOCIATION)),
+        std::vector<uint8_t>(1, PLDM_PDR_ENTITY_ASSOCIATION),
         FORMAT_IS_PDR_HANDLES);
 }
 

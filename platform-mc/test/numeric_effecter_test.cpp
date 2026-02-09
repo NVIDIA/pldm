@@ -33,17 +33,14 @@ class TestNumericEffecter : public ::testing::Test
     TestNumericEffecter() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr)
-    {
-        reqHandler.setSocketHandler(nullptr);
-    }
+    {}
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
-    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;

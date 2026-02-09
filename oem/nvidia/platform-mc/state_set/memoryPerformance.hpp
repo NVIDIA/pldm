@@ -145,7 +145,7 @@ class StateSetMemoryPerformance : public StateSet
 
   private:
     std::unique_ptr<MemoryPerformanceIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
 };
 
 } // namespace platform_mc

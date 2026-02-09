@@ -476,7 +476,7 @@ TEST(StateSensorHandler, allScenarios)
 
     // Event Entry 1
     {
-        StateSensorEntry entry{1, 64, 1, 0};
+        StateSensorEntry entry{1, 64, 1, 0, 0, false};
         const auto& [dbusMapping, eventStateMap] = handler.getEventInfo(entry);
         DBusMapping mapping{"/xyz/abc/def",
                             "xyz.openbmc_project.example1.value", "value1",
@@ -499,7 +499,7 @@ TEST(StateSensorHandler, allScenarios)
 
     // Event Entry 2
     {
-        StateSensorEntry entry{1, 64, 1, 1};
+        StateSensorEntry entry{1, 64, 1, 1, 0, false};
         const auto& [dbusMapping, eventStateMap] = handler.getEventInfo(entry);
         DBusMapping mapping{"/xyz/abc/def",
                             "xyz.openbmc_project.example2.value", "value2",
@@ -516,7 +516,7 @@ TEST(StateSensorHandler, allScenarios)
 
     // Event Entry 3
     {
-        StateSensorEntry entry{2, 67, 2, 0};
+        StateSensorEntry entry{2, 67, 2, 0, 0, false};
         const auto& [dbusMapping, eventStateMap] = handler.getEventInfo(entry);
         DBusMapping mapping{"/xyz/abc/ghi",
                             "xyz.openbmc_project.example3.value", "value3",
@@ -533,7 +533,7 @@ TEST(StateSensorHandler, allScenarios)
 
     // Invalid Entry
     {
-        StateSensorEntry entry{0, 0, 0, 0};
+        StateSensorEntry entry{0, 0, 0, 0, 0, false};
         ASSERT_THROW(handler.getEventInfo(entry), std::out_of_range);
     }
 }

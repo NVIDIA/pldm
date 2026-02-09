@@ -361,7 +361,7 @@ exec::task<int> Terminus::getPortInfoFromEM(const std::string& objPath)
                 co_return PLDM_FAILED;
             }
 
-            for (uint8_t it = 0; it < associationsEM.size(); it += 3)
+            for (size_t it = 0; it < associationsEM.size(); it += 3)
             {
                 associations.push_back({});
                 auto& tmp = associations.back();
@@ -430,7 +430,7 @@ exec::task<int> Terminus::getInfoForNVSwitchFromEM(const std::string& objPath)
                 co_return PLDM_FAILED;
             }
 
-            for (uint8_t it = 0; it < associationsEM.size(); it += 3)
+            for (size_t it = 0; it < associationsEM.size(); it += 3)
             {
                 associations.push_back({});
                 auto& tmp = associations.back();
@@ -491,7 +491,7 @@ exec::task<int> Terminus::getSensorEventInfoFromEM(const std::string& objPath)
                     co_return PLDM_FAILED;
                 }
 
-                for (uint8_t it = 0; it < eventIdsEM.size(); it += 2)
+                for (size_t it = 0; it < eventIdsEM.size(); it += 2)
                 {
                     eventIdsMap[eventIdsEM[it]] = eventIdsEM[it + 1];
                 }
@@ -1418,18 +1418,11 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
     entities.emplace(entityInfo,
                      Entity{inventoryPaths, ContainerInventoryPaths});
 
-    if (inventoryPaths.size())
+    if (!inventoryPaths.empty() || !findClosest)
     {
         return inventoryPaths;
     }
-    else if (findClosest)
-    {
-        return ContainerInventoryPaths;
-    }
-    else // empty inventoryPath
-    {
-        return inventoryPaths;
-    }
+    return ContainerInventoryPaths;
 }
 
 std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
@@ -1595,6 +1588,7 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
             {
                 std::vector<std::pair<NameLanguageTag, SensorName>>
                     prependedCompositeNames;
+                prependedCompositeNames.reserve(compositeSensorNames.size());
                 for (const auto& [tag, name] : compositeSensorNames)
                 {
                     prependedCompositeNames.emplace_back(
@@ -1648,6 +1642,7 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
             {
                 std::vector<std::pair<NameLanguageTag, SensorName>>
                     prependedCompositeNames;
+                prependedCompositeNames.reserve(compositeEffecterNames.size());
                 for (const auto& [tag, name] : compositeEffecterNames)
                 {
                     prependedCompositeNames.emplace_back(
@@ -1681,10 +1676,8 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
         case PLDM_ENTITY_MEMORY_CONTROLLER:
             return PhysicalContextType::Memory;
         case PLDM_ENTITY_PROC:
-            return PhysicalContextType::CPU;
         case PLDM_ENTITY_PROC_MODULE:
         case PLDM_ENTITY_PROC_IO_MODULE:
-            // todo: define new PhysicalContextType enum for PROC_MODULE
             return PhysicalContextType::CPU;
         case PLDM_ENTITY_DC_DC_CONVERTER:
         case PLDM_ENTITY_POWER_CONVERTER:

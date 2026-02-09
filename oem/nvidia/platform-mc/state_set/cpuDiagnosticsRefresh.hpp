@@ -86,7 +86,7 @@ class CpuDiagnosticsRefreshEffecterIntf : public CpuDiagnosticsRefreshStateIntf
         CpuDiagnosticsRefreshStateIntf(bus, path, compId), effecter(effecter)
     {}
 
-    void update(bool value)
+    void update(bool value) override
     {
         TriggerIntf::refresh(value);
     }
@@ -179,7 +179,7 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
         ValueIntf->update(false);
     }
 
-    uint8_t getValue()
+    uint8_t getValue() override
     {
         if (ValueIntf->refresh())
         {
@@ -205,7 +205,7 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
 
   private:
     std::unique_ptr<CpuDiagnosticsRefreshStateIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
 };
 
 } // namespace oem_nvidia

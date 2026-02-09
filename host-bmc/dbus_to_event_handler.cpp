@@ -18,10 +18,9 @@ namespace state_sensor
 const std::vector<uint8_t> pdrTypes{PLDM_STATE_SENSOR_PDR};
 
 DbusToPLDMEvent::DbusToPLDMEvent(
-    int mctp_fd, uint8_t mctp_eid, InstanceIdDb& instanceIdDb,
+    [[maybe_unused]] int mctp_fd, uint8_t mctp_eid, InstanceIdDb& instanceIdDb,
     pldm::requester::Handler<pldm::requester::Request>* handler) :
-    mctp_fd(mctp_fd), mctp_eid(mctp_eid), instanceIdDb(instanceIdDb),
-    handler(handler)
+    mctp_eid(mctp_eid), instanceIdDb(instanceIdDb), handler(handler)
 {}
 
 void DbusToPLDMEvent::sendEventMsg(uint8_t eventType,
@@ -92,7 +91,7 @@ void DbusToPLDMEvent::sendStateSensorEvent(SensorId sensorId,
 
     size_t sensorEventSize = PLDM_SENSOR_EVENT_DATA_MIN_LENGTH + 1;
     const auto& [dbusMappings, dbusValMaps] = dbusMaps.at(sensorId);
-    for (uint8_t offset = 0; offset < dbusMappings.size(); ++offset)
+    for (size_t offset = 0; offset < dbusMappings.size(); ++offset)
     {
         std::vector<uint8_t> sensorEventDataVec{};
         sensorEventDataVec.resize(sensorEventSize);

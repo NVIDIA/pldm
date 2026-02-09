@@ -36,7 +36,7 @@ class StateSetHealthState : public StateSet
 {
   private:
     std::unique_ptr<HealthIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
     std::filesystem::path objectPath;
 
   public:

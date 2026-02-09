@@ -283,6 +283,7 @@ class StateSetEthIBPortLinkState : public StateSet
     {
         std::vector<std::tuple<std::string, std::string, std::string>>
             associationsList;
+        associationsList.reserve(associations.size());
         for (const auto& association : associations)
         {
             associationsList.emplace_back(
@@ -339,7 +340,7 @@ class StateSetEthIBPortLinkState : public StateSet
     std::unique_ptr<PortStateIntf> ValuePortStateIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =
         nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
     uint16_t portNumber = 0;
     std::shared_ptr<NumericSensor> linkSpeedSensor = nullptr;
 #ifdef OEM_NVIDIA

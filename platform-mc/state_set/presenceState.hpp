@@ -32,7 +32,7 @@ class StateSetPresenceState : public StateSet
 {
   private:
     std::unique_ptr<PresenceStateIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
 
   public:
     StateSetPresenceState(uint16_t stateSetId, uint8_t compId,

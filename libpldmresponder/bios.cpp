@@ -3,7 +3,6 @@
 #include "common/utils.hpp"
 
 #include <libpldm/base.h>
-#include <time.h>
 
 #include <array>
 #include <chrono>

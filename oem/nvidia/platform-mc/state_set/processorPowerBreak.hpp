@@ -43,7 +43,7 @@ class StateSetProcessorPowerBreak : public StateSet
 {
   private:
     std::string objPath;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
     const StateSensor& stateSensor;
 
   public:

@@ -70,7 +70,7 @@ class StateSetDebugState : public StateSet
         value = PLDM_STATE_SET_DEBUG_STATE_OFFLINE;
     }
 
-    uint8_t getValue()
+    uint8_t getValue() override
     {
         return value;
     }
@@ -108,7 +108,7 @@ class StateSetDebugState : public StateSet
 
   private:
     uint8_t value;
-    uint8_t compId;
+    [[maybe_unused]] uint8_t compId;
 };
 
 class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
@@ -163,7 +163,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
         return getDebugState(DBGEN_COMP_ID);
     }
 
-    uint32_t timeout(uint32_t value, bool skipSignal)
+    uint32_t timeout(uint32_t value, bool skipSignal) override
     {
         stdexec::start_detached(
             numericEffecter.setNumericEffecterValue(

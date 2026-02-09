@@ -30,8 +30,11 @@ class MockEventManager : public EventManager
   public:
     MockEventManager(TerminusManager& terminusManager,
                      std::map<mctp_eid_t, std::shared_ptr<Terminus>>& termini,
-                     pldm::fw_update::Manager& fwUpdateManager) :
-        EventManager(terminusManager, termini, fwUpdateManager) {};
+                     pldm::fw_update::Manager& fwUpdateManager,
+                     PlatformManager& platformManager,
+                     SensorManager& sensorManager, bool verbose = false) :
+        EventManager(terminusManager, termini, fwUpdateManager, platformManager,
+                     sensorManager, verbose) {};
 
     MOCK_METHOD(void, createSensorThresholdLogEntry,
                 (const std::string& messageID, const std::string& sensorName,

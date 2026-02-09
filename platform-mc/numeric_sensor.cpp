@@ -202,7 +202,7 @@ NumericSensor::NumericSensor(
                 warningLow = pdr->warning_low.value_u8;
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT8:
-                warningLow = pdr->warning_low.value_u8;
+                warningLow = pdr->warning_low.value_s8;
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT16:
                 warningLow = pdr->warning_low.value_u16;

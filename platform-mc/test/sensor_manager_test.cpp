@@ -35,12 +35,11 @@ class SensorManagerTest : public testing::Test
     SensorManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        reqHandler(event, instanceIdDb, sockManager, false),
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr),
         sensorManager(event, terminusManager, termini, nullptr)
-    {
-        reqHandler.setSocketHandler(nullptr);
-    }
+    {}
 
     void runEventLoopForSeconds(uint64_t sec)
     {
@@ -60,7 +59,6 @@ class SensorManagerTest : public testing::Test
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
-    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
     pldm::platform_mc::MockSensorManager sensorManager;

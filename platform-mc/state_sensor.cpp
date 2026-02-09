@@ -20,11 +20,10 @@
 
 #include "common/utils.hpp"
 
-#include <math.h>
-
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+#include <cmath>
 #include <limits>
 #include <regex>
 

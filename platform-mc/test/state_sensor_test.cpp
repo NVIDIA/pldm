@@ -24,11 +24,14 @@
 
 #include <sdeventplus/event.hpp>
 
+#include <chrono>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using namespace pldm::platform_mc;
 using namespace pldm;
+using namespace std::chrono;
 
 TEST(TestOemStateSensor, memorySpareChannelPresence)
 {
@@ -36,11 +39,9 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
     std::string uuid1("00000000-0000-0000-0000-000000000001");
     sdeventplus::Event event(sdeventplus::Event::get_default());
     TestInstanceIdDb instanceIdDb;
-    mctp_socket::Manager sockManager;
-    requester::Handler<requester::Request> reqHandler(event, instanceIdDb,
-                                                      sockManager, false);
+    requester::Handler<requester::Request> reqHandler(
+        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-    reqHandler.setSocketHandler(nullptr);
     TerminusManager terminusManager(event, reqHandler, instanceIdDb, termini,
                                     0x8, nullptr);
     auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,

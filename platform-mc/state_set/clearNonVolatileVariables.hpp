@@ -57,7 +57,7 @@ class ClearNonVolatileVariablesEffecterIntf :
         effecter(effecter)
     {}
 
-    void update(bool value)
+    void update(bool value) override
     {
         ClearNonVolatileVariablesIntf::clear(value);
     }
@@ -143,7 +143,7 @@ class StateSetClearNonvolatileVariable : public StateSet
         ValueIntf->update(false);
     }
 
-    uint8_t getValue()
+    uint8_t getValue() override
     {
         uint8_t state = 0;
         if (ValueIntf->clear())
@@ -180,7 +180,7 @@ class StateSetClearNonvolatileVariable : public StateSet
 
   private:
     std::unique_ptr<ClearNonVolatileVariablesStateIntf> ValueIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
 };
 
 } // namespace platform_mc

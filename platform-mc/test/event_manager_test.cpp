@@ -32,6 +32,8 @@
 #include "fw-update/package_signature.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mock_event_manager.hpp"
+#include "platform-mc/platform_manager.hpp"
+#include "platform-mc/sensor_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
 
@@ -40,6 +42,7 @@
 using ::testing::_;
 using ::testing::Return;
 
+using namespace std::chrono;
 using namespace pldm::platform_mc;
 
 constexpr uint8_t mockTerminusManagerLocalEid = 0x08;
@@ -50,24 +53,25 @@ class EventManagerTest : public testing::Test
     EventManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
-        reqHandler(event, instanceIdDb, sockManager, false, seconds(1), 2,
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, instanceIdDb, "", nullptr, false),
-
-        eventManager(terminusManager, termini, fwUpdateManager)
-    {
-        reqHandler.setSocketHandler(nullptr);
-    }
+        fwUpdateManager(event, reqHandler, instanceIdDb, "", false),
+        platformManager(terminusManager, termini),
+        sensorManager(event, terminusManager, termini, nullptr),
+        eventManager(terminusManager, termini, fwUpdateManager, platformManager,
+                     sensorManager, false)
+    {}
 
     sdbusplus::bus::bus& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
-    pldm::mctp_socket::Manager sockManager;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
     pldm::platform_mc::TerminusManager terminusManager;
     pldm::fw_update::Manager fwUpdateManager;
+    pldm::platform_mc::PlatformManager platformManager;
+    pldm::platform_mc::SensorManager sensorManager;
     MockEventManager eventManager;
     std::map<pldm::tid_t, std::shared_ptr<Terminus>> termini{};
 };
@@ -158,11 +162,6 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
     uint8_t platformEventStatus = 0;
     EXPECT_EQ(true, rc);
 
-    EXPECT_CALL(eventManager, createSensorThresholdLogEntry(
-                                  SensorThresholdWarningHighGoingHigh, _,
-                                  SENSOR_READING, WARNING_HIGH, _, _))
-        .Times(1)
-        .WillRepeatedly(Return());
     std::vector<uint8_t> eventData{
         0x1,
         0x0, // sensor id
@@ -220,12 +219,12 @@ TEST_F(EventManagerTest, getSensorThresholdEventDataTest)
 
     std::tie(messageId, eventId, impactedComponent) =
         eventManager.getSensorThresholdEventData(
-            PLDM_SENSOR_NORMAL, PLDM_SENSOR_LOWERWARNING, nullptr);
+            PLDM_SENSOR_LOWERCRITICAL, PLDM_SENSOR_LOWERWARNING, nullptr);
     EXPECT_EQ(messageId, SensorThresholdCriticalLowGoingHigh);
 
     std::tie(messageId, eventId, impactedComponent) =
-        eventManager.getSensorThresholdEventData(
-            PLDM_SENSOR_NORMAL, PLDM_SENSOR_UPPERWARNING, nullptr);
+        eventManager.getSensorThresholdEventData(PLDM_SENSOR_LOWERWARNING,
+                                                 PLDM_SENSOR_NORMAL, nullptr);
     EXPECT_EQ(messageId, SensorThresholdWarningLowGoingHigh);
 
     std::tie(messageId, eventId, impactedComponent) =

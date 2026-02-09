@@ -178,7 +178,7 @@ class StateSetPciePortLinkState : public StateSet
     std::unique_ptr<PortIntf> ValuePortIntf = nullptr;
     std::unique_ptr<PortInfoIntf> ValuePortInfoIntf = nullptr;
     std::unique_ptr<PortStateIntf> ValuePortStateIntf = nullptr;
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
     const StateSensor& stateSensor;
 };
 

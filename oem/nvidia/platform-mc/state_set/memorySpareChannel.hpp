@@ -38,7 +38,7 @@ using ChannelPresence =
 class StateSetMemorySpareChannel : public StateSet
 {
   private:
-    uint8_t compId = 0;
+    [[maybe_unused]] uint8_t compId = 0;
     std::string objPath;
     const StateSensor& stateSensor;
 

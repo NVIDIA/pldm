@@ -21,8 +21,7 @@
 #include "common/utils.hpp"
 #include "platform-mc/terminus_manager.hpp"
 
-#include <math.h>
-
+#include <cmath>
 #include <limits>
 #include <regex>
 

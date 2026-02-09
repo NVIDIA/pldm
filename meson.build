@@ -361,6 +361,12 @@ libpldmutils = declare_dependency(
 
 nvidia_tal = dependency('nvidia-tal', required: true)
 
+# Provide aliases used by subdirectory meson.build files
+nlohmann_json = nlohmann_json_dep
+phosphor_logging = phosphor_logging_dep
+
+dynamic_linker = []
+
 deps = [
     libpldm_dep,
     libpldmutils,
@@ -489,8 +495,10 @@ if get_option('tests').enabled()
     subdir('fw-update/test')
     subdir('requester/test')
     if get_option('libpldmresponder').enabled()
-        # subdir('host-bmc/test')
-        # subdir('platform-mc/test')
+        subdir('host-bmc/test')
+    endif
+    if get_option('pldm-type2').enabled()
+        subdir('platform-mc/test')
     endif
     subdir('test')
     if get_option('mockup-responder').enabled()
