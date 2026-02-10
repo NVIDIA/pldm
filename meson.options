@@ -31,7 +31,7 @@ option(
 option(
     'libpldmresponder',
     type: 'feature',
-    value: 'disabled',
+    value: 'enabled',
     description: 'Enable libpldmresponder',
 )
 
@@ -256,7 +256,7 @@ option(
 option(
     'pldm-type2',
     type: 'feature',
-    value: 'disabled',
+    value: 'enabled',
     description: 'Support for PLDM Type-2',
 )
 option(
@@ -363,7 +363,12 @@ option(
     description: 'expose enpoint PDI for nvlink c2c faric',
 )
 
-option('oem-nvidia', type: 'feature', description: 'Enable NVIDIA OEM PLDM')
+option(
+    'oem-nvidia',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable NVIDIA OEM PLDM',
+)
 
 option(
     'non-pldm',
