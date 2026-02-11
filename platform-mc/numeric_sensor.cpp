@@ -614,14 +614,14 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     if (valueIntf)
     {
         if (available != availabilityIntf->available())
-            lg2::error("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
-                       sensorName, "OLD", availabilityIntf->available(), "NEW",
-                       available);
+            lg2::info("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
+                      sensorName, "OLD", availabilityIntf->available(), "NEW",
+                      available);
 
         if (functional != operationalStatusIntf->functional())
-            lg2::error("Functionality of sensor {NAME}: {OLD} -> {NEW}.",
-                       "NAME", sensorName, "OLD",
-                       operationalStatusIntf->functional(), "NEW", functional);
+            lg2::info("Functionality of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
+                      sensorName, "OLD", operationalStatusIntf->functional(),
+                      "NEW", functional);
     }
 
     rawValue = value;
