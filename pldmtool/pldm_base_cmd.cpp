@@ -247,13 +247,34 @@ class GetPLDMVersion : public CommandInterface
         fillCompletionCode(cc, data, PLDM_BASE);
         if (cc == PLDM_SUCCESS)
         {
+            ordered_json versionList = ordered_json::array();
             char buffer[16] = {0};
             int ret = ver2str(&version, buffer, sizeof(buffer));
-
             if (ret < 0)
             {
                 std::cerr << "Failed to convert version to string\n";
                 return;
+            }
+            versionList.push_back(buffer);
+
+            const size_t firstVersionOffset = PLDM_GET_VERSION_RESP_BYTES;
+            const size_t checksumSize = 4u;
+            const size_t versionDataEnd = payloadLength > checksumSize
+                                              ? payloadLength - checksumSize
+                                              : 0u;
+            for (size_t offset = firstVersionOffset;
+                 offset + sizeof(ver32_t) <= versionDataEnd;
+                 offset += sizeof(ver32_t))
+            {
+                ver32_t additionalVersion;
+                std::memcpy(&additionalVersion, responsePtr->payload + offset,
+                            sizeof(ver32_t));
+                ret = ver2str(&additionalVersion, buffer, sizeof(buffer));
+                if (ret < 0)
+                {
+                    break;
+                }
+                versionList.push_back(buffer);
             }
 
             auto it = std::find_if(pldmTypes.begin(), pldmTypes.end(),
@@ -263,7 +284,7 @@ class GetPLDMVersion : public CommandInterface
 
             if (it != pldmTypes.end())
             {
-                data["Response"] = buffer;
+                data["Response"] = versionList;
             }
         }
 
