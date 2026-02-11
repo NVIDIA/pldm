@@ -305,6 +305,11 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
 
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          transferringToComponent);
+
+    // Start timer waiting for first RequestFirmwareData from FD
+    createRequestFwDataTimer();
+    reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds), false);
+
     co_return PLDM_SUCCESS;
 }
 
@@ -362,15 +367,24 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
              "LENGTH", length);
     }
 
-    if (componentUpdaterState.expectedState(
-            ComponentUpdaterSequence::RequestFirmwareData) ==
-        ComponentUpdaterSequence::Invalid)
+    auto expectedResult = componentUpdaterState.expectedState(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    if (expectedResult == ComponentUpdaterSequence::Invalid)
     {
+        if (componentUpdaterState.current ==
+            ComponentUpdaterSequence::UpdateComponent)
+        {
+            error(
+                "RequestFirmwareData received while UA still in UpdateComponent state. "
+                "UA and FD are out of sync (UpdateComponent response likely lost). "
+                "Responding with command not expected. EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                "EID", eid, "COMPONENTINDEX", componentIndex);
+        }
+
         return sendCommandNotExpectedResponse(request, payloadLength);
     }
-    if (componentUpdaterState.expectedState(
-            ComponentUpdaterSequence::RequestFirmwareData) ==
-        ComponentUpdaterSequence::RetryRequest)
+    else if (expectedResult == ComponentUpdaterSequence::RetryRequest)
     {
         info("Retry request for RequestFirmwareData. EID={EID}, "
              "ComponentIndex={COMPONENTINDEX}",
@@ -457,32 +471,27 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         return response;
     }
 
-    // Only create/start reqFwDataTimer if we haven't transitioned to the
+    // Only restart reqFwDataTimer if we haven't transitioned to the
     // complete commands phase
     if (!completeCommandsTimeoutTimer)
     {
         if (!reqFwDataTimer)
         {
-            if (offset != 0)
-            {
-                warning("First data request is not at offset 0");
-            }
-
-            // create timer for first request
-            createRequestFwDataTimer();
-        }
-
-        if (reqFwDataTimer)
-        {
-            reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds),
-                                  false);
-        }
-        else
-        {
+            // Timer should have been created in processUpdateComponentResponse
+            // If it doesn't exist, something went wrong
             error(
-                "Failed to start timer for handling RequestFirmwareData, EID={EID}, RC={RC}",
-                "EID", eid, "RC", rc);
+                "Endpoint ID '{EID}' in unexpected state: missing RequestFirmwareData timer.",
+                "EID", eid);
+            componentUpdaterState.set(
+                ComponentUpdaterSequence::CancelUpdateComponent);
+            stdexec::start_detached(
+                sendcancelUpdateComponentRequest(),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
+            return sendCommandNotExpectedResponse(request, payloadLength);
         }
+
+        reqFwDataTimer->start(std::chrono::seconds(updateTimeoutSeconds),
+                              false);
     }
 
     return response;

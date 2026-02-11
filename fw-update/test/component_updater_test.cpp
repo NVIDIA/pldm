@@ -216,6 +216,10 @@ TEST_F(ComponentUpdaterTest, transferComplete)
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
         compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
+    // Timer must exist before requestFwData (created in
+    // processUpdateComponentResponse in real flow)
+    componentUpdater.createRequestFwDataTimer();
+
     {
         constexpr std::array<uint8_t,
                              sizeof(pldm_msg_hdr) +
@@ -258,7 +262,6 @@ TEST_F(ComponentUpdaterTest, transferComplete)
     const std::vector<uint8_t> compTransferData{0x0A, 0x05, 0x16, 0x00};
     EXPECT_EQ(response, compTransferData);
 
-    componentUpdater.createRequestFwDataTimer();
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + pldm_request_transfer_complete>
         transferCompleteReqError{0x98, 0x05, 0x16, 0x02};
@@ -276,6 +279,10 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
     ComponentUpdater componentUpdater(
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
         compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    // Timer must exist before requestFwData (created in
+    // processUpdateComponentResponse in real flow)
+    componentUpdater.createRequestFwDataTimer();
 
     {
         constexpr std::array<uint8_t,
