@@ -720,6 +720,7 @@ class GetPDR : public CommandInterface
         {"stateeffecter", PLDM_STATE_EFFECTER_PDR},
         {"entityassociation", PLDM_PDR_ENTITY_ASSOCIATION},
         {"frurecord", PLDM_PDR_FRU_RECORD_SET},
+        {"oem", PLDM_OEM_PDR},
         // Add other types
     };
 
@@ -1556,6 +1557,31 @@ class GetPDR : public CommandInterface
         }
     }
 
+    void printPDROem(uint8_t* data, ordered_json& output)
+    {
+        if (data == NULL)
+        {
+            std::cerr << "Failed to get the PDR Oem" << std::endl;
+            return;
+        }
+
+        pldm_oem_pdr* pdr = reinterpret_cast<pldm_oem_pdr*>(data);
+        uint16_t len = pdr->data_length + 1;
+        uint8_t index = 1;
+        uint8_t* vdata = pdr->vendor_specific_data;
+
+        output["vendorDataLength"] = unsigned(pdr->data_length);
+        while (index < len)
+        {
+            std::string key =
+                "vendorSpecificData[" + std::to_string(index) + "]";
+            output[key] = unsigned(*vdata);
+
+            vdata++;
+            index++;
+        }
+    }
+
     void printPDRMsg(uint32_t& nextRecordHndl, const uint16_t respCnt,
                      uint8_t* data, std::optional<uint16_t> terminusHandle)
     {
@@ -1638,6 +1664,9 @@ class GetPDR : public CommandInterface
                 break;
             case PLDM_COMPACT_NUMERIC_SENSOR_PDR:
                 printCompactNumericSensorPDR(data, output);
+                break;
+            case PLDM_OEM_PDR:
+                printPDROem(data, output);
                 break;
             default:
                 break;
