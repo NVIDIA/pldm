@@ -1,12 +1,16 @@
-#include "libpldm/entity.h"
-#include "libpldm/platform.h"
-#include "libpldm/state_set.h"
-
 #include "common/types.hpp"
 #include "pldm_cmd_helper.hpp"
 
+#include <libpldm/entity.h>
+#include <libpldm/platform.h>
+#include <libpldm/state_set.h>
+
+#include <algorithm>
 #include <cstddef>
+#include <format>
 #include <map>
+#include <memory>
+#include <ranges>
 
 #ifdef OEM_IBM
 #include "oem/ibm/oem_ibm_state_set.hpp"
@@ -16,13 +20,10 @@ using namespace pldm::utils;
 
 namespace pldmtool
 {
-
 namespace platform
 {
-
 namespace
 {
-
 using namespace pldmtool::helper;
 
 static const std::map<uint8_t, std::string> sensorPresState{
@@ -44,15 +45,92 @@ static const std::map<uint8_t, std::string> sensorOpState{
     {PLDM_SENSOR_UNAVAILABLE, "Sensor Unavailable"},
     {PLDM_SENSOR_STATUSUNKOWN, "Sensor Status Unknown"},
     {PLDM_SENSOR_FAILED, "Sensor Failed"},
-    {PLDM_SENSOR_INITIALIZING, "Sensor Sensor Intializing"},
+    {PLDM_SENSOR_INITIALIZING, "Sensor Sensor Initializing"},
     {PLDM_SENSOR_SHUTTINGDOWN, "Sensor Shutting down"},
     {PLDM_SENSOR_INTEST, "Sensor Intest"}};
+
+const std::map<uint8_t, std::string> effecterOpState{
+    {EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING,
+     "Effecter Enabled Update Pending"},
+    {EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+     "Effecter Enabled No Update Pending"},
+    {EFFECTER_OPER_STATE_DISABLED, "Effecter Disabled"},
+    {EFFECTER_OPER_STATE_UNAVAILABLE, "Effecter Unavailable"},
+    {EFFECTER_OPER_STATE_STATUSUNKNOWN, "Effecter Status Unknown"},
+    {EFFECTER_OPER_STATE_FAILED, "Effecter Failed"},
+    {EFFECTER_OPER_STATE_INITIALIZING, "Effecter Initializing"},
+    {EFFECTER_OPER_STATE_SHUTTINGDOWN, "Effecter Shutting Down"},
+    {EFFECTER_OPER_STATE_INTEST, "Effecter In Test"}};
+
+std::string getEffecterOpState(uint8_t state)
+{
+    return effecterOpState.contains(state) ? effecterOpState.at(state)
+                                           : std::to_string(state);
+}
 
 std::vector<std::unique_ptr<CommandInterface>> commands;
 
 } // namespace
 
 using ordered_json = nlohmann::ordered_json;
+
+class GetEventReceiver : public CommandInterface
+{
+  public:
+    ~GetEventReceiver() = default;
+    GetEventReceiver() = delete;
+    GetEventReceiver(const GetEventReceiver&) = delete;
+    GetEventReceiver(GetEventReceiver&&) = default;
+    GetEventReceiver& operator=(const GetEventReceiver&) = delete;
+    GetEventReceiver& operator=(GetEventReceiver&&) = delete;
+
+    explicit GetEventReceiver(const char* type, const char* name,
+                              CLI::App* app) : CommandInterface(type, name, app)
+    {}
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        auto request = new (requestMsg.data()) pldm_msg;
+        auto rc =
+            encode_pldm_header_only(PLDM_REQUEST, instanceId, PLDM_PLATFORM,
+                                    PLDM_GET_EVENT_RECEIVER, request);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Failed to encode_pldm_header_only, return code " << rc
+                      << std::endl;
+        }
+        return {rc, requestMsg};
+    }
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        struct pldm_get_event_receiver_resp event_receiver_resp_data;
+        auto rc = decode_get_event_receiver_resp(responsePtr, payloadLength,
+                                                 &event_receiver_resp_data);
+        if (rc || event_receiver_resp_data.completion_code)
+        {
+            std::cerr << "Response Message Error: "
+                      << "return code " << rc << ", completion code "
+                      << static_cast<int>(
+                             event_receiver_resp_data.completion_code)
+                      << std::endl;
+            return;
+        }
+        if (event_receiver_resp_data.transport_protocol_type !=
+            PLDM_TRANSPORT_PROTOCOL_TYPE_MCTP)
+        {
+            std::cerr << "Unsupported response protocol type " << std::endl;
+            return;
+        }
+
+        ordered_json data;
+        data["completionCode"] = event_receiver_resp_data.completion_code;
+        data["transportProtocolType"] =
+            event_receiver_resp_data.transport_protocol_type;
+        data["eventReceiverAddressInfo"] =
+            event_receiver_resp_data.event_receiver_address.mctp_eid;
+        pldmtool::helper::DisplayInJson(data);
+    }
+};
 
 class GetPDR : public CommandInterface
 {
@@ -67,28 +145,82 @@ class GetPDR : public CommandInterface
     using CommandInterface::CommandInterface;
 
     explicit GetPDR(const char* type, const char* name, CLI::App* app) :
-        CommandInterface(type, name, app)
+        CommandInterface(type, name, app), dataTransferHandle(0),
+        operationFlag(PLDM_GET_FIRSTPART), requestCount(UINT16_MAX),
+        recordChangeNumber(0), nextPartRequired(false)
     {
         auto pdrOptionGroup = app->add_option_group(
             "Required Option",
-            "Retrieve individual PDR, all PDRs, or PDRs of a requested type");
+            "Retrieve individual PDR, all PDRs, PDRs of a requested type or retrieve all PDRs of the requested terminusID");
         pdrOptionGroup->add_option(
             "-d,--data", recordHandle,
             "retrieve individual PDRs from a PDR Repository\n"
             "eg: The recordHandle value for the PDR to be retrieved and 0 "
             "means get first PDR in the repository.");
         pdrRecType = "";
-        pdrOptionGroup->add_option(
-            "-t, --type", pdrRecType,
-            "retrieve all PDRs of the requested type\n"
-            "supported types:\n"
-            "[terminusLocator, stateSensor, "
-            "numericEffecter, stateEffecter, "
-            "EntityAssociation, fruRecord, ... ]");
+        std::string supportedPDRTypes = "";
+
+        for (const auto& [type, _] : strToPdrType)
+        {
+            supportedPDRTypes += (type + ", ");
+        }
+        supportedPDRTypes = std::format("[{}...]", supportedPDRTypes);
+
+        pdrOptionGroup->add_option("-t, --type", pdrRecType,
+                                   "retrieve all PDRs of the requested type\n"
+                                   "supported types:\n" +
+                                       supportedPDRTypes);
+
+        getPDRGroupOption = pdrOptionGroup->add_option(
+            "-i, --terminusID", pdrTerminus,
+            "retrieve all PDRs of the requested terminusID\n"
+            "supported IDs:\n [1, 2, 208...]");
+
         allPDRs = false;
         pdrOptionGroup->add_flag("-a, --all", allPDRs,
                                  "retrieve all PDRs from a PDR repository");
+
         pdrOptionGroup->require_option(1);
+    }
+
+    void parseGetPDROptions()
+    {
+        optTIDSet = false;
+        if (getPDRGroupOption->count() > 0)
+        {
+            optTIDSet = true;
+            getPDRs();
+        }
+    }
+
+    void getPDRs()
+    {
+        // start the array
+        std::cout << "[";
+
+        recordHandle = 0;
+        do
+        {
+            CommandInterface::exec();
+        } while (recordHandle != 0);
+
+        // close the array
+        std::cout << "]\n";
+
+        if (handleFound)
+        {
+            recordHandle = 0;
+            uint32_t prevRecordHandle = 0;
+            do
+            {
+                CommandInterface::exec();
+                if (recordHandle == prevRecordHandle)
+                {
+                    return;
+                }
+                prevRecordHandle = recordHandle;
+            } while (recordHandle != 0);
+        }
     }
 
     void exec() override
@@ -102,7 +234,7 @@ class GetPDR : public CommandInterface
             }
 
             // start the array
-            std::cerr << "[\n";
+            std::cout << "[\n";
 
             // Retrieve all PDR records starting from the first
             recordHandle = 0;
@@ -114,7 +246,7 @@ class GetPDR : public CommandInterface
                 // recordHandle is updated to nextRecord when
                 // CommandInterface::exec() is successful.
                 // In case of any error, return.
-                if (recordHandle == prevRecordHandle)
+                if (recordHandle == prevRecordHandle && !nextPartRequired)
                 {
                     return;
                 }
@@ -122,7 +254,7 @@ class GetPDR : public CommandInterface
                 // check for circular references.
                 auto result =
                     recordsSeen.emplace(recordHandle, prevRecordHandle);
-                if (!result.second)
+                if (!result.second && !nextPartRequired)
                 {
                     std::cerr
                         << "Record handle " << recordHandle
@@ -135,16 +267,19 @@ class GetPDR : public CommandInterface
                 if (recordHandle != 0)
                 {
                     // close the array
-                    std::cerr << ",";
+                    std::cout << ",";
                 }
             } while (recordHandle != 0);
 
             // close the array
-            std::cerr << "]\n";
+            std::cout << "]\n";
         }
         else
         {
-            CommandInterface::exec();
+            do
+            {
+                CommandInterface::exec();
+            } while (nextPartRequired);
         }
     }
 
@@ -152,18 +287,18 @@ class GetPDR : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + PLDM_GET_PDR_REQ_BYTES);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
 
-        auto rc =
-            encode_get_pdr_req(instanceId, recordHandle, 0, PLDM_GET_FIRSTPART,
-                               UINT16_MAX, 0, request, PLDM_GET_PDR_REQ_BYTES);
+        auto rc = encode_get_pdr_req(
+            instanceId, recordHandle, dataTransferHandle, operationFlag,
+            requestCount, recordChangeNumber, request, PLDM_GET_PDR_REQ_BYTES);
         return {rc, requestMsg};
     }
 
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
         uint8_t completionCode = 0;
-        uint8_t recordData[UINT16_MAX] = {0};
+        uint8_t respRecordData[UINT16_MAX] = {0};
         uint32_t nextRecordHndl = 0;
         uint32_t nextDataTransferHndl = 0;
         uint8_t transferFlag = 0;
@@ -172,19 +307,60 @@ class GetPDR : public CommandInterface
 
         auto rc = decode_get_pdr_resp(
             responsePtr, payloadLength, &completionCode, &nextRecordHndl,
-            &nextDataTransferHndl, &transferFlag, &respCnt, recordData,
-            sizeof(recordData), &transferCRC);
+            &nextDataTransferHndl, &transferFlag, &respCnt, respRecordData,
+            sizeof(respRecordData), &transferCRC);
 
         if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
         {
             std::cerr << "Response Message Error: "
                       << "rc=" << rc << ",cc=" << (int)completionCode
                       << std::endl;
+            nextPartRequired = false;
             return;
         }
 
-        printPDRMsg(nextRecordHndl, respCnt, recordData);
-        recordHandle = nextRecordHndl;
+        if (optTIDSet && !handleFound)
+        {
+            terminusHandle = getTerminusHandle(respRecordData, pdrTerminus);
+            if (terminusHandle.has_value())
+            {
+                recordHandle = 0;
+                return;
+            }
+            else
+            {
+                recordHandle = nextRecordHndl;
+                return;
+            }
+        }
+        else
+        {
+            recordData.insert(recordData.end(), respRecordData,
+                              respRecordData + respCnt);
+
+            // End or StartAndEnd
+            if (transferFlag == PLDM_PLATFORM_TRANSFER_END ||
+                transferFlag == PLDM_PLATFORM_TRANSFER_START_AND_END)
+            {
+                printPDRMsg(nextRecordHndl, recordData.size(),
+                            recordData.data(), terminusHandle);
+                nextPartRequired = false;
+                recordHandle = nextRecordHndl;
+                dataTransferHandle = 0;
+                recordChangeNumber = 0;
+                operationFlag = PLDM_GET_FIRSTPART;
+                recordData.clear();
+            }
+            else
+            {
+                nextPartRequired = true;
+                dataTransferHandle = nextDataTransferHndl;
+                struct pldm_pdr_hdr* pdr_hdr = new (recordData.data())
+                    pldm_pdr_hdr;
+                recordChangeNumber = pdr_hdr->record_change_num;
+                operationFlag = PLDM_GET_NEXTPART;
+            }
+        }
     }
 
   private:
@@ -279,6 +455,7 @@ class GetPDR : public CommandInterface
         {PLDM_ENTITY_SOUTH_BRIDGE, "South Bridge"},
         {PLDM_ENTITY_REAL_TIME_CLOCK, "Real Time Clock (RTC)"},
         {PLDM_ENTITY_FPGA_CPLD_DEVICE, "FPGA/CPLD Configurable Logic Device"},
+        {PLDM_ENTITY_PROCESSOR_CORE, "Processor Core"},
         {PLDM_ENTITY_OTHER_BUS, "Other Bus"},
         {PLDM_ENTITY_SYS_BUS, "System Bus"},
         {PLDM_ENTITY_I2C_BUS, "I2C Bus"},
@@ -428,6 +605,7 @@ class GetPDR : public CommandInterface
         {PLDM_NUMERIC_EFFECTER_PDR, "Numeric Effecter PDR"},
         {PLDM_NUMERIC_EFFECTER_INITIALIZATION_PDR,
          "Numeric Effecter Initialization PDR"},
+        {PLDM_COMPACT_NUMERIC_SENSOR_PDR, "Compact Numeric Sensor PDR"},
         {PLDM_STATE_EFFECTER_PDR, "State Effecter PDR"},
         {PLDM_STATE_EFFECTER_INITIALIZATION_PDR,
          "State Effecter Initialization PDR"},
@@ -465,11 +643,14 @@ class GetPDR : public CommandInterface
         {PLDM_STATE_SET_BOOT_PROG_STATE_BASE_BOARD_INITIALIZATION,
          "Baseboard Initialization"},
         {PLDM_STATE_SET_BOOT_PROG_STATE_PRIMARY_PROC_INITIALIZATION,
-         "Primary Processor Initialization"}};
+         "Primary Processor Initialization"},
+        {PLDM_STATE_SET_BOOT_PROG_STATE_OSSTART, "OSStart"}};
 
     static inline const std::map<uint8_t, std::string> setOpFaultStatus{
-        {PLDM_STATE_SET_OPERATIONAL_STRESS_STATUS_NORMAL, "Normal"},
-        {PLDM_STATE_SET_OPERATIONAL_STRESS_STATUS_STRESSED, "Stressed"}};
+        {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_NORMAL, "Normal"},
+        {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_ERROR, "Error"},
+        {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_NON_RECOVERABLE_ERROR,
+         "Non Recoverable Error"}};
 
     static inline const std::map<uint8_t, std::string> setSysPowerState{
         {PLDM_STATE_SET_SYS_POWER_STATE_OFF_SOFT_GRACEFUL,
@@ -504,6 +685,15 @@ class GetPDR : public CommandInterface
             {PLDM_STATE_SET_OPERATIONAL_RUNNING_STATUS_ABORTED, "Aborted"},
             {PLDM_STATE_SET_OPERATIONAL_RUNNING_STATUS_DORMANT, "Dormant"}};
 
+    static inline const std::map<uint8_t, std::string> setPowerDeviceState{
+        {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_UNKNOWN, "Unknown"},
+        {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_FULLY_ON, "Fully-On"},
+        {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_INTERMEDIATE_1,
+         "Intermediate State-1"},
+        {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_INTERMEDIATE_2,
+         "Intermediate State-2"},
+        {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_OFF, "Off"}};
+
     static inline const std::map<uint16_t, const std::map<uint8_t, std::string>>
         populatePStateMaps{
             {PLDM_STATE_SET_THERMAL_TRIP, setThermalTrip},
@@ -516,16 +706,20 @@ class GetPDR : public CommandInterface
             {PLDM_STATE_SET_HEALTH_STATE, setHealthState},
             {PLDM_STATE_SET_OPERATIONAL_RUNNING_STATUS,
              setOperationalRunningState},
+            {PLDM_STATE_SET_DEVICE_POWER_STATE, setPowerDeviceState},
         };
 
     const std::map<std::string, uint8_t> strToPdrType = {
         {"terminuslocator", PLDM_TERMINUS_LOCATOR_PDR},
         {"statesensor", PLDM_STATE_SENSOR_PDR},
+        {"sensorauxname", PLDM_SENSOR_AUXILIARY_NAMES_PDR},
         {"numericeffecter", PLDM_NUMERIC_EFFECTER_PDR},
+        {"effecterauxname", PLDM_EFFECTER_AUXILIARY_NAMES_PDR},
+        {"numericsensor", PLDM_NUMERIC_SENSOR_PDR},
+        {"compactnumericsensor", PLDM_COMPACT_NUMERIC_SENSOR_PDR},
         {"stateeffecter", PLDM_STATE_EFFECTER_PDR},
         {"entityassociation", PLDM_PDR_ENTITY_ASSOCIATION},
         {"frurecord", PLDM_PDR_FRU_RECORD_SET},
-        {"numericsensor", PLDM_NUMERIC_SENSOR_PDR},
         // Add other types
     };
 
@@ -591,9 +785,8 @@ class GetPDR : public CommandInterface
         uint16_t stateId, const std::vector<uint8_t>& value)
     {
         std::vector<std::string> data{};
-        std::map<uint8_t, std::string> stateNameMaps;
 
-        for (auto& s : value)
+        for (const auto& s : value)
         {
             std::map<uint8_t, std::string> stateNameMaps;
             auto pstr = std::to_string(s);
@@ -673,249 +866,6 @@ class GetPDR : public CommandInterface
         return data;
     }
 
-    void printNumericSensorPDR(uint8_t* data, ordered_json& output)
-    {
-        if (!data)
-        {
-            std::cerr << "Failed to get numeric sensor PDR" << std::endl;
-            return;
-        }
-
-        // Calculate PDR size from header
-        auto hdr = reinterpret_cast<pldm_pdr_hdr*>(data);
-        size_t pdrSize = sizeof(pldm_pdr_hdr) + hdr->length;
-
-        // Use proper decode function to parse packed PDR data
-        struct pldm_numeric_sensor_value_pdr pdr;
-        auto rc = decode_numeric_sensor_pdr_data(data, pdrSize, &pdr);
-        if (rc != PLDM_SUCCESS)
-        {
-            std::cerr << "Failed to decode numeric sensor PDR, rc=" << rc
-                      << std::endl;
-            return;
-        }
-
-        output["sensorID"] = unsigned(pdr.sensor_id);
-        output["entityType"] = getEntityName(pdr.entity_type);
-        output["entityInstanceNumber"] = unsigned(pdr.entity_instance_num);
-        output["containerID"] = unsigned(pdr.container_id);
-        output["sensorInit"] = sensorInit.at(pdr.sensor_init);
-        output["sensorAuxiliaryNames"] =
-            (unsigned(pdr.sensor_auxiliary_names_pdr) ? true : false);
-        output["baseUnit"] = unsigned(pdr.base_unit);
-        output["unitModifier"] = signed(pdr.unit_modifier);
-        output["rateUnit"] = unsigned(pdr.rate_unit);
-        output["baseOEMUnitHandle"] = unsigned(pdr.base_oem_unit_handle);
-        output["auxUnit"] = unsigned(pdr.aux_unit);
-        output["auxUnitModifier"] = signed(pdr.aux_unit_modifier);
-        output["auxRateUnit"] = unsigned(pdr.aux_rate_unit);
-        output["auxOEMUnitHandle"] = unsigned(pdr.aux_oem_unit_handle);
-        output["isLinear"] = (unsigned(pdr.is_linear) ? true : false);
-        output["sensorDataSize"] = unsigned(pdr.sensor_data_size);
-        output["resolution"] = float(pdr.resolution);
-        output["offset"] = float(pdr.offset);
-        output["accuracy"] = unsigned(pdr.accuracy);
-        output["plusTolerance"] = unsigned(pdr.plus_tolerance);
-        output["minusTolerance"] = unsigned(pdr.minus_tolerance);
-
-        switch (pdr.sensor_data_size)
-        {
-            case PLDM_SENSOR_DATA_SIZE_UINT8:
-                output["hysteresis"] = unsigned(pdr.hysteresis.value_u8);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT8:
-                output["hysteresis"] = signed(pdr.hysteresis.value_s8);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT16:
-                output["hysteresis"] = unsigned(pdr.hysteresis.value_u16);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT16:
-                output["hysteresis"] = signed(pdr.hysteresis.value_s16);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT32:
-                output["hysteresis"] = unsigned(pdr.hysteresis.value_u32);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT32:
-                output["hysteresis"] = signed(pdr.hysteresis.value_s32);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT64:
-                output["hysteresis"] = std::to_string(pdr.hysteresis.value_u64);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT64:
-                output["hysteresis"] = std::to_string(pdr.hysteresis.value_s64);
-                break;
-            default:
-                break;
-        }
-
-        output["supportedThreshold"] = unsigned(pdr.supported_thresholds.byte);
-        output["thresholdAndHysteresisVolatility"] =
-            unsigned(pdr.threshold_and_hysteresis_volatility.byte);
-        output["stateTransitionInterval"] =
-            float(pdr.state_transition_interval);
-        output["updateInterval"] = float(pdr.update_interval);
-
-        switch (pdr.sensor_data_size)
-        {
-            case PLDM_SENSOR_DATA_SIZE_UINT8:
-                output["maxReadable"] = unsigned(pdr.max_readable.value_u8);
-                output["minReadable"] = unsigned(pdr.min_readable.value_u8);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT8:
-                output["maxReadable"] = signed(pdr.max_readable.value_s8);
-                output["minReadable"] = signed(pdr.min_readable.value_s8);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT16:
-                output["maxReadable"] = unsigned(pdr.max_readable.value_u16);
-                output["minReadable"] = unsigned(pdr.min_readable.value_u16);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT16:
-                output["maxReadable"] = signed(pdr.max_readable.value_s16);
-                output["minReadable"] = signed(pdr.min_readable.value_s16);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT32:
-                output["maxReadable"] = unsigned(pdr.max_readable.value_u32);
-                output["minReadable"] = unsigned(pdr.min_readable.value_u32);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT32:
-                output["maxReadable"] = signed(pdr.max_readable.value_s32);
-                output["minReadable"] = signed(pdr.min_readable.value_s32);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_UINT64:
-                output["maxReadable"] =
-                    std::to_string(pdr.max_readable.value_u64);
-                output["minReadable"] =
-                    std::to_string(pdr.min_readable.value_u64);
-                break;
-            case PLDM_SENSOR_DATA_SIZE_SINT64:
-                output["maxReadable"] =
-                    std::to_string(pdr.max_readable.value_s64);
-                output["minReadable"] =
-                    std::to_string(pdr.min_readable.value_s64);
-                break;
-            default:
-                break;
-        }
-
-        output["rangeFieldFormat"] = unsigned(pdr.range_field_format);
-        output["rangeFieldSupport"] = unsigned(pdr.range_field_support.byte);
-
-        switch (pdr.range_field_format)
-        {
-            case PLDM_RANGE_FIELD_FORMAT_UINT8:
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u8);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u8);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u8);
-                output["warningHigh"] = unsigned(pdr.warning_high.value_u8);
-                output["warningLow"] = unsigned(pdr.warning_low.value_u8);
-                output["criticalHigh"] = unsigned(pdr.critical_high.value_u8);
-                output["criticalLow"] = unsigned(pdr.critical_low.value_u8);
-                output["fatalHigh"] = unsigned(pdr.fatal_high.value_u8);
-                output["fatalLow"] = unsigned(pdr.fatal_low.value_u8);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_SINT8:
-                output["nominalValue"] = signed(pdr.nominal_value.value_s8);
-                output["normalMax"] = signed(pdr.normal_max.value_s8);
-                output["normalMin"] = signed(pdr.normal_min.value_s8);
-                output["warningHigh"] = signed(pdr.warning_high.value_s8);
-                output["warningLow"] = signed(pdr.warning_low.value_s8);
-                output["criticalHigh"] = signed(pdr.critical_high.value_s8);
-                output["criticalLow"] = signed(pdr.critical_low.value_s8);
-                output["fatalHigh"] = signed(pdr.fatal_high.value_s8);
-                output["fatalLow"] = signed(pdr.fatal_low.value_s8);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_UINT16:
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u16);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u16);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u16);
-                output["warningHigh"] = unsigned(pdr.warning_high.value_u16);
-                output["warningLow"] = unsigned(pdr.warning_low.value_u16);
-                output["criticalHigh"] = unsigned(pdr.critical_high.value_u16);
-                output["criticalLow"] = unsigned(pdr.critical_low.value_u16);
-                output["fatalHigh"] = unsigned(pdr.fatal_high.value_u16);
-                output["fatalLow"] = unsigned(pdr.fatal_low.value_u16);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_SINT16:
-                output["nominalValue"] = signed(pdr.nominal_value.value_s16);
-                output["normalMax"] = signed(pdr.normal_max.value_s16);
-                output["normalMin"] = signed(pdr.normal_min.value_s16);
-                output["warningHigh"] = signed(pdr.warning_high.value_s16);
-                output["warningLow"] = signed(pdr.warning_low.value_s16);
-                output["criticalHigh"] = signed(pdr.critical_high.value_s16);
-                output["criticalLow"] = signed(pdr.critical_low.value_s16);
-                output["fatalHigh"] = signed(pdr.fatal_high.value_s16);
-                output["fatalLow"] = signed(pdr.fatal_low.value_s16);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_UINT32:
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u32);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u32);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u32);
-                output["warningHigh"] = unsigned(pdr.warning_high.value_u32);
-                output["warningLow"] = unsigned(pdr.warning_low.value_u32);
-                output["criticalHigh"] = unsigned(pdr.critical_high.value_u32);
-                output["criticalLow"] = unsigned(pdr.critical_low.value_u32);
-                output["fatalHigh"] = unsigned(pdr.fatal_high.value_u32);
-                output["fatalLow"] = unsigned(pdr.fatal_low.value_u32);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_SINT32:
-                output["nominalValue"] = signed(pdr.nominal_value.value_s32);
-                output["normalMax"] = signed(pdr.normal_max.value_s32);
-                output["normalMin"] = signed(pdr.normal_min.value_s32);
-                output["warningHigh"] = signed(pdr.warning_high.value_s32);
-                output["warningLow"] = signed(pdr.warning_low.value_s32);
-                output["criticalHigh"] = signed(pdr.critical_high.value_s32);
-                output["criticalLow"] = signed(pdr.critical_low.value_s32);
-                output["fatalHigh"] = signed(pdr.fatal_high.value_s32);
-                output["fatalLow"] = signed(pdr.fatal_low.value_s32);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_REAL32:
-                output["nominalValue"] = float(pdr.nominal_value.value_f32);
-                output["normalMax"] = float(pdr.normal_max.value_f32);
-                output["normalMin"] = float(pdr.normal_min.value_f32);
-                output["warningHigh"] = float(pdr.warning_high.value_f32);
-                output["warningLow"] = float(pdr.warning_low.value_f32);
-                output["criticalHigh"] = float(pdr.critical_high.value_f32);
-                output["criticalLow"] = float(pdr.critical_low.value_f32);
-                output["fatalHigh"] = float(pdr.fatal_high.value_f32);
-                output["fatalLow"] = float(pdr.fatal_low.value_f32);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_UINT64:
-                output["nominalValue"] =
-                    std::to_string(pdr.nominal_value.value_u64);
-                output["normalMax"] = std::to_string(pdr.normal_max.value_u64);
-                output["normalMin"] = std::to_string(pdr.normal_min.value_u64);
-                output["warningHigh"] =
-                    std::to_string(pdr.warning_high.value_u64);
-                output["warningLow"] =
-                    std::to_string(pdr.warning_low.value_u64);
-                output["criticalHigh"] =
-                    std::to_string(pdr.critical_high.value_u64);
-                output["criticalLow"] =
-                    std::to_string(pdr.critical_low.value_u64);
-                output["fatalHigh"] = std::to_string(pdr.fatal_high.value_u64);
-                output["fatalLow"] = std::to_string(pdr.fatal_low.value_u64);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_SINT64:
-                output["nominalValue"] =
-                    std::to_string(pdr.nominal_value.value_s64);
-                output["normalMax"] = std::to_string(pdr.normal_max.value_s64);
-                output["normalMin"] = std::to_string(pdr.normal_min.value_s64);
-                output["warningHigh"] =
-                    std::to_string(pdr.warning_high.value_s64);
-                output["warningLow"] =
-                    std::to_string(pdr.warning_low.value_s64);
-                output["criticalHigh"] =
-                    std::to_string(pdr.critical_high.value_s64);
-                output["criticalLow"] =
-                    std::to_string(pdr.critical_low.value_s64);
-                output["fatalHigh"] = std::to_string(pdr.fatal_high.value_s64);
-                output["fatalLow"] = std::to_string(pdr.fatal_low.value_s64);
-                break;
-            default:
-                break;
-        }
-    }
-
     void printStateSensorPDR(const uint8_t* data, ordered_json& output)
     {
         auto pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(data);
@@ -958,46 +908,24 @@ class GetPDR : public CommandInterface
 
     void printPDRFruRecordSet(uint8_t* data, ordered_json& output)
     {
-        if (data == NULL)
+        if (data == nullptr)
+        {
+            return;
+        }
+
+        data += sizeof(pldm_pdr_hdr);
+        pldm_pdr_fru_record_set* pdr = new (data) pldm_pdr_fru_record_set;
+        if (!pdr)
         {
             std::cerr << "Failed to get the FRU record set PDR" << std::endl;
             return;
         }
 
-        data += sizeof(pldm_pdr_hdr);
-        pldm_pdr_fru_record_set* pdr =
-            reinterpret_cast<pldm_pdr_fru_record_set*>(data);
-
         output["PLDMTerminusHandle"] = unsigned(pdr->terminus_handle);
         output["FRURecordSetIdentifier"] = unsigned(pdr->fru_rsi);
         output["entityType"] = getEntityName(pdr->entity_type);
-        output["entityInstanceNumber"] = unsigned(pdr->entity_instance_num);
+        output["entityInstanceNumber"] = unsigned(pdr->entity_instance);
         output["containerID"] = unsigned(pdr->container_id);
-    }
-
-    void printPDROem(uint8_t* data, ordered_json& output)
-    {
-        if (data == NULL)
-        {
-            std::cerr << "Failed to get the PDR Oem" << std::endl;
-            return;
-        }
-
-        pldm_oem_pdr* pdr = reinterpret_cast<pldm_oem_pdr*>(data);
-        uint16_t len = pdr->data_length + 1;
-        uint8_t index = 1;
-        uint8_t* vdata = pdr->vendor_specific_data;
-
-        output["vendorDataLength"] = unsigned(pdr->data_length);
-        while (index < len)
-        {
-            std::string key =
-                "vendorSpecificData[" + std::to_string(index) + "]";
-            output[key] = unsigned(*vdata);
-
-            vdata++;
-            index++;
-        }
     }
 
     void printPDREntityAssociation(uint8_t* data, ordered_json& output)
@@ -1007,14 +935,14 @@ class GetPDR : public CommandInterface
             {PLDM_ENTITY_ASSOCIAION_LOGICAL, "Logical"},
         };
 
-        if (data == NULL)
+        if (data == nullptr)
         {
             return;
         }
 
         data += sizeof(pldm_pdr_hdr);
-        pldm_pdr_entity_association* pdr =
-            reinterpret_cast<pldm_pdr_entity_association*>(data);
+        pldm_pdr_entity_association* pdr = new (data)
+            pldm_pdr_entity_association;
         if (!pdr)
         {
             std::cerr << "Failed to get the PDR eneity association"
@@ -1030,7 +958,7 @@ class GetPDR : public CommandInterface
         }
         else
         {
-            std::cerr << "Get associationType failed.\n";
+            std::cout << "Get associationType failed.\n";
         }
         output["containerEntityType"] =
             getEntityName(pdr->container.entity_type);
@@ -1041,7 +969,7 @@ class GetPDR : public CommandInterface
         output["containedEntityCount"] =
             static_cast<unsigned>(pdr->num_children);
 
-        auto child = reinterpret_cast<pldm_entity*>(&pdr->children[0]);
+        pldm_entity* child = new (&pdr->children[0]) pldm_entity;
         for (int i = 0; i < pdr->num_children; ++i)
         {
             output.emplace("containedEntityType[" + std::to_string(i + 1) + "]",
@@ -1057,284 +985,190 @@ class GetPDR : public CommandInterface
         }
     }
 
+    /** @brief Format the Sensor/Effecter Aux Name PDR types to json output
+     *
+     *  @param[in] data - reference to the Sensor/Effecter Aux Name PDR
+     *  @param[out] output - PDRs data fields in Json format
+     */
+    void printAuxNamePDR(uint8_t* data, ordered_json& output)
+    {
+        constexpr uint8_t nullTerminator = 0;
+        struct pldm_effecter_aux_name_pdr* auxNamePdr =
+            (struct pldm_effecter_aux_name_pdr*)data;
+
+        if (!auxNamePdr)
+        {
+            std::cerr << "Failed to get Aux Name PDR" << std::endl;
+            return;
+        }
+
+        std::string sPrefix = "effecter";
+        if (auxNamePdr->hdr.type == PLDM_SENSOR_AUXILIARY_NAMES_PDR)
+        {
+            sPrefix = "sensor";
+        }
+        output["terminusHandle"] = int(auxNamePdr->terminus_handle);
+        output[sPrefix + "Id"] = int(auxNamePdr->effecter_id);
+        output[sPrefix + "Count"] = int(auxNamePdr->effecter_count);
+
+        const uint8_t* ptr = auxNamePdr->effecter_names;
+        for (auto i : std::views::iota(0, (int)auxNamePdr->effecter_count))
+        {
+            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
+            ptr += sizeof(uint8_t);
+            for (auto j : std::views::iota(0, (int)nameStringCount))
+            {
+                std::string nameLanguageTagKey =
+                    sPrefix + std::to_string(j) + "_nameLanguageTag" +
+                    std::to_string(i);
+                std::string entityAuxNameKey =
+                    sPrefix + std::to_string(j) + "_entityAuxName" +
+                    std::to_string(i);
+                std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
+                                            0, PLDM_STR_UTF_8_MAX_LEN);
+                ptr += nameLanguageTag.size() + sizeof(nullTerminator);
+                std::u16string u16NameString(
+                    reinterpret_cast<const char16_t*>(ptr), 0,
+                    PLDM_STR_UTF_16_MAX_LEN);
+                ptr += (u16NameString.size() + sizeof(nullTerminator)) *
+                       sizeof(uint16_t);
+                std::transform(u16NameString.cbegin(), u16NameString.cend(),
+                               u16NameString.begin(),
+                               [](uint16_t utf16) { return be16toh(utf16); });
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+                std::string nameString =
+                    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,
+                                         char16_t>{}
+                        .to_bytes(u16NameString);
+#pragma GCC diagnostic pop
+                output[nameLanguageTagKey] = nameLanguageTag;
+                output[entityAuxNameKey] = nameString;
+            }
+        }
+    }
+
     void printNumericEffecterPDR(uint8_t* data, ordered_json& output)
     {
-        if (!data)
+        struct pldm_numeric_effecter_value_pdr* pdr =
+            (struct pldm_numeric_effecter_value_pdr*)data;
+        if (!pdr)
         {
             std::cerr << "Failed to get numeric effecter PDR" << std::endl;
             return;
         }
-        struct pldm_numeric_effecter_value_pdr pdr;
-        size_t count = (uint8_t*)(&pdr.max_settable.value_u8) -
-                       (uint8_t*)(&pdr.hdr);
 
-        memcpy(&pdr.hdr, data, count);
-        data += count;
-
-        output["PLDMTerminusHandle"] = int(pdr.terminus_handle);
-        output["effecterID"] = int(pdr.effecter_id);
-        output["entityType"] = int(pdr.entity_type);
-        output["entityInstanceNumber"] = int(pdr.entity_instance);
-        output["containerID"] = int(pdr.container_id);
-        output["effecterSemanticID"] = int(pdr.effecter_semantic_id);
-        output["effecterInit"] = effecterInit.at(pdr.effecter_init);
+        output["PLDMTerminusHandle"] = int(pdr->terminus_handle);
+        output["effecterID"] = int(pdr->effecter_id);
+        output["entityType"] = int(pdr->entity_type);
+        output["entityInstanceNumber"] = int(pdr->entity_instance);
+        output["containerID"] = int(pdr->container_id);
+        output["effecterSemanticID"] = int(pdr->effecter_semantic_id);
+        output["effecterInit"] = unsigned(pdr->effecter_init);
         output["effecterAuxiliaryNames"] =
-            (unsigned(pdr.effecter_auxiliary_names) ? true : false);
-        output["baseUnit"] = unsigned(pdr.base_unit);
-        output["unitModifier"] = signed(pdr.unit_modifier);
-        output["rateUnit"] = unsigned(pdr.rate_unit);
-        output["baseOEMUnitHandle"] = unsigned(pdr.base_oem_unit_handle);
-        output["auxUnit"] = unsigned(pdr.aux_unit);
-        output["auxUnitModifier"] = signed(pdr.aux_unit_modifier);
-        output["auxrateUnit"] = unsigned(pdr.aux_rate_unit);
-        output["auxOEMUnitHandle"] = unsigned(pdr.aux_oem_unit_handle);
-        output["isLinear"] = (unsigned(pdr.is_linear) ? true : false);
-        output["effecterDataSize"] = unsigned(pdr.effecter_data_size);
-        output["resolution"] = float(pdr.resolution);
-        output["offset"] = float(pdr.offset);
-        output["accuracy"] = unsigned(pdr.accuracy);
-        output["plusTolerance"] = unsigned(pdr.plus_tolerance);
-        output["minusTolerance"] = unsigned(pdr.minus_tolerance);
+            (unsigned(pdr->effecter_auxiliary_names) ? true : false);
+        output["baseUnit"] = unsigned(pdr->base_unit);
+        output["unitModifier"] = unsigned(pdr->unit_modifier);
+        output["rateUnit"] = unsigned(pdr->rate_unit);
+        output["baseOEMUnitHandle"] = unsigned(pdr->base_oem_unit_handle);
+        output["auxUnit"] = unsigned(pdr->aux_unit);
+        output["auxUnitModifier"] = unsigned(pdr->aux_unit_modifier);
+        output["auxrateUnit"] = unsigned(pdr->aux_rate_unit);
+        output["auxOEMUnitHandle"] = unsigned(pdr->aux_oem_unit_handle);
+        output["isLinear"] = (unsigned(pdr->is_linear) ? true : false);
+        output["effecterDataSize"] = unsigned(pdr->effecter_data_size);
+        output["resolution"] = unsigned(pdr->resolution);
+        output["offset"] = unsigned(pdr->offset);
+        output["accuracy"] = unsigned(pdr->accuracy);
+        output["plusTolerance"] = unsigned(pdr->plus_tolerance);
+        output["minusTolerance"] = unsigned(pdr->minus_tolerance);
         output["stateTransitionInterval"] =
-            float(pdr.state_transition_interval);
-        output["TransitionInterval"] = float(pdr.transition_interval);
+            unsigned(pdr->state_transition_interval);
+        output["TransitionInterval"] = unsigned(pdr->transition_interval);
 
-        switch (pdr.effecter_data_size)
+        switch (pdr->effecter_data_size)
         {
             case PLDM_EFFECTER_DATA_SIZE_UINT8:
-                pdr.max_settable.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.max_settable.value_u8);
-                output["maxSettable"] = unsigned(pdr.max_settable.value_u8);
-                pdr.min_settable.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.min_settable.value_u8);
-                output["minSettable"] = unsigned(pdr.min_settable.value_u8);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_u8);
+                output["minSettable"] = unsigned(pdr->min_settable.value_u8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT8:
-                pdr.max_settable.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.max_settable.value_s8);
-                output["maxSettable"] = signed(pdr.max_settable.value_s8);
-                pdr.min_settable.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.min_settable.value_s8);
-                output["minSettable"] = signed(pdr.min_settable.value_s8);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_s8);
+                output["minSettable"] = unsigned(pdr->min_settable.value_s8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT16:
-                pdr.max_settable.value_u16 = *((uint16_t*)data);
-                data += sizeof(pdr.max_settable.value_u16);
-                output["maxSettable"] = unsigned(pdr.max_settable.value_u16);
-                pdr.min_settable.value_u16 = *((uint16_t*)data);
-                data += sizeof(pdr.min_settable.value_u16);
-                output["minSettable"] = unsigned(pdr.min_settable.value_u16);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_u16);
+                output["minSettable"] = unsigned(pdr->min_settable.value_u16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT16:
-                pdr.max_settable.value_s16 = *((int16_t*)data);
-                data += sizeof(pdr.max_settable.value_s16);
-                output["maxSettable"] = signed(pdr.max_settable.value_s16);
-                pdr.min_settable.value_s16 = *((int16_t*)data);
-                data += sizeof(pdr.min_settable.value_s16);
-                output["minSettable"] = signed(pdr.min_settable.value_s16);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_s16);
+                output["minSettable"] = unsigned(pdr->min_settable.value_s16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT32:
-                pdr.max_settable.value_u32 = *((uint32_t*)data);
-                data += sizeof(pdr.max_settable.value_u32);
-                output["maxSettable"] = unsigned(pdr.max_settable.value_u32);
-                pdr.min_settable.value_u32 = *((uint32_t*)data);
-                data += sizeof(pdr.min_settable.value_u32);
-                output["minSettable"] = unsigned(pdr.min_settable.value_u32);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_u32);
+                output["minSettable"] = unsigned(pdr->min_settable.value_u32);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT32:
-                pdr.max_settable.value_s32 = *((int32_t*)data);
-                data += sizeof(pdr.max_settable.value_s32);
-                output["maxSettable"] = signed(pdr.max_settable.value_s32);
-                pdr.min_settable.value_s32 = *((int32_t*)data);
-                data += sizeof(pdr.min_settable.value_s32);
-                output["minSettable"] = signed(pdr.min_settable.value_s32);
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_UINT64:
-                pdr.max_settable.value_u64 = *((uint64_t*)data);
-                data += sizeof(pdr.max_settable.value_u64);
-                output["maxSettable"] =
-                    std::to_string(pdr.max_settable.value_u64);
-                pdr.min_settable.value_u64 = *((uint64_t*)data);
-                data += sizeof(pdr.min_settable.value_u64);
-                output["minSettable"] =
-                    std::to_string(pdr.min_settable.value_u64);
-                break;
-            case PLDM_EFFECTER_DATA_SIZE_SINT64:
-                pdr.max_settable.value_s64 = *((int64_t*)data);
-                data += sizeof(pdr.max_settable.value_s64);
-                output["maxSettable"] =
-                    std::to_string(pdr.max_settable.value_s64);
-                pdr.min_settable.value_s64 = *((int64_t*)data);
-                data += sizeof(pdr.min_settable.value_s64);
-                output["minSettable"] =
-                    std::to_string(pdr.min_settable.value_s64);
+                output["maxSettable"] = unsigned(pdr->max_settable.value_s32);
+                output["minSettable"] = unsigned(pdr->min_settable.value_s32);
                 break;
             default:
                 break;
         }
 
-        count = (uint8_t*)&pdr.nominal_value.value_u8 -
-                (uint8_t*)&pdr.range_field_format;
-        memcpy(&pdr.range_field_format, data, count);
-        output["rangeFieldFormat"] = unsigned(pdr.range_field_format);
-        output["rangeFieldSupport"] = unsigned(pdr.range_field_support.byte);
+        output["rangeFieldFormat"] = unsigned(pdr->range_field_format);
+        output["rangeFieldSupport"] = unsigned(pdr->range_field_support.byte);
 
-        switch (pdr.range_field_format)
+        switch (pdr->range_field_format)
         {
             case PLDM_RANGE_FIELD_FORMAT_UINT8:
-                pdr.nominal_value.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.nominal_value.value_u8);
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u8);
-                pdr.normal_max.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.normal_max.value_u8);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u8);
-                pdr.normal_min.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.normal_min.value_u8);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u8);
-                pdr.rated_max.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.rated_max.value_u8);
-                output["ratedMax"] = unsigned(pdr.rated_max.value_u8);
-                pdr.rated_min.value_u8 = *((uint8_t*)data);
-                data += sizeof(pdr.rated_min.value_u8);
-                output["ratedMin"] = unsigned(pdr.rated_min.value_u8);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_u8);
+                output["normalMax"] = unsigned(pdr->normal_max.value_u8);
+                output["normalMin"] = unsigned(pdr->normal_min.value_u8);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_u8);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_u8);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT8:
-                pdr.nominal_value.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.nominal_value.value_s8);
-                output["nominalValue"] = signed(pdr.nominal_value.value_s8);
-                pdr.normal_max.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.normal_max.value_s8);
-                output["normalMax"] = signed(pdr.normal_max.value_s8);
-                pdr.normal_min.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.normal_min.value_s8);
-                output["normalMin"] = signed(pdr.normal_min.value_s8);
-                pdr.rated_max.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.rated_max.value_s8);
-                output["ratedMax"] = signed(pdr.rated_max.value_s8);
-                pdr.rated_min.value_s8 = *((int8_t*)data);
-                data += sizeof(pdr.rated_min.value_s8);
-                output["ratedMin"] = signed(pdr.rated_min.value_s8);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_s8);
+                output["normalMax"] = unsigned(pdr->normal_max.value_s8);
+                output["normalMin"] = unsigned(pdr->normal_min.value_s8);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_s8);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_s8);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT16:
-                pdr.nominal_value.value_u16 = le16toh(*((uint16_t*)data));
-                data += sizeof(pdr.nominal_value.value_u16);
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u16);
-                pdr.normal_max.value_u16 = le16toh(*((uint16_t*)data));
-                data += sizeof(pdr.normal_max.value_u16);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u16);
-                pdr.normal_min.value_u16 = le16toh(*((uint16_t*)data));
-                data += sizeof(pdr.normal_min.value_u16);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u16);
-                pdr.rated_max.value_u16 = le16toh(*((uint16_t*)data));
-                data += sizeof(pdr.rated_max.value_u16);
-                output["ratedMax"] = unsigned(pdr.rated_max.value_u16);
-                pdr.rated_min.value_u16 = le16toh(*((uint16_t*)data));
-                data += sizeof(pdr.rated_min.value_u16);
-                output["ratedMin"] = unsigned(pdr.rated_min.value_u16);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_u16);
+                output["normalMax"] = unsigned(pdr->normal_max.value_u16);
+                output["normalMin"] = unsigned(pdr->normal_min.value_u16);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_u16);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_u16);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT16:
-                pdr.nominal_value.value_s16 = le16toh(*((int16_t*)data));
-                data += sizeof(pdr.nominal_value.value_s16);
-                output["nominalValue"] = signed(pdr.nominal_value.value_s16);
-                pdr.normal_max.value_s16 = le16toh(*((int16_t*)data));
-                data += sizeof(pdr.normal_max.value_s16);
-                output["normalMax"] = signed(pdr.normal_max.value_s16);
-                pdr.normal_min.value_s16 = le16toh(*((int16_t*)data));
-                data += sizeof(pdr.normal_min.value_s16);
-                output["normalMin"] = signed(pdr.normal_min.value_s16);
-                pdr.rated_max.value_s16 = le16toh(*((int16_t*)data));
-                data += sizeof(pdr.rated_max.value_s16);
-                output["ratedMax"] = signed(pdr.rated_max.value_s16);
-                pdr.rated_min.value_s16 = le16toh(*((int16_t*)data));
-                data += sizeof(pdr.rated_min.value_s16);
-                output["ratedMin"] = signed(pdr.rated_min.value_s16);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_s16);
+                output["normalMax"] = unsigned(pdr->normal_max.value_s16);
+                output["normalMin"] = unsigned(pdr->normal_min.value_s16);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_s16);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_s16);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT32:
-                pdr.nominal_value.value_u32 = le32toh(*((uint32_t*)data));
-                data += sizeof(pdr.nominal_value.value_u32);
-                output["nominalValue"] = unsigned(pdr.nominal_value.value_u32);
-                pdr.normal_max.value_u32 = le32toh(*((uint32_t*)data));
-                data += sizeof(pdr.normal_max.value_u32);
-                output["normalMax"] = unsigned(pdr.normal_max.value_u32);
-                pdr.normal_min.value_u32 = le32toh(*((uint32_t*)data));
-                data += sizeof(pdr.normal_min.value_u32);
-                output["normalMin"] = unsigned(pdr.normal_min.value_u32);
-                pdr.rated_max.value_u32 = le32toh(*((uint32_t*)data));
-                data += sizeof(pdr.rated_max.value_u32);
-                output["ratedMax"] = unsigned(pdr.rated_max.value_u32);
-                pdr.rated_min.value_u32 = le32toh(*((uint32_t*)data));
-                data += sizeof(pdr.rated_min.value_u32);
-                output["ratedMin"] = unsigned(pdr.rated_min.value_u32);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_u32);
+                output["normalMax"] = unsigned(pdr->normal_max.value_u32);
+                output["normalMin"] = unsigned(pdr->normal_min.value_u32);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_u32);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_u32);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT32:
-                pdr.nominal_value.value_s32 = le32toh(*((int32_t*)data));
-                data += sizeof(pdr.nominal_value.value_s32);
-                output["nominalValue"] = signed(pdr.nominal_value.value_s32);
-                pdr.normal_max.value_s32 = le32toh(*((int32_t*)data));
-                data += sizeof(pdr.normal_max.value_s32);
-                output["normalMax"] = signed(pdr.normal_max.value_s32);
-                pdr.normal_min.value_s32 = le32toh(*((int32_t*)data));
-                data += sizeof(pdr.normal_min.value_s32);
-                output["normalMin"] = signed(pdr.normal_min.value_s32);
-                pdr.rated_max.value_s32 = le32toh(*((int32_t*)data));
-                data += sizeof(pdr.rated_max.value_s32);
-                output["ratedMax"] = signed(pdr.rated_max.value_s32);
-                pdr.rated_min.value_s32 = le32toh(*((int32_t*)data));
-                data += sizeof(pdr.rated_min.value_s32);
-                output["ratedMin"] = signed(pdr.rated_min.value_s32);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_s32);
+                output["normalMax"] = unsigned(pdr->normal_max.value_s32);
+                output["normalMin"] = unsigned(pdr->normal_min.value_s32);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_s32);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_s32);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_REAL32:
-                pdr.nominal_value.value_f32 = le32toh(*((real32_t*)data));
-                data += sizeof(pdr.nominal_value.value_f32);
-                output["nominalValue"] = float(pdr.nominal_value.value_f32);
-                pdr.normal_max.value_f32 = le32toh(*((real32_t*)data));
-                data += sizeof(pdr.normal_max.value_f32);
-                output["normalMax"] = float(pdr.normal_max.value_f32);
-                pdr.normal_min.value_f32 = le32toh(*((real32_t*)data));
-                data += sizeof(pdr.normal_min.value_f32);
-                output["normalMin"] = float(pdr.normal_min.value_f32);
-                pdr.rated_max.value_f32 = le32toh(*((real32_t*)data));
-                data += sizeof(pdr.rated_max.value_f32);
-                output["ratedMax"] = float(pdr.rated_max.value_f32);
-                pdr.rated_min.value_f32 = le32toh(*((real32_t*)data));
-                data += sizeof(pdr.rated_min.value_f32);
-                output["ratedMin"] = float(pdr.rated_min.value_f32);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_UINT64:
-                pdr.nominal_value.value_u64 = le64toh(*((uint64_t*)data));
-                data += sizeof(pdr.nominal_value.value_u64);
-                output["nominalValue"] =
-                    std::to_string(pdr.nominal_value.value_u64);
-                pdr.normal_max.value_u64 = le64toh(*((uint64_t*)data));
-                data += sizeof(pdr.normal_max.value_u64);
-                output["normalMax"] = std::to_string(pdr.normal_max.value_u64);
-                pdr.normal_min.value_u64 = le64toh(*((uint64_t*)data));
-                data += sizeof(pdr.normal_min.value_u64);
-                output["normalMin"] = std::to_string(pdr.normal_min.value_u64);
-                pdr.rated_max.value_u64 = le64toh(*((uint64_t*)data));
-                data += sizeof(pdr.rated_max.value_u64);
-                output["ratedMax"] = std::to_string(pdr.rated_max.value_u64);
-                pdr.rated_min.value_u64 = le64toh(*((uint64_t*)data));
-                data += sizeof(pdr.rated_min.value_u64);
-                output["ratedMin"] = std::to_string(pdr.rated_min.value_u64);
-                break;
-            case PLDM_RANGE_FIELD_FORMAT_SINT64:
-                pdr.nominal_value.value_s64 = le64toh(*((int64_t*)data));
-                data += sizeof(pdr.nominal_value.value_s64);
-                output["nominalValue"] =
-                    std::to_string(pdr.nominal_value.value_s64);
-                pdr.normal_max.value_s64 = le64toh(*((int64_t*)data));
-                data += sizeof(pdr.normal_max.value_s64);
-                output["normalMax"] = std::to_string(pdr.normal_max.value_s64);
-                pdr.normal_min.value_s64 = le64toh(*((int64_t*)data));
-                data += sizeof(pdr.normal_min.value_s64);
-                output["normalMin"] = std::to_string(pdr.normal_min.value_s64);
-                pdr.rated_max.value_s64 = le64toh(*((int64_t*)data));
-                data += sizeof(pdr.rated_max.value_s64);
-                output["ratedMax"] = std::to_string(pdr.rated_max.value_s64);
-                pdr.rated_min.value_s64 = le64toh(*((int64_t*)data));
-                data += sizeof(pdr.rated_min.value_s64);
-                output["ratedMin"] = std::to_string(pdr.rated_min.value_s64);
+                output["nominalValue"] = unsigned(pdr->nominal_value.value_f32);
+                output["normalMax"] = unsigned(pdr->normal_max.value_f32);
+                output["normalMin"] = unsigned(pdr->normal_min.value_f32);
+                output["ratedMax"] = unsigned(pdr->rated_max.value_f32);
+                output["ratedMin"] = unsigned(pdr->rated_min.value_f32);
                 break;
             default:
                 break;
@@ -1385,6 +1219,69 @@ class GetPDR : public CommandInterface
         }
     }
 
+    bool checkTerminusHandle(const uint8_t* data,
+                             std::optional<uint16_t> terminusHandle)
+    {
+        struct pldm_pdr_hdr* pdr = (struct pldm_pdr_hdr*)data;
+
+        if (pdr->type == PLDM_TERMINUS_LOCATOR_PDR)
+        {
+            auto tlpdr =
+                reinterpret_cast<const pldm_terminus_locator_pdr*>(data);
+
+            if (tlpdr->terminus_handle != terminusHandle)
+            {
+                return true;
+            }
+        }
+        else if (pdr->type == PLDM_STATE_SENSOR_PDR)
+        {
+            auto sensor = reinterpret_cast<const pldm_state_sensor_pdr*>(data);
+
+            if (sensor->terminus_handle != terminusHandle)
+            {
+                return true;
+            }
+        }
+        else if (pdr->type == PLDM_NUMERIC_EFFECTER_PDR)
+        {
+            auto numericEffecter =
+                reinterpret_cast<const pldm_numeric_effecter_value_pdr*>(data);
+
+            if (numericEffecter->terminus_handle != terminusHandle)
+            {
+                return true;
+            }
+        }
+
+        else if (pdr->type == PLDM_STATE_EFFECTER_PDR)
+        {
+            auto stateEffecter =
+                reinterpret_cast<const pldm_state_effecter_pdr*>(data);
+            if (stateEffecter->terminus_handle != terminusHandle)
+            {
+                return true;
+            }
+        }
+        else if (pdr->type == PLDM_PDR_FRU_RECORD_SET)
+        {
+            data += sizeof(pldm_pdr_hdr);
+            auto fru = reinterpret_cast<const pldm_pdr_fru_record_set*>(data);
+
+            if (fru->terminus_handle != terminusHandle)
+            {
+                return true;
+            }
+        }
+        else
+        {
+            // Entity association PDRs does not have terminus handle
+            return true;
+        }
+
+        return false;
+    }
+
     void printTerminusLocatorPDR(const uint8_t* data, ordered_json& output)
     {
         const std::array<std::string_view, 4> terminusLocatorType = {
@@ -1410,10 +1307,259 @@ class GetPDR : public CommandInterface
         }
     }
 
-    void printPDRMsg(uint32_t& nextRecordHndl, const uint16_t respCnt,
-                     uint8_t* data)
+    std::optional<uint16_t> getTerminusHandle(uint8_t* data,
+                                              std::optional<uint8_t> tid)
     {
-        if (data == NULL)
+        struct pldm_pdr_hdr* pdr = (struct pldm_pdr_hdr*)data;
+        if (pdr->type == PLDM_TERMINUS_LOCATOR_PDR)
+        {
+            auto pdr = reinterpret_cast<const pldm_terminus_locator_pdr*>(data);
+            if (pdr->tid == tid)
+            {
+                handleFound = true;
+                return pdr->terminus_handle;
+            }
+        }
+        return std::nullopt;
+    }
+
+    /** @brief Format the Numeric Sensor PDR types to json output
+     *
+     *  @param[in] data - reference to the Numeric Sensor PDR
+     *  @param[in] data_length - number of PDR data bytes
+     *  @param[out] output - PDRs data fields in Json format
+     */
+    void printNumericSensorPDR(const uint8_t* data, const uint16_t data_length,
+                               ordered_json& output)
+    {
+        struct pldm_numeric_sensor_value_pdr pdr;
+        int rc =
+            decode_numeric_sensor_pdr_data(data, (size_t)data_length, &pdr);
+        if (rc != PLDM_SUCCESS)
+        {
+            std::cerr << "Failed to get numeric sensor PDR" << std::endl;
+            return;
+        }
+        output["PLDMTerminusHandle"] = pdr.terminus_handle;
+        output["sensorID"] = pdr.sensor_id;
+        output["entityType"] = getEntityName(pdr.entity_type);
+        output["entityInstanceNumber"] = pdr.entity_instance_num;
+        output["containerID"] = pdr.container_id;
+        output["sensorInit"] = pdr.sensor_init;
+        output["sensorAuxiliaryNamesPDR"] =
+            (pdr.sensor_auxiliary_names_pdr) ? true : false;
+        output["baseUnit"] = pdr.base_unit;
+        output["unitModifier"] = pdr.unit_modifier;
+        output["rateUnit"] = pdr.rate_unit;
+        output["baseOEMUnitHandle"] = pdr.base_oem_unit_handle;
+        output["auxUnit"] = pdr.aux_unit;
+        output["auxUnitModifier"] = pdr.aux_unit_modifier;
+        output["auxrateUnit"] = pdr.aux_rate_unit;
+        output["rel"] = pdr.rel;
+        output["auxOEMUnitHandle"] = pdr.aux_oem_unit_handle;
+        output["isLinear"] = (pdr.is_linear) ? true : false;
+        output["sensorDataSize"] = pdr.sensor_data_size;
+        output["resolution"] = pdr.resolution;
+        output["offset"] = pdr.offset;
+        output["accuracy"] = pdr.accuracy;
+        output["plusTolerance"] = pdr.plus_tolerance;
+        output["minusTolerance"] = pdr.minus_tolerance;
+
+        switch (pdr.sensor_data_size)
+        {
+            case PLDM_SENSOR_DATA_SIZE_UINT8:
+                output["hysteresis"] = pdr.hysteresis.value_u8;
+                output["maxReadable"] = pdr.max_readable.value_u8;
+                output["minReadable"] = pdr.min_readable.value_u8;
+                break;
+            case PLDM_SENSOR_DATA_SIZE_SINT8:
+                output["hysteresis"] = pdr.hysteresis.value_s8;
+                output["maxReadable"] = pdr.max_readable.value_s8;
+                output["minReadable"] = pdr.min_readable.value_s8;
+                break;
+            case PLDM_SENSOR_DATA_SIZE_UINT16:
+                output["hysteresis"] = pdr.hysteresis.value_u16;
+                output["maxReadable"] = pdr.max_readable.value_u16;
+                output["minReadable"] = pdr.min_readable.value_u16;
+                break;
+            case PLDM_SENSOR_DATA_SIZE_SINT16:
+                output["hysteresis"] = pdr.hysteresis.value_s16;
+                output["maxReadable"] = pdr.max_readable.value_s16;
+                output["minReadable"] = pdr.min_readable.value_s16;
+                break;
+            case PLDM_SENSOR_DATA_SIZE_UINT32:
+                output["hysteresis"] = pdr.hysteresis.value_u32;
+                output["maxReadable"] = pdr.max_readable.value_u32;
+                output["minReadable"] = pdr.min_readable.value_u32;
+                break;
+            case PLDM_SENSOR_DATA_SIZE_SINT32:
+                output["hysteresis"] = pdr.hysteresis.value_s32;
+                output["maxReadable"] = pdr.max_readable.value_s32;
+                output["minReadable"] = pdr.min_readable.value_s32;
+                break;
+            default:
+                break;
+        }
+
+        output["supportedThresholds"] = pdr.supported_thresholds.byte;
+        output["thresholAndHysteresisVolatility"] =
+            pdr.threshold_and_hysteresis_volatility.byte;
+        output["stateTransitionInterval"] = pdr.state_transition_interval;
+        output["updateInterval"] = pdr.update_interval;
+        output["rangeFieldFormat"] = pdr.range_field_format;
+        output["rangeFieldSupport"] = pdr.range_field_support.byte;
+
+        switch (pdr.range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                output["nominalValue"] = pdr.nominal_value.value_u8;
+                output["normalMax"] = pdr.normal_max.value_u8;
+                output["normalMin"] = pdr.normal_min.value_u8;
+                output["warningHigh"] = pdr.warning_high.value_u8;
+                output["warningLow"] = pdr.warning_low.value_u8;
+                output["criticalHigh"] = pdr.critical_high.value_u8;
+                output["criticalLow"] = pdr.critical_low.value_u8;
+                output["fatalHigh"] = pdr.fatal_high.value_u8;
+                output["fatalLow"] = pdr.fatal_low.value_u8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                output["nominalValue"] = pdr.nominal_value.value_s8;
+                output["normalMax"] = pdr.normal_max.value_s8;
+                output["normalMin"] = pdr.normal_min.value_s8;
+                output["warningHigh"] = pdr.warning_high.value_s8;
+                output["warningLow"] = pdr.warning_low.value_s8;
+                output["criticalHigh"] = pdr.critical_high.value_s8;
+                output["criticalLow"] = pdr.critical_low.value_s8;
+                output["fatalHigh"] = pdr.fatal_high.value_s8;
+                output["fatalLow"] = pdr.fatal_low.value_s8;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                output["nominalValue"] = pdr.nominal_value.value_u16;
+                output["normalMax"] = pdr.normal_max.value_u16;
+                output["normalMin"] = pdr.normal_min.value_u16;
+                output["warningHigh"] = pdr.warning_high.value_u16;
+                output["warningLow"] = pdr.warning_low.value_u16;
+                output["criticalHigh"] = pdr.critical_high.value_u16;
+                output["criticalLow"] = pdr.critical_low.value_u16;
+                output["fatalHigh"] = pdr.fatal_high.value_u16;
+                output["fatalLow"] = pdr.fatal_low.value_u16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                output["nominalValue"] = pdr.nominal_value.value_s16;
+                output["normalMax"] = pdr.normal_max.value_s16;
+                output["normalMin"] = pdr.normal_min.value_s16;
+                output["warningHigh"] = pdr.warning_high.value_s16;
+                output["warningLow"] = pdr.warning_low.value_s16;
+                output["criticalHigh"] = pdr.critical_high.value_s16;
+                output["criticalLow"] = pdr.critical_low.value_s16;
+                output["fatalHigh"] = pdr.fatal_high.value_s16;
+                output["fatalLow"] = pdr.fatal_low.value_s16;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                output["nominalValue"] = pdr.nominal_value.value_u32;
+                output["normalMax"] = pdr.normal_max.value_u32;
+                output["normalMin"] = pdr.normal_min.value_u32;
+                output["warningHigh"] = pdr.warning_high.value_u32;
+                output["warningLow"] = pdr.warning_low.value_u32;
+                output["criticalHigh"] = pdr.critical_high.value_u32;
+                output["criticalLow"] = pdr.critical_low.value_u32;
+                output["fatalHigh"] = pdr.fatal_high.value_u32;
+                output["fatalLow"] = pdr.fatal_low.value_u32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                output["nominalValue"] = pdr.nominal_value.value_s32;
+                output["normalMax"] = pdr.normal_max.value_s32;
+                output["normalMin"] = pdr.normal_min.value_s32;
+                output["warningHigh"] = pdr.warning_high.value_s32;
+                output["warningLow"] = pdr.warning_low.value_s32;
+                output["criticalHigh"] = pdr.critical_high.value_s32;
+                output["criticalLow"] = pdr.critical_low.value_s32;
+                output["fatalHigh"] = pdr.fatal_high.value_s32;
+                output["fatalLow"] = pdr.fatal_low.value_s32;
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                output["nominalValue"] = pdr.nominal_value.value_f32;
+                output["normalMax"] = pdr.normal_max.value_f32;
+                output["normalMin"] = pdr.normal_min.value_f32;
+                output["warningHigh"] = pdr.warning_high.value_f32;
+                output["warningLow"] = pdr.warning_low.value_f32;
+                output["criticalHigh"] = pdr.critical_high.value_f32;
+                output["criticalLow"] = pdr.critical_low.value_f32;
+                output["fatalHigh"] = pdr.fatal_high.value_f32;
+                output["fatalLow"] = pdr.fatal_low.value_f32;
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** @brief Format the Compact Numeric Sensor PDR types to json output
+     *
+     *  @param[in] data - reference to the Compact Numeric Sensor PDR
+     *  @param[out] output - PDRs data fields in Json format
+     */
+    void printCompactNumericSensorPDR(const uint8_t* data, ordered_json& output)
+    {
+        struct pldm_compact_numeric_sensor_pdr* pdr =
+            (struct pldm_compact_numeric_sensor_pdr*)data;
+        if (!pdr)
+        {
+            std::cerr << "Failed to get compact numeric sensor PDR"
+                      << std::endl;
+            return;
+        }
+        output["PLDMTerminusHandle"] = int(pdr->terminus_handle);
+        output["sensorID"] = int(pdr->sensor_id);
+        output["entityType"] = getEntityName(pdr->entity_type);
+        output["entityInstanceNumber"] = int(pdr->entity_instance);
+        output["containerID"] = int(pdr->container_id);
+        output["sensorNameStringByteLength"] = int(pdr->sensor_name_length);
+        if (pdr->sensor_name_length == 0)
+        {
+            output["Name"] = std::format("PLDM_Device_TID{}_SensorId{}",
+                                         unsigned(pdr->terminus_handle),
+                                         unsigned(pdr->sensor_id));
+        }
+        else
+        {
+            std::string sTemp(reinterpret_cast<const char*>(pdr->sensor_name),
+                              pdr->sensor_name_length);
+            output["Name"] = sTemp;
+        }
+        output["baseUnit"] = unsigned(pdr->base_unit);
+        output["unitModifier"] = signed(pdr->unit_modifier);
+        output["occurrenceRate"] = unsigned(pdr->occurrence_rate);
+        output["rangeFieldSupport"] = unsigned(pdr->range_field_support.byte);
+        if (pdr->range_field_support.bits.bit0)
+        {
+            output["warningHigh"] = int(pdr->warning_high);
+        }
+        if (pdr->range_field_support.bits.bit1)
+        {
+            output["warningLow"] = int(pdr->warning_low);
+        }
+        if (pdr->range_field_support.bits.bit2)
+        {
+            output["criticalHigh"] = int(pdr->critical_high);
+        }
+        if (pdr->range_field_support.bits.bit3)
+        {
+            output["criticalLow"] = int(pdr->critical_low);
+        }
+        if (pdr->range_field_support.bits.bit4)
+        {
+            output["fatalHigh"] = int(pdr->fatal_high);
+        }
+        if (pdr->range_field_support.bits.bit5)
+        {
+            output["fatalLow"] = int(pdr->fatal_low);
+        }
+    }
+
+    void printPDRMsg(uint32_t& nextRecordHndl, const uint16_t respCnt,
+                     uint8_t* data, std::optional<uint16_t> terminusHandle)
+    {
+        if (data == nullptr)
         {
             std::cerr << "Failed to get PDR message" << std::endl;
             return;
@@ -1424,6 +1570,10 @@ class GetPDR : public CommandInterface
         output["responseCount"] = respCnt;
 
         struct pldm_pdr_hdr* pdr = (struct pldm_pdr_hdr*)data;
+        if (!pdr)
+        {
+            return;
+        }
 
         if (!pdrRecType.empty())
         {
@@ -1433,8 +1583,8 @@ class GetPDR : public CommandInterface
             {
                 std::cerr << "PDR type '" << pdrRecType
                           << "' is not supported or invalid\n";
-                // PDR type not supported, setting next record handle to 0
-                // to avoid looping through all PDR records
+                // PDR type not supported, setting next record handle to
+                // 0 to avoid looping through all PDR records
                 nextRecordHndl = 0;
                 return;
             }
@@ -1447,6 +1597,16 @@ class GetPDR : public CommandInterface
             }
         }
 
+        if (pdrTerminus.has_value())
+        {
+            if (checkTerminusHandle(data, terminusHandle))
+            {
+                std::cerr << "The Terminus handle doesn't match return"
+                          << std::endl;
+                return;
+            }
+        }
+
         printCommonPDRHeader(pdr, output);
 
         switch (pdr->type)
@@ -1454,14 +1614,18 @@ class GetPDR : public CommandInterface
             case PLDM_TERMINUS_LOCATOR_PDR:
                 printTerminusLocatorPDR(data, output);
                 break;
-            case PLDM_NUMERIC_SENSOR_PDR:
-                printNumericSensorPDR(data, output);
-                break;
             case PLDM_STATE_SENSOR_PDR:
                 printStateSensorPDR(data, output);
                 break;
             case PLDM_NUMERIC_EFFECTER_PDR:
                 printNumericEffecterPDR(data, output);
+                break;
+            case PLDM_NUMERIC_SENSOR_PDR:
+                printNumericSensorPDR(data, respCnt, output);
+                break;
+            case PLDM_SENSOR_AUXILIARY_NAMES_PDR:
+            case PLDM_EFFECTER_AUXILIARY_NAMES_PDR:
+                printAuxNamePDR(data, output);
                 break;
             case PLDM_STATE_EFFECTER_PDR:
                 printStateEffecterPDR(data, output);
@@ -1472,8 +1636,8 @@ class GetPDR : public CommandInterface
             case PLDM_PDR_FRU_RECORD_SET:
                 printPDRFruRecordSet(data, output);
                 break;
-            case PLDM_OEM_PDR:
-                printPDROem(data, output);
+            case PLDM_COMPACT_NUMERIC_SENSOR_PDR:
+                printCompactNumericSensorPDR(data, output);
                 break;
             default:
                 break;
@@ -1482,9 +1646,20 @@ class GetPDR : public CommandInterface
     }
 
   private:
+    bool optTIDSet = false;
     uint32_t recordHandle;
     bool allPDRs;
     std::string pdrRecType;
+    std::optional<uint8_t> pdrTerminus;
+    std::optional<uint16_t> terminusHandle;
+    bool handleFound = false;
+    CLI::Option* getPDRGroupOption = nullptr;
+    uint32_t dataTransferHandle;
+    uint8_t operationFlag;
+    uint16_t requestCount;
+    uint16_t recordChangeNumber;
+    std::vector<uint8_t> recordData;
+    bool nextPartRequired;
 };
 
 class SetStateEffecter : public CommandInterface
@@ -1524,7 +1699,7 @@ class SetStateEffecter : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_STATES_REQ_BYTES);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
 
         if (effecterCount > maxEffecterCount ||
             effecterCount < minEffecterCount)
@@ -1602,7 +1777,7 @@ class SetNumericEffecterValue : public CommandInterface
         app->add_option("-s, --size", effecterDataSize,
                         "The bit width and format of the setting value for the "
                         "effecter. enum value: {uint8, sint8, uint16, sint16, "
-                        "uint32, sint32, uint64, sint64}\n")
+                        "uint32, sint32}\n")
             ->required();
         app->add_option("-d,--data", maxEffecterValue,
                         "The setting value of numeric effecter being "
@@ -1614,11 +1789,12 @@ class SetNumericEffecterValue : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) +
-            PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7);
+            PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3);
 
         uint8_t* effecterValue = (uint8_t*)&maxEffecterValue;
 
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
+
         size_t payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
 
         if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT16 ||
@@ -1630,11 +1806,6 @@ class SetNumericEffecterValue : public CommandInterface
             effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT32)
         {
             payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
-        }
-        if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT64 ||
-            effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT64)
-        {
-            payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
         }
         auto rc = encode_set_numeric_effecter_value_req(
             0, effecterId, effecterDataSize, effecterValue, request,
@@ -1696,7 +1867,7 @@ class GetStateSensorReadings : public CommandInterface
     {
         std::vector<uint8_t> requestMsg(
             sizeof(pldm_msg_hdr) + PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
-        auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
+        auto request = new (requestMsg.data()) pldm_msg;
 
         uint8_t reserved = 0;
         bitfield8_t bf;
@@ -1733,25 +1904,12 @@ class GetStateSensorReadings : public CommandInterface
                 output.emplace(("sensorOpState[" + std::to_string(i) + "]"),
                                sensorOpState.at(stateField[i].sensor_op_state));
             }
-
-            if (sensorPresState.contains(stateField[i].present_state))
-            {
-                output.emplace(("presentState[" + std::to_string(i) + "]"),
-                               sensorPresState.at(stateField[i].present_state));
-            }
-
-            if (sensorPresState.contains(stateField[i].previous_state))
-            {
-                output.emplace(
-                    ("previousState[" + std::to_string(i) + "]"),
-                    sensorPresState.at(stateField[i].previous_state));
-            }
-
-            if (sensorPresState.contains(stateField[i].event_state))
-            {
-                output.emplace(("eventState[" + std::to_string(i) + "]"),
-                               sensorPresState.at(stateField[i].event_state));
-            }
+            output.emplace(("presentState[" + std::to_string(i) + "]"),
+                           std::to_string(stateField[i].present_state));
+            output.emplace(("previousState[" + std::to_string(i) + "]"),
+                           std::to_string(stateField[i].previous_state));
+            output.emplace(("eventState[" + std::to_string(i) + "]"),
+                           std::to_string(stateField[i].event_state));
         }
 
         pldmtool::helper::DisplayInJson(output);
@@ -1762,10 +1920,368 @@ class GetStateSensorReadings : public CommandInterface
     uint8_t sensorRearm;
 };
 
+class GetSensorReading : public CommandInterface
+{
+  public:
+    ~GetSensorReading() = default;
+    GetSensorReading() = delete;
+    GetSensorReading(const GetSensorReading&) = delete;
+    GetSensorReading(GetSensorReading&&) = default;
+    GetSensorReading& operator=(const GetSensorReading&) = delete;
+    GetSensorReading& operator=(GetSensorReading&&) = delete;
+
+    explicit GetSensorReading(const char* type, const char* name,
+                              CLI::App* app) : CommandInterface(type, name, app)
+    {
+        app->add_option(
+               "-i, --sensor_id", sensorId,
+               "Sensor ID that is used to identify and access the sensor")
+            ->required();
+        app->add_option("-r, --rearm", rearm,
+                        "Manually re-arm EventState after "
+                        "responding to this request")
+            ->required();
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_SENSOR_READING_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        auto rc =
+            encode_get_sensor_reading_req(instanceId, sensorId, rearm, request);
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t completionCode = 0;
+        uint8_t sensorDataSize = 0;
+        uint8_t sensorOperationalState = 0;
+        uint8_t sensorEventMessageEnable = 0;
+        uint8_t presentState = 0;
+        uint8_t previousState = 0;
+        uint8_t eventState = 0;
+        std::array<uint8_t, sizeof(uint32_t)>
+            presentReading{}; // maximum size for the present Value is uint32
+                              // according to spec DSP0248
+
+        auto rc = decode_get_sensor_reading_resp(
+            responsePtr, payloadLength, &completionCode, &sensorDataSize,
+            &sensorOperationalState, &sensorEventMessageEnable, &presentState,
+            &previousState, &eventState, presentReading.data());
+
+        if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
+        {
+            std::cerr << "Response Message Error: "
+                      << "rc=" << rc << ",cc=" << (int)completionCode
+                      << std::endl;
+            return;
+        }
+
+        ordered_json output;
+        output["sensorDataSize"] =
+            getSensorState(sensorDataSize, &sensorDataSz);
+        output["sensorOperationalState"] =
+            getSensorState(sensorOperationalState, &sensorOpState);
+        output["sensorEventMessageEnable"] =
+            getSensorState(sensorEventMessageEnable, &sensorEventMsgEnable);
+        output["presentState"] = getSensorState(presentState, &sensorPresState);
+        output["previousState"] =
+            getSensorState(previousState, &sensorPresState);
+        output["eventState"] = getSensorState(eventState, &sensorPresState);
+
+        switch (sensorDataSize)
+        {
+            case PLDM_SENSOR_DATA_SIZE_UINT8:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<uint8_t*>(presentReading.data()));
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_SINT8:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<int8_t*>(presentReading.data()));
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_UINT16:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<uint16_t*>(presentReading.data()));
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_SINT16:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<int16_t*>(presentReading.data()));
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_UINT32:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<uint32_t*>(presentReading.data()));
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_SINT32:
+            {
+                output["presentReading"] =
+                    *(reinterpret_cast<int32_t*>(presentReading.data()));
+                break;
+            }
+            default:
+            {
+                std::cerr << "Unknown Sensor Data Size : "
+                          << static_cast<int>(sensorDataSize) << std::endl;
+                break;
+            }
+        }
+
+        pldmtool::helper::DisplayInJson(output);
+    }
+
+  private:
+    uint16_t sensorId;
+    uint8_t rearm;
+
+    const std::map<uint8_t, std::string> sensorDataSz = {
+        {PLDM_SENSOR_DATA_SIZE_UINT8, "uint8"},
+        {PLDM_SENSOR_DATA_SIZE_SINT8, "uint8"},
+        {PLDM_SENSOR_DATA_SIZE_UINT16, "uint16"},
+        {PLDM_SENSOR_DATA_SIZE_SINT16, "uint16"},
+        {PLDM_SENSOR_DATA_SIZE_UINT32, "uint32"},
+        {PLDM_SENSOR_DATA_SIZE_SINT32, "uint32"}};
+
+    static inline const std::map<uint8_t, std::string> sensorEventMsgEnable{
+        {PLDM_NO_EVENT_GENERATION, "Sensor No Event Generation"},
+        {PLDM_EVENTS_DISABLED, "Sensor Events Disabled"},
+        {PLDM_EVENTS_ENABLED, "Sensor Events Enabled"},
+        {PLDM_OP_EVENTS_ONLY_ENABLED, "Sensor Op Events Only Enabled"},
+        {PLDM_STATE_EVENTS_ONLY_ENABLED, "Sensor State Events Only Enabled"}};
+
+    std::string getSensorState(uint8_t state,
+                               const std::map<uint8_t, std::string>* cont)
+    {
+        auto typeString = std::to_string(state);
+        try
+        {
+            return cont->at(state);
+        }
+        catch (const std::out_of_range& e)
+        {
+            return typeString;
+        }
+    }
+};
+
+class GetStateEffecterStates : public CommandInterface
+{
+  public:
+    ~GetStateEffecterStates() = default;
+    GetStateEffecterStates() = delete;
+    GetStateEffecterStates(const GetStateEffecterStates&) = delete;
+    GetStateEffecterStates(GetStateEffecterStates&&) = default;
+    GetStateEffecterStates& operator=(const GetStateEffecterStates&) = delete;
+    GetStateEffecterStates& operator=(GetStateEffecterStates&&) = delete;
+
+    explicit GetStateEffecterStates(const char* type, const char* name,
+                                    CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option(
+               "-i, --effecter_id", effecter_id,
+               "Effecter ID that is used to identify and access the effecter")
+            ->required();
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        auto rc = encode_get_state_effecter_states_req(
+            instanceId, effecter_id, request,
+            PLDM_GET_STATE_EFFECTER_STATES_REQ_BYTES);
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        struct pldm_get_state_effecter_states_resp resp;
+        auto rc = decode_get_state_effecter_states_resp(responsePtr,
+                                                        payloadLength, &resp);
+
+        if (rc || resp.completion_code != PLDM_SUCCESS)
+        {
+            std::cerr << "Response Message Error: "
+                      << "rc=" << rc << ",cc="
+                      << static_cast<int>(resp.completion_code) << std::endl;
+            return;
+        }
+        ordered_json output;
+        auto comp_effecter_count = static_cast<int>(resp.comp_effecter_count);
+        output["compositeEffecterCount"] = comp_effecter_count;
+
+        for (auto i : std::views::iota(0, comp_effecter_count))
+        {
+            output[std::format("effecterOpState[{}])", i)] =
+                getEffecterOpState(resp.field[i].effecter_op_state);
+
+            output[std::format("pendingState[{}]", i)] =
+                resp.field[i].pending_state;
+
+            output[std::format("presentState[{}]", i)] =
+                resp.field[i].present_state;
+        }
+
+        pldmtool::helper::DisplayInJson(output);
+    }
+
+  private:
+    uint16_t effecter_id;
+};
+
+class GetNumericEffecterValue : public CommandInterface
+{
+  public:
+    ~GetNumericEffecterValue() = default;
+    GetNumericEffecterValue() = delete;
+    GetNumericEffecterValue(const GetNumericEffecterValue&) = delete;
+    GetNumericEffecterValue(GetNumericEffecterValue&&) = default;
+    GetNumericEffecterValue& operator=(const GetNumericEffecterValue&) = delete;
+    GetNumericEffecterValue& operator=(GetNumericEffecterValue&&) = delete;
+
+    explicit GetNumericEffecterValue(const char* type, const char* name,
+                                     CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option(
+               "-i, --effecter_id", effecterId,
+               "A handle that is used to identify and access the effecter")
+            ->required();
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_GET_NUMERIC_EFFECTER_VALUE_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        auto rc = encode_get_numeric_effecter_value_req(instanceId, effecterId,
+                                                        request);
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t completionCode = 0;
+        uint8_t effecterDataSize = 0;
+        uint8_t effecterOperationalState = 0;
+        std::array<uint8_t, sizeof(uint32_t)>
+            pendingValue{}; // maximum size for the pending Value is uint32
+                            // according to spec DSP0248
+        std::array<uint8_t, sizeof(uint32_t)>
+            presentValue{}; // maximum size for the present Value is uint32
+                            // according to spec DSP0248
+
+        auto rc = decode_get_numeric_effecter_value_resp(
+            responsePtr, payloadLength, &completionCode, &effecterDataSize,
+            &effecterOperationalState, pendingValue.data(),
+            presentValue.data());
+
+        if (rc != PLDM_SUCCESS || completionCode != PLDM_SUCCESS)
+        {
+            std::cerr << "Response Message Error: "
+                      << "rc=" << rc << ",cc="
+                      << static_cast<int>(completionCode) << std::endl;
+            return;
+        }
+
+        ordered_json output;
+        output["effecterDataSize"] = static_cast<int>(effecterDataSize);
+        output["effecterOperationalState"] =
+            getEffecterOpState(effecterOperationalState);
+
+        switch (effecterDataSize)
+        {
+            case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<uint8_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<uint8_t*>(presentValue.data()));
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<int8_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<int8_t*>(presentValue.data()));
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<uint16_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<uint16_t*>(presentValue.data()));
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<int16_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<int16_t*>(presentValue.data()));
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<uint32_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<uint32_t*>(presentValue.data()));
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            {
+                output["pendingValue"] =
+                    *(reinterpret_cast<int32_t*>(pendingValue.data()));
+                output["presentValue"] =
+                    *(reinterpret_cast<int32_t*>(presentValue.data()));
+                break;
+            }
+            default:
+            {
+                std::cerr << "Unknown Effecter Data Size : "
+                          << static_cast<int>(effecterDataSize) << std::endl;
+                break;
+            }
+        }
+
+        pldmtool::helper::DisplayInJson(output);
+    }
+
+  private:
+    uint16_t effecterId;
+};
+
 void registerCommand(CLI::App& app)
 {
     auto platform = app.add_subcommand("platform", "platform type command");
     platform->require_subcommand(1);
+
+    auto getEventReceiver = platform->add_subcommand(
+        "GetEventReceiver",
+        "Get the configured event receiver from a terminus");
+    commands.push_back(std::make_unique<GetEventReceiver>(
+        "platform", "getEventReceiver", getEventReceiver));
 
     auto getPDR =
         platform->add_subcommand("GetPDR", "get platform descriptor records");
@@ -1785,6 +2301,34 @@ void registerCommand(CLI::App& app)
         "GetStateSensorReadings", "get the state sensor readings");
     commands.push_back(std::make_unique<GetStateSensorReadings>(
         "platform", "getStateSensorReadings", getStateSensorReadings));
+
+    auto getNumericEffecterValue = platform->add_subcommand(
+        "GetNumericEffecterValue", "get the numeric effecter value");
+    commands.push_back(std::make_unique<GetNumericEffecterValue>(
+        "platform", "getNumericEffecterValue", getNumericEffecterValue));
+
+    auto getSensorReading = platform->add_subcommand(
+        "GetSensorReading", "get the numeric sensor reading");
+    commands.push_back(std::make_unique<GetSensorReading>(
+        "platform", "getSensorReading", getSensorReading));
+
+    auto getStateEffecterStates = platform->add_subcommand(
+        "GetStateEffecterStates", "get the state effecter states");
+    commands.push_back(std::make_unique<GetStateEffecterStates>(
+        "platform", "getStateEffecterStates", getStateEffecterStates));
+}
+
+void parseGetPDROption()
+{
+    for (const auto& command : commands)
+    {
+        if (command.get()->getPLDMType() == "platform" &&
+            command.get()->getCommandName() == "getPDR")
+        {
+            auto getPDR = dynamic_cast<GetPDR*>(command.get());
+            getPDR->parseGetPDROptions();
+        }
+    }
 }
 
 } // namespace platform
