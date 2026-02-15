@@ -581,11 +581,20 @@ exec::task<int> SensorManager::getSensorReading(
 
     if (rc)
     {
-        lg2::error(
-            "getSensorReading failed, tid={TID}, sensorId={SID}, rc={RC}.",
-            "TID", tid, "SID", sensorId, "RC", rc);
+        uint64_t key = (static_cast<uint64_t>(tid) << 16) |
+                       static_cast<uint32_t>(sensorId);
+        if (sensorErrorLogLimiter.shouldLog(key))
+        {
+            sensorErrorLogLimiter.recordLog(key);
+            lg2::error(
+                "getSensorReading failed, tid={TID}, sensorId={SID}, rc={RC} (further failures for this sensor suppressed for 2 min).",
+                "TID", tid, "SID", sensorId, "RC", rc);
+        }
         co_return rc;
     }
+
+    sensorErrorLogLimiter.clear(
+        (static_cast<uint64_t>(tid) << 16) | static_cast<uint32_t>(sensorId));
 
     if (termini.find(tid) == termini.end())
     {

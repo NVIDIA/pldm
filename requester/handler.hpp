@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/instance_id.hpp"
+#include "common/log_rate_limit.hpp"
 #include "common/mctp_error_handling.hpp"
 #include "common/transport.hpp"
 #include "common/types.hpp"
@@ -177,9 +178,14 @@ class Handler
         auto eid = key.eid;
         if (this->handlers.contains(key))
         {
-            info(
-                "Instance ID expiry for EID '{EID}' using InstanceID '{INSTANCEID}'",
-                "EID", key.eid, "INSTANCEID", key.instanceId);
+            bool shouldLog = eidTimeoutLogLimiter.shouldLog(eid);
+            if (shouldLog)
+            {
+                eidTimeoutLogLimiter.recordLog(eid);
+                info(
+                    "Instance ID expiry for EID '{EID}' using InstanceID '{INSTANCEID}'",
+                    "EID", key.eid, "INSTANCEID", key.instanceId);
+            }
             auto& [request, responseHandler,
                    timerInstance] = this->handlers[key];
             request->stop();
@@ -191,18 +197,23 @@ class Handler
                     "RC", rc);
             }
 
-            auto transportErrorIt = transportErrors.find(eid);
-            if (transportErrorIt != transportErrors.end())
+            if (shouldLog)
             {
-                const auto& errInfo = transportErrorIt->second;
-                error("Request to EID {EID} failed due to MCTP transport error "
-                      "(errno={ERRNO})",
-                      "EID", eid, "ERRNO", errInfo.errorCode);
-            }
-            else
-            {
-                error("Request to EID {EID} timed out - no response received",
-                      "EID", eid);
+                auto transportErrorIt = transportErrors.find(eid);
+                if (transportErrorIt != transportErrors.end())
+                {
+                    const auto& errInfo = transportErrorIt->second;
+                    error(
+                        "Request to EID {EID} failed due to MCTP transport error "
+                        "(errno={ERRNO})",
+                        "EID", eid, "ERRNO", errInfo.errorCode);
+                }
+                else
+                {
+                    error(
+                        "Request to EID {EID} timed out - no response received",
+                        "EID", eid);
+                }
             }
 
             // Call response handler with an empty response to indicate failure
@@ -437,6 +448,7 @@ class Handler
             responseHandler(eid, response, respMsgLen);
             instanceIdDb.free(key.eid, key.instanceId);
             handlers.erase(key);
+            eidTimeoutLogLimiter.clear(eid);
 
             endpointMessageQueues[eid]->activeRequest = false;
             /* try to send new request if the endpoint is free */
@@ -493,6 +505,11 @@ class Handler
      *  (error stored) when instance ID expires.
      */
     std::unordered_map<mctp_eid_t, TransportErrorInfo> transportErrors;
+
+    /** @brief Rate-limit timeout/expiry logs per EID to avoid journal flooding
+     *  when a terminus (e.g. T2/SatMC) repeatedly fails to respond.
+     */
+    pldm::utils::LogRateLimiter<mctp_eid_t> eidTimeoutLogLimiter;
 
     /** @brief Remove request entry for which the instance ID expired
      *
