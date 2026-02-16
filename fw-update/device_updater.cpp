@@ -751,8 +751,12 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                 for (size_t compIndex = 0;
                      compIndex < applicableComponents.size(); compIndex++)
                 {
-                    updateManager->createMessageRegistry(
-                        eid, fwDeviceIDRecord, compIndex, activateSuccessful);
+                    if (componentUpdaterMap[compIndex].second == true)
+                    {
+                        updateManager->createMessageRegistry(
+                            eid, fwDeviceIDRecord, compIndex,
+                            activateSuccessful);
+                    }
                 }
 
                 updateManager->updateDeviceCompletion(eid, true,
@@ -797,10 +801,13 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         for (size_t compIndex = 0; compIndex < applicableComponents.size();
              compIndex++)
         {
-            updateManager->createMessageRegistry(
-                eid, fwDeviceIDRecord, compIndex, awaitToActivate,
-                updateManager->getActivationMethod(
-                    componentActivationModifications));
+            if (componentUpdaterMap[compIndex].second == true)
+            {
+                updateManager->createMessageRegistry(
+                    eid, fwDeviceIDRecord, compIndex, awaitToActivate,
+                    updateManager->getActivationMethod(
+                        componentActivationModifications));
+            }
         }
 
         updateManager->updateDeviceCompletion(eid, true, successCompNames);
@@ -1073,8 +1080,11 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
             for (size_t compIndex = 0; compIndex < applicableComponents.size();
                  compIndex++)
             {
-                updateManager->createMessageRegistry(
-                    eid, fwDeviceIDRecord, compIndex, activateSuccessful);
+                if (componentUpdaterMap[compIndex].second == true)
+                {
+                    updateManager->createMessageRegistry(
+                        eid, fwDeviceIDRecord, compIndex, activateSuccessful);
+                }
             }
 
             if (updateManager && updateManager->refreshSingleEndpointCallback)
