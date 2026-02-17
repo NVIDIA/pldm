@@ -1,0 +1,60 @@
+{
+    "entries": [
+        {
+            "match": {
+                "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                "Properties": [
+                    {
+                        "Name": "EID",
+                        "Type": "y",
+                        "Value": 9
+                    }
+                ]
+            },
+            "device_inventory": {
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/system/chassis/HGX_ERoT_BMC_0"
+                }
+            }
+        },
+        {
+            "match": {
+                "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                "Properties": [
+                    {
+                        "Name": "EID",
+                        "Type": "u",
+                        "Value": 14
+                    }
+                ]
+            },
+            "firmware_inventory": {
+                "create": {
+                    "HGX_SBIOS_FMC_0": {
+                        "component_id": 32
+                    }
+                }
+            },
+            "component_info": {
+                "HGX_SBIOS_FMC_0": 32
+            }
+        },
+        {
+            "match": {
+                "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                "Properties": [
+                    {
+                        "Name": "EID",
+                        "Type": "u",
+                        "Value": 300
+                    }
+                ]
+            },
+            "device_inventory": {
+                "create": {
+                    "object_path": "/xyz/openbmc_project/inventory/system/chassis/INVALID_EID_SHOULD_BE_SKIPPED"
+                }
+            }
+        }
+    ]
+}

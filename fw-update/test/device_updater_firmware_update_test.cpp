@@ -304,8 +304,9 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            deviceUpdater.sendPassCompTableRequest(offset);
+        auto co = deviceUpdater.sendPassCompTableRequest(offset);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -330,9 +331,11 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = deviceUpdater.processPassCompTableResponse(
+        auto co = deviceUpdater.processPassCompTableResponse(
             eid, requestMsg, sizeof(struct pldm_pass_component_table_resp),
             retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -360,10 +363,11 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            componentUpdater.processUpdateComponentResponse(
-                eid, requestMsg, sizeof(struct pldm_update_component_resp),
-                retryCount);
+        auto co = componentUpdater.processUpdateComponentResponse(
+            eid, requestMsg, sizeof(struct pldm_update_component_resp),
+            retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -433,9 +437,11 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = deviceUpdater.processRequestUpdateResponse(
+        auto co = deviceUpdater.processRequestUpdateResponse(
             eid, requestMsg, sizeof(struct pldm_request_update_resp),
             retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -456,7 +462,194 @@ TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
         .WillRepeatedly(testing::Return(1));
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            componentUpdater.sendUpdateComponentRequest(componentOffset);
+        auto co = componentUpdater.sendUpdateComponentRequest(componentOffset);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       requestFwData_decode_and_encode_failure_branches)
+{
+    mctp_eid_t eid = 0;
+    size_t componentOffset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> reqFwDataReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                decode_request_firmware_data_req(_, _, _, _))
+        .WillRepeatedly(testing::Return(1));
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_firmware_data_resp(_, _, _, _))
+        .WillRepeatedly(testing::Return(1));
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       requestFwData_last_chunk_path_with_mocked_decode)
+{
+    mctp_eid_t eid = 0;
+    size_t componentOffset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> reqFwDataReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                decode_request_firmware_data_req(_, _, _, _))
+        .WillRepeatedly(
+            testing::DoAll(testing::SetArgPointee<2>(1008),
+                           testing::SetArgPointee<3>(32), testing::Return(0)));
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_firmware_data_resp(_, _, _, _))
+        .WillRepeatedly(testing::Return(0));
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       requestFwData_outOfRange_with_encodeFailure_branch)
+{
+    mctp_eid_t eid = 0;
+    size_t componentOffset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> reqFwDataReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                decode_request_firmware_data_req(_, _, _, _))
+        .WillRepeatedly(
+            testing::DoAll(testing::SetArgPointee<2>(2048),
+                           testing::SetArgPointee<3>(32), testing::Return(0)));
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_firmware_data_resp(_, _, _, _))
+        .WillRepeatedly(testing::Return(1));
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       requestFwData_lengthAboveMax_with_encodeFailure_branch)
+{
+    mctp_eid_t eid = 0;
+    size_t componentOffset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> reqFwDataReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                decode_request_firmware_data_req(_, _, _, _))
+        .WillRepeatedly(
+            testing::DoAll(testing::SetArgPointee<2>(0),
+                           testing::SetArgPointee<3>(600), testing::Return(0)));
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_firmware_data_resp(_, _, _, _))
+        .WillRepeatedly(testing::Return(1));
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       requestFwData_lastChunk_withoutReqTimer_stillStartsCompleteTimer)
+{
+    mctp_eid_t eid = 0;
+    size_t componentOffset = 0;
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> reqFwDataReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                decode_request_firmware_data_req(_, _, _, _))
+        .WillRepeatedly(
+            testing::DoAll(testing::SetArgPointee<2>(1008),
+                           testing::SetArgPointee<3>(32), testing::Return(0)));
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_firmware_data_resp(_, _, _, _))
+        .WillRepeatedly(testing::Return(0));
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(componentUpdater.reqFwDataTimer, nullptr);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(DeviceUpdaterTestWithMockedFirmwareUpdateFunctions,
+       deviceUpdaterHandlerResetsFinishedHandle)
+{
+    mctp_eid_t eid = 0;
+    EXPECT_CALL(*_mockedFirmwareUpdateFunction,
+                encode_request_update_req(_, _, _, _, _, _, _, _, _, _))
+        .WillRepeatedly(testing::Return(PLDM_ERROR));
+
+    DeviceUpdater deviceUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                                compInfo, compIdNameInfo, 512, &updateManager);
+    deviceUpdater.deviceUpdaterHandle.emplace();
+    auto& [scope, rcOpt] = *deviceUpdater.deviceUpdaterHandle;
+    (void)scope;
+    rcOpt.emplace(PLDM_SUCCESS);
+
+    EXPECT_NO_THROW({ deviceUpdater.deviceUpdaterHandler(); });
+    EXPECT_TRUE(deviceUpdater.deviceUpdaterHandle.has_value());
+    auto& [newScope, newRcOpt] = *deviceUpdater.deviceUpdaterHandle;
+    (void)newScope;
+    EXPECT_TRUE(newRcOpt.has_value());
 }

@@ -15,7 +15,16 @@
  * limitations under the License.
  */
 #include "fake_update_manager.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "fw-update/activation.hpp"
+#undef private
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
@@ -40,6 +49,16 @@ class ActivationTest : public testing::Test
     ActivationTest() : updateManager() {}
 
     ~ActivationTest() override = default;
+
+    void SetUp() override
+    {
+        testing::securityChecksStatus = true;
+        testing::updateManagerActivatePackageResult =
+            software::Activation::Activations::Active;
+        testing::resultPerformSecurityChecksOnComplete =
+            software::Activation::Activations::NotReady;
+        testing::resetTestState();
+    }
 
     UpdateManager updateManager;
 };
@@ -88,6 +107,128 @@ TEST_F(ActivationTest, Activation_status_active)
     EXPECT_EQ(resultState, stateActive);
 }
 
+TEST_F(ActivationTest, Activation_status_active_recreatesDeleteWhenMissing)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    activation.deleteImpl.reset();
+    ASSERT_EQ(activation.deleteImpl, nullptr);
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Active);
+    EXPECT_EQ(result, Server::Activation::Activations::Active);
+    EXPECT_NE(activation.deleteImpl, nullptr);
+}
+
+TEST_F(ActivationTest, DISABLED_DeleteInvokesUpdateManagerClearActivationInfo)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    Delete deleteObj(busMock, objPath, &updateManager);
+    deleteObj.delete_();
+
+    EXPECT_TRUE(testing::clearActivationInfoCalled);
+    EXPECT_EQ(testing::clearActivationInfoCallCount, 1U);
+}
+
+TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenSecurityChecksFail)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{
+        "/xyz/openbmc_project/software/security_checks_fail"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
+
+    testing::securityChecksStatus = false;
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
+              Server::Activation::Activations::Failed);
+    EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+}
+
+TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageFails)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{
+        "/xyz/openbmc_project/software/activate_package_fail"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
+
+    testing::securityChecksStatus = true;
+    testing::updateManagerActivatePackageResult =
+        software::Activation::Activations::Failed;
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+}
+
+TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageSucceeds)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{
+        "/xyz/openbmc_project/software/activate_package_success"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
+
+    testing::securityChecksStatus = true;
+    testing::updateManagerActivatePackageResult =
+        software::Activation::Activations::Active;
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+}
+
+TEST_F(ActivationTest,
+       DISABLED_ActivationActivatingWhenSecurityCheckCallbackErrors)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{
+        "/xyz/openbmc_project/software/security_check_callback_error"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
+
+    testing::triggerSecurityChecksError = true;
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+}
+
 TEST_F(ActivationTest,
        DISABLED_Activation_status_activating_updateManager_returns_active)
 {
@@ -102,6 +243,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     _activation.activation(activationState);
     EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
@@ -122,6 +264,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     testing::updateManagerActivatePackageResult =
         software::Activation::Activations::Activating;
@@ -146,6 +289,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     testing::securityChecksStatus = false;
     _activation.activation(activationState);
@@ -166,6 +310,7 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_active)
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);
@@ -186,6 +331,7 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_failed)
         Server::Activation::Activations::Failed;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);
@@ -206,6 +352,7 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_ready)
         Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
+    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
 
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);

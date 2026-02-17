@@ -934,7 +934,6 @@ void* runPldmdMock(void*)
 
     stdplus::signal::block(SIGUSR1);
 
-    // fwManager.get()->getUpdateManager().processPackage("test_pkg");
     // auto& deviceUpdaterMap =
     // fwManager.get()->getUpdateManager().getDeviceUpdaterMap();
     // deviceUpdaterMap[DEV_EID] = DeviceUpdater(17, );

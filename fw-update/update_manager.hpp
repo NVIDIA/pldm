@@ -31,10 +31,10 @@
 #include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
 
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 #ifdef OEM_NVIDIA
 #include "oem-nvidia/debug_token.hpp"

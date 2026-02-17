@@ -431,6 +431,7 @@ void PackageSignatureSha384::calculateDigestAsync(
             return;
         }
         auto event = sdeventplus::Event::get_default();
+        requestChunkCalculation.reset();
 
         // Initialize all data required to perform digest calculations using
         // chunks
@@ -444,19 +445,18 @@ void PackageSignatureSha384::calculateDigestAsync(
 
         try
         {
-            requestChunkCalculation = std::make_unique<sdbusplus::Timer>(
+            auto timer = std::make_unique<sdbusplus::Timer>(
                 event.get(),
                 std::bind(&PackageSignatureSha384::handleChunkProcessing,
                           this));
-            requestChunkCalculation->start(
-                std::chrono::milliseconds(chunkTimerInterval), true);
+            timer->start(std::chrono::milliseconds(chunkTimerInterval), true);
+            requestChunkCalculation = std::move(timer);
         }
         catch (const std::exception& e)
         {
             onError(
                 std::string("Failed to add chunk processing to event loop: ") +
                 e.what());
-            this->requestChunkCalculation.reset();
         }
     }
     else
@@ -495,14 +495,18 @@ void PackageSignatureSha384::handleChunkProcessing()
             {
                 lg2::error("Error in EVP_DigestFinal");
                 this->onError("Failed to finalize the digest");
-                this->requestChunkCalculation->stop();
-                this->requestChunkCalculation.reset();
+                if (this->requestChunkCalculation)
+                {
+                    this->requestChunkCalculation->stop();
+                }
                 return;
             }
 
             this->onComplete(*this->hash);
-            this->requestChunkCalculation->stop();
-            this->requestChunkCalculation.reset();
+            if (this->requestChunkCalculation)
+            {
+                this->requestChunkCalculation->stop();
+            }
             return;
         }
 
@@ -535,8 +539,10 @@ void PackageSignatureSha384::handleChunkProcessing()
         this->onError(
             std::string("Exception occurred during chunk processing: ") +
             e.what());
-        this->requestChunkCalculation->stop();
-        this->requestChunkCalculation.reset();
+        if (this->requestChunkCalculation)
+        {
+            this->requestChunkCalculation->stop();
+        }
         return;
     }
 }

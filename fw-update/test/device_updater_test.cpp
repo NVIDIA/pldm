@@ -38,6 +38,7 @@
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <sdeventplus/test/sdevent.hpp>
+#include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -145,8 +146,9 @@ TEST_F(DeviceUpdaterTest,
     size_t offset = 0;
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            deviceUpdater.sendPassCompTableRequest(offset);
+        auto co = deviceUpdater.sendPassCompTableRequest(offset);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -166,8 +168,9 @@ TEST_F(DeviceUpdaterTest, private_method_sendPassCompTableRequest_PLDM_START)
         {}};
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            deviceUpdater.sendPassCompTableRequest(offset);
+        auto co = deviceUpdater.sendPassCompTableRequest(offset);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -182,9 +185,11 @@ TEST_F(DeviceUpdaterTest, passCompTable)
     uint8_t retryCount = 0;
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = deviceUpdater.processPassCompTableResponse(
+        auto co = deviceUpdater.processPassCompTableResponse(
             eid, requestMsg, sizeof(struct pldm_pass_component_table_resp),
             retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -206,10 +211,11 @@ TEST_F(DeviceUpdaterTest, activateFirmware)
     uint8_t retryCount = 0;
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            deviceUpdater.processActivateFirmwareResponse(
-                eid, requestMsg, sizeof(struct pldm_activate_firmware_resp),
-                retryCount);
+        auto co = deviceUpdater.processActivateFirmwareResponse(
+            eid, requestMsg, sizeof(struct pldm_activate_firmware_resp),
+            retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -337,4 +343,305 @@ TEST_F(DeviceUpdaterTest, updateComponentCompletion)
         [[maybe_unused]] auto co = deviceUpdater.updateComponentCompletion(
             0, ComponentUpdateStatus::UpdateFailed);
     });
+}
+
+TEST_F(DeviceUpdaterTest, requestFwDataWithoutComponentUpdaterMap)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                      sizeof(pldm_request_firmware_data_req)>
+        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                     0x00, 0x00, 0x02, 0x00, 0x00};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    auto response = deviceUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(DeviceUpdaterTest, transferCompleteWithoutComponentUpdaterMap)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response = deviceUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(DeviceUpdaterTest, verifyCompleteWithoutComponentUpdaterMap)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    auto response = deviceUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(DeviceUpdaterTest, applyCompleteWithoutComponentUpdaterMap)
+{
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    auto response = deviceUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(DeviceUpdaterTest, requestFwDataWithComponentUpdaterMapRoutesToComponent)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    compUpdater->createRequestFwDataTimer();
+    compUpdater->componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) +
+                                      sizeof(pldm_request_firmware_data_req)>
+        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                     0x00, 0x00, 0x02, 0x00, 0x00};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    auto response = deviceUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(DeviceUpdaterTest,
+       transferCompleteWithComponentUpdaterMapRoutesToComponent)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    compUpdater->componentUpdaterState.prev =
+        ComponentUpdaterSequence::TransferComplete;
+    compUpdater->componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response = deviceUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(DeviceUpdaterTest,
+       verifyCompleteWithComponentUpdaterMapRoutesToComponent)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    compUpdater->componentUpdaterState.prev =
+        ComponentUpdaterSequence::VerifyComplete;
+    compUpdater->componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    auto response = deviceUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(DeviceUpdaterTest, applyCompleteWithComponentUpdaterMapRoutesToComponent)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    compUpdater->componentUpdaterState.prev =
+        ComponentUpdaterSequence::ApplyComplete;
+    compUpdater->componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    auto response = deviceUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(DeviceUpdaterTest, deviceUpdaterHandlerReturnsWhenUpdateAlreadyPending)
+{
+    deviceUpdater.deviceUpdaterHandle.emplace();
+    EXPECT_NO_THROW({ deviceUpdater.deviceUpdaterHandler(); });
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsFalseWhenCompInfoEmpty)
+{
+    ComponentInfo emptyCompInfo{};
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                               emptyCompInfo, compIdNameInfo, 512,
+                               &updateManager);
+    EXPECT_FALSE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsFalseWhenComponentMissingInCompInfo)
+{
+    ComponentInfo mismatchedCompInfo{};
+    mismatchedCompInfo[{20, 200}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                               mismatchedCompInfo, compIdNameInfo, 512,
+                               &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_SELF_CONTAINED);
+
+    EXPECT_FALSE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsFalseWhenSelfContainedNotSupported)
+{
+    ComponentInfo nonSelfContainedCompInfo{};
+    nonSelfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"), static_cast<uint16_t>(0));
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
+                               nonSelfContainedCompInfo, compIdNameInfo, 512,
+                               &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_SELF_CONTAINED);
+
+    EXPECT_FALSE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest, isLiveActivationSupportedReturnsTrueForImmediate)
+{
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::Immediate);
+    ComponentInfo selfContainedCompInfo{};
+    selfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
+                               localCompImageInfos, selfContainedCompInfo,
+                               compIdNameInfo, 512, &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_SELF_CONTAINED);
+
+    EXPECT_TRUE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsTrueWhenPackageRequestsSelfContained)
+{
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::OnReset);
+    ComponentInfo selfContainedCompInfo{};
+    selfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    std::get<static_cast<size_t>(
+        ComponentImageInfoPos::ReqCompActivationMethodPos)>(
+        localCompImageInfos[0])
+        .set(PLDM_ACTIVATION_SELF_CONTAINED);
+
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
+                               localCompImageInfos, selfContainedCompInfo,
+                               compIdNameInfo, 512, &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_SELF_CONTAINED);
+
+    EXPECT_TRUE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsFalseWhenActivationModBitNotSet)
+{
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::Immediate);
+    ComponentInfo selfContainedCompInfo{};
+    selfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    std::get<static_cast<size_t>(
+        ComponentImageInfoPos::ReqCompActivationMethodPos)>(
+        localCompImageInfos[0])
+        .set(PLDM_ACTIVATION_SELF_CONTAINED);
+
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
+                               localCompImageInfos, selfContainedCompInfo,
+                               compIdNameInfo, 512, &updateManager);
+    localUpdater.componentActivationModifications.value = 0;
+
+    EXPECT_FALSE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(DeviceUpdaterTest,
+       isLiveActivationSupportedReturnsFalseWhenNoImmediateAndNoPackageRequest)
+{
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::OnReset);
+    ComponentInfo selfContainedCompInfo{};
+    selfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    std::get<static_cast<size_t>(
+        ComponentImageInfoPos::ReqCompActivationMethodPos)>(
+        localCompImageInfos[0])
+        .reset();
+
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
+                               localCompImageInfos, selfContainedCompInfo,
+                               compIdNameInfo, 512, &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_SELF_CONTAINED);
+
+    EXPECT_FALSE(localUpdater.isLiveActivationSupported());
 }

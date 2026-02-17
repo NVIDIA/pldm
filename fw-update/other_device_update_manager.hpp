@@ -119,8 +119,10 @@ class OtherDeviceUpdateManager
      */
     explicit OtherDeviceUpdateManager(
         sdbusplus::bus::bus& bus, UpdateManager* upMan,
-        std::vector<sdbusplus::message::object_path> targets) :
-        updateManager(upMan), bus(bus), timer(nullptr), targets(targets)
+        std::vector<sdbusplus::message::object_path> targets,
+        pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler()) :
+        updateManager(upMan), dbusHandler(dbusHandler), validTargetCount(0),
+        bus(bus), timer(nullptr), targets(targets)
     {
         /* cache number of valid targets */
         updateValidTargets();
@@ -193,6 +195,8 @@ class OtherDeviceUpdateManager
     size_t getValidTargets(void);
 
   private:
+    static pldm::utils::DBusHandlerInterface& defaultDbusHandler();
+
     /**
      * @brief Start timer for interface addition
      *
@@ -291,6 +295,7 @@ class OtherDeviceUpdateManager
         const std::string& objPath, const UUID& uuid);
 
     UpdateManager* updateManager;
+    pldm::utils::DBusHandlerInterface& dbusHandler;
 
     /**
      * @brief Cache of the valid targets for non-pldm updates

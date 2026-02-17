@@ -114,3 +114,33 @@ TEST(error_handling,
     EXPECT_EQ(outoemMessageError, oemMessageError);
     EXPECT_EQ(outoemResolution, oemResolution);
 }
+
+TEST(error_handling,
+     getCompCompatibilityMessage_update_component_unknown_response_code)
+{
+    const bool expectedStatus = false;
+
+    auto [outmessageStatus, outoemMessageId, outoemMessageError,
+          outoemResolution] =
+        getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT, 0xFF);
+
+    EXPECT_EQ(outmessageStatus, expectedStatus);
+    EXPECT_TRUE(outoemMessageId.empty());
+    EXPECT_TRUE(outoemMessageError.empty());
+    EXPECT_TRUE(outoemResolution.empty());
+}
+
+TEST(error_handling, getCompCompatibilityMessage_unknown_command)
+{
+    const bool expectedStatus = false;
+
+    auto [outmessageStatus, outoemMessageId, outoemMessageError,
+          outoemResolution] =
+        getCompCompatibilityMessage(PLDM_REQUEST_UPDATE,
+                                    PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL);
+
+    EXPECT_EQ(outmessageStatus, expectedStatus);
+    EXPECT_TRUE(outoemMessageId.empty());
+    EXPECT_TRUE(outoemMessageError.empty());
+    EXPECT_TRUE(outoemResolution.empty());
+}

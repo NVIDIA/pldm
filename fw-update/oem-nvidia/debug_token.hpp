@@ -63,10 +63,11 @@ class DebugToken
      * @param[in] bus - sdbusplus referance
      * @param[in] updateManager - update manager reference
      */
-    explicit DebugToken(sdbusplus::bus::bus& bus,
-                        UpdateManager* updateManager) :
-        updateManager(updateManager), bus(bus), timer(nullptr),
-        tokenStatus(false)
+    explicit DebugToken(
+        sdbusplus::bus::bus& bus, UpdateManager* updateManager,
+        pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler()) :
+        updateManager(updateManager), bus(bus), dbusHandler(dbusHandler),
+        timer(nullptr), tokenStatus(false)
     {}
 
     /**
@@ -92,6 +93,8 @@ class DebugToken
     }
 
   private:
+    static pldm::utils::DBusHandlerInterface& defaultDbusHandler();
+
     UpdateManager* updateManager;
     /* install or erase token path */
     std::string tokenPath;
@@ -102,6 +105,7 @@ class DebugToken
      *
      */
     sdbusplus::bus::bus& bus;
+    pldm::utils::DBusHandlerInterface& dbusHandler;
 
     /**
      * @brief matcher rule to check for activation dbus object change

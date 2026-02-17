@@ -29,8 +29,6 @@
 #include <bitset>
 #include <cassert>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
 #include <ranges>
 #include <string>
 
@@ -41,8 +39,6 @@ namespace pldm
 
 namespace fw_update
 {
-
-namespace fs = std::filesystem;
 
 /** @brief Check if package descriptors are a subset of device descriptor
  *
@@ -1172,6 +1168,11 @@ void UpdateManager::clearFirmwareUpdatePackage()
 void UpdateManager::setActivationStatus(
     const software::Activation::Activations& state)
 {
+    if (!activation)
+    {
+        error("Activation object is not initialized");
+        return;
+    }
     activation->activation(state);
 }
 

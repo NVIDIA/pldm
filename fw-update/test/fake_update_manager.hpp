@@ -20,9 +20,13 @@
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
-#include "fw-update/device_updater.hpp"
-#include "fw-update/package_parser.hpp"
+#define UpdateManager RealUpdateManagerForActivationTest
 #include "fw-update/update_manager.hpp"
+#undef UpdateManager
+
+#include <xyz/openbmc_project/Software/Activation/server.hpp>
+
+#include <functional>
 
 namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
@@ -34,6 +38,38 @@ software::Activation::Activations updateManagerActivatePackageResult =
 software::Activation::Activations resultPerformSecurityChecksOnComplete =
     software::Activation::Activations::NotReady;
 bool securityChecksStatus = true;
+bool startPLDMUpdateCalled = false;
+bool startNonPLDMUpdateCalled = false;
+bool setActivationStatusCalled = false;
+software::Activation::Activations startNonPLDMUpdateResult =
+    software::Activation::Activations::Active;
+software::Activation::Activations lastSetActivationStatus =
+    software::Activation::Activations::NotReady;
+bool triggerSecurityChecksError = false;
+std::string securityChecksErrorMessage = "security checks callback error";
+bool clearActivationInfoCalled = false;
+bool resetActivationBlocksTransitionCalled = false;
+bool clearFirmwareUpdatePackageCalled = false;
+size_t clearFirmwareUpdatePackageCallCount = 0;
+size_t resetActivationBlocksTransitionCallCount = 0;
+size_t clearActivationInfoCallCount = 0;
+
+void resetTestState()
+{
+    startPLDMUpdateCalled = false;
+    startNonPLDMUpdateCalled = false;
+    setActivationStatusCalled = false;
+    startNonPLDMUpdateResult = software::Activation::Activations::Active;
+    lastSetActivationStatus = software::Activation::Activations::NotReady;
+    triggerSecurityChecksError = false;
+    securityChecksErrorMessage = "security checks callback error";
+    clearActivationInfoCalled = false;
+    resetActivationBlocksTransitionCalled = false;
+    clearFirmwareUpdatePackageCalled = false;
+    clearFirmwareUpdatePackageCallCount = 0;
+    resetActivationBlocksTransitionCallCount = 0;
+    clearActivationInfoCallCount = 0;
+}
 
 } // namespace testing
 
@@ -48,31 +84,48 @@ class FakeUpdateManager
 {
   public:
     bool fwDebug = true;
-    RefreshSingleEndpointCallback refreshSingleEndpointCallback = nullptr;
 
     software::Activation::Activations activatePackage()
     {
         return testing::updateManagerActivatePackageResult;
     }
 
+    void startPLDMUpdate()
+    {
+        testing::startPLDMUpdateCalled = true;
+    }
+
+    software::Activation::Activations startNonPLDMUpdate()
+    {
+        testing::startNonPLDMUpdateCalled = true;
+        return testing::startNonPLDMUpdateResult;
+    }
+
+    void setActivationStatus(const software::Activation::Activations& state)
+    {
+        testing::setActivationStatusCalled = true;
+        testing::lastSetActivationStatus = state;
+    }
+
     void clearActivationInfo()
     {
+        testing::clearActivationInfoCalled = true;
+        testing::clearActivationInfoCallCount++;
         return;
     }
 
     void resetActivationBlocksTransition()
     {
+        testing::resetActivationBlocksTransitionCalled = true;
+        testing::resetActivationBlocksTransitionCallCount++;
         return;
     }
 
     void clearFirmwareUpdatePackage()
     {
+        testing::clearFirmwareUpdatePackageCalled = true;
+        testing::clearFirmwareUpdatePackageCallCount++;
         return;
-    }
-    int processPackage(
-        [[maybe_unused]] const std::filesystem::path& packageFilePath)
-    {
-        return 0;
     }
     void closePackage()
     {
@@ -80,10 +133,14 @@ class FakeUpdateManager
     }
     void performSecurityChecksAsync(
         std::function<void(bool)> onComplete,
-        [[maybe_unused]] std::function<void(const std::string& errorMsg)>
-            onError)
+        std::function<void(const std::string& errorMsg)> onError)
     {
-        onComplete = this->performSecurityChecksOnComplete;
+        if (testing::triggerSecurityChecksError)
+        {
+            onError(testing::securityChecksErrorMessage);
+            return;
+        }
+        this->performSecurityChecksOnComplete(testing::securityChecksStatus);
         onComplete(testing::securityChecksStatus);
     }
     std::function<void(bool)> performSecurityChecksOnComplete =

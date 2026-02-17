@@ -26,16 +26,25 @@
 #pragma clang diagnostic pop
 #endif
 #include "fw-update/component_updater.hpp"
+#include "fw-update/dbusutil.hpp"
 #include "fw-update/device_updater.hpp"
+#include "fw-update/error_handling.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mocked_firmware_update_function.hpp"
 #include "requester/handler.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <endian.h>
+#include <fcntl.h>
+#include <systemd/sd-event.h>
+#include <unistd.h>
+
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <sdeventplus/test/sdevent.hpp>
+
+#include <filesystem>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -44,6 +53,65 @@ using ::testing::_;
 using namespace pldm;
 using namespace pldm::fw_update;
 using namespace std::chrono;
+
+namespace
+{
+void resetEncodeMockControls();
+
+int processPackageStream(UpdateManager& updateManager,
+                         const std::filesystem::path& packagePath)
+{
+    if (!updateManager.updater)
+    {
+        return -1;
+    }
+
+    updateManager.updater->clearImageStream();
+    int imageFd = open(packagePath.c_str(), O_RDONLY);
+    if (imageFd < 0)
+    {
+        return -1;
+    }
+
+    if (!updateManager.updater->mmapFile.map(imageFd, true))
+    {
+        return -1;
+    }
+
+    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
+        updateManager.updater->mmapFile.data(),
+        updateManager.updater->mmapFile.size());
+    if (!updateManager.updater->mmapStream->good())
+    {
+        return -1;
+    }
+
+    try
+    {
+        if (!updateManager.otherDeviceUpdateManager)
+        {
+            updateManager.otherDeviceUpdateManager =
+                std::make_unique<OtherDeviceUpdateManager>(
+                    pldm::utils::DBusHandler::getBus(), &updateManager,
+                    std::vector<sdbusplus::message::object_path>{});
+        }
+
+        auto task =
+            updateManager.processStream(*updateManager.updater->mmapStream,
+                                        updateManager.updater->mmapFile.size());
+        auto rc = stdexec::sync_wait(std::move(task));
+        if (!rc.has_value() || !updateManager.parser)
+        {
+            return -1;
+        }
+        return 0;
+    }
+    catch (const std::exception&)
+    {
+        return -1;
+    }
+}
+} // namespace
 
 class ComponentUpdaterTest : public testing::Test
 {
@@ -81,6 +149,233 @@ class ComponentUpdaterTest : public testing::Test
                           {66666, "ComponentName4"}};
     }
 
+    void SetUp() override
+    {
+        resetEncodeMockControls();
+    }
+
+    void TearDown() override
+    {
+        drainPendingAsyncWork();
+        finalizeAsyncHandle(componentUpdater.getStatusTaskHandle);
+        finalizeAsyncHandle(componentUpdater.discoverMctpTerminusTaskHandle);
+        finalizeAsyncHandle(componentUpdater.updateCompletionCoHandle);
+        finalizeAsyncHandle(deviceUpdater.deviceUpdaterHandle);
+    }
+
+    void initializeFromParsedPackage()
+    {
+        ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+        ASSERT_NE(updateManager.parser, nullptr);
+        const auto& records = updateManager.parser->getFwDeviceIDRecords();
+        ASSERT_FALSE(records.empty());
+        fwDeviceIDRecord = records.front();
+
+        compImageInfos = updateManager.parser->getComponentImageInfos();
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(fwDeviceIDRecord);
+        ASSERT_FALSE(applicableComponents.empty());
+
+        const auto& comp = compImageInfos[applicableComponents.front()];
+        auto compKey = std::make_pair(std::get<0>(comp), std::get<1>(comp));
+        compInfo[compKey] =
+            std::make_tuple(static_cast<uint8_t>(1), std::get<7>(comp),
+                            static_cast<uint16_t>(0));
+    }
+
+    void runEvent(uint64_t timeoutUsec = 200000)
+    {
+        EXPECT_GE(sd_event_run(event.get(), timeoutUsec), 0);
+    }
+
+    bool requesterPending() const
+    {
+        if (!reqHandler.handlers.empty() ||
+            !reqHandler.removeRequestContainer.empty())
+        {
+            return true;
+        }
+
+        return std::ranges::any_of(
+            reqHandler.endpointMessageQueues, [](const auto& queueEntry) {
+                const auto& queue = queueEntry.second;
+                return queue->activeRequest || !queue->requestQueue.empty();
+            });
+    }
+
+    void expireOutstandingRequests()
+    {
+        std::vector<requester::RequestKey> keys;
+        keys.reserve(reqHandler.handlers.size());
+        for (const auto& [key, value] : reqHandler.handlers)
+        {
+            (void)value;
+            if (!reqHandler.removeRequestContainer.contains(key))
+            {
+                keys.push_back(key);
+            }
+        }
+
+        for (const auto& key : keys)
+        {
+            if (reqHandler.handlers.contains(key) &&
+                !reqHandler.removeRequestContainer.contains(key))
+            {
+                reqHandler.instanceIdExpiryCallBack(key);
+            }
+        }
+    }
+
+    void flushReadyEvents(int iterations = 8)
+    {
+        for (int i = 0; i < iterations; ++i)
+        {
+            runEvent(0);
+        }
+    }
+
+    void drainPendingAsyncWork()
+    {
+        auto settleAsyncHandle = [](auto& handle) {
+            if (!handle.has_value())
+            {
+                return false;
+            }
+
+            auto& [scope, rcOpt] = *handle;
+            if (!rcOpt.has_value())
+            {
+                return true;
+            }
+
+            stdexec::sync_wait(scope.on_empty());
+            handle.reset();
+            return false;
+        };
+
+        for (int i = 0; i < 64; ++i)
+        {
+            flushReadyEvents();
+
+            if (requesterPending())
+            {
+                expireOutstandingRequests();
+            }
+
+            const bool handlePending =
+                settleAsyncHandle(componentUpdater.getStatusTaskHandle) ||
+                settleAsyncHandle(
+                    componentUpdater.discoverMctpTerminusTaskHandle) ||
+                settleAsyncHandle(componentUpdater.updateCompletionCoHandle) ||
+                settleAsyncHandle(deviceUpdater.deviceUpdaterHandle);
+
+            flushReadyEvents();
+
+            if (!requesterPending() && !handlePending &&
+                !componentUpdater.getStatusTaskHandle.has_value() &&
+                !componentUpdater.discoverMctpTerminusTaskHandle.has_value() &&
+                !componentUpdater.updateCompletionCoHandle.has_value() &&
+                !deviceUpdater.deviceUpdaterHandle.has_value())
+            {
+                flushReadyEvents();
+                if (!requesterPending() &&
+                    !componentUpdater.getStatusTaskHandle.has_value() &&
+                    !componentUpdater.discoverMctpTerminusTaskHandle
+                         .has_value() &&
+                    !componentUpdater.updateCompletionCoHandle.has_value() &&
+                    !deviceUpdater.deviceUpdaterHandle.has_value())
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    template <typename Handle>
+    void finalizeAsyncHandle(Handle& handle)
+    {
+        if (!handle.has_value())
+        {
+            return;
+        }
+
+        auto& [scope, rcOpt] = *handle;
+        if (rcOpt.has_value())
+        {
+            stdexec::sync_wait(scope.on_empty());
+        }
+
+        handle.reset();
+    }
+
+    template <typename Handle>
+    void waitForAsyncHandle(Handle& handle)
+    {
+        if (!handle.has_value())
+        {
+            return;
+        }
+
+        for (int i = 0; i < 64; ++i)
+        {
+            auto& [scope, rcOpt] = *handle;
+            if (rcOpt.has_value())
+            {
+                stdexec::sync_wait(scope.on_empty());
+                handle.reset();
+                return;
+            }
+
+            if (!reqHandler.handlers.empty())
+            {
+                expireOutstandingRequests();
+            }
+
+            flushReadyEvents();
+        }
+    }
+
+    template <typename Handle>
+    void waitForAsyncResult(Handle& handle)
+    {
+        if (!handle.has_value())
+        {
+            return;
+        }
+
+        for (int i = 0; i < 64; ++i)
+        {
+            auto& [scope, rcOpt] = *handle;
+            (void)scope;
+            if (rcOpt.has_value())
+            {
+                return;
+            }
+
+            if (!reqHandler.handlers.empty())
+            {
+                expireOutstandingRequests();
+            }
+
+            flushReadyEvents();
+        }
+    }
+
+    void waitForDiscoverTask()
+    {
+        waitForAsyncHandle(componentUpdater.discoverMctpTerminusTaskHandle);
+    }
+
+    void waitForGetStatusTask()
+    {
+        waitForAsyncHandle(componentUpdater.getStatusTaskHandle);
+    }
+
+    void waitForUpdateCompletionTask()
+    {
+        waitForAsyncHandle(componentUpdater.updateCompletionCoHandle);
+    }
+
     std::ifstream package;
     FirmwareDeviceIDRecord fwDeviceIDRecord;
     ComponentImageInfos compImageInfos;
@@ -96,6 +391,196 @@ class ComponentUpdaterTest : public testing::Test
     DeviceUpdater deviceUpdater;
     ComponentUpdater componentUpdater;
 };
+
+namespace
+{
+
+bool gFailEncodeRequestFwDataResp = false;
+int gEncodeRequestFwDataRespRc = PLDM_ERROR;
+bool gFailEncodeTransferCompleteResp = false;
+int gEncodeTransferCompleteRespRc = PLDM_ERROR;
+bool gFailEncodeVerifyCompleteResp = false;
+int gEncodeVerifyCompleteRespRc = PLDM_ERROR;
+bool gFailEncodeApplyCompleteResp = false;
+int gEncodeApplyCompleteRespRc = PLDM_ERROR;
+
+void resetEncodeMockControls()
+{
+    gFailEncodeRequestFwDataResp = false;
+    gEncodeRequestFwDataRespRc = PLDM_ERROR;
+    gFailEncodeTransferCompleteResp = false;
+    gEncodeTransferCompleteRespRc = PLDM_ERROR;
+    gFailEncodeVerifyCompleteResp = false;
+    gEncodeVerifyCompleteRespRc = PLDM_ERROR;
+    gFailEncodeApplyCompleteResp = false;
+    gEncodeApplyCompleteRespRc = PLDM_ERROR;
+}
+
+} // namespace
+
+extern "C" int encode_request_firmware_data_resp(
+    uint8_t instance_id, uint8_t completion_code, struct pldm_msg* msg,
+    size_t payload_length)
+{
+    if (gFailEncodeRequestFwDataResp)
+    {
+        return gEncodeRequestFwDataRespRc;
+    }
+    if (msg == nullptr || !payload_length)
+    {
+        return PLDM_ERROR_INVALID_DATA;
+    }
+
+    pldm_header_info header{};
+    header.instance = instance_id;
+    header.msg_type = PLDM_RESPONSE;
+    header.pldm_type = PLDM_FWUP;
+    header.command = PLDM_REQUEST_FIRMWARE_DATA;
+    const auto rc = pack_pldm_header(&header, &(msg->hdr));
+    if (rc)
+    {
+        return rc;
+    }
+
+    msg->payload[0] = completion_code;
+    return PLDM_SUCCESS;
+}
+
+extern "C" int encode_transfer_complete_resp(
+    uint8_t instance_id, uint8_t completion_code, struct pldm_msg* msg,
+    size_t payload_length)
+{
+    if (gFailEncodeTransferCompleteResp)
+    {
+        return gEncodeTransferCompleteRespRc;
+    }
+    if (msg == nullptr)
+    {
+        return PLDM_ERROR_INVALID_DATA;
+    }
+    if (payload_length != sizeof(completion_code))
+    {
+        return PLDM_ERROR_INVALID_LENGTH;
+    }
+
+    pldm_header_info header{};
+    header.instance = instance_id;
+    header.msg_type = PLDM_RESPONSE;
+    header.pldm_type = PLDM_FWUP;
+    header.command = PLDM_TRANSFER_COMPLETE;
+    const auto rc = pack_pldm_header(&header, &(msg->hdr));
+    if (rc)
+    {
+        return rc;
+    }
+    msg->payload[0] = completion_code;
+    return PLDM_SUCCESS;
+}
+
+extern "C" int encode_verify_complete_resp(
+    uint8_t instance_id, uint8_t completion_code, struct pldm_msg* msg,
+    size_t payload_length)
+{
+    if (gFailEncodeVerifyCompleteResp)
+    {
+        return gEncodeVerifyCompleteRespRc;
+    }
+    if (msg == nullptr)
+    {
+        return PLDM_ERROR_INVALID_DATA;
+    }
+    if (payload_length != sizeof(completion_code))
+    {
+        return PLDM_ERROR_INVALID_LENGTH;
+    }
+
+    pldm_header_info header{};
+    header.instance = instance_id;
+    header.msg_type = PLDM_RESPONSE;
+    header.pldm_type = PLDM_FWUP;
+    header.command = PLDM_VERIFY_COMPLETE;
+    const auto rc = pack_pldm_header(&header, &(msg->hdr));
+    if (rc)
+    {
+        return rc;
+    }
+    msg->payload[0] = completion_code;
+    return PLDM_SUCCESS;
+}
+
+extern "C" int encode_apply_complete_resp(
+    uint8_t instance_id, uint8_t completion_code, struct pldm_msg* msg,
+    size_t payload_length)
+{
+    if (gFailEncodeApplyCompleteResp)
+    {
+        return gEncodeApplyCompleteRespRc;
+    }
+    if (msg == nullptr)
+    {
+        return PLDM_ERROR_INVALID_DATA;
+    }
+    if (payload_length != sizeof(completion_code))
+    {
+        return PLDM_ERROR_INVALID_LENGTH;
+    }
+
+    pldm_header_info header{};
+    header.instance = instance_id;
+    header.msg_type = PLDM_RESPONSE;
+    header.pldm_type = PLDM_FWUP;
+    header.command = PLDM_APPLY_COMPLETE;
+    const auto rc = pack_pldm_header(&header, &(msg->hdr));
+    if (rc)
+    {
+        return rc;
+    }
+    msg->payload[0] = completion_code;
+    return PLDM_SUCCESS;
+}
+
+static std::array<uint8_t,
+                  sizeof(pldm_msg_hdr) + sizeof(pldm_request_firmware_data_req)>
+    makeRequestFwDataReq(uint32_t offset, uint32_t length)
+{
+    std::array<uint8_t,
+               sizeof(pldm_msg_hdr) + sizeof(pldm_request_firmware_data_req)>
+        reqFwDataReq{0x8A, 0x05, 0x15, 0x00, 0x00, 0x00,
+                     0x00, 0x00, 0x02, 0x00, 0x00};
+    auto* payload = reinterpret_cast<pldm_request_firmware_data_req*>(
+        reqFwDataReq.data() + sizeof(pldm_msg_hdr));
+    payload->offset = htole32(offset);
+    payload->length = htole32(length);
+    return reqFwDataReq;
+}
+
+static std::pair<std::vector<uint8_t>, size_t> makeUpdateComponentResp(
+    uint8_t completionCode, uint8_t compCompatibilityResp,
+    uint8_t compCompatibilityRespCode)
+{
+    size_t payloadLen = sizeof(pldm_update_component_resp);
+    std::vector<uint8_t> response(sizeof(pldm_msg_hdr) + payloadLen);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+
+    pldm_header_info header{};
+    header.instance = 0x0A;
+    header.msg_type = PLDM_RESPONSE;
+    header.pldm_type = PLDM_FWUP;
+    header.command = PLDM_UPDATE_COMPONENT;
+    auto rc = pack_pldm_header(&header, &(responseMsg->hdr));
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    auto* responseData =
+        reinterpret_cast<pldm_update_component_resp*>(responseMsg->payload);
+    responseData->completion_code = completionCode;
+    responseData->comp_compatibility_resp = compCompatibilityResp;
+    responseData->comp_compatibility_resp_code = compCompatibilityRespCode;
+    responseData->update_option_flags_enabled.value = htole32(0);
+    responseData->time_before_req_fw_data = htole16(0);
+
+    response.resize(sizeof(pldm_msg_hdr) + payloadLen);
+    return {response, payloadLen};
+}
 
 // TEST_F(ComponentUpdaterTest, ReadPackage512B)
 // {
@@ -272,6 +757,23 @@ TEST_F(ComponentUpdaterTest, transferComplete)
     EXPECT_EQ(responseError[sizeof(pldm_msg_hdr)], completionCode);
 }
 
+TEST_F(ComponentUpdaterTest, transferCompleteDecodeFailureSchedulesDeferred)
+{
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x16};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    auto response = componentUpdater.transferComplete(requestMsg, 0);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
 TEST_F(ComponentUpdaterTest, verifyComplete)
 {
     mctp_eid_t eid = 0x1;
@@ -337,6 +839,42 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
     EXPECT_EQ(responseError[sizeof(pldm_msg_hdr)], completionCode);
 }
 
+TEST_F(ComponentUpdaterTest, verifyCompleteDecodeFailureSchedulesDeferred)
+{
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::VerifyComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x17};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    auto response = componentUpdater.verifyComplete(requestMsg, 0);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, verifyCompleteFailureSchedulesDeferred)
+{
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::VerifyComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x01};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    auto response =
+        componentUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
 TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
 {
     mctp_eid_t eid = 0x1;
@@ -359,11 +897,16 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
         eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
         compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
 
-    EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            componentUpdater.processCancelUpdateComponentResponse(
-                eid, nullptr, 0);
-    });
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidResponse{
+        0x80, 0x05, 0x1c};
+    auto responseMsg =
+        reinterpret_cast<const pldm_msg*>(invalidResponse.data());
+
+    auto co = componentUpdater.processCancelUpdateComponentResponse(
+        eid, responseMsg, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_NE(std::get<0>(*rc), PLDM_SUCCESS);
 }
 
 TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
@@ -380,10 +923,31 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
         reinterpret_cast<const pldm_msg*>(cancelCompUpdateResponse.data());
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co =
-            componentUpdater.processCancelUpdateComponentResponse(
-                eid, cancelCompUpdateResponseMsg, sizeof(uint8_t));
+        auto co = componentUpdater.processCancelUpdateComponentResponse(
+            eid, cancelCompUpdateResponseMsg, sizeof(uint8_t));
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
+}
+
+TEST_F(ComponentUpdaterTest, cancelUpdateComponentCompletionCodeFailure)
+{
+    mctp_eid_t eid = 0x1;
+    size_t componentOffset = 0;
+    ComponentUpdater componentUpdater(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        cancelCompUpdateResponse{0x80, 0x05, 0x1c, 0x01};
+
+    auto cancelCompUpdateResponseMsg =
+        reinterpret_cast<const pldm_msg*>(cancelCompUpdateResponse.data());
+
+    auto co = componentUpdater.processCancelUpdateComponentResponse(
+        eid, cancelCompUpdateResponseMsg, sizeof(uint8_t));
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
 }
 
 TEST_F(ComponentUpdaterTest, command_UpdateComponent)
@@ -481,9 +1045,11 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     auto pldmmsg = reinterpret_cast<const pldm_msg*>(getStatusResponse.data());
 
     EXPECT_NO_THROW({
-        [[maybe_unused]] auto co = componentUpdater.processGetStatusResponse(
+        auto co = componentUpdater.processGetStatusResponse(
             eid, pldmmsg, sizeof(pldm_get_status_resp), currentFDState,
             progressPercent, retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
     });
 }
 
@@ -498,4 +1064,1135 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.startComponentUpdater();
     });
+}
+
+TEST_F(ComponentUpdaterTest, requestFwData_commandNotExpectedForInvalidState)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::UpdateComponent);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+}
+
+TEST_F(ComponentUpdaterTest, requestFwData_invalidTransferLength)
+{
+    auto reqFwDataReq = makeRequestFwDataReq(0, 513);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)],
+              PLDM_FWUP_INVALID_TRANSFER_LENGTH);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataBelowBaselineRejectedByDecode)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE - 4);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+}
+
+TEST_F(ComponentUpdaterTest,
+       requestFwData_invalidTransferLengthAboveMaxTransfer)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, componentUpdater.maxTransferSize + 1);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)],
+              PLDM_FWUP_INVALID_TRANSFER_LENGTH);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataInvalidStateWhenNotInUpdateComponent)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::Invalid;
+
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataSuccessWhenDebugDisabled)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.updateManager->fwDebug = false;
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest, transferCompleteWithoutPreCreatedCompleteTimer)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestFwDataMsg =
+        reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto reqFwResp = componentUpdater.requestFwData(
+        requestFwDataMsg, sizeof(pldm_request_firmware_data_req));
+    ASSERT_EQ(reqFwResp[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+
+    componentUpdater.interRequestSamplesGlobal = 0;
+    componentUpdater.totalInterRequestTimeGlobal = std::chrono::milliseconds{0};
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto transferMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response =
+        componentUpdater.transferComplete(transferMsg, sizeof(uint8_t));
+
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(componentUpdater.reqFwDataTimer, nullptr);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwData_outOfRange)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(3000, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_DATA_OUT_OF_RANGE);
+}
+
+TEST_F(ComponentUpdaterTest,
+       requestFwData_missingTimerReturnsCommandNotExpected)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwData_successWithTimer)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(response.size(), sizeof(pldm_msg_hdr) + sizeof(uint8_t) +
+                                   PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataExercisesLoggingBranches)
+{
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    auto reqStart = makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto reqRetry = makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto reqForward = makeRequestFwDataReq(2 * PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+                                           PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto reqBackward = makeRequestFwDataReq(
+        PLDM_FWUP_BASELINE_TRANSFER_SIZE / 2, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+
+    auto responseStart = componentUpdater.requestFwData(
+        reinterpret_cast<const pldm_msg*>(reqStart.data()),
+        sizeof(pldm_request_firmware_data_req));
+    auto responseRetry = componentUpdater.requestFwData(
+        reinterpret_cast<const pldm_msg*>(reqRetry.data()),
+        sizeof(pldm_request_firmware_data_req));
+    auto responseForward = componentUpdater.requestFwData(
+        reinterpret_cast<const pldm_msg*>(reqForward.data()),
+        sizeof(pldm_request_firmware_data_req));
+    auto responseBackward = componentUpdater.requestFwData(
+        reinterpret_cast<const pldm_msg*>(reqBackward.data()),
+        sizeof(pldm_request_firmware_data_req));
+
+    EXPECT_EQ(responseStart[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(responseRetry[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(responseForward[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(responseBackward[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataRetryStateBranch)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::RequestFirmwareData;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::TransferComplete;
+
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest,
+       requestFwDataLastChunkWithoutReqTimerWithCompleteTimerPresent)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(1024 - PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+                             PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    componentUpdater.reqFwDataTimer.reset();
+
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(componentUpdater.reqFwDataTimer, nullptr);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest,
+       transferCompleteStopsReqTimerWhenCompleteTimerMissing)
+{
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.completeCommandsTimeoutTimer.reset();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(componentUpdater.reqFwDataTimer, nullptr);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest, transferCompleteLogsAverageWhenSamplesPresent)
+{
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.completeCommandsTimeoutTimer.reset();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    componentUpdater.interRequestSamplesGlobal = 3;
+    componentUpdater.totalInterRequestTimeGlobal = std::chrono::milliseconds{9};
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest, transferComplete_retryStateBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::TransferComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::VerifyComplete;
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest,
+       transferCompleteInvalidStateReturnsCommandNotExpected)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::RequestFirmwareData;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::ApplyComplete;
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(ComponentUpdaterTest, verifyComplete_retryStateBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::VerifyComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::ApplyComplete;
+
+    auto response =
+        componentUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest,
+       verifyCompleteInvalidStateReturnsCommandNotExpected)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::TransferComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::RequestFirmwareData;
+
+    auto response =
+        componentUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(ComponentUpdaterTest, applyComplete_retryStateBranch)
+{
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::ApplyComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+
+    auto response = componentUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteInvalidStateReturnsCommandNotExpected)
+{
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::TransferComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::RequestFirmwareData;
+
+    auto response = componentUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(ComponentUpdaterTest, processGetStatusResponseDecodeFailureAtRetryLimit)
+{
+    uint8_t currentFDState = 0;
+    uint8_t progressPercent = 0;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidGetStatusResp{
+        0x01, 0x00, 0x1A};
+    auto pldmmsg =
+        reinterpret_cast<const pldm_msg*>(invalidGetStatusResp.data());
+    auto co = componentUpdater.processGetStatusResponse(
+        0x1, pldmmsg, 0, currentFDState, progressPercent,
+        maxDecodeFailureRetries);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR_INVALID_DATA);
+}
+
+TEST_F(ComponentUpdaterTest, processGetStatusResponseCompletionCodeFailure)
+{
+    uint8_t currentFDState = 0;
+    uint8_t progressPercent = 0;
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_get_status_resp)>
+        getStatusResponseWithError{0x01, 0x00, 0x1a, 0x01, 0x00, 0x03, 0x03,
+                                   0x09, 0x65, 0x05, 0x00, 0x00, 0x00, 0x00};
+    auto pldmmsg =
+        reinterpret_cast<const pldm_msg*>(getStatusResponseWithError.data());
+
+    auto co = componentUpdater.processGetStatusResponse(
+        0x1, pldmmsg, sizeof(pldm_get_status_resp), currentFDState,
+        progressPercent, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+}
+
+TEST_F(ComponentUpdaterTest, updateComponentCompleteReturnsWhenHandlePending)
+{
+    componentUpdater.updateCompletionCoHandle.emplace();
+    EXPECT_NO_THROW({
+        componentUpdater.updateComponentComplete(
+            ComponentUpdateStatus::UpdateFailed);
+    });
+}
+
+TEST_F(ComponentUpdaterTest, getStatusReturnsWhenHandlePending)
+{
+    componentUpdater.getStatusTaskHandle.emplace();
+    EXPECT_NO_THROW({ componentUpdater.GetStatus([](uint8_t) {}); });
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseCompletionCodeFailure)
+{
+    initializeFromParsedPackage();
+    auto [responseBytes,
+          payloadLen] = makeUpdateComponentResp(PLDM_SUCCESS, 0, 0);
+    responseBytes[sizeof(pldm_msg_hdr)] = PLDM_ERROR;
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+
+    auto co = componentUpdater.processUpdateComponentResponse(
+        0x1, responseMsg, payloadLen, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+    EXPECT_EQ(componentUpdater.componentUpdaterState.current,
+              ComponentUpdaterSequence::Invalid);
+    EXPECT_NE(componentUpdater.pldmRequest, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseDecodeFailureBelowRetryLimit)
+{
+    initializeFromParsedPackage();
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidResp{
+        0x01, 0x00, 0x14};
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(invalidResp.data());
+
+    auto co =
+        componentUpdater.processUpdateComponentResponse(0x1, responseMsg, 0, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR_INVALID_DATA);
+    EXPECT_EQ(componentUpdater.componentUpdaterState.current,
+              ComponentUpdaterSequence::UpdateComponent);
+    EXPECT_EQ(componentUpdater.pldmRequest, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseDecodeFailureAtRetryLimit)
+{
+    initializeFromParsedPackage();
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidResp{
+        0x01, 0x00, 0x14};
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(invalidResp.data());
+
+    auto co = componentUpdater.processUpdateComponentResponse(
+        0x1, responseMsg, 0, maxDecodeFailureRetries);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR_INVALID_DATA);
+    EXPECT_EQ(componentUpdater.componentUpdaterState.current,
+              ComponentUpdaterSequence::Invalid);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseCompatibilitySkipSchedulesCompletion)
+{
+    initializeFromParsedPackage();
+    auto [responseBytes, payloadLen] = makeUpdateComponentResp(
+        PLDM_SUCCESS, 1, PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+
+    auto co = componentUpdater.processUpdateComponentResponse(
+        0x1, responseMsg, payloadLen, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+    EXPECT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseCompatibilityFailureSchedulesCompletion)
+{
+    initializeFromParsedPackage();
+    auto [responseBytes, payloadLen] = makeUpdateComponentResp(
+        PLDM_SUCCESS, 1, PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+
+    auto co = componentUpdater.processUpdateComponentResponse(
+        0x1, responseMsg, payloadLen, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+    EXPECT_EQ(componentUpdater.componentUpdaterState.current,
+              ComponentUpdaterSequence::Invalid);
+    EXPECT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataTimerCallbackTriggersCancelPath)
+{
+    initializeFromParsedPackage();
+    componentUpdater.createRequestFwDataTimer();
+    ASSERT_NE(componentUpdater.reqFwDataTimer, nullptr);
+
+    EXPECT_NO_THROW({
+        componentUpdater.reqFwDataTimer->start(std::chrono::seconds(0), false);
+        runEvent();
+        runEvent();
+    });
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeCommandsTimeoutTimerCallbackTriggersCancelPath)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    EXPECT_NO_THROW({
+        componentUpdater.completeCommandsTimeoutTimer->start(
+            std::chrono::seconds(0), false);
+        runEvent();
+        runEvent();
+    });
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteSuccessSchedulesGetStatusPath)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::ApplyComplete);
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    auto response = componentUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    ASSERT_TRUE(static_cast<bool>(componentUpdater.pendingPostResponseAction));
+    EXPECT_EQ(componentUpdater.pldmRequest, nullptr);
+    componentUpdater.onResponseSendComplete(true);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    EXPECT_NO_THROW({
+        runEvent();
+        runEvent();
+    });
+    waitForGetStatusTask();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteDecodeFailureSchedulesDeferred)
+{
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::ApplyComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x18};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    auto response = componentUpdater.applyComplete(requestMsg, 0);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteFailureSchedulesDeferred)
+{
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::ApplyComplete);
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x02, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    auto response = componentUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       DISABLED_sendGetStatusRequestInvokesCallbackOnFailure)
+{
+    bool callbackCalled = false;
+    uint8_t callbackValue = 0xff;
+    auto co = componentUpdater.sendGetStatusRequest([&](uint8_t state) {
+        callbackCalled = true;
+        callbackValue = state;
+    });
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_TRUE(callbackCalled);
+    EXPECT_EQ(callbackValue, 0);
+    EXPECT_NE(std::get<0>(*rc), PLDM_SUCCESS);
+}
+
+TEST_F(ComponentUpdaterTest, logComponentUpdateDurationNoStartTimeNoop)
+{
+    componentUpdater.componentUpdateStartTime =
+        std::chrono::steady_clock::time_point{};
+    EXPECT_NO_THROW({ componentUpdater.logComponentUpdateDuration(); });
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteSucceededStatusHandlerStopsTimer)
+{
+    initializeFromParsedPackage();
+    bitfield16_t compActivationModification{0x1};
+    componentUpdater.componentUpdateStartTime =
+        std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_TRUE(componentUpdater.completeCommandsTimeoutTimer != nullptr);
+
+    EXPECT_NO_THROW({
+        componentUpdater.applyCompleteSucceededStatusHandler(
+            "v1", compActivationModification);
+    });
+    EXPECT_EQ(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       applyCompleteSucceededStatusHandlerWithoutTimerStillSchedulesCompletion)
+{
+    initializeFromParsedPackage();
+    bitfield16_t compActivationModification{0x1};
+    componentUpdater.completeCommandsTimeoutTimer.reset();
+    componentUpdater.componentUpdateStartTime =
+        std::chrono::steady_clock::now() - std::chrono::seconds(1);
+
+    EXPECT_NO_THROW({
+        componentUpdater.applyCompleteSucceededStatusHandler(
+            "v1", compActivationModification);
+    });
+    EXPECT_EQ(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeFailedStatusHandlerReturnsWhenDiscoverTaskPending)
+{
+    componentUpdater.discoverMctpTerminusTaskHandle.emplace();
+    EXPECT_NO_THROW({
+        componentUpdater.completeFailedStatusHandler(
+            transferFailed, PLDM_TRANSFER_COMPLETE, PLDM_ERROR);
+    });
+    EXPECT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeFailedStatusHandlerStopsExistingCompleteCommandsTimer)
+{
+    initializeFromParsedPackage();
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeFailedStatusHandler(
+        transferFailed, PLDM_TRANSFER_COMPLETE, PLDM_ERROR);
+
+    EXPECT_EQ(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    for (int i = 0; i < 6; ++i)
+    {
+        runEvent();
+    }
+    EXPECT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataDecodeFailureReturnsInvalidData)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x15};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    auto response = componentUpdater.requestFwData(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataLastChunkStartsCompleteTimer)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(1024 - PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+                             PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_SUCCESS);
+    EXPECT_EQ(componentUpdater.reqFwDataTimer, nullptr);
+    EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest, getStatusStoresCompletionResult)
+{
+    componentUpdater.getStatusTaskHandle.reset();
+    componentUpdater.GetStatus([](uint8_t) {});
+    for (int i = 0; i < 6; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.getStatusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.getStatusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+}
+
+TEST_F(ComponentUpdaterTest, getStatusReplacesCompletedHandle)
+{
+    auto& [scope, rcOpt] = componentUpdater.getStatusTaskHandle.emplace();
+    (void)scope;
+    rcOpt.emplace(PLDM_SUCCESS);
+
+    componentUpdater.GetStatus([](uint8_t) {});
+    for (int i = 0; i < 6; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.getStatusTaskHandle.has_value());
+    auto& [newScope, newRcOpt] = *componentUpdater.getStatusTaskHandle;
+    (void)newScope;
+    EXPECT_TRUE(newRcOpt.has_value());
+}
+
+TEST_F(ComponentUpdaterTest, updateComponentCompleteStoresCompletionResult)
+{
+    initializeFromParsedPackage();
+    componentUpdater.updateCompletionCoHandle.reset();
+    componentUpdater.updateComponentComplete(
+        ComponentUpdateStatus::UpdateFailed);
+    waitForAsyncResult(componentUpdater.updateCompletionCoHandle);
+
+    ASSERT_TRUE(componentUpdater.updateCompletionCoHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.updateCompletionCoHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, updateComponentCompleteReplacesCompletedHandle)
+{
+    initializeFromParsedPackage();
+    auto& [scope, rcOpt] = componentUpdater.updateCompletionCoHandle.emplace();
+    (void)scope;
+    rcOpt.emplace(PLDM_SUCCESS);
+
+    componentUpdater.updateComponentComplete(
+        ComponentUpdateStatus::UpdateFailed);
+    waitForAsyncResult(componentUpdater.updateCompletionCoHandle);
+
+    ASSERT_TRUE(componentUpdater.updateCompletionCoHandle.has_value());
+    auto& [newScope, newRcOpt] = *componentUpdater.updateCompletionCoHandle;
+    (void)newScope;
+    EXPECT_TRUE(newRcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataTimerCallbackCompletesCancelTask)
+{
+    initializeFromParsedPackage();
+    componentUpdater.createRequestFwDataTimer();
+    ASSERT_NE(componentUpdater.reqFwDataTimer, nullptr);
+
+    componentUpdater.reqFwDataTimer->start(std::chrono::seconds(0), false);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeFailedStatusHandlerResetsCompletedCancelTaskHandle)
+{
+    auto& [scope,
+           rcOpt] = componentUpdater.discoverMctpTerminusTaskHandle.emplace();
+    (void)scope;
+    rcOpt.emplace(PLDM_SUCCESS);
+
+    componentUpdater.completeFailedStatusHandler(
+        transferFailed, PLDM_TRANSFER_COMPLETE, PLDM_ERROR);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, completeCommandsTimerApplyStateCompletesCancelTask)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::ApplyComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeCommandsTimerVerifyStateCompletesCancelTask)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::VerifyComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeCommandsTimerInvalidStateCompletesCancelTask)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::Invalid);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, handleLoggingPrintsAverageForMegabyteBoundary)
+{
+    componentUpdater.lastRequestTime =
+        std::chrono::steady_clock::now() - std::chrono::milliseconds(2);
+    componentUpdater.interRequestSamples = 1;
+    componentUpdater.totalInterRequestTime = std::chrono::milliseconds(2);
+    componentUpdater.lastAvgPrintedMBIndex = 0;
+
+    EXPECT_NO_THROW({
+        componentUpdater.handleLogging(1024 * 1024,
+                                       PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    });
+    EXPECT_EQ(componentUpdater.lastAvgPrintedMBIndex, 1);
+}
+
+TEST_F(ComponentUpdaterTest, requestFwDataSuccessPathEncodeFailureBranch)
+{
+    auto reqFwDataReq =
+        makeRequestFwDataReq(0, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(reqFwDataReq.data());
+
+    componentUpdater.createRequestFwDataTimer();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+
+    gFailEncodeRequestFwDataResp = true;
+    gEncodeRequestFwDataRespRc = PLDM_ERROR;
+
+    auto response = componentUpdater.requestFwData(
+        requestMsg, sizeof(pldm_request_firmware_data_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeRequestFwDataResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, transferCompleteDecodeFailureEncodeFailureBranch)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x16};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    gFailEncodeTransferCompleteResp = true;
+    gEncodeTransferCompleteRespRc = PLDM_ERROR;
+
+    auto response = componentUpdater.transferComplete(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+
+    gFailEncodeTransferCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, transferCompleteRetryPathEncodeFailureBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::TransferComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::VerifyComplete;
+
+    gFailEncodeTransferCompleteResp = true;
+    gEncodeTransferCompleteRespRc = PLDM_ERROR;
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeTransferCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, transferCompleteSuccessPathEncodeFailureBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    componentUpdater.interRequestSamplesGlobal = 0;
+    componentUpdater.totalInterRequestTimeGlobal = std::chrono::milliseconds{0};
+
+    gFailEncodeTransferCompleteResp = true;
+    gEncodeTransferCompleteRespRc = PLDM_ERROR;
+
+    auto response =
+        componentUpdater.transferComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeTransferCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, verifyCompleteDecodeFailureEncodeFailureBranch)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::VerifyComplete);
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidReq{
+        0x8A, 0x05, 0x17};
+    auto requestMsg = reinterpret_cast<const pldm_msg*>(invalidReq.data());
+
+    gFailEncodeVerifyCompleteResp = true;
+    gEncodeVerifyCompleteRespRc = PLDM_ERROR;
+
+    auto response = componentUpdater.verifyComplete(requestMsg, 0);
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+    ASSERT_NE(componentUpdater.pldmRequest, nullptr);
+    runEvent();
+    runEvent();
+    waitForDiscoverTask();
+    waitForUpdateCompletionTask();
+
+    gFailEncodeVerifyCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, verifyCompleteRetryPathEncodeFailureBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::VerifyComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::ApplyComplete;
+
+    gFailEncodeVerifyCompleteResp = true;
+    gEncodeVerifyCompleteRespRc = PLDM_ERROR;
+
+    auto response =
+        componentUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeVerifyCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, verifyCompleteSuccessPathEncodeFailureBranch)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        verifyCompleteReq{0x8A, 0x05, 0x17, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(verifyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::VerifyComplete);
+
+    gFailEncodeVerifyCompleteResp = true;
+    gEncodeVerifyCompleteRespRc = PLDM_ERROR;
+
+    auto response =
+        componentUpdater.verifyComplete(requestMsg, sizeof(uint8_t));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeVerifyCompleteResp = false;
+}
+
+TEST_F(ComponentUpdaterTest, applyCompleteRetryPathEncodeFailureBranch)
+{
+    constexpr std::array<uint8_t,
+                         sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
+        applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
+    auto requestMsg =
+        reinterpret_cast<const pldm_msg*>(applyCompleteReq.data());
+
+    componentUpdater.componentUpdaterState.prev =
+        ComponentUpdaterSequence::ApplyComplete;
+    componentUpdater.componentUpdaterState.current =
+        ComponentUpdaterSequence::Invalid;
+
+    gFailEncodeApplyCompleteResp = true;
+    gEncodeApplyCompleteRespRc = PLDM_ERROR;
+
+    auto response = componentUpdater.applyComplete(
+        requestMsg, sizeof(pldm_apply_complete_req));
+    ASSERT_GE(response.size(), sizeof(pldm_msg_hdr) + 1);
+
+    gFailEncodeApplyCompleteResp = false;
 }

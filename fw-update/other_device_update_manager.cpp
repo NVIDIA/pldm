@@ -53,6 +53,13 @@ namespace fw_update
 
 namespace MatchRules = sdbusplus::bus::match::rules;
 
+pldm::utils::DBusHandlerInterface&
+    OtherDeviceUpdateManager::defaultDbusHandler()
+{
+    static pldm::utils::DBusHandler handler;
+    return handler;
+}
+
 Server::Activation::Activations
     OtherDeviceUpdateManager::getOverAllActivationState()
 {
@@ -88,7 +95,7 @@ bool OtherDeviceUpdateManager::activate()
         info("Activating : OBJPATH = {PATH}", "PATH", path);
         try
         {
-            pldm::utils::DBusHandler().setDbusProperty(
+            dbusHandler.setDbusProperty(
                 dbusMapping, std::string(Server::Activation::interface) +
                                  ".RequestedActivations.Active");
         }
@@ -204,7 +211,7 @@ bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
         "array[object_path]"};
     try
     {
-        pldm::utils::DBusHandler().setDbusProperty(targetsDBusMapping, targets);
+        dbusHandler.setDbusProperty(targetsDBusMapping, targets);
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
@@ -273,7 +280,7 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                             "ExtendedVersion", "string"};
                         try
                         {
-                            pldm::utils::DBusHandler().setDbusProperty(
+                            dbusHandler.setDbusProperty(
                                 dbusMapping, uuidMappings[uuid].version);
                         }
                         catch (const sdbusplus::exception::SdBusError& e)
@@ -591,17 +598,15 @@ void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
     std::vector<std::string> paths;
     getValidPaths(paths);
 
-    auto dbusHandler = pldm::utils::DBusHandler();
-
     for (const auto& objPath : paths)
     {
         UUID uuid{};
         try
         {
-            uuid = dbusHandler.getDbusProperty<std::string>(
+            uuid = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
                 objPath.c_str(), "UUID",
                 sdbusplus::xyz::openbmc_project::Common::server::UUID::
-                    interface);
+                    interface));
         }
         catch (const std::exception&)
         {
@@ -613,10 +618,10 @@ void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
         SKU sku{};
         try
         {
-            sku = dbusHandler.getDbusProperty<std::string>(
+            sku = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
                 objPath.c_str(), "SKU",
                 sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
-                    SKU::interface);
+                    SKU::interface));
         }
         catch (const std::exception&)
         {
@@ -629,10 +634,10 @@ void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
         std::string filePath{};
         try
         {
-            filePath = dbusHandler.getDbusProperty<std::string>(
+            filePath = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
                 objPath.c_str(), "Path",
                 sdbusplus::xyz::openbmc_project::Common::server::FilePath::
-                    interface);
+                    interface));
         }
         catch (const std::exception&)
         {
@@ -664,16 +669,16 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
 {
     std::vector<std::string> paths;
     getValidPaths(paths);
-    auto dbusHandler = pldm::utils::DBusHandler();
     validTargetCount = 0;
     for (auto& obj : paths)
     {
         try
         {
-            auto uuid = dbusHandler.getDbusProperty<std::string>(
-                obj.c_str(), "UUID",
-                sdbusplus::xyz::openbmc_project::Common::server::UUID::
-                    interface);
+            auto uuid =
+                std::get<std::string>(dbusHandler.getDbusPropertyVariant(
+                    obj.c_str(), "UUID",
+                    sdbusplus::xyz::openbmc_project::Common::server::UUID::
+                        interface));
             if (uuid != "")
             {
                 validTargetCount++;
@@ -698,18 +703,10 @@ void OtherDeviceUpdateManager::getValidPaths(
 
     try
     {
-        auto& bus = pldm::utils::DBusHandler::getBus();
-
-        auto method = bus.new_method_call(
-            pldm::utils::mapperService, pldm::utils::mapperPath,
-            pldm::utils::mapperInterface, "GetSubTreePaths");
-        method.append("/xyz/openbmc_project/software/other");
-        method.append(0); // Depth 0 to search all
-        method.append(std::vector<std::string>(
-            {sdbusplus::xyz::openbmc_project::Common::server::UUID::
-                 interface}));
-        auto reply = bus.call(method);
-        reply.read(paths);
+        paths = dbusHandler.getSubTreePaths(
+            "/xyz/openbmc_project/software/other", 0,
+            std::vector<std::string>{sdbusplus::xyz::openbmc_project::Common::
+                                         server::UUID::interface});
     }
     catch (const std::exception& e)
     {

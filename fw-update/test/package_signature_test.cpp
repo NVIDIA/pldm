@@ -1931,3 +1931,514 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksEnabled)
     EXPECT_EQ(pkgSignHdrData.size(), pldmFwupSignaturePackageSize);
     EXPECT_TRUE(verificationResult);
 }
+
+class PackageSignatureSha384TestHook : public PackageSignatureSha384
+{
+  public:
+    void setUseChunksForTest(bool enabled)
+    {
+        useChunks = enabled;
+    }
+
+    void setDigestNameForTest(const std::string& name)
+    {
+        digestName = name;
+    }
+
+    void setChunkSizeForTest(size_t size)
+    {
+        chunkSize = size;
+    }
+
+    bool hasPendingTimerForTest() const
+    {
+        return requestChunkCalculation != nullptr;
+    }
+
+    void createDummyTimerForTest()
+    {
+        auto event = sdeventplus::Event::get_default();
+        requestChunkCalculation =
+            std::make_unique<sdbusplus::Timer>(event.get(), []() {});
+    }
+
+    void configureChunkProcessingForTest(
+        std::istream& packageStream, uintmax_t signedLength, int chunkIdx,
+        bool initDigestCtx,
+        std::function<void(std::vector<unsigned char>)> onCompleteCb,
+        std::function<void(const std::string&)> onErrorCb)
+    {
+        package = &packageStream;
+        lengthOfSignedData = signedLength;
+        chunkNumber = chunkIdx;
+        hash = std::make_shared<std::vector<unsigned char>>(digestLength);
+        ctxMdctxPtr =
+            std::shared_ptr<EVP_MD_CTX>(EVP_MD_CTX_new(), ::EVP_MD_CTX_free);
+        if (initDigestCtx)
+        {
+            const EVP_MD* md = EVP_get_digestbyname(digestName.c_str());
+            if (md != nullptr)
+            {
+                EVP_DigestInit_ex(ctxMdctxPtr.get(), md, nullptr);
+            }
+        }
+        onComplete = std::move(onCompleteCb);
+        onError = std::move(onErrorCb);
+    }
+};
+
+class PackageSignatureV3AsyncTestHook : public PackageSignatureV3
+{
+  public:
+    explicit PackageSignatureV3AsyncTestHook(
+        std::vector<uint8_t>& pkgSignData) : PackageSignatureV3(pkgSignData)
+    {
+        auto sha = std::make_unique<PackageSignatureSha384TestHook>();
+        shaHook = sha.get();
+        signatureSha = std::move(sha);
+    }
+
+    void clearPublicKeyDataForTest()
+    {
+        publicKeyData.clear();
+    }
+
+    PackageSignatureSha384TestHook* shaHook = nullptr;
+};
+
+TEST_F(PackageSignatureTest, getSignatureVersionReadsMajorVersion)
+{
+    auto signHeader = signHeaderV3WithoutPadding;
+    EXPECT_EQ(PackageSignature::getSignatureVersion(signHeader),
+              packageSignatureVersion3);
+}
+
+TEST_F(PackageSignatureTest, verifyAsyncSucceedsForValidSignedPackage)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = false;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, publicKey, sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_TRUE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, verifyAsyncReturnsErrorForInvalidDigestAlgorithm)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(true);
+    packageSignatureParser.shaHook->setDigestNameForTest("INVALID_DIGEST");
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, publicKey, sizeOfSignedData,
+        [&](bool) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage,
+                testing::HasSubstr("Failed to retrieve digest algorithm"));
+}
+
+TEST_F(PackageSignatureTest, integrityCheckAsyncSucceedsForValidSignedPackage)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool integrityCheckResult = false;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.integrityCheckAsync(
+        package, sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            integrityCheckResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_TRUE(integrityCheckResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, integrityCheckAsyncErrorsWhenPublicKeyIsEmpty)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.clearPublicKeyDataForTest();
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.integrityCheckAsync(
+        package, sizeOfSignedData, [&](bool) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage, testing::HasSubstr("Public key data is empty"));
+}
+
+TEST_F(PackageSignatureTest, calculateDigestAsyncUseChunksCompletes)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::string payload("1234567890abcdef");
+    std::istringstream package(payload);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::vector<unsigned char> digest;
+
+    sha.calculateDigestAsync(
+        package, payload.size(),
+        [&](std::vector<unsigned char> hash) {
+            onCompleteCalled = true;
+            digest = std::move(hash);
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(sha.hasPendingTimerForTest());
+    for (int i = 0; i < 64 && !onCompleteCalled && !onErrorCalled; ++i)
+    {
+        sha.handleChunkProcessing();
+    }
+
+    std::vector<unsigned char> expectedDigest(SHA384_DIGEST_LENGTH);
+    SHA384(reinterpret_cast<const unsigned char*>(payload.data()),
+           payload.size(), expectedDigest.data());
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
+    EXPECT_EQ(digest, expectedDigest);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestAsyncErrorsOnInvalidDigestName)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+    sha.setDigestNameForTest("INVALID_DIGEST");
+
+    std::string payload("1234567890abcdef");
+    std::istringstream package(payload);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.calculateDigestAsync(
+        package, payload.size(),
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage,
+                testing::HasSubstr("Failed to retrieve digest algorithm"));
+}
+
+TEST_F(PackageSignatureTest,
+       createPackageSignatureParserThrowsForDeprecatedVersion1)
+{
+    auto signHeader = signHeaderV3WithoutPadding;
+    signHeader[pldmFwupSignatureMagicLength] = packageSignatureVersion1;
+
+    EXPECT_THROW([[maybe_unused]] auto parser =
+                     PackageSignature::createPackageSignatureParser(signHeader),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest,
+       createPackageSignatureParserThrowsForDeprecatedVersion2)
+{
+    auto signHeader = signHeaderV3WithoutPadding;
+    signHeader[pldmFwupSignatureMagicLength] = packageSignatureVersion2;
+
+    EXPECT_THROW([[maybe_unused]] auto parser =
+                     PackageSignature::createPackageSignatureParser(signHeader),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest,
+       createPackageSignatureParserThrowsForUnknownVersion)
+{
+    auto signHeader = signHeaderV3WithoutPadding;
+    signHeader[pldmFwupSignatureMagicLength] = 0xFF;
+
+    EXPECT_THROW([[maybe_unused]] auto parser =
+                     PackageSignature::createPackageSignatureParser(signHeader),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForInvalidPublicKeyFormat)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = true;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, "INVALID_HEX_KEY", sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestAsyncNoChunksHandlesReadFailure)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(false);
+
+    std::istringstream package("abc");
+    package.exceptions(std::ios::failbit | std::ios::badbit);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.calculateDigestAsync(
+        package, 32,
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage,
+                testing::HasSubstr("Failed to compute SHA-384 hash"));
+}
+
+TEST_F(PackageSignatureTest, handleChunkProcessingHandlesStreamException)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("x");
+    package.exceptions(std::ios::failbit | std::ios::badbit);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.calculateDigestAsync(
+        package, 8,
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    ASSERT_TRUE(sha.hasPendingTimerForTest());
+    sha.handleChunkProcessing();
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(
+        errorMessage,
+        testing::HasSubstr("Exception occurred during chunk processing"));
+}
+
+TEST_F(PackageSignatureTest,
+       handleChunkProcessingStreamExceptionWithoutTimerObject)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("x");
+    package.exceptions(std::ios::failbit | std::ios::badbit);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.configureChunkProcessingForTest(
+        package, 8, 0, true,
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+    EXPECT_FALSE(sha.hasPendingTimerForTest());
+
+    sha.handleChunkProcessing();
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(
+        errorMessage,
+        testing::HasSubstr("Exception occurred during chunk processing"));
+}
+
+TEST_F(PackageSignatureTest,
+       handleChunkProcessingFinalizesWhenNoTimerObjectIsPresent)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("abcdef");
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+
+    sha.configureChunkProcessingForTest(
+        package, 1, 1, true,
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_FALSE(sha.hasPendingTimerForTest());
+    sha.handleChunkProcessing();
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestUseChunksWithShortSignedLength)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::string payload("abcdef");
+    std::istringstream package(payload);
+
+    auto digest = sha.calculateDigest(package, 1);
+
+    std::vector<unsigned char> expectedDigest(SHA384_DIGEST_LENGTH);
+    SHA384(reinterpret_cast<const unsigned char*>(payload.data()), 1,
+           expectedDigest.data());
+    EXPECT_EQ(digest, expectedDigest);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestUseChunksWithExactChunkBoundaries)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+    sha.setChunkSizeForTest(4);
+
+    std::string payload("abcdefghijkl");
+    std::istringstream package(payload);
+
+    auto digest = sha.calculateDigest(package, payload.size());
+
+    std::vector<unsigned char> expectedDigest(SHA384_DIGEST_LENGTH);
+    SHA384(reinterpret_cast<const unsigned char*>(payload.data()),
+           payload.size(), expectedDigest.data());
+    EXPECT_EQ(digest, expectedDigest);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestThrowsForInvalidDigestName)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+    sha.setDigestNameForTest("INVALID_DIGEST");
+
+    std::istringstream package("abcdef");
+    EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest, verifySyncReturnsFalseForInvalidPublicKeyFormat)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    auto verificationResult = packageSignatureParser.verify(
+        package, "INVALID_HEX_KEY", sizeOfSignedData);
+
+    EXPECT_FALSE(verificationResult);
+}
