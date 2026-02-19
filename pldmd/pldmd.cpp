@@ -265,6 +265,8 @@ int main(int argc, char** argv)
                                             "/xyz/openbmc_project/software");
     sdbusplus::server::manager_t sensorObjManager(
         bus, "/xyz/openbmc_project/sensors");
+    sdbusplus::server::manager_t metricObjManager(
+        bus, "/xyz/openbmc_project/metric");
 
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
 
