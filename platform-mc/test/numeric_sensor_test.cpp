@@ -18,7 +18,6 @@
 #include "libpldm/entity.h"
 
 #include "common/instance_id.hpp"
-#include "oem/nvidia/platform-mc/memoryPageRetirementCount.hpp"
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
@@ -309,108 +308,4 @@ TEST_F(NumericSensorTest, checkThreshold)
     lowAlarm = sensor.checkThreshold(lowAlarm, false, reading, lowThreshold,
                                      hysteresis);
     EXPECT_EQ(false, lowAlarm);
-}
-
-TEST_F(NumericSensorTest, MemoryPageRetirementSensor)
-{
-    std::string uuid1("00000000-0000-0000-0000-000000000001");
-    auto t1 = Terminus(1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
-                       terminusManager);
-    // Same PDR layout as checkThreshold/conversionFormula: LE record handle,
-    // dataLength = MIN_LENGTH (69), body 61 bytes so decode accepts it.
-    std::vector<uint8_t> pdr1{
-        0x1,
-        0x0,
-        0x0,
-        0x0,                     // record handle (little-endian)
-        0x1,                     // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR, // PDRType
-        0x0,
-        0x0,                     // recordChangeNumber
-        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
-            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
-            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
-        0,                           // dataLength
-        0,
-        0,                           // PLDMTerminusHandle
-        0x1,
-        0x0,                         // sensorID=1
-        PLDM_ENTITY_MEMORY_CONTROLLER,
-        0,                           // entityType=Memory Controller(143)
-        1,
-        0,                           // entityInstanceNumber
-        0x1,
-        0x0,                         // containerID=1
-        PLDM_NO_INIT,                // sensorInit
-        false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_COUNTS,     // baseUint(67)=counts
-        0,                           // unitModifier = 0
-        0,                           // rateUnit
-        0,                           // baseOEMUnitHandle
-        0,                           // auxUnit
-        0,                           // auxUnitModifier
-        0,                           // auxRateUnit
-        0,                           // rel
-        0,                           // auxOEMUnitHandle
-        true,                        // isLinear
-        PLDM_SENSOR_DATA_SIZE_UINT8, // sensorDataSize
-        0,
-        0,
-        0x80,
-        0x3f, // resolution=1.0
-        0,
-        0,
-        0,
-        0, // offset=0
-        0,
-        0, // accuracy
-        0, // plusTolerance
-        0, // minusTolerance
-        2, // hysteresis
-        0, // supportedThresholds
-        0, // thresholdAndHysteresisVolatility
-        0,
-        0,
-        0x80,
-        0x3f, // stateTransistionInterval=1.0
-        0,
-        0,
-        0x80,
-        0x3f,                          // updateInverval=1.0
-        255,                           // maxReadable
-        0,                             // minReadable
-        PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
-        0,                             // rangeFieldsupport
-        0,                             // nominalValue
-        0,                             // normalMax
-        0,                             // normalMin
-        0,                             // warningHigh
-        0,                             // warningLow
-        0,                             // criticalHigh
-        0,                             // criticalLow
-        0,                             // fatalHigh
-        0                              // fatalLow
-    };
-
-    t1.pdrs.emplace_back(pdr1);
-    auto rc = t1.parsePDRs();
-    EXPECT_TRUE(rc);
-    EXPECT_EQ(1u, t1.numericSensorPdrs.size());
-    EXPECT_EQ(1u, t1.numericSensors.size());
-
-    auto numericSensor = t1.numericSensors[0];
-    EXPECT_EQ(1, numericSensor->oemIntfs.size());
-
-    auto memoryPageRetirementCount =
-        dynamic_pointer_cast<OemMemoryPageRetirementCountInft>(
-            numericSensor->oemIntfs[0]);
-
-    // Should be the same as value in updateReading()
-    numericSensor->updateReading(true, true, 10);
-    EXPECT_EQ(10, memoryPageRetirementCount->memoryPageRetirementCount());
-
-    // Should be zero for nan value
-    numericSensor->updateReading(true, true,
-                                 std::numeric_limits<double>::quiet_NaN());
-    EXPECT_EQ(0, memoryPageRetirementCount->memoryPageRetirementCount());
 }

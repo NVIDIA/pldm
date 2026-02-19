@@ -17,7 +17,6 @@
 #include "oem_nvidia.hpp"
 
 #include "common/dBusAsyncUtils.hpp"
-#include "memoryPageRetirementCount.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
@@ -146,21 +145,6 @@ void nvidiaInitTerminus(Terminus& terminus)
                 break;
             default:
                 continue;
-        }
-    }
-
-    for (auto sensor : terminus.numericSensors)
-    {
-        auto& [containerId, entityType, entityInstance] = sensor->entityInfo;
-        if ((entityType == PLDM_ENTITY_PROC ||
-             entityType == PLDM_ENTITY_MEMORY_CONTROLLER) &&
-            sensor->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
-        {
-            auto memoryPageRetirementCount =
-                std::make_shared<OemMemoryPageRetirementCountInft>(
-                    sensor, utils::DBusHandler().getBus(),
-                    sensor->path.c_str());
-            sensor->oemIntfs.push_back(std::move(memoryPageRetirementCount));
         }
     }
 

@@ -29,6 +29,7 @@
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
+#include <xyz/openbmc_project/Metric/Value/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Critical/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/HardShutdown/server.hpp>
 #include <xyz/openbmc_project/Sensor/Threshold/Warning/server.hpp>
@@ -48,6 +49,9 @@ using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
 using ValueIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::server::Value>;
+using MetricUnit = sdbusplus::xyz::openbmc_project::Metric::server::Value::Unit;
+using MetricIntf = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Metric::server::Value>;
 using ThresholdWarningIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Sensor::Threshold::server::Warning>;
 using ThresholdCriticalIntf = sdbusplus::server::object_t<
@@ -154,11 +158,14 @@ class NumericSensor
         if (associationDefinitionsIntf)
         {
             Associations assocs{};
+            std::string forward = useMetricInterface ? "measuring" : "chassis";
+            std::string reverse =
+                useMetricInterface ? "measured_by" : "all_sensors";
 
             for (const std::string& path : inventoryPath)
             {
                 assocs.emplace_back(
-                    std::make_tuple("chassis", "all_sensors", path.c_str()));
+                    std::make_tuple(forward, reverse, path.c_str()));
             }
             associationDefinitionsIntf->associations(assocs);
             defaultInventoryAssociated = flag;
@@ -244,6 +251,10 @@ class NumericSensor
         if (valueIntf)
         {
             return valueIntf->value();
+        }
+        if (metricIntf)
+        {
+            return metricIntf->value();
         }
         return unitModifier(conversionFormula(rawValue));
     };
@@ -353,6 +364,7 @@ class NumericSensor
     std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
 
     std::unique_ptr<ValueIntf> valueIntf = nullptr;
+    std::unique_ptr<MetricIntf> metricIntf = nullptr;
     std::unique_ptr<ThresholdWarningIntf> thresholdWarningIntf = nullptr;
     std::unique_ptr<ThresholdCriticalIntf> thresholdCriticalIntf = nullptr;
     std::unique_ptr<ThresholdFatalIntf> thresholdFatalIntf = nullptr;
@@ -407,6 +419,12 @@ class NumericSensor
 
     /** @brief does sensor have valid value interface */
     bool hasValueIntf;
+
+    /** @brief use Metric.Value interface instead of Sensor.Value */
+    bool useMetricInterface = false;
+
+    /** @brief metric unit for Metric.Value interface */
+    MetricUnit metricUnit;
 
     /** @brief sensor upper value range */
     double maxValue;

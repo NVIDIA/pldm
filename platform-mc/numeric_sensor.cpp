@@ -41,6 +41,7 @@ NumericSensor::NumericSensor(
     sensorName(sensorName), sensorEventInfo(sensorEventInfo)
 {
     sensorUnit = SensorUnit::DegreesC;
+    metricUnit = MetricUnit::Count;
     hasValueIntf = true;
     skipPolling = false;
     pollingIndicator = POLLING_METHOD_INDICATOR_PLDM_TYPE_TWO;
@@ -80,8 +81,15 @@ NumericSensor::NumericSensor(
             sensorUnit = SensorUnit::Percent;
             break;
         case PLDM_SENSOR_UNIT_COUNTS:
-            sensorNameSpace = "/xyz/openbmc_project/sensors/counter/";
-            sensorUnit = SensorUnit::Counts;
+            sensorNameSpace = "/xyz/openbmc_project/metric/count/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            break;
+        case PLDM_SENSOR_UNIT_SECONDS:
+            sensorNameSpace = "/xyz/openbmc_project/metric/time/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            metricUnit = MetricUnit::Seconds;
             break;
         default:
             hasValueIntf = false;
@@ -98,8 +106,16 @@ NumericSensor::NumericSensor(
     auto& bus = pldm::utils::DBusHandler::getBus();
     associationDefinitionsIntf =
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-    associationDefinitionsIntf->associations(
-        {{"chassis", "all_sensors", associationPath.c_str()}});
+    if (useMetricInterface)
+    {
+        associationDefinitionsIntf->associations(
+            {{"measuring", "measured_by", associationPath.c_str()}});
+    }
+    else
+    {
+        associationDefinitionsIntf->associations(
+            {{"chassis", "all_sensors", associationPath.c_str()}});
+    }
 
     maxValue = std::numeric_limits<double>::quiet_NaN();
     minValue = std::numeric_limits<double>::quiet_NaN();
@@ -391,6 +407,15 @@ NumericSensor::NumericSensor(
         valueIntf->minValue(minValue);
         valueIntf->unit(sensorUnit);
     }
+    else if (useMetricInterface)
+    {
+        metricIntf = std::make_unique<MetricIntf>(bus, path.c_str());
+        maxValue = unitModifier(conversionFormula(maxValue));
+        metricIntf->maxValue(maxValue);
+        minValue = unitModifier(conversionFormula(minValue));
+        metricIntf->minValue(minValue);
+        metricIntf->unit(metricUnit);
+    }
 
     hysteresis = unitModifier(conversionFormula(hysteresis));
 
@@ -401,7 +426,7 @@ NumericSensor::NumericSensor(
         std::make_unique<OperationalStatusIntf>(bus, path.c_str());
     operationalStatusIntf->functional(!sensorDisabled);
 
-    if (hasWarningThresholds)
+    if (hasWarningThresholds && !useMetricInterface)
     {
         thresholdWarningIntf =
             std::make_unique<ThresholdWarningIntf>(bus, path.c_str());
@@ -409,7 +434,7 @@ NumericSensor::NumericSensor(
         thresholdWarningIntf->warningLow(unitModifier(warningLow));
     }
 
-    if (hasCriticalThresholds)
+    if (hasCriticalThresholds && !useMetricInterface)
     {
         thresholdCriticalIntf =
             std::make_unique<ThresholdCriticalIntf>(bus, path.c_str());
@@ -417,7 +442,7 @@ NumericSensor::NumericSensor(
         thresholdCriticalIntf->criticalLow(unitModifier(criticalLow));
     }
 
-    if (hasFatalThresholds)
+    if (hasFatalThresholds && !useMetricInterface)
     {
         thresholdFatalIntf =
             std::make_unique<ThresholdFatalIntf>(bus, path.c_str());
@@ -482,8 +507,16 @@ NumericSensor::NumericSensor(
             sensorUnit = SensorUnit::Percent;
             break;
         case PLDM_SENSOR_UNIT_COUNTS:
-            sensorNameSpace = "/xyz/openbmc_project/sensors/counter/";
-            sensorUnit = SensorUnit::Counts;
+            sensorNameSpace = "/xyz/openbmc_project/metric/count/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            metricUnit = MetricUnit::Count;
+            break;
+        case PLDM_SENSOR_UNIT_SECONDS:
+            sensorNameSpace = "/xyz/openbmc_project/metric/time/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            metricUnit = MetricUnit::Seconds;
             break;
         default:
             hasValueIntf = false;
@@ -500,8 +533,16 @@ NumericSensor::NumericSensor(
     auto& bus = pldm::utils::DBusHandler::getBus();
     associationDefinitionsIntf =
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-    associationDefinitionsIntf->associations(
-        {{"chassis", "all_sensors", associationPath.c_str()}});
+    if (useMetricInterface)
+    {
+        associationDefinitionsIntf->associations(
+            {{"measuring", "measured_by", associationPath.c_str()}});
+    }
+    else
+    {
+        associationDefinitionsIntf->associations(
+            {{"chassis", "all_sensors", associationPath.c_str()}});
+    }
 
     maxValue = std::numeric_limits<double>::quiet_NaN();
     minValue = std::numeric_limits<double>::quiet_NaN();
@@ -567,6 +608,15 @@ NumericSensor::NumericSensor(
         valueIntf->minValue(minValue);
         valueIntf->unit(sensorUnit);
     }
+    else if (useMetricInterface)
+    {
+        metricIntf = std::make_unique<MetricIntf>(bus, path.c_str());
+        maxValue = unitModifier(conversionFormula(maxValue));
+        metricIntf->maxValue(maxValue);
+        minValue = unitModifier(conversionFormula(minValue));
+        metricIntf->minValue(minValue);
+        metricIntf->unit(metricUnit);
+    }
 
     availabilityIntf = std::make_unique<AvailabilityIntf>(bus, path.c_str());
     availabilityIntf->available(true);
@@ -593,6 +643,7 @@ NumericSensor::~NumericSensor()
     operationalStatusIntf.reset();
     availabilityIntf.reset();
     valueIntf.reset();
+    metricIntf.reset();
     associationDefinitionsIntf.reset();
 }
 
@@ -611,7 +662,7 @@ double NumericSensor::unitModifier(double value)
 
 void NumericSensor::updateReading(bool available, bool functional, double value)
 {
-    if (valueIntf)
+    if (valueIntf || metricIntf)
     {
         if (available != availabilityIntf->available())
             lg2::info("Availability of sensor {NAME}: {OLD} -> {NEW}.", "NAME",
@@ -628,24 +679,40 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     availabilityIntf->available(available);
     operationalStatusIntf->functional(functional);
 
-    if (!valueIntf)
+    if (!valueIntf && !metricIntf)
     {
         return;
     }
 
     if (functional && available)
     {
-        valueIntf->value(unitModifier(conversionFormula(value)));
-        updateThresholds();
+        double newValue = unitModifier(conversionFormula(value));
+        if (useMetricInterface)
+        {
+            metricIntf->value(newValue);
+        }
+        else
+        {
+            valueIntf->value(newValue);
+            updateThresholds();
+        }
     }
     else
     {
-        valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+        if (useMetricInterface)
+        {
+            metricIntf->value(std::numeric_limits<double>::quiet_NaN());
+        }
+        else
+        {
+            valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+        }
     }
 
     std::string propertyName = "Value";
     std::string objPath = path;
-    std::string ifaceName = valueIntf->interface;
+    std::string ifaceName =
+        useMetricInterface ? metricIntf->interface : valueIntf->interface;
     // TODO: update retCode for errors once error code handling defined for pldm
     uint16_t retCode = 0;
 
@@ -654,7 +721,8 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
             std::chrono::steady_clock::now().time_since_epoch())
             .count());
     // tal telemetry update for all Numeric Sensors.
-    double convertVal = valueIntf->value();
+    double convertVal =
+        useMetricInterface ? metricIntf->value() : valueIntf->value();
     std::vector<uint8_t> rawSmbpbiData(sizeof(double));
     std::memcpy(rawSmbpbiData.data(), &convertVal, sizeof(double));
 
@@ -851,7 +919,7 @@ void NumericSensor::updateSensorName(std::string name)
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     // update new object path to D-Bus
-    if (hasValueIntf)
+    if (hasValueIntf || useMetricInterface)
     {
         associationDefinitionsIntf =
             std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
@@ -864,6 +932,14 @@ void NumericSensor::updateSensorName(std::string name)
         valueIntf->maxValue(maxValue);
         valueIntf->minValue(minValue);
         valueIntf->unit(sensorUnit);
+    }
+    else if (useMetricInterface)
+    {
+        skipPolling = false;
+        metricIntf = std::make_unique<MetricIntf>(bus, path.c_str());
+        metricIntf->maxValue(maxValue);
+        metricIntf->minValue(minValue);
+        metricIntf->unit(metricUnit);
     }
 
     if (availabilityIntf)
@@ -927,6 +1003,11 @@ void NumericSensor::removeValueIntf()
     {
         skipPolling = true;
         valueIntf = nullptr;
+    }
+    else if (useMetricInterface)
+    {
+        skipPolling = true;
+        metricIntf = nullptr;
     }
     associationDefinitionsIntf = nullptr;
 }
