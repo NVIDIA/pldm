@@ -44,6 +44,15 @@ constexpr const char* PCIE_LTSSM_FILE = "PCIeLTSSM_0_0.bin";
 constexpr const char* PCIE_TELEMETRY_FILE = "PCIeTelemetry_0_0.bin";
 
 /**
+ * @brief Fixed output path for the Inventory JSON file.
+ *
+ * Used when OEM event 0xFC carries inventory data.
+ * The inventory is written to a single well-known location consumed
+ * by the nvidia-inventory service.
+ */
+constexpr const char* INVENTORY_FILE = "/var/lib/inventory/inventory.json";
+
+/**
  * @brief Handle CPER Error Counter Event (0xF1)
  *
  * Writes the event payload to the CPER error counter staging file.
@@ -84,6 +93,30 @@ bool handlePcieLtssmEvent(const std::string& terminus, const uint8_t* eventData,
  */
 bool handlePcieTelemetryEvent(const std::string& terminus,
                               const uint8_t* eventData, size_t eventDataSize);
+
+/**
+ * @brief Handle OEM event 0xFC as SatMC Inventory JSON (new projects)
+ *
+ * Parses the 4-byte OEM event header, then writes the UTF-8 JSON payload
+ * directly to INVENTORY_FILE.
+ * (meson option satmc-inventory).
+ *
+ * @param[in] eventData     Raw event data including the 4-byte OEM header
+ * @param[in] eventDataSize Size of eventData in bytes
+ * @return true on success, false on failure
+ */
+bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize);
+
+/**
+ * @brief Handle OEM event 0xFC as SMBIOS MDR data (legacy)
+ *
+ * Decodes the SMBIOS event data and triggers an MDR sync.
+ *
+ * @param[in] eventData     Raw event data including the SMBIOS event header
+ * @param[in] eventDataSize Size of eventData in bytes
+ * @return true on success, false on failure
+ */
+bool handleSmbiosEvent(const uint8_t* eventData, size_t eventDataSize);
 
 } // namespace oem_events
 } // namespace pldm

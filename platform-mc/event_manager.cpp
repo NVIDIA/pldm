@@ -24,7 +24,6 @@
 #include "oem_events.hpp"
 #include "platform_manager.hpp"
 #include "sensor_manager.hpp"
-#include "smbios_mdr.hpp"
 #include "terminus_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -154,31 +153,18 @@ int EventManager::handlePlatformEvent(
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFC)
     {
-        uint8_t formatVersion;
-        uint16_t smbiosEventDataLength;
-        uint8_t* smbiosEventData;
-        auto rc = decode_pldm_smbios_event_data(
-            eventData, eventDataSize, &formatVersion, &smbiosEventDataLength,
-            &smbiosEventData);
+        lg2::info("Handling 0xFC Event from tid={TID}, dataSize={SIZE}", "TID",
+                  tid, "SIZE", eventDataSize);
 
-        if (rc)
+#ifdef SATMC_INVENTORY
+        if (!oem_events::handleInventoryEvent(eventData, eventDataSize))
+#else
+        if (!oem_events::handleSmbiosEvent(eventData, eventDataSize))
+#endif
         {
-            lg2::error("Failed to decode SMBIOS Type 4 event data, rc={RC}",
-                       "RC", rc);
-            return rc;
-        }
-
-        // save event data to file
-        if (!mdr::saveSmbiosData(smbiosEventDataLength, smbiosEventData))
-        {
-            lg2::error("Failed to save SMBIOS data to file");
-            return PLDM_ERROR;
-        }
-
-        // trigger SMBIOS MDR sync
-        if (!mdr::syncSmbiosData())
-        {
-            lg2::error("Failed to trigger SMBIOS MDR sync");
+            lg2::error("Failed to handle 0xFC event from tid={TID}", "TID",
+                       tid);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;
         }
     }

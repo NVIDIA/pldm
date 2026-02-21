@@ -16,6 +16,10 @@
  */
 #include "oem_events.hpp"
 
+#include "libpldm/platform.h"
+
+#include "smbios_mdr.hpp"
+
 #include <endian.h>
 
 #include <phosphor-logging/lg2.hpp>
@@ -274,6 +278,135 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
 
     return saveEventData(terminus, PCIE_TELEMETRY_FILE, eventData,
                          eventDataSize);
+}
+
+bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
+{
+    // Parse the 4-byte OEM header: [formatVersion][formatType][payloadSize(2B
+    // LE)]
+    constexpr size_t OEM_HDR_SIZE = 4;
+    if (eventDataSize < OEM_HDR_SIZE)
+    {
+        lg2::error("Inventory event too small: size={SIZE}", "SIZE",
+                   eventDataSize);
+        return false;
+    }
+
+    uint8_t formatVersion = eventData[0];
+    uint8_t formatType = eventData[1];
+    uint16_t payloadSize = static_cast<uint16_t>(eventData[2]) |
+                           (static_cast<uint16_t>(eventData[3]) << 8);
+    const uint8_t* payload = eventData + OEM_HDR_SIZE;
+
+    if (eventDataSize < static_cast<size_t>(OEM_HDR_SIZE + payloadSize))
+    {
+        lg2::error("Inventory event truncated: got={GOT}, expected={EXP}",
+                   "GOT", eventDataSize, "EXP", OEM_HDR_SIZE + payloadSize);
+        return false;
+    }
+
+    std::string verStr = std::format("{:#04x}", formatVersion);
+    std::string typeStr = std::format("{:#04x}", formatType);
+    lg2::info(
+        "Received Inventory Event (0xfc) ver={VER} type={TYPE} payloadSize={LEN}",
+        "VER", verStr, "TYPE", typeStr, "LEN", payloadSize);
+
+    if (payload == nullptr || payloadSize == 0)
+    {
+        lg2::error("Inventory event: empty payload");
+        return false;
+    }
+
+    // SatMC sends plain UTF-8 JSON text (output of cJSON_Print()) directly.
+    std::string jsonText(reinterpret_cast<const char*>(payload), payloadSize);
+
+    try
+    {
+        fs::create_directories(fs::path(INVENTORY_FILE).parent_path());
+    }
+    catch (const fs::filesystem_error& e)
+    {
+        lg2::error("Failed to create inventory directory: {ERROR}", "ERROR",
+                   e.what());
+        return false;
+    }
+
+    std::string filePath = INVENTORY_FILE;
+    std::string tmpPath = filePath + ".tmp";
+
+    try
+    {
+        std::ofstream out(tmpPath, std::ios::trunc);
+        if (!out)
+        {
+            lg2::error("Failed to open inventory JSON file: {PATH}", "PATH",
+                       tmpPath);
+            return false;
+        }
+
+        out << jsonText;
+        out.close();
+
+        if (!out)
+        {
+            lg2::error("Failed to write inventory JSON to: {PATH}", "PATH",
+                       tmpPath);
+            fs::remove(tmpPath);
+            return false;
+        }
+
+        fs::rename(tmpPath, filePath);
+        lg2::info("Saved inventory JSON: size={LEN}, path={PATH}", "LEN",
+                  payloadSize, "PATH", filePath);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Exception saving inventory JSON: {ERROR}", "ERROR",
+                   e.what());
+        try
+        {
+            fs::remove(tmpPath);
+        }
+        catch (const std::exception& re)
+        {
+            lg2::warning("Failed to remove temp inventory file: {ERROR}",
+                         "ERROR", re.what());
+        }
+        return false;
+    }
+}
+
+bool handleSmbiosEvent(const uint8_t* eventData, size_t eventDataSize)
+{
+    lg2::info("Processing SMBIOS Event (0xfc)");
+
+    uint8_t formatVersion;
+    uint16_t smbiosEventDataLength;
+    uint8_t* smbiosEventData;
+    auto rc =
+        decode_pldm_smbios_event_data(eventData, eventDataSize, &formatVersion,
+                                      &smbiosEventDataLength, &smbiosEventData);
+
+    if (rc)
+    {
+        lg2::error("Failed to decode SMBIOS event data, rc={RC}", "RC", rc);
+        return false;
+    }
+
+    if (!mdr::saveSmbiosData(smbiosEventDataLength, smbiosEventData))
+    {
+        lg2::error("Failed to save SMBIOS data to file");
+        return false;
+    }
+
+    if (!mdr::syncSmbiosData())
+    {
+        lg2::error("Failed to trigger SMBIOS MDR sync");
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace oem_events
