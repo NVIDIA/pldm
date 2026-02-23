@@ -501,6 +501,7 @@ if get_option('tests').enabled()
     if get_option('pldm-type2').enabled()
         subdir('platform-mc/test')
     endif
+    subdir('pldmtool/test')
     subdir('test')
     if get_option('mockup-responder').enabled()
         subdir('mockup-responder/test')

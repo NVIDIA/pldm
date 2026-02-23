@@ -1210,7 +1210,8 @@ class ActivateFirmware : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr));
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + sizeof(pldm_activate_firmware_req));
         auto request = new (requestMsg.data()) pldm_msg;
         auto rc = encode_activate_firmware_req(
             instanceId, selfContainedActivRequest, request,
@@ -1246,7 +1247,7 @@ class ActivateFirmware : public CommandInterface
     }
 
   private:
-    bool8_t selfContainedActivRequest;
+    bool8_t selfContainedActivRequest{};
 };
 
 class CancelUpdateComponent : public CommandInterface

@@ -103,7 +103,7 @@ class GetEventReceiver : public CommandInterface
     }
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
-        struct pldm_get_event_receiver_resp event_receiver_resp_data;
+        struct pldm_get_event_receiver_resp event_receiver_resp_data{};
         auto rc = decode_get_event_receiver_resp(responsePtr, payloadLength,
                                                  &event_receiver_resp_data);
         if (rc || event_receiver_resp_data.completion_code)
@@ -1023,14 +1023,26 @@ class GetPDR : public CommandInterface
                 std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
                                             0, PLDM_STR_UTF_8_MAX_LEN);
                 ptr += nameLanguageTag.size() + sizeof(nullTerminator);
-                std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(ptr), 0,
-                    PLDM_STR_UTF_16_MAX_LEN);
-                ptr += (u16NameString.size() + sizeof(nullTerminator)) *
-                       sizeof(uint16_t);
-                std::transform(u16NameString.cbegin(), u16NameString.cend(),
-                               u16NameString.begin(),
-                               [](uint16_t utf16) { return be16toh(utf16); });
+                std::u16string u16NameString;
+                size_t u16CodeUnits = 0;
+                bool foundNullTerminator = false;
+                while (u16CodeUnits < PLDM_STR_UTF_16_MAX_LEN)
+                {
+                    uint16_t utf16 = 0;
+                    memcpy(&utf16, ptr + (u16CodeUnits * sizeof(uint16_t)),
+                           sizeof(utf16));
+                    utf16 = be16toh(utf16);
+                    if (utf16 == nullTerminator)
+                    {
+                        foundNullTerminator = true;
+                        break;
+                    }
+                    u16NameString.push_back(static_cast<char16_t>(utf16));
+                    ++u16CodeUnits;
+                }
+                ptr +=
+                    (u16CodeUnits + static_cast<size_t>(foundNullTerminator)) *
+                    sizeof(uint16_t);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
                 std::string nameString =
@@ -1788,8 +1800,8 @@ class SetStateEffecter : public CommandInterface
     }
 
   private:
-    uint16_t effecterId;
-    uint8_t effecterCount;
+    uint16_t effecterId{};
+    uint8_t effecterCount{};
     std::vector<uint8_t> effecterData;
 };
 
@@ -1828,7 +1840,7 @@ class SetNumericEffecterValue : public CommandInterface
             sizeof(pldm_msg_hdr) +
             PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3);
 
-        uint8_t* effecterValue = (uint8_t*)&maxEffecterValue;
+        std::array<uint8_t, sizeof(uint32_t)> effecterValue{};
 
         auto request = new (requestMsg.data()) pldm_msg;
 
@@ -1838,14 +1850,22 @@ class SetNumericEffecterValue : public CommandInterface
             effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT16)
         {
             payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 1;
+            auto value = static_cast<uint16_t>(maxEffecterValue);
+            memcpy(effecterValue.data(), &value, sizeof(value));
         }
-        if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT32 ||
-            effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT32)
+        else if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT32 ||
+                 effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT32)
         {
             payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3;
+            auto value = static_cast<uint32_t>(maxEffecterValue);
+            memcpy(effecterValue.data(), &value, sizeof(value));
+        }
+        else
+        {
+            effecterValue[0] = static_cast<uint8_t>(maxEffecterValue);
         }
         auto rc = encode_set_numeric_effecter_value_req(
-            0, effecterId, effecterDataSize, effecterValue, request,
+            0, effecterId, effecterDataSize, effecterValue.data(), request,
             payload_length);
 
         return {rc, requestMsg};
@@ -1871,9 +1891,9 @@ class SetNumericEffecterValue : public CommandInterface
     }
 
   private:
-    uint16_t effecterId;
-    uint8_t effecterDataSize;
-    uint64_t maxEffecterValue;
+    uint16_t effecterId{};
+    uint8_t effecterDataSize{};
+    uint64_t maxEffecterValue{};
 };
 
 class GetStateSensorReadings : public CommandInterface
@@ -2148,7 +2168,7 @@ class GetStateEffecterStates : public CommandInterface
 
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
-        struct pldm_get_state_effecter_states_resp resp;
+        struct pldm_get_state_effecter_states_resp resp{};
         auto rc = decode_get_state_effecter_states_resp(responsePtr,
                                                         payloadLength, &resp);
 
