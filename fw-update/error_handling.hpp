@@ -49,7 +49,6 @@ using CommandToCompCompatibilityMap =
 constexpr uint8_t maxDecodeFailureRetries = 3;
 
 #ifdef OEM_NVIDIA
-ErrorCode constexpr unableToInitiateUpdate = 0x8A;
 ErrorCode constexpr reqGrantError = 0x70;
 ErrorCode constexpr writeProtectEnabled = 0x71;
 ErrorCode constexpr internalError = 0x72;
@@ -77,7 +76,13 @@ static ErrorMapping requestUpdateMapping{
       "Retry firmware update operation"}},
     {PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE,
      {"Device is not able to enter into update mode to start firmware update",
-      "Retry firmware update operation"}},
+#ifdef OEM_NVIDIA
+      "Wait for background copy operation to complete and rate"
+      " limit threshold to be cleared."
+#else
+      "Retry firmware update operation"
+#endif
+     }},
     {PLDM_FWUP_RETRY_REQUEST_UPDATE,
      {"Device needs more time to prepare for firmware update",
       "Retry firmware update operation"}},
@@ -93,11 +98,6 @@ static ErrorMapping requestUpdateMapping{
     {PLDM_ERROR_NOT_READY,
      {"Device is not ready to process the update request",
       "Retry firmware update operation"}},
-#ifdef OEM_NVIDIA
-    {unableToInitiateUpdate,
-     {"ERoT is busy", "Wait for background copy operation to complete and rate"
-                      " limit threshold to be cleared."}},
-#endif
 };
 
 /* pass component table error mapping */
