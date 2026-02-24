@@ -326,20 +326,15 @@ exec::task<int> NumericEffecter::setNumericEffecterEnable(
 
 exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
-    Request request(
-        sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_EFFECTER_VALUE_MAX_REQ_BYTES);
-    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     union_effecter_data_size effecterValueRaw;
-    size_t payloadLength;
+    size_t payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
     switch (dataSize)
     {
         case PLDM_EFFECTER_DATA_SIZE_UINT8:
             effecterValueRaw.value_u8 = static_cast<uint8_t>(effecterValue);
-            payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
             break;
         case PLDM_EFFECTER_DATA_SIZE_SINT8:
             effecterValueRaw.value_s8 = static_cast<int8_t>(effecterValue);
-            payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
             break;
         case PLDM_EFFECTER_DATA_SIZE_UINT16:
             effecterValueRaw.value_u16 = static_cast<uint16_t>(effecterValue);
@@ -367,6 +362,11 @@ exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
             payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
             break;
     }
+    // The encoded payload width depends on the effecter data size. Allocate the
+    // request after payloadLength is known so wider effecters do not write past
+    // the end of a fixed-size buffer.
+    Request request(sizeof(pldm_msg_hdr) + payloadLength);
+    auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_numeric_effecter_value_req(
         0, effecterId, dataSize, &effecterValueRaw.value_u8, requestMsg,
         payloadLength);

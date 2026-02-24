@@ -79,8 +79,10 @@ class NumericEffecterBaseUnit
   protected:
     /** @brief Reference to associated NumericEffecter */
     NumericEffecter& effecter;
-    double maxValue;
-    double minValue;
+    // Leave the limits in a defined sentinel state until the PDR-derived values
+    // are populated, instead of exposing indeterminate doubles to helper paths.
+    double maxValue = std::numeric_limits<double>::quiet_NaN();
+    double minValue = std::numeric_limits<double>::quiet_NaN();
 };
 
 } // namespace platform_mc

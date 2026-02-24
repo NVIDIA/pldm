@@ -18,10 +18,16 @@
 #include "libpldm/entity.h"
 
 #include "common/instance_id.hpp"
+#include "mock_terminus_manager.hpp"
 #include "platform-mc/numeric_effecter.hpp"
+#include "platform-mc/numeric_effecter_base_unit.hpp"
+#include "platform-mc/numeric_effecter_power_cap.hpp"
 #include "platform-mc/terminus.hpp"
-#include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
+
+#include <array>
+#include <cmath>
+#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -42,8 +48,174 @@ class TestNumericEffecter : public ::testing::Test
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    pldm::platform_mc::TerminusManager terminusManager;
+    pldm::platform_mc::MockTerminusManager terminusManager;
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+};
+
+static std::shared_ptr<pldm_numeric_effecter_value_pdr>
+    makeNumericEffecterValuePdr(
+        uint16_t effecterId, uint8_t effecterDataSize,
+        uint8_t baseUnit = PLDM_SENSOR_UNIT_WATTS,
+        uint16_t entityType = PLDM_ENTITY_PROC_IO_MODULE,
+        int8_t unitModifier = 0)
+{
+    auto pdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
+    pdr->effecter_id = effecterId;
+    pdr->entity_type = entityType;
+    pdr->entity_instance = 1;
+    pdr->container_id = 1;
+    pdr->base_unit = baseUnit;
+    pdr->unit_modifier = unitModifier;
+    pdr->effecter_data_size = effecterDataSize;
+    pdr->resolution = 2.0f;
+    pdr->offset = 1.0f;
+    pdr->range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT8;
+    pdr->range_field_support.byte = 0x1F;
+
+    switch (effecterDataSize)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            pdr->max_settable.value_u8 = 100;
+            pdr->min_settable.value_u8 = 1;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            pdr->max_settable.value_s8 = 100;
+            pdr->min_settable.value_s8 = -100;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            pdr->max_settable.value_u16 = 1000;
+            pdr->min_settable.value_u16 = 10;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            pdr->max_settable.value_s16 = 1000;
+            pdr->min_settable.value_s16 = -1000;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            pdr->max_settable.value_u32 = 100000;
+            pdr->min_settable.value_u32 = 100;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            pdr->max_settable.value_s32 = 100000;
+            pdr->min_settable.value_s32 = -100000;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            pdr->max_settable.value_u64 = 1000000;
+            pdr->min_settable.value_u64 = 1000;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+        default:
+            pdr->max_settable.value_s64 = 1000000;
+            pdr->min_settable.value_s64 = -1000000;
+            break;
+    }
+
+    pdr->nominal_value.value_u8 = 50;
+    pdr->normal_max.value_u8 = 60;
+    pdr->normal_min.value_u8 = 40;
+    pdr->rated_max.value_u8 = 70;
+    pdr->rated_min.value_u8 = 30;
+    return pdr;
+}
+
+static std::vector<uint8_t> makeGetNumericEffecterValueResp(
+    uint8_t effecterDataSize, pldm_effecter_oper_state operState,
+    uint8_t completionCode = PLDM_SUCCESS)
+{
+    union_effecter_data_size pending{};
+    union_effecter_data_size present{};
+    size_t payloadLen = PLDM_GET_NUMERIC_EFFECTER_VALUE_MIN_RESP_BYTES;
+
+    switch (effecterDataSize)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            pending.value_u8 = 10;
+            present.value_u8 = 20;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            pending.value_s8 = -10;
+            present.value_s8 = 20;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            pending.value_u16 = 1000;
+            present.value_u16 = 2000;
+            payloadLen += 2;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            pending.value_s16 = -1000;
+            present.value_s16 = 2000;
+            payloadLen += 2;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            pending.value_u32 = 100000;
+            present.value_u32 = 200000;
+            payloadLen += 6;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            pending.value_s32 = -100000;
+            present.value_s32 = 200000;
+            payloadLen += 6;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            pending.value_u64 = 1000000;
+            present.value_u64 = 2000000;
+            payloadLen += 14;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+        default:
+            pending.value_s64 = -1000000;
+            present.value_s64 = 2000000;
+            payloadLen += 14;
+            break;
+    }
+
+    std::vector<uint8_t> response(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    auto rc = encode_get_numeric_effecter_value_resp(
+        0, completionCode, effecterDataSize, operState,
+        reinterpret_cast<uint8_t*>(&pending),
+        reinterpret_cast<uint8_t*>(&present), responseMsg, payloadLen);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    return response;
+}
+
+static std::vector<uint8_t> makeSetNumericEffecterValueResp(
+    uint8_t completionCode = PLDM_SUCCESS)
+{
+    std::vector<uint8_t> response(
+        sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    auto rc = encode_set_numeric_effecter_value_resp(
+        0, completionCode, responseMsg,
+        PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    return response;
+}
+
+static std::vector<uint8_t> makeCcOnlyResp(uint8_t command,
+                                           uint8_t completionCode)
+{
+    return {0x0, PLDM_PLATFORM, command, completionCode};
+}
+
+class NumericEffecterBaseUnitCoverage : public NumericEffecterBaseUnit
+{
+  public:
+    using NumericEffecterBaseUnit::NumericEffecterBaseUnit;
+
+    void handleGetNumericEffecterValue(
+        pldm_effecter_oper_state effecterOperState, double pendingValue,
+        double presentValue) override
+    {
+        called = true;
+        opState = effecterOperState;
+        pending = pendingValue;
+        present = presentValue;
+    }
+
+    bool called = false;
+    pldm_effecter_oper_state opState = EFFECTER_OPER_STATE_STATUSUNKNOWN;
+    double pending = 0.0;
+    double present = 0.0;
 };
 
 TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
@@ -165,4 +337,307 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         }
     }
     EXPECT_EQ(counter, assocs.size());
+}
+
+TEST_F(TestNumericEffecter, baseUnitAndConversionCoverage)
+{
+    uint16_t effecterId = 0x0802;
+    std::string uuid1("00000000-0000-0000-0000-000000000002");
+    auto terminus = Terminus(2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid1,
+                             terminusManager);
+
+    std::vector<uint8_t> pdr{
+        0x0,
+        0x0,
+        0x0,
+        0x1,
+        0x1,
+        PLDM_NUMERIC_EFFECTER_PDR,
+        0x0,
+        0x0,
+        0,
+        54,
+        0,
+        0,
+        static_cast<uint8_t>(effecterId & 0xFF),
+        static_cast<uint8_t>((effecterId >> 8) & 0xFF),
+        PLDM_ENTITY_PROC_IO_MODULE,
+        0,
+        1,
+        0,
+        0x1,
+        0x0,
+        0x0,
+        0x0,
+        PLDM_NO_INIT,
+        false,
+        PLDM_SENSOR_UNIT_WATTS,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        true,
+        PLDM_SENSOR_DATA_SIZE_UINT8,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        1,
+        0,
+        PLDM_RANGE_FIELD_FORMAT_UINT8,
+        0x3F,
+        0,
+        0,
+        0,
+        0,
+        0};
+
+    terminus.pdrs.emplace_back(pdr);
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecterPdrs.size());
+
+    std::string effecterName{"test_numeric_effecter"};
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_2"};
+    NumericEffecter effecter(0x02, true, terminus.numericEffecterPdrs[0],
+                             effecterName, inventoryPath, terminusManager);
+
+    NumericEffecterBaseUnitCoverage baseUnit(effecter);
+    baseUnit.pdrMaxSettable(55.0);
+    baseUnit.pdrMinSettable(5.0);
+    EXPECT_DOUBLE_EQ(55.0, baseUnit.pdrMaxSettable());
+    EXPECT_DOUBLE_EQ(5.0, baseUnit.pdrMinSettable());
+
+    baseUnit.handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, 22.0, 11.0);
+    EXPECT_TRUE(baseUnit.called);
+    EXPECT_EQ(EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, baseUnit.opState);
+    EXPECT_DOUBLE_EQ(22.0, baseUnit.pending);
+    EXPECT_DOUBLE_EQ(11.0, baseUnit.present);
+
+    baseUnit.called = false;
+    baseUnit.handleErrGetNumericEffecterValue();
+    EXPECT_TRUE(baseUnit.called);
+    EXPECT_EQ(EFFECTER_OPER_STATE_FAILED, baseUnit.opState);
+
+    EXPECT_TRUE(std::isfinite(effecter.rawToBase(100.0)));
+    EXPECT_TRUE(std::isfinite(effecter.baseToRaw(10.0)));
+    effecter.setPhysicalContext(PhysicalContextType::CPU);
+}
+
+TEST_F(TestNumericEffecter, numericEffecterDataSizeAndStateCoverage)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    std::string effecterName{"effecter_matrix"};
+
+    const std::array<uint8_t, 8> dataSizes{
+        PLDM_EFFECTER_DATA_SIZE_UINT8,  PLDM_EFFECTER_DATA_SIZE_SINT8,
+        PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_EFFECTER_DATA_SIZE_SINT16,
+        PLDM_EFFECTER_DATA_SIZE_UINT32, PLDM_EFFECTER_DATA_SIZE_SINT32,
+        PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_EFFECTER_DATA_SIZE_SINT64};
+
+    for (size_t i = 0; i < dataSizes.size(); ++i)
+    {
+        auto pdr = makeNumericEffecterValuePdr(
+            static_cast<uint16_t>(0x0900 + i), dataSizes[i],
+            PLDM_SENSOR_UNIT_NONE, PLDM_ENTITY_SYS_BOARD, -1);
+        NumericEffecter effecter(0x20 + i, false, pdr, effecterName,
+                                 inventoryPath, terminusManager);
+
+        effecter.updateValue(EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, 10.0,
+                             20.0);
+        EXPECT_EQ(StateType::Deferring, effecter.state());
+        effecter.updateValue(EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 11.0,
+                             21.0);
+        EXPECT_EQ(StateType::Enabled, effecter.state());
+        effecter.updateValue(EFFECTER_OPER_STATE_DISABLED, 0.0, 0.0);
+        EXPECT_EQ(StateType::Disabled, effecter.state());
+        effecter.updateValue(EFFECTER_OPER_STATE_INITIALIZING, 0.0, 0.0);
+        EXPECT_EQ(StateType::Starting, effecter.state());
+        effecter.updateValue(EFFECTER_OPER_STATE_UNAVAILABLE, 0.0, 0.0);
+        EXPECT_EQ(StateType::UnavailableOffline, effecter.state());
+        effecter.updateValue(EFFECTER_OPER_STATE_STATUSUNKNOWN, 0.0, 0.0);
+        effecter.updateValue(EFFECTER_OPER_STATE_FAILED, 0.0, 0.0);
+        effecter.updateValue(EFFECTER_OPER_STATE_SHUTTINGDOWN, 0.0, 0.0);
+        effecter.updateValue(EFFECTER_OPER_STATE_INTEST, 0.0, 0.0);
+
+        effecter.handleErrGetNumericEffecterValue();
+        effecter.setAvailable(true);
+        effecter.setAvailable(false);
+
+        EXPECT_TRUE(std::isfinite(effecter.rawToUnit(10.0)));
+        EXPECT_TRUE(std::isfinite(effecter.unitToRaw(10.0)));
+        EXPECT_TRUE(std::isfinite(effecter.unitToBase(10.0)));
+        EXPECT_TRUE(std::isfinite(effecter.baseToUnit(10.0)));
+        EXPECT_TRUE(std::isfinite(effecter.rawToBase(10.0)));
+        EXPECT_TRUE(std::isfinite(effecter.baseToRaw(10.0)));
+    }
+
+    auto badPdr = makeNumericEffecterValuePdr(
+        0x0999, PLDM_EFFECTER_DATA_SIZE_UINT8, 0xFF, PLDM_ENTITY_SYS_BOARD);
+    EXPECT_THROW((void)NumericEffecter(0x42, false, badPdr, effecterName,
+                                       inventoryPath, terminusManager),
+                 std::runtime_error);
+}
+
+TEST_F(TestNumericEffecter, requestAndPowerCapCoverage)
+{
+    constexpr pldm::tid_t tid = 0x21;
+    const pldm::MctpInfo mctpInfo(
+        12, "00000000-0000-0000-0000-000000000021",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    std::string effecterName{"power_cap_effecter"};
+
+    auto pdr =
+        makeNumericEffecterValuePdr(0x0A01, PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                    PLDM_SENSOR_UNIT_WATTS, PLDM_ENTITY_PROC);
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    auto* wattIntf =
+        dynamic_cast<NumericEffecterWattInft*>(effecter.unitIntf.get());
+    ASSERT_NE(wattIntf, nullptr);
+
+    wattIntf->pdrMinSettable(5);
+    wattIntf->pdrMaxSettable(150);
+    wattIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, 25, 20);
+    EXPECT_EQ(25u, wattIntf->powerCap());
+    wattIntf->handleGetNumericEffecterValue(EFFECTER_OPER_STATE_DISABLED, 25,
+                                            20);
+    EXPECT_THROW((void)wattIntf->powerCap(200), ::errors::InvalidArgument);
+
+    std::vector<uint8_t> response;
+
+    response = makeCcOnlyResp(PLDM_SET_NUMERIC_EFFECTER_ENABLE, PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto enableRc = stdexec::sync_wait(effecter.setNumericEffecterEnable(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING));
+    ASSERT_TRUE(enableRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*enableRc));
+
+    const std::array<uint8_t, 8> dataSizes{
+        PLDM_EFFECTER_DATA_SIZE_UINT8,  PLDM_EFFECTER_DATA_SIZE_SINT8,
+        PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_EFFECTER_DATA_SIZE_SINT16,
+        PLDM_EFFECTER_DATA_SIZE_UINT32, PLDM_EFFECTER_DATA_SIZE_SINT32,
+        PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_EFFECTER_DATA_SIZE_SINT64};
+
+    for (auto dataSize : dataSizes)
+    {
+        std::string effecterNameForSize =
+            effecterName + "_" + std::to_string(dataSize);
+        auto pdrForSize = makeNumericEffecterValuePdr(
+            static_cast<uint16_t>(0x0B00 + dataSize), dataSize,
+            PLDM_SENSOR_UNIT_NONE, PLDM_ENTITY_SYS_BOARD);
+        NumericEffecter effecterForSize(tid, false, pdrForSize,
+                                        effecterNameForSize, inventoryPath,
+                                        terminusManager);
+
+        response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+        ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+        response = makeGetNumericEffecterValueResp(
+            dataSize, EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+        ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+
+        auto setRc =
+            stdexec::sync_wait(effecterForSize.setNumericEffecterValue(12));
+        ASSERT_TRUE(setRc.has_value());
+        EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
+    }
+
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, PLDM_ERROR);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto getRc = stdexec::sync_wait(effecter.getNumericEffecterValue());
+    ASSERT_TRUE(getRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*getRc));
+}
+
+TEST_F(TestNumericEffecter, powerCapSetAndEnablePathCoverage)
+{
+    constexpr pldm::tid_t tid = 0x31;
+    const pldm::MctpInfo mctpInfo(
+        13, "00000000-0000-0000-0000-000000000031",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis31"};
+    std::string effecterName{"power_cap_effecter_coverage"};
+    auto pdr =
+        makeNumericEffecterValuePdr(0x0C01, PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                    PLDM_SENSOR_UNIT_WATTS, PLDM_ENTITY_PROC);
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    auto* wattIntf =
+        dynamic_cast<NumericEffecterWattInft*>(effecter.unitIntf.get());
+    ASSERT_NE(wattIntf, nullptr);
+    wattIntf->pdrMinSettable(5);
+    wattIntf->pdrMaxSettable(150);
+    wattIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 25, 25);
+
+    std::vector<uint8_t> response;
+
+    response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    EXPECT_NO_THROW((void)wattIntf->powerCap(50));
+
+    response = makeCcOnlyResp(PLDM_SET_NUMERIC_EFFECTER_ENABLE, PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    (void)wattIntf->powerCapEnable(true);
+
+    response = makeCcOnlyResp(PLDM_SET_NUMERIC_EFFECTER_ENABLE, PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                               EFFECTER_OPER_STATE_DISABLED);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    (void)wattIntf->powerCapEnable(false);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
+TEST(OemBaseCoverage, ctorDtorCoverage)
+{
+    OemIntf oem;
+    (void)oem;
 }

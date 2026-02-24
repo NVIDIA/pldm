@@ -20,6 +20,7 @@
 #include <xyz/openbmc_project/ObjectMapper/client.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <exception>
 #include <filesystem>
@@ -167,6 +168,33 @@ T decimalToBcd(T decimal)
     }
 
     return bcd;
+}
+
+// Packed PLDM payloads can place multi-byte fields at unaligned byte offsets.
+// Read through a local copy before endian conversion so packed record parsing
+// stays defined for 16/32/64-bit values.
+template <typename T>
+T readLEValue(const uint8_t*& ptr)
+{
+    T value{};
+    memcpy(&value, ptr, sizeof(value));
+    ptr += sizeof(value);
+    if constexpr (sizeof(T) == sizeof(uint16_t))
+    {
+        return le16toh(value);
+    }
+    else if constexpr (sizeof(T) == sizeof(uint32_t))
+    {
+        return le32toh(value);
+    }
+    else if constexpr (sizeof(T) == sizeof(uint64_t))
+    {
+        return le64toh(value);
+    }
+    else
+    {
+        return value;
+    }
 }
 
 /**

@@ -17,6 +17,7 @@
 #include "oem_nvidia.hpp"
 
 #include "common/dBusAsyncUtils.hpp"
+#include "common/utils.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
@@ -24,6 +25,8 @@
 #include "staticPowerHint.hpp"
 
 #include <phosphor-logging/lg2.hpp>
+
+#include <cstring>
 
 using namespace pldm::pdr;
 
@@ -350,31 +353,29 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
         case PLDM_SENSOR_DATA_SIZE_SINT8:
-            parsedPdr->max_readable.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->max_readable.value_u8);
-            parsedPdr->min_readable.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->min_readable.value_u8);
+            parsedPdr->max_readable.value_u8 = utils::readLEValue<uint8_t>(ptr);
+            parsedPdr->min_readable.value_u8 = utils::readLEValue<uint8_t>(ptr);
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT16:
         case PLDM_SENSOR_DATA_SIZE_SINT16:
-            parsedPdr->max_readable.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->max_readable.value_u16);
-            parsedPdr->min_readable.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->min_readable.value_u16);
+            parsedPdr->max_readable.value_u16 =
+                utils::readLEValue<uint16_t>(ptr);
+            parsedPdr->min_readable.value_u16 =
+                utils::readLEValue<uint16_t>(ptr);
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT32:
         case PLDM_SENSOR_DATA_SIZE_SINT32:
-            parsedPdr->max_readable.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->max_readable.value_u32);
-            parsedPdr->min_readable.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->min_readable.value_u32);
+            parsedPdr->max_readable.value_u32 =
+                utils::readLEValue<uint32_t>(ptr);
+            parsedPdr->min_readable.value_u32 =
+                utils::readLEValue<uint32_t>(ptr);
             break;
         case PLDM_SENSOR_DATA_SIZE_UINT64:
         case PLDM_SENSOR_DATA_SIZE_SINT64:
-            parsedPdr->max_readable.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->max_readable.value_u64);
-            parsedPdr->min_readable.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->min_readable.value_u64);
+            parsedPdr->max_readable.value_u64 =
+                utils::readLEValue<uint64_t>(ptr);
+            parsedPdr->min_readable.value_u64 =
+                utils::readLEValue<uint64_t>(ptr);
             break;
         default:
             break;
@@ -511,6 +512,11 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
                         lg2::error(
                             "Cannot find ProcessorModule for memory performance sensor on TID {TID}",
                             "TID", terminus.getTid());
+                        // Without a Processor I/O Module ancestor there is no
+                        // stable ProcessorModule index to build associations
+                        // from, so skip this sensor instead of dereferencing a
+                        // missing instance.
+                        continue;
                     }
 
                     std::string prefix =
