@@ -1,5 +1,7 @@
+#include "common/bios_utils.hpp"
 #include "libpldmresponder/bios.hpp"
 #include "libpldmresponder/bios_table.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/bios.h>
@@ -7,7 +9,9 @@
 #include <array>
 #include <cstring>
 #include <ctime>
-#include <filesystem>
+#include <optional>
+#include <set>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -15,6 +19,9 @@ using namespace pldm;
 using namespace pldm::responder;
 using namespace pldm::responder::bios;
 using namespace pldm::responder::utils;
+
+namespace
+{} // namespace
 
 TEST(epochToBCDTime, testTime)
 {

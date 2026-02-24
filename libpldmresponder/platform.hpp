@@ -274,7 +274,7 @@ class Handler : public CmdHandler
      *                                 handles are placed
      *  @return PLDM completion code
      */
-    int getPDRRecordHandles(const ChangeEntry* changeEntryData,
+    int getPDRRecordHandles(const uint8_t* changeEntryData,
                             size_t changeEntryDataSize,
                             size_t numberOfChangeEntries,
                             PDRRecordHandles& pdrRecordHandles);

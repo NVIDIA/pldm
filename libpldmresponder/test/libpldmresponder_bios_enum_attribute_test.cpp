@@ -30,6 +30,19 @@ class TestBIOSEnumAttribute : public ::testing::Test
     {
         return attribute.defaultValue;
     }
+
+    uint8_t getValueIndex(BIOSEnumAttribute& attribute,
+                          const std::string& value,
+                          const std::vector<std::string>& possibleValues)
+    {
+        return attribute.getValueIndex(value, possibleValues);
+    }
+
+    uint8_t getAttrValueIndex(BIOSEnumAttribute& attribute,
+                              const PropertyValue& propertyValue)
+    {
+        return attribute.getAttrValueIndex(propertyValue);
+    }
 };
 
 TEST_F(TestBIOSEnumAttribute, CtorTest)

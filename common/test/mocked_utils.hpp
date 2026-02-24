@@ -19,6 +19,14 @@ inline bool operator==(const DBusMapping& lhs, const DBusMapping& rhs)
            lhs.propertyType == rhs.propertyType;
 }
 
+inline void PrintTo(const DBusMapping& mapping, std::ostream* os)
+{
+    *os << "DBusMapping{objectPath=\"" << mapping.objectPath
+        << "\", interface=\"" << mapping.interface << "\", propertyName=\""
+        << mapping.propertyName << "\", propertyType=\"" << mapping.propertyType
+        << "\"}";
+}
+
 } // namespace utils
 } // namespace pldm
 

@@ -16,6 +16,8 @@
 #include <libpldm/entity.h>
 #include <libpldm/state_set.h>
 
+#include <cstring>
+
 using namespace pldm::utils;
 using namespace pldm::responder::pdr;
 using namespace pldm::responder::pdr_utils;
@@ -525,8 +527,7 @@ int Handler::pldmPDRRepositoryChgEvent(
             if (eventDataOperation == PLDM_RECORDS_ADDED)
             {
                 rc = getPDRRecordHandles(
-                    reinterpret_cast<const ChangeEntry*>(
-                        changeRecordData + dataOffset),
+                    changeRecordData + dataOffset,
                     changeRecordDataSize - dataOffset,
                     static_cast<size_t>(numberOfChangeEntries),
                     pdrRecordHandles);
@@ -557,7 +558,7 @@ int Handler::pldmPDRRepositoryChgEvent(
 }
 
 int Handler::getPDRRecordHandles(
-    const ChangeEntry* changeEntryData, size_t changeEntryDataSize,
+    const uint8_t* changeEntryData, size_t changeEntryDataSize,
     size_t numberOfChangeEntries, PDRRecordHandles& pdrRecordHandles)
 {
     if (numberOfChangeEntries > (changeEntryDataSize / sizeof(ChangeEntry)))
@@ -566,7 +567,13 @@ int Handler::getPDRRecordHandles(
     }
     for (size_t i = 0; i < numberOfChangeEntries; i++)
     {
-        pdrRecordHandles.push_back(changeEntryData[i]);
+        ChangeEntry handle{};
+        // Change entries come from packed event bytes and can start at a
+        // non-4-byte offset, such as the 0x7b 00 00 00 handle in the failing
+        // coverage case. Decode from raw bytes instead of dereferencing a
+        // ChangeEntry* directly.
+        memcpy(&handle, changeEntryData + (i * sizeof(handle)), sizeof(handle));
+        pdrRecordHandles.push_back(le32toh(handle));
     }
     return PLDM_SUCCESS;
 }

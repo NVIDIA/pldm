@@ -1,6 +1,15 @@
 #include "common/bios_utils.hpp"
 #include "common/test/mocked_utils.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
 #include "libpldmresponder/bios_config.hpp"
+#undef private
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "libpldmresponder/bios_string_attribute.hpp"
 #include "mocked_bios.hpp"
 
@@ -19,6 +28,9 @@ using namespace pldm::utils;
 using ::testing::_;
 using ::testing::ElementsAreArray;
 using ::testing::Throw;
+
+namespace
+{} // namespace
 
 class TestBIOSConfig : public ::testing::Test
 {

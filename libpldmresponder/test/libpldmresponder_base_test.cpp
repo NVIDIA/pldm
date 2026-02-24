@@ -14,6 +14,59 @@
 
 using namespace pldm::responder;
 
+class StubOemPlatformHandler : public pldm::responder::oem_platform::Handler
+{
+  public:
+    StubOemPlatformHandler() :
+        pldm::responder::oem_platform::Handler(
+            static_cast<const pldm::utils::DBusHandler*>(nullptr))
+    {}
+
+    int getOemStateSensorReadingsHandler(
+        pldm::EntityType, pldm::pdr::EntityInstance, pldm::pdr::StateSetId,
+        pldm::pdr::CompositeCount,
+        std::vector<get_sensor_state_field>&) override
+    {
+        return PLDM_SUCCESS;
+    }
+
+    int oemSetStateEffecterStatesHandler(uint16_t, uint16_t, uint16_t, uint8_t,
+                                         std::vector<set_effecter_state_field>&,
+                                         uint16_t) override
+    {
+        return PLDM_SUCCESS;
+    }
+
+    void buildOEMPDR(pldm::responder::pdr_utils::Repo&) override {}
+
+    void checkAndDisableWatchDog() override
+    {
+        ++checkAndDisableWatchDogCount;
+    }
+
+    bool watchDogRunning() override
+    {
+        return false;
+    }
+
+    void resetWatchDogTimer() override {}
+
+    void disableWatchDogTimer() override {}
+
+    void countSetEventReceiver() override
+    {
+        ++countSetEventReceiverCalls;
+    }
+
+    int checkBMCState() override
+    {
+        return PLDM_SUCCESS;
+    }
+
+    size_t checkAndDisableWatchDogCount = 0;
+    size_t countSetEventReceiverCalls = 0;
+};
+
 class TestBaseCommands : public testing::Test
 {
   protected:

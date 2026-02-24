@@ -217,3 +217,139 @@ TEST_F(TestBIOSStringAttribute, setAttrValueOnDbus)
     EXPECT_CALL(dbusHandler, setDbusProperty(dbusMapping, value)).Times(1);
     stringReadWrite.setAttrValueOnDbus(entry, nullptr, biosStringTable);
 }
+
+TEST_F(TestBIOSStringAttribute, updateAttrValAndGenerateAttributeEntry)
+{
+    auto jsonStringReadWrite = R"({
+            "attribute_name" : "str_example1",
+            "string_type" : "ASCII",
+            "minimum_string_length" : 1,
+            "maximum_string_length" : 100,
+            "default_string_length" : 3,
+            "default_string" : "abc",
+            "readOnly" : false,
+            "helpText" : "HelpText",
+            "displayName" : "DisplayName",
+            "dbus" : {
+                "object_path" : "/xyz/abc/def",
+                "interface" : "xyz.openbmc_project.str_example1.value",
+                "property_name" : "Str_example1",
+                "property_type" : "string"
+            }
+        })"_json;
+    MockdBusHandler dbusHandler;
+    BIOSStringAttribute stringReadWrite{jsonStringReadWrite, &dbusHandler};
+
+    Table updatedValue;
+    EXPECT_EQ(
+        stringReadWrite.updateAttrVal(updatedValue, 8, PLDM_BIOS_STRING,
+                                      PropertyValue{std::string("updated")}),
+        PLDM_SUCCESS);
+    auto* updatedEntry =
+        reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+            updatedValue.data());
+    auto [attrHdl,
+          attrType] = table::attribute_value::decodeHeader(updatedEntry);
+    EXPECT_EQ(attrHdl, 8);
+    EXPECT_EQ(attrType, PLDM_BIOS_STRING);
+    EXPECT_EQ(table::attribute_value::decodeStringEntry(updatedEntry),
+              "updated");
+
+    Table badValue;
+    EXPECT_EQ(stringReadWrite.updateAttrVal(badValue, 8, PLDM_BIOS_STRING,
+                                            PropertyValue{uint8_t(1)}),
+              PLDM_ERROR);
+
+    Table generatedValue;
+    stringReadWrite.generateAttributeEntry(
+        std::variant<int64_t, std::string>{std::string("hello")},
+        generatedValue);
+    auto* generatedEntry =
+        reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+            generatedValue.data());
+    EXPECT_EQ(generatedEntry->attr_type, PLDM_BIOS_STRING);
+    EXPECT_EQ(table::attribute_value::decodeStringEntry(generatedEntry),
+              "hello");
+}
+
+TEST_F(TestBIOSStringAttribute, invalidCtorFieldCoverage)
+{
+    auto jsonBadType = R"({
+            "attribute_name" : "str_example1",
+            "string_type" : "UNSUPPORTED",
+            "minimum_string_length" : 1,
+            "maximum_string_length" : 100,
+            "default_string_length" : 3,
+            "default_string" : "abc",
+            "readOnly" : true,
+            "helpText" : "HelpText",
+            "displayName" : "DisplayName"
+        })"_json;
+    EXPECT_THROW((BIOSStringAttribute{jsonBadType, nullptr}),
+                 std::invalid_argument);
+
+    auto jsonBadField = R"({
+            "attribute_name" : "str_example1",
+            "string_type" : "ASCII",
+            "minimum_string_length" : 1,
+            "maximum_string_length" : 100,
+            "default_string_length" : 8,
+            "default_string" : "abc",
+            "readOnly" : true,
+            "helpText" : "HelpText",
+            "displayName" : "DisplayName"
+        })"_json;
+    EXPECT_THROW((BIOSStringAttribute{jsonBadField, nullptr}),
+                 std::invalid_argument);
+}
+
+TEST_F(TestBIOSStringAttribute, constructEntryOptionalValueCoverage)
+{
+    MockBIOSStringTable biosStringTable;
+    MockdBusHandler dbusHandler;
+
+    auto jsonStringReadWrite = R"({
+            "attribute_name" : "str_example1",
+            "string_type" : "ASCII",
+            "minimum_string_length" : 1,
+            "maximum_string_length" : 100,
+            "default_string_length" : 3,
+            "default_string" : "abc",
+            "readOnly" : false,
+            "helpText" : "HelpText",
+            "displayName" : "DisplayName",
+            "dbus" : {
+                "object_path" : "/xyz/abc/def",
+                "interface" : "xyz.openbmc_project.str_example1.value",
+                "property_name" : "Str_example1",
+                "property_type" : "string"
+            }
+        })"_json;
+    BIOSStringAttribute stringReadWrite{jsonStringReadWrite, &dbusHandler};
+    ON_CALL(biosStringTable, findHandle(StrEq("str_example1")))
+        .WillByDefault(Return(5));
+
+    EXPECT_CALL(
+        dbusHandler,
+        getDbusPropertyVariant(StrEq("/xyz/abc/def"), StrEq("Str_example1"),
+                               StrEq("xyz.openbmc_project.str_example1.value")))
+        .WillOnce(Return(PropertyValue(std::string("fromdbus"))));
+    Table attrTableFromDbus;
+    Table attrValueFromDbus;
+    stringReadWrite.constructEntry(
+        biosStringTable, attrTableFromDbus, attrValueFromDbus,
+        std::optional<std::variant<int64_t, std::string>>{int64_t(1)});
+    auto* dbusEntry = reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+        attrValueFromDbus.data());
+    EXPECT_EQ(table::attribute_value::decodeStringEntry(dbusEntry), "fromdbus");
+
+    Table attrTableFromOpt;
+    Table attrValueFromOpt;
+    stringReadWrite.constructEntry(
+        biosStringTable, attrTableFromOpt, attrValueFromOpt,
+        std::optional<std::variant<int64_t, std::string>>{
+            std::string("fromopt")});
+    auto* optEntry = reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+        attrValueFromOpt.data());
+    EXPECT_EQ(table::attribute_value::decodeStringEntry(optEntry), "fromopt");
+}
