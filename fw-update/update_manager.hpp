@@ -55,6 +55,7 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
+using DescriptorMatchCount = size_t;
 using RefreshSingleEndpointCallback =
     std::function<exec::task<int>(mctp_eid_t, bool)>;
 
@@ -593,6 +594,15 @@ class UpdateManager
      *  activation state to Invalid.
      */
     void handleInvalidPackageHeaderError();
+
+    /** @brief Log resource errors for all components when multiple descriptor
+     *         records in the package match the same device
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] fwDeviceIDRecord - Matched firmware device ID record
+     */
+    void handleDuplicateDescriptorMatch(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord);
 };
 
 } // namespace fw_update

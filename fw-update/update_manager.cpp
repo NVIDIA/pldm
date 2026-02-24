@@ -31,6 +31,7 @@
 #include <cmath>
 #include <ranges>
 #include <string>
+#include <unordered_set>
 
 PHOSPHOR_LOG2_USING;
 
@@ -792,6 +793,11 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     TotalComponentUpdates& totalNumComponentUpdates)
 {
     DeviceUpdaterInfos deviceUpdaterInfos;
+
+    // Pre-scan: count how many descriptor records match each EID. If multiple
+    // package records match the same device the association is ambiguous and
+    // the device update is skipped.
+    std::unordered_map<mctp_eid_t, DescriptorMatchCount> eidRecordMatchCount;
     for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
     {
         const auto& deviceIDDescriptors =
@@ -800,6 +806,36 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
         {
             if (descriptorsMatch(descriptors, deviceIDDescriptors))
             {
+                eidRecordMatchCount[eid]++;
+            }
+        }
+    }
+
+    std::unordered_set<mctp_eid_t> loggedDuplicateEids;
+    for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
+    {
+        const auto& deviceIDDescriptors =
+            std::get<Descriptors>(inFwDeviceIDRecords[index]);
+        for (const auto& [eid, descriptors] : descriptorMap)
+        {
+            if (descriptorsMatch(descriptors, deviceIDDescriptors))
+            {
+                if (eidRecordMatchCount[eid] > 1)
+                {
+                    bool isTarget =
+                        (compTargetList.empty() && objectPaths.empty()) ||
+                        compTargetList.contains(eid);
+                    if (isTarget && loggedDuplicateEids.insert(eid).second)
+                    {
+                        error(
+                            "Failing update for eid={EID}: {COUNT} descriptor records in the package match this device",
+                            "EID", eid, "COUNT", eidRecordMatchCount[eid]);
+                        handleDuplicateDescriptorMatch(
+                            eid, inFwDeviceIDRecords[index]);
+                    }
+                    continue;
+                }
+
                 if (compTargetList.empty() && objectPaths.empty())
                 {
                     outFwDeviceIDRecords.emplace_back(
@@ -1297,6 +1333,26 @@ void UpdateManager::handleInvalidPackageHeaderError()
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Failed, this);
+    }
+}
+
+void UpdateManager::handleDuplicateDescriptorMatch(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+{
+    std::string messageError =
+        "Multiple Firmware Device ID Records in the package match this"
+        " device";
+    std::string resolution =
+        "Correct the Firmware Device ID Records in the package header so each"
+        " device is matched by exactly one record, then retry firmware update"
+        " operation.";
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    for (size_t compIdx = 0; compIdx < applicableComponents.size(); compIdx++)
+    {
+        createMessageRegistryResourceErrors(eid, fwDeviceIDRecord, compIdx,
+                                            resourceErrorDetected, messageError,
+                                            resolution);
     }
 }
 
