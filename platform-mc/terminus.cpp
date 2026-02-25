@@ -1287,6 +1287,34 @@ exec::task<int> Terminus::updateAssociations()
         else
         {
             inventoryPaths = findInventory(entityInfo);
+            // PROC_IO_MODULE sensors belong under the CPU chassis; find the
+            // CPU child within the module container and use its inventory path.
+            if ((std::get<1>(entityInfo) & 0x7FFF) ==
+                PLDM_ENTITY_PROC_IO_MODULE)
+            {
+                for (const auto& [cid, assoc] : entityAssociations)
+                {
+                    const auto& [containerEntity, containedEntities] = assoc;
+                    if ((std::get<1>(containerEntity) & 0x7FFF) !=
+                        PLDM_ENTITY_PROC_IO_MODULE)
+                    {
+                        continue;
+                    }
+                    for (const auto& child : containedEntities)
+                    {
+                        if ((std::get<1>(child) & 0x7FFF) == PLDM_ENTITY_PROC)
+                        {
+                            auto cpuPaths = findInventory(child, true);
+                            if (!cpuPaths.empty())
+                            {
+                                inventoryPaths = cpuPaths;
+                            }
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
         }
         ptr->setInventoryPaths(inventoryPaths, false);
 
@@ -1413,16 +1441,63 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
         }
     }
 
+    // Entity-type scope overrides for Redfish representation:
+    //  MEMORY_CONTROLLER (0x8F): associate with HGX_ProcessorModule_x
+    //  POWER_SUPPLY (0x78, VREGs): associate with HGX_CPU_x
+    auto effectiveContainerPaths = ContainerInventoryPaths;
+    if (inventoryPaths.empty())
+    {
+        auto containerItr = entityAssociations.find(containerId);
+        if (containerItr != entityAssociations.end())
+        {
+            if (rawEntityType == PLDM_ENTITY_MEMORY_CONTROLLER)
+            {
+                // Walk up: DRAM is under CPU, but belongs at ProcessorModule
+                const auto& containerEntity = containerItr->second.first;
+                uint16_t rawContainerType =
+                    std::get<1>(containerEntity) & 0x7FFF;
+                if (rawContainerType != PLDM_ENTITY_PROC_IO_MODULE)
+                {
+                    const auto& parentContainerId =
+                        std::get<0>(containerEntity);
+                    auto modulePaths = findInventory(parentContainerId, true);
+                    if (!modulePaths.empty())
+                    {
+                        effectiveContainerPaths = modulePaths;
+                    }
+                }
+            }
+            else if (rawEntityType == PLDM_ENTITY_POWER_SUPPLY)
+            {
+                // Sideways: VREG is under ProcessorModule, but powers the CPU.
+                // Find the sibling CPU entity in the same container.
+                const auto& siblings = containerItr->second.second;
+                for (const auto& sibling : siblings)
+                {
+                    if ((std::get<1>(sibling) & 0x7FFF) == PLDM_ENTITY_PROC)
+                    {
+                        auto cpuPaths = findInventory(sibling, true);
+                        if (!cpuPaths.empty())
+                        {
+                            effectiveContainerPaths = cpuPaths;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Store the result, and also create parent_chassis/all_chassis
     // association
     entities.emplace(entityInfo,
-                     Entity{inventoryPaths, ContainerInventoryPaths});
+                     Entity{inventoryPaths, effectiveContainerPaths});
 
     if (!inventoryPaths.empty() || !findClosest)
     {
         return inventoryPaths;
     }
-    return ContainerInventoryPaths;
+    return effectiveContainerPaths;
 }
 
 std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
