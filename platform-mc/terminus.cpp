@@ -1315,6 +1315,27 @@ exec::task<int> Terminus::updateAssociations()
                     break;
                 }
             }
+            // Workaround: count/metric sensors (baseUnit == COUNTS) are
+            // global per CPU (e.g. PageRetirementCount, TjMaxDramIndex),
+            // so associate with CPU regardless of entity type.
+            else if (ptr->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
+            {
+                const auto& containerId = std::get<0>(entityInfo);
+                auto containerItr = entityAssociations.find(containerId);
+                if (containerItr != entityAssociations.end())
+                {
+                    const auto& containerEntity = containerItr->second.first;
+                    if ((std::get<1>(containerEntity) & 0x7FFF) ==
+                        PLDM_ENTITY_PROC)
+                    {
+                        auto cpuPaths = findInventory(containerEntity, true);
+                        if (!cpuPaths.empty())
+                        {
+                            inventoryPaths = cpuPaths;
+                        }
+                    }
+                }
+            }
         }
         ptr->setInventoryPaths(inventoryPaths, false);
 
