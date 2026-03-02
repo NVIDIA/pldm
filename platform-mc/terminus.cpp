@@ -1356,17 +1356,30 @@ exec::task<int> Terminus::updateAssociations()
     for (const auto& ptr : stateSensors)
     {
         auto entityInfo = ptr->getEntityInfo();
-        std::vector<ParentObjPath> inventoryPaths;
-        auto inventoryPath = getInventoryPath(ptr->sensorId);
-        if (inventoryPath)
+        auto inventoryPath = findInventory(entityInfo);
+
+        // Workaround: MEMORY_CONTROLLER state sensors (e.g.
+        // MemorySpareChannelPresence) are CPU-global; associate with CPU
+        // instead of ProcessorModule when container is PLDM_ENTITY_PROC.
+        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_MEMORY_CONTROLLER)
         {
-            inventoryPaths.push_back(*inventoryPath);
+            const auto& containerId = std::get<0>(entityInfo);
+            auto containerItr = entityAssociations.find(containerId);
+            if (containerItr != entityAssociations.end())
+            {
+                const auto& containerEntity = containerItr->second.first;
+                if ((std::get<1>(containerEntity) & 0x7FFF) == PLDM_ENTITY_PROC)
+                {
+                    auto cpuPaths = findInventory(containerEntity, true);
+                    if (!cpuPaths.empty())
+                    {
+                        inventoryPath = cpuPaths;
+                    }
+                }
+            }
         }
-        else
-        {
-            inventoryPaths = findInventory(entityInfo);
-        }
-        ptr->setInventoryPaths(inventoryPaths, false);
+
+        ptr->setInventoryPaths(inventoryPath, false);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
