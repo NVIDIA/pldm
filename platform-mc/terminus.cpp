@@ -1357,6 +1357,28 @@ exec::task<int> Terminus::updateAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         auto inventoryPath = findInventory(entityInfo);
+
+        // Workaround: MEMORY_CONTROLLER state sensors (e.g.
+        // MemorySpareChannelPresence) are CPU-global; associate with CPU
+        // instead of ProcessorModule when container is PLDM_ENTITY_PROC.
+        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_MEMORY_CONTROLLER)
+        {
+            const auto& containerId = std::get<0>(entityInfo);
+            auto containerItr = entityAssociations.find(containerId);
+            if (containerItr != entityAssociations.end())
+            {
+                const auto& containerEntity = containerItr->second.first;
+                if ((std::get<1>(containerEntity) & 0x7FFF) == PLDM_ENTITY_PROC)
+                {
+                    auto cpuPaths = findInventory(containerEntity, true);
+                    if (!cpuPaths.empty())
+                    {
+                        inventoryPath = cpuPaths;
+                    }
+                }
+            }
+        }
+
         ptr->setInventoryPaths(inventoryPath, false);
         ptr->associateNumericSensor(numericSensors);
 
