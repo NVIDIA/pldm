@@ -103,7 +103,8 @@ class StateSetEthIBPortLinkState : public StateSet
                 break;
         }
 
-        if (linkSpeedSensor)
+        if (linkSpeedSensor &&
+            linkSpeedSensor->operationalStatusIntf->functional())
         {
 #ifdef OEM_NVIDIA
             auto oldValue = ValuePortInfoIntf->currentSpeed();
