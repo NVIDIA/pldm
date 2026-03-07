@@ -298,6 +298,15 @@ class ComponentUpdater
      */
     Response applyComplete(const pldm_msg* request, size_t payloadLength);
 
+    /** @brief Notification that a response was sent (or failed to send).
+     *         Triggers any pending post-response action (e.g. GetStatus
+     *         after ApplyComplete) only on successful send. On failure,
+     *         the action is preserved for the FD's retry.
+     *
+     *  @param[in] success - true if sendMsg succeeded, false otherwise
+     */
+    void onResponseSendComplete(bool success);
+
     /**
      * @brief timeout handler for requestFirmwareData timeout (UA_T2)
      *
@@ -503,6 +512,12 @@ class ComponentUpdater
 
     /** @brief Start time of the component update for timing measurement */
     std::chrono::steady_clock::time_point componentUpdateStartTime{};
+
+    /** @brief Stored post-response action for ApplyComplete.
+     *         Triggered by onResponseSendComplete() after the response is
+     *         confirmed sent. Cleared on send failure; the FD retry will
+     *         go through applyComplete() again and set a fresh action. */
+    std::function<void()> pendingPostResponseAction;
 
     /** @brief Log component update duration to message registry
      *

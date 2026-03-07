@@ -102,6 +102,16 @@ class UpdateManager
     Response handleRequest(mctp_eid_t eid, uint8_t command,
                            const pldm_msg* request, size_t reqMsgLen);
 
+    /** @brief Notify that a FW update response was sent (or failed).
+     *         Delegates to the DeviceUpdater for the given EID so that
+     *         post-response actions (e.g. GetStatus) can be triggered
+     *         only after confirmed delivery.
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] success - true if sendMsg succeeded
+     */
+    void onResponseSendComplete(mctp_eid_t eid, bool success);
+
     /** @brief Process the firmware update package stream
      *
      *  Parses the firmware package header, validates the package format,

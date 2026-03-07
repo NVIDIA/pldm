@@ -567,6 +567,15 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
     }
 }
 
+void DeviceUpdater::onResponseSendComplete(bool success)
+{
+    if (componentUpdaterMap.contains(componentIndex))
+    {
+        componentUpdaterMap[componentIndex].first->onResponseSendComplete(
+            success);
+    }
+}
+
 exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
 {
     pldmRequest.reset();

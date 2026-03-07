@@ -252,6 +252,16 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return updateManager.handleRequest(eid, command, request, reqMsgLen);
     }
 
+    /** @brief Notify that a PLDM FW update response has been sent
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] success - true if sendMsg succeeded
+     */
+    void onResponseSendComplete(mctp_eid_t eid, bool success)
+    {
+        updateManager.onResponseSendComplete(eid, success);
+    }
+
     void onlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
                             [[maybe_unused]] const eid& eid) override
     {
