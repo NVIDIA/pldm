@@ -19,6 +19,7 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ActivationProgress/server.hpp>
@@ -55,7 +56,22 @@ class DebugToken
     DebugToken(DebugToken&&) = delete;
     DebugToken& operator=(const DebugToken&) = delete;
     DebugToken& operator=(DebugToken&&) = delete;
-    ~DebugToken() = default;
+    /**
+     * @brief Drain any in-flight coroutines spawned by startTokenUpdate() so
+     *        suspended frames see `*this` alive through their full await
+     *        chain.
+     *
+     *  Defined inline so the destructor symbol is emitted in every TU that
+     *  includes this header. The pldmd target builds debug_token.cpp only
+     *  when get_option('debug-token').enabled(), but UpdateManager holds a
+     *  unique_ptr<DebugToken> whenever OEM_NVIDIA is on — without the inline
+     *  body, builds with OEM_NVIDIA && !DEBUG_TOKEN fail to link
+     *  ~UpdateManager.
+     */
+    ~DebugToken()
+    {
+        stdexec::sync_wait(tokenScope.on_empty());
+    }
 
     /**
      * @brief Debug token object for install or erase token
@@ -72,16 +88,52 @@ class DebugToken
 
     /**
      * @brief From pldm image extracts the debug token image and copies to
-     * respective location
+     * respective location. Drives D-Bus property writes asynchronously.
      *
-     * @param[in] fwDeviceIDRecords - Device records
-     * @param[in] componentImageInfos - Image info like offset, size
-     * @param[in] package - pldm image input stream
-     * @return void - debug token install/erase status is ignored
+     *  fwDeviceIDRecords and componentImageInfos are taken by value so the
+     *  coroutine frame owns its own copies — references would dangle if the
+     *  caller-side parser is reset (e.g. via clearFirmwareUpdatePackage)
+     *  while the coroutine is suspended on a D-Bus await.
+     *
+     *  `package` is kept as a reference and is only safe to use in the
+     *  synchronous prologue (before the first co_await). With the
+     *  inline_scheduler used by startTokenUpdate, the prologue runs to the
+     *  first suspension while the caller is still on the stack, so the
+     *  stream is guaranteed live during the prologue. Do NOT add reads from
+     *  `package` after any co_await in this function — those would be a
+     *  use-after-free if the caller has since dropped its hold on the
+     *  stream.
+     *
+     * @param[in] fwDeviceIDRecords - Device records (taken by value)
+     * @param[in] componentImageInfos - Image info (taken by value)
+     * @param[in] package - pldm image input stream (synchronous-prologue use
+     *                      only; must outlive startTokenUpdate's call)
+     * @return coroutine - debug token install/erase status is ignored
      */
-    void updateDebugToken(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    exec::task<void> updateDebugToken(FirmwareDeviceIDRecords fwDeviceIDRecords,
+                                      ComponentImageInfos componentImageInfos,
+                                      std::istream& package);
+
+    /**
+     * @brief Spawn updateDebugToken as a detached coroutine on the internal
+     *        async_scope. Returns immediately; the coroutine completes when
+     *        the underlying D-Bus calls finish or fail.
+     *
+     *        Callers that need to wait for completion (e.g. tests) should use
+     *        getTokenScope().on_empty() with stdexec::sync_wait.
+     */
+    void startTokenUpdate(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
                           const ComponentImageInfos& componentImageInfos,
                           std::istream& package);
+
+    /** @brief Accessor for the async scope owning in-flight token coroutines.
+     *  Used by UpdateManager / tests that need to wait for completion before
+     *  destroying or inspecting state.
+     */
+    exec::async_scope& getTokenScope()
+    {
+        return tokenScope;
+    }
 
     /**
      * @brief Checks if the debug token component is present
@@ -154,12 +206,17 @@ class DebugToken
     void getValidPaths(std::vector<std::string>& paths);
 
     /**
-     * @brief Activates all other devices
+     * @brief Drive the RequestedActivation property write on the debug-token
+     *        D-Bus object.
      *
-     * @return true if successfull
-     * @return false otherwise
+     * @return true if the property set succeeded; false if it failed. On
+     *         failure the function has already run the synchronous cleanup
+     *         (log entry + startUpdate()) so the caller must NOT arm the
+     *         activation timeout — that timer only makes sense while there
+     *         is an in-flight activation waiting on a property-change
+     *         signal.
      */
-    bool activate();
+    exec::task<bool> activate();
 
     /**
      * @brief triggers pldm and non-pldm updates
@@ -171,7 +228,15 @@ class DebugToken
     message registry and pass this to token installer
      *
      */
-    void setVersion();
+    exec::task<void> setVersion();
+
+    /** @brief Owns in-flight coroutines spawned by startTokenUpdate(). The
+     *  destructor sync_waits this scope so any suspended coroutine sees a
+     *  live `this` for the full chain. Replaces the previous aliveFlag
+     *  pattern that was needed for the callback-based async writes.
+     *  MUST remain the last data member so it is destroyed first, after the
+     *  destructor has drained it. */
+    exec::async_scope tokenScope;
 };
 
 } // namespace fw_update

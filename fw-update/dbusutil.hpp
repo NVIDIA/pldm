@@ -28,7 +28,10 @@
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+#include <functional>
 #include <optional>
+#include <string>
+#include <string_view>
 
 PHOSPHOR_LOG2_USING;
 
@@ -98,6 +101,139 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
     method.append(dbusMap.interface.c_str(), dbusMap.propertyName.c_str(),
                   propertyValue);
     bus.call_noreply(method);
+}
+
+/** @brief Asynchronously set a D-Bus property via ObjectMapper lookup.
+ *
+ *  Performs a non-blocking mapper GetObject call to resolve the service name,
+ *  followed by a non-blocking Properties.Set call. Failures at any stage are
+ *  logged and optionally reported through the onComplete callback.
+ *
+ *  This function never propagates exceptions to its caller: synchronous
+ *  failures from getAsioConnection / async_method_call argument serialization
+ *  and asynchronous failures inside the mapper / Properties.Set handlers are
+ *  all caught, logged, and reported via onComplete(false).
+ *
+ *  @tparam T          C++ type of the property value (e.g. std::string)
+ *  @param[in] objectPath   D-Bus object path
+ *  @param[in] interface    D-Bus interface that owns the property
+ *  @param[in] propertyName D-Bus property name
+ *  @param[in] value        Value to set
+ *  @param[in] onComplete   Optional callback invoked with true on success,
+ *                          false on failure
+ */
+template <typename T>
+inline void setDBusPropertyAsync(std::string_view objectPath,
+                                 std::string_view interface,
+                                 std::string_view propertyName, const T& value,
+                                 std::function<void(bool)> onComplete = nullptr)
+{
+    // Invoke onComplete defensively: a throwing user callback should not
+    // unwind into boost::asio (which would std::terminate pldmd).
+    auto safeComplete = [](const std::function<void(bool)>& cb, bool ok,
+                           std::string_view objectPath,
+                           std::string_view propertyName) {
+        if (!cb)
+        {
+            return;
+        }
+        try
+        {
+            cb(ok);
+        }
+        catch (const std::exception& e)
+        {
+            error(
+                "setDBusPropertyAsync: onComplete callback threw for PROP={PROP} PATH={PATH}: {ERROR}",
+                "PROP", propertyName, "PATH", objectPath, "ERROR", e.what());
+        }
+        catch (...)
+        {
+            error(
+                "setDBusPropertyAsync: onComplete callback threw unknown exception for PROP={PROP} PATH={PATH}",
+                "PROP", propertyName, "PATH", objectPath);
+        }
+    };
+
+    using MapperResponse = std::map<std::string, std::vector<std::string>>;
+
+    try
+    {
+        auto asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+        pldm::utils::PropertyValue dbusValue{value};
+
+        asioConnection->async_method_call(
+            [asioConnection, objectPath = std::string(objectPath),
+             interface = std::string(interface),
+             propertyName = std::string(propertyName), dbusValue, onComplete,
+             safeComplete](boost::system::error_code ec,
+                           MapperResponse response) {
+                if (ec || response.empty())
+                {
+                    error(
+                        "setDBusPropertyAsync: mapper lookup failed for PATH={PATH} INTF={INTF}: {ERROR}",
+                        "PATH", objectPath, "INTF", interface, "ERROR",
+                        ec.message());
+                    safeComplete(onComplete, false, objectPath, propertyName);
+                    return;
+                }
+
+                std::string serviceName;
+                try
+                {
+                    serviceName = response.begin()->first;
+                }
+                catch (const std::exception& e)
+                {
+                    error(
+                        "setDBusPropertyAsync: malformed mapper response for PATH={PATH} INTF={INTF}: {ERROR}",
+                        "PATH", objectPath, "INTF", interface, "ERROR",
+                        e.what());
+                    safeComplete(onComplete, false, objectPath, propertyName);
+                    return;
+                }
+
+                try
+                {
+                    asioConnection->async_method_call(
+                        [objectPath, propertyName, onComplete,
+                         safeComplete](boost::system::error_code ec2) {
+                            if (ec2)
+                            {
+                                error(
+                                    "setDBusPropertyAsync: failed to set PROP={PROP} on PATH={PATH}: {ERROR}",
+                                    "PROP", propertyName, "PATH", objectPath,
+                                    "ERROR", ec2.message());
+                                safeComplete(onComplete, false, objectPath,
+                                             propertyName);
+                                return;
+                            }
+                            safeComplete(onComplete, true, objectPath,
+                                         propertyName);
+                        },
+                        serviceName, objectPath, dbusProperties, "Set",
+                        interface, propertyName, dbusValue);
+                }
+                catch (const std::exception& e)
+                {
+                    error(
+                        "setDBusPropertyAsync: Properties.Set dispatch threw for PROP={PROP} PATH={PATH}: {ERROR}",
+                        "PROP", propertyName, "PATH", objectPath, "ERROR",
+                        e.what());
+                    safeComplete(onComplete, false, objectPath, propertyName);
+                }
+            },
+            mapperService, mapperPath, mapperInterface, "GetObject",
+            std::string(objectPath),
+            std::vector<std::string>({std::string(interface)}));
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "setDBusPropertyAsync: mapper GetObject dispatch threw for PATH={PATH} INTF={INTF}: {ERROR}",
+            "PATH", objectPath, "INTF", interface, "ERROR", e.what());
+        safeComplete(onComplete, false, objectPath, propertyName);
+    }
 }
 
 /** @brief Create log entry with explicit severity and pre-formatted args

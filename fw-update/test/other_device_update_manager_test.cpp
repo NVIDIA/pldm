@@ -120,9 +120,7 @@ TEST_F(OtherDeviceUpdateManagerTest, activate)
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
 
-    bool result = otherDeviceUpdateManager.activate();
-
-    EXPECT_EQ(result, true);
+    EXPECT_NO_THROW(otherDeviceUpdateManager.activate());
 }
 
 TEST_F(OtherDeviceUpdateManagerTest, onActivationChangedMsg)
@@ -154,22 +152,14 @@ TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicy)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    swapStaticDbusBus();
-    EXPECT_CALL(sdbusMock, sd_bus_call(testing::_, testing::_, dbusTimeout,
-                                       testing::_, testing::_))
-        .WillOnce([](sd_bus*, sd_bus_message*, uint64_t, sd_bus_error*,
-                     sd_bus_message** reply) {
-            if (reply != nullptr)
-            {
-                *reply = nullptr;
-            }
-            return -EINVAL;
-        });
+    const std::string uuid = "test-uuid";
+    otherDeviceUpdateManager.isImageFileProcessed[uuid] = true;
 
-    bool result =
-        otherDeviceUpdateManager.setUpdatePolicy("/xyz/openbmc_project/pldm");
-
-    EXPECT_EQ(result, false);
+    EXPECT_NO_THROW({
+        otherDeviceUpdateManager.setUpdatePolicy("/xyz/openbmc_project/pldm",
+                                                 uuid);
+    });
+    EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed[uuid]);
 }
 
 TEST_F(OtherDeviceUpdateManagerTest, getNumberOfProcessedImages)
@@ -522,8 +512,6 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedAddsTrackedOtherDevice)
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
@@ -603,8 +591,7 @@ TEST_F(OtherDeviceUpdateManagerTest, activateTrackedOtherDeviceFailurePath)
     updateManager.compUpdateCompletedCount = 0;
     updateManager.otherDeviceComponents[uuid] = false;
 
-    auto result = otherDeviceUpdateManager.activate();
-    EXPECT_FALSE(result);
+    EXPECT_NO_THROW(otherDeviceUpdateManager.activate());
     EXPECT_TRUE(updateManager.otherDeviceCompleted.contains(uuid));
     EXPECT_FALSE(updateManager.otherDeviceCompleted[uuid]);
 }
@@ -764,7 +751,7 @@ TEST_F(OtherDeviceUpdateManagerTest, startTimerTimeoutMarksIncompleteAsFailed)
     EXPECT_FALSE(updateManager.otherDeviceCompleted[uuid]);
 }
 
-TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicyReturnsTrueWhenDbusSucceeds)
+TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicyNoThrowWhenCalled)
 {
     MockdBusHandler dbusHandler;
     EXPECT_CALL(dbusHandler,
@@ -774,9 +761,10 @@ TEST_F(OtherDeviceUpdateManagerTest, setUpdatePolicyReturnsTrueWhenDbusSucceeds)
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
 
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
-    EXPECT_TRUE(otherDeviceUpdateManager.setUpdatePolicy(
-        "/xyz/openbmc_project/software/other/new"));
+    EXPECT_NO_THROW({
+        otherDeviceUpdateManager.setUpdatePolicy(
+            "/xyz/openbmc_project/software/other/new", "test-uuid");
+    });
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -814,7 +802,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    otherDeviceUpdateManager.buildDeviceDescriptorMap();
+    stdexec::sync_wait(otherDeviceUpdateManager.buildDeviceDescriptorMap());
 
     const auto fullKey =
         std::make_pair(std::string("AABBCCDDEEFF00112233445566778899"),
@@ -881,7 +869,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    otherDeviceUpdateManager.buildDeviceDescriptorMap();
+    stdexec::sync_wait(otherDeviceUpdateManager.buildDeviceDescriptorMap());
 
     const auto keyA =
         std::make_pair(std::string("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
@@ -943,7 +931,6 @@ TEST_F(OtherDeviceUpdateManagerTest, activateReturnsTrueForTrackedDeviceSuccess)
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
@@ -958,7 +945,7 @@ TEST_F(OtherDeviceUpdateManagerTest, activateReturnsTrueForTrackedDeviceSuccess)
     otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_OK"] = {
         "1.0", "ComponentActivateOK"};
 
-    EXPECT_TRUE(otherDeviceUpdateManager.activate());
+    EXPECT_NO_THROW(otherDeviceUpdateManager.activate());
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -988,7 +975,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_THROW"] = {
         "1.1", "ComponentActivateThrow"};
 
-    EXPECT_FALSE(otherDeviceUpdateManager.activate());
+    EXPECT_NO_THROW(otherDeviceUpdateManager.activate());
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1031,7 +1018,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_OK_2"] = {
         "1.3", "ComponentActivateOk2"};
 
-    EXPECT_FALSE(otherDeviceUpdateManager.activate());
+    EXPECT_NO_THROW(otherDeviceUpdateManager.activate());
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1041,8 +1028,6 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);

@@ -26,6 +26,7 @@
 #include <systemd/sd-bus.h>
 #include <systemd/sd-event.h>
 
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 
 #include <sstream>
@@ -88,15 +89,31 @@ static void sealAndRewind(sdbusplus::message::message& msg)
     sd_bus_message_rewind(msg.get(), true);
 }
 
-TEST_F(DebugTokenInternalTest, activateReturnsFalseWhenDbusSetPropertyFails)
+/** Prepare UpdateManager so DebugToken::activate() async failure path can call
+ *  startUpdate() without null deref (otherDeviceUpdateManager, progress timer,
+ *  and OEM_NVIDIA debugToken). */
+static void wireUpdateManagerForActivateAsyncFailure(UpdateManager& um,
+                                                     sdbusplus::bus::bus& bus)
 {
+    um.otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
+        bus, &um, std::vector<sdbusplus::message::object_path>{});
+    um.deviceUpdaterMap.clear();
+    um.objPath = "/xyz/openbmc_project/software/debug_token_test";
+    um.createProgressUpdateTimer();
+#ifdef OEM_NVIDIA
+    um.debugToken = std::make_unique<DebugToken>(bus, &um);
+#endif
+}
+
+TEST_F(DebugTokenInternalTest, activateDoesNotThrowWithAsyncCall)
+{
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath =
         "/xyz/openbmc_project/software/HGX_FW_Debug_Token_Erase";
 
-    auto status = debugToken.activate();
-
-    EXPECT_FALSE(status);
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.activate()); });
 }
 
 TEST_F(DebugTokenInternalTest, getFilePathReturnsEmptyWhenNoMatchingUuid)
@@ -115,7 +132,7 @@ TEST_F(DebugTokenInternalTest, setVersionHandlesDbusFailure)
     debugToken.tokenPath = "/xyz/openbmc_project/software/nonexistent";
     debugToken.tokenVersion = "1.0";
 
-    EXPECT_NO_THROW({ debugToken.setVersion(); });
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.setVersion()); });
 }
 
 TEST_F(DebugTokenInternalTest,
@@ -230,8 +247,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenFallsBackToEraseTokenPath)
     std::istringstream package("dummy package");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.tokenVersion, "0.0");
@@ -252,15 +269,15 @@ TEST_F(DebugTokenInternalTest, startUpdateHandlesFailedNonPldmActivation)
     EXPECT_NO_THROW({ updateManager.debugToken->startUpdate(); });
 }
 
-TEST_F(DebugTokenInternalTest,
-       activateReturnsFalseWhenDbusSetPropertyFailsForInstallToken)
+TEST_F(DebugTokenInternalTest, activateDoesNotThrowForInstallToken)
 {
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
     debugToken.tokenVersion = "1.2.3";
 
-    auto status = debugToken.activate();
-    EXPECT_FALSE(status);
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.activate()); });
 }
 
 TEST_F(DebugTokenInternalTest, onActivationChangedMsgActiveSetsTokenStatus)
@@ -393,8 +410,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("dummy package");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -426,8 +443,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonMatchingUuid)
     std::istringstream package("12345678");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -460,8 +477,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonDeadInstallComponent)
     std::istringstream package("12345678");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -495,20 +512,21 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("ABCDEFGH");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
 
-TEST_F(DebugTokenInternalTest, activateReturnsTrueWhenDbusSetPropertySucceeds)
+TEST_F(DebugTokenInternalTest, activateDoesNotThrowWhenDbusSetPropertySucceeds)
 {
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     MockdBusHandler dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
     debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
 
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
-    EXPECT_TRUE(debugToken.activate());
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.activate()); });
 }
 
 TEST_F(DebugTokenInternalTest, setVersionUsesDbusPropertyWhenAvailable)
@@ -518,8 +536,7 @@ TEST_F(DebugTokenInternalTest, setVersionUsesDbusPropertyWhenAvailable)
     debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
     debugToken.tokenVersion = "9.9.9";
 
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
-    EXPECT_NO_THROW({ debugToken.setVersion(); });
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.setVersion()); });
 }
 
 TEST_F(DebugTokenInternalTest, getFilePathReturnsDirectoryForMatchingUuid)
@@ -659,6 +676,8 @@ TEST_F(DebugTokenInternalTest, getFilePathHandlesEmptyUuidAndEmptyPath)
 
 TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
 {
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     MockdBusHandler dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
 
@@ -684,8 +703,6 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -701,8 +718,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
     std::istringstream package("ABCD");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.tokenPath,
@@ -712,6 +729,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenHandlesNonUuidDescriptorThenInstallsToken)
 {
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     MockdBusHandler dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
 
@@ -737,8 +756,6 @@ TEST_F(DebugTokenInternalTest,
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -757,8 +774,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("WXYZ");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.tokenPath,
@@ -892,6 +909,8 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenSkipsUuidDescriptorWithEmptyPayload)
 {
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
     testing::NiceMock<MockdBusHandler> dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
 
@@ -906,8 +925,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("ABCD");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -931,8 +950,8 @@ TEST_F(DebugTokenInternalTest,
 
     EXPECT_THROW(
         {
-            debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                        package);
+            stdexec::sync_wait(debugToken.updateDebugToken(
+                fwDeviceIDRecords, componentImageInfos, package));
         },
         std::bad_variant_access);
 }
@@ -995,8 +1014,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("ABCD");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
 }
 
@@ -1063,8 +1082,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("WXYZ");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
 }
 
@@ -1133,8 +1152,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("ABCD");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
 }
@@ -1205,8 +1224,8 @@ TEST_F(DebugTokenInternalTest,
     std::istringstream package("ABCDEFGH");
 
     EXPECT_NO_THROW({
-        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
-                                    package);
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
 }

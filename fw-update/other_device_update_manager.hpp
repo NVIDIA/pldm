@@ -130,11 +130,8 @@ class OtherDeviceUpdateManager
 
     /**
      * @brief Activates all other devices
-     *
-     * @return true if successfull
-     * @return false otherwise
      */
-    bool activate();
+    void activate();
 
     /**
      * @brief Async call to monitor the activate change in d-bus
@@ -153,12 +150,14 @@ class OtherDeviceUpdateManager
                              const pldm::dbus::PropertyMap& properties);
 
     /**
-     * @brief Set the Update Policy object
+     * @brief Set the Update Policy object asynchronously.
+     *        On failure, marks the image as not processed so the timeout
+     *        handler can log a transfer failure.
      *
      * @param path - other software object path
-     * @return true if setting update policy is success else false
+     * @param uuid - UUID of the device (used to update isImageFileProcessed)
      */
-    bool setUpdatePolicy(const std::string& path);
+    void setUpdatePolicy(const std::string& path, const std::string& uuid);
     /**
      * @brief method to add the dbus activation object paths to dbus watch
      *
@@ -372,6 +371,13 @@ class OtherDeviceUpdateManager
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
     std::vector<sdbusplus::message::object_path> targets;
+
+    /** @brief Liveness sentinel for async callbacks. Captured as weak_ptr;
+     *  expires when this object is destroyed, gating safe use of `this`.
+     *  MUST remain the last data member so it is destroyed first, ensuring
+     *  any in-flight callbacks see the weak_ptr as expired before the rest
+     *  of the object is torn down. */
+    std::shared_ptr<bool> aliveFlag = std::make_shared<bool>(true);
 };
 
 } // namespace fw_update

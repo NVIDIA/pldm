@@ -21,7 +21,6 @@
 #include "dbusutil.hpp"
 
 #include <format>
-#include <thread>
 
 namespace pldm::fw_update::device_inventory
 {
@@ -211,25 +210,17 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
         return;
     }
 
-    utils::PropertyValue value{sku};
-    utils::DBusMapping dbusMapping{
-        objPath, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU",
-        "string"};
-    std::thread propertySet([dbusMapping, value] {
-        try
-        {
-            std::string tmpVal = std::get<std::string>(value);
-            lg2::info("Setting APSKU for path={PATH}: apsku={APSKU}", "PATH",
-                      dbusMapping.objectPath, "APSKU", tmpVal);
-            setDBusProperty(dbusMapping, tmpVal);
-        }
-        catch (const std::exception& e)
-        {
-            // If the D-Bus object is not present, skip updating SKU
-            // and update later by registering for D-Bus signal.
-        }
-    });
-    propertySet.detach();
+    lg2::info("Setting APSKU for path={PATH}: apsku={APSKU}", "PATH", objPath,
+              "APSKU", sku);
+    setDBusPropertyAsync(
+        objPath, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU", sku,
+        [objPath, sku](bool success) {
+            if (!success)
+            {
+                lg2::error("Failed to set APSKU for path={PATH}: apsku={APSKU}",
+                           "PATH", objPath, "APSKU", sku);
+            }
+        });
 
     skuLookup.emplace(objPath, sku);
     updateSKUMatch.try_emplace(
@@ -253,25 +244,21 @@ void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
     if (skuLookup.contains(objPath))
     {
         auto search = skuLookup.find(objPath);
+        const auto& skuVal = search->second;
+        const std::string& pathStr = objPath;
 
-        utils::PropertyValue value{search->second};
-        utils::DBusMapping dbusMapping{
-            objPath, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU",
-            "string"};
-        std::thread propertySet([dbusMapping, value] {
-            try
-            {
-                std::string tmpVal = std::get<std::string>(value);
-                lg2::info("Updating APSKU for path={PATH}: apsku={APSKU}",
-                          "PATH", dbusMapping.objectPath, "APSKU", tmpVal);
-                setDBusProperty(dbusMapping, tmpVal);
-            }
-            catch (const std::exception& e)
-            {
-                error("Set SKU Error: {ERROR}", "ERROR", e);
-            }
-        });
-        propertySet.detach();
+        lg2::info("Updating APSKU for path={PATH}: apsku={APSKU}", "PATH",
+                  pathStr, "APSKU", skuVal);
+        setDBusPropertyAsync(
+            pathStr, "xyz.openbmc_project.Inventory.Decorator.SKU", "SKU",
+            skuVal, [pathStr, skuVal](bool success) {
+                if (!success)
+                {
+                    lg2::error(
+                        "Failed to update APSKU for path={PATH}: apsku={APSKU}",
+                        "PATH", pathStr, "APSKU", skuVal);
+                }
+            });
     }
 }
 

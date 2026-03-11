@@ -1827,7 +1827,7 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateReturnsFailedWhenNoDevicesOrImages)
 #endif
 
 TEST_F(UpdateManagerTest,
-       startNonPLDMUpdateReturnsFailedWhenActivationFailsAndNoPLDMDevices)
+       startNonPLDMUpdateReturnsActivatingWhenAsyncActivationIsUsed)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -1851,7 +1851,7 @@ TEST_F(UpdateManagerTest,
     updateManager.otherDeviceUpdateManager->isImageFileProcessed[uuid] = false;
 
     auto state = updateManager.startNonPLDMUpdate();
-    EXPECT_EQ(state, Server::Activation::Activations::Failed);
+    EXPECT_EQ(state, Server::Activation::Activations::Activating);
 }
 
 TEST_F(UpdateManagerTest, clearActivationInfoStopsAndResetsProgressTimer)

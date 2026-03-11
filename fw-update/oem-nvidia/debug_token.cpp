@@ -22,6 +22,7 @@
 #include "../activation.hpp"
 #include "../dbusutil.hpp"
 #include "../update_manager.hpp"
+#include "common/dBusAsyncUtils.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
@@ -50,43 +51,52 @@ pldm::utils::DBusHandlerInterface& DebugToken::defaultDbusHandler()
     return handler;
 }
 
-bool DebugToken::activate()
+exec::task<bool> DebugToken::activate()
 {
-    bool activationStatus = true;
-
-    pldm::utils::DBusMapping dbusMapping{
-        tokenPath, Server::Activation::interface, "RequestedActivation",
-        "string"};
     info("Activating : OBJPATH={OBJPATH}", "OBJPATH", tokenPath);
-    try
-    {
-        dbusHandler.setDbusProperty(dbusMapping,
-                                    std::string(Server::Activation::interface) +
-                                        ".RequestedActivations.Active");
-    }
-    catch (const std::exception& e)
-    {
-        error("Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
-              "OBJPATH", tokenPath, "ERROR", e);
 
-        auto componentName = std::filesystem::path(tokenPath).filename();
-        if (componentName == "HGX_FW_Debug_Token_Erase")
-        {
-            auto eraseResolution =
-                "No action required. If there are other"
-                " component failures in task, retry the firmware update"
-                " operation and if issue still persists reset the baseboard.";
-            createLogEntry(debugTokenEraseFailed, componentName,
-                           "Operation timed out.", eraseResolution);
-        }
-        else
-        {
-            createLogEntry(transferFailed, componentName, tokenVersion,
-                           transferFailedResolution);
-        }
-        activationStatus = false;
+    // GCC 13 coroutine ICE workaround (matches the pattern documented in
+    // other_device_update_manager.cpp): bind every argument to a local
+    // lvalue before the co_await so the awaitable's reference-typed members
+    // remain valid across the suspension.
+    const std::string objectPath = tokenPath;
+    const std::string interface = Server::Activation::interface;
+    const std::string property = "RequestedActivation";
+    std::string value = std::string(Server::Activation::interface) +
+                        ".RequestedActivations.Active";
+    const bool success = co_await pldm::utils::coSetDbusProperty<std::string>(
+        objectPath, interface, property, std::move(value));
+    if (success)
+    {
+        co_return true;
     }
-    return activationStatus;
+
+    error("Failed to set resource RequestedActivation: OBJPATH={OBJPATH}",
+          "OBJPATH", tokenPath);
+
+    auto componentName = std::filesystem::path(tokenPath).filename();
+    if (componentName == "HGX_FW_Debug_Token_Erase")
+    {
+        auto eraseResolution =
+            "No action required. If there are other"
+            " component failures in task, retry the firmware"
+            " update operation and if issue still persists"
+            " reset the baseboard.";
+        createLogEntry(debugTokenEraseFailed, componentName,
+                       "Operation timed out.", eraseResolution);
+    }
+    else
+    {
+        createLogEntry(transferFailed, componentName, tokenVersion,
+                       transferFailedResolution);
+    }
+    if (!tokenStatus)
+    {
+        tokenStatus = true;
+        activationMatches.clear();
+        startUpdate();
+    }
+    co_return false;
 }
 
 void DebugToken::onActivationChangedMsg(sdbusplus::message::message& msg)
@@ -115,16 +125,25 @@ void DebugToken::onActivationChangedMsg(sdbusplus::message::message& msg)
         if (activationState == Server::Activation::Activations::Active ||
             activationState == Server::Activation::Activations::Failed)
         {
-            startUpdate();
+            if (tokenStatus)
+            {
+                return;
+            }
             tokenStatus = true;
+            activationMatches.clear();
+            startUpdate();
         }
     }
 }
 
-void DebugToken::updateDebugToken(
-    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    const ComponentImageInfos& componentImageInfos, std::istream& package)
+exec::task<void> DebugToken::updateDebugToken(
+    FirmwareDeviceIDRecords fwDeviceIDRecords,
+    ComponentImageInfos componentImageInfos, std::istream& package)
 {
+    // fwDeviceIDRecords and componentImageInfos are taken by value, so the
+    // coroutine frame owns them outright — safe to access across co_await.
+    // `package` is only used in the synchronous prologue below; see header
+    // for the invariant. Do not add post-await reads from `package`.
     installToken = false;
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
@@ -221,7 +240,7 @@ void DebugToken::updateDebugToken(
             createLogEntry(debugTokenEraseFailed, "HGX_FW_Debug_Token_Erase",
                            "0.0", transferFailedResolution);
             startUpdate();
-            return;
+            co_return;
         }
     }
 
@@ -245,7 +264,7 @@ void DebugToken::updateDebugToken(
             "FAILED_MATCH", Server::Activation::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
         startUpdate();
-        return;
+        co_return;
     }
 
     try
@@ -265,18 +284,30 @@ void DebugToken::updateDebugToken(
             "FAILED_MATCH", Server::ActivationProgress::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
         startUpdate();
-        return;
+        co_return;
     }
 
-    setVersion();
-    if (!activate())
+    co_await setVersion();
+    const bool activated = co_await activate();
+    // Only arm the activation-timeout safety net when the property-set
+    // succeeded and we are genuinely waiting on a property-change signal
+    // from the token service. On failure, activate() has already run the
+    // synchronous failure cleanup (log entry + startUpdate()), so a timer
+    // here would just hold a 60s-pinned lambda on `this` for nothing.
+    if (activated)
     {
-        error("Activation failed for debug token");
-        startUpdate();
-        return;
+        startTimer(debugTokenTimeout);
     }
-    startTimer(debugTokenTimeout);
-    return;
+    co_return;
+}
+
+void DebugToken::startTokenUpdate(
+    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    const ComponentImageInfos& componentImageInfos, std::istream& package)
+{
+    tokenScope.spawn(
+        updateDebugToken(fwDeviceIDRecords, componentImageInfos, package),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
 }
 
 std::pair<std::string, std::string> DebugToken::getFilePath(
@@ -351,6 +382,7 @@ void DebugToken::startTimer(auto timerExpiryTime)
     timer = std::make_unique<sdbusplus::Timer>([this]() {
         if (!tokenStatus)
         {
+            tokenStatus = true;
             activationMatches.clear();
             auto componentName = std::filesystem::path(tokenPath).filename();
             if (componentName == "HGX_FW_Debug_Token_Erase")
@@ -387,19 +419,20 @@ void DebugToken::startUpdate()
     }
 }
 
-void DebugToken::setVersion()
+exec::task<void> DebugToken::setVersion()
 {
-    pldm::utils::DBusMapping dbusMapping{
-        tokenPath, "xyz.openbmc_project.Software.ExtendedVersion",
-        "ExtendedVersion", "string"};
-    try
-    {
-        dbusHandler.setDbusProperty(dbusMapping, tokenVersion);
-    }
-    catch (const sdbusplus::exception::SdBusError& e)
-    {
-        error("Failed to set extended version.", "ERROR", e);
-    }
+    const std::string objectPath = tokenPath;
+    const std::string interface =
+        "xyz.openbmc_project.Software.ExtendedVersion";
+    const std::string property = "ExtendedVersion";
+    std::string value = tokenVersion;
+    [[maybe_unused]] bool ok =
+        co_await pldm::utils::coSetDbusProperty<std::string>(
+            objectPath, interface, property, std::move(value));
+    // Failure is intentionally non-fatal here: ExtendedVersion is used by the
+    // item updater for message-registry decoration only. The legacy
+    // setDBusPropertyAsync call also discarded errors.
+    co_return;
 }
 
 } // namespace fw_update

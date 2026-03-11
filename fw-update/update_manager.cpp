@@ -1243,7 +1243,7 @@ software::Activation::Activations UpdateManager::activatePackage()
 #ifdef DEBUG_TOKEN
     debugToken =
         std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);
-    debugToken->updateDebugToken(parser->getFwDeviceIDRecords(),
+    debugToken->startTokenUpdate(parser->getFwDeviceIDRecords(),
                                  parser->getComponentImageInfos(),
                                  updater->getImageStream());
     return software::Activation::Activations::Activating;
@@ -1310,13 +1310,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         clearFirmwareUpdatePackage();
         return software::Activation::Activations::Failed;
     }
-    if (!otherDeviceUpdateManager->activate())
-    {
-        if (deviceUpdaterMap.size() == 0)
-        {
-            return software::Activation::Activations::Failed;
-        }
-    }
+    otherDeviceUpdateManager->activate();
     return software::Activation::Activations::Activating;
 }
 

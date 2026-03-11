@@ -81,8 +81,19 @@ struct coGetDbusProperty
                 }
                 else
                 {
-                    // can throw std::bad_variant_access
-                    ret = std::get<type>(value);
+                    try
+                    {
+                        ret = std::get<type>(value);
+                    }
+                    catch (const std::bad_variant_access& e)
+                    {
+                        lg2::error(
+                            "bad_variant_access while DbusProperties.Get for intf={INTERFACE}, prop={PROPERTY} and path={OBJECT_PATH}: {ERROR_MESSAGE}",
+                            "INTERFACE", interface, "PROPERTY", property,
+                            "OBJECT_PATH", objectPath, "ERROR_MESSAGE",
+                            e.what());
+                        ret = type();
+                    }
                 }
                 resumeHandle();
             },
@@ -180,6 +191,102 @@ struct coGetServiceMap
     coGetServiceMap(const std::string& objectPath,
                     const dbus::Interfaces& ifaceList) :
         objectPath(objectPath), ifaceList(ifaceList)
+    {}
+};
+
+/** @struct coSetDbusProperty
+ *
+ * An awaitable object needed by co_await operator to set a D-Bus property.
+ * Resolves the owning service via ObjectMapper.GetObject, then issues
+ * Properties.Set. The co_await result is a bool: true on success, false on
+ * any failure (mapper lookup, missing owner, or Set call error).
+ *
+ * Example:
+ *   bool ok = co_await coSetDbusProperty<std::string>(
+ *       objectPath, interface, property, value);
+ *
+ * @tparam type - property data type (must match the actual D-Bus signature)
+ */
+template <typename type>
+struct coSetDbusProperty
+{
+    const std::string& objectPath;
+    const std::string& interface;
+    const std::string& property;
+    const type value;
+
+    /** @brief Result captured from the async chain. */
+    bool ret{false};
+
+    /** @brief Returning false to make await_suspend() to be called. */
+    bool await_ready() noexcept
+    {
+        return false;
+    }
+
+    /** @brief Called by co_await operator before suspending the coroutine.
+     *  Issues mapper GetObject; on success, issues Properties.Set; resumes
+     *  the coroutine when both complete (or as soon as either fails).
+     */
+    bool await_suspend(std::coroutine_handle<> handle) noexcept
+    {
+        auto& asioConnection = utils::DBusHandler::getAsioConnection();
+        using MapperResponse = std::map<std::string, std::vector<std::string>>;
+        pldm::utils::PropertyValue dbusValue{value};
+
+        asioConnection->async_method_call(
+            [resumeHandle = handle, &ret = ret, asioConnection,
+             objectPath = objectPath, interface = interface,
+             property = property,
+             dbusValue](boost::system::error_code ec, MapperResponse response) {
+                if (ec || response.empty())
+                {
+                    lg2::error(
+                        "coSetDbusProperty: mapper lookup failed for path={OBJECT_PATH} intf={INTERFACE}: {ERROR_MESSAGE}",
+                        "OBJECT_PATH", objectPath, "INTERFACE", interface,
+                        "ERROR_MESSAGE", ec.message());
+                    ret = false;
+                    resumeHandle();
+                    return;
+                }
+                auto serviceName = response.begin()->first;
+                asioConnection->async_method_call(
+                    [resumeHandle, &ret, objectPath,
+                     property](boost::system::error_code ec2) {
+                        if (ec2)
+                        {
+                            lg2::error(
+                                "coSetDbusProperty: Properties.Set failed for prop={PROPERTY} path={OBJECT_PATH}: {ERROR_MESSAGE}",
+                                "PROPERTY", property, "OBJECT_PATH", objectPath,
+                                "ERROR_MESSAGE", ec2.message());
+                            ret = false;
+                        }
+                        else
+                        {
+                            ret = true;
+                        }
+                        resumeHandle();
+                    },
+                    serviceName, objectPath, "org.freedesktop.DBus.Properties",
+                    "Set", interface, property, dbusValue);
+            },
+            mapperService, mapperPath, mapperInterface, "GetObject", objectPath,
+            std::vector<std::string>{interface});
+
+        return true;
+    }
+
+    /** @brief Called by co_await operator to retrieve the success flag. */
+    bool await_resume() const noexcept
+    {
+        return ret;
+    }
+
+    coSetDbusProperty(const std::string& objectPath,
+                      const std::string& interface, const std::string& property,
+                      type value) :
+        objectPath(objectPath), interface(interface), property(property),
+        value(std::move(value))
     {}
 };
 
@@ -344,6 +451,39 @@ struct coGetSubTree
     coGetSubTree(const std::string& objectPath, int depth,
                  const dbus::Interfaces& ifaceList) :
         objectPath(objectPath), depth(depth), ifaceList(ifaceList)
+    {}
+};
+
+template <typename type>
+struct coSetDbusProperty
+{
+    const std::string& objectPath;
+    const std::string& interface;
+    const std::string& property;
+    const type value;
+
+    bool ret{true};
+
+    bool await_ready() noexcept
+    {
+        return true;
+    }
+
+    bool await_suspend([[maybe_unused]] std::coroutine_handle<> handle) noexcept
+    {
+        return true;
+    }
+
+    bool await_resume() const noexcept
+    {
+        return ret;
+    }
+
+    coSetDbusProperty(const std::string& objectPath,
+                      const std::string& interface, const std::string& property,
+                      type value) :
+        objectPath(objectPath), interface(interface), property(property),
+        value(std::move(value))
     {}
 };
 

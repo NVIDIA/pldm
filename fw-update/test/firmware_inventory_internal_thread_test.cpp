@@ -11,7 +11,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
 #include <gmock/gmock.h>
@@ -29,16 +31,35 @@ void setDBusPropertyMock(const pldm::utils::DBusMapping&, const std::string&)
     }
 }
 
+template <typename T>
+void setDBusPropertyAsyncSwIdMock(
+    const std::string& /*objectPath*/, const std::string& /*interface*/,
+    const std::string& propertyName, const T& /*value*/,
+    std::function<void(bool)> onComplete = nullptr)
+{
+    if (propertyName != "SoftwareId")
+    {
+        return;
+    }
+    ++mockedSetSwIdCallCount;
+    if (onComplete)
+    {
+        onComplete(!mockedSetSwIdShouldThrow.load());
+    }
+}
+
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"
 #endif
 #define private public
 #define setDBusProperty setDBusPropertyMock
+#define setDBusPropertyAsync setDBusPropertyAsyncSwIdMock
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
 #include "fw-update/firmware_inventory.cpp" // NOLINT(bugprone-suspicious-include)
+#undef setDBusPropertyAsync
 #undef setDBusProperty
 #undef private
 

@@ -22,6 +22,7 @@
 #include "activation.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "dbusutil.hpp"
 #include "update_manager.hpp"
 
 #include <unistd.h>
@@ -82,40 +83,43 @@ Server::Activation::Activations
     return state;
 }
 
-bool OtherDeviceUpdateManager::activate()
+void OtherDeviceUpdateManager::activate()
 {
-    bool activationStatus = true;
+    std::weak_ptr<bool> weakAlive = aliveFlag;
     for (auto& x : otherDevices)
     {
         auto& path = x.first;
+        auto uuid = x.second->uuid;
 
-        pldm::utils::DBusMapping dbusMapping{
-            path, Server::Activation::interface, "RequestedActivation",
-            "string"};
         info("Activating : OBJPATH = {PATH}", "PATH", path);
-        try
-        {
-            dbusHandler.setDbusProperty(
-                dbusMapping, std::string(Server::Activation::interface) +
-                                 ".RequestedActivations.Active");
-        }
-        catch (const std::exception& e)
-        {
-            error("Failed to set resource RequestedActivation : {PATH}."
-                  " Error={ERROR}",
-                  "PATH", path, "ERROR", e);
-            std::string resolution = "Retry firmware update operation";
-            std::string messageArg0 = "Firmware Update Service";
-            std::string messageArg1 =
-                uuidMappings[x.second->uuid].componentName +
-                " firmware update timed out";
-            createLogEntry(resourceErrorDetected, messageArg0, messageArg1,
-                           resolution);
-            updateManager->updateOtherDeviceCompletion(x.second->uuid, false);
-            activationStatus = false;
-        }
+
+        auto componentName = uuidMappings[uuid].componentName;
+        setDBusPropertyAsync(
+            path, Server::Activation::interface, "RequestedActivation",
+            std::string(Server::Activation::interface) +
+                ".RequestedActivations.Active",
+
+            [this, weakAlive, uuid, componentName = std::move(componentName),
+             path](bool success) {
+                if (success)
+                {
+                    return;
+                }
+                error("Failed to set resource RequestedActivation : {PATH}",
+                      "PATH", path);
+                std::string resolution = "Retry firmware update operation";
+                std::string messageArg0 = "Firmware Update Service";
+                std::string messageArg1 =
+                    componentName + " firmware update timed out";
+                createLogEntry(resourceErrorDetected, messageArg0, messageArg1,
+                               resolution);
+                if (weakAlive.expired())
+                {
+                    return;
+                }
+                updateManager->updateOtherDeviceCompletion(uuid, false);
+            });
     }
-    return activationStatus;
 }
 
 void OtherDeviceUpdateManager::onActivationChangedMsg(
@@ -204,23 +208,24 @@ void OtherDeviceUpdateManager::onActivationChanged(
     }
 }
 
-bool OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path)
+void OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path,
+                                               const std::string& uuid)
 {
-    pldm::utils::DBusMapping targetsDBusMapping{
-        path, "xyz.openbmc_project.Software.UpdatePolicy", "Targets",
-        "array[object_path]"};
-    try
-    {
-        dbusHandler.setDbusProperty(targetsDBusMapping, targets);
-    }
-    catch (const sdbusplus::exception::SdBusError& e)
-    {
-        error("Failed to set targets : {ERROR}", "ERROR", e);
-        // when target filter is specified only selected devices should update
-        // return error so that user can retry the update on failed devices
-        return false;
-    }
-    return true;
+    std::weak_ptr<bool> weakAlive = aliveFlag;
+    setDBusPropertyAsync(
+        path, "xyz.openbmc_project.Software.UpdatePolicy", "Targets", targets,
+        [this, weakAlive, path, uuid](bool success) {
+            if (success)
+            {
+                return;
+            }
+            error("Failed to set targets for {PATH}", "PATH", path);
+            if (weakAlive.expired())
+            {
+                return;
+            }
+            isImageFileProcessed[uuid] = false;
+        });
 }
 
 void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
@@ -272,28 +277,26 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                                           onActivationChangedMsg,
                                       this, std::placeholders::_1));
                         isImageFileProcessed[uuid] = true;
-                        // set the version info so that item updater can update
-                        // message registry and pass this to concurrent update
-                        pldm::utils::DBusMapping dbusMapping{
+                        std::weak_ptr<bool> weakAlive = aliveFlag;
+                        setDBusPropertyAsync(
                             path,
                             "xyz.openbmc_project.Software.ExtendedVersion",
-                            "ExtendedVersion", "string"};
-                        try
-                        {
-                            dbusHandler.setDbusProperty(
-                                dbusMapping, uuidMappings[uuid].version);
-                        }
-                        catch (const sdbusplus::exception::SdBusError& e)
-                        {
-                            error("Failed to set extended version : {ERROR}",
-                                  "ERROR", e);
-                        }
-                        if (!setUpdatePolicy(path))
-                        {
-                            // if update policy D-Bus call fails, mark as image
-                            // not processed to log transfer failed at timeout
-                            isImageFileProcessed[uuid] = false;
-                        }
+                            "ExtendedVersion", uuidMappings[uuid].version,
+                            [this, weakAlive, path, uuid](bool success) {
+                                if (success)
+                                {
+                                    return;
+                                }
+                                error(
+                                    "Failed to set ExtendedVersion for {PATH} UUID={UUID}",
+                                    "PATH", path, "UUID", uuid);
+                                if (weakAlive.expired())
+                                {
+                                    return;
+                                }
+                                isImageFileProcessed[uuid] = false;
+                            });
+                        setUpdatePolicy(path, uuid);
                     }
                 }
             }
