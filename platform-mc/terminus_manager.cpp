@@ -451,8 +451,17 @@ exec::task<int> TerminusManager::SendRecvPldmMsgOverMctp(
 
     if (rc)
     {
-        lg2::error("sendRecvPldmMsgOverMctp failed. eid={EID} rc={RC}", "EID",
-                   eid, "RC", rc);
+        if (pldmErrorLogLimiter.shouldLog(eid))
+        {
+            pldmErrorLogLimiter.recordLog(eid);
+            lg2::error(
+                "sendRecvPldmMsgOverMctp failed. eid={EID} rc={RC} (further failures for this EID suppressed for 2 min)",
+                "EID", eid, "RC", rc);
+        }
+    }
+    else
+    {
+        pldmErrorLogLimiter.clear(eid);
     }
     co_return rc;
 }

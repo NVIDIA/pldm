@@ -24,6 +24,7 @@
 #endif
 
 #include "common/instance_id.hpp"
+#include "common/log_rate_limit.hpp"
 #include "common/types.hpp"
 #include "numeric_sensor.hpp"
 #include "pldmServiceReadyInterface.hpp"
@@ -189,6 +190,12 @@ class SensorManager
 
     /** @brief pointer to Manager */
     Manager* manager;
+
+    /** @brief Rate-limit getSensorReading error logs per (tid, sensorId) to
+     *  avoid flooding when a terminus repeatedly fails. Key:
+     * (tid<<16)|sensorId. Cleared on successful read for that sensor.
+     */
+    pldm::utils::LogRateLimiter<uint64_t> sensorErrorLogLimiter;
 };
 } // namespace platform_mc
 } // namespace pldm

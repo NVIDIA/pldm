@@ -20,6 +20,7 @@
 #include "libpldm/pldm.h"
 
 #include "common/instance_id.hpp"
+#include "common/log_rate_limit.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "terminus.hpp"
@@ -214,6 +215,11 @@ class TerminusManager
 
     /** @brief A Manager interface for calling the hook functions **/
     Manager* manager;
+
+    /** @brief Rate-limit PLDM send/recv error logs per EID to avoid flooding
+     *  when a terminus repeatedly fails to respond. Cleared on success.
+     */
+    pldm::utils::LogRateLimiter<mctp_eid_t> pldmErrorLogLimiter;
 };
 } // namespace platform_mc
 } // namespace pldm
