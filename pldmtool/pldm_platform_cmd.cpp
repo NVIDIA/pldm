@@ -1565,6 +1565,8 @@ class GetPDR : public CommandInterface
         uint8_t index = 1;
         uint8_t* vdata = pdr->vendor_specific_data;
 
+        output["vendorIANA"] = unsigned(pdr->vendor_iana);
+        output["oemRecordID"] = unsigned(pdr->ome_record_id);
         output["vendorDataLength"] = unsigned(pdr->data_length);
         while (index < len)
         {
