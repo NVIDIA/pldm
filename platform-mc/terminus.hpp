@@ -345,13 +345,13 @@ class Terminus
     }
 
     /** @brief The setter to set terminus's instance */
-    void setInstance(uint8_t inst)
+    void setInstance(uint16_t inst)
     {
         instance = inst;
     }
 
     /** @brief The getter to get terminus's instance */
-    std::optional<uint8_t> getInstance()
+    std::optional<uint16_t> getInstance()
     {
         return instance;
     }
@@ -400,7 +400,7 @@ class Terminus
     std::string terminusName;
 
     /** @brief Terminus instance from configuration */
-    std::optional<uint8_t> instance;
+    std::optional<uint16_t> instance;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
