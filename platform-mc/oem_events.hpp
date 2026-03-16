@@ -44,13 +44,30 @@ constexpr const char* PCIE_LTSSM_FILE = "PCIeLTSSM_0_0.bin";
 constexpr const char* PCIE_TELEMETRY_FILE = "PCIeTelemetry_0_0.bin";
 
 /**
- * @brief Fixed output path for the Inventory JSON file.
+ * @brief Output directory for Inventory JSON files.
  *
  * Used when OEM event 0xFC carries inventory data.
- * The inventory is written to a single well-known location consumed
- * by the nvidia-inventory service.
+ * Each terminus writes its own file: <terminus>_inventory.json
+ * (e.g. ProcessorModule_0_inventory.json, ProcessorModule_1_inventory.json).
+ * After writing, the nvidia-inventory service is notified via D-Bus.
  */
-constexpr const char* INVENTORY_FILE = "/var/lib/inventory/inventory.json";
+constexpr const char* inventoryDir = "/var/lib/inventory";
+
+/**
+ * @brief D-Bus identifiers for the nvidia-inventory CreateInventory method.
+ *
+ * After the JSON file is saved, PLDM calls
+ *   xyz.openbmc_project.NvidiaInventory
+ *     /xyz/openbmc_project/NvidiaInventory
+ *       CreateInventory(string filePath)
+ * to trigger an inventory update for the given terminus file.
+ */
+constexpr const char* nvidiaInventoryService =
+    "xyz.openbmc_project.NvidiaInventory";
+constexpr const char* nvidiaInventoryObjectPath =
+    "/xyz/openbmc_project/NvidiaInventory";
+constexpr const char* nvidiaInventoryInterface =
+    "xyz.openbmc_project.NvidiaInventory";
 
 /**
  * @brief Handle CPER Error Counter Event (0xF1)
@@ -98,14 +115,17 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
  * @brief Handle OEM event 0xFC as SatMC Inventory JSON (new projects)
  *
  * Parses the 4-byte OEM event header, then writes the UTF-8 JSON payload
- * directly to INVENTORY_FILE.
+ * to INVENTORY_DIR/<terminus>_inventory.json
+ * (e.g. ProcessorModule_0_inventory.json, ProcessorModule_1_inventory.json).
  * (meson option satmc-inventory).
  *
+ * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
  * @param[in] eventData     Raw event data including the 4-byte OEM header
  * @param[in] eventDataSize Size of eventData in bytes
  * @return true on success, false on failure
  */
-bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize);
+bool handleInventoryEvent(const std::string& terminusName,
+                          const uint8_t* eventData, size_t eventDataSize);
 
 /**
  * @brief Handle OEM event 0xFC as SMBIOS MDR data (legacy)

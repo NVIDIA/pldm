@@ -156,8 +156,26 @@ int EventManager::handlePlatformEvent(
         lg2::info("Handling 0xFC Event from tid={TID}, dataSize={SIZE}", "TID",
                   tid, "SIZE", eventDataSize);
 
+        auto terminusIt = termini.find(tid);
+        std::string terminusName = DEFAULT_TERMINUS_NAME;
+        if (terminusIt != termini.end() && terminusIt->second)
+        {
+            auto name = terminusIt->second->getTerminusName();
+            if (name.has_value())
+            {
+                terminusName = std::string(name.value());
+            }
+        }
+        if (terminusName == DEFAULT_TERMINUS_NAME)
+        {
+            lg2::warning(
+                "Terminus name not found for tid={TID}, using default: {DEF}",
+                "TID", tid, "DEF", DEFAULT_TERMINUS_NAME);
+        }
+
 #ifdef SATMC_INVENTORY
-        if (!oem_events::handleInventoryEvent(eventData, eventDataSize))
+        if (!oem_events::handleInventoryEvent(terminusName, eventData,
+                                              eventDataSize))
 #else
         if (!oem_events::handleSmbiosEvent(eventData, eventDataSize))
 #endif

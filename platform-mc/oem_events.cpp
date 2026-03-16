@@ -18,11 +18,14 @@
 
 #include "libpldm/platform.h"
 
+#include "common/utils.hpp"
 #include "smbios_mdr.hpp"
 
 #include <endian.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/bus.hpp>
+#include <sdbusplus/exception.hpp>
 
 #include <cerrno>
 #include <cstdio>
@@ -280,7 +283,29 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
                          eventDataSize);
 }
 
-bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
+/** @brief Notify nvidia-inventory service to load a terminus JSON file. */
+static void notifyInventoryService(const std::string& filePath)
+{
+    try
+    {
+        auto& bus = pldm::utils::DBusHandler::getBus();
+        auto method = bus.new_method_call(
+            nvidiaInventoryService, nvidiaInventoryObjectPath,
+            nvidiaInventoryInterface, "CreateInventory");
+        method.append(filePath);
+        bus.call_noreply(method);
+        lg2::info("Notified nvidia-inventory service for file: {F}", "F",
+                  filePath);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Failed to call CreateInventory on nvidia-inventory: {E}",
+                   "E", e.what());
+    }
+}
+
+bool handleInventoryEvent(const std::string& terminusName,
+                          const uint8_t* eventData, size_t eventDataSize)
 {
     // Parse the 4-byte OEM header: [formatVersion][formatType][payloadSize(2B
     // LE)]
@@ -308,8 +333,9 @@ bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
     std::string verStr = std::format("{:#04x}", formatVersion);
     std::string typeStr = std::format("{:#04x}", formatType);
     lg2::info(
-        "Received Inventory Event (0xfc) ver={VER} type={TYPE} payloadSize={LEN}",
-        "VER", verStr, "TYPE", typeStr, "LEN", payloadSize);
+        "Received Inventory Event (0xfc) terminus={TERM} ver={VER} type={TYPE} payloadSize={LEN}",
+        "TERM", terminusName, "VER", verStr, "TYPE", typeStr, "LEN",
+        payloadSize);
 
     if (payload == nullptr || payloadSize == 0)
     {
@@ -322,7 +348,7 @@ bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
 
     try
     {
-        fs::create_directories(fs::path(INVENTORY_FILE).parent_path());
+        fs::create_directories(fs::path(inventoryDir));
     }
     catch (const fs::filesystem_error& e)
     {
@@ -331,7 +357,8 @@ bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
         return false;
     }
 
-    std::string filePath = INVENTORY_FILE;
+    std::string filePath = std::format("{}/{}_Inventory.json", inventoryDir,
+                                       sanitizeTerminusName(terminusName));
     std::string tmpPath = filePath + ".tmp";
 
     try
@@ -358,6 +385,9 @@ bool handleInventoryEvent(const uint8_t* eventData, size_t eventDataSize)
         fs::rename(tmpPath, filePath);
         lg2::info("Saved inventory JSON: size={LEN}, path={PATH}", "LEN",
                   payloadSize, "PATH", filePath);
+
+        // Notify nvidia-inventory to reload this terminus' inventory objects
+        notifyInventoryService(filePath);
         return true;
     }
     catch (const std::exception& e)
