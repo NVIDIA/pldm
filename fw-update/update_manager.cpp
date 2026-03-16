@@ -937,6 +937,14 @@ Response UpdateManager::handleRequest(mctp_eid_t eid, uint8_t command,
     return response;
 }
 
+void UpdateManager::onResponseSendComplete(mctp_eid_t eid, bool success)
+{
+    if (deviceUpdaterMap.contains(eid))
+    {
+        deviceUpdaterMap[eid]->onResponseSendComplete(success);
+    }
+}
+
 software::Activation::Activations UpdateManager::activatePackage()
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;

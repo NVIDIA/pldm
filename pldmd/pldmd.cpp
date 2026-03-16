@@ -586,16 +586,23 @@ int main(int argc, char** argv)
                     printBuffer(Tx, *response);
                 }
 
+                pldm_header_info reqHdrFields{};
+                auto reqHdr =
+                    reinterpret_cast<const pldm_msg_hdr*>(requestMsgVec.data());
+                unpack_pldm_header(reqHdr, &reqHdrFields);
+
                 returnCode = pldmTransport.sendMsg(TID, (*response).data(),
                                                    (*response).size());
+                int savedErrno = errno;
+
+                if (reqHdrFields.pldm_type == PLDM_FWUP)
+                {
+                    fwManager->onResponseSendComplete(
+                        TID, returnCode == PLDM_REQUESTER_SUCCESS);
+                }
+
                 if (returnCode != PLDM_REQUESTER_SUCCESS)
                 {
-                    int savedErrno = errno;
-
-                    pldm_header_info reqHdrFields{};
-                    auto reqHdr = reinterpret_cast<const pldm_msg_hdr*>(
-                        requestMsgVec.data());
-                    unpack_pldm_header(reqHdr, &reqHdrFields);
                     if (reqHdrFields.pldm_type == PLDM_FWUP)
                     {
                         auto mctpErr = pldm::transport::createMctpErrorObject(

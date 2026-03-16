@@ -897,11 +897,9 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
             }
         };
 
-        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-            updateManager->event,
-            [this, validateApplyStatusSuccess](EventBase&) {
-                GetStatus(validateApplyStatusSuccess);
-            });
+        pendingPostResponseAction = [this, validateApplyStatusSuccess]() {
+            GetStatus(validateApplyStatusSuccess);
+        };
     }
     else
     {
@@ -926,6 +924,29 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
         return response;
     }
     return response;
+}
+
+void ComponentUpdater::onResponseSendComplete(bool success)
+{
+    if (!pendingPostResponseAction)
+    {
+        return;
+    }
+
+    if (success)
+    {
+        auto action = std::move(pendingPostResponseAction);
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            [action = std::move(action)](EventBase&) { action(); });
+    }
+    else
+    {
+        warning("Response send failed for EID={EID}, "
+                "FD is expected to retry the command",
+                "EID", eid);
+        pendingPostResponseAction = nullptr;
+    }
 }
 
 void ComponentUpdater::createRequestFwDataTimer()

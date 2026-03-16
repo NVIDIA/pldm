@@ -316,6 +316,13 @@ class DeviceUpdater
      */
     Response applyComplete(const pldm_msg* request, size_t payloadLength);
 
+    /** @brief Notify that a FW update response was sent (or failed).
+     *         Delegates to the active ComponentUpdater.
+     *
+     *  @param[in] success - true if sendMsg succeeded
+     */
+    void onResponseSendComplete(bool success);
+
     /**
      * @brief update component update completion
      *
