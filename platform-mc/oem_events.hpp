@@ -46,7 +46,7 @@ constexpr const char* PCIE_TELEMETRY_FILE = "PCIeTelemetry_0_0.bin";
 /**
  * @brief Output directory for Inventory JSON files.
  *
- * Used when OEM event 0xFC carries inventory data.
+ * Used when OEM event 0xF3 carries inventory data.
  * Each terminus writes its own file: <terminus>_inventory.json
  * (e.g. ProcessorModule_0_inventory.json, ProcessorModule_1_inventory.json).
  * After writing, the nvidia-inventory service is notified via D-Bus.
@@ -112,7 +112,7 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
                               const uint8_t* eventData, size_t eventDataSize);
 
 /**
- * @brief Handle OEM event 0xFC as SatMC Inventory JSON (new projects)
+ * @brief Handle OEM event 0xF3 as SatMC Inventory JSON
  *
  * Parses the 4-byte OEM event header, then writes the UTF-8 JSON payload
  * to INVENTORY_DIR/<terminus>_inventory.json

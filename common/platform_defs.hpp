@@ -31,6 +31,9 @@ constexpr uint8_t PLDM_OEM_EVENT_CLASS_ERROR_COUNTER = 0xF0;
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY = 0xF1;
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_PCIE_LTSSM = 0xF2;
 
+// OEM Event Class for SatMC Inventory JSON
+constexpr uint8_t PLDM_OEM_EVENT_CLASS_0xF3 = 0xF3;
+
 } // namespace platform
 
 } // namespace pldm

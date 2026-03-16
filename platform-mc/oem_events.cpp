@@ -333,7 +333,7 @@ bool handleInventoryEvent(const std::string& terminusName,
     std::string verStr = std::format("{:#04x}", formatVersion);
     std::string typeStr = std::format("{:#04x}", formatType);
     lg2::info(
-        "Received Inventory Event (0xfc) terminus={TERM} ver={VER} type={TYPE} payloadSize={LEN}",
+        "Received Inventory Event (0xF3) terminus={TERM} ver={VER} type={TYPE} payloadSize={LEN}",
         "TERM", terminusName, "VER", verStr, "TYPE", typeStr, "LEN",
         payloadSize);
 

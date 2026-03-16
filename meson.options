@@ -371,13 +371,6 @@ option(
 )
 
 option(
-    'satmc-inventory',
-    type: 'feature',
-    value: 'disabled',
-    description: 'Handle PLDM OEM event 0xFC as SatMC-driven Inventory JSON. When disabled, 0xFC is handled as SMBIOS MDR data (legacy).',
-)
-
-option(
     'non-pldm',
     type: 'feature',
     value: 'enabled',

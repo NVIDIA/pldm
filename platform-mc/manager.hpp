@@ -33,6 +33,7 @@ namespace pldm
 namespace platform_mc
 {
 using namespace pldm::pdr;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
@@ -200,6 +201,20 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
         eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xFC,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    int handleInventoryJsonEvent(const pldm_msg* request, size_t payloadLength,
+                                 uint8_t /* formatVersion */, uint8_t tid,
+                                 size_t eventDataOffset,
+                                 uint8_t& platformEventStatus)
+    {
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_0xF3,
                                          eventData, eventDataSize,
                                          platformEventStatus);
         return PLDM_SUCCESS;

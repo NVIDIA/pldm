@@ -41,6 +41,7 @@ namespace platform_mc
 namespace fs = std::filesystem;
 
 // Use OEM event constants from common platform definitions
+using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
@@ -153,8 +154,22 @@ int EventManager::handlePlatformEvent(
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFC)
     {
-        lg2::info("Handling 0xFC Event from tid={TID}, dataSize={SIZE}", "TID",
-                  tid, "SIZE", eventDataSize);
+        lg2::info("Handling 0xFC SMBIOS Event from tid={TID}, dataSize={SIZE}",
+                  "TID", tid, "SIZE", eventDataSize);
+
+        if (!oem_events::handleSmbiosEvent(eventData, eventDataSize))
+        {
+            lg2::error("Failed to handle 0xFC event from tid={TID}", "TID",
+                       tid);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+            return PLDM_ERROR;
+        }
+    }
+    else if (eventClass == PLDM_OEM_EVENT_CLASS_0xF3)
+    {
+        lg2::info(
+            "Handling 0xF3 Inventory Event from tid={TID}, dataSize={SIZE}",
+            "TID", tid, "SIZE", eventDataSize);
 
         auto terminusIt = termini.find(tid);
         std::string terminusName = DEFAULT_TERMINUS_NAME;
@@ -173,14 +188,10 @@ int EventManager::handlePlatformEvent(
                 "TID", tid, "DEF", DEFAULT_TERMINUS_NAME);
         }
 
-#ifdef SATMC_INVENTORY
         if (!oem_events::handleInventoryEvent(terminusName, eventData,
                                               eventDataSize))
-#else
-        if (!oem_events::handleSmbiosEvent(eventData, eventDataSize))
-#endif
         {
-            lg2::error("Failed to handle 0xFC event from tid={TID}", "TID",
+            lg2::error("Failed to handle 0xF3 event from tid={TID}", "TID",
                        tid);
             platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;

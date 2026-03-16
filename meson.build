@@ -62,9 +62,7 @@ endif
 if get_option('non-pldm').enabled()
     add_project_arguments('-DNON_PLDM', language: ['c', 'cpp'])
 endif
-if get_option('satmc-inventory').enabled()
-    add_project_arguments('-DSATMC_INVENTORY', language: ['c', 'cpp'])
-endif
+
 if get_option('fw-update-skip-package-size-check').enabled()
     add_project_arguments('-DSKIP_PACKAGE_SIZE_CHECK', language: ['c', 'cpp'])
 endif
