@@ -383,22 +383,6 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     return parsedPdr;
 }
 
-static std::string cpuNameToMemoryName(std::string cpuName)
-{
-    std::transform(cpuName.begin(), cpuName.end(), cpuName.begin(), ::toupper);
-    // The sensors are associated to CPU by default based on contained id. Using
-    // it to associate with corresponding Memory.
-    if (cpuName == "HGX_CPU_0" || cpuName == "CPU_0")
-    {
-        return "ProcessorModule_0_Memory_0";
-    }
-    if (cpuName == "HGX_CPU_1" || cpuName == "CPU_1")
-    {
-        return "ProcessorModule_1_Memory_0";
-    }
-    return "";
-}
-
 static void setPortProtocol(StateSetEthIBPortLinkState* state,
                             std::string configPortProtocol,
                             EntityType portEntityType)
@@ -497,37 +481,58 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 
                 if (stateSet->getStateSetId() == PLDM_STATESET_ID_PERFORMANCE)
                 {
-                    std::vector<std::string> assocPaths;
-                    auto assocEntityId = sensor->getAssociationEntityId();
-                    auto memoryName = cpuNameToMemoryName(assocEntityId);
-                    std::vector<std::string> memoryInventories;
+                    // Walk up entity tree to find the Processor I/O Module
+                    // ancestor and use its instance as the ProcessorModule
+                    // index. On multi-terminus platforms (e.g. vr-nvl-hmc), PDR
+                    // instances are all 0 so getInstance() provides the correct
+                    // override. On single-terminus platforms (e.g.
+                    // gb200nvl-hmc), the PDR itself has distinct instances per
+                    // Proc I/O Module.
+                    std::optional<uint16_t> procModuleInstance;
+                    // Start from the memory controller's parent container
+                    auto parentContainerId = std::get<0>(entityInfo);
+                    while (auto ancestor =
+                               terminus.getContainerEntity(parentContainerId))
+                    {
+                        auto entityType = std::get<1>(*ancestor) & 0x7FFF;
+                        if (entityType == PLDM_ENTITY_PROC_IO_MODULE)
+                        {
+                            auto pdrInstance = std::get<2>(*ancestor);
+                            procModuleInstance =
+                                terminus.getInstance().value_or(pdrInstance);
+                            break;
+                        }
+                        // Move up to the next ancestor
+                        parentContainerId = std::get<0>(*ancestor);
+                    }
+
+                    if (!procModuleInstance)
+                    {
+                        lg2::error(
+                            "Cannot find ProcessorModule for memory performance sensor on TID {TID}",
+                            "TID", terminus.getTid());
+                    }
+
+                    std::string prefix =
+                        "ProcessorModule_" +
+                        std::to_string(*procModuleInstance) + "_Memory_";
+
                     auto getSubTreeResponse = co_await utils::coGetSubTree(
                         "/xyz/openbmc_project/inventory", 0,
                         {"xyz.openbmc_project.Inventory.Item.Dimm"});
+
+                    std::vector<dbus::PathAssociation> assocs;
                     for (const auto& [objPath, mapperServiceMap] :
                          getSubTreeResponse)
                     {
-                        if (objPath.find("ProcessorModule") !=
-                            std::string::npos)
+                        sdbusplus::message::object_path path(objPath);
+                        std::string filename = path.filename();
+                        if (filename.starts_with(prefix))
                         {
-                            memoryInventories.emplace_back(objPath);
+                            assocs.push_back({"memory", "all_states", objPath});
                         }
                     }
-                    for (const auto& inventory : memoryInventories)
-                    {
-                        sdbusplus::message::object_path path(inventory);
-                        if (memoryName == path.filename())
-                        {
-                            assocPaths.emplace_back(inventory);
-                        }
-                    }
-                    std::vector<dbus::PathAssociation> assocs;
-                    for (const auto& path : assocPaths)
-                    {
-                        dbus::PathAssociation assoc = {"memory", "all_states",
-                                                       path};
-                        assocs.emplace_back(assoc);
-                    }
+
                     stateSet->setAssociation(assocs);
                 }
             }
