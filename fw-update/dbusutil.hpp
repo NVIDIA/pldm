@@ -32,6 +32,9 @@
 
 PHOSPHOR_LOG2_USING;
 
+using LogEntry = sdbusplus::xyz::openbmc_project::Logging::server::Entry;
+using LogLevel = LogEntry::Level;
+
 constexpr auto dbusProperties = "org.freedesktop.DBus.Properties";
 constexpr auto mapperService = "xyz.openbmc_project.ObjectMapper";
 constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
@@ -210,6 +213,7 @@ struct RedfishErrorInfo
     std::string arg0;
     std::string arg1;
     std::string resolution;
+    LogLevel severity;
 };
 
 /** @brief Query device status via D-Bus and get Redfish error info
@@ -309,6 +313,21 @@ inline std::vector<RedfishErrorInfo> queryDeviceStatusError(
                 errorInfo.resolution = additionalData.at("REDFISH_RESOLUTION");
             }
 
+            if (auto severityIt = additionalData.find("REDFISH_SEVERITY");
+                severityIt != additionalData.end())
+            {
+                errorInfo.severity =
+                    LogEntry::convertStringToLevel(severityIt->second)
+                        .value_or(LogLevel::Informational);
+            }
+            else
+            {
+                warning(
+                    "REDFISH_SEVERITY not found in additionalData for EID {EID}, defaulting to Informational",
+                    "EID", eid);
+                errorInfo.severity = LogLevel::Informational;
+            }
+
             errorInfos.push_back(errorInfo);
         }
     }
@@ -343,8 +362,9 @@ inline bool queryDeviceStatusAndLog(mctp_eid_t eid)
 
     for (const auto& errorInfo : errorInfos)
     {
-        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1,
-                       errorInfo.resolution);
+        createLogEntry(errorInfo.messageId,
+                       errorInfo.arg0 + "," + errorInfo.arg1,
+                       errorInfo.resolution, "FWUpdate", errorInfo.severity);
     }
     return true;
 }
