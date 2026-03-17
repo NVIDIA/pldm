@@ -26,7 +26,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 
-#include <cstring>
+#include <string_view>
 
 using namespace pldm::pdr;
 
@@ -551,6 +551,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
+    constexpr std::string_view cpuPrimaryTempSensor(CPU_PRIMARY_TEMP_SENSOR);
     for (auto sensor : terminus.numericSensors)
     {
         auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
@@ -558,7 +559,34 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         {
             sensor->updateSensorEventInfo(sensorEventInfo);
         }
+
+        if (cpuPrimaryTempSensor.empty() ||
+            sensor->getSensorName().find(cpuPrimaryTempSensor) ==
+                std::string::npos ||
+            !sensor->associationDefinitionsIntf)
+        {
+            continue;
+        }
+
+        auto assocs = sensor->associationDefinitionsIntf->associations();
+        bool updateRequired = false;
+        const auto count = assocs.size();
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& [fwd, rev, path] = assocs[i];
+            if (fwd == "chassis" && rev == "all_sensors")
+            {
+                assocs.emplace_back(std::make_tuple(
+                    "chassis", "primary_temperature_sensor", path));
+                updateRequired = true;
+            }
+        }
+        if (updateRequired)
+        {
+            sensor->associationDefinitionsIntf->associations(assocs);
+        }
     }
+
     co_return PLDM_SUCCESS;
 }
 
