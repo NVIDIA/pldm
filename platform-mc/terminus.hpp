@@ -135,6 +135,17 @@ class Terminus
     std::vector<std::string> findInventory(ContainerID contianerId,
                                            bool findClosest = true);
 
+    /** @brief Get the container EntityInfo for a given container ID */
+    std::optional<EntityInfo> getContainerEntity(ContainerID containerId) const
+    {
+        auto itr = entityAssociations.find(containerId);
+        if (itr != entityAssociations.end())
+        {
+            return itr->second.first;
+        }
+        return std::nullopt;
+    }
+
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
 

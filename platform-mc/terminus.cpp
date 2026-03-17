@@ -1353,6 +1353,13 @@ exec::task<int> Terminus::updateAssociations()
         ptr->setPhysicalContext(type);
     }
 
+    auto hasStateSetId = [](const StateSetInfo& info, uint16_t id) {
+        for (const auto& sd : std::get<1>(info))
+            if (std::get<0>(sd) == id)
+                return true;
+        return false;
+    };
+
     for (const auto& ptr : stateSensors)
     {
         auto entityInfo = ptr->getEntityInfo();
@@ -1361,7 +1368,11 @@ exec::task<int> Terminus::updateAssociations()
         // Workaround: MEMORY_CONTROLLER state sensors (e.g.
         // MemorySpareChannelPresence) are CPU-global; associate with CPU
         // instead of ProcessorModule when container is PLDM_ENTITY_PROC.
-        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_MEMORY_CONTROLLER)
+        // Skip for PERFORMANCE state sets (e.g. MemoryPerformance) which
+        // get their own DIMM-level associations in the OEM phase.
+        if ((std::get<1>(entityInfo) & 0x7FFF) ==
+                PLDM_ENTITY_MEMORY_CONTROLLER &&
+            !hasStateSetId(ptr->sensorInfo, PLDM_STATESET_ID_PERFORMANCE))
         {
             const auto& containerId = std::get<0>(entityInfo);
             auto containerItr = entityAssociations.find(containerId);
