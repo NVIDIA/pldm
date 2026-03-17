@@ -263,6 +263,10 @@ conf_data.set_quoted(
 if get_option('nvlink-c2c-fabric-object').enabled()
     add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
+conf_data.set_quoted(
+    'CPU_PRIMARY_TEMP_SENSOR',
+    get_option('cpu-primary-temp-sensor'),
+)
 if get_option('nvidia-disable-edpp-effecters').enabled()
     conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
 endif

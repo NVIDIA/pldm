@@ -402,6 +402,13 @@ option(
 )
 
 option(
+    'cpu-primary-temp-sensor',
+    type: 'string',
+    description: 'Sensor name used to identify the primary CPU temperature sensor for chassis association.',
+    value: 'TempLimit',
+)
+
+option(
     'nvidia-disable-edpp-effecters',
     type: 'feature',
     description: 'Disable the creation of EDPp effecters and their association with CPU power controls',
