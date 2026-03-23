@@ -99,13 +99,20 @@ int setStateEffecterStatesHandler(
             uint8_t bit = stateField[currState].effecter_state -
                           (8 * bitfieldIndex);
 
-            uint8_t stateValue{0};
-            if (states->possible_states_size > bitfieldIndex)
+            if (bitfieldIndex >= states->possible_states_size)
             {
-                stateValue = states->states[bitfieldIndex].byte;
+                std::cerr << "Invalid state set value, EFFECTER_ID="
+                          << effecterId
+                          << " VALUE=" << stateField[currState].effecter_state
+                          << " COMPOSITE_EFFECTER_ID=" << currState
+                          << " DBUS_PATH=" << dbusMappings[currState].objectPath
+                          << "\n";
+                rc = PLDM_PLATFORM_SET_EFFECTER_UNSUPPORTED_SENSORSTATE;
+                break;
             }
-            if (states->possible_states_size < bitfieldIndex ||
-                !(stateValue & (1 << bit)))
+
+            uint8_t stateValue = states->states[bitfieldIndex].byte;
+            if (!(stateValue & (1 << bit)))
             {
                 std::cerr << "Invalid state set value, EFFECTER_ID="
                           << effecterId
