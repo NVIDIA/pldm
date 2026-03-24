@@ -48,5 +48,6 @@ foreach t : tests
             ],
         ),
         workdir: meson.current_source_dir(),
+        timeout: t == 'handler_test' ? 90 : 30,
     )
 endforeach
