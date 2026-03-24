@@ -345,6 +345,25 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
 exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
     mctp_eid_t eid = std::get<0>(mctpInfo);
+    auto discoveredLocalEid = std::get<6>(mctpInfo);
+    if (discoveredLocalEid.has_value())
+    {
+        auto newEid = discoveredLocalEid.value();
+        if (newEid != 0)
+        {
+            localEid = newEid;
+            lg2::info("Updated localEid from D-Bus LocalEID property: "
+                      "localEid={LEID}, remoteEid={EID}",
+                      "LEID", localEid, "EID", eid);
+        }
+        else
+        {
+            lg2::warning(
+                "Ignoring invalid LocalEID=0 from D-Bus for remoteEid={EID}, "
+                "keeping localEid={LEID}",
+                "EID", eid, "LEID", localEid);
+        }
+    }
     tid_t tid = 0;
     auto rc = co_await getTidOverMctp(eid, tid);
     if (rc || tid == PLDM_TID_RESERVED)

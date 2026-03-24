@@ -505,7 +505,7 @@ TEST_F(TestNumericEffecter, requestAndPowerCapCoverage)
     const pldm::MctpInfo mctpInfo(
         12, "00000000-0000-0000-0000-000000000021",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
     ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
 
     std::string inventoryPath{
@@ -588,7 +588,7 @@ TEST_F(TestNumericEffecter, powerCapSetAndEnablePathCoverage)
     const pldm::MctpInfo mctpInfo(
         13, "00000000-0000-0000-0000-000000000031",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
     ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
 
     std::string inventoryPath{

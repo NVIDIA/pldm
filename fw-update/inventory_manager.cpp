@@ -61,8 +61,8 @@ exec::task<int> InventoryManager::discoverFDsTask()
     while (!queuedMctpInfos.empty())
     {
         const auto& [mctpInfos, mctpInterfaces] = queuedMctpInfos.front();
-        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
-             mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
+                          localEid] : mctpInfos)
         {
             mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
             co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);

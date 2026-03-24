@@ -80,7 +80,8 @@ TEST_F(ManagerInternalTest, inlineManagerPathsAreCallable)
                   "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
                   0,
                   std::nullopt,
-                  "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"};
+                  "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe",
+                  std::nullopt};
     EXPECT_NO_THROW({
         manager.updateMctpEndpointAvailability(info, true);
         manager.onlineMctpEndpoint(uuid, eid);
@@ -161,7 +162,7 @@ TEST_F(ManagerInternalTest, updateFwInventoryAndHandleRequestAreCallable)
     MctpInfos removed{
         {eid, "00112233445566778899AABBCCDDEEFF",
          "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
-         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"}};
+         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt}};
     EXPECT_NO_THROW({ manager.handleRemovedMctpEndpoints(removed); });
 }
 
@@ -201,7 +202,7 @@ TEST_F(ManagerInternalTest,
     MctpInfos mctpInfos{
         {9, "00112233445566778899AABBCCDDEEFF",
          "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
-         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"}};
+         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt}};
 
     EXPECT_NO_THROW({ manager.handleMctpEndpoints(mctpInfos); });
     EXPECT_TRUE(manager.inventoryMgr.queuedMctpInfos.size() >= 1);

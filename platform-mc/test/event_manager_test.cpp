@@ -350,7 +350,7 @@ TEST_F(PlatformMcManagerTest, managerInterfaceCoverage)
     pldm::MctpInfo mctpInfo(
         9, "00000000-0000-0000-0000-00000000abcd",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
     manager.updateMctpEndpointAvailability(mctpInfo, true);
     manager.onlineMctpEndpoint(std::get<1>(mctpInfo), std::get<0>(mctpInfo));
     manager.offlineMctpEndpoint(std::get<1>(mctpInfo), std::get<0>(mctpInfo));
@@ -808,7 +808,7 @@ TEST_F(EventManagerProtectedTest, handlePlatformEventAdditionalCoverage)
     pldm::MctpInfo mctpInfo(
         14, "f72d6f90-5675-11ed-9b6a-0242ac120131",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
     auto mappedTid = terminusManager.mapTid(mctpInfo, tid);
     ASSERT_TRUE(mappedTid.has_value());
     ASSERT_EQ(tid, mappedTid.value());
@@ -911,7 +911,7 @@ TEST_F(EventManagerPollingTest, pollForPlatformEventTaskMultipartCoverage)
     pldm::MctpInfo mctpInfo(
         13, "f72d6f90-5675-11ed-9b6a-0242ac120121",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe");
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
     auto mappedTid = terminusManager.mapTid(mctpInfo, tid);
     ASSERT_TRUE(mappedTid.has_value());
     ASSERT_EQ(tid, mappedTid.value());

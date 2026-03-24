@@ -1912,7 +1912,8 @@ TEST_F(TerminusTest, platformManagerInitTerminusCoverage)
     pldm::UUID uuid{"f72d6f90-5675-11ed-9b6a-0242ac120002"};
     pldm::MctpInfos mctpInfos{pldm::MctpInfo(
         12, uuid, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1,
-        std::nullopt, "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe")};
+        std::nullopt, "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe",
+        std::nullopt)};
 
     setupResponsesForDiscoverTerminus();
     terminusManager.discoverMctpTerminus(mctpInfos);

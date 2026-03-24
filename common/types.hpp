@@ -42,6 +42,9 @@ using MctpInfoName = std::optional<std::string>;
 /** @brief MCTP Endpoint Binding type in string ▎*/
 using MctpBinding = std::string;
 
+/** @brief Type definition for an optional local MCTP EID */
+using LocalEid = std::optional<uint8_t>;
+
 /** @brief Type definition of MCTP interface information between two endpoints.
  *         eid : Endpoint EID in byte. Defined to match with MCTP D-Bus
  *               interface
@@ -50,9 +53,10 @@ using MctpBinding = std::string;
  *         NetworkId: MCTP network index
  *         name: Alias name of the endpoint, e.g. BMC, NIC, etc.
  *         MctpBinding: The MCTP binding type of the endpoint
+ *         LocalEid: The BMC's own MCTP EID on this endpoint's network
  */
-using MctpInfo =
-    std::tuple<eid, UUID, MctpMedium, NetworkId, MctpInfoName, MctpBinding>;
+using MctpInfo = std::tuple<eid, UUID, MctpMedium, NetworkId, MctpInfoName,
+                            MctpBinding, LocalEid>;
 
 /** @brief Type definition of MCTP endpoint D-Bus properties in
  *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
@@ -63,9 +67,10 @@ using MctpInfo =
  *         MCTPMsgTypes: MCTP message types
  *         MctpMedium: Endpoint MCTP Medium info
  *         MctpBinding: The MCTP binding type of the endpoint
+ *         LocalEid: The BMC's own MCTP EID on this endpoint's network
  */
 using MctpEndpointProps =
-    std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding>;
+    std::tuple<NetworkId, eid, MCTPMsgTypes, MctpMedium, MctpBinding, LocalEid>;
 
 /** @brief Type defined for list of MCTP interface information
  */
