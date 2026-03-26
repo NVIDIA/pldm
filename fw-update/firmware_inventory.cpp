@@ -206,9 +206,8 @@ void Manager::updateEntry(pldm::eid eid,
     if (!anyEntryUpdated)
     {
         lg2::info(
-            "No firmware inventory entries found for EID={EID}, falling back to creation",
+            "No firmware inventory entries found for EID={EID} during refresh, skipping update",
             "EID", eid);
-        createEntry(eid, uuid, mctpInterfaces);
     }
 }
 
