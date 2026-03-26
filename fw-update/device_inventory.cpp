@@ -199,9 +199,9 @@ std::optional<sdbusplus::message::object_path> Manager::updateEntry(
     }
 
     lg2::info(
-        "Device inventory not found for UUID={UUID}, falling back to creation",
+        "Device inventory not found for UUID={UUID} during refresh, skipping update",
         "UUID", uuid);
-    return createEntry(eid, uuid, mctpInterfaces);
+    return std::nullopt;
 }
 
 void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
