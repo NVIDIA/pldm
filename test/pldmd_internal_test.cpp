@@ -7,7 +7,6 @@
 
 #include <libpldm/base.h>
 #include <poll.h>
-#include <signal.h>
 #include <sys/signalfd.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -15,9 +14,8 @@
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/signal.hpp>
 
-#include <array>
 #include <cerrno>
-#include <cstddef>
+#include <csignal>
 #include <system_error>
 
 #include <gtest/gtest.h>
@@ -39,7 +37,7 @@
 #endif
 
 #define main pldmd_main_for_coverage
-#include "pldmd/pldmd.cpp"
+#include "pldmd/pldmd.cpp" // NOLINT(bugprone-suspicious-include)
 #undef main
 
 namespace
@@ -76,7 +74,7 @@ std::vector<uint8_t> makeHeaderMessage(uint8_t msgType, uint8_t instance,
 
 } // namespace
 
-PldmTransport::PldmTransport()
+PldmTransport::PldmTransport() : pfd{}, impl{}, transport(nullptr)
 {
     auto& state = fakeTransportState();
     int fds[2] = {-1, -1};
@@ -153,11 +151,6 @@ int PldmTransport::enableErrorQueue()
 {
     return 0;
 }
-
-extern "C" void pldmdMainLambdaCallForCoverage(
-    void* closure, sdeventplus::source::IO& io, int fd,
-    uint32_t
-        revents) asm("_ZZ23pldmd_main_for_coverageiPPcENUlRN11sdeventplus6source2IOEijE_clES4_ij");
 
 TEST(PldmdInternalCoverage, RequestServiceName)
 {
@@ -247,11 +240,52 @@ TEST(PldmdInternalCoverage, MainInvalidVerboseValueExitsFailure)
         ::testing::ExitedWithCode(EXIT_FAILURE), ".*");
 }
 
-TEST(PldmdInternalCoverage, MainLambdaReturnsWhenNoEvents)
+namespace
 {
-    // The lambda returns immediately for revents=0 before touching captures.
-    std::array<std::byte, 128> closure{};
-    std::array<std::byte, sizeof(sdeventplus::source::IO)> ioStorage{};
-    auto& io = *reinterpret_cast<sdeventplus::source::IO*>(ioStorage.data());
-    EXPECT_NO_THROW(pldmdMainLambdaCallForCoverage(closure.data(), io, -1, 0));
+
+// Minimal stand-in for fw_update::Manager: throws from onResponseSendComplete.
+struct ThrowingFwManager
+{
+    void onResponseSendComplete(mctp_eid_t /*eid*/, bool /*success*/)
+    {
+        throw std::runtime_error("injected test exception");
+    }
+};
+
+// Minimal stand-in that records the arguments it received.
+struct TrackingFwManager
+{
+    bool called = false;
+    mctp_eid_t lastEid = 0;
+    bool lastSuccess = false;
+
+    void onResponseSendComplete(mctp_eid_t eid, bool success)
+    {
+        called = true;
+        lastEid = eid;
+        lastSuccess = success;
+    }
+};
+
+} // namespace
+
+// Verify that an exception thrown by onResponseSendComplete is caught by
+// notifyFwUpdateSendComplete and does not propagate to the caller (which is
+// the event-loop callback — an uncaught exception there would kill the daemon).
+TEST(PldmdInternalCoverage, NotifyFwUpdateSendCompleteDoesNotPropagateException)
+{
+    ThrowingFwManager manager;
+    EXPECT_NO_THROW(notifyFwUpdateSendComplete(&manager, 14, true));
+}
+
+// Verify that on the happy path the call is forwarded with the correct
+// EID and success flag.
+TEST(PldmdInternalCoverage,
+     NotifyFwUpdateSendCompleteForwardsArgumentsOnSuccess)
+{
+    TrackingFwManager manager;
+    notifyFwUpdateSendComplete(&manager, 14, true);
+    EXPECT_TRUE(manager.called);
+    EXPECT_EQ(manager.lastEid, static_cast<mctp_eid_t>(14));
+    EXPECT_TRUE(manager.lastSuccess);
 }

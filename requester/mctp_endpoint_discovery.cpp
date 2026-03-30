@@ -168,6 +168,13 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
             "SERVICE", service, "PATH", path, "ERROR", e);
         return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {}, std::nullopt);
     }
+    catch (const std::exception& e)
+    {
+        error(
+            "Unexpected error reading MCTP Endpoint property at path '{PATH}' and service '{SERVICE}', error - {ERROR}",
+            "SERVICE", service, "PATH", path, "ERROR", e.what());
+        return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {}, std::nullopt);
+    }
 }
 
 UUID MctpDiscovery::getEndpointUUIDProp(const std::string& service,
@@ -324,38 +331,61 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                 properties.contains("SupportedMessageTypes") &&
                 properties.contains("MediumType"))
             {
-                auto networkId =
-                    std::get<NetworkId>(properties.at("NetworkId"));
-                auto eid = std::get<mctp_eid_t>(properties.at("EID"));
-                auto types = std::get<std::vector<uint8_t>>(
-                    properties.at("SupportedMessageTypes"));
-                auto mediumType =
-                    std::get<MctpMedium>(properties.at("MediumType"));
+                NetworkId networkId{};
+                mctp_eid_t eid{};
+                std::vector<uint8_t> types{};
+                MctpMedium mediumType{};
+                try
+                {
+                    networkId = std::get<NetworkId>(properties.at("NetworkId"));
+                    eid = std::get<mctp_eid_t>(properties.at("EID"));
+                    types = std::get<std::vector<uint8_t>>(
+                        properties.at("SupportedMessageTypes"));
+                    mediumType =
+                        std::get<MctpMedium>(properties.at("MediumType"));
+                }
+                catch (const std::exception& e)
+                {
+                    error(
+                        "Error parsing MCTP interface properties for endpoint {PATH}, error - {ERROR}",
+                        "PATH", objPath.str, "ERROR", e.what());
+                    continue;
+                }
 
                 MctpBinding binding{};
-                if (interfaces.contains(MCTPBindingInterface))
+                try
                 {
-                    const auto& bindingProps =
-                        interfaces.at(MCTPBindingInterface);
-                    if (bindingProps.contains("BindingType"))
+                    if (interfaces.contains(MCTPBindingInterface))
                     {
-                        binding = std::get<MctpBinding>(
-                            bindingProps.at("BindingType"));
+                        const auto& bindingProps =
+                            interfaces.at(MCTPBindingInterface);
+                        if (bindingProps.contains("BindingType"))
+                        {
+                            binding = std::get<MctpBinding>(
+                                bindingProps.at("BindingType"));
+                        }
+                        else
+                        {
+                            warning(
+                                "getAddedMctpInfos: {PATH} BindingType property missing in signal, skipping endpoint",
+                                "PATH", objPath.str);
+                            continue;
+                        }
                     }
                     else
                     {
+                        // BindingType absent from signal — skip this endpoint
                         warning(
-                            "getAddedMctpInfos: {PATH} BindingType property missing in signal, skipping endpoint",
+                            "getAddedMctpInfos: {PATH} BindingType interface absent from signal, skipping endpoint",
                             "PATH", objPath.str);
                         continue;
                     }
                 }
-                else
+                catch (const std::exception& e)
                 {
-                    // BindingType absent from signal — skip this endpoint
-                    warning(
-                        "getAddedMctpInfos: {PATH} BindingType interface absent from signal, skipping endpoint",
-                        "PATH", objPath.str);
+                    error(
+                        "Unexpected error getting BindingType for endpoint {PATH}, error - {ERROR}",
+                        "PATH", objPath.str, "ERROR", e.what());
                     continue;
                 }
 
@@ -370,7 +400,17 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                 LocalEid localEid = std::nullopt;
                 if (properties.contains("LocalEID"))
                 {
-                    localEid = std::get<mctp_eid_t>(properties.at("LocalEID"));
+                    try
+                    {
+                        localEid =
+                            std::get<mctp_eid_t>(properties.at("LocalEID"));
+                    }
+                    catch (const std::exception& e)
+                    {
+                        error(
+                            "Error parsing LocalEID property for endpoint {PATH}, error - {ERROR}",
+                            "PATH", objPath.str, "ERROR", e.what());
+                    }
                 }
 
                 if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
