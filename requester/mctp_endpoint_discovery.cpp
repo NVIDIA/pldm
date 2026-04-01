@@ -222,20 +222,73 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
             "ERROR", e);
         return;
     }
-    const Availability& availability = getEndpointConnectivityProp(objPath.str);
-
-    /* Get UUID */
-    try
+    // If the MCTP Endpoint interface is absent, this signal is not an endpoint
+    // addition (e.g. a Bridge interface being added to an existing endpoint).
+    // Ignore it to avoid spurious D-Bus calls.
+    if (!interfaces.contains(MCTPInterface))
     {
-        auto service = pldm::utils::DBusHandler().getService(
-            objPath.str.c_str(), EndpointUUID);
-        uuid = getEndpointUUIDProp(service, objPath.str);
+        info(
+            "getAddedMctpInfos: {PATH} MCTPInterface absent from signal, ignoring (not an endpoint signal)",
+            "PATH", objPath.str);
+        return;
     }
-    catch (const sdbusplus::exception_t& e)
+
+    // Read Connectivity from signal; default to true if absent.
+    Availability availability = true;
+    if (interfaces.contains(MCTPInterfaceCC))
     {
-        error(
-            "Error getting Endpoint UUID D-Bus interface for {PATH}, error - {ERROR}",
-            "PATH", objPath.str, "ERROR", e);
+        const auto& ccProps = interfaces.at(MCTPInterfaceCC);
+        if (ccProps.contains(MCTPConnectivityProp))
+        {
+            availability =
+                (std::get<std::string>(ccProps.at(MCTPConnectivityProp)) ==
+                 "Available");
+        }
+        else
+        {
+            info(
+                "getAddedMctpInfos: {PATH} Connectivity property missing in signal, defaulting to Unavailable",
+                "PATH", objPath.str);
+        }
+    }
+    else
+    {
+        // Connectivity absent from signal — do not call ObjectMapper/D-Bus here
+        // (ObjectMapper is also reacting to this InterfacesAdded and may not
+        // have processed it yet). Default to unavailable; endpoint will still
+        // be registered and can be updated later via PropertiesChanged.
+        info(
+            "getAddedMctpInfos: {PATH} Connectivity interface absent from signal, defaulting to unavailable",
+            "PATH", objPath.str);
+    }
+
+    // Read UUID from signal only — do not fall back to ObjectMapper/D-Bus call.
+    if (interfaces.contains(EndpointUUID))
+    {
+        const auto& uuidProps = interfaces.at(EndpointUUID);
+        if (uuidProps.contains("UUID"))
+        {
+            uuid = std::get<UUID>(uuidProps.at("UUID"));
+        }
+        else
+        {
+            info("getAddedMctpInfos: {PATH} UUID property missing in signal",
+                 "PATH", objPath.str);
+        }
+    }
+    else
+    {
+        // UUID absent from signal — drop silently; mctpd emits all interfaces
+        // atomically so this is an unexpected condition, not a retry scenario.
+        info(
+            "getAddedMctpInfos: {PATH} UUID interface absent from signal, dropping",
+            "PATH", objPath.str);
+        return;
+    }
+
+    if (uuid == emptyUUID)
+    {
+        error("Empty UUID for endpoint {PATH}, skipping", "PATH", objPath.str);
         return;
     }
 
@@ -257,18 +310,29 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     std::get<MctpMedium>(properties.at("MediumType"));
 
                 MctpBinding binding{};
-                try
+                if (interfaces.contains(MCTPBindingInterface))
                 {
-                    binding =
-                        pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
-                            objPath.str.c_str(), "BindingType",
-                            MCTPBindingInterface);
+                    const auto& bindingProps =
+                        interfaces.at(MCTPBindingInterface);
+                    if (bindingProps.contains("BindingType"))
+                    {
+                        binding = std::get<MctpBinding>(
+                            bindingProps.at("BindingType"));
+                    }
+                    else
+                    {
+                        info(
+                            "getAddedMctpInfos: {PATH} BindingType property missing in signal, skipping endpoint",
+                            "PATH", objPath.str);
+                        continue;
+                    }
                 }
-                catch (const sdbusplus::exception_t& e)
+                else
                 {
-                    error(
-                        "Error getting BindingType for endpoint {PATH}, error - {ERROR}",
-                        "PATH", objPath.str, "ERROR", e);
+                    // BindingType absent from signal — skip this endpoint
+                    info(
+                        "getAddedMctpInfos: {PATH} BindingType interface absent from signal, skipping endpoint",
+                        "PATH", objPath.str);
                     continue;
                 }
 
