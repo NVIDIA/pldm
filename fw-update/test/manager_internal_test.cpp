@@ -67,7 +67,7 @@ TEST_F(ManagerInternalTest, inlineManagerPathsAreCallable)
     EXPECT_NO_THROW({ manager.getMctpInterfaces(mctpInterfaces); });
 
     MctpInfos mctpInfos{};
-    EXPECT_NO_THROW({ manager.handleMctpEndpoints(mctpInfos); });
+    EXPECT_NO_THROW({ manager.handleMctpEndpoints(mctpInfos, {}); });
     EXPECT_NO_THROW({ manager.handleRemovedMctpEndpoints(mctpInfos); });
 
     const pldm::eid eid = 9;
@@ -199,12 +199,16 @@ TEST_F(ManagerInternalTest,
 
     manager.inventoryMgr.discoverFDsTaskHandle.emplace();
 
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
     MctpInfos mctpInfos{
-        {9, "00112233445566778899AABBCCDDEEFF",
-         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
-         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt}};
+        {9, uuid, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0,
+         std::nullopt, "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe",
+         std::nullopt}};
 
-    EXPECT_NO_THROW({ manager.handleMctpEndpoints(mctpInfos); });
+    // Populate MctpInterfaces with the endpoint UUID so the signal cache
+    // path is exercised (no fallback D-Bus scan).
+    dbus::MctpInterfaces mctpIfMap{{uuid, {}}};
+    EXPECT_NO_THROW({ manager.handleMctpEndpoints(mctpInfos, mctpIfMap); });
     EXPECT_TRUE(manager.inventoryMgr.queuedMctpInfos.size() >= 1);
 }
 

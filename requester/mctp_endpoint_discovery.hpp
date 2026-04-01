@@ -41,7 +41,9 @@ const std::vector<std::string> interfaceFilter = {
 class MctpDiscoveryHandlerIntf
 {
   public:
-    virtual void handleMctpEndpoints(const MctpInfos& mctpInfos) = 0;
+    virtual void handleMctpEndpoints(
+        const MctpInfos& mctpInfos,
+        const dbus::MctpInterfaces& mctpInterfaces) = 0;
     virtual void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) = 0;
     virtual void updateMctpEndpointAvailability(const MctpInfo& mctpInfo,
                                                 Availability availability) = 0;
@@ -106,6 +108,12 @@ class MctpDiscovery
 
     /** @brief The existing MCTP endpoints */
     MctpInfos existingMctpInfos;
+
+    /** @brief Cache of UUID → InterfaceMap built from InterfacesAdded signal
+     *         payloads. Used to avoid ObjectMapper calls in handleMctpEndpoints
+     *         during boot (when ObjectMapper may not have processed the signal
+     *         yet). Populated by getAddedMctpInfos(). */
+    dbus::MctpInterfaces signalMctpInterfaces;
 
     /** @brief Path of static eid table config file */
     std::filesystem::path staticEidTablePath;

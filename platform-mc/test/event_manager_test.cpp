@@ -344,7 +344,7 @@ TEST_F(PlatformMcManagerTest, managerInterfaceCoverage)
     EXPECT_EQ(std::get<0>(*afterRc), PLDM_SUCCESS);
 
     pldm::MctpInfos mctpInfos{};
-    manager.handleMctpEndpoints(mctpInfos);
+    manager.handleMctpEndpoints(mctpInfos, {});
     manager.handleRemovedMctpEndpoints(mctpInfos);
 
     pldm::MctpInfo mctpInfo(

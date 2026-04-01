@@ -85,7 +85,8 @@ class TestMctpDiscovery : public ::testing::Test
 class TrackingMctpHandler : public pldm::MctpDiscoveryHandlerIntf
 {
   public:
-    void handleMctpEndpoints(const pldm::MctpInfos& mctpInfos) override
+    void handleMctpEndpoints(const pldm::MctpInfos& mctpInfos,
+                             const pldm::dbus::MctpInterfaces&) override
     {
         handleMctpEndpointsCalls++;
         lastHandledSize = mctpInfos.size();
@@ -689,7 +690,7 @@ TEST(MctpEndpointDiscoveryTest, ZeroHandleMctpEndpoint)
     auto& bus = pldm::utils::DBusHandler::getBus();
     pldm::MockManager manager;
 
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(0);
+    EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(0);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
@@ -702,8 +703,8 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
     pldm::MockManager manager1;
     pldm::MockManager manager2;
 
-    EXPECT_CALL(manager1, handleMctpEndpoints(_)).Times(0);
-    EXPECT_CALL(manager2, handleMctpEndpoints(_)).Times(0);
+    EXPECT_CALL(manager1, handleMctpEndpoints(_, _)).Times(0);
+    EXPECT_CALL(manager2, handleMctpEndpoints(_, _)).Times(0);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
@@ -1073,8 +1074,8 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsWithMultipleHandlers)
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
 
     // Both handlers should be called
-    EXPECT_CALL(manager1, handleMctpEndpoints(_)).Times(1);
-    EXPECT_CALL(manager2, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager1, handleMctpEndpoints(_, _)).Times(1);
+    EXPECT_CALL(manager2, handleMctpEndpoints(_, _)).Times(1);
 
     mctpDiscoveryHandler->handleMctpEndpoints(mctpInfos);
 }
@@ -1090,7 +1091,7 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsEmpty)
     const pldm::MctpInfos emptyInfos;
 
     // Empty list should return early, handler not called
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(0);
+    EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(0);
 
     mctpDiscoveryHandler->handleMctpEndpoints(emptyInfos);
 }
@@ -1331,7 +1332,7 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsCallsHandleConfigurations)
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
 
     // Both handleConfigurations and handleMctpEndpoints should be called
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(1);
 
     mctpDiscoveryHandler->handleMctpEndpoints(mctpInfos);
 }
@@ -1422,7 +1423,9 @@ TEST(MctpEndpointDiscoveryTest, removeConfigsNoMatchingEid)
 class MinimalHandler : public pldm::MctpDiscoveryHandlerIntf
 {
   public:
-    void handleMctpEndpoints(const pldm::MctpInfos&) override {}
+    void handleMctpEndpoints(const pldm::MctpInfos&,
+                             const pldm::dbus::MctpInterfaces&) override
+    {}
     void handleRemovedMctpEndpoints(const pldm::MctpInfos&) override {}
     void updateMctpEndpointAvailability(const pldm::MctpInfo&,
                                         pldm::Availability) override
@@ -3216,7 +3219,7 @@ TEST(MctpEndpointDiscoveryTest, NullHandlersAreSkipped)
                                   std::nullopt);
     const pldm::MctpInfos infos = {mctpInfo};
 
-    EXPECT_CALL(manager, handleMctpEndpoints(_)).Times(1);
+    EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(1);
     disc->handleMctpEndpoints(infos);
     testing::Mock::VerifyAndClearExpectations(&manager);
 
