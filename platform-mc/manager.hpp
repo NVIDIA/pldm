@@ -80,7 +80,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return rc;
     }
 
-    void handleMctpEndpoints(const MctpInfos& mctpInfos) override
+    void handleMctpEndpoints(const MctpInfos& mctpInfos,
+                             const dbus::MctpInterfaces&) override
     {
         terminusManager.discoverMctpTerminus(mctpInfos);
     }

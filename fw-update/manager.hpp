@@ -108,11 +108,26 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         message registry entries.
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
+     *  @param[in] signalMctpIfMap - UUID→InterfaceMap cache built from the
+     *             InterfacesAdded signal payload; empty on the startup path
      */
-    void handleMctpEndpoints(const MctpInfos& mctpInfos) override
+    void handleMctpEndpoints(
+        const MctpInfos& mctpInfos,
+        const dbus::MctpInterfaces& signalMctpIfMap) override
     {
-        dbus::MctpInterfaces mctpInterfaces;
-        getMctpInterfaces(mctpInterfaces);
+        // Use the signal payload cache to avoid ObjectMapper calls during boot.
+        // Fall back to a full D-Bus scan only for UUIDs not covered by the
+        // cache (startup path: cache is empty, ObjectMapper is ready).
+        dbus::MctpInterfaces mctpInterfaces = signalMctpIfMap;
+
+        bool needFallback = std::any_of(
+            mctpInfos.begin(), mctpInfos.end(), [&](const auto& info) {
+                return !mctpInterfaces.contains(std::get<1>(info));
+            });
+        if (needFallback)
+        {
+            getMctpInterfaces(mctpInterfaces);
+        }
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :

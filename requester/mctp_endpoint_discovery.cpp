@@ -292,6 +292,10 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         return;
     }
 
+    // Cache the full interface map keyed by UUID so handleMctpEndpoints()
+    // can use it directly, avoiding ObjectMapper calls during boot.
+    signalMctpInterfaces[uuid] = interfaces;
+
     for (const auto& [intfName, properties] : interfaces)
     {
         if (intfName == MCTPInterface)
@@ -529,7 +533,7 @@ void MctpDiscovery::handleMctpEndpoints(const MctpInfos& mctpInfos)
         if (handler)
         {
             handler->handleConfigurations(configurations);
-            handler->handleMctpEndpoints(mctpInfos);
+            handler->handleMctpEndpoints(mctpInfos, signalMctpInterfaces);
         }
     }
 }

@@ -11,7 +11,9 @@ namespace pldm
 class MockManager : public pldm::MctpDiscoveryHandlerIntf
 {
   public:
-    MOCK_METHOD(void, handleMctpEndpoints, (const MctpInfos& mctpInfos),
+    MOCK_METHOD(void, handleMctpEndpoints,
+                (const MctpInfos& mctpInfos,
+                 const dbus::MctpInterfaces& mctpInterfaces),
                 (override));
     MOCK_METHOD(void, handleRemovedMctpEndpoints, (const MctpInfos& mctpInfos),
                 (override));
