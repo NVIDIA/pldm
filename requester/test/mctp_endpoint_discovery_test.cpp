@@ -2482,26 +2482,21 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosFullPath)
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
 
+    PropertyMap bindingProps;
+    bindingProps["BindingType"] = std::string("MctpOverSMBus");
+    interfaces["xyz.openbmc_project.MCTP.Binding"] = bindingProps;
+
+    PropertyMap uuidProps;
+    uuidProps["UUID"] = std::string("aabb0000-1111-2222-3333-444455556666");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidProps;
+
+    PropertyMap ccProps;
+    ccProps["Connectivity"] = std::string("Available");
+    interfaces["au.com.codeconstruct.MCTP.Endpoint1"] = ccProps;
+
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    // Mock connectivity → Available
-    pldm::utils::PropertyValue connVal = std::string("Available");
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(connVal))  // getEndpointConnectivityProp
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{
-            std::string("MctpOverSMBus")})); // BindingType
-
-    // Mock getService for UUID interface
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-
-    // Mock UUID properties
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("aabb0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
 
     // Mock getAssociatedSubTree for searchConfigurationFor (empty = no config)
     pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
@@ -2543,27 +2538,16 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosNonPldmType)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{0, 2}; // no PLDM
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap bindingProps2;
+    bindingProps2["BindingType"] = std::string("MctpOverSMBus");
+    interfaces["xyz.openbmc_project.MCTP.Binding"] = bindingProps2;
+    PropertyMap uuidProps2;
+    uuidProps2["UUID"] = std::string("bbbb0000-1111-2222-3333-444455556666");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidProps2;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    // Mock connectivity
-    pldm::utils::PropertyValue connVal = std::string("Available");
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(connVal))  // getEndpointConnectivityProp
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{
-            std::string("MctpOverSMBus")})); // BindingType
-
-    // Mock getService for UUID
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-
-    // Mock UUID properties
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("bbbb0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2594,24 +2578,19 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosDegradedConnectivity)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap bindingPropsDeg;
+    bindingPropsDeg["BindingType"] = std::string("MctpOverSMBus");
+    interfaces["xyz.openbmc_project.MCTP.Binding"] = bindingPropsDeg;
+    PropertyMap uuidPropsDeg;
+    uuidPropsDeg["UUID"] = std::string("cccc0000-1111-2222-3333-444455556666");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsDeg;
+    PropertyMap ccPropsDeg;
+    ccPropsDeg["Connectivity"] = std::string("Degraded");
+    interfaces["au.com.codeconstruct.MCTP.Endpoint1"] = ccPropsDeg;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{
-            std::string("Degraded")}))       // getEndpointConnectivityProp
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{
-            std::string("MctpOverSMBus")})); // BindingType
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("cccc0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
 
     pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
     EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
@@ -2648,18 +2627,6 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosSkipsUnknownInterface)
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
 
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("dddd0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
-
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
     EXPECT_TRUE(infos.empty());
@@ -2686,22 +2653,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingRequiredProperties)
     mctpProps["EID"] = uint8_t(55);
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsMRP;
+    uuidPropsMRP["UUID"] = std::string("eeee0000-1111-2222-3333-444455556666");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsMRP;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2729,22 +2687,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingNetworkId)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsNN;
+    uuidPropsNN["UUID"] = std::string("eeee0000-1111-2222-3333-444455556667");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsNN;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-444455556667")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2772,22 +2721,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingEid)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsME;
+    uuidPropsME["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666a");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsME;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666a")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2813,22 +2753,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosOnlyNetworkIdPresent)
     PropertyMap mctpProps;
     mctpProps["NetworkId"] = uint32_t(1);
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsON;
+    uuidPropsON["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666f");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsON;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666f")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2855,22 +2786,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosNetworkAndEidOnly)
     mctpProps["NetworkId"] = uint32_t(1);
     mctpProps["EID"] = uint8_t(67);
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsNE;
+    uuidPropsNE["UUID"] = std::string("eeee0000-1111-2222-3333-444455556670");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsNE;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-444455556670")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2898,22 +2820,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingSupportedTypes)
     mctpProps["EID"] = uint8_t(57);
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsMST;
+    uuidPropsMST["UUID"] = std::string("eeee0000-1111-2222-3333-444455556668");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsMST;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-444455556668")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -2942,22 +2855,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadVariantThrows)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsBV;
+    uuidPropsBV["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666b");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsBV;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666b")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
@@ -2986,22 +2890,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadNetworkVariantThrows)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsBN;
+    uuidPropsBN["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666c");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsBN;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666c")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
@@ -3030,22 +2925,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadTypesVariantThrows)
     mctpProps["SupportedMessageTypes"] = std::string("bad-types");
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsBT;
+    uuidPropsBT["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666d");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsBT;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666d")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
@@ -3074,22 +2960,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadMediumVariantThrows)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = uint64_t(8);
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsBM;
+    uuidPropsBM["UUID"] = std::string("eeee0000-1111-2222-3333-44445555666e");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsBM;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(1)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-44445555666e")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
@@ -3118,25 +2995,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBindingTypeException)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap uuidPropsBTE;
+    uuidPropsBTE["UUID"] = std::string("eeee0000-1111-2222-3333-444455556669");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsBTE;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
-
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}))
-        .WillOnce([](const char*, const char*,
-                     const char*) -> pldm::utils::PropertyValue {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
-        });
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("eeee0000-1111-2222-3333-444455556669")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
@@ -3165,30 +3030,20 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosDuplicatePathNoDuplicateMatch)
     mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
     mctpProps["MediumType"] = std::string("SMBus");
     interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
+    PropertyMap bindingPropsDP;
+    bindingPropsDP["BindingType"] = std::string("MctpOverSMBus");
+    interfaces["xyz.openbmc_project.MCTP.Binding"] = bindingPropsDP;
+    PropertyMap uuidPropsDP;
+    uuidPropsDP["UUID"] = std::string("ffff0000-1111-2222-3333-444455556666");
+    interfaces["xyz.openbmc_project.Common.UUID"] = uuidPropsDP;
+    PropertyMap ccPropsDP;
+    ccPropsDP["Connectivity"] = std::string("Available");
+    interfaces["au.com.codeconstruct.MCTP.Endpoint1"] = ccPropsDP;
 
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
 
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .Times(4)
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .Times(2)
-        .WillRepeatedly(
-            testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("ffff0000-1111-2222-3333-444455556666")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .Times(2)
-        .WillRepeatedly(testing::Return(uuidProps));
     pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
     EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
         .Times(2)
