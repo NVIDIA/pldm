@@ -234,6 +234,23 @@ class NumericEffecter
         return associationDefinitionsIntf->associations();
     }
 
+    /** @brief set the association */
+    void setAssociation(
+        const std::vector<std::tuple<std::string, std::string, std::string>>&
+            assocs)
+    {
+        if (associationDefinitionsIntf)
+        {
+            associationDefinitionsIntf->associations(assocs);
+        }
+    }
+
+    /** @brief check if association interface is initialized */
+    bool hasAssociationIntf() const
+    {
+        return associationDefinitionsIntf != nullptr;
+    }
+
     /** @brief Terminus ID which the sensor belongs to */
     tid_t tid;
 
