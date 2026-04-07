@@ -414,6 +414,13 @@ option(
 )
 
 option(
+    'cpu-primary-power-control',
+    type: 'string',
+    description: 'Effecter name substring used to identify the primary CPU TDP power control (nonvolatile) for chassis association.',
+    value: 'TDPPowerNonvolatile',
+)
+
+option(
     'nvidia-disable-edpp-effecters',
     type: 'feature',
     description: 'Disable the creation of EDPp effecters and their association with CPU power controls',

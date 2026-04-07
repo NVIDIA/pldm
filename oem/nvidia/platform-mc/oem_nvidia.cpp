@@ -587,6 +587,41 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
+    constexpr std::string_view cpuPrimaryPowerControl(
+        CPU_PRIMARY_POWER_CONTROL);
+    for (auto effecter : terminus.numericEffecters)
+    {
+        if (cpuPrimaryPowerControl.empty() || !effecter->hasAssociationIntf())
+        {
+            continue;
+        }
+
+        sdbusplus::message::object_path effecterObjPath(effecter->path);
+        if (effecterObjPath.filename().find(cpuPrimaryPowerControl) ==
+            std::string::npos)
+        {
+            continue;
+        }
+
+        auto assocs = effecter->getAssociation();
+        bool updateRequired = false;
+        const auto count = assocs.size();
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& [fwd, rev, path] = assocs[i];
+            if (fwd == "chassis" && rev == "power_controls")
+            {
+                assocs.emplace_back(
+                    std::make_tuple("chassis", "primary_power_control", path));
+                updateRequired = true;
+            }
+        }
+        if (updateRequired)
+        {
+            effecter->setAssociation(assocs);
+        }
+    }
+
     co_return PLDM_SUCCESS;
 }
 
