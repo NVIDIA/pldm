@@ -38,7 +38,8 @@ namespace nvidia
 {
 
 static void processEffecterPowerCapPdr(Terminus& terminus,
-                                       nvidia_oem_effecter_powercap_pdr* pdr)
+                                       nvidia_oem_effecter_powercap_pdr* pdr,
+                                       uint16_t oemRecordId)
 {
     auto& effecters = terminus.numericEffecters;
 
@@ -46,7 +47,11 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
     {
         auto& effecter = *it;
 
-        if (effecter->effecterId != pdr->associated_effecterid)
+        // Use the PLDM OEM PDR header's oemRecordId for the match: the firmware
+        // stores the real effecter ID there (including any per-CPU prefix),
+        // while the vendor-specific associated_effecterid always uses
+        // CPU_0-namespace IDs and mismatches for CPU_1.
+        if (effecter->effecterId != oemRecordId)
         {
             it++;
             continue;
@@ -85,11 +90,13 @@ static void processEffecterPowerCapPdr(Terminus& terminus,
 }
 
 static void processEffecterStoragePdr(Terminus& terminus,
-                                      nvidia_oem_effecter_storage_pdr* pdr)
+                                      nvidia_oem_effecter_storage_pdr* pdr,
+                                      uint16_t oemRecordId)
 {
     for (auto& effecter : terminus.stateEffecters)
     {
-        if (effecter->effecterId != pdr->associated_effecterid)
+        // Same oemRecordId-based match as processEffecterPowerCapPdr.
+        if (effecter->effecterId != oemRecordId)
         {
             continue;
         }
@@ -135,7 +142,8 @@ void nvidiaInitTerminus(Terminus& terminus)
                     continue;
                 }
                 processEffecterPowerCapPdr(
-                    terminus, (nvidia_oem_effecter_powercap_pdr*)commonPdr);
+                    terminus, (nvidia_oem_effecter_powercap_pdr*)commonPdr,
+                    recordId);
                 break;
             case NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_EFFECTER_STORAGE:
                 if (data.size() < sizeof(nvidia_oem_effecter_storage_pdr))
@@ -143,7 +151,8 @@ void nvidiaInitTerminus(Terminus& terminus)
                     continue;
                 }
                 processEffecterStoragePdr(
-                    terminus, (nvidia_oem_effecter_storage_pdr*)commonPdr);
+                    terminus, (nvidia_oem_effecter_storage_pdr*)commonPdr,
+                    recordId);
                 break;
             default:
                 continue;
