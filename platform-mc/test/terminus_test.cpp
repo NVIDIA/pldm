@@ -2470,16 +2470,20 @@ TEST_F(TerminusTest, nvidiaInitTerminusPowerCapAndStorageCoverage)
     unknownTypePdr.terminus_handle = 1;
     unknownTypePdr.oem_pdr_type = 0xFF;
 
+    // OemRecordId must match the effecter IDs (0x710/0x711) because
+    // processEffecterPowerCapPdr/processEffecterStoragePdr now compare
+    // effecter->effecterId against the PLDM OEM PDR header's oemRecordId
+    // (not the vendor-specific associated_effecterid).
     terminus.oemPdrs.emplace_back(static_cast<uint32_t>(0xFFFF),
-                                  static_cast<OemRecordId>(1),
+                                  static_cast<OemRecordId>(0x710),
                                   structToBytes(powerCapPdr));
     terminus.oemPdrs.emplace_back(
         nvidia::NvidiaIana, static_cast<OemRecordId>(2), truncatedPdrData);
     terminus.oemPdrs.emplace_back(nvidia::NvidiaIana,
-                                  static_cast<OemRecordId>(3),
+                                  static_cast<OemRecordId>(0x710),
                                   structToBytes(powerCapPdr));
     terminus.oemPdrs.emplace_back(nvidia::NvidiaIana,
-                                  static_cast<OemRecordId>(4),
+                                  static_cast<OemRecordId>(0x711),
                                   structToBytes(storagePdr));
     terminus.oemPdrs.emplace_back(nvidia::NvidiaIana,
                                   static_cast<OemRecordId>(5),
