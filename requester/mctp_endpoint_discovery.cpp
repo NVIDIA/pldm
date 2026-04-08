@@ -89,9 +89,11 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
             {
                 const auto& mctpBinding = std::get<4>(epProps);
                 const auto& mctpMedium = std::get<3>(epProps);
-                auto mctpInfo = MctpInfo(
-                    std::get<eid>(epProps), uuid, mctpMedium,
-                    std::get<NetworkId>(epProps), std::nullopt, mctpBinding);
+                const auto& mctpLocalEid = std::get<5>(epProps);
+                auto mctpInfo =
+                    MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
+                             std::get<NetworkId>(epProps), std::nullopt,
+                             mctpBinding, mctpLocalEid);
                 searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
                 mctpInfoMap[std::move(mctpInfo)] = availability;
             }
@@ -129,7 +131,8 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
             !properties.contains("SupportedMessageTypes") or
             !properties.contains("MediumType"))
         {
-            return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {});
+            return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {},
+                                     std::nullopt);
         }
 
         auto networkId = std::get<NetworkId>(properties.at("NetworkId"));
@@ -140,14 +143,21 @@ MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
         auto binding = pldm::utils::DBusHandler().getDbusProperty<MctpBinding>(
             path.c_str(), "BindingType", MCTPBindingInterface);
 
-        return MctpEndpointProps(networkId, eid, types, mediumType, binding);
+        LocalEid localEid = std::nullopt;
+        if (properties.contains("LocalEID"))
+        {
+            localEid = std::get<mctp_eid_t>(properties.at("LocalEID"));
+        }
+
+        return MctpEndpointProps(networkId, eid, types, mediumType, binding,
+                                 localEid);
     }
     catch (const sdbusplus::exception_t& e)
     {
         error(
             "Error reading MCTP Endpoint property at path '{PATH}' and service '{SERVICE}', error - {ERROR}",
             "SERVICE", service, "PATH", path, "ERROR", e);
-        return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {});
+        return MctpEndpointProps(0, MCTP_ADDR_ANY, {}, {}, {}, std::nullopt);
     }
 }
 
@@ -354,8 +364,15 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     info(
                         "Adding Endpoint networkId '{NETWORK}' and EID '{EID}' UUID '{UUID}'",
                         "NETWORK", networkId, "EID", eid, "UUID", uuid);
+                    LocalEid localEid = std::nullopt;
+                    if (properties.contains("LocalEID"))
+                    {
+                        localEid =
+                            std::get<mctp_eid_t>(properties.at("LocalEID"));
+                    }
+
                     auto mctpInfo = MctpInfo(eid, uuid, mediumType, networkId,
-                                             std::nullopt, binding);
+                                             std::nullopt, binding, localEid);
                     searchConfigurationFor(pldm::utils::DBusHandler(),
                                            mctpInfo);
                     mctpInfos.emplace_back(std::move(mctpInfo));
@@ -461,10 +478,11 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
                 const UUID& uuid = getEndpointUUIDProp(service, objPath);
                 const auto& mctpBinding = std::get<4>(epProps);
                 const auto& mctpMedium = std::get<3>(epProps);
+                const auto& mctpLocalEid = std::get<5>(epProps);
 
                 MctpInfo mctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
                                   std::get<NetworkId>(epProps), std::nullopt,
-                                  mctpBinding);
+                                  mctpBinding, mctpLocalEid);
                 searchConfigurationFor(pldm::utils::DBusHandler(), mctpInfo);
                 if (!std::ranges::contains(existingMctpInfos, mctpInfo))
                 {
@@ -739,8 +757,8 @@ void MctpDiscovery::loadStaticEndpoints(MctpInfos& mctpInfos)
         if (std::find(types.begin(), types.end(), mctpTypePLDM) != types.end())
         {
             error("Added Static MCTP Info for EID: {EID}", "EID", eid);
-            mctpInfos.emplace_back(
-                MctpInfo(eid, emptyUUID, {}, {}, std::nullopt, {}));
+            mctpInfos.emplace_back(MctpInfo(eid, emptyUUID, {}, {},
+                                            std::nullopt, {}, std::nullopt));
         }
     }
 }

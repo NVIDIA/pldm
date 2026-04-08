@@ -130,8 +130,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
 
         inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
-        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType] :
-             mctpInfos)
+        for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
+                          localEid] : mctpInfos)
         {
             ComponentIdNameMap componentIdNameMap;
             if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
