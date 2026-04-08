@@ -533,6 +533,8 @@ exec::task<int> SensorManager::getSensorReading(
 {
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
+    uint64_t sensorKey = (static_cast<uint64_t>(tid) << 16) |
+                         static_cast<uint32_t>(sensorId);
     auto pollingIndicator = sensor->getPollingIndicator();
     const pldm_msg* responseMsg = NULL;
     size_t responseLen = 0;
@@ -585,20 +587,15 @@ exec::task<int> SensorManager::getSensorReading(
 
     if (rc)
     {
-        uint64_t key = (static_cast<uint64_t>(tid) << 16) |
-                       static_cast<uint32_t>(sensorId);
-        if (sensorErrorLogLimiter.shouldLog(key))
+        if (sensorErrorLogLimiter.shouldLog(sensorKey))
         {
-            sensorErrorLogLimiter.recordLog(key);
+            sensorErrorLogLimiter.recordLog(sensorKey);
             lg2::error(
                 "getSensorReading failed, tid={TID}, sensorId={SID}, rc={RC} (further failures for this sensor suppressed for 2 min).",
                 "TID", tid, "SID", sensorId, "RC", rc);
         }
         co_return rc;
     }
-
-    sensorErrorLogLimiter.clear(
-        (static_cast<uint64_t>(tid) << 16) | static_cast<uint32_t>(sensorId));
 
     if (termini.find(tid) == termini.end())
     {
@@ -630,9 +627,13 @@ exec::task<int> SensorManager::getSensorReading(
 
         if (rc)
         {
-            lg2::error(
-                "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}.",
-                "TID", tid, "RC", rc);
+            if (sensorErrorLogLimiter.shouldLog(sensorKey))
+            {
+                sensorErrorLogLimiter.recordLog(sensorKey);
+                lg2::error(
+                    "Failed to decode response of GetSensorReading, tid={TID}, sensorId={SID}, rc={RC}.",
+                    "TID", tid, "SID", sensorId, "RC", rc);
+            }
             sensor->handleErrGetSensorReading();
             co_return rc;
         }
@@ -648,9 +649,13 @@ exec::task<int> SensorManager::getSensorReading(
 
         if (rc)
         {
-            lg2::error(
-                "Failed to decode response of GetOemEnergyCountSensorReading, tid={TID}, rc={RC}.",
-                "TID", tid, "RC", rc);
+            if (sensorErrorLogLimiter.shouldLog(sensorKey))
+            {
+                sensorErrorLogLimiter.recordLog(sensorKey);
+                lg2::error(
+                    "Failed to decode response of GetOemEnergyCountSensorReading, tid={TID}, sensorId={SID}, rc={RC}.",
+                    "TID", tid, "SID", sensorId, "RC", rc);
+            }
             sensor->handleErrGetSensorReading();
             co_return rc;
         }
@@ -666,9 +671,13 @@ exec::task<int> SensorManager::getSensorReading(
 
     if (completionCode != PLDM_SUCCESS)
     {
-        lg2::error(
-            "Failed to decode response of GetSensorReading, tid={TID}, rc={RC}, cc={CC}.",
-            "TID", tid, "RC", rc, "CC", completionCode);
+        if (sensorErrorLogLimiter.shouldLog(sensorKey))
+        {
+            sensorErrorLogLimiter.recordLog(sensorKey);
+            lg2::error(
+                "Failed to decode response of GetSensorReading, tid={TID}, sensorId={SID}, rc={RC}, cc={CC}.",
+                "TID", tid, "SID", sensorId, "RC", rc, "CC", completionCode);
+        }
         co_return completionCode;
     }
 
@@ -718,6 +727,7 @@ exec::task<int> SensorManager::getSensorReading(
     }
 
     sensor->updateReading(true, true, value);
+    sensorErrorLogLimiter.clear(sensorKey);
     co_return completionCode;
 }
 

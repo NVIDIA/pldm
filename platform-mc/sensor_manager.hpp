@@ -193,7 +193,7 @@ class SensorManager
 
     /** @brief Rate-limit getSensorReading error logs per (tid, sensorId) to
      *  avoid flooding when a terminus repeatedly fails. Key:
-     * (tid<<16)|sensorId. Cleared on successful read for that sensor.
+     *  (tid<<16)|sensorId. Cleared on successful read for that sensor.
      */
     pldm::utils::LogRateLimiter<uint64_t> sensorErrorLogLimiter;
 };
