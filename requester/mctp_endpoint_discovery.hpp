@@ -186,14 +186,6 @@ class MctpDiscovery
      */
     void addToExistingMctpInfos(const MctpInfos& mctpInfos);
 
-    /** @brief Erase the removed MCTP endpoint from existingMctpInfos.
-     *
-     *  @param[in] mctpInfos - the remaining MCTP endpoints
-     *  @param[out] removedInfos - the removed MCTP endpoints
-     */
-    void removeFromExistingMctpInfos(MctpInfos& mctpInfos,
-                                     MctpInfos& removedInfos);
-
     /**
      * @brief A callback for propertiesChanges signal enabledMatches matcher
      * rule to invoke registered handlers.
