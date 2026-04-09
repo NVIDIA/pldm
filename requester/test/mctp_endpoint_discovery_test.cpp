@@ -230,6 +230,19 @@ static sdbusplus::message_t makeRefreshEndpointsMessage(
     return msg;
 }
 
+static sdbusplus::message_t makeInterfacesRemovedMessage(
+    const std::string& objPath, const std::vector<std::string>& interfaces)
+{
+    auto bus = sdbusplus::bus::new_default();
+    auto msg = bus.new_method_call("org.test", "/test", "org.test", "Method");
+
+    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    sd_bus_message_set_sender(msg.get(), "org.test.Sender");
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+    return msg;
+}
+
 struct EndpointDbusSpec
 {
     std::string service;
@@ -620,8 +633,12 @@ TEST_F(DbusBackedMctpDiscoveryTest,
         std::nullopt, "sentinel-binding", std::nullopt};
     discovery->existingMctpInfos.emplace_back(sentinel);
 
-    auto msg = sdbusplus::bus::new_default().new_method_call(
-        "org.test", "/org/test", "org.test.Interface", "Method");
+    const auto sentinelPath =
+        std::string{pldm::MCTPPath} + "/networks/" +
+        std::to_string(std::get<pldm::NetworkId>(sentinel)) + "/endpoints/" +
+        std::to_string(std::get<pldm::eid>(sentinel));
+    auto msg = makeInterfacesRemovedMessage(sentinelPath,
+                                            {std::string(pldm::MCTPInterface)});
     discovery->removeEndpoints(msg);
 
     EXPECT_FALSE(std::ranges::contains(discovery->existingMctpInfos, sentinel));
@@ -757,67 +774,26 @@ TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
     EXPECT_NE(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
 }
 
-TEST(MctpEndpointDiscoveryTest, goodRemoveFromExistingMctpInfos)
+TEST(MctpEndpointDiscoveryTest, removeEndpointsRemovesMatchingEndpoint)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-    const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, "def", 2, std::nullopt, "",
-                       std::nullopt),
-        pldm::MctpInfo(12, pldm::emptyUUID, "abc", 1, std::nullopt, "",
-                       std::nullopt)};
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-    mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
-    pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
-    EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), "abc");
-    EXPECT_EQ(std::get<3>(mctpInfo), 1);
-    pldm::MctpInfos removedInfos;
-    pldm::MctpInfos remainMctpInfos;
-    remainMctpInfos.emplace_back(pldm::MctpInfo(
-        12, pldm::emptyUUID, "abc", 1, std::nullopt, "", std::nullopt));
+    const pldm::MctpInfo endpoint{12, pldm::emptyUUID, "abc", 1, std::nullopt,
+                                  "", std::nullopt};
+    disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
 
-    mctpDiscoveryHandler->removeFromExistingMctpInfos(remainMctpInfos,
-                                                      removedInfos);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 1);
-    mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
-    EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), "abc");
-    EXPECT_EQ(std::get<3>(mctpInfo), 1);
-    EXPECT_EQ(removedInfos.size(), 1);
-    mctpInfo = removedInfos.back();
-    EXPECT_EQ(std::get<0>(mctpInfo), 11);
-    EXPECT_EQ(std::get<2>(mctpInfo), "def");
-    EXPECT_EQ(std::get<3>(mctpInfo), 2);
-}
+    const auto endpointPath =
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/12";
 
-TEST(MctpEndpointDiscoveryTest, goodRemoveEndpoints)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-    const pldm::MctpInfos& mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, "def", 2, std::nullopt, "",
-                       std::nullopt),
-        pldm::MctpInfo(12, pldm::emptyUUID, "abc", 1, std::nullopt, "",
-                       std::nullopt)};
+    auto msg = makeInterfacesRemovedMessage(endpointPath,
+                                            {std::string(pldm::MCTPInterface)});
+    disc->removeEndpoints(msg);
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-    mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
-    pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
-    EXPECT_EQ(std::get<0>(mctpInfo), 12);
-    EXPECT_EQ(std::get<2>(mctpInfo), "abc");
-    EXPECT_EQ(std::get<3>(mctpInfo), 1);
-    sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
-        "xyz.openbmc_project.sdbusplus.test.Object",
-        "/xyz/openbmc_project/sdbusplus/test/object",
-        "xyz.openbmc_project.sdbusplus.test.Object", "Unused");
-    mctpDiscoveryHandler->removeEndpoints(msg);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
+    EXPECT_FALSE(std::ranges::contains(disc->existingMctpInfos, endpoint));
+    EXPECT_EQ(handler.handleRemovedMctpEndpointsCalls, 1);
+    EXPECT_EQ(handler.lastRemovedSize, 1u);
 }
 
 TEST(MctpEndpointDiscoveryTest, goodSearchConfigurationFor)
@@ -1147,32 +1123,6 @@ TEST(MctpEndpointDiscoveryTest, addDuplicateToExistingMctpInfos)
     // Adding the same endpoint again should not create a duplicate
     mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 1);
-}
-
-TEST(MctpEndpointDiscoveryTest, removeFromExistingAllRemoved)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    const pldm::MctpInfos mctpInfos = {
-        pldm::MctpInfo(11, pldm::emptyUUID, "def", 2, std::nullopt, "",
-                       std::nullopt),
-        pldm::MctpInfo(12, pldm::emptyUUID, "abc", 1, std::nullopt, "",
-                       std::nullopt)};
-
-    mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
-
-    // Pass empty current list - all should be removed
-    pldm::MctpInfos currentEmpty;
-    pldm::MctpInfos removedInfos;
-    mctpDiscoveryHandler->removeFromExistingMctpInfos(currentEmpty,
-                                                      removedInfos);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-    EXPECT_EQ(removedInfos.size(), 2);
 }
 
 TEST(MctpEndpointDiscoveryTest, searchConfigurationEmptySubTree)
@@ -1807,33 +1757,6 @@ TEST(MctpEndpointDiscoveryTest, liveMapperConstructorDiscoversAvailableEndpoint)
 
     EXPECT_GE(handler.handleMctpEndpointsCalls, 0);
     EXPECT_GE(disc->existingMctpInfos.size(), 0u);
-}
-
-TEST(MctpEndpointDiscoveryTest, liveMapperRemoveEndpointsIteratesCurrentMap)
-{
-    auto endpoints = getMctpEndpoints();
-    if (endpoints.empty())
-    {
-        GTEST_SKIP() << "No MCTP endpoints found via mapper";
-    }
-
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    TrackingMctpHandler handler;
-
-    auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
-    const pldm::MctpInfo sentinelInfo{
-        0xFE,         pldm::emptyUUID,    "sentinel-medium", uint32_t(0xABCD),
-        std::nullopt, "sentinel-binding", std::nullopt};
-    disc->existingMctpInfos.emplace_back(sentinelInfo);
-
-    auto msg = sdbusplus::bus::new_default().new_method_call(
-        "org.test", "/org/test", "org.test.Interface", "Method");
-    disc->removeEndpoints(msg);
-
-    EXPECT_GE(handler.handleRemovedMctpEndpointsCalls, 1)
-        << "removeEndpoints did not report any removals";
-    EXPECT_FALSE(std::ranges::contains(disc->existingMctpInfos, sentinelInfo));
 }
 
 TEST(MctpEndpointDiscoveryTest, liveMapperPropertiesChangedCbReturnsForNonPldm)

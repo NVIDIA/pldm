@@ -418,26 +418,6 @@ void MctpDiscovery::addToExistingMctpInfos(const MctpInfos& addedInfos)
     }
 }
 
-void MctpDiscovery::removeFromExistingMctpInfos(MctpInfos& mctpInfos,
-                                                MctpInfos& removedInfos)
-{
-    for (const auto& mctpInfo : existingMctpInfos)
-    {
-        if (std::find(mctpInfos.begin(), mctpInfos.end(), mctpInfo) ==
-            mctpInfos.end())
-        {
-            removedInfos.emplace_back(mctpInfo);
-        }
-    }
-    for (const auto& mctpInfo : removedInfos)
-    {
-        info("Removing Endpoint EID '{EID}'", "EID", std::get<0>(mctpInfo));
-        existingMctpInfos.erase(std::remove(existingMctpInfos.begin(),
-                                            existingMctpInfos.end(), mctpInfo),
-                                existingMctpInfos.end());
-    }
-}
-
 void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
 {
     using Interface = std::string;
@@ -531,17 +511,55 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
     handleMctpEndpoints(addedInfos);
 }
 
-void MctpDiscovery::removeEndpoints(sdbusplus::message_t&)
+void MctpDiscovery::removeEndpoints(sdbusplus::message_t& msg)
 {
-    MctpInfos mctpInfos;
-    MctpInfos removedInfos;
-    std::map<MctpInfo, Availability> currentMctpInfoMap;
-    getMctpInfos(currentMctpInfoMap);
-    for (const auto& mapIt : currentMctpInfoMap)
+    using ObjectPath = sdbusplus::message::object_path;
+    ObjectPath objPath;
+    std::vector<std::string> interfaces;
+
+    try
     {
-        mctpInfos.push_back(mapIt.first);
+        msg.read(objPath, interfaces);
     }
-    removeFromExistingMctpInfos(mctpInfos, removedInfos);
+    catch (const sdbusplus::exception_t& e)
+    {
+        error(
+            "Error reading MCTP Endpoint removed interface message, error - {ERROR}",
+            "ERROR", e);
+        return;
+    }
+
+    // Only act when the MCTP Endpoint interface itself is removed.  Signals
+    // for other interfaces on the same object (e.g. a Bridge interface being
+    // torn down) do not mean the endpoint is gone.
+    if (!std::ranges::contains(interfaces, std::string(MCTPInterface)))
+    {
+        return;
+    }
+
+    // Match the signal's object path against existingMctpInfos to find the
+    // endpoint that was actually removed.  This avoids the racy full D-Bus
+    // ObjectMapper scan that could falsely classify unrelated endpoints as
+    // removed when the bus is under heavy load during host power cycles.
+    auto it = std::ranges::find_if(
+        existingMctpInfos, [&objPath](const auto& mctpInfo) {
+            auto eidVal = std::get<pldm::eid>(mctpInfo);
+            auto networkId = std::get<NetworkId>(mctpInfo);
+            std::string expectedPath = std::string{MCTPPath} + "/networks/" +
+                                       std::to_string(networkId) +
+                                       "/endpoints/" + std::to_string(eidVal);
+            return objPath.str == expectedPath;
+        });
+
+    if (it == existingMctpInfos.end())
+    {
+        return;
+    }
+
+    MctpInfos removedInfos{*it};
+    info("Removing Endpoint EID '{EID}'", "EID", std::get<pldm::eid>(*it));
+    existingMctpInfos.erase(it);
+
     handleRemovedMctpEndpoints(removedInfos);
     removeConfigs(removedInfos);
 }
