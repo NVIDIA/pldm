@@ -28,10 +28,13 @@
 #include <sdbusplus/exception.hpp>
 
 #include <cerrno>
+#include <charconv>
 #include <cstdio>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
+#include <string_view>
 
 namespace pldm
 {
@@ -283,24 +286,60 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
                          eventDataSize);
 }
 
-/** @brief Notify nvidia-inventory service to load a terminus JSON file. */
-static void notifyInventoryService(const std::string& filePath)
+/**
+ * @brief Map PLDM terminus name to processor module index for CreateInfo.
+ *
+ * CreateInfo accepts indices 0 and 1 only (terminus ProcessorModule_0 / _1).
+ */
+static std::optional<int32_t> processorModuleIndexFromTerminus(
+    const std::string& terminusName)
+{
+    constexpr std::string_view prefix = "ProcessorModule_";
+
+    auto tryParse = [&](std::string_view s) -> std::optional<int32_t> {
+        if (!s.starts_with(prefix))
+        {
+            return std::nullopt;
+        }
+        s.remove_prefix(prefix.size());
+        int32_t val{};
+        auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
+        if (ec != std::errc{} || ptr != s.data() + s.size())
+        {
+            return std::nullopt;
+        }
+        return val;
+    };
+
+    if (auto idx = tryParse(terminusName))
+    {
+        return idx;
+    }
+    return tryParse(sanitizeTerminusName(terminusName));
+}
+
+/** @brief Pass inventory JSON to dbus-sensors NvidiaInfo.CreateInfo. */
+static bool callNvidiaInfoCreateInfo(const std::string& jsonPayload,
+                                     int32_t processorModuleIndex)
 {
     try
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
-        auto method = bus.new_method_call(
-            nvidiaInventoryService, nvidiaInventoryObjectPath,
-            nvidiaInventoryInterface, "CreateInventory");
-        method.append(filePath);
+        auto method =
+            bus.new_method_call(nvidiaInfoService, nvidiaInfoObjectPath,
+                                nvidiaInfoInterface, "CreateInfo");
+        method.append(processorModuleIndex, jsonPayload);
         bus.call_noreply(method);
-        lg2::info("Notified nvidia-inventory service for file: {F}", "F",
-                  filePath);
+        lg2::info(
+            "Called NvidiaInfo.CreateInfo: processorModule={M}, len={LEN}", "M",
+            processorModuleIndex, "LEN", jsonPayload.size());
+        return true;
     }
     catch (const sdbusplus::exception_t& e)
     {
-        lg2::error("Failed to call CreateInventory on nvidia-inventory: {E}",
-                   "E", e.what());
+        lg2::error("Failed to call CreateInfo on NvidiaInfo: {E}", "E",
+                   e.what());
+        return false;
     }
 }
 
@@ -346,65 +385,17 @@ bool handleInventoryEvent(const std::string& terminusName,
     // SatMC sends plain UTF-8 JSON text (output of cJSON_Print()) directly.
     std::string jsonText(reinterpret_cast<const char*>(payload), payloadSize);
 
-    try
+    std::optional<int32_t> moduleIdx =
+        processorModuleIndexFromTerminus(terminusName);
+    if (!moduleIdx)
     {
-        fs::create_directories(fs::path(inventoryDir));
-    }
-    catch (const fs::filesystem_error& e)
-    {
-        lg2::error("Failed to create inventory directory: {ERROR}", "ERROR",
-                   e.what());
+        lg2::error("Inventory event: terminus {T} is not ProcessorModule_0 or "
+                   "ProcessorModule_1",
+                   "T", terminusName);
         return false;
     }
 
-    std::string filePath = std::format("{}/{}_Inventory.json", inventoryDir,
-                                       sanitizeTerminusName(terminusName));
-    std::string tmpPath = filePath + ".tmp";
-
-    try
-    {
-        std::ofstream out(tmpPath, std::ios::trunc);
-        if (!out)
-        {
-            lg2::error("Failed to open inventory JSON file: {PATH}", "PATH",
-                       tmpPath);
-            return false;
-        }
-
-        out << jsonText;
-        out.close();
-
-        if (!out)
-        {
-            lg2::error("Failed to write inventory JSON to: {PATH}", "PATH",
-                       tmpPath);
-            fs::remove(tmpPath);
-            return false;
-        }
-
-        fs::rename(tmpPath, filePath);
-        lg2::info("Saved inventory JSON: size={LEN}, path={PATH}", "LEN",
-                  payloadSize, "PATH", filePath);
-
-        // Notify nvidia-inventory to reload this terminus' inventory objects
-        notifyInventoryService(filePath);
-        return true;
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Exception saving inventory JSON: {ERROR}", "ERROR",
-                   e.what());
-        try
-        {
-            fs::remove(tmpPath);
-        }
-        catch (const std::exception& re)
-        {
-            lg2::warning("Failed to remove temp inventory file: {ERROR}",
-                         "ERROR", re.what());
-        }
-        return false;
-    }
+    return callNvidiaInfoCreateInfo(jsonText, *moduleIdx);
 }
 
 bool handleSmbiosEvent(const uint8_t* eventData, size_t eventDataSize)
