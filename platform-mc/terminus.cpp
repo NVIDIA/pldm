@@ -557,7 +557,10 @@ bool Terminus::parsePDRs()
         else if (pdrHdr->type == PLDM_NUMERIC_EFFECTER_PDR)
         {
             auto parsedPdr = parseNumericEffecterPDR(pdr);
-            numericEffecterPdrs.emplace_back(std::move(parsedPdr));
+            if (parsedPdr != nullptr)
+            {
+                numericEffecterPdrs.emplace_back(std::move(parsedPdr));
+            }
         }
         else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
         {
@@ -905,109 +908,12 @@ std::shared_ptr<pldm_numeric_sensor_value_pdr> Terminus::parseNumericSensorPDR(
 std::shared_ptr<pldm_numeric_effecter_value_pdr>
     Terminus::parseNumericEffecterPDR(const std::vector<uint8_t>& pdr)
 {
-    const uint8_t* ptr = pdr.data();
     auto parsedPdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
-    size_t count = (uint8_t*)(&parsedPdr->max_settable.value_u8) -
-                   (uint8_t*)(&parsedPdr->hdr);
-    memcpy(&parsedPdr->hdr, ptr, count);
-    ptr += count;
-
-    switch (parsedPdr->effecter_data_size)
+    auto rc = decode_numeric_effecter_pdr_data(pdr.data(), pdr.size(),
+                                               parsedPdr.get());
+    if (rc)
     {
-        case PLDM_EFFECTER_DATA_SIZE_UINT8:
-        case PLDM_EFFECTER_DATA_SIZE_SINT8:
-            parsedPdr->max_settable.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->max_settable.value_u8);
-            parsedPdr->min_settable.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->min_settable.value_u8);
-            break;
-        case PLDM_EFFECTER_DATA_SIZE_UINT16:
-        case PLDM_EFFECTER_DATA_SIZE_SINT16:
-            parsedPdr->max_settable.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->max_settable.value_u16);
-            parsedPdr->min_settable.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->min_settable.value_u16);
-            break;
-        case PLDM_EFFECTER_DATA_SIZE_UINT32:
-        case PLDM_EFFECTER_DATA_SIZE_SINT32:
-            parsedPdr->max_settable.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->max_settable.value_u32);
-            parsedPdr->min_settable.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->min_settable.value_u32);
-            break;
-        case PLDM_EFFECTER_DATA_SIZE_UINT64:
-        case PLDM_EFFECTER_DATA_SIZE_SINT64:
-            parsedPdr->max_settable.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->max_settable.value_u64);
-            parsedPdr->min_settable.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->min_settable.value_u64);
-            break;
-        default:
-            break;
-    }
-
-    count = (uint8_t*)&parsedPdr->nominal_value.value_u8 -
-            (uint8_t*)&parsedPdr->range_field_format;
-    memcpy(&parsedPdr->range_field_format, ptr, count);
-    ptr += count;
-
-    switch (parsedPdr->range_field_format)
-    {
-        case PLDM_RANGE_FIELD_FORMAT_UINT8:
-        case PLDM_RANGE_FIELD_FORMAT_SINT8:
-            parsedPdr->nominal_value.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->nominal_value.value_u8);
-            parsedPdr->normal_max.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->normal_max.value_u8);
-            parsedPdr->normal_min.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->normal_min.value_u8);
-            parsedPdr->rated_max.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->rated_max.value_u8);
-            parsedPdr->rated_min.value_u8 = *((uint8_t*)ptr);
-            ptr += sizeof(parsedPdr->rated_min.value_u8);
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_UINT16:
-        case PLDM_RANGE_FIELD_FORMAT_SINT16:
-            parsedPdr->nominal_value.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->nominal_value.value_u16);
-            parsedPdr->normal_max.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_max.value_u16);
-            parsedPdr->normal_min.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_min.value_u16);
-            parsedPdr->rated_max.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_max.value_u16);
-            parsedPdr->rated_min.value_u16 = le16toh(*((uint16_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_min.value_u16);
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_UINT32:
-        case PLDM_RANGE_FIELD_FORMAT_SINT32:
-        case PLDM_RANGE_FIELD_FORMAT_REAL32:
-            parsedPdr->nominal_value.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->nominal_value.value_u32);
-            parsedPdr->normal_max.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_max.value_u32);
-            parsedPdr->normal_min.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_min.value_u32);
-            parsedPdr->rated_max.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_max.value_u32);
-            parsedPdr->rated_min.value_u32 = le32toh(*((uint32_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_min.value_u32);
-            break;
-        case PLDM_RANGE_FIELD_FORMAT_UINT64:
-        case PLDM_RANGE_FIELD_FORMAT_SINT64:
-            parsedPdr->nominal_value.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->nominal_value.value_u64);
-            parsedPdr->normal_max.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_max.value_u64);
-            parsedPdr->normal_min.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->normal_min.value_u64);
-            parsedPdr->rated_max.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_max.value_u64);
-            parsedPdr->rated_min.value_u64 = le64toh(*((uint64_t*)ptr));
-            ptr += sizeof(parsedPdr->rated_min.value_u64);
-            break;
-        default:
-            break;
+        return nullptr;
     }
     return parsedPdr;
 }

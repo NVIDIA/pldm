@@ -64,8 +64,8 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         PLDM_NUMERIC_EFFECTER_PDR,                    // PDRType
         0x0,
         0x0,                                          // recordChangeNumber
-        0,
-        54,                                           // dataLength
+        53,
+        0,                                            // dataLength
         0,
         0,                                            // PLDMTerminusHandle
         static_cast<uint8_t>(sensorId & 0xFF),
