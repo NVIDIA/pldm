@@ -55,6 +55,7 @@ const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
 const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
 const std::string componentUpdateTime{"NvidiaUpdate.1.0.ComponentUpdateTime"};
+const std::string firmwareInRecovery{"NvidiaUpdate.1.0.FirmwareInRecovery"};
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -194,6 +195,11 @@ inline void createLogEntry(
         {
             level = Level::Critical;
         }
+    }
+    else if (messageID == firmwareInRecovery)
+    {
+        messageArgs = arg1;
+        level = Level::Critical;
     }
     else
     {
