@@ -317,6 +317,165 @@ static std::vector<uint8_t> makeAuxNamePdr(uint16_t effecterId, uint8_t pdrType)
     return pdr;
 }
 
+/* Build a compact (wire-format) numeric effecter PDR byte vector.
+ * decode_numeric_effecter_pdr_data() expects each variable-width field
+ * (max_settable, min_settable, range fields) to occupy exactly the number
+ * of bytes indicated by effecter_data_size / range_field_format, NOT the
+ * full sizeof(union_effecter_data_size) = 8 bytes used by the C struct. */
+static std::vector<uint8_t> serializeNumericEffecterPdr(
+    const pldm_numeric_effecter_value_pdr& pdr)
+{
+    /* Build payload bytes separately so we can compute hdr.length. */
+    std::vector<uint8_t> payload;
+    auto pu8 = [&](uint8_t x) { payload.push_back(x); };
+    auto ple16 = [&](uint16_t x) {
+        payload.push_back(x & 0xFF);
+        payload.push_back((x >> 8) & 0xFF);
+    };
+    auto ple32 = [&](uint32_t x) {
+        payload.push_back(x & 0xFF);
+        payload.push_back((x >> 8) & 0xFF);
+        payload.push_back((x >> 16) & 0xFF);
+        payload.push_back((x >> 24) & 0xFF);
+    };
+    auto ple64 = [&](uint64_t x) {
+        ple32(static_cast<uint32_t>(x & 0xFFFFFFFF));
+        ple32(static_cast<uint32_t>(x >> 32));
+    };
+    auto plef32 = [&](float x) {
+        uint32_t bits;
+        memcpy(&bits, &x, 4);
+        ple32(bits);
+    };
+
+    ple16(pdr.terminus_handle);
+    ple16(pdr.effecter_id);
+    ple16(pdr.entity_type);
+    ple16(pdr.entity_instance);
+    ple16(pdr.container_id);
+    ple16(pdr.effecter_semantic_id);
+    pu8(pdr.effecter_init);
+    pu8(pdr.effecter_auxiliary_names);
+    pu8(pdr.base_unit);
+    pu8(static_cast<uint8_t>(pdr.unit_modifier));
+    pu8(pdr.rate_unit);
+    pu8(pdr.base_oem_unit_handle);
+    pu8(pdr.aux_unit);
+    pu8(static_cast<uint8_t>(pdr.aux_unit_modifier));
+    pu8(pdr.aux_rate_unit);
+    pu8(pdr.aux_oem_unit_handle);
+    pu8(pdr.is_linear);
+    pu8(pdr.effecter_data_size);
+    plef32(pdr.resolution);
+    plef32(pdr.offset);
+    ple16(pdr.accuracy);
+    pu8(pdr.plus_tolerance);
+    pu8(pdr.minus_tolerance);
+    plef32(pdr.state_transition_interval);
+    plef32(pdr.transition_interval);
+
+    /* Variable-width effecter data (max_settable, min_settable). */
+    auto appendEff = [&](const union_effecter_data_size& d) {
+        switch (pdr.effecter_data_size)
+        {
+            case PLDM_EFFECTER_DATA_SIZE_UINT8:
+                pu8(d.value_u8);
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_SINT8:
+                pu8(static_cast<uint8_t>(d.value_s8));
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_UINT16:
+                ple16(d.value_u16);
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_SINT16:
+                ple16(static_cast<uint16_t>(d.value_s16));
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_UINT32:
+                ple32(d.value_u32);
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_SINT32:
+                ple32(static_cast<uint32_t>(d.value_s32));
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_UINT64:
+                ple64(d.value_u64);
+                break;
+            case PLDM_EFFECTER_DATA_SIZE_SINT64:
+                ple64(static_cast<uint64_t>(d.value_s64));
+                break;
+            default:
+                break;
+        }
+    };
+    appendEff(pdr.max_settable);
+    appendEff(pdr.min_settable);
+
+    pu8(pdr.range_field_format);
+    pu8(pdr.range_field_support.byte);
+
+    /* Variable-width range fields. */
+    auto appendRng = [&](const union_range_field_format& d) {
+        switch (pdr.range_field_format)
+        {
+            case PLDM_RANGE_FIELD_FORMAT_UINT8:
+                pu8(d.value_u8);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT8:
+                pu8(static_cast<uint8_t>(d.value_s8));
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT16:
+                ple16(d.value_u16);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT16:
+                ple16(static_cast<uint16_t>(d.value_s16));
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT32:
+                ple32(d.value_u32);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT32:
+                ple32(static_cast<uint32_t>(d.value_s32));
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_REAL32:
+                plef32(d.value_f32);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_UINT64:
+                ple64(d.value_u64);
+                break;
+            case PLDM_RANGE_FIELD_FORMAT_SINT64:
+                ple64(static_cast<uint64_t>(d.value_s64));
+                break;
+            default:
+                break;
+        }
+    };
+    appendRng(pdr.nominal_value);
+    appendRng(pdr.normal_max);
+    appendRng(pdr.normal_min);
+    appendRng(pdr.rated_max);
+    appendRng(pdr.rated_min);
+
+    /* Prepend the 10-byte PDR header (record_handle, version, type,
+     * record_change_num, length) where length = payload byte count. */
+    std::vector<uint8_t> v;
+    auto hu8 = [&](uint8_t x) { v.push_back(x); };
+    auto hle16 = [&](uint16_t x) {
+        v.push_back(x & 0xFF);
+        v.push_back((x >> 8) & 0xFF);
+    };
+    auto hle32 = [&](uint32_t x) {
+        v.push_back(x & 0xFF);
+        v.push_back((x >> 8) & 0xFF);
+        v.push_back((x >> 16) & 0xFF);
+        v.push_back((x >> 24) & 0xFF);
+    };
+    hle32(pdr.hdr.record_handle);
+    hu8(pdr.hdr.version);
+    hu8(pdr.hdr.type);
+    hle16(pdr.hdr.record_change_num);
+    hle16(static_cast<uint16_t>(payload.size()));
+    v.insert(v.end(), payload.begin(), payload.end());
+    return v;
+}
+
 static std::vector<uint8_t> makeNumericEffecterPdr(uint16_t effecterId,
                                                    bool withAuxName)
 {
@@ -325,8 +484,6 @@ static std::vector<uint8_t> makeNumericEffecterPdr(uint16_t effecterId,
     pdr.hdr.version = 1;
     pdr.hdr.type = PLDM_NUMERIC_EFFECTER_PDR;
     pdr.hdr.record_change_num = 0;
-    pdr.hdr.length =
-        sizeof(pldm_numeric_effecter_value_pdr) - sizeof(pldm_pdr_hdr);
     pdr.terminus_handle = 1;
     pdr.effecter_id = effecterId;
     pdr.entity_type = PLDM_ENTITY_SYS_BOARD;
@@ -348,10 +505,7 @@ static std::vector<uint8_t> makeNumericEffecterPdr(uint16_t effecterId,
     pdr.normal_min.value_u8 = 40;
     pdr.rated_max.value_u8 = 70;
     pdr.rated_min.value_u8 = 30;
-
-    std::vector<uint8_t> bytes(sizeof(pdr), 0);
-    memcpy(bytes.data(), &pdr, sizeof(pdr));
-    return bytes;
+    return serializeNumericEffecterPdr(pdr);
 }
 
 static std::vector<uint8_t> makeNumericEffecterPdrVariant(
@@ -362,8 +516,6 @@ static std::vector<uint8_t> makeNumericEffecterPdrVariant(
     pdr.hdr.version = 1;
     pdr.hdr.type = PLDM_NUMERIC_EFFECTER_PDR;
     pdr.hdr.record_change_num = 0;
-    pdr.hdr.length =
-        sizeof(pldm_numeric_effecter_value_pdr) - sizeof(pldm_pdr_hdr);
     pdr.terminus_handle = 1;
     pdr.effecter_id = effecterId;
     pdr.entity_type = PLDM_ENTITY_SYS_BOARD;
@@ -486,9 +638,7 @@ static std::vector<uint8_t> makeNumericEffecterPdrVariant(
             break;
     }
 
-    std::vector<uint8_t> bytes(sizeof(pdr), 0);
-    memcpy(bytes.data(), &pdr, sizeof(pdr));
-    return bytes;
+    return serializeNumericEffecterPdr(pdr);
 }
 
 static std::vector<uint8_t> makeOemPdr()
@@ -2193,15 +2343,18 @@ TEST_F(TerminusTest, parseNumericEffecterPdrCoverageMatrix)
         uint8_t effecterDataSize;
         uint8_t rangeFieldFormat;
     };
-    const std::array<NumericEffecterCase, 9> cases{{
+    /* UINT64/SINT64 effecter sizes (enum values 10/11) are rejected by
+     * decode_numeric_effecter_pdr_data() in libpldm 0.14.0 because it
+     * guards with PLDM_SENSOR_DATA_SIZE_MAX (=7) instead of
+     * PLDM_EFFECTER_DATA_SIZE_MAX (=11).  Omit them until that upstream
+     * libpldm bug is fixed and the CI Docker image is rebuilt. */
+    const std::array<NumericEffecterCase, 7> cases{{
         {PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_RANGE_FIELD_FORMAT_UINT8},
         {PLDM_EFFECTER_DATA_SIZE_SINT8, PLDM_RANGE_FIELD_FORMAT_SINT8},
         {PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_RANGE_FIELD_FORMAT_UINT16},
         {PLDM_EFFECTER_DATA_SIZE_SINT16, PLDM_RANGE_FIELD_FORMAT_SINT16},
         {PLDM_EFFECTER_DATA_SIZE_UINT32, PLDM_RANGE_FIELD_FORMAT_UINT32},
         {PLDM_EFFECTER_DATA_SIZE_SINT32, PLDM_RANGE_FIELD_FORMAT_SINT32},
-        {PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_RANGE_FIELD_FORMAT_UINT64},
-        {PLDM_EFFECTER_DATA_SIZE_SINT64, PLDM_RANGE_FIELD_FORMAT_SINT64},
         {PLDM_EFFECTER_DATA_SIZE_UINT32, PLDM_RANGE_FIELD_FORMAT_REAL32},
     }};
 
@@ -2216,8 +2369,11 @@ TEST_F(TerminusTest, parseNumericEffecterPdrCoverageMatrix)
         makeNumericEffecterPdrVariant(effecterId++, 0xFF, 0xFF));
 
     EXPECT_TRUE(terminus.parsePDRs());
-    EXPECT_EQ(cases.size() + 1, terminus.numericEffecterPdrs.size());
-    EXPECT_EQ(cases.size() + 1, terminus.numericEffecters.size());
+    /* The last PDR (effecterDataSize=0xFF) is invalid and rejected by
+     * decode_numeric_effecter_pdr_data(), so only the 7 valid PDRs
+     * are stored. */
+    EXPECT_EQ(cases.size(), terminus.numericEffecterPdrs.size());
+    EXPECT_EQ(cases.size(), terminus.numericEffecters.size());
     EXPECT_NE(std::string::npos,
               terminus.numericEffecters.front()->path.find("TerminusEffecter"));
 }

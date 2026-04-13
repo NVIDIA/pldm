@@ -233,8 +233,8 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         PLDM_NUMERIC_EFFECTER_PDR,                    // PDRType
         0x0,
         0x0,                                          // recordChangeNumber
-        0,
-        54,                                           // dataLength
+        53,
+        0,                                            // dataLength
         0,
         0,                                            // PLDMTerminusHandle
         static_cast<uint8_t>(sensorId & 0xFF),
@@ -355,8 +355,8 @@ TEST_F(TestNumericEffecter, baseUnitAndConversionCoverage)
         PLDM_NUMERIC_EFFECTER_PDR,
         0x0,
         0x0,
+        53,
         0,
-        54,
         0,
         0,
         static_cast<uint8_t>(effecterId & 0xFF),
@@ -400,6 +400,7 @@ TEST_F(TestNumericEffecter, baseUnitAndConversionCoverage)
         0,
         1,
         0,
+        1,
         1,
         0,
         PLDM_RANGE_FIELD_FORMAT_UINT8,

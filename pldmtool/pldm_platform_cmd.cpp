@@ -145,9 +145,9 @@ class GetPDR : public CommandInterface
     using CommandInterface::CommandInterface;
 
     explicit GetPDR(const char* type, const char* name, CLI::App* app) :
-        CommandInterface(type, name, app), dataTransferHandle(0),
-        operationFlag(PLDM_GET_FIRSTPART), requestCount(UINT16_MAX),
-        recordChangeNumber(0), nextPartRequired(false)
+        CommandInterface(type, name, app), recordHandle(0),
+        dataTransferHandle(0), operationFlag(PLDM_GET_FIRSTPART),
+        requestCount(UINT16_MAX), recordChangeNumber(0), nextPartRequired(false)
     {
         auto pdrOptionGroup = app->add_option_group(
             "Required Option",
