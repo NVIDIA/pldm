@@ -37,7 +37,8 @@ constexpr const char* inventorySubtreePathStr =
 
 const std::vector<std::string> interfaceFilter = {
     "xyz.openbmc_project.Configuration.MCTPI2CTarget",
-    "xyz.openbmc_project.Configuration.MCTPI3CTarget"};
+    "xyz.openbmc_project.Configuration.MCTPI3CTarget",
+    "xyz.openbmc_project.Configuration.MCTPUSBDevice"};
 
 /** @class MctpDiscoveryHandlerIntf
  *
