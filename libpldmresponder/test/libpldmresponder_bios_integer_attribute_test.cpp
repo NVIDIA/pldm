@@ -31,6 +31,11 @@ class TestBIOSIntegerAttribute : public ::testing::Test
     {
         return attribute.getAttrValue(value);
     }
+
+    uint64_t getAttrValue(BIOSIntegerAttribute& attribute)
+    {
+        return attribute.getAttrValue();
+    }
 };
 
 TEST_F(TestBIOSIntegerAttribute, CtorTest)
@@ -407,6 +412,53 @@ TEST_F(TestBIOSIntegerAttribute, getAttrValueSwitchAndErrorCoverage)
         std::invalid_argument);
 }
 
+TEST_F(TestBIOSIntegerAttribute, getAttrValueWrongVariantCoverage)
+{
+    MockdBusHandler dbusHandler;
+
+    auto makeAttr = [&dbusHandler](const std::string& propertyType) {
+        auto jsonIntegerReadWrite = Json{
+            {"attribute_name", "VDD_AVSBUS_RAIL"},
+            {"lower_bound", 1},
+            {"upper_bound", 15},
+            {"scalar_increment", 1},
+            {"default_value", 2},
+            {"readOnly", false},
+            {"helpText", "HelpText"},
+            {"displayName", "DisplayName"},
+            {"dbus",
+             {{"object_path", "/xyz/openbmc_project/avsbus"},
+              {"interface", "xyz.openbmc.AvsBus.Manager"},
+              {"property_type", propertyType},
+              {"property_name", "Rail"}}}};
+        return BIOSIntegerAttribute{jsonIntegerReadWrite, &dbusHandler};
+    };
+
+    auto uint16Attr = makeAttr("uint16_t");
+    auto int16Attr = makeAttr("int16_t");
+    auto uint32Attr = makeAttr("uint32_t");
+    auto int32Attr = makeAttr("int32_t");
+    auto uint64Attr = makeAttr("uint64_t");
+    auto int64Attr = makeAttr("int64_t");
+    auto doubleAttr = makeAttr("double");
+
+    EXPECT_THROW(getAttrValue(uint16Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(getAttrValue(int16Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(getAttrValue(uint32Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(getAttrValue(int32Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(getAttrValue(uint64Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(getAttrValue(int64Attr, PropertyValue{uint8_t(1)}),
+                 std::bad_variant_access);
+    EXPECT_THROW(
+        getAttrValue(doubleAttr, PropertyValue{std::string("wrong-variant")}),
+        std::bad_variant_access);
+}
+
 TEST_F(TestBIOSIntegerAttribute, invalidCtorFieldCoverage)
 {
     auto jsonInvalid = R"({
@@ -471,4 +523,117 @@ TEST_F(TestBIOSIntegerAttribute, constructEntryOptionalValueCoverage)
     auto* optEntry = reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
         attrValueFromOpt.data());
     EXPECT_EQ(table::attribute_value::decodeIntegerEntry(optEntry), 11u);
+}
+
+TEST_F(TestBIOSIntegerAttribute, setAttrValueOnDbusWithoutDbusMapCoverage)
+{
+    MockBIOSStringTable biosStringTable;
+
+    auto jsonIntegerReadOnly = R"({
+         "attribute_name" : "VDD_AVSBUS_RAIL",
+         "lower_bound" : 1,
+         "upper_bound" : 15,
+         "scalar_increment" : 1,
+         "default_value" : 2,
+         "readOnly" : true,
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName"
+      })"_json;
+    BIOSIntegerAttribute integerReadOnly{jsonIntegerReadOnly, nullptr};
+
+    Table attrValueTable;
+    table::attribute_value::constructIntegerEntry(attrValueTable, 1,
+                                                  PLDM_BIOS_INTEGER, 7);
+    auto* entry = reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+        attrValueTable.data());
+
+    EXPECT_NO_THROW(
+        integerReadOnly.setAttrValueOnDbus(entry, nullptr, biosStringTable));
+}
+
+TEST_F(TestBIOSIntegerAttribute,
+       getAttrValueWithoutDbusMapReturnsDefaultCoverage)
+{
+    auto jsonIntegerReadOnly = R"({
+         "attribute_name" : "VDD_AVSBUS_RAIL",
+         "lower_bound" : 1,
+         "upper_bound" : 15,
+         "scalar_increment" : 1,
+         "default_value" : 2,
+         "readOnly" : true,
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName"
+      })"_json;
+
+    BIOSIntegerAttribute integerReadOnly{jsonIntegerReadOnly, nullptr};
+    EXPECT_EQ(getAttrValue(integerReadOnly), 2u);
+}
+
+TEST_F(TestBIOSIntegerAttribute,
+       constructEntryFallsBackToDefaultOnDbusExceptionCoverage)
+{
+    MockdBusHandler dbusHandler;
+    MockBIOSStringTable biosStringTable;
+
+    auto jsonIntegerReadWrite = R"({
+         "attribute_name" : "VDD_AVSBUS_RAIL",
+         "lower_bound" : 1,
+         "upper_bound" : 15,
+         "scalar_increment" : 1,
+         "default_value" : 2,
+         "readOnly" : false,
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName",
+         "dbus":{
+            "object_path" : "/xyz/openbmc_project/avsbus",
+            "interface" : "xyz.openbmc.AvsBus.Manager",
+            "property_type" : "uint8_t",
+            "property_name" : "Rail"
+         }
+      })"_json;
+    BIOSIntegerAttribute integerReadWrite{jsonIntegerReadWrite, &dbusHandler};
+    ON_CALL(biosStringTable, findHandle(StrEq("VDD_AVSBUS_RAIL")))
+        .WillByDefault(Return(5));
+
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(StrEq("/xyz/openbmc_project/avsbus"),
+                                       StrEq("Rail"),
+                                       StrEq("xyz.openbmc.AvsBus.Manager")))
+        .WillOnce(Throw(std::runtime_error("dbus failure")));
+
+    Table attrTable;
+    Table attrValueTable;
+    integerReadWrite.constructEntry(biosStringTable, attrTable, attrValueTable);
+    auto* entry = reinterpret_cast<const pldm_bios_attr_val_table_entry*>(
+        attrValueTable.data());
+    EXPECT_EQ(table::attribute_value::decodeIntegerEntry(entry), 2u);
+}
+
+TEST_F(TestBIOSIntegerAttribute, generateAttributeEntryWrongVariantCoverage)
+{
+    MockdBusHandler dbusHandler;
+
+    auto jsonIntegerReadWrite = R"({
+         "attribute_name" : "VDD_AVSBUS_RAIL",
+         "lower_bound" : 1,
+         "upper_bound" : 15,
+         "scalar_increment" : 1,
+         "default_value" : 2,
+         "readOnly" : false,
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName",
+         "dbus":{
+            "object_path" : "/xyz/openbmc_project/avsbus",
+            "interface" : "xyz.openbmc.AvsBus.Manager",
+            "property_type" : "uint8_t",
+            "property_name" : "Rail"
+         }
+      })"_json;
+    BIOSIntegerAttribute integerReadWrite{jsonIntegerReadWrite, &dbusHandler};
+
+    Table generatedValue;
+    EXPECT_THROW(integerReadWrite.generateAttributeEntry(
+                     std::variant<int64_t, std::string>{std::string("bad")},
+                     generatedValue),
+                 std::bad_variant_access);
 }

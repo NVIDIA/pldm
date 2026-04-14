@@ -20,6 +20,7 @@
 
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <optional>
 #include <sstream>
 #include <typeinfo>
 
@@ -29,6 +30,113 @@
 using namespace pldm::fw_update;
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
+
+namespace
+{
+
+struct OpenSslWrapState
+{
+    bool failPkeyCtxNew = false;
+    std::optional<int> pkeyVerifyInitRc{};
+    std::optional<int> pkeyVerifyRc{};
+    std::optional<int> digestInitRc{};
+    std::optional<int> digestUpdateRc{};
+    std::optional<int> digestFinalRc{};
+};
+
+OpenSslWrapState& openSslWrapState()
+{
+    static thread_local OpenSslWrapState state{};
+    return state;
+}
+
+struct ScopedOpenSslWrapState
+{
+    OpenSslWrapState savedState = openSslWrapState();
+
+    explicit ScopedOpenSslWrapState(OpenSslWrapState state)
+    {
+        openSslWrapState() = std::move(state);
+    }
+
+    ~ScopedOpenSslWrapState()
+    {
+        openSslWrapState() = savedState;
+    }
+};
+
+} // namespace
+
+extern "C"
+{
+EVP_PKEY_CTX* __real_EVP_PKEY_CTX_new(EVP_PKEY* pkey, ENGINE* e);
+int __real_EVP_PKEY_verify_init(EVP_PKEY_CTX* ctx);
+int __real_EVP_PKEY_verify(EVP_PKEY_CTX* ctx, const unsigned char* sig,
+                           size_t siglen, const unsigned char* tbs,
+                           size_t tbslen);
+int __real_EVP_DigestInit_ex(EVP_MD_CTX* ctx, const EVP_MD* type, ENGINE* impl);
+int __real_EVP_DigestUpdate(EVP_MD_CTX* ctx, const void* data, size_t count);
+int __real_EVP_DigestFinal(EVP_MD_CTX* ctx, unsigned char* md,
+                           unsigned int* size);
+
+EVP_PKEY_CTX* __wrap_EVP_PKEY_CTX_new(EVP_PKEY* pkey, ENGINE* e)
+{
+    if (openSslWrapState().failPkeyCtxNew)
+    {
+        return nullptr;
+    }
+    return __real_EVP_PKEY_CTX_new(pkey, e);
+}
+
+int __wrap_EVP_PKEY_verify_init(EVP_PKEY_CTX* ctx)
+{
+    if (openSslWrapState().pkeyVerifyInitRc.has_value())
+    {
+        return *openSslWrapState().pkeyVerifyInitRc;
+    }
+    return __real_EVP_PKEY_verify_init(ctx);
+}
+
+int __wrap_EVP_PKEY_verify(EVP_PKEY_CTX* ctx, const unsigned char* sig,
+                           size_t siglen, const unsigned char* tbs,
+                           size_t tbslen)
+{
+    if (openSslWrapState().pkeyVerifyRc.has_value())
+    {
+        return *openSslWrapState().pkeyVerifyRc;
+    }
+    return __real_EVP_PKEY_verify(ctx, sig, siglen, tbs, tbslen);
+}
+
+int __wrap_EVP_DigestInit_ex(EVP_MD_CTX* ctx, const EVP_MD* type, ENGINE* impl)
+{
+    if (openSslWrapState().digestInitRc.has_value())
+    {
+        return *openSslWrapState().digestInitRc;
+    }
+    return __real_EVP_DigestInit_ex(ctx, type, impl);
+}
+
+int __wrap_EVP_DigestUpdate(EVP_MD_CTX* ctx, const void* data, size_t count)
+{
+    if (openSslWrapState().digestUpdateRc.has_value())
+    {
+        return *openSslWrapState().digestUpdateRc;
+    }
+    return __real_EVP_DigestUpdate(ctx, data, count);
+}
+
+int __wrap_EVP_DigestFinal(EVP_MD_CTX* ctx, unsigned char* md,
+                           unsigned int* size)
+{
+    if (openSslWrapState().digestFinalRc.has_value())
+    {
+        return *openSslWrapState().digestFinalRc;
+    }
+    return __real_EVP_DigestFinal(ctx, md, size);
+}
+
+} // extern "C"
 
 class PackageSignatureTest : public testing::Test
 {
@@ -2269,6 +2377,38 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForInvalidPublicKeyFormat)
     EXPECT_FALSE(onErrorCalled);
 }
 
+TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForEmptyPublicKey)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = true;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, "", sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
 TEST_F(PackageSignatureTest, calculateDigestAsyncNoChunksHandlesReadFailure)
 {
     PackageSignatureSha384TestHook sha;
@@ -2356,6 +2496,33 @@ TEST_F(PackageSignatureTest,
         testing::HasSubstr("Exception occurred during chunk processing"));
 }
 
+TEST_F(PackageSignatureTest, handleChunkProcessingReportsDigestFinalizeFailure)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+    sha.createDummyTimerForTest();
+
+    std::istringstream package("abcdef");
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.configureChunkProcessingForTest(
+        package, 0, 0, false,
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    sha.handleChunkProcessing();
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage,
+                testing::HasSubstr("Failed to finalize the digest"));
+}
+
 TEST_F(PackageSignatureTest,
        handleChunkProcessingFinalizesWhenNoTimerObjectIsPresent)
 {
@@ -2441,4 +2608,339 @@ TEST_F(PackageSignatureTest, verifySyncReturnsFalseForInvalidPublicKeyFormat)
         package, "INVALID_HEX_KEY", sizeOfSignedData);
 
     EXPECT_FALSE(verificationResult);
+}
+
+TEST_F(PackageSignatureTest, verifySyncReturnsFalseForEmptyPublicKey)
+{
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    auto verificationResult =
+        packageSignatureParser.verify(package, "", sizeOfSignedData);
+
+    EXPECT_FALSE(verificationResult);
+}
+
+TEST_F(PackageSignatureTest,
+       verifyAsyncReturnsFalseWhenVerifyContextCreationFails)
+{
+    OpenSslWrapState state;
+    state.failPkeyCtxNew = true;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = true;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, publicKey, sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseWhenVerifyInitFails)
+{
+    OpenSslWrapState state;
+    state.pkeyVerifyInitRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = true;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, publicKey, sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseWhenVerifyCallFails)
+{
+    OpenSslWrapState state;
+    state.pkeyVerifyRc = -1;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    bool onCompleteCalled = false;
+    bool verificationResult = true;
+    bool onErrorCalled = false;
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    packageSignatureParser.verifyAsync(
+        package, publicKey, sizeOfSignedData,
+        [&](bool result) {
+            onCompleteCalled = true;
+            verificationResult = result;
+        },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(verificationResult);
+    EXPECT_FALSE(onErrorCalled);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestAsyncErrorsWhenDigestInitFails)
+{
+    OpenSslWrapState state;
+    state.digestInitRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::string payload("1234567890abcdef");
+    std::istringstream package(payload);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.calculateDigestAsync(
+        package, payload.size(),
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(errorMessage,
+                testing::HasSubstr(
+                    "Failed to initialize the digest context for algorithm"));
+}
+
+TEST_F(PackageSignatureTest, handleChunkProcessingReportsDigestUpdateFailure)
+{
+    OpenSslWrapState state;
+    state.digestUpdateRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::string payload("1234567890abcdef");
+    std::istringstream package(payload);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+    std::string errorMessage;
+
+    sha.calculateDigestAsync(
+        package, payload.size(),
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string& error) {
+            onErrorCalled = true;
+            errorMessage = error;
+        });
+
+    ASSERT_TRUE(sha.hasPendingTimerForTest());
+    sha.handleChunkProcessing();
+
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_TRUE(onErrorCalled);
+    EXPECT_THAT(
+        errorMessage,
+        testing::HasSubstr("Failed to update the digest with current chunk"));
+}
+
+TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestInitFails)
+{
+    OpenSslWrapState state;
+    state.digestInitRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("abcdef");
+    EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestUpdateFails)
+{
+    OpenSslWrapState state;
+    state.digestUpdateRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("abcdef");
+    EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestFinalFails)
+{
+    OpenSslWrapState state;
+    state.digestFinalRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+
+    std::istringstream package("abcdef");
+    EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
+                 InternalFailure);
+}
+
+TEST_F(PackageSignatureTest,
+       verifySyncReturnsFalseWhenVerifyContextCreationFails)
+{
+    OpenSslWrapState state;
+    state.failPkeyCtxNew = true;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    auto verificationResult =
+        packageSignatureParser.verify(package, publicKey, sizeOfSignedData);
+
+    EXPECT_FALSE(verificationResult);
+}
+
+TEST_F(PackageSignatureTest, verifySyncReturnsFalseWhenVerifyInitFails)
+{
+    OpenSslWrapState state;
+    state.pkeyVerifyInitRc = 0;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    auto verificationResult =
+        packageSignatureParser.verify(package, publicKey, sizeOfSignedData);
+
+    EXPECT_FALSE(verificationResult);
+}
+
+TEST_F(PackageSignatureTest, verifySyncReturnsFalseWhenVerifyCallFails)
+{
+    OpenSslWrapState state;
+    state.pkeyVerifyRc = -1;
+    ScopedOpenSslWrapState wrapState(state);
+
+    std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
+                       signedPackageV3WithPublicKey.size());
+    std::istringstream package(strPkg);
+    auto calcPkgSize = calculatePackageSize(package);
+    auto pkgSignHdrData =
+        PackageSignature::getSignatureHeader(package, calcPkgSize);
+
+    PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
+    packageSignatureParser.parseHeader();
+    packageSignatureParser.shaHook->setUseChunksForTest(false);
+
+    auto sizeOfSignedData =
+        packageSignatureParser.calculateSizeOfSignedData(calcPkgSize);
+    auto verificationResult =
+        packageSignatureParser.verify(package, publicKey, sizeOfSignedData);
+
+    EXPECT_FALSE(verificationResult);
+}
+
+TEST_F(PackageSignatureTest, calculateDigestAsyncUseChunksReplacesExistingTimer)
+{
+    PackageSignatureSha384TestHook sha;
+    sha.setUseChunksForTest(true);
+    sha.createDummyTimerForTest();
+
+    std::string payload("1234567890abcdef");
+    std::istringstream package(payload);
+
+    bool onCompleteCalled = false;
+    bool onErrorCalled = false;
+
+    sha.calculateDigestAsync(
+        package, payload.size(),
+        [&](std::vector<unsigned char>) { onCompleteCalled = true; },
+        [&](const std::string&) { onErrorCalled = true; });
+
+    EXPECT_TRUE(sha.hasPendingTimerForTest());
+    EXPECT_FALSE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
 }

@@ -6,6 +6,7 @@
 #include "libpldmresponder/pdr_state_sensor.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "libpldmresponder/platform.hpp"
+#include "test/test_tmp_utils.hpp"
 
 #include <libpldm/platform.h>
 
@@ -13,8 +14,10 @@
 #include <sdeventplus/event.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <system_error>
 
 #include <gtest/gtest.h>
@@ -74,6 +77,22 @@ class TemplateTestHandler
     uint16_t nextEffecterId{};
     uint16_t nextSensorId{};
 };
+
+class ThrowingAssociateEntityHandler : public TemplateTestHandler
+{
+  public:
+    const AssociatedEntityMap& getAssociateEntityMap() const
+    {
+        throw std::runtime_error("associate entity map failure");
+    }
+};
+
+fs::path writePlatformPdrConfigDir(const Json& json)
+{
+    auto dir = pldm::test::makeTempDir("PdrTemplateConfig.XXXXXX");
+    std::ofstream(dir / "platform_pdrs.json") << json.dump(2);
+    return dir;
+}
 
 } // namespace
 
@@ -504,6 +523,30 @@ TEST(GeneratePDRTemplates, StateEffecterSensorAndMappingCoverage)
     const auto u8Map =
         populateMapping("uint8_t", Json::array({1, 2}), PossibleValues{9, 10});
     EXPECT_EQ(u8Map.size(), 2u);
+    const auto u16Map =
+        populateMapping("uint16_t", Json::array({1, 2}), PossibleValues{3, 4});
+    EXPECT_EQ(u16Map.size(), 2u);
+    const auto u32Map =
+        populateMapping("uint32_t", Json::array({1, 2}), PossibleValues{5, 6});
+    EXPECT_EQ(u32Map.size(), 2u);
+    const auto u64Map =
+        populateMapping("uint64_t", Json::array({1, 2}), PossibleValues{7, 8});
+    EXPECT_EQ(u64Map.size(), 2u);
+    const auto s16Map = populateMapping("int16_t", Json::array({-1, 2}),
+                                        PossibleValues{11, 12});
+    EXPECT_EQ(s16Map.size(), 2u);
+    const auto s32Map = populateMapping("int32_t", Json::array({-1, 2}),
+                                        PossibleValues{13, 14});
+    EXPECT_EQ(s32Map.size(), 2u);
+    const auto s64Map = populateMapping("int64_t", Json::array({-1, 2}),
+                                        PossibleValues{15, 16});
+    EXPECT_EQ(s64Map.size(), 2u);
+    const auto boolMap = populateMapping("bool", Json::array({true, false}),
+                                         PossibleValues{17, 18});
+    EXPECT_EQ(boolMap.size(), 2u);
+    const auto doubleMap = populateMapping("double", Json::array({1.5, 2.5}),
+                                           PossibleValues{19, 20});
+    EXPECT_EQ(doubleMap.size(), 2u);
     const auto strMap = populateMapping("string", Json::array({"x", "y"}),
                                         PossibleValues{1, 2});
     EXPECT_EQ(strMap.size(), 2u);
@@ -562,4 +605,998 @@ TEST(GeneratePDRTemplates, StateEffecterSensorMalformedCoverage)
                  std::runtime_error);
 
     pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterSensorFallbackCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ON_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .WillByDefault(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+
+    auto* stateEffecterRepoRaw = pldm_pdr_init();
+    Repo stateEffecterRepo(stateEffecterRepoRaw);
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, Json::object(),
+                                                 handler, stateEffecterRepo);
+    EXPECT_EQ(stateEffecterRepo.getRecordCount(), 0u);
+
+    const Json stateEffecterJson = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "/missing/effecter/path",
+                "type": 88,
+                "instance": 7,
+                "container": 6,
+                "effecters": [
+                    {
+                        "set": { "id": 196, "size": 1 },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Effecter0",
+                            "property_type": "uint8_t",
+                            "property_values": [9]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, stateEffecterJson,
+                                                 handler, stateEffecterRepo);
+    ASSERT_EQ(stateEffecterRepo.getRecordCount(), 1u);
+
+    PdrEntry effecterEntry{};
+    auto* effecterRecord = stateEffecterRepo.getFirstRecord(effecterEntry);
+    ASSERT_NE(effecterRecord, nullptr);
+    auto* effecterPdr =
+        reinterpret_cast<const pldm_state_effecter_pdr*>(effecterEntry.data);
+    EXPECT_EQ(effecterPdr->entity_type, 88);
+    EXPECT_EQ(effecterPdr->entity_instance, 7);
+    EXPECT_EQ(effecterPdr->container_id, 6);
+    const auto& [effecterMappings, effecterValMaps] =
+        handler.effecterDbusObjMaps.at(effecterPdr->effecter_id);
+    ASSERT_EQ(effecterMappings.size(), 1u);
+    ASSERT_EQ(effecterValMaps.size(), 1u);
+    EXPECT_TRUE(effecterValMaps.front().empty());
+
+    auto* stateSensorRepoRaw = pldm_pdr_init();
+    Repo stateSensorRepo(stateSensorRepoRaw);
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, Json::object(),
+                                             handler, stateSensorRepo);
+    EXPECT_EQ(stateSensorRepo.getRecordCount(), 0u);
+
+    const Json stateSensorJson = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "/missing/sensor/path",
+                "type": 99,
+                "instance": 5,
+                "container": 4,
+                "sensors": [
+                    {
+                        "set": { "id": 128, "size": 1 },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Sensor0",
+                            "property_type": "uint8_t",
+                            "property_values": [3]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, stateSensorJson,
+                                             handler, stateSensorRepo);
+    ASSERT_EQ(stateSensorRepo.getRecordCount(), 1u);
+
+    PdrEntry sensorEntry{};
+    auto* sensorRecord = stateSensorRepo.getFirstRecord(sensorEntry);
+    ASSERT_NE(sensorRecord, nullptr);
+    auto* sensorPdr =
+        reinterpret_cast<const pldm_state_sensor_pdr*>(sensorEntry.data);
+    EXPECT_EQ(sensorPdr->entity_type, 99);
+    EXPECT_EQ(sensorPdr->entity_instance, 5);
+    EXPECT_EQ(sensorPdr->container_id, 4);
+    const auto& [sensorMappings, sensorValMaps] =
+        handler.sensorDbusObjMaps.at(sensorPdr->sensor_id);
+    ASSERT_EQ(sensorMappings.size(), 1u);
+    ASSERT_EQ(sensorValMaps.size(), 1u);
+    EXPECT_TRUE(sensorValMaps.front().empty());
+
+    pldm_pdr_destroy(stateEffecterRepoRaw);
+    pldm_pdr_destroy(stateSensorRepoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterSensorAssociateEntityExceptionCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ON_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .WillByDefault(Return("foo.bar"));
+
+    ThrowingAssociateEntityHandler handler;
+
+    auto* stateEffecterRepoRaw = pldm_pdr_init();
+    Repo stateEffecterRepo(stateEffecterRepoRaw);
+    const Json stateEffecterJson = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "/throw/effecter",
+                "type": 44,
+                "instance": 8,
+                "container": 9,
+                "effecters": [
+                    {
+                        "set": { "id": 197, "size": 1, "states": [0] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Effecter1",
+                            "property_type": "uint8_t",
+                            "property_values": [1]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, stateEffecterJson,
+                                                 handler, stateEffecterRepo);
+    ASSERT_EQ(stateEffecterRepo.getRecordCount(), 1u);
+
+    PdrEntry effecterEntry{};
+    auto* effecterRecord = stateEffecterRepo.getFirstRecord(effecterEntry);
+    ASSERT_NE(effecterRecord, nullptr);
+    auto* effecterPdr =
+        reinterpret_cast<const pldm_state_effecter_pdr*>(effecterEntry.data);
+    EXPECT_EQ(effecterPdr->entity_type, 44);
+    EXPECT_EQ(effecterPdr->entity_instance, 8);
+    EXPECT_EQ(effecterPdr->container_id, 9);
+
+    auto* stateSensorRepoRaw = pldm_pdr_init();
+    Repo stateSensorRepo(stateSensorRepoRaw);
+    const Json stateSensorJson = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "/throw/sensor",
+                "type": 55,
+                "instance": 6,
+                "container": 7,
+                "sensors": [
+                    {
+                        "set": { "id": 129, "size": 1, "states": [1] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Sensor1",
+                            "property_type": "uint8_t",
+                            "property_values": [1]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, stateSensorJson,
+                                             handler, stateSensorRepo);
+    ASSERT_EQ(stateSensorRepo.getRecordCount(), 1u);
+
+    PdrEntry sensorEntry{};
+    auto* sensorRecord = stateSensorRepo.getFirstRecord(sensorEntry);
+    ASSERT_NE(sensorRecord, nullptr);
+    auto* sensorPdr =
+        reinterpret_cast<const pldm_state_sensor_pdr*>(sensorEntry.data);
+    EXPECT_EQ(sensorPdr->entity_type, 55);
+    EXPECT_EQ(sensorPdr->entity_instance, 6);
+    EXPECT_EQ(sensorPdr->container_id, 7);
+
+    pldm_pdr_destroy(stateEffecterRepoRaw);
+    pldm_pdr_destroy(stateSensorRepoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterEmptyEffectersCoverage)
+{
+    MockdBusHandler mockedUtils;
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 77,
+                "instance": 3,
+                "container": 2,
+                "effecters": []
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 77);
+    EXPECT_EQ(pdr->entity_instance, 3);
+    EXPECT_EQ(pdr->container_id, 2);
+    EXPECT_EQ(pdr->composite_effecter_count, 0);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    EXPECT_TRUE(dbusMappings.empty());
+    EXPECT_TRUE(dbusValMaps.empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorEmptySensorsCoverage)
+{
+    MockdBusHandler mockedUtils;
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 78,
+                "instance": 4,
+                "container": 5,
+                "sensors": []
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 78);
+    EXPECT_EQ(pdr->entity_instance, 4);
+    EXPECT_EQ(pdr->container_id, 5);
+    EXPECT_EQ(pdr->composite_sensor_count, 0);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    EXPECT_TRUE(dbusMappings.empty());
+    EXPECT_TRUE(dbusValMaps.empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterMissingStatesCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 79,
+                "instance": 1,
+                "container": 6,
+                "effecters": [
+                    {
+                        "set": { "id": 196, "size": 2 },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Effecter0",
+                            "property_type": "uint8_t",
+                            "property_values": [7, 8]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    auto* states = reinterpret_cast<const state_effecter_possible_states*>(
+        pdr->possible_states);
+    EXPECT_EQ(states->possible_states_size, 2);
+    EXPECT_EQ(states->states[0].byte, 0);
+    EXPECT_EQ(states->states[1].byte, 0);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorMissingStatesCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 80,
+                "instance": 2,
+                "container": 7,
+                "sensors": [
+                    {
+                        "set": { "id": 128, "size": 2 },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "Sensor0",
+                            "property_type": "uint8_t",
+                            "property_values": [1, 2]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    auto* states = reinterpret_cast<const state_sensor_possible_states*>(
+        pdr->possible_states);
+    EXPECT_EQ(states->possible_states_size, 2);
+    EXPECT_EQ(states->states[0].byte, 0);
+    EXPECT_EQ(states->states[1].byte, 0);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterMissingPropertyValuesCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ON_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .WillByDefault(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 83,
+                "instance": 5,
+                "container": 6,
+                "effecters": [
+                    {
+                        "set": { "id": 196, "size": 1, "states": [0] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "EffecterMissingValues",
+                            "property_type": "uint8_t"
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 83);
+    EXPECT_EQ(pdr->entity_instance, 5);
+    EXPECT_EQ(pdr->container_id, 6);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_EQ(dbusMappings[0].objectPath, "/foo/bar");
+    EXPECT_EQ(dbusMappings[0].propertyName, "EffecterMissingValues");
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterMultiByteBitmapCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 84,
+                "instance": 7,
+                "container": 8,
+                "effecters": [
+                    {
+                        "set": { "id": 197, "size": 2, "states": [0, 9] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "EffecterBitmap",
+                            "property_type": "uint8_t",
+                            "property_values": [4, 5]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    auto* states = reinterpret_cast<const state_effecter_possible_states*>(
+        pdr->possible_states);
+    EXPECT_EQ(states->possible_states_size, 2);
+    EXPECT_EQ(states->states[0].byte, 0x01);
+    EXPECT_EQ(states->states[1].byte, 0x02);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusValMaps.front().contains(0));
+    EXPECT_TRUE(dbusValMaps.front().contains(9));
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterEmptyEntityPathFallbackCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "",
+                "type": 85,
+                "instance": 9,
+                "container": 10,
+                "effecters": [
+                    {
+                        "set": { "id": 198, "size": 1, "states": [1] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "EffecterEntityFallback",
+                            "property_type": "uint8_t",
+                            "property_values": [6]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 85);
+    EXPECT_EQ(pdr->entity_instance, 9);
+    EXPECT_EQ(pdr->container_id, 10);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_EQ(dbusMappings[0].objectPath, "/foo/bar");
+    EXPECT_TRUE(dbusValMaps.front().contains(1));
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateEffecterBadPathCatchCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/bad/path"), _))
+        .Times(1)
+        .WillOnce(Throw(std::runtime_error("missing path")));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 86,
+                "instance": 4,
+                "container": 3,
+                "effecters": [
+                    {
+                        "set": { "id": 199, "size": 1, "states": [0] },
+                        "dbus": {
+                            "path": "/bad/path",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "EffecterBadPath",
+                            "property_type": "uint8_t",
+                            "property_values": [7]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, json, handler,
+                                                 repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(entry.data);
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.effecterDbusObjMaps.at(pdr->effecter_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusMappings[0].objectPath.empty());
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorMissingPropertyValuesCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ON_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .WillByDefault(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 83,
+                "instance": 5,
+                "container": 6,
+                "sensors": [
+                    {
+                        "set": { "id": 131, "size": 1, "states": [0] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "SensorMissingValues",
+                            "property_type": "uint8_t"
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 83);
+    EXPECT_EQ(pdr->entity_instance, 5);
+    EXPECT_EQ(pdr->container_id, 6);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_EQ(dbusMappings[0].objectPath, "/foo/bar");
+    EXPECT_EQ(dbusMappings[0].propertyName, "SensorMissingValues");
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorMultiByteBitmapCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 84,
+                "instance": 7,
+                "container": 8,
+                "sensors": [
+                    {
+                        "set": { "id": 132, "size": 2, "states": [0, 9] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "SensorBitmap",
+                            "property_type": "uint8_t",
+                            "property_values": [4, 5]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    auto* states = reinterpret_cast<const state_sensor_possible_states*>(
+        pdr->possible_states);
+    EXPECT_EQ(states->possible_states_size, 2);
+    EXPECT_EQ(states->states[0].byte, 0x01);
+    EXPECT_EQ(states->states[1].byte, 0x02);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusValMaps.front().contains(0));
+    EXPECT_TRUE(dbusValMaps.front().contains(9));
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorEmptyEntityPathFallbackCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/foo/bar"), _))
+        .Times(1)
+        .WillOnce(Return("foo.bar"));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "entity_path": "",
+                "type": 85,
+                "instance": 9,
+                "container": 10,
+                "sensors": [
+                    {
+                        "set": { "id": 133, "size": 1, "states": [1] },
+                        "dbus": {
+                            "path": "/foo/bar",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "SensorEntityFallback",
+                            "property_type": "uint8_t",
+                            "property_values": [6]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    EXPECT_EQ(pdr->entity_type, 85);
+    EXPECT_EQ(pdr->entity_instance, 9);
+    EXPECT_EQ(pdr->container_id, 10);
+
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_EQ(dbusMappings[0].objectPath, "/foo/bar");
+    EXPECT_TRUE(dbusValMaps.front().contains(1));
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, StateSensorBadPathCatchCoverage)
+{
+    MockdBusHandler mockedUtils;
+    EXPECT_CALL(mockedUtils, getService(StrEq("/bad/path"), _))
+        .Times(1)
+        .WillOnce(Throw(std::runtime_error("missing path")));
+
+    TemplateTestHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json json = Json::parse(R"({
+        "entries": [
+            {
+                "type": 86,
+                "instance": 4,
+                "container": 3,
+                "sensors": [
+                    {
+                        "set": { "id": 134, "size": 1, "states": [0] },
+                        "dbus": {
+                            "path": "/bad/path",
+                            "interface": "xyz.openbmc_project.Example",
+                            "property_name": "SensorBadPath",
+                            "property_type": "uint8_t",
+                            "property_values": [7]
+                        }
+                    }
+                ]
+            }
+        ]
+    })");
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, json, handler, repo);
+    ASSERT_EQ(repo.getRecordCount(), 1u);
+
+    PdrEntry entry{};
+    auto* record = repo.getFirstRecord(entry);
+    ASSERT_NE(record, nullptr);
+    auto* pdr = reinterpret_cast<const pldm_state_sensor_pdr*>(entry.data);
+    const auto& [dbusMappings, dbusValMaps] =
+        handler.sensorDbusObjMaps.at(pdr->sensor_id);
+    ASSERT_EQ(dbusMappings.size(), 1u);
+    ASSERT_EQ(dbusValMaps.size(), 1u);
+    EXPECT_TRUE(dbusMappings[0].objectPath.empty());
+    EXPECT_TRUE(dbusValMaps.front().empty());
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, ThrowingHandlerStateEffecterEmptyObjectCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ThrowingAssociateEntityHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    pdr_state_effecter::generateStateEffecterPDR(mockedUtils, Json::object(),
+                                                 handler, repo);
+    EXPECT_EQ(repo.getRecordCount(), 0u);
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, ThrowingHandlerStateSensorEmptyObjectCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ThrowingAssociateEntityHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    pdr_state_sensor::generateStateSensorPDR(mockedUtils, Json::object(),
+                                             handler, repo);
+    EXPECT_EQ(repo.getRecordCount(), 0u);
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, ThrowingHandlerStateEffecterMalformedCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ThrowingAssociateEntityHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json badStateEffecter = {
+        {"entries",
+         Json::array({Json{
+             {"effecters", Json::array({Json{
+                               {"set", Json{{"id", 196}, {"size", 0}}}}})}}})}};
+
+    EXPECT_THROW(pdr_state_effecter::generateStateEffecterPDR(
+                     mockedUtils, badStateEffecter, handler, repo),
+                 std::exception);
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, ThrowingHandlerStateSensorMalformedCoverage)
+{
+    MockdBusHandler mockedUtils;
+    ThrowingAssociateEntityHandler handler;
+    auto* repoRaw = pldm_pdr_init();
+    Repo repo(repoRaw);
+
+    const Json badStateSensor = {
+        {"entries",
+         Json::array({Json{
+             {"sensors", Json::array({Json{
+                             {"set", Json{{"id", 128}, {"size", 0}}}}})}}})}};
+
+    EXPECT_THROW(pdr_state_sensor::generateStateSensorPDR(
+                     mockedUtils, badStateSensor, handler, repo),
+                 std::exception);
+
+    pldm_pdr_destroy(repoRaw);
+}
+
+TEST(GeneratePDRTemplates, PlatformHandlerStateEffecterMalformedConfigCoverage)
+{
+    const Json json = Json::parse(R"({
+        "effecterPDRs": [
+            {
+                "pdrType": 11,
+                "entries": [
+                    {
+                        "type": 81,
+                        "instance": 2,
+                        "container": 8,
+                        "effecters": [
+                            {
+                                "set": { "id": 196, "size": 0 }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    })");
+
+    auto configDir = writePlatformPdrConfigDir(json);
+    auto* platformRepo = pldm_pdr_init();
+    auto* effecterRepoRaw = pldm_pdr_init();
+    Repo effecterRepo(effecterRepoRaw);
+    auto event = sdeventplus::Event::get_default();
+    const pldm::utils::DBusHandler dBusIntf;
+
+    {
+        Handler handler(&dBusIntf, configDir.string(), platformRepo, nullptr,
+                        nullptr, nullptr, nullptr, event);
+        getRepoByType(handler.getRepo(), effecterRepo, PLDM_STATE_EFFECTER_PDR);
+        EXPECT_EQ(effecterRepo.getRecordCount(), 0u);
+    }
+
+    pldm_pdr_destroy(effecterRepoRaw);
+    pldm_pdr_destroy(platformRepo);
+    fs::remove_all(configDir);
+}
+
+TEST(GeneratePDRTemplates, PlatformHandlerStateSensorTooManySensorsCoverage)
+{
+    Json sensors = Json::array();
+    for (size_t i = 0; i < 9; ++i)
+    {
+        sensors.push_back(
+            Json{{"set", Json{{"id", static_cast<uint16_t>(128 + i)},
+                              {"size", 1},
+                              {"states", Json::array({1})}}},
+                 {"dbus", Json{{"path", "/foo/bar"},
+                               {"interface", "xyz.openbmc_project.Example"},
+                               {"property_name", "Sensor"},
+                               {"property_type", "uint8_t"},
+                               {"property_values", Json::array({1})}}}});
+    }
+
+    Json json = {
+        {"sensorPDRs", Json::array({Json{{"pdrType", PLDM_STATE_SENSOR_PDR},
+                                         {"entries", Json::array()}}})}};
+    json["sensorPDRs"][0]["entries"].push_back(
+        Json{{"type", 82},
+             {"instance", 3},
+             {"container", 9},
+             {"sensors", std::move(sensors)}});
+
+    auto configDir = writePlatformPdrConfigDir(json);
+    auto* platformRepo = pldm_pdr_init();
+    auto* sensorRepoRaw = pldm_pdr_init();
+    Repo sensorRepo(sensorRepoRaw);
+    auto event = sdeventplus::Event::get_default();
+    const pldm::utils::DBusHandler dBusIntf;
+
+    {
+        Handler handler(&dBusIntf, configDir.string(), platformRepo, nullptr,
+                        nullptr, nullptr, nullptr, event);
+        getRepoByType(handler.getRepo(), sensorRepo, PLDM_STATE_SENSOR_PDR);
+        EXPECT_EQ(sensorRepo.getRecordCount(), 0u);
+    }
+
+    pldm_pdr_destroy(sensorRepoRaw);
+    pldm_pdr_destroy(platformRepo);
+    fs::remove_all(configDir);
+}
+
+TEST(GeneratePDRTemplates, PlatformHandlerStateSensorMalformedConfigCoverage)
+{
+    Json json = {
+        {"sensorPDRs", Json::array({Json{{"pdrType", PLDM_STATE_SENSOR_PDR},
+                                         {"entries", Json::array()}}})}};
+    json["sensorPDRs"][0]["entries"].push_back(
+        Json{{"type", 87},
+             {"instance", 4},
+             {"container", 11},
+             {"sensors",
+              Json::array({Json{{"set", Json{{"id", 140}, {"size", 0}}}}})}});
+
+    auto configDir = writePlatformPdrConfigDir(json);
+    auto* platformRepo = pldm_pdr_init();
+    auto* sensorRepoRaw = pldm_pdr_init();
+    Repo sensorRepo(sensorRepoRaw);
+    auto event = sdeventplus::Event::get_default();
+    const pldm::utils::DBusHandler dBusIntf;
+
+    {
+        Handler handler(&dBusIntf, configDir.string(), platformRepo, nullptr,
+                        nullptr, nullptr, nullptr, event);
+        getRepoByType(handler.getRepo(), sensorRepo, PLDM_STATE_SENSOR_PDR);
+        EXPECT_EQ(sensorRepo.getRecordCount(), 0u);
+    }
+
+    pldm_pdr_destroy(sensorRepoRaw);
+    pldm_pdr_destroy(platformRepo);
+    fs::remove_all(configDir);
 }

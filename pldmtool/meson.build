@@ -14,7 +14,7 @@ sources = [
 #     sources += ['oem/ibm/pldm_oem_ibm.cpp']
 # endif
 
-executable(
+pldmtool_exe = executable(
     'pldmtool',
     sources,
     implicit_include_directories: false,

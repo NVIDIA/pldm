@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include "common/mmap_stream.hpp"
+#include "common/test/mocked_utils.hpp"
 #include "common/utils.hpp"
 #include "fw-update/package_parser.hpp"
 #ifdef __clang__
@@ -665,6 +666,48 @@ TEST_F(UpdateManagerTest, handleRequest_not_supported_command)
 
     EXPECT_EQ(result[2], expectedResult);
     EXPECT_EQ(result[sizeof(pldm_msg_hdr)], PLDM_ERROR_INVALID_DATA);
+}
+
+TEST_F(UpdateManagerTest, onResponseSendCompleteIgnoresUnknownEid)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    EXPECT_NO_THROW({ updateManager.onResponseSendComplete(0x77, true); });
+}
+
+TEST_F(UpdateManagerTest, onResponseSendCompleteDelegatesToTrackedDeviceUpdater)
+{
+    mctp_eid_t eid = 0;
+    ComponentInfoMap componentInfoMap2{
+        {eid,
+         {{std::make_pair(10, 100),
+           std::make_tuple(static_cast<uint8_t>(1), "comp1Version",
+                           static_cast<uint16_t>(0))}}}};
+
+    const DescriptorMap descriptorMap2{
+        {eid,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0x0d}},
+          {PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x16, 0x20, 0x23, 0xc9, 0x3e, 0xc5, 0x41, 0x15,
+                                0x95, 0xf4, 0x48, 0x70, 0x1d, 0x49, 0xd6,
+                                0x75}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("OpenBMC", std::vector<uint8_t>{0x01, 0x02})}}}};
+
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap2,
+                                componentInfoMap2, componentNameMap, true,
+                                nullptr);
+
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_TRUE(updateManager.deviceUpdaterMap.contains(eid));
+
+    EXPECT_NO_THROW({
+        updateManager.onResponseSendComplete(eid, true);
+        updateManager.onResponseSendComplete(eid, false);
+    });
 }
 
 TEST_F(UpdateManagerTest, setActivationStatus)
@@ -2295,6 +2338,44 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateNoDevicesUsesExistingProgressObject)
     EXPECT_NE(updateManager.activationProgress, nullptr);
 }
 
+TEST_F(UpdateManagerTest,
+       startNonPLDMUpdateReturnsActivatingWhenTrackedOtherDevicesExist)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
+
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath = "/xyz/openbmc_project/software/non_pldm_activating";
+
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets, dbusHandler);
+
+    auto tracked = std::make_unique<OtherDeviceUpdateActivation>();
+    tracked->uuid = "UUID_NON_PLDM_ACTIVATING";
+    tracked->activationState = Server::Activation::Activations::Ready;
+    tracked->requestedActivation =
+        Server::Activation::RequestedActivations::None;
+    updateManager.otherDeviceUpdateManager->otherDevices["/xyz/openbmc_project/"
+                                                         "software/other/"
+                                                         "tracked"] =
+        std::move(tracked);
+    updateManager.otherDeviceUpdateManager
+        ->uuidMappings["UUID_NON_PLDM_ACTIVATING"] = {"9.9", "OtherComp"};
+    updateManager.otherDeviceUpdateManager
+        ->isImageFileProcessed["UUID_NON_PLDM_ACTIVATING"] = false;
+
+    auto state = updateManager.startNonPLDMUpdate();
+
+    EXPECT_EQ(state, Server::Activation::Activations::Activating);
+}
+
 TEST_F(UpdateManagerTest, clearFirmwareUpdatePackageHandlesNullUpdater)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
@@ -2516,4 +2597,101 @@ TEST_F(UpdateManagerTest, clearActivationInfoResetsAllTrackedMembers)
     EXPECT_EQ(updateManager.activationBlocksTransition, nullptr);
     EXPECT_EQ(updateManager.parser, nullptr);
     EXPECT_EQ(updateManager.otherDeviceUpdateManager, nullptr);
+}
+
+TEST_F(UpdateManagerTest, processStreamDeferReusesExistingActivationObjects)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/existing_activation_object";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+    updateManager.activationProgress =
+        std::make_unique<ActivationProgress>(busMock, updateManager.objPath);
+
+    auto* activation = updateManager.activation.get();
+    auto* activationProgress = updateManager.activationProgress.get();
+    updateManager.setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes::Immediate);
+
+    std::ifstream package("./test_pkg", std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(package.good());
+    auto packageSize = static_cast<uintmax_t>(package.tellg());
+    package.seekg(0, std::ios::beg);
+
+    auto returnedPath =
+        updateManager.processStreamDefer(package, packageSize, false, {});
+
+    EXPECT_EQ(returnedPath, updateManager.objPath);
+    EXPECT_EQ(updateManager.activation.get(), activation);
+    EXPECT_EQ(updateManager.activationProgress.get(), activationProgress);
+}
+
+TEST_F(UpdateManagerTest,
+       createProgressUpdateTimerLeavesTimerRunningBeforeBoundary)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/progress_before_timeout";
+    updateManager.activationProgress =
+        std::make_unique<ActivationProgress>(busMock, updateManager.objPath);
+    updateManager.totalInterval = 4;
+    updateManager.createProgressUpdateTimer();
+    ASSERT_NE(updateManager.progressTimer, nullptr);
+
+    updateManager.progressTimer->start(std::chrono::seconds(0), true);
+    EXPECT_GE(sd_event_run(event.get(), 500000), 0);
+
+    EXPECT_EQ(updateManager.updateInterval, 1U);
+    EXPECT_NE(updateManager.updateInterval, updateManager.totalInterval - 1);
+    EXPECT_NE(updateManager.progressTimer, nullptr);
+    updateManager.progressTimer->stop();
+}
+
+TEST_F(UpdateManagerTest,
+       activatePackageReturnsActivatingWhenNonPLDMUpdateContinues)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
+
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/activate_non_pldm_in_progress";
+
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets, dbusHandler);
+
+    auto tracked = std::make_unique<OtherDeviceUpdateActivation>();
+    tracked->uuid = "UUID_NON_PLDM_ACTIVATE";
+    tracked->activationState = Server::Activation::Activations::Ready;
+    tracked->requestedActivation =
+        Server::Activation::RequestedActivations::None;
+    updateManager.otherDeviceUpdateManager->otherDevices["/xyz/openbmc_project/"
+                                                         "software/other/"
+                                                         "activate"] =
+        std::move(tracked);
+    updateManager.otherDeviceUpdateManager
+        ->uuidMappings["UUID_NON_PLDM_ACTIVATE"] = {"1.0", "CompA"};
+    updateManager.otherDeviceUpdateManager
+        ->isImageFileProcessed["UUID_NON_PLDM_ACTIVATE"] = false;
+
+    auto state = updateManager.activatePackage();
+
+    EXPECT_EQ(state, Server::Activation::Activations::Activating);
+    EXPECT_NE(updateManager.progressTimer, nullptr);
+    EXPECT_NE(updateManager.activationBlocksTransition, nullptr);
+    updateManager.progressTimer->stop();
 }

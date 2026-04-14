@@ -83,7 +83,8 @@ class DeviceUpdaterTest : public testing::Test
 
     void TearDown() override
     {
-        drainRequesterWork();
+        drainPendingAsyncWork();
+        finalizeAsyncHandle(deviceUpdater.deviceUpdaterHandle);
     }
 
     void runEvent(uint64_t timeoutUsec = 200000)
@@ -134,24 +135,75 @@ class DeviceUpdaterTest : public testing::Test
         }
     }
 
-    void drainRequesterWork()
+    void flushReadyEvents(int iterations = 8)
     {
-        for (int i = 0; i < 64; ++i)
+        for (int i = 0; i < iterations; ++i)
         {
             runEvent(0);
+        }
+    }
+
+    void drainPendingAsyncWork()
+    {
+        auto settleAsyncHandle = [](auto& handle) {
+            if (!handle.has_value())
+            {
+                return false;
+            }
+
+            auto& [scope, rcOpt] = *handle;
+            if (!rcOpt.has_value())
+            {
+                return true;
+            }
+
+            stdexec::sync_wait(scope.on_empty());
+            handle.reset();
+            return false;
+        };
+
+        for (int i = 0; i < 64; ++i)
+        {
+            flushReadyEvents();
 
             if (requesterPending())
             {
                 expireOutstandingRequests();
             }
 
-            runEvent(0);
+            const bool handlePending =
+                settleAsyncHandle(deviceUpdater.deviceUpdaterHandle);
 
-            if (!requesterPending())
+            flushReadyEvents();
+
+            if (!requesterPending() && !handlePending &&
+                !deviceUpdater.deviceUpdaterHandle.has_value())
             {
-                return;
+                flushReadyEvents();
+                if (!requesterPending() &&
+                    !deviceUpdater.deviceUpdaterHandle.has_value())
+                {
+                    return;
+                }
             }
         }
+    }
+
+    template <typename Handle>
+    void finalizeAsyncHandle(Handle& handle)
+    {
+        if (!handle.has_value())
+        {
+            return;
+        }
+
+        auto& [scope, rcOpt] = *handle;
+        if (rcOpt.has_value())
+        {
+            stdexec::sync_wait(scope.on_empty());
+        }
+
+        handle.reset();
     }
 
     std::ifstream package;
@@ -618,6 +670,76 @@ TEST_F(DeviceUpdaterTest, deviceUpdaterHandlerReturnsWhenUpdateAlreadyPending)
 {
     deviceUpdater.deviceUpdaterHandle.emplace();
     EXPECT_NO_THROW({ deviceUpdater.deviceUpdaterHandler(); });
+}
+
+TEST_F(DeviceUpdaterTest, deviceUpdaterHandlerStartsWhenNoExistingHandle)
+{
+    EXPECT_FALSE(deviceUpdater.deviceUpdaterHandle.has_value());
+
+    EXPECT_NO_THROW({ deviceUpdater.deviceUpdaterHandler(); });
+    EXPECT_TRUE(deviceUpdater.deviceUpdaterHandle.has_value());
+}
+
+TEST_F(DeviceUpdaterTest, deviceUpdaterHandlerResetsCompletedHandle)
+{
+    auto& [scope, rcOpt] = deviceUpdater.deviceUpdaterHandle.emplace();
+    (void)scope;
+    rcOpt.emplace(PLDM_SUCCESS);
+
+    EXPECT_NO_THROW({ deviceUpdater.deviceUpdaterHandler(); });
+    EXPECT_TRUE(deviceUpdater.deviceUpdaterHandle.has_value());
+}
+
+TEST_F(DeviceUpdaterTest, onResponseSendCompleteWithoutTrackedComponentIsNoop)
+{
+    EXPECT_NO_THROW({ deviceUpdater.onResponseSendComplete(true); });
+}
+
+TEST_F(DeviceUpdaterTest, onResponseSendCompleteWithTrackedComponentIsNoop)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    EXPECT_NO_THROW({ deviceUpdater.onResponseSendComplete(true); });
+}
+
+TEST_F(DeviceUpdaterTest, isComponentFailedReturnsFalseWhenMissing)
+{
+    EXPECT_FALSE(deviceUpdater.isComponentFailed(0));
+}
+
+TEST_F(DeviceUpdaterTest, isComponentFailedReturnsFalseWhenComponentSucceeded)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), true));
+
+    EXPECT_FALSE(deviceUpdater.isComponentFailed(componentOffset));
+}
+
+TEST_F(DeviceUpdaterTest, isComponentFailedReturnsTrueWhenComponentFailed)
+{
+    size_t componentOffset = 0;
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, 512, &updateManager, &deviceUpdater,
+            componentOffset);
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    EXPECT_TRUE(deviceUpdater.isComponentFailed(componentOffset));
 }
 
 TEST_F(DeviceUpdaterTest,

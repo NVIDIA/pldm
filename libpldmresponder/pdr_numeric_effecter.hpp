@@ -133,8 +133,8 @@ void generateNumericEffecterPDR(const DBusInterface& dBusIntf, const Json& json,
                 break;
         }
 
-        pdr->range_field_format =
-            e.value("range_field_format", PLDM_RANGE_FIELD_FORMAT_UINT8);
+        pdr->range_field_format = e.value<uint8_t>(
+            "range_field_format", PLDM_RANGE_FIELD_FORMAT_UINT8);
         pdr->range_field_support.byte = e.value("range_field_support", 0);
         switch (pdr->range_field_format)
         {

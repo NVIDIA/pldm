@@ -23,6 +23,7 @@ fw_update_test_sources = [
 fw_update_test_sources_no_config = []
 fw_update_test_sources_no_device_inventory = []
 fw_update_test_sources_no_firmware_inventory = []
+fw_update_test_sources_no_activation = []
 foreach src : fw_update_test_sources
     if src != '../config.cpp'
         fw_update_test_sources_no_config += src
@@ -32,6 +33,9 @@ foreach src : fw_update_test_sources
     endif
     if src != '../firmware_inventory.cpp'
         fw_update_test_sources_no_firmware_inventory += src
+    endif
+    if src != '../activation.cpp'
+        fw_update_test_sources_no_activation += src
     endif
 endforeach
 
@@ -44,6 +48,9 @@ fw_update_test_src_no_device_inventory = declare_dependency(
 )
 fw_update_test_src_no_firmware_inventory = declare_dependency(
     sources: fw_update_test_sources_no_firmware_inventory,
+)
+fw_update_test_src_no_activation = declare_dependency(
+    sources: fw_update_test_sources_no_activation,
 )
 
 tests = [
@@ -80,14 +87,26 @@ foreach t : tests
     test_fw_update_src = fw_update_test_src
     test_cpp_args = []
     test_include_dirs = ['../../pldmd']
+    test_link_args = []
     if t == 'config_internal_test'
         test_fw_update_src = fw_update_test_src_no_config
+    elif t == 'activation_test'
+        test_fw_update_src = fw_update_test_src_no_activation
     elif t == 'device_inventory_internal_thread_test'
         test_fw_update_src = fw_update_test_src_no_device_inventory
     elif t == 'firmware_inventory_internal_thread_test'
         test_fw_update_src = fw_update_test_src_no_firmware_inventory
     elif t == 'debug_token_internal_test' or t == 'other_device_update_manager_test'
         test_cpp_args = ['-fno-access-control']
+    elif t == 'package_signature_test'
+        test_link_args = [
+            '-Wl,--wrap=EVP_PKEY_CTX_new',
+            '-Wl,--wrap=EVP_PKEY_verify_init',
+            '-Wl,--wrap=EVP_PKEY_verify',
+            '-Wl,--wrap=EVP_DigestInit_ex',
+            '-Wl,--wrap=EVP_DigestUpdate',
+            '-Wl,--wrap=EVP_DigestFinal',
+        ]
     endif
 
     if t != 'dbusutil_internal_test'
@@ -100,6 +119,7 @@ foreach t : tests
             t.underscorify(),
             t + '.cpp',
             cpp_args: test_cpp_args,
+            link_args: test_link_args,
             implicit_include_directories: false,
             include_directories: test_include_dirs,
             dependencies: [
@@ -116,6 +136,8 @@ foreach t : tests
                 openssl,
             ],
         ),
+        is_parallel: t != 'dbusutil_internal_test',
         workdir: meson.current_source_dir(),
+        suite: non_valgrind_test_suites,
     )
 endforeach

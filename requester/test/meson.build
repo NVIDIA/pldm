@@ -22,7 +22,12 @@ test_src = declare_dependency(
     ],
 )
 
-tests = ['handler_test', 'request_test', 'mctp_endpoint_discovery_test']
+tests = [
+    'handler_test',
+    'handler_coverage_test',
+    'request_test',
+    'mctp_endpoint_discovery_test',
+]
 
 openssl = dependency('openssl', required: true)
 
@@ -49,5 +54,6 @@ foreach t : tests
         ),
         workdir: meson.current_source_dir(),
         timeout: t == 'handler_test' ? 90 : 30,
+        suite: non_valgrind_test_suites,
     )
 endforeach

@@ -14,6 +14,7 @@
 #include <sdeventplus/event.hpp>
 
 #include <cerrno>
+#include <stdexcept>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,6 +36,7 @@ static bool g_forceUnpackFailure = false;
 static bool g_failTimerStart = false;
 static bool g_failTimerStop = false;
 static size_t g_mctpTransportRedfishEventCalls = 0;
+static bool g_throwMctpTransportRedfishEvent = false;
 
 namespace pldm::transport
 {
@@ -45,6 +47,10 @@ void test_createMctpTransportRedfishEvent(
     const std::string& /*logNamespace*/)
 {
     ++g_mctpTransportRedfishEventCalls;
+    if (g_throwMctpTransportRedfishEvent)
+    {
+        throw std::runtime_error("redfish event failure");
+    }
 }
 
 } // namespace pldm::transport
@@ -60,6 +66,24 @@ extern "C" int sd_event_source_set_time_relative(sd_event_source* source,
     using Fn = int (*)(sd_event_source*, uint64_t);
     static auto realFn = reinterpret_cast<Fn>(
         dlsym(RTLD_NEXT, "sd_event_source_set_time_relative"));
+    if (realFn == nullptr)
+    {
+        return -EINVAL;
+    }
+
+    return realFn(source, usec);
+}
+
+extern "C" int sd_event_source_set_time(sd_event_source* source, uint64_t usec)
+{
+    if (g_failTimerStart)
+    {
+        return -EINVAL;
+    }
+
+    using Fn = int (*)(sd_event_source*, uint64_t);
+    static auto realFn =
+        reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "sd_event_source_set_time"));
     if (realFn == nullptr)
     {
         return -EINVAL;
@@ -128,6 +152,17 @@ class MockPldmTransport : public PldmTransport
                 (pldm_tid_t tid, const void* tx, size_t len), (override));
 };
 
+class ThrowingPldmTransport : public PldmTransport
+{
+  public:
+    ThrowingPldmTransport() : PldmTransport(NoInit{}) {}
+
+    pldm_requester_rc_t sendMsg(pldm_tid_t, const void*, size_t) override
+    {
+        throw std::runtime_error("sendMsg failure");
+    }
+};
+
 class RequestIntfTest : public testing::Test
 {
   protected:
@@ -139,6 +174,7 @@ class RequestIntfTest : public testing::Test
         g_failTimerStart = false;
         g_failTimerStop = false;
         g_mctpTransportRedfishEventCalls = 0;
+        g_throwMctpTransportRedfishEvent = false;
     }
 
     /** @brief This function runs the sd_event_run in a loop till all the events
@@ -413,6 +449,22 @@ TEST_F(RequestIntfTest, concreteRequestNonFwupOnRetry)
     waitEventExpiry(milliseconds(500));
 }
 
+TEST_F(RequestIntfTest, concreteRequestRetryTimerStartFailure)
+{
+    pldm::Request requestMsg(sizeof(pldm_msg_hdr), 0);
+    auto msg = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    auto rc = encode_get_tid_req(0, msg);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    Request request(nullptr, eid, event, std::move(requestMsg), 1,
+                    milliseconds(100), false);
+
+    g_failTimerStart = true;
+    rc = request.start();
+    g_failTimerStart = false;
+    EXPECT_EQ(rc, PLDM_ERROR);
+}
+
 // Tests using MockPldmTransport to exercise sendMsg() failure paths
 
 TEST_F(RequestIntfTest, sendMsgFailNonFwupNoRetries)
@@ -454,6 +506,60 @@ TEST_F(RequestIntfTest, sendMsgFailFwupNoRetries)
     auto rc = request.start();
     EXPECT_EQ(rc, PLDM_ERROR);
     EXPECT_EQ(g_mctpTransportRedfishEventCalls, 1u);
+}
+
+TEST_F(RequestIntfTest, sendMsgThrowsPropagates)
+{
+    pldm::Request requestMsg(sizeof(pldm_msg_hdr), 0);
+    auto msg = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    auto rc = encode_get_tid_req(0, msg);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    MockPldmTransport mockTransport;
+    EXPECT_CALL(mockTransport, sendMsg(testing::_, testing::_, testing::_))
+        .WillOnce(testing::Invoke(
+            [](pldm_tid_t, const void*, size_t) -> pldm_requester_rc_t {
+                throw std::runtime_error("sendMsg failure");
+            }));
+
+    Request request(&mockTransport, eid, event, std::move(requestMsg), 0,
+                    milliseconds(100), false);
+    EXPECT_THROW(request.start(), std::runtime_error);
+}
+
+TEST_F(RequestIntfTest, sendMsgThrowsWithConcreteTransportOverride)
+{
+    pldm::Request requestMsg(sizeof(pldm_msg_hdr), 0);
+    auto msg = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    auto rc = encode_get_tid_req(0, msg);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+
+    ThrowingPldmTransport transport;
+    Request request(&transport, eid, event, std::move(requestMsg), 0,
+                    milliseconds(100), false);
+
+    EXPECT_THROW(request.start(), std::runtime_error);
+}
+
+TEST_F(RequestIntfTest, sendMsgFailFwupRedfishEventThrows)
+{
+    pldm::Request requestMsg(sizeof(pldm_msg_hdr), 0);
+    auto hdr = reinterpret_cast<pldm_msg_hdr*>(requestMsg.data());
+    hdr->request = 1;
+    hdr->type = PLDM_FWUP;
+    hdr->command = 0x01;
+    hdr->instance_id = 0;
+
+    MockPldmTransport mockTransport;
+    EXPECT_CALL(mockTransport, sendMsg(testing::_, testing::_, testing::_))
+        .WillOnce(Return(static_cast<pldm_requester_rc_t>(-1)));
+
+    Request request(&mockTransport, eid, event, std::move(requestMsg), 0,
+                    milliseconds(100), false);
+
+    g_throwMctpTransportRedfishEvent = true;
+    EXPECT_THROW(request.start(), std::runtime_error);
+    g_throwMctpTransportRedfishEvent = false;
 }
 
 TEST_F(RequestIntfTest, sendMsgFailWithRetries)

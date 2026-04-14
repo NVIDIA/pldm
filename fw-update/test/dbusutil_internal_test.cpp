@@ -5,12 +5,16 @@
 
 #include "common/utils.hpp"
 
+#include <boost/asio/io_context.hpp>
 #include <boost/system/error_code.hpp>
+#include <sdbusplus/asio/object_server.hpp>
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -35,10 +39,15 @@ struct FakeReply
     StatusValue deviceStatusValue{};
     std::map<std::string, std::vector<std::string>> mapperResponse{
         {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};
+    bool throwOnRead = false;
 
     template <typename T>
     void read(T& out)
     {
+        if (throwOnRead)
+        {
+            throw std::runtime_error("FakeReply read failure");
+        }
         if constexpr (std::is_same_v<T, StatusValue>)
         {
             out = deviceStatusValue;
@@ -56,6 +65,7 @@ struct FakeBus
 {
     bool throwOnCall = false;
     bool throwOnNewMethodCall = false;
+    bool throwOnRead = false;
     StatusValue deviceStatusValue{};
     std::map<std::string, std::vector<std::string>> mapperResponse{
         {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};
@@ -80,6 +90,7 @@ struct FakeBus
         FakeReply reply{};
         reply.deviceStatusValue = deviceStatusValue;
         reply.mapperResponse = mapperResponse;
+        reply.throwOnRead = throwOnRead;
         return reply;
     }
 
@@ -168,6 +179,7 @@ class DBusUtilInternalTest : public testing::Test
         auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
         bus.throwOnCall = false;
         bus.throwOnNewMethodCall = false;
+        bus.throwOnRead = false;
         bus.deviceStatusValue = pldm::fw_update::DeviceStatusMap{};
         bus.mapperResponse = {
             {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};
@@ -180,6 +192,36 @@ class DBusUtilInternalTest : public testing::Test
     }
 };
 
+class AsyncDbusObjectServer
+{
+  public:
+    explicit AsyncDbusObjectServer(const char* serviceName)
+    {
+        connection = std::make_shared<sdbusplus::asio::connection>(
+            io, sdbusplus::bus::new_bus());
+        connection->request_name(serviceName);
+        server = std::make_unique<sdbusplus::asio::object_server>(connection);
+        ioThread = std::thread([this] { io.run(); });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    ~AsyncDbusObjectServer()
+    {
+        io.stop();
+        if (ioThread.joinable())
+        {
+            ioThread.join();
+        }
+    }
+
+    boost::asio::io_context io;
+    std::shared_ptr<sdbusplus::asio::connection> connection;
+    std::unique_ptr<sdbusplus::asio::object_server> server;
+
+  private:
+    std::thread ioThread;
+};
+
 TEST_F(DBusUtilInternalTest, createLogEntrySeverityCallbackErrorPath)
 {
     auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
@@ -189,6 +231,13 @@ TEST_F(DBusUtilInternalTest, createLogEntrySeverityCallbackErrorPath)
     createLogEntry("Update.1.0.TransferFailed", "comp,1.0", "Retry", "FWUpdate",
                    sdbusplus::xyz::openbmc_project::Logging::server::Entry::
                        Level::Critical);
+}
+
+TEST_F(DBusUtilInternalTest, createLogEntryDirectOverloadHandlesEmptyFields)
+{
+    createLogEntry("Update.1.0.TransferFailed", "GPU0,1.0", "", "",
+                   sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                       Level::Informational);
 }
 
 TEST_F(DBusUtilInternalTest, createLogEntryMessageIdBranchCoverage)
@@ -213,10 +262,152 @@ TEST_F(DBusUtilInternalTest, createLogEntryNvidiaMessageIdsBranchCoverage)
     createLogEntry(activateFailed, "GPU0", "1.2.3", "Retry");
 }
 
+TEST_F(DBusUtilInternalTest, setDBusPropertyUsesMapperAndUpdatesProperty)
+{
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetObject",
+        [](const std::string& path, const std::vector<std::string>& ifaceList) {
+            std::map<std::string, std::vector<std::string>> response;
+            if (path == "/xyz/openbmc_project/test/object" &&
+                !ifaceList.empty() &&
+                ifaceList.front() == "xyz.openbmc_project.Test.Interface")
+            {
+                response.emplace("xyz.openbmc_project.Test.Service", ifaceList);
+            }
+            return response;
+        });
+    mapperIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    AsyncDbusObjectServer service("xyz.openbmc_project.Test.Service");
+    std::string storedValue = "initial";
+    auto testIface =
+        service.server->add_interface("/xyz/openbmc_project/test/object",
+                                      "xyz.openbmc_project.Test.Interface");
+    testIface->register_property(
+        "Value", storedValue,
+        [&storedValue](const std::string& value, std::string& currentValue) {
+            storedValue = value;
+            currentValue = value;
+            return true;
+        },
+        [](const std::string& currentValue) { return currentValue; });
+    testIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    pldm::utils::DBusMapping mapping{"/xyz/openbmc_project/test/object",
+                                     "xyz.openbmc_project.Test.Interface",
+                                     "Value", "string"};
+    EXPECT_NO_THROW(setDBusProperty(mapping, "updated"));
+    auto clientBus = sdbusplus::bus::new_default();
+    clientBus.flush();
+}
+
+TEST_F(DBusUtilInternalTest, getServiceReturnsMapperOwnedService)
+{
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetObject",
+        [](const std::string& path, const std::vector<std::string>& ifaceList) {
+            std::map<std::string, std::vector<std::string>> response;
+            if (path == "/xyz/openbmc_project/test/object" &&
+                !ifaceList.empty() &&
+                ifaceList.front() == "xyz.openbmc_project.Test.Interface")
+            {
+                response.emplace("xyz.openbmc_project.Test.Service", ifaceList);
+            }
+            return response;
+        });
+    mapperIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    auto clientBus = sdbusplus::bus::new_default();
+    EXPECT_EQ(getService(clientBus, "/xyz/openbmc_project/test/object",
+                         "xyz.openbmc_project.Test.Interface"),
+              "xyz.openbmc_project.Test.Service");
+}
+
+TEST_F(DBusUtilInternalTest, getServicePropagatesMockCallFailure)
+{
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetObject",
+        [](const std::string&, const std::vector<std::string>&)
+            -> std::map<std::string, std::vector<std::string>> {
+            throw std::runtime_error("mapper failure");
+        });
+    mapperIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    auto clientBus = sdbusplus::bus::new_default();
+    EXPECT_ANY_THROW(getService(clientBus, "/xyz/openbmc_project/test/object",
+                                "xyz.openbmc_project.Test.Interface"));
+}
+
+TEST_F(DBusUtilInternalTest, getServicePropagatesMockReplyReadFailure)
+{
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetObject", [](const std::string&, const std::vector<std::string>&) {
+            return std::string("wrong-reply-type");
+        });
+    mapperIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    auto clientBus = sdbusplus::bus::new_default();
+    EXPECT_ANY_THROW(getService(clientBus, "/xyz/openbmc_project/test/object",
+                                "xyz.openbmc_project.Test.Interface"));
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorPlacesWholeMessageArgsIntoArg1WhenNoComma)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{9,
+          DeviceState::ErrorClass::MCTP,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+           {"REDFISH_MESSAGE_ARGS", "SingleArgument"}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_TRUE(infos[0].arg0.empty());
+    EXPECT_EQ(infos[0].arg1, "SingleArgument");
+    EXPECT_TRUE(infos[0].resolution.empty());
+}
+
 TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorReturnsEmptyOnCallFailure)
 {
     auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
     bus.throwOnCall = true;
+
+    EXPECT_TRUE(queryDeviceStatusError(8).empty());
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorReturnsEmptyOnMethodConstructionFailure)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.throwOnNewMethodCall = true;
+
+    EXPECT_TRUE(queryDeviceStatusError(8).empty());
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorReturnsEmptyOnReplyReadFailure)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.throwOnRead = true;
 
     EXPECT_TRUE(queryDeviceStatusError(8).empty());
 }
@@ -277,6 +468,36 @@ TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorParsesAdditionalData)
     EXPECT_EQ(infos[1].messageId, "Update.1.0.AwaitToActivate");
     EXPECT_EQ(infos[1].arg0, "");
     EXPECT_EQ(infos[1].arg1, "OnlyOneArg");
+}
+
+TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorHandlesMissingMessageArgs)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{4,
+          DeviceState::ErrorClass::MCTP,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_EQ(infos[0].messageId, "Update.1.0.TransferFailed");
+    EXPECT_EQ(infos[0].arg0, "");
+    EXPECT_EQ(infos[0].arg1, "");
+    EXPECT_EQ(infos[0].resolution, "");
+}
+
+TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorSkipsEntriesWithoutMessageId)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{5,
+          DeviceState::ErrorClass::MCTP,
+          {{"REDFISH_MESSAGE_ARGS", "GPU0,1.0"},
+           {"REDFISH_RESOLUTION", "Retry"}}}});
+
+    EXPECT_TRUE(queryDeviceStatusError(8).empty());
 }
 
 TEST_F(DBusUtilInternalTest, queryDeviceStatusAndLogAndBooleanHelpers)

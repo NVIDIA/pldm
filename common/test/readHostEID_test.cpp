@@ -9,7 +9,7 @@
 #ifdef HOST_EID_PATH
 #undef HOST_EID_PATH
 #endif
-#define HOST_EID_PATH "/tmp/claude/test_host_eid"
+#define HOST_EID_PATH "read_host_eid_test_host_eid"
 
 // Include the implementation so readHostEID() is compiled with our
 // overridden HOST_EID_PATH.
@@ -27,8 +27,6 @@ class ReadHostEIDTest : public ::testing::Test
   protected:
     void SetUp() override
     {
-        // Ensure the directory exists
-        std::filesystem::create_directories("/tmp/claude");
         // Remove any leftover file from a previous test
         std::filesystem::remove(HOST_EID_PATH);
     }

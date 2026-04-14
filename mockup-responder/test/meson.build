@@ -52,5 +52,6 @@ foreach t : tests
             ],
         ),
         workdir: meson.current_source_dir(),
+        suite: non_valgrind_test_suites,
     )
 endforeach

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "common/instance_id.hpp"
+#include "test/test_tmp_utils.hpp"
 
 #include <unistd.h>
 
-#include <cstring>
 #include <filesystem>
 
 static constexpr uintmax_t pldmMaxInstanceIds = 32;
@@ -22,13 +22,7 @@ class TestInstanceIdDb : public pldm::InstanceIdDb
   private:
     static std::filesystem::path createDb()
     {
-        static const char dbTmpl[] = "/tmp/db.XXXXXX";
-        char dbName[sizeof(dbTmpl)] = {};
-
-        ::strncpy(dbName, dbTmpl, sizeof(dbName));
-        ::close(::mkstemp(dbName));
-
-        std::filesystem::path dbPath(dbName);
+        auto dbPath = pldm::test::makeTempFile("db.XXXXXX");
         std::filesystem::resize_file(
             dbPath, static_cast<uintmax_t>(PLDM_MAX_TIDS) * pldmMaxInstanceIds);
 

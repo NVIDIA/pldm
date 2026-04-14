@@ -18,8 +18,19 @@
 #include "libpldm/entity.h"
 
 #include "common/instance_id.hpp"
-#include "mock_terminus_manager.hpp"
+#include "common/types.hpp"
+#include "requester/handler.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
 #include "platform-mc/numeric_effecter.hpp"
+#undef private
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+#include "mock_terminus_manager.hpp"
 #include "platform-mc/numeric_effecter_base_unit.hpp"
 #include "platform-mc/numeric_effecter_power_cap.hpp"
 #include "platform-mc/terminus.hpp"
@@ -337,6 +348,10 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         }
     }
     EXPECT_EQ(counter, assocs.size());
+
+    sensor.setInventoryPaths(paths);
+    assocs = sensor.getAssociation();
+    EXPECT_EQ(2u, assocs.size());
 }
 
 TEST_F(TestNumericEffecter, baseUnitAndConversionCoverage)
@@ -635,6 +650,204 @@ TEST_F(TestNumericEffecter, powerCapSetAndEnablePathCoverage)
     (void)wattIntf->powerCapEnable(false);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
+TEST_F(TestNumericEffecter, baseUnitVariantAndNaNConversionCoverage)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis42"};
+
+    struct NumericEffecterCase
+    {
+        uint16_t effecterId;
+        uint8_t baseUnit;
+        uint16_t entityType;
+        bool expectWattIntf;
+    };
+
+    const std::array<NumericEffecterCase, 5> cases{{
+        {0x0D01, PLDM_SENSOR_UNIT_WATTS, PLDM_ENTITY_SYS_BOARD, false},
+        {0x0D02, PLDM_SENSOR_UNIT_NONE, PLDM_ENTITY_SYS_BOARD, false},
+        {0x0D03, PLDM_SENSOR_UNIT_DEGRESS_C, PLDM_ENTITY_SYS_BOARD, false},
+        {0x0D04, PLDM_SENSOR_UNIT_HERTZ, PLDM_ENTITY_SYS_BOARD, false},
+        {0x0D05, PLDM_SENSOR_UNIT_MINUTES, PLDM_ENTITY_SYS_BOARD, false},
+    }};
+
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        auto pdr = makeNumericEffecterValuePdr(
+            cases[i].effecterId, PLDM_EFFECTER_DATA_SIZE_UINT16,
+            cases[i].baseUnit, cases[i].entityType);
+        pdr->resolution = std::numeric_limits<float>::quiet_NaN();
+        pdr->offset = std::numeric_limits<float>::quiet_NaN();
+
+        std::string effecterName = "variant_effecter_" + std::to_string(i);
+        NumericEffecter effecter(0x50 + i, false, pdr, effecterName,
+                                 inventoryPath, terminusManager);
+
+        EXPECT_EQ(cases[i].expectWattIntf,
+                  dynamic_cast<NumericEffecterWattInft*>(
+                      effecter.unitIntf.get()) != nullptr);
+        EXPECT_NE(nullptr, effecter.unitIntf);
+        EXPECT_DOUBLE_EQ(10.0, effecter.rawToUnit(10.0));
+        EXPECT_DOUBLE_EQ(10.0, effecter.unitToRaw(10.0));
+    }
+
+    auto zeroResolutionPdr = makeNumericEffecterValuePdr(
+        0x0D06, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    zeroResolutionPdr->resolution = 0.0f;
+    zeroResolutionPdr->offset = 2.0f;
+    std::string effecterName{"zero_resolution_effecter"};
+    NumericEffecter zeroResolutionEffecter(
+        0x60, false, zeroResolutionPdr, effecterName, inventoryPath,
+        terminusManager);
+    EXPECT_TRUE(std::isnan(zeroResolutionEffecter.unitToRaw(12.0)));
+}
+
+TEST_F(TestNumericEffecter, numericEffecterResponseErrorCoverage)
+{
+    constexpr pldm::tid_t tid = 0x41;
+    const pldm::MctpInfo mctpInfo(
+        14, "00000000-0000-0000-0000-000000000041",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis41"};
+    std::string effecterName{"response_error_effecter"};
+    auto pdr = makeNumericEffecterValuePdr(
+        0x0E01, PLDM_EFFECTER_DATA_SIZE_UINT32, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    auto response =
+        makeCcOnlyResp(PLDM_SET_NUMERIC_EFFECTER_ENABLE, PLDM_ERROR);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT32,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto enableCcRc = stdexec::sync_wait(effecter.setNumericEffecterEnable(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING));
+    ASSERT_TRUE(enableCcRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*enableCcRc));
+
+    response = makeSetNumericEffecterValueResp(PLDM_ERROR);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT32,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto setCcRc = stdexec::sync_wait(effecter.setNumericEffecterValue(11));
+    ASSERT_TRUE(setCcRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*setCcRc));
+
+    response = {0x0, PLDM_PLATFORM, PLDM_GET_NUMERIC_EFFECTER_VALUE, 0x0};
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto getDecodeRc = stdexec::sync_wait(effecter.getNumericEffecterValue());
+    ASSERT_TRUE(getDecodeRc.has_value());
+    EXPECT_NE(PLDM_SUCCESS, std::get<0>(*getDecodeRc));
+}
+
+TEST_F(TestNumericEffecter, numericEffecterNaNFieldBranchCoverage)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis44"};
+    auto wattsPdr =
+        makeNumericEffecterValuePdr(0x0F11, PLDM_EFFECTER_DATA_SIZE_UINT16,
+                                    PLDM_SENSOR_UNIT_WATTS, PLDM_ENTITY_PROC);
+    wattsPdr->resolution = std::numeric_limits<float>::quiet_NaN();
+    wattsPdr->offset = 2.0f;
+    std::string wattsName{"nan_watts_effecter"};
+    NumericEffecter wattsEffecter(0x44, false, wattsPdr, wattsName,
+                                  inventoryPath, terminusManager);
+
+    auto assocs = wattsEffecter.getAssociation();
+    ASSERT_EQ(1u, assocs.size());
+    EXPECT_EQ("chassis", std::get<0>(assocs.front()));
+    EXPECT_EQ("power_controls", std::get<1>(assocs.front()));
+    EXPECT_EQ(inventoryPath, std::get<2>(assocs.front()));
+    EXPECT_DOUBLE_EQ(12.0, wattsEffecter.rawToUnit(10.0));
+    EXPECT_DOUBLE_EQ(8.0, wattsEffecter.unitToRaw(10.0));
+
+    auto nanOffsetPdr = makeNumericEffecterValuePdr(
+        0x0F12, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    nanOffsetPdr->resolution = 4.0f;
+    nanOffsetPdr->offset = std::numeric_limits<float>::quiet_NaN();
+    std::string nanOffsetName{"nan_offset_effecter"};
+    NumericEffecter nanOffsetEffecter(0x45, false, nanOffsetPdr, nanOffsetName,
+                                      inventoryPath, terminusManager);
+    EXPECT_DOUBLE_EQ(40.0, nanOffsetEffecter.rawToUnit(10.0));
+    EXPECT_DOUBLE_EQ(2.5, nanOffsetEffecter.unitToRaw(10.0));
+
+    auto nanBothPdr = makeNumericEffecterValuePdr(
+        0x0F13, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    nanBothPdr->resolution = std::numeric_limits<float>::quiet_NaN();
+    nanBothPdr->offset = std::numeric_limits<float>::quiet_NaN();
+    std::string nanBothName{"nan_both_effecter"};
+    NumericEffecter nanBothEffecter(0x46, false, nanBothPdr, nanBothName,
+                                    inventoryPath, terminusManager);
+    EXPECT_DOUBLE_EQ(10.0, nanBothEffecter.rawToUnit(10.0));
+    EXPECT_DOUBLE_EQ(10.0, nanBothEffecter.unitToRaw(10.0));
+}
+
+TEST_F(TestNumericEffecter, numericEffecterInterfaceGuardCoverage)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis47"};
+    auto pdr = makeNumericEffecterValuePdr(
+        0x0F21, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    std::string effecterName{"guarded_effecter"};
+    NumericEffecter effecter(0x47, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    effecter.availabilityIntf.reset();
+    effecter.operationalStatusIntf.reset();
+    effecter.unitIntf.reset();
+
+    EXPECT_NO_THROW(effecter.updateValue(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 12.0, 24.0));
+    EXPECT_NO_THROW(effecter.handleErrGetNumericEffecterValue());
+    EXPECT_NO_THROW(effecter.setAvailable(true));
+    EXPECT_NO_THROW(effecter.setAvailable(false));
+}
+
+TEST_F(TestNumericEffecter, numericEffecterInlineGuardCoverage)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis48"};
+
+    auto zeroResolutionPdr = makeNumericEffecterValuePdr(
+        0x0F22, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    zeroResolutionPdr->resolution = 0.0f;
+    zeroResolutionPdr->offset = 2.0f;
+    std::string zeroName{"zero_resolution_inline_effecter"};
+    NumericEffecter zeroResolutionEffecter(
+        0x48, false, zeroResolutionPdr, zeroName, inventoryPath,
+        terminusManager);
+    EXPECT_TRUE(std::isnan(zeroResolutionEffecter.baseToRaw(12.0)));
+
+    auto nanPdr = makeNumericEffecterValuePdr(
+        0x0F23, PLDM_EFFECTER_DATA_SIZE_UINT16, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    nanPdr->resolution = std::numeric_limits<float>::quiet_NaN();
+    nanPdr->offset = std::numeric_limits<float>::quiet_NaN();
+    std::string nanName{"nan_inline_effecter"};
+    NumericEffecter nanEffecter(0x49, false, nanPdr, nanName, inventoryPath,
+                                terminusManager);
+    EXPECT_DOUBLE_EQ(15.0, nanEffecter.rawToBase(15.0));
+
+    nanEffecter.associationDefinitionsIntf.reset();
+    nanEffecter.inventoryDecoratorAreaIntf.reset();
+    EXPECT_NO_THROW(nanEffecter.setInventoryPaths({inventoryPath + "/cpu0"}));
+    EXPECT_NO_THROW(nanEffecter.setPhysicalContext(PhysicalContextType::CPU));
 }
 
 TEST(OemBaseCoverage, ctorDtorCoverage)

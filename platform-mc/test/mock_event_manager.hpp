@@ -36,6 +36,8 @@ class MockEventManager : public EventManager
         EventManager(terminusManager, termini, fwUpdateManager, platformManager,
                      sensorManager, verbose) {};
 
+    using EventManager::processNumericSensorEvent;
+
     MOCK_METHOD(void, createSensorThresholdLogEntry,
                 (const std::string& messageID, const std::string& sensorName,
                  const double reading, const double threshold,

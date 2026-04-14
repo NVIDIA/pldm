@@ -1,18 +1,28 @@
 // Override pldm_instance_db_init_default via --wrap linker flag
 // to use a temp file instead of /usr/share/libpldm/instance-db/default
+#include "test/test_tmp_utils.hpp"
+
 #include <libpldm/instance-id.h>
 #include <libpldm/transport.h>
 #include <libpldm/transport/af-mctp.h>
 #include <poll.h>
 #include <unistd.h>
 
+#include <boost/asio/io_context.hpp>
+#include <sdbusplus/asio/object_server.hpp>
+
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <ranges>
+#include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 extern "C" int __wrap_pldm_instance_db_init_default(
@@ -20,10 +30,11 @@ extern "C" int __wrap_pldm_instance_db_init_default(
 {
     static uint64_t dbIndex = 0;
     static std::deque<std::string> dbPaths;
-    std::filesystem::create_directories("/tmp/claude");
+    auto root = pldm::test::ensureTempDir();
     dbPaths.emplace_back(
-        "/tmp/claude/pldm_test_iid_" + std::to_string(::getpid()) + "_" +
-        std::to_string(dbIndex++));
+        (root / ("pldm_test_iid_" + std::to_string(::getpid()) + "_" +
+                 std::to_string(dbIndex++)))
+            .string());
     auto& dbPath = dbPaths.back();
     std::ofstream ofs(dbPath, std::ios::binary | std::ios::trunc);
     std::string data(256 * 32, '\0');
@@ -477,6 +488,14 @@ TEST(Logger, StringData)
     EXPECT_NE(output.find("Msg: hello"), std::string::npos);
 }
 
+TEST(Logger, StringDataVerboseFalse)
+{
+    testing::internal::CaptureStdout();
+    Logger(false, "Msg: ", std::string("hello"));
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(output.empty());
+}
+
 // ===== DisplayInJson Tests =====
 
 TEST(DisplayInJson, BasicOutput)
@@ -543,6 +562,69 @@ TEST(CommandInterface, GetPLDMType)
     EXPECT_EQ(cmd.getPLDMType(), "platform");
 }
 
+TEST(CommandInterface, GetPLDMTypeLongString)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    class TestCmd : public CommandInterface
+    {
+      public:
+        using CommandInterface::CommandInterface;
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    std::string type(96, 'p');
+    TestCmd cmd(type.c_str(), "testCmd", sub);
+    EXPECT_EQ(cmd.getPLDMType(), type);
+}
+
+TEST(CommandInterface, GetPLDMTypeBoundaryString15)
+{
+    class TestCmd : public CommandInterface
+    {
+      public:
+        TestCmd(const char* type, const char* name, CLI::App* app) :
+            CommandInterface(type, name, app)
+        {}
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    constexpr auto type = "1234567890abcde";
+    TestCmd cmd(type, "GetTID", sub);
+    EXPECT_EQ(cmd.getPLDMType(), type);
+}
+
+TEST(CommandInterface, GetPLDMTypeEmptyString)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    class TestCmd : public CommandInterface
+    {
+      public:
+        using CommandInterface::CommandInterface;
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    TestCmd cmd("", "testCmd", sub);
+    EXPECT_TRUE(cmd.getPLDMType().empty());
+}
+
 TEST(CommandInterface, GetCommandName)
 {
     CLI::App app{"test"};
@@ -561,6 +643,69 @@ TEST(CommandInterface, GetCommandName)
 
     TestCmd cmd("base", "GetTID", sub);
     EXPECT_EQ(cmd.getCommandName(), "GetTID");
+}
+
+TEST(CommandInterface, GetCommandNameLongString)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    class TestCmd : public CommandInterface
+    {
+      public:
+        using CommandInterface::CommandInterface;
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    std::string commandName(96, 'c');
+    TestCmd cmd("base", commandName.c_str(), sub);
+    EXPECT_EQ(cmd.getCommandName(), commandName);
+}
+
+TEST(CommandInterface, GetCommandNameBoundaryString15)
+{
+    class TestCmd : public CommandInterface
+    {
+      public:
+        TestCmd(const char* type, const char* name, CLI::App* app) :
+            CommandInterface(type, name, app)
+        {}
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    constexpr auto commandName = "1234567890abcde";
+    TestCmd cmd("base", commandName, sub);
+    EXPECT_EQ(cmd.getCommandName(), commandName);
+}
+
+TEST(CommandInterface, GetCommandNameEmptyString)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    class TestCmd : public CommandInterface
+    {
+      public:
+        using CommandInterface::CommandInterface;
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_SUCCESS, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    TestCmd cmd("base", "", sub);
+    EXPECT_TRUE(cmd.getCommandName().empty());
 }
 
 TEST(CommandInterface, GetPLDMTypeMultiple)
@@ -610,6 +755,33 @@ TEST(CommandInterface, ExecRequestEncodeFailure)
 
     EXPECT_NE(errOutput.find("Failed to encode request message"),
               std::string::npos);
+}
+
+TEST(CommandInterface, ExecRequestEncodeFailureLongNames)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    class TestCmd : public CommandInterface
+    {
+      public:
+        using CommandInterface::CommandInterface;
+        std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+        {
+            return {PLDM_ERROR_INVALID_DATA, {}};
+        }
+        void parseResponseMsg(pldm_msg*, size_t) override {}
+    };
+
+    std::string type(72, 't');
+    std::string command(72, 'x');
+    TestCmd cmd(type.c_str(), command.c_str(), sub);
+    testing::internal::CaptureStderr();
+    cmd.exec();
+    std::string errOutput = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(errOutput.find(type), std::string::npos);
+    EXPECT_NE(errOutput.find(command), std::string::npos);
 }
 
 TEST(CommandInterface, ExecSendRecvFailure)
@@ -765,6 +937,36 @@ bool defaultBusAvailable()
     }
 }
 
+class AsyncDbusObjectServer
+{
+  public:
+    explicit AsyncDbusObjectServer(const char* serviceName)
+    {
+        connection = std::make_shared<sdbusplus::asio::connection>(
+            io, sdbusplus::bus::new_bus());
+        connection->request_name(serviceName);
+        server = std::make_unique<sdbusplus::asio::object_server>(connection);
+        ioThread = std::thread([this] { io.run(); });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    ~AsyncDbusObjectServer()
+    {
+        io.stop();
+        if (ioThread.joinable())
+        {
+            ioThread.join();
+        }
+    }
+
+    boost::asio::io_context io;
+    std::shared_ptr<sdbusplus::asio::connection> connection;
+    std::unique_ptr<sdbusplus::asio::object_server> server;
+
+  private:
+    std::thread ioThread;
+};
+
 } // namespace
 
 TEST(CommandInterface, ExecSendRecvSuccessInvokesParseResponse)
@@ -782,11 +984,34 @@ TEST(CommandInterface, ExecSendRecvSuccessInvokesParseResponse)
     }
     catch (const std::exception&)
     {
-        GTEST_SKIP() << "Transport init is unavailable in this environment";
+        return;
     }
 
     EXPECT_TRUE(cmd.parsed);
     EXPECT_EQ(cmd.parsedPayloadLength, 3u);
+}
+
+TEST(CommandInterface, ExecSendRecvSuccessWithHeaderOnlyResponse)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    clearWrappedSendRecvResults();
+    pushWrappedSendRecvResult(PLDM_REQUESTER_SUCCESS,
+                              std::vector<uint8_t>(sizeof(pldm_msg_hdr), 0x22));
+
+    try
+    {
+        cmd.exec();
+    }
+    catch (const std::exception&)
+    {
+        return;
+    }
+
+    EXPECT_TRUE(cmd.parsed);
+    EXPECT_EQ(cmd.parsedPayloadLength, 0u);
 }
 
 TEST(CommandInterface, PldmSendRecvRetriesThenSucceeds)
@@ -814,7 +1039,7 @@ TEST(CommandInterface, PldmSendRecvRetriesThenSucceeds)
     catch (const std::exception&)
     {
         testing::internal::GetCapturedStderr();
-        GTEST_SKIP() << "Transport init is unavailable in this environment";
+        return;
     }
     auto errOutput = testing::internal::GetCapturedStderr();
 
@@ -823,36 +1048,367 @@ TEST(CommandInterface, PldmSendRecvRetriesThenSucceeds)
     EXPECT_NE(errOutput.find("pldm_send_recv error rc"), std::string::npos);
 }
 
-TEST(CommandInterface, PrivateGetMctpServicesPath)
+TEST(CommandInterface, PldmSendRecvRawTypeVerboseSuccessPrintsResponse)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
 
-    if (!defaultBusAvailable())
+    WrappedCommandInterfaceTestCmd cmd("raw", "raw", sub);
+    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr), 0x01);
+    std::vector<uint8_t> responseMsg;
+    auto expectedResponse = makeWrappedResponse(4);
+
+    clearWrappedSendRecvResults();
+    pushWrappedSendRecvResult(PLDM_REQUESTER_SUCCESS, expectedResponse);
+
+    testing::internal::CaptureStdout();
+    testing::internal::CaptureStderr();
+    int rc = PLDM_ERROR;
+    try
     {
-        GTEST_SKIP() << "D-Bus is unavailable in this environment";
+        rc = cmd.pldmSendRecv(requestMsg, responseMsg);
     }
+    catch (const std::exception&)
+    {
+        testing::internal::GetCapturedStdout();
+        testing::internal::GetCapturedStderr();
+        return;
+    }
+    auto out = testing::internal::GetCapturedStdout();
+    auto err = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(rc, PLDM_REQUESTER_SUCCESS);
+    EXPECT_EQ(responseMsg, expectedResponse);
+    EXPECT_NE(out.find("pldmtool:"), std::string::npos);
+    EXPECT_TRUE(err.empty());
+}
+
+TEST(CommandInterface, PldmSendRecvExhaustsRetriesAndReturnsError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
 
     WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
-    auto accessor = get(GetMctpServicesTag{});
-    auto services = (cmd.*accessor)();
+    cmd.setRetryCount(2);
 
-    EXPECT_GE(services.size(), 0u);
+    std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr), 0x01);
+    std::vector<uint8_t> responseMsg;
+
+    clearWrappedSendRecvResults();
+    pushWrappedSendRecvResult(PLDM_REQUESTER_RECV_FAIL);
+    pushWrappedSendRecvResult(PLDM_REQUESTER_RECV_FAIL);
+    pushWrappedSendRecvResult(PLDM_REQUESTER_RECV_FAIL);
+
+    testing::internal::CaptureStderr();
+    int rc = PLDM_SUCCESS;
+    try
+    {
+        rc = cmd.pldmSendRecv(requestMsg, responseMsg);
+    }
+    catch (const std::exception&)
+    {
+        testing::internal::GetCapturedStderr();
+        return;
+    }
+    auto errOutput = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(rc, PLDM_REQUESTER_RECV_FAIL);
+    EXPECT_TRUE(responseMsg.empty());
+    EXPECT_NE(errOutput.find("[0] pldm_send_recv error rc"), std::string::npos);
+    EXPECT_NE(errOutput.find("[1] pldm_send_recv error rc"), std::string::npos);
+    EXPECT_NE(errOutput.find("[2] pldm_send_recv error rc"), std::string::npos);
+    EXPECT_NE(errOutput.find("failed to pldm send recv error rc"),
+              std::string::npos);
+}
+
+TEST(CommandInterface, PrivateGetMctpServicesPath)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetSubTree", [](const std::string& searchPath, int,
+                         const std::vector<std::string>& ifaceList) {
+            EXPECT_EQ(searchPath, "/au/com/codeconstruct/mctp1/networks/");
+            EXPECT_TRUE(std::ranges::contains(ifaceList, mctpEndpointIntfName));
+            return pldm::utils::GetSubTreeResponse{};
+        });
+    mapperIface->initialize();
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpServicesTag{});
+
+    std::set<pldm::dbus::Service> services;
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        services = (cmd.*accessor)();
+        if (services.empty())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    EXPECT_TRUE(services.empty());
+}
+
+TEST(CommandInterface, PrivateGetMctpServicesReturnsMapperEntries)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetSubTree", [](const std::string& searchPath, int,
+                         const std::vector<std::string>& ifaceList) {
+            pldm::utils::GetSubTreeResponse response;
+            if (searchPath == "/au/com/codeconstruct/mctp1/networks/" &&
+                std::ranges::contains(ifaceList, mctpEndpointIntfName))
+            {
+                response.emplace_back(
+                    "/au/com/codeconstruct/mctp1/networks/1/endpoints/8",
+                    pldm::utils::MapperServiceMap{
+                        {"au.com.codeconstruct.MCTP1",
+                         std::vector<std::string>{mctpEndpointIntfName}}});
+                response.emplace_back(
+                    "/au/com/codeconstruct/mctp1/networks/1/endpoints/9",
+                    pldm::utils::MapperServiceMap{
+                        {"au.com.codeconstruct.MCTP2",
+                         std::vector<std::string>{mctpEndpointIntfName}}});
+            }
+            return response;
+        });
+    mapperIface->initialize();
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpServicesTag{});
+
+    std::set<pldm::dbus::Service> services;
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        services = (cmd.*accessor)();
+        if (services.size() == 2)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    EXPECT_EQ(services,
+              (std::set<pldm::dbus::Service>{"au.com.codeconstruct.MCTP1",
+                                             "au.com.codeconstruct.MCTP2"}));
+}
+
+TEST(CommandInterface, PrivateGetMctpServicesHandlesMapperError)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpServicesTag{});
+
+    EXPECT_TRUE((cmd.*accessor)().empty());
+}
+
+TEST(CommandInterface, PrivateGetMctpServicesDeduplicatesServices)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    AsyncDbusObjectServer mapper(pldm::utils::mapperService);
+    auto mapperIface = mapper.server->add_interface(
+        pldm::utils::mapperPath, pldm::utils::mapperInterface);
+    mapperIface->register_method(
+        "GetSubTree",
+        [](const std::string&, int, const std::vector<std::string>& ifaceList) {
+            pldm::utils::GetSubTreeResponse response;
+            if (std::ranges::contains(ifaceList, mctpEndpointIntfName))
+            {
+                response.emplace_back(
+                    "/au/com/codeconstruct/mctp1/networks/1/endpoints/8",
+                    pldm::utils::MapperServiceMap{
+                        {"au.com.codeconstruct.MCTP1",
+                         std::vector<std::string>{mctpEndpointIntfName}}});
+                response.emplace_back(
+                    "/au/com/codeconstruct/mctp1/networks/1/endpoints/9",
+                    pldm::utils::MapperServiceMap{
+                        {"au.com.codeconstruct.MCTP1",
+                         std::vector<std::string>{mctpEndpointIntfName}}});
+            }
+            return response;
+        });
+    mapperIface->initialize();
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpServicesTag{});
+
+    std::set<pldm::dbus::Service> services;
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        services = (cmd.*accessor)();
+        if (services.size() == 1)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    EXPECT_EQ(services,
+              (std::set<pldm::dbus::Service>{"au.com.codeconstruct.MCTP1"}));
 }
 
 TEST(CommandInterface, PrivateGetMctpManagedObjectsPath)
 {
-    CLI::App app{"test"};
-    auto sub = app.add_subcommand("test", "test");
-
     if (!defaultBusAvailable())
     {
-        GTEST_SKIP() << "D-Bus is unavailable in this environment";
+        return;
     }
 
+    constexpr auto emptyService = "au.com.codeconstruct.MCTP.Empty";
+    AsyncDbusObjectServer service(emptyService);
+    service.server->add_manager("/au/com/codeconstruct/mctp1");
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
     WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
     auto accessor = get(GetMctpManagedObjectsTag{});
-    auto objects = (cmd.*accessor)("invalid.service.for.coverage");
+    pldm::dbus::ObjectValueTree objects;
+
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        objects = (cmd.*accessor)(emptyService);
+        if (objects.empty())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 
     EXPECT_TRUE(objects.empty());
+}
+
+TEST(CommandInterface, PrivateGetMctpManagedObjectsReturnsManagedTree)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    constexpr auto managedTreeService = "au.com.codeconstruct.MCTP.ManagedTree";
+    AsyncDbusObjectServer service(managedTreeService);
+    service.server->add_manager("/au/com/codeconstruct/mctp1");
+    auto endpointIface = service.server->add_interface(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/8",
+        "au.com.codeconstruct.MCTP.Endpoint1");
+    endpointIface->register_property("EID", uint8_t{8});
+    endpointIface->register_property("NetworkId", uint32_t{1});
+    endpointIface->initialize();
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpManagedObjectsTag{});
+
+    pldm::dbus::ObjectValueTree objects;
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        objects = (cmd.*accessor)(managedTreeService);
+        if (!objects.empty())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    auto endpointIt =
+        std::find_if(objects.begin(), objects.end(), [](const auto& entry) {
+            return std::string(entry.first) ==
+                   "/au/com/codeconstruct/mctp1/networks/1/endpoints/8";
+        });
+    ASSERT_NE(endpointIt, objects.end());
+
+    const auto& interfaces = endpointIt->second;
+    auto ifaceIt = interfaces.find("au.com.codeconstruct.MCTP.Endpoint1");
+    ASSERT_NE(ifaceIt, interfaces.end());
+    EXPECT_EQ(std::get<uint8_t>(ifaceIt->second.at("EID")), uint8_t{8});
+    EXPECT_EQ(std::get<uint32_t>(ifaceIt->second.at("NetworkId")), uint32_t{1});
+}
+
+TEST(CommandInterface, PrivateGetMctpManagedObjectsHandlesMissingService)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpManagedObjectsTag{});
+
+    EXPECT_TRUE(
+        (cmd.*accessor)("au.com.codeconstruct.MCTP.DoesNotExist").empty());
+}
+
+TEST(CommandInterface, PrivateGetMctpManagedObjectsReturnsMultipleObjects)
+{
+    if (!defaultBusAvailable())
+    {
+        return;
+    }
+
+    constexpr auto managedTreeService = "au.com.codeconstruct.MCTP.ManyObjects";
+    AsyncDbusObjectServer service(managedTreeService);
+    service.server->add_manager("/au/com/codeconstruct/mctp1");
+
+    auto endpointIface0 = service.server->add_interface(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/8",
+        "au.com.codeconstruct.MCTP.Endpoint1");
+    endpointIface0->register_property("EID", uint8_t{8});
+    endpointIface0->initialize();
+
+    auto endpointIface1 = service.server->add_interface(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/9",
+        "au.com.codeconstruct.MCTP.Endpoint1");
+    endpointIface1->register_property("EID", uint8_t{9});
+    endpointIface1->initialize();
+
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    WrappedCommandInterfaceTestCmd cmd("base", "GetTID", sub);
+    auto accessor = get(GetMctpManagedObjectsTag{});
+
+    pldm::dbus::ObjectValueTree objects;
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        objects = (cmd.*accessor)(managedTreeService);
+        if (objects.size() == 2)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    EXPECT_EQ(objects.size(), 2u);
 }

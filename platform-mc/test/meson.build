@@ -38,7 +38,7 @@ dep_src_files += [
 
 dep_src_headers = ['../../requester', '../../oem/nvidia']
 
-test_cpp_args = ['-DOEM_NVIDIA', '-DMOCK_DBUS_ASYNC_UTILS']
+test_cpp_args = ['-DOEM_NVIDIA']
 
 test_src = declare_dependency(
     sources: dep_src_files,
@@ -46,15 +46,22 @@ test_src = declare_dependency(
 )
 
 tests = [
+    'platform_sensor_getter_cross_tu_test',
+    'platform_inline_coverage_test',
     'terminus_manager_test',
+    'terminus_manager_private_test',
     'terminus_test',
     'sensor_manager_test',
     'numeric_sensor_test',
     'numeric_effecter_test',
-    'event_manager_test',
     'state_effecter_test',
     'state_sensor_test',
+    'state_set_nvidia_internal_test',
+    'state_set_test',
+    'oem_events_test',
 ]
+
+private_tests = ['oem_events_private_test']
 
 openssl = dependency('openssl', required: true)
 
@@ -81,6 +88,40 @@ foreach t : tests
                 openssl,
             ],
         ),
+        is_parallel: t != 'terminus_test',
         workdir: meson.current_source_dir(),
+        suite: non_valgrind_test_suites,
+    )
+endforeach
+
+foreach t : private_tests
+    test(
+        t,
+        executable(
+            t.underscorify(),
+            t + '.cpp',
+            implicit_include_directories: false,
+            cpp_args: test_cpp_args,
+            include_directories: [
+                '../..',
+                '../../requester',
+                '../../oem/nvidia',
+            ],
+            dependencies: [
+                gtest,
+                gmock,
+                libpldm_dep,
+                libpldmutils,
+                nlohmann_json_dep,
+                phosphor_dbus_interfaces,
+                phosphor_logging_dep,
+                sdbusplus,
+                sdeventplus,
+                nvidia_tal,
+                openssl,
+            ],
+        ),
+        workdir: meson.current_source_dir(),
+        suite: non_valgrind_test_suites,
     )
 endforeach

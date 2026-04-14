@@ -44,9 +44,9 @@ template <typename type>
 struct coGetDbusProperty
 {
     const std::string service;
-    const std::string& objectPath;
-    const std::string& interface;
-    const std::string& property;
+    const std::string objectPath;
+    const std::string interface;
+    const std::string property;
 
     /** @brief For keeping the return value.
      */
@@ -122,8 +122,8 @@ struct coGetDbusProperty
  */
 struct coGetServiceMap
 {
-    const std::string& objectPath;
-    const dbus::Interfaces& ifaceList;
+    const std::string objectPath;
+    const dbus::Interfaces ifaceList;
 
     /** @brief For keeping the return value.
      */
@@ -193,9 +193,9 @@ struct coGetServiceMap
  */
 struct coGetSubTree
 {
-    const std::string& objectPath;
+    const std::string objectPath;
     int depth;
-    const dbus::Interfaces& ifaceList;
+    const dbus::Interfaces ifaceList;
 
     /** @brief For keeping the return value.
      */
@@ -261,9 +261,9 @@ template <typename type>
 struct coGetDbusProperty
 {
     const std::string service;
-    const std::string& objectPath;
-    const std::string& interface;
-    const std::string& property;
+    const std::string objectPath;
+    const std::string interface;
+    const std::string property;
 
     type ret;
 
@@ -292,8 +292,8 @@ struct coGetDbusProperty
 
 struct coGetServiceMap
 {
-    const std::string& objectPath;
-    const dbus::Interfaces& ifaceList;
+    const std::string objectPath;
+    const dbus::Interfaces ifaceList;
 
     MapperServiceMap ret;
 
@@ -320,9 +320,9 @@ struct coGetServiceMap
 
 struct coGetSubTree
 {
-    const std::string& objectPath;
+    const std::string objectPath;
     int depth;
-    const dbus::Interfaces& ifaceList;
+    const dbus::Interfaces ifaceList;
 
     GetSubTreeResponse ret;
 

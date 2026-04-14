@@ -81,12 +81,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      deviceInventoryInfo),
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug,
-                      // manager_internal_test.cpp triggers a false-positive
-                      // clang-analyzer-cplusplus.NewDeleteLeaks here:
-                      // std::function allocates callback storage during
-                      // Manager construction, but the analyzer loses track of
-                      // that ownership and reports the error on this line.
-                      // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+                      // manager_internal_test.cpp triggers false-positive
+                      // clang-analyzer-unix.Malloc and
+                      // clang-analyzer-cplusplus.NewDeleteLeaks diagnostics.
+                      // NOLINTNEXTLINE
                       [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
                           dbus::MctpInterfaces mctpInterfaces;
                           getMctpInterfaces(mctpInterfaces);

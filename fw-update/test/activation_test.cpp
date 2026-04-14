@@ -25,9 +25,12 @@
 #endif
 #include "fw-update/activation.hpp"
 #undef private
-
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
+
+#include <cerrno>
+
+#include "../activation.cpp" // NOLINT(bugprone-suspicious-include)
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -107,6 +110,33 @@ TEST_F(ActivationTest, Activation_status_active)
     EXPECT_EQ(resultState, stateActive);
 }
 
+TEST_F(ActivationTest, DeleteConstructorAllowsNullUpdateManager)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    EXPECT_NO_THROW({
+        Delete deleteObj(busMock,
+                         "/xyz/openbmc_project/software/null_delete_manager",
+                         nullptr);
+    });
+}
+
+TEST_F(ActivationTest, ActivationReadyAllowsNullUpdateManager)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/null_activation_manager",
+        Server::Activation::Activations::Ready, nullptr);
+
+    EXPECT_EQ(activation.activation(), Server::Activation::Activations::Ready);
+    EXPECT_EQ(activation.requestedActivation(
+                  Server::Activation::RequestedActivations::None),
+              Server::Activation::RequestedActivations::None);
+}
+
 TEST_F(ActivationTest, Activation_status_active_recreatesDeleteWhenMissing)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
@@ -125,7 +155,171 @@ TEST_F(ActivationTest, Activation_status_active_recreatesDeleteWhenMissing)
     EXPECT_NE(activation.deleteImpl, nullptr);
 }
 
-TEST_F(ActivationTest, DISABLED_DeleteInvokesUpdateManagerClearActivationInfo)
+TEST_F(ActivationTest, ActivationStatusFailedRecreatesDeleteWhenMissing)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{"/xyz/openbmc_project/software/fail_recreate"};
+
+    Activation activation(busMock, objPath,
+                          Server::Activation::Activations::Ready,
+                          &updateManager);
+    activation.deleteImpl.reset();
+    ASSERT_EQ(activation.deleteImpl, nullptr);
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Failed);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Failed);
+    EXPECT_NE(activation.deleteImpl, nullptr);
+}
+
+TEST_F(ActivationTest, ActivationActivatingClearsExistingDeleteOnActiveResult)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/activate_to_active",
+        Server::Activation::Activations::Ready, &updateManager);
+    ASSERT_NE(activation.deleteImpl, nullptr);
+
+    testing::updateManagerActivatePackageResult =
+        software::Activation::Activations::Active;
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(activation.deleteImpl, nullptr);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest,
+       ActivationActivatingLeavesPackageOpenWhenManagerRemainsActivating)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/activate_stays_activating",
+        Server::Activation::Activations::Ready, &updateManager);
+    ASSERT_NE(activation.deleteImpl, nullptr);
+
+    testing::updateManagerActivatePackageResult =
+        software::Activation::Activations::Activating;
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(activation.deleteImpl, nullptr);
+    EXPECT_FALSE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest, ActivationActivatingHandlesMissingDeleteImpl)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/activate_missing_delete",
+        Server::Activation::Activations::Ready, &updateManager);
+    activation.deleteImpl.reset();
+    ASSERT_EQ(activation.deleteImpl, nullptr);
+
+    testing::updateManagerActivatePackageResult =
+        software::Activation::Activations::Activating;
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(activation.deleteImpl, nullptr);
+}
+
+TEST_F(ActivationTest,
+       ActivationActivatingSecurityCheckErrorResetsTransitionAndClearsPackage)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/activate_error_callback",
+        Server::Activation::Activations::Ready, &updateManager);
+
+    testing::triggerSecurityChecksError = true;
+
+    auto result =
+        activation.activation(Server::Activation::Activations::Activating);
+
+    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest, ActivationActivatingPropagatesActivatePackageException)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/activate_package_exception",
+        Server::Activation::Activations::Ready, &updateManager);
+
+    testing::throwOnActivatePackage = true;
+
+    EXPECT_THROW(
+        activation.activation(Server::Activation::Activations::Activating),
+        std::runtime_error);
+    EXPECT_EQ(activation.deleteImpl, nullptr);
+    EXPECT_FALSE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest, RequestedActivationAlreadyActiveDoesNotReenter)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/request_already_active",
+        Server::Activation::Activations::Ready, &updateManager);
+
+    activation.ActivationIntf::requestedActivation(
+        Server::Activation::RequestedActivations::Active);
+    testing::resetTestState();
+
+    auto result = activation.requestedActivation(
+        Server::Activation::RequestedActivations::Active);
+
+    EXPECT_EQ(result, Server::Activation::RequestedActivations::Active);
+    EXPECT_EQ(activation.activation(), Server::Activation::Activations::Ready);
+    EXPECT_FALSE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest, RequestedActivationNoneDoesNotTransition)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/request_none_enabled",
+        Server::Activation::Activations::Ready, &updateManager);
+
+    auto result = activation.requestedActivation(
+        Server::Activation::RequestedActivations::None);
+
+    EXPECT_EQ(result, Server::Activation::RequestedActivations::None);
+    EXPECT_EQ(activation.activation(), Server::Activation::Activations::Ready);
+    EXPECT_FALSE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
+}
+
+TEST_F(ActivationTest, DeleteInvokesUpdateManagerClearActivationInfo)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -138,7 +332,7 @@ TEST_F(ActivationTest, DISABLED_DeleteInvokesUpdateManagerClearActivationInfo)
     EXPECT_EQ(testing::clearActivationInfoCallCount, 1U);
 }
 
-TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenSecurityChecksFail)
+TEST_F(ActivationTest, ActivationActivatingWhenSecurityChecksFail)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -148,8 +342,6 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenSecurityChecksFail)
     Activation activation(busMock, objPath,
                           Server::Activation::Activations::Ready,
                           &updateManager);
-    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
-
     testing::securityChecksStatus = false;
     auto result =
         activation.activation(Server::Activation::Activations::Activating);
@@ -161,7 +353,7 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenSecurityChecksFail)
     EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
 }
 
-TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageFails)
+TEST_F(ActivationTest, ActivationActivatingWhenActivatePackageFails)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -171,8 +363,6 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageFails)
     Activation activation(busMock, objPath,
                           Server::Activation::Activations::Ready,
                           &updateManager);
-    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
-
     testing::securityChecksStatus = true;
     testing::updateManagerActivatePackageResult =
         software::Activation::Activations::Failed;
@@ -184,7 +374,7 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageFails)
     EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
 }
 
-TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageSucceeds)
+TEST_F(ActivationTest, ActivationActivatingWhenActivatePackageSucceeds)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -194,8 +384,6 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageSucceeds)
     Activation activation(busMock, objPath,
                           Server::Activation::Activations::Ready,
                           &updateManager);
-    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
-
     testing::securityChecksStatus = true;
     testing::updateManagerActivatePackageResult =
         software::Activation::Activations::Active;
@@ -207,8 +395,7 @@ TEST_F(ActivationTest, DISABLED_ActivationActivatingWhenActivatePackageSucceeds)
     EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
 }
 
-TEST_F(ActivationTest,
-       DISABLED_ActivationActivatingWhenSecurityCheckCallbackErrors)
+TEST_F(ActivationTest, ActivationActivatingWhenSecurityCheckCallbackErrors)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -218,8 +405,6 @@ TEST_F(ActivationTest,
     Activation activation(busMock, objPath,
                           Server::Activation::Activations::Ready,
                           &updateManager);
-    [[maybe_unused]] auto leakedDelete = activation.deleteImpl.release();
-
     testing::triggerSecurityChecksError = true;
     auto result =
         activation.activation(Server::Activation::Activations::Activating);
@@ -230,7 +415,7 @@ TEST_F(ActivationTest,
 }
 
 TEST_F(ActivationTest,
-       DISABLED_Activation_status_activating_updateManager_returns_active)
+       Activation_status_activating_updateManager_returns_active)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -243,15 +428,13 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     _activation.activation(activationState);
     EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
               Server::Activation::Activations::Active);
 }
 
 TEST_F(ActivationTest,
-       DISABLED_Activation_status_activating_updateManager_returns_activating)
+       Activation_status_activating_updateManager_returns_activating)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -264,8 +447,6 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     testing::updateManagerActivatePackageResult =
         software::Activation::Activations::Activating;
 
@@ -276,7 +457,7 @@ TEST_F(ActivationTest,
 }
 
 TEST_F(ActivationTest,
-       DISABLED_Activation_status_activating_updateManager_returns_failed)
+       Activation_status_activating_updateManager_returns_failed)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -289,15 +470,13 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     testing::securityChecksStatus = false;
     _activation.activation(activationState);
     EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
               Server::Activation::Activations::Failed);
 }
 
-TEST_F(ActivationTest, DISABLED_RequestedActivation_status_active)
+TEST_F(ActivationTest, RequestedActivation_status_active)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -310,15 +489,13 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_active)
         Server::Activation::Activations::Active;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);
 
     EXPECT_EQ(resultState, requestActivations);
 }
 
-TEST_F(ActivationTest, DISABLED_RequestedActivation_status_failed)
+TEST_F(ActivationTest, RequestedActivation_status_failed)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -331,15 +508,13 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_failed)
         Server::Activation::Activations::Failed;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);
 
     EXPECT_EQ(resultState, requestActivations);
 }
 
-TEST_F(ActivationTest, DISABLED_RequestedActivation_status_ready)
+TEST_F(ActivationTest, RequestedActivation_status_ready)
 {
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
@@ -352,12 +527,28 @@ TEST_F(ActivationTest, DISABLED_RequestedActivation_status_ready)
         Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
-    [[maybe_unused]] auto leakedDelete = _activation.deleteImpl.release();
-
     Server::Activation::RequestedActivations resultState =
         _activation.requestedActivation(requestActivations);
 
     EXPECT_EQ(resultState, requestActivations);
+}
+
+TEST_F(ActivationTest, RequestedActivationInvalidPackageTransitionsToFailed)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Activation activation(
+        busMock, "/xyz/openbmc_project/software/request_invalid_package",
+        Server::Activation::Activations::Invalid, &updateManager);
+
+    auto result = activation.requestedActivation(
+        Server::Activation::RequestedActivations::Active);
+
+    EXPECT_EQ(result, Server::Activation::RequestedActivations::Active);
+    EXPECT_EQ(activation.activation(), Server::Activation::Activations::Failed);
+    EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
+    EXPECT_FALSE(testing::resetActivationBlocksTransitionCalled);
 }
 
 TEST_F(ActivationTest, ActivationBlocksTransition_Constructor)
@@ -365,6 +556,48 @@ TEST_F(ActivationTest, ActivationBlocksTransition_Constructor)
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    EXPECT_NO_THROW({
+        ActivationBlocksTransition activationBlocksTransition(busMock, objPath);
+    });
+}
+
+TEST_F(ActivationTest,
+       ActivationBlocksTransitionEnableRebootGuardHandlesCallFailure)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    EXPECT_CALL(sdbusMock,
+                sd_bus_message_new_method_call(_, _, _, _, _, "StartUnit"))
+        .WillOnce(Return(0))
+        .WillOnce(Return(0));
+    EXPECT_CALL(sdbusMock,
+                sd_bus_call(_, _, _, _, static_cast<sd_bus_message**>(nullptr)))
+        .WillOnce(Return(-EINVAL))
+        .WillOnce(Return(0));
+
+    EXPECT_NO_THROW({
+        ActivationBlocksTransition activationBlocksTransition(busMock, objPath);
+    });
+}
+
+TEST_F(ActivationTest,
+       ActivationBlocksTransitionDisableRebootGuardHandlesCallFailure)
+{
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    EXPECT_CALL(sdbusMock,
+                sd_bus_message_new_method_call(_, _, _, _, _, "StartUnit"))
+        .WillOnce(Return(0))
+        .WillOnce(Return(0));
+    EXPECT_CALL(sdbusMock,
+                sd_bus_call(_, _, _, _, static_cast<sd_bus_message**>(nullptr)))
+        .WillOnce(Return(0))
+        .WillOnce(Return(-EINVAL));
 
     EXPECT_NO_THROW({
         ActivationBlocksTransition activationBlocksTransition(busMock, objPath);

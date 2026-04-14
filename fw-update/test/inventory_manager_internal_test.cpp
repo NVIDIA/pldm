@@ -41,8 +41,14 @@
 
 #include <libpldm/firmware_update.h>
 
+#include <boost/asio/io_context.hpp>
+#include <com/nvidia/State/DeviceState/server.hpp>
+#include <sdbusplus/asio/object_server.hpp>
+
 #include <array>
 #include <chrono>
+#include <coroutine>
+#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -54,6 +60,49 @@ namespace
 {
 
 constexpr size_t getFwParamsPayloadLen = 119;
+
+using DeviceState = sdbusplus::server::com::nvidia::state::DeviceState;
+
+class AsyncDbusObjectServer
+{
+  public:
+    explicit AsyncDbusObjectServer(const char* serviceName)
+    {
+        connection = std::make_shared<sdbusplus::asio::connection>(
+            io, sdbusplus::bus::new_bus());
+        connection->request_name(serviceName);
+        server = std::make_unique<sdbusplus::asio::object_server>(connection);
+        ioThread = std::thread([this] { io.run(); });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    ~AsyncDbusObjectServer()
+    {
+        io.stop();
+        if (ioThread.joinable())
+        {
+            ioThread.join();
+        }
+    }
+
+    boost::asio::io_context io;
+    std::shared_ptr<sdbusplus::asio::connection> connection;
+    std::unique_ptr<sdbusplus::asio::object_server> server;
+
+  private:
+    std::thread ioThread;
+};
+
+pldm::fw_update::DeviceStatusMap makeStatusMap(
+    DeviceState::DeviceHealth health,
+    std::vector<
+        std::tuple<pldm::fw_update::DeviceStatusErrorCode,
+                   DeviceState::ErrorClass, pldm::fw_update::AdditionalData>>
+        errors)
+{
+    return {{DeviceState::StatusType::Communication,
+             std::make_tuple(health, std::move(errors))}};
+}
 
 const std::array<uint8_t, sizeof(pldm_msg_hdr) + getFwParamsPayloadLen>
     getFirmwareParametersResp{
@@ -370,6 +419,33 @@ TEST_F(InventoryManagerInternalTest, logDeviceStatusErrorsReturnsFalse)
 }
 
 TEST_F(InventoryManagerInternalTest,
+       logDeviceStatusErrorsReturnsTrueWhenDeviceStatusContainsErrors)
+{
+    AsyncDbusObjectServer loggingService("xyz.openbmc_project.Logging");
+    auto statusIface = loggingService.server->add_interface(
+        "/com/nvidia/state/device_status/8", "com.nvidia.State.DeviceState");
+    statusIface->register_property(
+        "DeviceStatus",
+        makeStatusMap(DeviceState::DeviceHealth::Degraded,
+                      {{7,
+                        DeviceState::ErrorClass::MCTP,
+                        {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+                         {"REDFISH_MESSAGE_ARGS", "GPU8, 1.2.3"}}},
+                       {8,
+                        DeviceState::ErrorClass::Recovery,
+                        {{"REDFISH_MESSAGE_ID", "Update.1.0.AwaitToActivate"},
+                         {"REDFISH_MESSAGE_ARGS", "GPU8, 2.0"}}}}));
+    statusIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
+                             componentInfoMap, deviceInventoryInfo);
+
+    EXPECT_TRUE(manager.logDeviceStatusErrors(8, true, "CoverageFW"));
+}
+
+TEST_F(InventoryManagerInternalTest,
        logDiscoveryFailedMessageWithoutMatchKeepsStateUnchanged)
 {
     const pldm::eid eid = 42;
@@ -483,6 +559,217 @@ TEST(InventoryManagerHeaderInternalTest,
         ASSERT_FALSE(queue.empty());
         EXPECT_EQ(queue.top().eid, 1);
     });
+}
+
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoOperatorLessUsesMediumPriorityWhenMediumsDiffer)
+{
+    MctpEidInfo fastMedium{
+        1, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus"};
+    MctpEidInfo slowMedium{
+        2, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus",
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"};
+
+    EXPECT_TRUE(slowMedium < fastMedium);
+    EXPECT_FALSE(fastMedium < slowMedium);
+}
+
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoPriorityQueueKeepsFastestEndpointOnTop)
+{
+    MCTPEidInfoPriorityQueue queue;
+
+    queue.push({3, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus",
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus"});
+    queue.push({2, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus"});
+    queue.push({1, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"});
+
+    ASSERT_FALSE(queue.empty());
+    EXPECT_EQ(queue.top().eid, 1);
+}
+
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoOperatorLessTreatsEqualMediumAndBindingAsEquivalent)
+{
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+    MctpEidInfo lhs{1, medium, binding};
+    MctpEidInfo rhs{2, medium, binding};
+
+    EXPECT_FALSE(lhs < rhs);
+    EXPECT_FALSE(rhs < lhs);
+}
+
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoPriorityQueueBeginEndCoverEmptyAndFilledQueues)
+{
+    MCTPEidInfoPriorityQueue queue;
+    EXPECT_EQ(std::distance(queue.begin(), queue.end()), 0);
+
+    queue.push({4, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.SMBus",
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus"});
+    queue.push({5, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe",
+                "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe"});
+
+    const auto count = std::distance(queue.begin(), queue.end());
+    EXPECT_EQ(count, 2);
+}
+
+TEST_F(InventoryManagerInternalTest,
+       destructorHandlesTrackedCoroutineHandlesCoverage)
+{
+    EXPECT_NO_THROW({
+        InventoryManager manager(
+            nullptr, reqHandler, instanceIdDb, nullptr, nullptr, descriptorMap,
+            downstreamDescriptorMap, componentInfoMap, deviceInventoryInfo);
+
+        manager.inventoryCoRoutineHandlers.emplace(8, std::noop_coroutine());
+        manager.inventoryCoRoutineHandlers.emplace(9, std::noop_coroutine());
+    });
+}
+
+TEST_F(InventoryManagerInternalTest,
+       parseGetFWParametersResponseWithoutEidMappingSkipsDiscoveryCallbacks)
+{
+    bool createCallbackCalled = false;
+    bool updateCallbackCalled = false;
+
+    InventoryManager manager(
+        nullptr, reqHandler, instanceIdDb,
+        [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
+            createCallbackCalled = true;
+        },
+        [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
+            updateCallbackCalled = true;
+        },
+        descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        deviceInventoryInfo);
+
+    std::string messageError;
+    std::string resolution;
+    dbus::MctpInterfaces mctpInterfaces;
+    auto responseMsg =
+        reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
+
+    auto co = manager.parseGetFWParametersResponse(
+        99, responseMsg, getFwParamsPayloadLen, messageError, resolution,
+        mctpInterfaces, false);
+    stdexec::sync_wait(std::move(co));
+
+    EXPECT_FALSE(createCallbackCalled);
+    EXPECT_FALSE(updateCallbackCalled);
+    EXPECT_TRUE(componentInfoMap.contains(99));
+    EXPECT_TRUE(manager.mctpInfoMap.empty());
+}
+
+TEST_F(InventoryManagerInternalTest,
+       parseGetFWParametersResponseRefreshOnlySkipsInventoryCallbacks)
+{
+    bool createCallbackCalled = false;
+    bool updateCallbackCalled = false;
+    const pldm::eid eid = 12;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    InventoryManager manager(
+        nullptr, reqHandler, instanceIdDb,
+        [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
+            createCallbackCalled = true;
+        },
+        [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
+            updateCallbackCalled = true;
+        },
+        descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        deviceInventoryInfo);
+
+    manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
+    std::string messageError;
+    std::string resolution;
+    dbus::MctpInterfaces mctpInterfaces;
+    auto responseMsg =
+        reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
+
+    auto co = manager.parseGetFWParametersResponse(
+        eid, responseMsg, getFwParamsPayloadLen, messageError, resolution,
+        mctpInterfaces, true);
+    stdexec::sync_wait(std::move(co));
+
+    EXPECT_FALSE(createCallbackCalled);
+    EXPECT_FALSE(updateCallbackCalled);
+    EXPECT_TRUE(componentInfoMap.contains(eid));
+    EXPECT_TRUE(manager.mctpInfoMap.empty());
+}
+
+TEST_F(InventoryManagerInternalTest,
+       parseGetFWParametersResponseFirstEndpointWithoutCreateCallback)
+{
+    const pldm::eid eid = 13;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
+                             componentInfoMap, deviceInventoryInfo);
+
+    manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
+    std::string messageError;
+    std::string resolution;
+    dbus::MctpInterfaces mctpInterfaces;
+    auto responseMsg =
+        reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
+
+    auto co = manager.parseGetFWParametersResponse(
+        eid, responseMsg, getFwParamsPayloadLen, messageError, resolution,
+        mctpInterfaces, false);
+    stdexec::sync_wait(std::move(co));
+
+    ASSERT_TRUE(manager.mctpInfoMap.contains(uuid));
+    EXPECT_EQ(manager.mctpInfoMap.at(uuid).top().eid, eid);
+}
+
+TEST_F(InventoryManagerInternalTest,
+       parseGetFWParametersResponseRediscoveryWithoutUpdateCallback)
+{
+    const pldm::eid eid = 14;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
+                             componentInfoMap, deviceInventoryInfo);
+
+    manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
+    MCTPEidInfoPriorityQueue queue;
+    queue.push({eid, medium, binding});
+    manager.mctpInfoMap.emplace(uuid, std::move(queue));
+
+    std::string messageError;
+    std::string resolution;
+    dbus::MctpInterfaces mctpInterfaces;
+    auto responseMsg =
+        reinterpret_cast<const pldm_msg*>(getFirmwareParametersResp.data());
+
+    auto co = manager.parseGetFWParametersResponse(
+        eid, responseMsg, getFwParamsPayloadLen, messageError, resolution,
+        mctpInterfaces, false);
+    stdexec::sync_wait(std::move(co));
+
+    ASSERT_TRUE(manager.mctpInfoMap.contains(uuid));
+    EXPECT_EQ(manager.mctpInfoMap.at(uuid).top().eid, eid);
 }
 
 TEST_F(InventoryManagerInternalTest, transportWrapperPathsReturnErrors)

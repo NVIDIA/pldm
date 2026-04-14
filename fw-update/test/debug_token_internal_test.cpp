@@ -936,3 +936,277 @@ TEST_F(DebugTokenInternalTest,
         },
         std::bad_variant_access);
 }
+
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenFirstActivationMatchFailureCoverage)
+{
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets);
+    updateManager.deviceUpdaterMap.clear();
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/debug_token_match_fail";
+    updateManager.createProgressUpdateTimer();
+    updateManager.debugToken =
+        std::make_unique<DebugToken>(busMock, &updateManager);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(sdbusMock, sd_bus_add_match(testing::_, testing::_, testing::_,
+                                            testing::_, testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/install_match_fail"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char* objPath, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_match_fail" &&
+                std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_match_fail" &&
+                std::string(property) == "Path")
+            {
+                return std::string("/tmp/debug-token/install_match_fail/token");
+            }
+            throw std::runtime_error("unexpected property request");
+        });
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(0);
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionMatchFailure",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}}};
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionMatchFailure"}};
+    std::istringstream package("ABCD");
+
+    EXPECT_NO_THROW({
+        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
+                                    package);
+    });
+}
+
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenSecondActivationMatchFailureCoverage)
+{
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets);
+    updateManager.deviceUpdaterMap.clear();
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/debug_token_progress_match_fail";
+    updateManager.createProgressUpdateTimer();
+    updateManager.debugToken =
+        std::make_unique<DebugToken>(busMock, &updateManager);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(sdbusMock, sd_bus_add_match(testing::_, testing::_, testing::_,
+                                            testing::_, testing::_))
+        .WillOnce(testing::DoAll(
+            testing::SetArgPointee<1>(static_cast<sd_bus_slot*>(nullptr)),
+            testing::Return(0)))
+        .WillOnce(testing::Return(-EINVAL));
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/install_progress_match_fail"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char* objPath, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(objPath) == "/xyz/openbmc_project/software/other/"
+                                        "install_progress_match_fail" &&
+                std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            if (std::string(objPath) == "/xyz/openbmc_project/software/other/"
+                                        "install_progress_match_fail" &&
+                std::string(property) == "Path")
+            {
+                return std::string(
+                    "/tmp/debug-token/install_progress_match_fail/token");
+            }
+            throw std::runtime_error("unexpected property request");
+        });
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(0);
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionProgressMatchFailure",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}}};
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4,
+         "VersionProgressMatchFailure"}};
+    std::istringstream package("WXYZ");
+
+    EXPECT_NO_THROW({
+        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
+                                    package);
+    });
+}
+
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenContinuesPastEmptyApplicableComponents)
+{
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets);
+    updateManager.deviceUpdaterMap.clear();
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/debug_token_install_later_valid";
+    updateManager.createProgressUpdateTimer();
+    updateManager.debugToken =
+        std::make_unique<DebugToken>(busMock, &updateManager);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/install_later_valid"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char* objPath, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_later_valid" &&
+                std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_later_valid" &&
+                std::string(property) == "Path")
+            {
+                return std::string(
+                    "/tmp/debug-token/install_later_valid/token");
+            }
+            throw std::runtime_error("unexpected property request");
+        });
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(testing::AtLeast(2));
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {},
+         "VersionIgnored",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}},
+        {1,
+         {0},
+         "VersionApplied",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}}};
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionApplied"}};
+    std::istringstream package("ABCD");
+
+    EXPECT_NO_THROW({
+        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
+                                    package);
+    });
+    EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+}
+
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenContinuesPastNonDeadMatchingComponent)
+{
+    std::vector<sdbusplus::message::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets);
+    updateManager.deviceUpdaterMap.clear();
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/debug_token_nondead_then_valid";
+    updateManager.createProgressUpdateTimer();
+    updateManager.debugToken =
+        std::make_unique<DebugToken>(busMock, &updateManager);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/install_after_non_dead"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char* objPath, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(objPath) == "/xyz/openbmc_project/software/other/"
+                                        "install_after_non_dead" &&
+                std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            if (std::string(objPath) == "/xyz/openbmc_project/software/other/"
+                                        "install_after_non_dead" &&
+                std::string(property) == "Path")
+            {
+                return std::string(
+                    "/tmp/debug-token/install_after_non_dead/token");
+            }
+            throw std::runtime_error("unexpected property request");
+        });
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(testing::AtLeast(2));
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionSkipped",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}},
+        {1,
+         {1},
+         "VersionAppliedLater",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {1}}};
+    ComponentImageInfos componentImageInfos{
+        {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionSkipped"},
+        {11, deadComponent, 0xFFFFFFFF, 0, 0, 4, 4, "VersionAppliedLater"}};
+    std::istringstream package("ABCDEFGH");
+
+    EXPECT_NO_THROW({
+        debugToken.updateDebugToken(fwDeviceIDRecords, componentImageInfos,
+                                    package);
+    });
+    EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+}

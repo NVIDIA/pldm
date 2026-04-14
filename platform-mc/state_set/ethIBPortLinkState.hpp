@@ -350,7 +350,7 @@ class StateSetEthIBPortLinkState : public StateSet
 #endif
     std::filesystem::path objectPath;
     std::string objectName;
-    uint8_t presentState;
+    uint8_t presentState = 0;
 };
 
 } // namespace platform_mc

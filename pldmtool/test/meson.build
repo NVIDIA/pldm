@@ -6,8 +6,22 @@ tests = [
     'pldmtool_main_test',
 ]
 
+pldmtool_main_preload = shared_library(
+    'pldmtool_main_preload',
+    'pldmtool_main_preload.cpp',
+    implicit_include_directories: false,
+    include_directories: [
+        include_directories('..'),
+        include_directories('../..'),
+    ],
+    dependencies: [libpldm_dep],
+    install: false,
+)
+
 foreach t : tests
     link_args = ['-Wl,--wrap=pldm_instance_db_init_default']
+    test_depends = []
+    test_tmpdir = join_paths(meson.project_build_root(), 'pldmtool', 'test-tmp')
     if t == 'pldmtool_cmd_helper_test'
         link_args += [
             '-Wl,--wrap=pldm_transport_af_mctp_init',
@@ -18,6 +32,19 @@ foreach t : tests
             '-Wl,--wrap=pldm_transport_af_mctp_bind',
             '-Wl,--wrap=pldm_transport_send_recv_msg',
         ]
+    endif
+
+    test_env = {'TEST_TMPDIR': test_tmpdir}
+    if t == 'pldmtool_main_test'
+        test_env += {
+            'PLDMTOOL_BINARY': pldmtool_exe.full_path(),
+            'PLDMTOOL_PRELOAD': pldmtool_main_preload.full_path(),
+            'PLDMTOOL_INSTANCE_DB_DIR': join_paths(
+                test_tmpdir,
+                'pldmtool-instance-db',
+            ),
+        }
+        test_depends += [pldmtool_exe, pldmtool_main_preload]
     endif
 
     test(
@@ -43,7 +70,10 @@ foreach t : tests
                 sdbusplus,
             ],
         ),
+        depends: test_depends,
+        is_parallel: t != 'pldmtool_cmd_helper_test',
         workdir: meson.current_source_dir(),
-        env: {'TEST_TMPDIR': '/tmp/claude'},
+        env: test_env,
+        suite: non_valgrind_test_suites,
     )
 endforeach

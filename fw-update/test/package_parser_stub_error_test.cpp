@@ -49,6 +49,7 @@ class PackageParserProbe : public PackageParser
 {
   public:
     using PackageParser::componentImageInfos;
+    using PackageParser::fwDeviceIDRecords;
 
     PackageParserProbe(PackageHeaderSize pkgHeaderSize,
                        const PackageVersion& pkgVersion,
@@ -440,6 +441,38 @@ TEST(PackageParserStubErrorTest, calculatePackageSizeOffsetMismatchThrows)
                         static_cast<uint32_t>(4), std::string("comp")));
 
     EXPECT_ANY_THROW(parser.calculatePackageSize());
+}
+
+TEST(PackageParserStubErrorTest, gettersAndFormatVersionCoverEmptyState)
+{
+    stubMode = StubMode::success;
+    PackageParserProbe parser(48, "pkg-version", 16,
+                              PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
+
+    EXPECT_TRUE(parser.getFwDeviceIDRecords().empty());
+    EXPECT_TRUE(parser.getComponentImageInfos().empty());
+    EXPECT_EQ(parser.getFormatVersion(),
+              PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
+    EXPECT_EQ(parser.calculatePackageSize(), static_cast<uintmax_t>(48));
+}
+
+TEST(PackageParserStubErrorTest, gettersCoverPopulatedRecordsAndComponents)
+{
+    stubMode = StubMode::success;
+    PackageParserProbe parser(64, "pkg-version", 8,
+                              PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H);
+    parser.fwDeviceIDRecords.emplace_back(FirmwareDeviceIDRecord{
+        DeviceUpdateOptionFlags{1}, ApplicableComponents{0x01},
+        std::string("device"), Descriptors{}, FirmwareDevicePackageData{}});
+    parser.componentImageInfos.emplace_back(
+        std::make_tuple(static_cast<uint16_t>(2), static_cast<uint16_t>(3),
+                        static_cast<uint32_t>(0), CompOptions{},
+                        ReqCompActivationMethod{}, static_cast<uint32_t>(64),
+                        static_cast<uint32_t>(8), std::string("comp")));
+
+    ASSERT_EQ(parser.getFwDeviceIDRecords().size(), 1u);
+    ASSERT_EQ(parser.getComponentImageInfos().size(), 1u);
+    EXPECT_EQ(parser.calculatePackageSize(), static_cast<uintmax_t>(72));
 }
 
 TEST(PackageParserStubErrorTest, parsePkgHeaderDecodeFailureReturnsNull)

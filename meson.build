@@ -409,6 +409,11 @@ deps = [
     nvidia_tal,
 ]
 
+if get_option('tests').enabled()
+    non_valgrind_test_suites = ['no-valgrind']
+    add_test_setup('valgrind', exclude_suites: non_valgrind_test_suites)
+endif
+
 oem_files = []
 if get_option('oem-ampere').allowed()
     subdir('oem/ampere')

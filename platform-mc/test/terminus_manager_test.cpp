@@ -16,9 +16,9 @@
  */
 #include "libpldm/base.h"
 
+#include "../../test/test_valgrind_utils.hpp"
 #include "common/instance_id.hpp"
 #include "mock_terminus_manager.hpp"
-#include "platform-mc/terminus_manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "requester/request.hpp"
@@ -29,6 +29,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -43,6 +44,28 @@ using ::testing::NiceMock;
 using ::testing::Return;
 
 const uint8_t mockTerminusManagerLocalEid = 0x08;
+
+static std::vector<uint8_t> makeGetTerminusUidResp(
+    const std::array<uint8_t, 16>& uid, uint8_t completionCode = PLDM_SUCCESS)
+{
+    std::vector<uint8_t> response(
+        sizeof(pldm_msg_hdr) + PLDM_GET_TERMINUS_UID_RESP_BYTES, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    responseMsg->hdr.type = PLDM_PLATFORM;
+    responseMsg->hdr.command = PLDM_GET_TERMINUS_UID;
+    responseMsg->payload[0] = completionCode;
+    memcpy(responseMsg->payload + 1, uid.data(), uid.size());
+    return response;
+}
+
+static Request makeSimpleRequest(uint8_t instanceId)
+{
+    Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto* requestMsg = reinterpret_cast<pldm_msg*>(request.data());
+    requestMsg->hdr.instance_id = instanceId;
+    requestMsg->hdr.request = 1;
+    return request;
+}
 
 class TerminusManagerTest : public testing::Test
 {
@@ -178,6 +201,23 @@ TEST_F(TerminusManagerTest, mapTidUnknownMediumOrBindingDoesNotThrow)
         auto tid = terminusManager.mapTid(unknownBinding);
         EXPECT_EQ(tid, std::nullopt);
     });
+}
+
+TEST_F(TerminusManagerTest, sameUuidWithEqualTransportIsNotPreferred)
+{
+    const pldm::MctpInfo existing(
+        12, "f72d6f90-5675-11ed-9b6a-0242ac1200bb",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    const pldm::MctpInfo duplicateTransport(
+        13, "f72d6f90-5675-11ed-9b6a-0242ac1200bb",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+
+    auto tid = terminusManager.mapTid(existing);
+    ASSERT_TRUE(tid.has_value());
+    EXPECT_EQ(terminusManager.mapTid(duplicateTransport), std::nullopt);
+    EXPECT_EQ(terminusManager.toMctpInfo(*tid), existing);
 }
 
 TEST_F(TerminusManagerTest, negativeMapTidTest)
@@ -405,4 +445,213 @@ TEST_F(TerminusManagerTest, staticConfigAndResumeCoverage)
 
     fs::remove(validCfg);
     fs::remove(invalidCfg);
+}
+
+TEST_F(TerminusManagerTest, discoverPlatformTerminusUidCoverage)
+{
+    const size_t getTidRespLen = 2;
+    const size_t setTidRespLen = 1;
+    const size_t getPldmTypesRespLen = 9;
+
+    ASSERT_EQ(PLDM_SUCCESS, mockTerminusManager.clearQueuedResponses());
+
+    std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp{
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x00};
+    ASSERT_EQ(PLDM_SUCCESS,
+              mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp.data(),
+                                                  sizeof(getTidResp)));
+
+    std::array<uint8_t, sizeof(pldm_msg_hdr) + setTidRespLen> setTidResp{
+        0x00, PLDM_BASE, PLDM_SET_TID, PLDM_SUCCESS};
+    ASSERT_EQ(PLDM_SUCCESS,
+              mockTerminusManager.enqueueResponse((pldm_msg*)setTidResp.data(),
+                                                  sizeof(setTidResp)));
+
+    std::array<uint8_t, sizeof(pldm_msg_hdr) + getPldmTypesRespLen>
+        getPldmTypesResp{
+            0x00,
+            PLDM_BASE,
+            PLDM_GET_PLDM_TYPES,
+            0x00,
+            static_cast<uint8_t>((1 << PLDM_BASE) | (1 << PLDM_PLATFORM)),
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00};
+    ASSERT_EQ(PLDM_SUCCESS, mockTerminusManager.enqueueResponse(
+                                (pldm_msg*)getPldmTypesResp.data(),
+                                sizeof(getPldmTypesResp)));
+
+    const std::array<uint8_t, 16> uid{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC,
+                                      0xDE, 0xF0, 0x11, 0x22, 0x33, 0x44,
+                                      0x55, 0x66, 0x77, 0x88};
+    auto uidResp = makeGetTerminusUidResp(uid);
+    ASSERT_EQ(PLDM_SUCCESS, mockTerminusManager.enqueueResponse(uidResp));
+
+    pldm::MctpInfos mctpInfos{};
+    mctpInfos.emplace_back(pldm::MctpInfo(
+        12, "00000000-0000-0000-0000-000000000000",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt));
+    mockTerminusManager.discoverMctpTerminus(mctpInfos);
+
+    ASSERT_EQ(1u, termini.size());
+    auto terminus = termini.begin()->second;
+    ASSERT_NE(nullptr, terminus);
+    EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_EQ("12345678-9abc-def0-1122-334455667788", terminus->getUuid());
+    EXPECT_NE(nullptr, mockTerminusManager.getTerminus(
+                           "12345678-9abc-def0-1122-334455667788"));
+}
+
+TEST_F(TerminusManagerTest, sendRecvAndResumeEdgeCoverage)
+{
+    Request request(sizeof(pldm_msg_hdr));
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    auto unmappedRc = stdexec::sync_wait(mockTerminusManager.SendRecvPldmMsg(
+        0x77, request, &responseMsg, &responseLen));
+    ASSERT_TRUE(unmappedRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*unmappedRc));
+
+    const pldm::MctpInfo mctpInfo(
+        26, "f72d6f90-5675-11ed-9b6a-0242ac120026",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(mockTerminusManager.mapTid(mctpInfo, 0x26).has_value());
+
+    auto noResponseRc = stdexec::sync_wait(mockTerminusManager.SendRecvPldmMsg(
+        0x26, request, &responseMsg, &responseLen));
+    ASSERT_TRUE(noResponseRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*noResponseRc));
+
+    std::vector<uint8_t> shortSetTidResp{0x00, PLDM_BASE, PLDM_SET_TID,
+                                         PLDM_SUCCESS, 0x00};
+    ASSERT_EQ(PLDM_SUCCESS,
+              mockTerminusManager.enqueueResponse(shortSetTidResp));
+    auto shortResumeRc =
+        stdexec::sync_wait(mockTerminusManager.resumeTid(0x26));
+    ASSERT_TRUE(shortResumeRc.has_value());
+    EXPECT_EQ(PLDM_ERROR_INVALID_LENGTH, std::get<0>(*shortResumeRc));
+}
+
+TEST_F(TerminusManagerTest, sendRecvPldmMsgOverMctpSuccessCoverage)
+{
+    if (pldm::test::runningOnValgrind())
+    {
+        GTEST_SKIP() << "covered by the normal pass; valgrind blocks this "
+                        "stdexec response path";
+    }
+
+    constexpr mctp_eid_t eid = 0x41;
+    const auto instanceId = instanceIdDb.next(eid).value();
+    auto request = makeSimpleRequest(instanceId);
+
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    const auto* responsePtr =
+        reinterpret_cast<const pldm_msg*>(response.data());
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                                  response.size());
+    });
+
+    auto rc = stdexec::sync_wait(terminusManager.SendRecvPldmMsgOverMctp(
+        eid, request, &responseMsg, &responseLen));
+    responder.join();
+
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    EXPECT_EQ(responsePtr, responseMsg);
+    EXPECT_EQ(response.size(), responseLen);
+}
+
+TEST_F(TerminusManagerTest, sendRecvPldmMsgOverMctpTimeoutSuppressionCoverage)
+{
+    if (pldm::test::runningOnValgrind())
+    {
+        GTEST_SKIP() << "covered by the normal pass; valgrind delays this "
+                        "timeout injection path";
+    }
+
+    constexpr mctp_eid_t eid = 0x42;
+
+    auto runTimeout = [&](uint8_t instanceId) {
+        auto request = makeSimpleRequest(instanceId);
+        const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+        size_t responseLen = 1;
+
+        std::thread expiryInjector([&]() {
+            std::this_thread::sleep_for(milliseconds(20));
+            reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+        });
+
+        auto rc = stdexec::sync_wait(terminusManager.SendRecvPldmMsgOverMctp(
+            eid, request, &responseMsg, &responseLen));
+        expiryInjector.join();
+
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(PLDM_ERROR_NOT_READY, std::get<0>(*rc));
+        EXPECT_EQ(nullptr, responseMsg);
+        EXPECT_EQ(0u, responseLen);
+    };
+
+    runTimeout(instanceIdDb.next(eid).value());
+    runTimeout(instanceIdDb.next(eid).value());
+}
+
+TEST_F(TerminusManagerTest, sendRecvPldmMsgOverMctpCancellationCoverage)
+{
+    constexpr mctp_eid_t eid = 0x43;
+    const auto instanceId = instanceIdDb.next(eid).value();
+
+    exec::async_scope scope;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+    bool stopped = false;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    auto request = makeSimpleRequest(instanceId);
+                    auto rc = co_await terminusManager.SendRecvPldmMsgOverMctp(
+                        eid, request, &responseMsg, &responseLen);
+                    (void)rc;
+                    EXPECT_TRUE(false);
+                    co_return;
+                }) | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    scope.request_stop();
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(TerminusManagerTest, explicitTidCollisionAndGetTerminusCoverage)
+{
+    const pldm::MctpInfo firstInfo(
+        30, "f72d6f90-5675-11ed-9b6a-0242ac120030",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    const pldm::MctpInfo secondInfo(
+        31, "f72d6f90-5675-11ed-9b6a-0242ac120031",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+
+    ASSERT_TRUE(terminusManager.mapTid(firstInfo, 0x30).has_value());
+    EXPECT_EQ(std::nullopt, terminusManager.mapTid(secondInfo, 0x30));
+
+    std::string uuid("00000000-0000-0000-0000-000000000030");
+    termini[0x30] = std::make_shared<pldm::platform_mc::Terminus>(
+        0x30, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+
+    EXPECT_NE(nullptr, terminusManager.getTerminus(uuid));
+    EXPECT_EQ(nullptr, terminusManager.getTerminus(
+                           "00000000-0000-0000-0000-000000000099"));
 }

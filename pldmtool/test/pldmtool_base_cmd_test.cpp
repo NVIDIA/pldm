@@ -1,4 +1,6 @@
 // Override pldm_instance_db_init_default via --wrap linker flag
+#include "test/test_tmp_utils.hpp"
+
 #include <libpldm/instance-id.h>
 #include <unistd.h>
 
@@ -12,10 +14,11 @@ extern "C" int __wrap_pldm_instance_db_init_default(
 {
     static uint64_t dbIndex = 0;
     static std::deque<std::string> dbPaths;
-    std::filesystem::create_directories("/tmp/claude");
+    auto root = pldm::test::ensureTempDir();
     dbPaths.emplace_back(
-        "/tmp/claude/pldm_test_iid_" + std::to_string(::getpid()) + "_" +
-        std::to_string(dbIndex++));
+        (root / ("pldm_test_iid_" + std::to_string(::getpid()) + "_" +
+                 std::to_string(dbIndex++)))
+            .string());
     auto& dbPath = dbPaths.back();
     std::ofstream ofs(dbPath, std::ios::binary | std::ios::trunc);
     std::string data(256 * 32, '\0');

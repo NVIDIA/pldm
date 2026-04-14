@@ -123,6 +123,12 @@ static std::optional<Response> processRxMsg(
     uint8_t eid = tid;
 
     pldm_header_info hdrFields{};
+    if (requestMsg.size() < sizeof(pldm_msg_hdr))
+    {
+        error("Empty PLDM request header");
+        return std::nullopt;
+    }
+
     auto hdr = reinterpret_cast<const pldm_msg_hdr*>(requestMsg.data());
     if (PLDM_SUCCESS != unpack_pldm_header(hdr, &hdrFields))
     {

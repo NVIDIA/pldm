@@ -823,3 +823,56 @@ TEST_F(PackageAssociationDuplicateRecordMatch,
     ASSERT_EQ(outFwDeviceIDRecords.size(), 2);
     EXPECT_EQ(totalNumComponentUpdates, 4);
 }
+
+TEST_F(PackageAssociationTargetFiltering,
+       NonMatchingTargetsSkipOtherwiseMatchingDescriptors)
+{
+    std::vector<sdbusplus::message::object_path> invalidTargets{
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/software/NotAMappedComponent")};
+    FirmwareDeviceIDRecords outFwDeviceIDRecords{};
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, invalidTargets);
+    EXPECT_TRUE(compTargetList.empty());
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
+        invalidTargets, outFwDeviceIDRecords, totalNumComponentUpdates);
+
+    EXPECT_TRUE(deviceUpdaterInfos.empty());
+    EXPECT_TRUE(outFwDeviceIDRecords.empty());
+    EXPECT_EQ(totalNumComponentUpdates, 0u);
+}
+
+TEST_F(PackageAssociationTargetFiltering,
+       MatchingDescriptorWithNoSelectedComponentsIsDropped)
+{
+    const FirmwareDeviceIDRecords filteredRecords{
+        {1,
+         {0},
+         "VersionString1",
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}},
+         {}},
+    };
+    std::vector<sdbusplus::message::object_path> targets{
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/software/FPGAFirmware")};
+    FirmwareDeviceIDRecords outFwDeviceIDRecords{};
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    ComponentTargetList compTargetList =
+        updateManager.getComponentTargetList(componentNameMap, targets);
+    ASSERT_TRUE(compTargetList.contains(eid1));
+    ASSERT_EQ(compTargetList.at(eid1).size(), 1u);
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        filteredRecords, descriptorMap, compImageInfos, compTargetList, targets,
+        outFwDeviceIDRecords, totalNumComponentUpdates);
+
+    EXPECT_TRUE(deviceUpdaterInfos.empty());
+    EXPECT_TRUE(outFwDeviceIDRecords.empty());
+    EXPECT_EQ(totalNumComponentUpdates, 0u);
+}

@@ -1696,6 +1696,30 @@ TEST_F(ComponentUpdaterTest, applyCompleteSuccessSchedulesGetStatusPath)
     waitForUpdateCompletionTask();
 }
 
+TEST_F(ComponentUpdaterTest, onResponseSendCompleteWithoutPendingActionNoop)
+{
+    componentUpdater.pendingPostResponseAction = nullptr;
+    componentUpdater.pldmRequest.reset();
+
+    EXPECT_NO_THROW({ componentUpdater.onResponseSendComplete(true); });
+    EXPECT_EQ(componentUpdater.pldmRequest, nullptr);
+}
+
+TEST_F(ComponentUpdaterTest, onResponseSendCompleteFailureClearsPendingAction)
+{
+    int actionCalls = 0;
+    componentUpdater.pendingPostResponseAction = [&actionCalls]() {
+        ++actionCalls;
+    };
+    componentUpdater.pldmRequest.reset();
+
+    componentUpdater.onResponseSendComplete(false);
+
+    EXPECT_FALSE(static_cast<bool>(componentUpdater.pendingPostResponseAction));
+    EXPECT_EQ(componentUpdater.pldmRequest, nullptr);
+    EXPECT_EQ(actionCalls, 0);
+}
+
 TEST_F(ComponentUpdaterTest, applyCompleteDecodeFailureSchedulesDeferred)
 {
     componentUpdater.componentUpdaterState.set(
@@ -1972,6 +1996,26 @@ TEST_F(ComponentUpdaterTest, timeoutCancellationSkipsTimerCancelCallbacks)
 }
 
 TEST_F(ComponentUpdaterTest,
+       requestFwDataTimerReturnsWhenDiscoverTaskAlreadyPending)
+{
+    initializeFromParsedPackage();
+    componentUpdater.discoverMctpTerminusTaskHandle.emplace();
+    componentUpdater.createRequestFwDataTimer();
+    ASSERT_NE(componentUpdater.reqFwDataTimer, nullptr);
+
+    componentUpdater.reqFwDataTimer->start(std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_FALSE(rcOpt.has_value());
+}
+
+TEST_F(ComponentUpdaterTest,
        completeFailedStatusHandlerResetsCompletedCancelTaskHandle)
 {
     auto& [scope,
@@ -1996,6 +2040,29 @@ TEST_F(ComponentUpdaterTest, completeCommandsTimerApplyStateCompletesCancelTask)
     initializeFromParsedPackage();
     componentUpdater.componentUpdaterState.set(
         ComponentUpdaterSequence::ApplyComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 8; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_TRUE(rcOpt.has_value());
+    waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeCommandsTimerRequestFwDataStateCompletesCancelTask)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
     componentUpdater.createCompleteCommandsTimeoutTimer();
     ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
 
@@ -2057,6 +2124,29 @@ TEST_F(ComponentUpdaterTest,
     (void)scope;
     EXPECT_TRUE(rcOpt.has_value());
     waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       completeCommandsTimerReturnsWhenDiscoverTaskAlreadyPending)
+{
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::RequestFirmwareData);
+    componentUpdater.discoverMctpTerminusTaskHandle.emplace();
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
+    (void)scope;
+    EXPECT_FALSE(rcOpt.has_value());
 }
 
 TEST_F(ComponentUpdaterTest, handleLoggingPrintsAverageForMegabyteBoundary)

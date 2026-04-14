@@ -375,3 +375,187 @@ TEST(DeviceInventoryInternalThreadTest,
     dbus::MctpInterfaces noInterfaces{};
     EXPECT_EQ(manager.updateEntry(eid1, uuid, noInterfaces), std::nullopt);
 }
+
+TEST(DeviceInventoryInternalThreadTest,
+     createEntrySkipsShortVendorPayloadsAndApskuUpdate)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = true;
+
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    const std::string updateObjPath{"/xyz/openbmc_project/software/entry0"};
+    DeviceInventoryInfo deviceInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{objPath,
+            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+           {updateObjPath}}}});
+
+    const DescriptorMap descriptorMap{
+        {1,
+         {{PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("ECSKU", std::vector<uint8_t>{0x11, 0x22, 0x33})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU", std::vector<uint8_t>{0x44, 0x55, 0x66})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+
+    auto created = manager.createEntry(1, uuid, mctpInterfaces);
+    ASSERT_TRUE(created.has_value());
+    EXPECT_EQ(*created, objPath);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(mockedSetSkuCallCount.load(), 0);
+    ASSERT_TRUE(manager.deviceEntryMap.contains(uuid));
+    EXPECT_TRUE(manager.deviceEntryMap.at(uuid)->sku().empty());
+}
+
+TEST(DeviceInventoryInternalThreadTest,
+     updateEntryReturnsNulloptWhenInventoryMatchFailsDespiteUuidPresence)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = true;
+
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const UUID mismatchUuid{"ad4c8360-c54c-11eb-8529-0242ac130099"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    const Associations assocs{
+        {"parent", "child", "/xyz/openbmc_project/inventory/chassis"}};
+    DeviceInventoryInfo deviceInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{objPath, assocs}, {}}}});
+
+    const DescriptorMap descriptorMap{
+        {1,
+         {{PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("ECSKU",
+                           std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    manager.deviceEntryMap.emplace(
+        uuid, std::make_unique<Entry>(busMock, objPath, uuid, assocs, ""));
+
+    dbus::MctpInterfaces mismatchInterfaces{
+        {uuid,
+         {{"xyz.openbmc_project.Common.UUID", {{"UUID", mismatchUuid}}}}}};
+    EXPECT_EQ(manager.updateEntry(1, uuid, mismatchInterfaces), std::nullopt);
+    EXPECT_EQ(mockedSetSkuCallCount.load(), 0);
+}
+
+TEST(DeviceInventoryInternalThreadTest,
+     updateEntrySkipsNonVendorDefinedDescriptorsAndLeavesSkuUnchanged)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = true;
+
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    const Associations assocs{
+        {"parent", "child", "/xyz/openbmc_project/inventory/chassis"}};
+    DeviceInventoryInfo deviceInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{objPath, assocs}, {}}}});
+
+    const DescriptorMap descriptorMap{
+        {1,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    manager.deviceEntryMap.emplace(
+        uuid,
+        std::make_unique<Entry>(busMock, objPath, uuid, assocs, "0x01020304"));
+
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    auto updated = manager.updateEntry(1, uuid, mctpInterfaces);
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_EQ(*updated, objPath);
+    EXPECT_EQ(manager.deviceEntryMap.at(uuid)->sku(), "0x01020304");
+    EXPECT_EQ(mockedSetSkuCallCount.load(), 0);
+}
+
+TEST(DeviceInventoryInternalThreadTest,
+     updateEntrySkipsShortVendorPayloadsAndEmptyUpdatePath)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = true;
+
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+    const Associations assocs{
+        {"parent", "child", "/xyz/openbmc_project/inventory/chassis"}};
+    DeviceInventoryInfo deviceInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{objPath, assocs}, {""}}}});
+
+    const DescriptorMap descriptorMap{
+        {1,
+         {{PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("ECSKU", std::vector<uint8_t>{0x11, 0x22, 0x33})},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("APSKU", std::vector<uint8_t>{0x44, 0x55, 0x66})}}}};
+
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    manager.deviceEntryMap.emplace(
+        uuid,
+        std::make_unique<Entry>(busMock, objPath, uuid, assocs, "0x01020304"));
+
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+    auto updated = manager.updateEntry(1, uuid, mctpInterfaces);
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_EQ(*updated, objPath);
+    EXPECT_EQ(manager.deviceEntryMap.at(uuid)->sku(), "0x01020304");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(mockedSetSkuCallCount.load(), 0);
+    EXPECT_TRUE(manager.skuLookup.empty());
+    EXPECT_TRUE(manager.updateSKUMatch.empty());
+}
+
+TEST(DeviceInventoryInternalThreadTest,
+     updateSKUReusesExistingRegistrationsForDuplicateObjectPath)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = false;
+
+    sdbusplus::SdBusMock sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    Manager manager(busMock, DeviceInventoryInfo{}, DescriptorMap{});
+    const std::string objPath{"/xyz/openbmc_project/software/entry0"};
+
+    EXPECT_NO_THROW({ manager.updateSKU(objPath, "0x11223344"); });
+    EXPECT_NO_THROW({ manager.updateSKU(objPath, "0x55667788"); });
+
+    waitForSkuCallCount(2);
+    EXPECT_EQ(manager.skuLookup.size(), 1U);
+    EXPECT_EQ(manager.updateSKUMatch.size(), 1U);
+    EXPECT_EQ(manager.skuLookup.at(objPath), "0x11223344");
+    mockedSetSkuShouldThrow = true;
+}

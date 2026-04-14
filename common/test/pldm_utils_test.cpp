@@ -8,13 +8,21 @@
 #include "common/bios_utils.hpp"
 #include "common/flight_recorder.hpp"
 #include "common/instance_id.hpp"
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
+#include "common/log_rate_limit.hpp"
+#undef private
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "common/mctp_error_handling.hpp"
 #include "common/mmap_stream.hpp"
-#define MOCK_DBUS_ASYNC_UTILS
-#include "common/dBusAsyncUtils.hpp"
-#undef MOCK_DBUS_ASYNC_UTILS
 #include "common/utils.hpp"
 #include "mocked_utils.hpp"
+#include "test/test_tmp_utils.hpp"
 
 #include <fcntl.h>
 #include <libpldm/base.h>
@@ -513,6 +521,16 @@ TEST(GetInventoryObjects, testForEmptyObject)
     EXPECT_TRUE(result.empty());
 }
 
+TEST(GetInventoryObjects, emptyObjectReferenceIsReused)
+{
+    auto& first = DBusHandler::getInventoryObjects<GetManagedEmptyObject>();
+    auto* firstPtr = &first;
+    auto& second = DBusHandler::getInventoryObjects<GetManagedEmptyObject>();
+
+    EXPECT_EQ(firstPtr, &second);
+    EXPECT_TRUE(second.empty());
+}
+
 TEST(GetInventoryObjects, testForObject)
 {
     std::string path = "/foo/bar";
@@ -598,6 +616,15 @@ TEST(parseEffecterData, testBadDecodeEffecterData)
     uint8_t effecterCount = 2;
 
     auto effecterField = parseEffecterData(effecterData, effecterCount);
+
+    EXPECT_EQ(effecterField, std::nullopt);
+}
+
+TEST(parseEffecterData, testZeroCountWithPayloadReturnsNullopt)
+{
+    std::vector<uint8_t> effecterData = {0, 1};
+
+    auto effecterField = parseEffecterData(effecterData, 0);
 
     EXPECT_EQ(effecterField, std::nullopt);
 }
@@ -1595,10 +1622,264 @@ TEST(DBusHandlerTemplate, getDbusPropertySuccess)
     EXPECT_EQ(value, 42u);
 }
 
+TEST(DBusHandlerTemplate, getDbusPropertyCoversAdditionalScalarTypes)
+{
+    MockdBusHandler handler;
+
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "Present",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{true}));
+    EXPECT_TRUE(
+        handler.getDbusProperty<bool>("/xyz/openbmc_project/example", "Present",
+                                      "xyz.openbmc_project.Example"));
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "Byte",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{uint8_t{7}}));
+    EXPECT_EQ(
+        handler.getDbusProperty<uint8_t>("/xyz/openbmc_project/example", "Byte",
+                                         "xyz.openbmc_project.Example"),
+        uint8_t{7});
+}
+
+TEST(DBusHandlerTemplate, getDbusPropertyCoversAdditionalCollectionTypes)
+{
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+    MockdBusHandler handler;
+
+    const std::vector<uint64_t> counters{9, 99};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "Counters",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{counters}));
+    EXPECT_EQ(handler.getDbusProperty<std::vector<uint64_t>>(
+                  "/xyz/openbmc_project/example", "Counters",
+                  "xyz.openbmc_project.Example"),
+              counters);
+
+    const ObjectPaths objectPaths{
+        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "ObjectPaths",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{objectPaths}));
+    EXPECT_EQ(handler.getDbusProperty<ObjectPaths>(
+                  "/xyz/openbmc_project/example", "ObjectPaths",
+                  "xyz.openbmc_project.Example"),
+              objectPaths);
+
+    const Associations associations{
+        {"chassis", "all_states",
+         "/xyz/openbmc_project/inventory/system/chassis/chassis0"},
+        {"pcie_slot", "all_states",
+         "/xyz/openbmc_project/inventory/system/chassis/motherboard/slot0"}};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "Associations",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{associations}));
+    EXPECT_EQ(handler.getDbusProperty<Associations>(
+                  "/xyz/openbmc_project/example", "Associations",
+                  "xyz.openbmc_project.Example"),
+              associations);
+}
+
+TEST(DBusHandlerTemplate, getDbusPropertyCoversRemainingTemplateTypes)
+{
+    MockdBusHandler handler;
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I16",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{int16_t{-12}}));
+    EXPECT_EQ(
+        handler.getDbusProperty<int16_t>("/xyz/openbmc_project/example", "I16",
+                                         "xyz.openbmc_project.Example"),
+        int16_t{-12});
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "U16",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{uint16_t{34}}));
+    EXPECT_EQ(
+        handler.getDbusProperty<uint16_t>("/xyz/openbmc_project/example", "U16",
+                                          "xyz.openbmc_project.Example"),
+        uint16_t{34});
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I32",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{int32_t{-5678}}));
+    EXPECT_EQ(
+        handler.getDbusProperty<int32_t>("/xyz/openbmc_project/example", "I32",
+                                         "xyz.openbmc_project.Example"),
+        int32_t{-5678});
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I64",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{int64_t{-987654321}}));
+    EXPECT_EQ(
+        handler.getDbusProperty<int64_t>("/xyz/openbmc_project/example", "I64",
+                                         "xyz.openbmc_project.Example"),
+        int64_t{-987654321});
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "Double",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{42.25}));
+    EXPECT_DOUBLE_EQ(handler.getDbusProperty<double>(
+                         "/xyz/openbmc_project/example", "Double",
+                         "xyz.openbmc_project.Example"),
+                     42.25);
+
+    const std::vector<std::string> parents{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0",
+        "/xyz/openbmc_project/inventory/system/chassis/chassis1"};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "Parents",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{parents}));
+    EXPECT_EQ(handler.getDbusProperty<std::vector<std::string>>(
+                  "/xyz/openbmc_project/example", "Parents",
+                  "xyz.openbmc_project.Example"),
+              parents);
+
+    const std::vector<uint8_t> rawData{0x10, 0x20, 0x30, 0x40};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "RawData",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{rawData}));
+    EXPECT_EQ(handler.getDbusProperty<std::vector<uint8_t>>(
+                  "/xyz/openbmc_project/example", "RawData",
+                  "xyz.openbmc_project.Example"),
+              rawData);
+}
+
+TEST(DBusHandlerTemplate, getDbusPropertyThrowsOnVariantMismatch)
+{
+    MockdBusHandler handler;
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "Value",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(
+            pldm::utils::PropertyValue{std::string("wrong type")}));
+
+    EXPECT_THROW((handler.getDbusProperty<uint64_t>(
+                     "/xyz/openbmc_project/example", "Value",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+}
+
+TEST(DBusHandlerTemplate,
+     getDbusPropertyThrowsOnRemainingScalarAndAssociationMismatches)
+{
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    MockdBusHandler handler;
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I16",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW(
+        (handler.getDbusProperty<int16_t>("/xyz/openbmc_project/example", "I16",
+                                          "xyz.openbmc_project.Example")),
+        std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "U16",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW((handler.getDbusProperty<uint16_t>(
+                     "/xyz/openbmc_project/example", "U16",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I32",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW(
+        (handler.getDbusProperty<int32_t>("/xyz/openbmc_project/example", "I32",
+                                          "xyz.openbmc_project.Example")),
+        std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "U32",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW((handler.getDbusProperty<uint32_t>(
+                     "/xyz/openbmc_project/example", "U32",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "I64",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW(
+        (handler.getDbusProperty<int64_t>("/xyz/openbmc_project/example", "I64",
+                                          "xyz.openbmc_project.Example")),
+        std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "U64",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW((handler.getDbusProperty<uint64_t>(
+                     "/xyz/openbmc_project/example", "U64",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "Double",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW((handler.getDbusProperty<double>(
+                     "/xyz/openbmc_project/example", "Double",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "Associations",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(
+            ::testing::Return(pldm::utils::PropertyValue{std::string("bad")}));
+    EXPECT_THROW((handler.getDbusProperty<Associations>(
+                     "/xyz/openbmc_project/example", "Associations",
+                     "xyz.openbmc_project.Example")),
+                 std::bad_variant_access);
+}
+
 TEST(DBusHandlerStatic, getAsioConnectionReturnsPointer)
 {
     auto& conn = pldm::utils::DBusHandler::getAsioConnection();
     EXPECT_NE(conn.get(), nullptr);
+    auto* first = conn.get();
+    auto& second = pldm::utils::DBusHandler::getAsioConnection();
+    EXPECT_EQ(first, second.get());
+}
+
+TEST(DBusHandlerStatic, getBusReturnsStableReference)
+{
+    auto& first = pldm::utils::DBusHandler::getBus();
+    auto* firstPtr = &first;
+    auto& second = pldm::utils::DBusHandler::getBus();
+    EXPECT_EQ(firstPtr, &second);
 }
 
 TEST_F(DBusHandlerBusMockTest, getServiceParsesMapperReply)
@@ -2305,6 +2586,54 @@ TEST_F(DBusHandlerDirectTest, setDbusPropertyVariantTypeMismatchThrows)
                  std::bad_variant_access);
 }
 
+TEST_F(DBusHandlerDirectTest, setDbusPropertyVariantTypeMismatchMatrixThrows)
+{
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "uint8_t"},
+                                      PropertyValue{uint16_t(7)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "bool"},
+                                      PropertyValue{uint8_t(1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "uint16_t"},
+                                      PropertyValue{int16_t(-1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "int32_t"},
+                                      PropertyValue{uint32_t(1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "uint32_t"},
+                                      PropertyValue{int32_t(-1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "int64_t"},
+                                      PropertyValue{uint64_t(1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "uint64_t"},
+                                      PropertyValue{int64_t(-1)}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "double"},
+                                      PropertyValue{std::string("wrong")}),
+        std::bad_variant_access);
+    EXPECT_THROW(
+        directHandler.setDbusProperty({"/path", "iface", "prop", "string"},
+                                      PropertyValue{uint32_t(7)}),
+        std::bad_variant_access);
+    EXPECT_THROW(directHandler.setDbusProperty(
+                     {"/path", "iface", "prop", "array[string]"},
+                     PropertyValue{std::string("wrong")}),
+                 std::bad_variant_access);
+    EXPECT_THROW(directHandler.setDbusProperty(
+                     {"/path", "iface", "prop", "array[object_path]"},
+                     PropertyValue{std::vector<std::string>{"wrong"}}),
+                 std::bad_variant_access);
+}
+
 TEST_F(DBusHandlerDirectTest, getSubTreePathsReturnsOnePath)
 {
     constexpr auto* objectPath = "/xyz/openbmc_project";
@@ -2327,6 +2656,48 @@ TEST_F(DBusHandlerDirectTest, getSubTreePathsReturnsOnePath)
     EXPECT_EQ(paths.front(), subtreePath);
 }
 
+TEST_F(DBusHandlerDirectTest, getSubtreeThrowsOnMapperCallFailure)
+{
+    constexpr auto* searchPath = "/xyz/openbmc_project";
+    constexpr int depth = 0;
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetSubTree");
+    expectAppendString(SD_BUS_TYPE_STRING, searchPath);
+    expectAppendBasic<int>(SD_BUS_TYPE_INT32, depth);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(directHandler.getSubtree(searchPath, depth, {}),
+                 sdbusplus::exception::SdBusError);
+}
+
+TEST_F(DBusHandlerDirectTest, getSubTreePathsThrowsOnMapperCallFailure)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project";
+    constexpr int depth = 0;
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetSubTreePaths");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectAppendBasic<int>(SD_BUS_TYPE_INT32, depth);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(directHandler.getSubTreePaths(objectPath, depth, {}),
+                 sdbusplus::exception::SdBusError);
+}
+
 TEST_F(DBusHandlerDirectTest, getAncestorsReturnsEmpty)
 {
     constexpr auto* objectPath = "/xyz/openbmc_project/example";
@@ -2343,6 +2714,25 @@ TEST_F(DBusHandlerDirectTest, getAncestorsReturnsEmpty)
 
     auto response = directHandler.getAncestors(objectPath, {});
     EXPECT_TRUE(response.empty());
+}
+
+TEST_F(DBusHandlerDirectTest, getAncestorsThrowsOnMapperCallFailure)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetAncestors");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(directHandler.getAncestors(objectPath, {}),
+                 sdbusplus::exception::SdBusError);
 }
 
 TEST_F(DBusHandlerDirectTest, getAssociatedSubTreeReturnsEmpty)
@@ -2369,6 +2759,31 @@ TEST_F(DBusHandlerDirectTest, getAssociatedSubTreeReturnsEmpty)
     EXPECT_TRUE(response.empty());
 }
 
+TEST_F(DBusHandlerDirectTest, getAssociatedSubTreeThrowsOnMapperCallFailure)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* subtreePath = "/xyz/openbmc_project/inventory";
+    constexpr int depth = 0;
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetAssociatedSubTree");
+    expectAppendString(SD_BUS_TYPE_OBJECT_PATH, objectPath);
+    expectAppendString(SD_BUS_TYPE_OBJECT_PATH, subtreePath);
+    expectAppendBasic<int>(SD_BUS_TYPE_INT32, depth);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(directHandler.getAssociatedSubTree(
+                     sdbusplus::message::object_path(objectPath),
+                     sdbusplus::message::object_path(subtreePath), depth, {}),
+                 sdbusplus::exception::SdBusError);
+}
+
 TEST_F(DBusHandlerDirectTest, getDbusPropertiesVariantReturnsEmpty)
 {
     constexpr auto* service = "xyz.openbmc_project.Example";
@@ -2384,6 +2799,45 @@ TEST_F(DBusHandlerDirectTest, getDbusPropertiesVariantReturnsEmpty)
     auto response =
         directHandler.getDbusPropertiesVariant(service, objectPath, interface);
     EXPECT_TRUE(response.empty());
+}
+
+TEST_F(DBusHandlerDirectTest, getDbusPropertiesVariantThrowsOnGetAllFailure)
+{
+    constexpr auto* service = "xyz.openbmc_project.Example";
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+
+    testing::InSequence seq;
+    expectNewMethodCall(service, objectPath, dbusProperties, "GetAll");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(
+        directHandler.getDbusPropertiesVariant(service, objectPath, interface),
+        sdbusplus::exception::SdBusError);
+}
+
+TEST_F(DBusHandlerDirectTest, getDbusPropertyVariantThrowsOnGetFailure)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+    constexpr auto* property = "Present";
+    constexpr auto* service = "xyz.openbmc_project.ExampleService";
+
+    testing::InSequence seq;
+    expectGetObjectCall(objectPath, interface, service);
+    expectNewMethodCall(service, objectPath, dbusProperties, "Get");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectAppendString(SD_BUS_TYPE_STRING, property);
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(
+        directHandler.getDbusPropertyVariant(objectPath, property, interface),
+        sdbusplus::exception::SdBusError);
 }
 
 TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsFalse)
@@ -2404,6 +2858,24 @@ TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsFalse)
     EXPECT_FALSE(present);
 }
 
+TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsFalseOnGetAllError)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+    constexpr auto* service = "xyz.openbmc_project.ExampleService";
+
+    testing::InSequence seq;
+    expectGetObjectCall(objectPath, interface, service);
+    expectNewMethodCall(service, objectPath, dbusProperties, "GetAll");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, 0, testing::_, testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    auto present = directHandler.checkDbusPropertyVariant(
+        objectPath, "Present", interface);
+    EXPECT_FALSE(present);
+}
+
 TEST_F(DBusHandlerDirectTest, getManagedObjReturnsEmpty)
 {
     constexpr auto* service = "xyz.openbmc_project.Example";
@@ -2417,6 +2889,21 @@ TEST_F(DBusHandlerDirectTest, getManagedObjReturnsEmpty)
 
     auto response = DBusHandler::getManagedObj(service, rootPath);
     EXPECT_TRUE(response.empty());
+}
+
+TEST_F(DBusHandlerDirectTest, getManagedObjThrowsOnCallFailure)
+{
+    constexpr auto* service = "xyz.openbmc_project.Example";
+    constexpr auto* rootPath = "/xyz/openbmc_project";
+
+    testing::InSequence seq;
+    expectNewMethodCall(service, rootPath, "org.freedesktop.DBus.ObjectManager",
+                        "GetManagedObjects");
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, 0, testing::_, testing::_))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_THROW(DBusHandler::getManagedObj(service, rootPath),
+                 sdbusplus::exception::SdBusError);
 }
 
 TEST_F(DBusHandlerDirectTest, reportErrorCallsLoggingCreate)
@@ -2435,6 +2922,24 @@ TEST_F(DBusHandlerDirectTest, reportErrorCallsLoggingCreate)
     reportError("test error occurred");
 }
 
+TEST_F(DBusHandlerDirectTest, reportErrorSwallowsCreateFailure)
+{
+    testing::InSequence seq;
+    expectNewMethodCall("xyz.openbmc_project.Logging",
+                        "/xyz/openbmc_project/logging",
+                        "xyz.openbmc_project.Logging.Create", "Create");
+    expectAppendString(SD_BUS_TYPE_STRING, "test error failed");
+    expectAppendString(SD_BUS_TYPE_STRING,
+                       "xyz.openbmc_project.Logging.Entry.Level.Error");
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "{ss}");
+    expectCloseContainer();
+    EXPECT_CALL(mock,
+                sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_, nullptr))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_NO_THROW({ reportError("test error failed"); });
+}
+
 TEST_F(DBusHandlerDirectTest, recoverMctpEndpointCallsRecover)
 {
     constexpr auto* endpointPath = "/xyz/openbmc_project/mctp/1/9";
@@ -2447,6 +2952,48 @@ TEST_F(DBusHandlerDirectTest, recoverMctpEndpointCallsRecover)
     expectBusCallNoReply();
 
     recoverMctpEndpoint(endpointPath);
+}
+
+TEST_F(DBusHandlerDirectTest, recoverMctpEndpointSwallowsLookupFailure)
+{
+    constexpr auto* endpointPath = "/xyz/openbmc_project/mctp/1/19";
+    constexpr auto* mctpIface = "au.com.codeconstruct.MCTP.Endpoint1";
+
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetObject");
+    expectAppendString(SD_BUS_TYPE_STRING, endpointPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectAppendString(SD_BUS_TYPE_STRING, mctpIface);
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce([](sd_bus*, sd_bus_message*, uint64_t, sd_bus_error*,
+                     sd_bus_message** reply) {
+            if (reply != nullptr)
+            {
+                *reply = nullptr;
+            }
+            return -EINVAL;
+        });
+
+    EXPECT_NO_THROW({ recoverMctpEndpoint(endpointPath); });
+}
+
+TEST_F(DBusHandlerDirectTest, recoverMctpEndpointSwallowsRecoverCallFailure)
+{
+    constexpr auto* endpointPath = "/xyz/openbmc_project/mctp/1/29";
+    constexpr auto* mctpIface = "au.com.codeconstruct.MCTP.Endpoint1";
+    constexpr auto* service = "au.com.codeconstruct.MCTP1";
+
+    testing::InSequence seq;
+    expectGetObjectCall(endpointPath, mctpIface, service);
+    expectNewMethodCall(service, endpointPath, mctpIface, "Recover");
+    EXPECT_CALL(mock,
+                sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_, nullptr))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_NO_THROW({ recoverMctpEndpoint(endpointPath); });
 }
 
 TEST_F(DBusHandlerDirectTest, getServiceNullInterface)
@@ -2471,6 +3018,25 @@ TEST_F(DBusHandlerDirectTest, getServiceNullInterface)
     EXPECT_EQ(result, service);
 }
 
+TEST_F(DBusHandlerDirectTest,
+       getServiceNullInterfaceThrowsWhenMapperReplyIsEmpty)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetObject");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectCloseContainer();
+    expectBusCallWithReply();
+    expectReadEmptyMapLikeContainer();
+
+    EXPECT_THROW(directHandler.getService(objectPath, nullptr),
+                 sdbusplus::exception::SdBusError);
+}
+
 TEST_F(DBusHandlerDirectTest, getServiceThrowsWhenMapperReplyIsEmpty)
 {
     constexpr auto* objectPath = "/xyz/openbmc_project/example";
@@ -2486,6 +3052,27 @@ TEST_F(DBusHandlerDirectTest, getServiceThrowsWhenMapperReplyIsEmpty)
     expectCloseContainer();
     expectBusCallWithReply();
     expectReadEmptyMapLikeContainer();
+
+    EXPECT_THROW(directHandler.getService(objectPath, interface),
+                 sdbusplus::exception::SdBusError);
+}
+
+TEST_F(DBusHandlerDirectTest, getServiceThrowsWhenMapperCallFails)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+
+    testing::InSequence seq;
+    expectNewMethodCall(ObjectMapper::default_service,
+                        ObjectMapper::instance_path, ObjectMapper::interface,
+                        "GetObject");
+    expectAppendString(SD_BUS_TYPE_STRING, objectPath);
+    expectOpenContainer(SD_BUS_TYPE_ARRAY, "s");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectCloseContainer();
+    EXPECT_CALL(mock, sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_,
+                                  testing::_))
+        .WillOnce(testing::Return(-EINVAL));
 
     EXPECT_THROW(directHandler.getService(objectPath, interface),
                  sdbusplus::exception::SdBusError);
@@ -2547,6 +3134,48 @@ TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsTrue)
     EXPECT_TRUE(present);
 }
 
+TEST_F(DBusHandlerDirectTest,
+       checkDbusPropertyVariantReturnsFalseWhenDifferentPropertyExists)
+{
+    constexpr auto* objectPath = "/xyz/openbmc_project/example";
+    constexpr auto* interface = "xyz.openbmc_project.Example";
+    constexpr auto* service = "xyz.openbmc_project.ExampleService";
+
+    testing::InSequence seq;
+    expectGetObjectCall(objectPath, interface, service);
+    expectNewMethodCall(service, objectPath, dbusProperties, "GetAll");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectBusCallWithReply(0);
+    EXPECT_CALL(mock, sd_bus_message_enter_container(
+                          testing::_, SD_BUS_TYPE_ARRAY, testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_at_end(testing::_, 0))
+        .WillOnce(testing::Return(0));
+    EXPECT_CALL(mock, sd_bus_message_enter_container(
+                          testing::_, SD_BUS_TYPE_DICT_ENTRY, testing::_))
+        .WillOnce(testing::Return(1));
+    expectReadString("Other");
+    EXPECT_CALL(mock, sd_bus_message_verify_type(
+                          testing::_, SD_BUS_TYPE_VARIANT, testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_enter_container(
+                          testing::_, SD_BUS_TYPE_VARIANT, testing::_))
+        .WillOnce(testing::Return(1));
+    expectReadString("value");
+    EXPECT_CALL(mock, sd_bus_message_exit_container(testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_exit_container(testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_at_end(testing::_, 0))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_exit_container(testing::_))
+        .WillOnce(testing::Return(1));
+
+    auto present = directHandler.checkDbusPropertyVariant(
+        objectPath, "Present", interface);
+    EXPECT_FALSE(present);
+}
+
 TEST_F(DBusHandlerDirectTest, checkDbusPropertyVariantReturnsFalseNotFound)
 {
     // Exercises the "property not found → return false" branch at line 484
@@ -2591,6 +3220,25 @@ TEST_F(DBusHandlerDirectTest, setFruPresenceSetsTrue)
     setFruPresence(fruPath, true);
 }
 
+TEST_F(DBusHandlerDirectTest, setFruPresenceSwallowsPropertyFailure)
+{
+    constexpr auto* fruPath = "/xyz/openbmc_project/inventory/fru1";
+    constexpr auto* fruIface = "xyz.openbmc_project.Inventory.Item";
+    constexpr auto* service = "xyz.openbmc_project.InventoryService";
+
+    testing::InSequence seq;
+    expectGetObjectCall(fruPath, fruIface, service);
+    expectSetPropertyCall(service, fruPath, fruIface, "Present");
+    expectOpenContainer(SD_BUS_TYPE_VARIANT, "b");
+    expectAppendBasic<int>(SD_BUS_TYPE_BOOLEAN, false);
+    expectCloseContainer();
+    EXPECT_CALL(mock,
+                sd_bus_call(nullptr, nullptr, dbusTimeout, testing::_, nullptr))
+        .WillOnce(testing::Return(-EINVAL));
+
+    EXPECT_NO_THROW({ setFruPresence(fruPath, false); });
+}
+
 // Helper to exercise the non-virtual getDbusProperty<T> template in the header
 // by overriding only the virtual getDbusPropertyVariant that it calls.
 class GetDbusPropertyTestHandler : public DBusHandler
@@ -2613,6 +3261,13 @@ TEST(GetDbusPropertyDirect, uint8)
     EXPECT_EQ(result, uint8_t(42));
 }
 
+TEST(GetDbusPropertyDirect, boolValue)
+{
+    GetDbusPropertyTestHandler handler;
+    handler.returnValue = true;
+    EXPECT_TRUE(handler.getDbusProperty<bool>("/path", "prop", "iface"));
+}
+
 TEST(GetDbusPropertyDirect, string)
 {
     GetDbusPropertyTestHandler handler;
@@ -2622,10 +3277,127 @@ TEST(GetDbusPropertyDirect, string)
     EXPECT_EQ(result, "hello");
 }
 
+TEST(GetDbusPropertyDirect, vectorUint64)
+{
+    GetDbusPropertyTestHandler handler;
+    const std::vector<uint64_t> counters{9, 99, 999};
+    handler.returnValue = counters;
+    auto result = handler.getDbusProperty<std::vector<uint64_t>>(
+        "/path", "prop", "iface");
+    EXPECT_EQ(result, counters);
+}
+
+TEST(GetDbusPropertyDirect, objectPaths)
+{
+    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+
+    GetDbusPropertyTestHandler handler;
+    const ObjectPaths expected{
+        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+    handler.returnValue = expected;
+    auto result =
+        handler.getDbusProperty<ObjectPaths>("/path", "prop", "iface");
+    EXPECT_EQ(result, expected);
+}
+
+TEST(GetDbusPropertyDirect, associations)
+{
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+
+    GetDbusPropertyTestHandler handler;
+    const Associations expected{
+        {"chassis", "all_states",
+         "/xyz/openbmc_project/inventory/system/chassis/chassis0"},
+        {"processor", "all_states",
+         "/xyz/openbmc_project/inventory/system/chassis/motherboard/cpu0"}};
+    handler.returnValue = expected;
+    auto result =
+        handler.getDbusProperty<Associations>("/path", "prop", "iface");
+    EXPECT_EQ(result, expected);
+}
+
+TEST(GetDbusPropertyDirect, throwsOnVariantMismatchAcrossAdditionalTypes)
+{
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+
+    GetDbusPropertyTestHandler handler;
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<bool>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<uint8_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = uint64_t(77);
+    EXPECT_THROW(handler.getDbusProperty<std::string>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::vector<uint8_t>{0x11, 0x22};
+    EXPECT_THROW(handler.getDbusProperty<std::vector<uint64_t>>("/path", "prop",
+                                                                "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::vector<std::string>{"not", "paths"};
+    EXPECT_THROW(handler.getDbusProperty<ObjectPaths>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<int16_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<uint16_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<int32_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<uint32_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<int64_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<uint64_t>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(handler.getDbusProperty<double>("/path", "prop", "iface"),
+                 std::bad_variant_access);
+
+    handler.returnValue = std::string("wrong");
+    EXPECT_THROW(
+        handler.getDbusProperty<Associations>("/path", "prop", "iface"),
+        std::bad_variant_access);
+}
+
 TEST(EmitStateSensorEventSignal, returnsStatus)
 {
     auto rc = emitStateSensorEventSignal(1, 2, 0, 1, 0);
     EXPECT_TRUE(rc == PLDM_SUCCESS || rc == PLDM_ERROR);
+}
+
+TEST_F(DBusHandlerDirectTest, emitStateSensorEventSignalReturnsErrorOnFailure)
+{
+    EXPECT_CALL(mock, sd_bus_message_new_signal(
+                          testing::_, testing::_,
+                          testing::StrEq("/xyz/openbmc_project/pldm"),
+                          testing::StrEq("xyz.openbmc_project.PLDM.Event"),
+                          testing::StrEq("StateSensorEvent")))
+        .WillOnce(testing::Return(-EINVAL));
+
+    auto rc = emitStateSensorEventSignal(1, 2, 0, 1, 0);
+    EXPECT_EQ(rc, PLDM_ERROR);
 }
 
 TEST_F(DBusHandlerDirectTest, checkForFruPresenceReturnsFalseWhenMissing)
@@ -2653,6 +3425,38 @@ TEST_F(DBusHandlerDirectTest, checkForFruPresenceReturnsFalseWhenMissing)
 
     auto isPresent = checkForFruPresence(objectPath);
     EXPECT_FALSE(isPresent);
+}
+
+TEST_F(DBusHandlerDirectTest, checkForFruPresenceReturnsTrueWhenPresent)
+{
+    constexpr auto* objectPath =
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0";
+    constexpr auto* interface = "xyz.openbmc_project.Inventory.Item";
+    constexpr auto* property = "Present";
+    constexpr auto* service = "xyz.openbmc_project.InventoryService";
+
+    testing::InSequence seq;
+    expectGetObjectCall(objectPath, interface, service);
+    expectNewMethodCall(service, objectPath, dbusProperties, "Get");
+    expectAppendString(SD_BUS_TYPE_STRING, interface);
+    expectAppendString(SD_BUS_TYPE_STRING, property);
+    expectBusCallWithReply();
+    EXPECT_CALL(mock, sd_bus_message_verify_type(
+                          testing::_, SD_BUS_TYPE_VARIANT, testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_enter_container(
+                          testing::_, SD_BUS_TYPE_VARIANT, testing::_))
+        .WillOnce(testing::Return(1));
+    EXPECT_CALL(mock, sd_bus_message_read_basic(testing::_, SD_BUS_TYPE_BOOLEAN,
+                                                testing::_))
+        .WillOnce([](sd_bus_message*, char, void* output) {
+            *static_cast<int*>(output) = 1;
+            return 0;
+        });
+    EXPECT_CALL(mock, sd_bus_message_exit_container(testing::_))
+        .WillOnce(testing::Return(1));
+
+    EXPECT_TRUE(checkForFruPresence(objectPath));
 }
 
 TEST(dbusPropValuesToDouble, goodTest)
@@ -2737,6 +3541,16 @@ TEST(dbusPropValuesToDouble, badTest)
     ret = dbusPropValuesToDouble("double", static_cast<std::string>("hello"),
                                  nullptr);
     EXPECT_EQ(false, ret);
+}
+
+TEST(dbusPropValuesToDouble, nullOutputPointerCoverage)
+{
+    EXPECT_FALSE(
+        dbusPropValuesToDouble("uint8_t", static_cast<uint8_t>(0x12), nullptr));
+    EXPECT_FALSE(
+        dbusPropValuesToDouble("int32_t", static_cast<int32_t>(-42), nullptr));
+    EXPECT_FALSE(
+        dbusPropValuesToDouble("double", static_cast<double>(3.1415), nullptr));
 }
 
 TEST(FruFieldValuestring, goodTest)
@@ -4014,8 +4828,8 @@ TEST(MmapFile, defaultConstruct)
 
 TEST(MmapFile, mapValidFile)
 {
-    char tmpPath[] = "/tmp/claude/test_mmap_XXXXXX";
-    int fd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("test_mmap_XXXXXX");
+    int fd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_NE(fd, -1);
 
     const char* testData = "test data for mmap";
@@ -4036,13 +4850,13 @@ TEST(MmapFile, mapValidFile)
     EXPECT_EQ(mmapFile.size(), 0u);
 
     close(fd);
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 }
 
 TEST(MmapFile, mapWithOwnedFd)
 {
-    char tmpPath[] = "/tmp/claude/test_mmap_owned_XXXXXX";
-    int fd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("test_mmap_owned_XXXXXX");
+    int fd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_NE(fd, -1);
 
     const char* testData = "owned fd data";
@@ -4059,7 +4873,7 @@ TEST(MmapFile, mapWithOwnedFd)
         EXPECT_EQ(std::memcmp(mmapFile.data(), testData, testLen), 0);
     }
 
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 }
 
 TEST(MmapFile, mapInvalidFd)
@@ -4073,8 +4887,8 @@ TEST(MmapFile, mapInvalidFd)
 
 TEST(MmapFile, mapWriteOnlyFdWithOwnedFdFailsAndClosesFd)
 {
-    char tmpPath[] = "/tmp/claude/test_mmap_writeonly_XXXXXX";
-    int initFd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("test_mmap_writeonly_XXXXXX");
+    int initFd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_NE(initFd, -1);
 
     const char* testData = "mmap failure with O_WRONLY";
@@ -4083,7 +4897,7 @@ TEST(MmapFile, mapWriteOnlyFdWithOwnedFdFailsAndClosesFd)
     ASSERT_EQ(static_cast<size_t>(written), testLen);
     close(initFd);
 
-    int fd = open(tmpPath, O_WRONLY);
+    int fd = open(tmpPath.c_str(), O_WRONLY);
     ASSERT_NE(fd, -1);
 
     pldm::MmapFile mmapFile;
@@ -4096,13 +4910,13 @@ TEST(MmapFile, mapWriteOnlyFdWithOwnedFdFailsAndClosesFd)
     EXPECT_EQ(fcntl(fd, F_GETFD), -1);
     EXPECT_EQ(errno, EBADF);
 
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 }
 
 TEST(MmapFile, mapWriteOnlyFdWithoutOwnershipLeavesFdOpen)
 {
-    char tmpPath[] = "/tmp/claude/test_mmap_writeonly_noown_XXXXXX";
-    int initFd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("test_mmap_writeonly_noown_XXXXXX");
+    int initFd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_NE(initFd, -1);
 
     const char* testData = "mmap failure with O_WRONLY no ownership";
@@ -4111,7 +4925,7 @@ TEST(MmapFile, mapWriteOnlyFdWithoutOwnershipLeavesFdOpen)
     ASSERT_EQ(static_cast<size_t>(written), testLen);
     close(initFd);
 
-    int fd = open(tmpPath, O_WRONLY);
+    int fd = open(tmpPath.c_str(), O_WRONLY);
     ASSERT_NE(fd, -1);
 
     pldm::MmapFile mmapFile;
@@ -4124,7 +4938,7 @@ TEST(MmapFile, mapWriteOnlyFdWithoutOwnershipLeavesFdOpen)
     EXPECT_NE(fcntl(fd, F_GETFD), -1);
     EXPECT_EQ(errno, 0);
     close(fd);
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 }
 
 TEST(MmapFile, unmapWithoutMap)
@@ -4156,11 +4970,10 @@ class InstanceIdDbTest : public ::testing::Test
   protected:
     void SetUp() override
     {
-        char tmpName[] = "/tmp/claude/test_iid_XXXXXX";
-        int fd = ::mkstemp(tmpName);
+        dbPath = pldm::test::makeTempFile("test_iid_XXXXXX");
+        int fd = ::open(dbPath.c_str(), O_RDWR);
         ASSERT_NE(fd, -1);
         ::close(fd);
-        dbPath = tmpName;
         // The instance DB file must be pre-sized to PLDM_MAX_TIDS * 32 bytes
         std::filesystem::resize_file(dbPath, 256u * pldmMaxInstanceIds);
     }
@@ -4334,10 +5147,10 @@ TEST(FlightRecorder, wrapAround)
 
 TEST(CustomFDTest, constructWithValidFd)
 {
-    char tmpPath[] = "/tmp/claude/customfd_valid_XXXXXX";
-    int rawFd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("customfd_valid_XXXXXX");
+    int rawFd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_GE(rawFd, 0) << "mkstemp failed";
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 
     CustomFD cfd(rawFd);
     EXPECT_EQ(cfd(), rawFd);
@@ -4353,10 +5166,10 @@ TEST(CustomFDTest, constructWithInvalidFd)
 
 TEST(CustomFDTest, destructorClosesFd)
 {
-    char tmpPath[] = "/tmp/claude/customfd_close_XXXXXX";
-    int rawFd = mkstemp(tmpPath);
+    auto tmpPath = pldm::test::makeTempFile("customfd_close_XXXXXX");
+    int rawFd = open(tmpPath.c_str(), O_RDWR);
     ASSERT_GE(rawFd, 0) << "mkstemp failed";
-    unlink(tmpPath);
+    unlink(tmpPath.c_str());
 
     {
         CustomFD cfd(rawFd);
@@ -4375,6 +5188,62 @@ TEST(CustomFDTest, destructorSafeWithNegativeFd)
         CustomFD cfd(-1);
         EXPECT_EQ(cfd(), -1);
     }
+}
+
+TEST(LogRateLimiterTest, suppressesRepeatedLogsWithinInterval)
+{
+    LogRateLimiter<int> limiter(std::chrono::seconds(60));
+
+    EXPECT_TRUE(limiter.shouldLog(7));
+
+    limiter.recordLog(7);
+
+    ASSERT_TRUE(limiter.lastLogTime.contains(7));
+    EXPECT_FALSE(limiter.shouldLog(7));
+
+    limiter.clear(99);
+    EXPECT_TRUE(limiter.lastLogTime.contains(7));
+
+    limiter.clear(7);
+    EXPECT_TRUE(limiter.lastLogTime.contains(7));
+}
+
+TEST(LogRateLimiterTest, zeroIntervalAllowsImmediateRelogAndClear)
+{
+    LogRateLimiter<int> limiter(std::chrono::seconds::zero());
+
+    limiter.recordLog(11);
+
+    ASSERT_TRUE(limiter.lastLogTime.contains(11));
+    EXPECT_TRUE(limiter.shouldLog(11));
+
+    limiter.clear(11);
+    EXPECT_FALSE(limiter.lastLogTime.contains(11));
+    EXPECT_TRUE(limiter.shouldLog(11));
+}
+
+TEST(LogRateLimiterTest, keyVariantsCoverClearBranches)
+{
+    auto exerciseClearBranches = []<typename Key>(Key key) {
+        LogRateLimiter<Key> intervalLimiter(std::chrono::seconds(60));
+        intervalLimiter.clear(key);
+        EXPECT_FALSE(intervalLimiter.lastLogTime.contains(key));
+
+        intervalLimiter.recordLog(key);
+        intervalLimiter.clear(key);
+        EXPECT_TRUE(intervalLimiter.lastLogTime.contains(key));
+
+        LogRateLimiter<Key> zeroLimiter(std::chrono::seconds::zero());
+        zeroLimiter.recordLog(key);
+        ASSERT_TRUE(zeroLimiter.lastLogTime.contains(key));
+        zeroLimiter.clear(key);
+        EXPECT_FALSE(zeroLimiter.lastLogTime.contains(key));
+        zeroLimiter.clear(key);
+        EXPECT_FALSE(zeroLimiter.lastLogTime.contains(key));
+    };
+
+    exerciseClearBranches(uint8_t{7});
+    exerciseClearBranches(uint64_t{42});
 }
 
 // Helper: encode a BIOS string table entry into a byte vector.
@@ -5642,41 +6511,6 @@ TEST(MatchEntryInfoTest, matchInventoryEntryAllOfPathReturnsFalseOnPropMismatch)
     EXPECT_FALSE(matcher.matchInventoryEntry(ifaceMap, entry));
 }
 
-TEST(DBusAsyncUtilsMock, coGetDbusPropertyAwaitableWorksInMockMode)
-{
-    const std::string objectPath = "/xyz/openbmc_project/test";
-    const std::string property = "Name";
-    const std::string interface = "xyz.openbmc_project.Test";
-
-    pldm::utils::coGetDbusProperty<std::string> op(objectPath, property,
-                                                   interface);
-    EXPECT_TRUE(op.await_ready());
-    EXPECT_TRUE(op.await_suspend(std::coroutine_handle<>{}));
-    EXPECT_TRUE(op.await_resume().empty());
-}
-
-TEST(DBusAsyncUtilsMock, coGetServiceMapAwaitableWorksInMockMode)
-{
-    const std::string objectPath = "/xyz/openbmc_project/test";
-    const dbus::Interfaces ifaceList = {"xyz.openbmc_project.Test"};
-
-    pldm::utils::coGetServiceMap op(objectPath, ifaceList);
-    EXPECT_TRUE(op.await_ready());
-    EXPECT_TRUE(op.await_suspend(std::coroutine_handle<>{}));
-    EXPECT_TRUE(op.await_resume().empty());
-}
-
-TEST(DBusAsyncUtilsMock, coGetSubTreeAwaitableWorksInMockMode)
-{
-    const std::string objectPath = "/xyz/openbmc_project/test";
-    const dbus::Interfaces ifaceList = {"xyz.openbmc_project.Test"};
-
-    pldm::utils::coGetSubTree op(objectPath, 0, ifaceList);
-    EXPECT_TRUE(op.await_ready());
-    EXPECT_TRUE(op.await_suspend(std::coroutine_handle<>{}));
-    EXPECT_TRUE(op.await_resume().empty());
-}
-
 TEST(GetInventoryObjects, cachedReferenceIsReused)
 {
     auto& first = DBusHandler::getInventoryObjects<GetManagedObject>();
@@ -5695,10 +6529,119 @@ struct ThrowingManagedObject
     }
 };
 
+struct FlakyManagedObject
+{
+    static void reset()
+    {
+        attempts() = 0;
+    }
+
+    static ObjectValueTree getManagedObj(const char* /*service*/,
+                                         const char* /*path*/)
+    {
+        if (attempts()++ == 0)
+        {
+            throw std::runtime_error("transient initialization failure");
+        }
+
+        ObjectValueTree objects;
+        objects.emplace(sdbusplus::message::object_path(
+                            "/xyz/openbmc_project/inventory/flaky0"),
+                        InterfaceMap{});
+        return objects;
+    }
+
+  private:
+    static int& attempts()
+    {
+        static int value = 0;
+        return value;
+    }
+};
+
 TEST(GetInventoryObjects, initializationFailureIsPropagated)
 {
     EXPECT_THROW((DBusHandler::getInventoryObjects<ThrowingManagedObject>()),
                  std::runtime_error);
+}
+
+TEST(GetInventoryObjects, initializationFailureIsRetriedAfterThrow)
+{
+    EXPECT_THROW((DBusHandler::getInventoryObjects<ThrowingManagedObject>()),
+                 std::runtime_error);
+    EXPECT_THROW((DBusHandler::getInventoryObjects<ThrowingManagedObject>()),
+                 std::runtime_error);
+}
+
+TEST(GetInventoryObjects, transientInitializationFailureEventuallyCachesValue)
+{
+    FlakyManagedObject::reset();
+
+    EXPECT_THROW((DBusHandler::getInventoryObjects<FlakyManagedObject>()),
+                 std::runtime_error);
+
+    auto& first = DBusHandler::getInventoryObjects<FlakyManagedObject>();
+    ASSERT_EQ(first.size(), 1u);
+    EXPECT_EQ(first.begin()->first, "/xyz/openbmc_project/inventory/flaky0");
+
+    auto& second = DBusHandler::getInventoryObjects<FlakyManagedObject>();
+    EXPECT_EQ(&first, &second);
+}
+
+TEST(ReadLEValueTest, decodesAllSupportedWidthsCoverage)
+{
+    const std::array<uint8_t, 15> bytes{0x34, 0x12, 0x78, 0x56, 0x34,
+                                        0x12, 0xF0, 0xDE, 0xBC, 0x9A,
+                                        0x78, 0x56, 0x34, 0x12, 0x5A};
+    const uint8_t* ptr = bytes.data();
+
+    EXPECT_EQ(readLEValue<uint16_t>(ptr), 0x1234u);
+    EXPECT_EQ(readLEValue<uint32_t>(ptr), 0x12345678u);
+    EXPECT_EQ(readLEValue<uint64_t>(ptr), 0x123456789ABCDEF0ull);
+    EXPECT_EQ(readLEValue<uint8_t>(ptr), 0x5Au);
+    EXPECT_EQ(ptr, bytes.data() + bytes.size());
+}
+
+TEST(DBusHandlerTemplate, getDbusPropertyHeapBackedValuesCoverage)
+{
+    MockdBusHandler handler;
+
+    const std::string longString(96, 'Z');
+    EXPECT_CALL(handler,
+                getDbusPropertyVariant("/xyz/openbmc_project/example", "Value",
+                                       "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{longString}));
+    EXPECT_EQ(handler.getDbusProperty<std::string>(
+                  "/xyz/openbmc_project/example", "Value",
+                  "xyz.openbmc_project.Example"),
+              longString);
+
+    const std::vector<std::string> longStrings{
+        "/xyz/openbmc_project/inventory/" + std::string(48, 'a'),
+        "/xyz/openbmc_project/inventory/" + std::string(52, 'b')};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "StringArray",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{longStrings}));
+    EXPECT_EQ(handler.getDbusProperty<std::vector<std::string>>(
+                  "/xyz/openbmc_project/example", "StringArray",
+                  "xyz.openbmc_project.Example"),
+              longStrings);
+
+    const std::vector<sdbusplus::message::object_path> objectPaths{
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/object/" + std::string(44, 'x')),
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/object/" + std::string(46, 'y'))};
+    EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
+                                                "ObjectPaths",
+                                                "xyz.openbmc_project.Example"))
+        .WillOnce(::testing::Return(pldm::utils::PropertyValue{objectPaths}));
+    EXPECT_EQ(
+        handler.getDbusProperty<std::vector<sdbusplus::message::object_path>>(
+            "/xyz/openbmc_project/example", "ObjectPaths",
+            "xyz.openbmc_project.Example"),
+        objectPaths);
 }
 
 TEST(Split, skipsEmptyTokensFromConsecutiveDelimiters)

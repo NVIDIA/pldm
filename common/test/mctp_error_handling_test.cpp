@@ -2,6 +2,8 @@
 #include "../../fw-update/dbusutil.hpp"
 #include "../mctp_error_handling.hpp"
 
+#include <phosphor-logging/mctp_error_registry.hpp>
+
 #include <cerrno>
 #include <cstring>
 #include <optional>
@@ -57,15 +59,33 @@ void test_createLogEntry(
     sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level);
 } // namespace pldm::transport
 
+namespace phosphor::logging::mctp
+{
+std::optional<RedfishRegistry> test_errorToRedfishRegistry(
+    uint32_t errorCode, Direction direction, Binding binding,
+    uint8_t endpointid, const std::string& driverOperation,
+    const std::optional<std::string>& deviceRedfishName);
+} // namespace phosphor::logging::mctp
+
 #define recvmsg test_recvmsg
 #define getDeviceNameFromEid test_getDeviceNameFromEid
 #define queryDeviceStatus test_queryDeviceStatus
 #define createLogEntry test_createLogEntry
+#define errorToRedfishRegistry test_errorToRedfishRegistry
 #include "../mctp_error_handling.cpp" // NOLINT(bugprone-suspicious-include)
+#undef errorToRedfishRegistry
 #undef createLogEntry
 #undef queryDeviceStatus
 #undef getDeviceNameFromEid
 #undef recvmsg
+
+namespace
+{
+
+bool useMockedRegistry = false;
+std::optional<phosphor::logging::mctp::RedfishRegistry> mockedRegistry{};
+
+} // namespace
 
 extern "C" ssize_t test_recvmsg(int fd, struct msghdr* msg, int flags)
 {
@@ -128,6 +148,25 @@ void test_createLogEntry(
 
 } // namespace pldm::transport
 
+namespace phosphor::logging::mctp
+{
+
+std::optional<RedfishRegistry> test_errorToRedfishRegistry(
+    uint32_t errorCode, Direction direction, Binding binding,
+    uint8_t endpointid, const std::string& driverOperation,
+    const std::optional<std::string>& deviceRedfishName)
+{
+    if (useMockedRegistry)
+    {
+        return mockedRegistry;
+    }
+
+    return errorToRedfishRegistry(errorCode, direction, binding, endpointid,
+                                  driverOperation, deviceRedfishName);
+}
+
+} // namespace phosphor::logging::mctp
+
 class MctpErrorHandlingTest : public ::testing::Test
 {
   protected:
@@ -139,6 +178,8 @@ class MctpErrorHandlingTest : public ::testing::Test
         mockedDeviceHasErrors = false;
         queryDeviceStatusCalls = 0;
         logCalls.clear();
+        useMockedRegistry = false;
+        mockedRegistry.reset();
     }
 
     static pldm::transport::MctpError makeError(
@@ -194,6 +235,18 @@ TEST_F(MctpErrorHandlingTest, readQueueReturnsEagainForWrongControlType)
     recvmsgScenario.includeControl = true;
     recvmsgScenario.cmsgLevel = SOL_MCTP;
     recvmsgScenario.cmsgType = 0;
+    recvmsgScenario.payload = makeError(8);
+    pldm::transport::MctpError error{};
+
+    auto rc = pldm::transport::readMctpErrorQueue(0, error);
+    EXPECT_EQ(rc, -EAGAIN);
+}
+
+TEST_F(MctpErrorHandlingTest, readQueueReturnsEagainForWrongControlLevel)
+{
+    recvmsgScenario.includeControl = true;
+    recvmsgScenario.cmsgLevel = 0;
+    recvmsgScenario.cmsgType = MCTP_RECVERR;
     recvmsgScenario.payload = makeError(8);
     pldm::transport::MctpError error{};
 
@@ -351,6 +404,19 @@ TEST_F(MctpErrorHandlingTest,
 
     ASSERT_EQ(logCalls.size(), 1u);
     EXPECT_NE(logCalls[0].messageArgs.find("EID_0x2A"), std::string::npos);
+}
+
+TEST_F(MctpErrorHandlingTest, createRedfishEventSkipsWhenRegistryMissing)
+{
+    useMockedRegistry = true;
+    mockedRegistry.reset();
+
+    pldm::transport::createMctpTransportRedfishEvent(
+        0x2B, "GetPDR", EHOSTUNREACH, MCTP_BINDING_UNKNOWN, MCTP_DIR_TX,
+        "FWUpdate");
+
+    EXPECT_EQ(queryDeviceStatusCalls, 0u);
+    EXPECT_TRUE(logCalls.empty());
 }
 
 TEST_F(MctpErrorHandlingTest, createMctpErrorObjectSetsAllFields)

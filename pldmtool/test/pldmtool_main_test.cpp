@@ -1,12 +1,19 @@
 // Override pldm_instance_db_init_default via --wrap linker flag
+#include "../../test/test_valgrind_utils.hpp"
+#include "test/test_tmp_utils.hpp"
+
+#include <fcntl.h>
 #include <libpldm/instance-id.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <array>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 extern "C" int __wrap_pldm_instance_db_init_default(
@@ -14,10 +21,11 @@ extern "C" int __wrap_pldm_instance_db_init_default(
 {
     static uint64_t dbIndex = 0;
     static std::deque<std::string> dbPaths;
-    std::filesystem::create_directories("/tmp/claude");
+    auto root = pldm::test::ensureTempDir();
     dbPaths.emplace_back(
-        "/tmp/claude/pldm_test_iid_" + std::to_string(::getpid()) + "_" +
-        std::to_string(dbIndex++));
+        (root / ("pldm_test_iid_" + std::to_string(::getpid()) + "_" +
+                 std::to_string(dbIndex++)))
+            .string());
     auto& dbPath = dbPaths.back();
     std::ofstream ofs(dbPath, std::ios::binary | std::ios::trunc);
     std::string data(256 * 32, '\0');
@@ -63,6 +71,110 @@ void registerCommand(CLI::App& app)
 
 namespace
 {
+
+struct CommandResult
+{
+    int rc;
+    std::string output;
+};
+
+std::string getPldmtoolBinary()
+{
+    const char* binary = std::getenv("PLDMTOOL_BINARY");
+    if (binary == nullptr)
+    {
+        throw std::runtime_error("PLDMTOOL_BINARY is not set");
+    }
+
+    return binary;
+}
+
+std::string getRequiredEnv(const char* name)
+{
+    const char* value = std::getenv(name);
+    if (value == nullptr)
+    {
+        throw std::runtime_error(std::string{name} + " is not set");
+    }
+
+    return value;
+}
+
+CommandResult runCommand(const std::vector<std::string>& args)
+{
+    std::array<int, 2> pipeFds{};
+    if (pipe(pipeFds.data()) != 0)
+    {
+        throw std::runtime_error("pipe failed");
+    }
+
+    const pid_t pid = fork();
+    if (pid < 0)
+    {
+        close(pipeFds[0]);
+        close(pipeFds[1]);
+        throw std::runtime_error("fork failed");
+    }
+
+    if (pid == 0)
+    {
+        close(pipeFds[0]);
+        dup2(pipeFds[1], STDOUT_FILENO);
+        dup2(pipeFds[1], STDERR_FILENO);
+        close(pipeFds[1]);
+
+        const auto preload = getRequiredEnv("PLDMTOOL_PRELOAD");
+        const auto instanceDbDir = getRequiredEnv("PLDMTOOL_INSTANCE_DB_DIR");
+        setenv("LD_PRELOAD", preload.c_str(), 1);
+        setenv("PLDMTOOL_INSTANCE_DB_DIR", instanceDbDir.c_str(), 1);
+
+        std::vector<char*> argv;
+        argv.reserve(args.size() + 1);
+        for (const auto& arg : args)
+        {
+            argv.push_back(const_cast<char*>(arg.c_str()));
+        }
+        argv.push_back(nullptr);
+
+        execv(argv.front(), argv.data());
+        _exit(127);
+    }
+
+    close(pipeFds[1]);
+
+    std::string output;
+    std::array<char, 4096> buffer{};
+    ssize_t readLen = 0;
+    while ((readLen = read(pipeFds[0], buffer.data(), buffer.size())) > 0)
+    {
+        output.append(buffer.data(), static_cast<size_t>(readLen));
+    }
+    close(pipeFds[0]);
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0)
+    {
+        throw std::runtime_error("waitpid failed");
+    }
+
+    if (WIFEXITED(status))
+    {
+        return {WEXITSTATUS(status), std::move(output)};
+    }
+
+    if (WIFSIGNALED(status))
+    {
+        return {128 + WTERMSIG(status), std::move(output)};
+    }
+
+    return {-1, std::move(output)};
+}
+
+bool skipRealBinarySubprocess()
+{
+    return pldm::test::runningOnValgrind() ||
+           pldm::test::runningWithAddressSanitizer();
+}
 
 void parseArgs(CLI::App& app, const std::vector<std::string>& args)
 {
@@ -199,4 +311,61 @@ TEST(PldmtoolMain, MainBaseSubcommandExceptionPath)
     {}
 
     SUCCEED();
+}
+
+TEST(PldmtoolMain, RealBinaryHelpReturnsZero)
+{
+    if (skipRealBinarySubprocess())
+    {
+        GTEST_SKIP() << "real binary subprocess coverage runs in the normal "
+                        "pass";
+    }
+
+    auto result = runCommand({getPldmtoolBinary(), "--help"});
+    EXPECT_EQ(result.rc, 0);
+    EXPECT_NE(result.output.find("PLDM requester tool for OpenBMC"),
+              std::string::npos);
+}
+
+TEST(PldmtoolMain, RealBinaryMissingSubcommandReturnsError)
+{
+    if (skipRealBinarySubprocess())
+    {
+        GTEST_SKIP() << "real binary subprocess coverage runs in the normal "
+                        "pass";
+    }
+
+    auto result = runCommand({getPldmtoolBinary()});
+    EXPECT_NE(result.rc, 0);
+    EXPECT_NE(result.output.find("A subcommand is required"),
+              std::string::npos);
+}
+
+TEST(PldmtoolMain, RealBinaryUnknownSubcommandReturnsError)
+{
+    if (skipRealBinarySubprocess())
+    {
+        GTEST_SKIP() << "real binary subprocess coverage runs in the normal "
+                        "pass";
+    }
+
+    auto result = runCommand({getPldmtoolBinary(), "unknown"});
+    EXPECT_NE(result.rc, 0);
+    EXPECT_FALSE(result.output.empty());
+}
+
+TEST(PldmtoolMain, RealBinarySubcommandHelpReturnsZero)
+{
+    if (skipRealBinarySubprocess())
+    {
+        GTEST_SKIP() << "real binary subprocess coverage runs in the normal "
+                        "pass";
+    }
+
+    for (const auto& command : {"raw", "base", "platform", "fw_update"})
+    {
+        SCOPED_TRACE(command);
+        auto result = runCommand({getPldmtoolBinary(), command, "--help"});
+        EXPECT_EQ(result.rc, 0);
+    }
 }

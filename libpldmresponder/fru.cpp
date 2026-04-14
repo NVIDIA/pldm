@@ -155,7 +155,12 @@ std::string FruImpl::populatefwVersion()
         std::variant<std::vector<std::string>> paths;
         auto reply = bus.call(method);
         reply.read(paths);
-        auto fwRunningVersion = std::get<std::vector<std::string>>(paths)[0];
+        const auto& endpoints = std::get<std::vector<std::string>>(paths);
+        if (endpoints.empty())
+        {
+            return {};
+        }
+        auto fwRunningVersion = endpoints.front();
         auto version = pldm::utils::DBusHandler().getDbusPropertyVariant(
             fwRunningVersion.c_str(), "Version", SoftwareVersion::interface);
         currentBmcVersion = std::get<std::string>(version);

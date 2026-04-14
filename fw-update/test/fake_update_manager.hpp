@@ -27,6 +27,7 @@
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 
 #include <functional>
+#include <stdexcept>
 
 namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
@@ -50,6 +51,7 @@ std::string securityChecksErrorMessage = "security checks callback error";
 bool clearActivationInfoCalled = false;
 bool resetActivationBlocksTransitionCalled = false;
 bool clearFirmwareUpdatePackageCalled = false;
+bool throwOnActivatePackage = false;
 size_t clearFirmwareUpdatePackageCallCount = 0;
 size_t resetActivationBlocksTransitionCallCount = 0;
 size_t clearActivationInfoCallCount = 0;
@@ -66,6 +68,7 @@ void resetTestState()
     clearActivationInfoCalled = false;
     resetActivationBlocksTransitionCalled = false;
     clearFirmwareUpdatePackageCalled = false;
+    throwOnActivatePackage = false;
     clearFirmwareUpdatePackageCallCount = 0;
     resetActivationBlocksTransitionCallCount = 0;
     clearActivationInfoCallCount = 0;
@@ -87,6 +90,10 @@ class FakeUpdateManager
 
     software::Activation::Activations activatePackage()
     {
+        if (testing::throwOnActivatePackage)
+        {
+            throw std::runtime_error("activatePackage failure");
+        }
         return testing::updateManagerActivatePackageResult;
     }
 

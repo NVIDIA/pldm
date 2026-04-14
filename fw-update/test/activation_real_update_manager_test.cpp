@@ -31,6 +31,7 @@
 #include "test/test_instance_id.hpp"
 
 #include <fcntl.h>
+#include <systemd/sd-event.h>
 #include <unistd.h>
 
 #include <sdbusplus/test/sdbus_mock.hpp>
@@ -97,6 +98,32 @@ static int processPackageStream(UpdateManager& updateManager,
     }
 }
 
+static bool mapPackageToUpdater(UpdateManager& updateManager,
+                                const std::filesystem::path& packagePath)
+{
+    if (!updateManager.updater)
+    {
+        return false;
+    }
+
+    updateManager.updater->clearImageStream();
+    int imageFd = open(packagePath.c_str(), O_RDONLY);
+    if (imageFd < 0)
+    {
+        return false;
+    }
+
+    if (!updateManager.updater->mmapFile.map(imageFd, true))
+    {
+        return false;
+    }
+
+    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
+        updateManager.updater->mmapFile.data(),
+        updateManager.updater->mmapFile.size());
+    return updateManager.updater->mmapStream->good();
+}
+
 class ActivationRealUpdateManagerTest : public testing::Test
 {
   protected:
@@ -108,6 +135,18 @@ class ActivationRealUpdateManagerTest : public testing::Test
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true, nullptr)
     {}
+
+    void waitEventExpiry(milliseconds timeout)
+    {
+        while (true)
+        {
+            auto sleepTime = duration_cast<microseconds>(timeout);
+            if (!sd_event_run(event.get(), sleepTime.count()))
+            {
+                break;
+            }
+        }
+    }
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
@@ -181,4 +220,78 @@ TEST_F(ActivationRealUpdateManagerTest,
             activation.activation(ActivationIntf::Activations::Activating);
         EXPECT_EQ(state, ActivationIntf::Activations::Activating);
     });
+}
+
+TEST_F(ActivationRealUpdateManagerTest,
+       ActivationActivatingWithIncorrectSignatureTransitionsToFailed)
+{
+    const std::string objPath{
+        "/xyz/openbmc_project/software/test_activation_real_bad_signature"};
+
+    ASSERT_EQ(
+        processPackageStream(updateManager, "./test_pkg_v3_incorrectly_signed"),
+        0);
+    ASSERT_TRUE(
+        mapPackageToUpdater(updateManager, "./test_pkg_v3_incorrectly_signed"));
+    updateManager.objPath = objPath;
+
+    if (!updateManager.otherDeviceUpdateManager)
+    {
+        std::vector<sdbusplus::message::object_path> targets;
+        updateManager.otherDeviceUpdateManager =
+            std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                       targets);
+    }
+
+#ifdef OEM_NVIDIA
+    if (!updateManager.debugToken)
+    {
+        updateManager.debugToken =
+            std::make_unique<DebugToken>(busMock, &updateManager);
+    }
+#endif
+
+    Activation activation(busMock, objPath, ActivationIntf::Activations::Ready,
+                          &updateManager);
+    auto state = activation.activation(ActivationIntf::Activations::Activating);
+    EXPECT_EQ(state, ActivationIntf::Activations::Activating);
+
+    waitEventExpiry(milliseconds(1200));
+    EXPECT_EQ(activation.activation(), ActivationIntf::Activations::Failed);
+}
+
+TEST_F(ActivationRealUpdateManagerTest,
+       RequestedActivationFromReadyStateLeavesReadyState)
+{
+    const std::string objPath{
+        "/xyz/openbmc_project/software/test_request_ready_real_manager"};
+
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    updateManager.objPath = objPath;
+
+    if (!updateManager.otherDeviceUpdateManager)
+    {
+        std::vector<sdbusplus::message::object_path> targets;
+        updateManager.otherDeviceUpdateManager =
+            std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                       targets);
+    }
+
+#ifdef OEM_NVIDIA
+    if (!updateManager.debugToken)
+    {
+        updateManager.debugToken =
+            std::make_unique<DebugToken>(busMock, &updateManager);
+    }
+#endif
+
+    Activation activation(busMock, objPath, ActivationIntf::Activations::Ready,
+                          &updateManager);
+
+    auto requested = activation.requestedActivation(
+        ActivationIntf::RequestedActivations::Active);
+
+    EXPECT_EQ(requested, ActivationIntf::RequestedActivations::Active);
+    EXPECT_NE(activation.activation(), ActivationIntf::Activations::Ready);
+    EXPECT_NE(activation.activation(), ActivationIntf::Activations::Invalid);
 }

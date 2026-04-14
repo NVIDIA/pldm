@@ -229,3 +229,26 @@ TEST_F(UpdateAndUtilityTest, handleTransportError_keepsMismatchedTypeError)
 
     EXPECT_TRUE(reqHandler.hasTransportError(eid));
 }
+
+TEST_F(UpdateAndUtilityTest, handleTransportErrorWithoutStoredErrorIsNoop)
+{
+    constexpr mctp_eid_t eid = 9;
+
+    EXPECT_NO_THROW(
+        handleTransportError(reqHandler, eid, "RequestUpdate", PLDM_FWUP));
+    EXPECT_FALSE(reqHandler.hasTransportError(eid));
+}
+
+TEST_F(UpdateAndUtilityTest, handleTransportErrorIgnoresDifferentEid)
+{
+    constexpr mctp_eid_t storedEid = 11;
+    constexpr mctp_eid_t requestedEid = 9;
+    auto transportError = makeTransportError(8, storedEid, PLDM_FWUP);
+    reqHandler.storeTransportError(transportError);
+    ASSERT_TRUE(reqHandler.hasTransportError(storedEid));
+
+    handleTransportError(reqHandler, requestedEid, "RequestUpdate", PLDM_FWUP);
+
+    EXPECT_TRUE(reqHandler.hasTransportError(storedEid));
+    EXPECT_FALSE(reqHandler.hasTransportError(requestedEid));
+}

@@ -5,6 +5,7 @@
 #include "common/utils.hpp"
 #include "requester/test/mock_mctp_discovery_handler_intf.hpp"
 
+#include <linux/mctp.h>
 #include <unistd.h>
 
 #include <sdbusplus/asio/connection.hpp>
@@ -74,6 +75,11 @@ class TestMctpDiscovery : public ::testing::Test
                                     sdbusplus::message_t& msg)
     {
         d.propertiesChangedCb(msg);
+    }
+    static std::string getNameFromProperties(
+        pldm::MctpDiscovery& d, const pldm::utils::PropertyMap& properties)
+    {
+        return d.getNameFromProperties(properties);
     }
     static void discoverEndpoints(pldm::MctpDiscovery& d,
                                   sdbusplus::message_t& msg)
@@ -201,7 +207,8 @@ static sdbusplus::message_t makePropertiesChangedMessage(
 {
     auto bus = sdbusplus::bus::new_default();
     auto msg =
-        bus.new_method_call("org.test", objPath.c_str(), "org.test", "Method");
+        bus.new_signal(objPath.c_str(), "org.freedesktop.DBus.Properties",
+                       "PropertiesChanged");
 
     std::string interface = pldm::MCTPInterfaceCC;
     std::map<std::string, std::variant<std::string>> properties = {
@@ -238,6 +245,21 @@ static sdbusplus::message_t makeInterfacesRemovedMessage(
 
     msg.append(sdbusplus::message::object_path(objPath), interfaces);
     sd_bus_message_set_sender(msg.get(), "org.test.Sender");
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+    return msg;
+}
+
+static sdbusplus::message_t makeInterfacesAddedMessage(
+    const std::string& objPath,
+    const std::map<std::string, std::map<std::string, pldm::dbus::Value>>&
+        interfaces)
+{
+    auto bus = sdbusplus::bus::new_default();
+    auto msg =
+        bus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+
+    msg.append(sdbusplus::message::object_path(objPath), interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
     return msg;
@@ -661,6 +683,14 @@ TEST_F(DbusBackedMctpDiscoveryTest, propertiesChangedCbCoversDefaultDbusPath)
     TestMctpDiscovery::propertiesChangedCb(*discovery, nonPldmMsg);
     EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
     EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+
+    auto unavailableAddMsg =
+        makePropertiesChangedMessage(env->onlinePldm().path, "Degraded");
+    TestMctpDiscovery::propertiesChangedCb(*discovery, unavailableAddMsg);
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+    EXPECT_FALSE(
+        containsEid(discovery->existingMctpInfos, env->onlinePldm().eid));
 
     auto addMsg =
         makePropertiesChangedMessage(env->onlinePldm().path, "Available");
@@ -1435,6 +1465,60 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsException)
     EXPECT_TRUE(types.empty());
 }
 
+TEST(MctpEndpointDiscoveryTest,
+     getMctpEndpointPropsMissingRequiredPropertyReturnsDefaults)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"NetworkId", uint32_t(7)},
+                                        {"EID", uint8_t(9)},
+                                        {"MediumType", std::string("SMBus")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(properties));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _)).Times(0);
+
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+
+    EXPECT_EQ(std::get<0>(result), uint32_t(0));
+    EXPECT_EQ(std::get<1>(result), uint8_t(MCTP_ADDR_ANY));
+    EXPECT_TRUE(std::get<2>(result).empty());
+    EXPECT_TRUE(std::get<3>(result).empty());
+    EXPECT_TRUE(std::get<4>(result).empty());
+}
+
+TEST(MctpEndpointDiscoveryTest,
+     getMctpEndpointPropsBindingLookupExceptionReturnsDefaults)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{
+        {"NetworkId", uint32_t(7)},
+        {"EID", uint8_t(9)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(properties));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyValue {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+
+    EXPECT_EQ(std::get<0>(result), uint32_t(0));
+    EXPECT_EQ(std::get<1>(result), uint8_t(MCTP_ADDR_ANY));
+    EXPECT_TRUE(std::get<2>(result).empty());
+    EXPECT_TRUE(std::get<3>(result).empty());
+    EXPECT_TRUE(std::get<4>(result).empty());
+}
+
 TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropException)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -1451,6 +1535,36 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropException)
     EXPECT_EQ(result, pldm::emptyUUID);
 }
 
+TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropMissingUuidProperty)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"Other", std::string("value")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(properties));
+
+    EXPECT_EQ(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
+                                                     "/test/path"),
+              pldm::emptyUUID);
+}
+
+TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeThrows)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"UUID", uint64_t(0x21)}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(properties));
+
+    EXPECT_THROW(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
+                                                        "/test/path"),
+                 std::bad_variant_access);
+}
+
 TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropException)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -1465,6 +1579,42 @@ TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropException)
 
     // Should return false (unavailable) due to exception
     EXPECT_FALSE(result);
+}
+
+TEST(MctpEndpointDiscoveryTest, getNameFromPropertiesSuccessDirect)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"Name", std::string("DirectName")}};
+
+    EXPECT_EQ(TestMctpDiscovery::getNameFromProperties(*disc, properties),
+              "DirectName");
+}
+
+TEST(MctpEndpointDiscoveryTest, getNameFromPropertiesMissingNameDirect)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"Address", uint64_t(0x21)}};
+
+    EXPECT_TRUE(
+        TestMctpDiscovery::getNameFromProperties(*disc, properties).empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, getNameFromPropertiesWrongTypeThrowsDirect)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap properties{{"Name", uint64_t(0x21)}};
+
+    EXPECT_THROW(TestMctpDiscovery::getNameFromProperties(*disc, properties),
+                 std::bad_variant_access);
 }
 
 TEST(MctpEndpointDiscoveryTest, discoverEndpointsInvalidMsg)
@@ -1489,6 +1639,44 @@ TEST(MctpEndpointDiscoveryTest, discoverEndpointsInvalidMsg)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
 }
 
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosInvalidMsg)
+{
+    auto& bus = pldm::utils::DBusHandler::getBus();
+    pldm::MockManager manager;
+
+    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+
+    sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
+        "xyz.openbmc_project.sdbusplus.test.Object",
+        "/xyz/openbmc_project/sdbusplus/test/object",
+        "xyz.openbmc_project.sdbusplus.test.Object", "Unused");
+
+    pldm::MctpInfos infos;
+    TestMctpDiscovery::getAddedMctpInfos(*mctpDiscoveryHandler, msg, infos);
+
+    EXPECT_TRUE(infos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosWrongSignatureReturnsEmpty)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg =
+        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+    msg.append(std::string("not-an-object-path"), uint32_t(7));
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+
+    pldm::MctpInfos infos;
+    TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
+
+    EXPECT_TRUE(infos.empty());
+}
+
 TEST(MctpEndpointDiscoveryTest, propertiesChangedCbInvalidMsg)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -1508,6 +1696,25 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbInvalidMsg)
 
     // Should not crash - just return early
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
+}
+
+TEST(MctpEndpointDiscoveryTest, propertiesChangedCbWrongSignatureReturnsEarly)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg =
+        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+    msg.append(uint32_t(7), std::vector<uint8_t>{1, 2, 3});
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
 }
 
 TEST(MctpEndpointDiscoveryTest, propertiesChangedCbValidMsgDbusException)
@@ -1616,6 +1823,27 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbMultipleNonConnectivityProps)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
 }
 
+TEST(MctpEndpointDiscoveryTest, propertiesChangedCbMockDbusServiceThrows)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makePropertiesChangedMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/15", "Available");
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce([](const char*, const char*) -> std::string {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+}
+
 TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosValidMsgGetServiceFails)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -1651,6 +1879,31 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosValidMsgGetServiceFails)
     // msg.read() succeeds, getEndpointConnectivityProp returns false (D-Bus
     // fails gracefully), then getService for UUID throws → caught → return
     EXPECT_EQ(infos.size(), 0);
+}
+
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingUuidSkipsDbusFallback)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    std::map<std::string, std::map<std::string, pldm::dbus::Value>> interfaces;
+    interfaces[pldm::MCTPInterface] = {
+        {"NetworkId", uint32_t(1)},
+        {"EID", uint8_t(10)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SPI")}};
+    auto msg = makeInterfacesAddedMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/16", interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _)).Times(0);
+
+    pldm::MctpInfos infos;
+    TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
+
+    EXPECT_TRUE(infos.empty());
 }
 
 TEST(MctpEndpointDiscoveryTest, refreshEndpointsValidMsg)
@@ -1713,6 +1966,27 @@ TEST(MctpEndpointDiscoveryTest, refreshEndpointsNoConnectivityProp)
     mctpDiscoveryHandler->refreshEndpoints(msg);
 
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
+}
+
+TEST(MctpEndpointDiscoveryTest, refreshEndpointsMockDbusPropertyException)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makeRefreshEndpointsMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/17", "Available");
+
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyValue {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    disc->refreshEndpoints(msg);
+
+    EXPECT_EQ(handler.onlineCalls, 0);
+    EXPECT_EQ(handler.offlineCalls, 0);
 }
 
 TEST(MctpEndpointDiscoveryTest, refreshEndpointsConnectivityWrongTypeThrows)
@@ -2296,6 +2570,176 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosWithEndpoints)
     EXPECT_TRUE(it->second);                            // Available
 }
 
+TEST(MctpEndpointDiscoveryTest, getMctpInfosSubtreeException)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillOnce([](const std::string&, int, const std::vector<std::string>&)
+                      -> pldm::utils::GetSubTreeResponse {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    std::map<pldm::MctpInfo, pldm::Availability> mctpInfoMap;
+    TestMctpDiscovery::getMctpInfos(*disc, mctpInfoMap);
+
+    EXPECT_TRUE(mctpInfoMap.empty());
+    EXPECT_TRUE(disc->enableMatches.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest,
+     propertiesChangedCbAddsAvailableEndpointWithMockDbus)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    auto msg = makePropertiesChangedMessage(
+        "/au/com/codeconstruct/mctp1/networks/7/endpoints/77", "Available");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(7)},
+        {"EID", uint8_t(77)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("77777777-1111-2222-3333-444455556666")}};
+    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(emptyAssocResponse));
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    EXPECT_EQ(handler.lastHandledSize, 1u);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 77);
+}
+
+TEST(MctpEndpointDiscoveryTest,
+     propertiesChangedCbDoesNotAddUnavailableEndpointWithMockDbus)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    auto msg = makePropertiesChangedMessage(
+        "/au/com/codeconstruct/mctp1/networks/8/endpoints/78", "Degraded");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(8)},
+        {"EID", uint8_t(78)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("88888888-1111-2222-3333-444455556666")}};
+    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(emptyAssocResponse));
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest,
+     propertiesChangedCbUpdatesExistingEndpointWithMockDbus)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    auto msg = makePropertiesChangedMessage(
+        "/au/com/codeconstruct/mctp1/networks/9/endpoints/79", "Degraded");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(9)},
+        {"EID", uint8_t(79)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("99999999-1111-2222-3333-444455556666")}};
+    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
+
+    disc->existingMctpInfos.emplace_back(pldm::MctpInfo(
+        79, "99999999-1111-2222-3333-444455556666", "SMBus", uint32_t(9),
+        std::nullopt, "MctpOverSMBus", std::nullopt));
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(emptyAssocResponse));
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 1);
+    EXPECT_FALSE(handler.lastAvailability);
+    EXPECT_EQ(std::get<pldm::eid>(handler.lastMctpInfo), 79);
+}
+
+TEST(MctpEndpointDiscoveryTest,
+     propertiesChangedCbReturnsForNonPldmEndpointWithMockDbus)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    auto msg = makePropertiesChangedMessage(
+        "/au/com/codeconstruct/mctp1/networks/10/endpoints/80", "Available");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(10)},
+        {"EID", uint8_t(80)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{0, 2}},
+        {"MediumType", std::string("SMBus")}};
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
 TEST(MctpEndpointDiscoveryTest, getMctpInfosDuplicatePathNoDuplicateMatch)
 {
     MockdBusHandler mockedDbusHandler;
@@ -2761,6 +3205,35 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingSupportedTypes)
     msg.append(objPath, interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
+
+    pldm::MctpInfos infos;
+    TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);
+    EXPECT_TRUE(infos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingMediumType)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+    auto msg = makeInterfacesAddedMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/575",
+        {{pldm::MCTPInterface,
+          {{"NetworkId", uint32_t(1)},
+           {"EID", uint8_t(75)},
+           {"SupportedMessageTypes", std::vector<uint8_t>{1}}}},
+         {pldm::EndpointUUID,
+          {{"UUID", std::string("eeee0000-1111-2222-3333-444455556675")}}},
+         {pldm::MCTPBindingInterface,
+          {{"BindingType",
+            std::string(
+                "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.SMBus")}}}});
+
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos);

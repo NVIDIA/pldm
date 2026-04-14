@@ -19,12 +19,12 @@
 #include "libpldm/oem/nvidia/state_set_oem_nvidia.h"
 
 #include "common/instance_id.hpp"
+#include "mock_terminus_manager.hpp"
 #include "oem/nvidia/platform-mc/state_set/cpuDiagnosticsRefresh.hpp"
 #include "platform-mc/state_effecter.hpp"
 #include "platform-mc/state_set.hpp"
 #include "platform-mc/state_set/clearNonVolatileVariables.hpp"
 #include "platform-mc/terminus.hpp"
-#include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
 
 #include <gtest/gtest.h>
@@ -67,6 +67,44 @@ static std::vector<uint8_t> makeStateEffecterPdr(
         possibleStates};
 }
 
+static std::vector<uint8_t> makeGetStateEffecterStatesResp(
+    uint8_t compEffecterCount, uint8_t completionCode = PLDM_SUCCESS,
+    pldm_effecter_oper_state effecterOpState =
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+    uint8_t pendingState = 0, uint8_t presentState = 1)
+{
+    pldm_get_state_effecter_states_resp respData{};
+    respData.completion_code = completionCode;
+    respData.comp_effecter_count = compEffecterCount;
+    for (size_t i = 0; i < compEffecterCount; ++i)
+    {
+        respData.field[i].effecter_op_state = effecterOpState;
+        respData.field[i].pending_state = pendingState;
+        respData.field[i].present_state = presentState;
+    }
+
+    size_t payloadLen =
+        1 + 1 + (compEffecterCount * sizeof(get_effecter_state_field));
+    std::vector<uint8_t> response(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    auto rc = encode_get_state_effecter_states_resp(0, &respData, responseMsg,
+                                                    payloadLen);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    return response;
+}
+
+static std::vector<uint8_t> makeSetStateEffecterStatesResp(
+    uint8_t completionCode = PLDM_SUCCESS)
+{
+    std::vector<uint8_t> response(
+        sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_STATES_RESP_BYTES, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    auto rc =
+        encode_set_state_effecter_states_resp(0, completionCode, responseMsg);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    return response;
+}
+
 class TestStateEffecter : public ::testing::Test
 {
   public:
@@ -87,7 +125,7 @@ class TestStateEffecter : public ::testing::Test
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    pldm::platform_mc::TerminusManager terminusManager;
+    pldm::platform_mc::MockTerminusManager terminusManager;
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
 };
 
@@ -350,5 +388,101 @@ TEST_F(TestStateEffecter, cpuDiagnosticsRefreshCoverage)
     effecterIntf.update(true);
     effecterIntf.update(false);
     EXPECT_FALSE(effecterIntf.refresh(true));
+    EXPECT_FALSE(effecterIntf.refresh(false));
     EXPECT_FALSE(effecterIntf.refresh());
+}
+
+TEST_F(TestStateEffecter, cpuDiagnosticsRefreshStateOnlyCoverage)
+{
+    pldm::dbus::PathAssociation association = {
+        "chassis", "all_controls", "/xyz/openbmc_project/inventory/test"};
+    std::string objectPath{
+        "/xyz/openbmc_project/control/PLDM_Effecter_creator/oem_cpu_diag_state"};
+
+    oem_nvidia::StateSetCpuDiagnosticsRefresh cpuDiagSet(
+        oem_nvidia::PLDM_NVIDIA_OEM_STATE_SET_CPU_DIAG_REFRESH, 0, objectPath,
+        association, nullptr);
+
+    EXPECT_EQ(oem_nvidia::PLDM_STATE_SET_CPU_DIAG_REFRESH_IDLE,
+              cpuDiagSet.getValue());
+    cpuDiagSet.setValue(oem_nvidia::PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED);
+    EXPECT_EQ(oem_nvidia::PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED,
+              cpuDiagSet.getValue());
+    cpuDiagSet.setValue(oem_nvidia::PLDM_STATE_SET_CPU_DIAG_REFRESH_IDLE);
+    EXPECT_EQ(oem_nvidia::PLDM_STATE_SET_CPU_DIAG_REFRESH_IDLE,
+              cpuDiagSet.getValue());
+    EXPECT_EQ("CpuDiagnosticsRefresh", cpuDiagSet.getStringStateType());
+}
+
+TEST_F(TestStateEffecter, stateEffecterResponseCoverage)
+{
+    constexpr pldm::tid_t tid = 0x42;
+    const pldm::MctpInfo mctpInfo(
+        15, "00000000-0000-0000-0000-000000000042",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    const uint16_t effecterId = 0x0825;
+    std::string uuid("00000000-0000-0000-0000-000000000006");
+    auto terminus = Terminus(tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                             terminusManager);
+    auto pdr = makeStateEffecterPdr(effecterId, PLDM_ENTITY_SYS_BOARD, 1,
+                                    PLDM_STATESET_ID_BOOT_REQUEST, 0x7);
+    terminus.pdrs.emplace_back(pdr);
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.stateEffecters.size());
+    auto effecter = terminus.stateEffecters[0];
+
+    auto response = makeGetStateEffecterStatesResp(
+        1, PLDM_SUCCESS, EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING,
+        PLDM_STATESET_BOOT_REQUEST_REQUESTED,
+        PLDM_STATESET_BOOT_REQUEST_NORMAL);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto getOkRc = stdexec::sync_wait(effecter->getStateEffecterStates());
+    ASSERT_TRUE(getOkRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*getOkRc));
+    EXPECT_TRUE(effecter->isUpdatePending());
+
+    response = {0x0, PLDM_PLATFORM, PLDM_GET_STATE_EFFECTER_STATES, 0x0};
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto getDecodeRc = stdexec::sync_wait(effecter->getStateEffecterStates());
+    ASSERT_TRUE(getDecodeRc.has_value());
+    EXPECT_NE(PLDM_SUCCESS, std::get<0>(*getDecodeRc));
+
+    response = makeGetStateEffecterStatesResp(
+        1, PLDM_ERROR, EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+        PLDM_STATESET_BOOT_REQUEST_REQUESTED,
+        PLDM_STATESET_BOOT_REQUEST_NORMAL);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto getCcRc = stdexec::sync_wait(effecter->getStateEffecterStates());
+    ASSERT_TRUE(getCcRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*getCcRc));
+
+    std::vector<set_effecter_state_field> stateField{
+        {PLDM_REQUEST_SET, PLDM_STATESET_BOOT_REQUEST_REQUESTED}};
+
+    response = makeSetStateEffecterStatesResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetStateEffecterStatesResp(
+        1, PLDM_SUCCESS, EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+        PLDM_STATESET_BOOT_REQUEST_REQUESTED,
+        PLDM_STATESET_BOOT_REQUEST_NORMAL);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto setOkRc =
+        stdexec::sync_wait(effecter->setStateEffecterStates(stateField));
+    ASSERT_TRUE(setOkRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setOkRc));
+
+    response = makeSetStateEffecterStatesResp(PLDM_ERROR);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetStateEffecterStatesResp(
+        1, PLDM_SUCCESS, EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+        PLDM_STATESET_BOOT_REQUEST_REQUESTED,
+        PLDM_STATESET_BOOT_REQUEST_NORMAL);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto setCcRc =
+        stdexec::sync_wait(effecter->setStateEffecterStates(stateField));
+    ASSERT_TRUE(setCcRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*setCcRc));
 }

@@ -22,6 +22,7 @@
 #include "requester/handler.hpp"
 #include "requester/test/mock_request.hpp"
 #include "test/test_instance_id.hpp"
+#include "test/test_tmp_utils.hpp"
 
 #include <systemd/sd-bus.h>
 #include <systemd/sd-event.h>
@@ -46,6 +47,23 @@
 using namespace pldm;
 using namespace pldm::fw_update;
 using namespace std::chrono;
+
+namespace
+{
+
+namespace fs = std::filesystem;
+
+fs::path otherDeviceTempRoot()
+{
+    return pldm::test::ensureTempDir("other");
+}
+
+std::string otherDeviceTempPathString(std::string_view relativePath)
+{
+    return (otherDeviceTempRoot() / relativePath).string();
+}
+
+} // namespace
 
 class OtherDeviceUpdateManagerTest : public testing::Test
 {
@@ -271,7 +289,8 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageDeadComponentIsSkipped)
     ComponentImageInfo deadCompInfo = {10, deadComponent,   0xFFFFFFFF, 0, 0, 0,
                                        4,  "VersionString2"};
     auto state = otherDeviceUpdateManager.txComponentImage(
-        "/tmp/should_not_be_created", deadCompInfo, package);
+        otherDeviceTempPathString("should_not_be_created"), deadCompInfo,
+        package);
 
     EXPECT_EQ(state, TransferPackageState::SKIPPED);
 }
@@ -285,7 +304,7 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageTruncatedPackageFails)
     ComponentImageInfo compInfo = {10, 100, 0xFFFFFFFF, 0,
                                    0,  2,   8,          "VersionString2"};
     auto state = otherDeviceUpdateManager.txComponentImage(
-        "/tmp/tx_component_truncated", compInfo, package);
+        otherDeviceTempPathString("tx_component_truncated"), compInfo, package);
 
     EXPECT_EQ(state, TransferPackageState::FAILED);
 }
@@ -788,7 +807,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/device_a/token.bin");
+                return otherDeviceTempPathString("device_a/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
@@ -854,7 +873,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
                 }
                 if (std::string(objectPath) == objPathB)
                 {
-                    return std::string("/tmp/other/device_b/token.bin");
+                    return otherDeviceTempPathString("device_b/token.bin");
                 }
             }
             throw std::runtime_error("unexpected property request");
@@ -943,6 +962,79 @@ TEST_F(OtherDeviceUpdateManagerTest, activateReturnsTrueForTrackedDeviceSuccess)
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
+       activateReturnsFalseWhenTrackedDeviceActivationWriteThrows)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {
+            throw std::runtime_error("requested activation write failure");
+        });
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
+
+    auto tracked = std::make_unique<OtherDeviceUpdateActivation>();
+    tracked->uuid = "UUID_ACTIVATE_THROW";
+    tracked->activationState = Server::Activation::Activations::Ready;
+    tracked->requestedActivation =
+        Server::Activation::RequestedActivations::None;
+    otherDeviceUpdateManager
+        .otherDevices["/xyz/openbmc_project/software/other/activate_throw"] =
+        std::move(tracked);
+    otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_THROW"] = {
+        "1.1", "ComponentActivateThrow"};
+
+    EXPECT_FALSE(otherDeviceUpdateManager.activate());
+}
+
+TEST_F(OtherDeviceUpdateManagerTest,
+       activateContinuesAcrossTrackedDevicesAfterSingleFailure)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(2)
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {
+            throw std::runtime_error("requested activation write failure");
+        })
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {});
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
+
+    auto first = std::make_unique<OtherDeviceUpdateActivation>();
+    first->uuid = "UUID_ACTIVATE_FAIL";
+    first->activationState = Server::Activation::Activations::Ready;
+    first->requestedActivation = Server::Activation::RequestedActivations::None;
+    otherDeviceUpdateManager
+        .otherDevices["/xyz/openbmc_project/software/other/activate_fail"] =
+        std::move(first);
+    otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_FAIL"] = {
+        "1.2", "ComponentActivateFail"};
+
+    auto second = std::make_unique<OtherDeviceUpdateActivation>();
+    second->uuid = "UUID_ACTIVATE_OK_2";
+    second->activationState = Server::Activation::Activations::Ready;
+    second->requestedActivation =
+        Server::Activation::RequestedActivations::None;
+    otherDeviceUpdateManager
+        .otherDevices["/xyz/openbmc_project/software/other/activate_ok_2"] =
+        std::move(second);
+    otherDeviceUpdateManager.uuidMappings["UUID_ACTIVATE_OK_2"] = {
+        "1.3", "ComponentActivateOk2"};
+
+    EXPECT_FALSE(otherDeviceUpdateManager.activate());
+}
+
+TEST_F(OtherDeviceUpdateManagerTest,
        interfaceAddedSetsExtendedVersionAndPolicyWhenUuidAppears)
 {
     MockdBusHandler dbusHandler;
@@ -978,6 +1070,96 @@ TEST_F(OtherDeviceUpdateManagerTest,
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
+       interfaceAddedContinuesAfterExtendedVersionWriteFailure)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(2)
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {
+            throw sdbusplus::exception::SdBusError(EIO,
+                                                   "extended version fail");
+        })
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {});
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
+    otherDeviceUpdateManager.startWatchingInterfaceAddition();
+    ASSERT_NE(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
+
+    const std::string objPath =
+        "/xyz/openbmc_project/software/other/new_uuid_ext_fail";
+    const std::string lowerUuid = "00112233445566778899aabbccddeef0";
+    const std::string upperUuid = "00112233445566778899AABBCCDDEEF0";
+    otherDeviceUpdateManager.uuidMappings[upperUuid] = {"5.1", "CompExtFail"};
+
+    pldm::dbus::PropertyMap uuidProperties;
+    uuidProperties.emplace("UUID", lowerUuid);
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace("xyz.openbmc_project.Common.UUID", uuidProperties);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg = rawBus.new_method_call("org.test",
+                                      "/xyz/openbmc_project/software/other",
+                                      "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    sealAndRewind(msg);
+
+    EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
+    ASSERT_TRUE(otherDeviceUpdateManager.otherDevices.contains(objPath));
+    EXPECT_EQ(otherDeviceUpdateManager.otherDevices.at(objPath)->uuid,
+              upperUuid);
+    EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.at(upperUuid));
+}
+
+TEST_F(OtherDeviceUpdateManagerTest,
+       interfaceAddedMarksImageUnprocessedWhenPolicyWriteFails)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
+        .Times(2)
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {})
+        .WillOnce([](const pldm::utils::DBusMapping&,
+                     const pldm::utils::PropertyValue&) {
+            throw sdbusplus::exception::SdBusError(EIO, "targets write fail");
+        });
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
+    otherDeviceUpdateManager.startWatchingInterfaceAddition();
+    ASSERT_NE(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
+
+    const std::string objPath =
+        "/xyz/openbmc_project/software/other/new_uuid_policy_fail";
+    const std::string uuid = "00112233445566778899AABBCCDDEEF1";
+    otherDeviceUpdateManager.uuidMappings[uuid] = {"5.2", "CompPolicyFail"};
+
+    pldm::dbus::PropertyMap uuidProperties;
+    uuidProperties.emplace("UUID", uuid);
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace("xyz.openbmc_project.Common.UUID", uuidProperties);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg = rawBus.new_method_call("org.test",
+                                      "/xyz/openbmc_project/software/other",
+                                      "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    sealAndRewind(msg);
+
+    EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
+    ASSERT_TRUE(otherDeviceUpdateManager.otherDevices.contains(objPath));
+    EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed.at(uuid));
+}
+
+TEST_F(OtherDeviceUpdateManagerTest,
        extractOtherDevicePkgsProcessesSingleMatchingImage)
 {
     MockdBusHandler dbusHandler;
@@ -1005,14 +1187,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/match/token.bin");
+                return otherDeviceTempPathString("match/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/match");
+    std::filesystem::create_directories(otherDeviceTempRoot() / "match");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1036,7 +1218,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
     EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed[uuid]);
-    std::filesystem::remove_all("/tmp/other/match");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "match");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1067,14 +1249,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/match2/token.bin");
+                return otherDeviceTempPathString("match2/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/match2");
+    std::filesystem::create_directories(otherDeviceTempRoot() / "match2");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         // Invalid APSKU size => fetchDescriptorsFromPackage returns nullopt
@@ -1128,7 +1310,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
         fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
-    std::filesystem::remove_all("/tmp/other/match2");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "match2");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1264,14 +1446,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/skip_dead/token.bin");
+                return otherDeviceTempPathString("skip_dead/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/skip_dead");
+    std::filesystem::create_directories(otherDeviceTempRoot() / "skip_dead");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1294,7 +1476,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
 
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.empty());
-    std::filesystem::remove_all("/tmp/other/skip_dead");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "skip_dead");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1411,14 +1593,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/multi/token.bin");
+                return otherDeviceTempPathString("multi/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/multi");
+    std::filesystem::create_directories(otherDeviceTempRoot() / "multi");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1443,7 +1625,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.uuidMappings.contains(uuid));
     EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
-    std::filesystem::remove_all("/tmp/other/multi");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "multi");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1475,14 +1657,15 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/multi_success/token.bin");
+                return otherDeviceTempPathString("multi_success/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/multi_success");
+    std::filesystem::create_directories(
+        otherDeviceTempRoot() / "multi_success");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1507,7 +1690,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
     EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed[uuid]);
-    std::filesystem::remove_all("/tmp/other/multi_success");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "multi_success");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1708,14 +1891,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
             if (std::string(objectPath) == objPath &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/other/single_fail/token.bin");
+                return otherDeviceTempPathString("single_fail/token.bin");
             }
             throw std::runtime_error("unexpected property request");
         });
 
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
-    std::filesystem::create_directories("/tmp/other/single_fail");
+    std::filesystem::create_directories(otherDeviceTempRoot() / "single_fail");
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1737,7 +1920,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
         fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
-    std::filesystem::remove_all("/tmp/other/single_fail");
+    std::filesystem::remove_all(otherDeviceTempRoot() / "single_fail");
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,

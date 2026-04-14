@@ -11,3 +11,4 @@
 /host-bmc/test/host_effecter_jsons/malformed/*
 /host-bmc/test/host_effecter_jsons/no_json/*
 /host-bmc/test/host_effecter_jsons/good/*
+/fw-update/test/fw_update_jsons/*

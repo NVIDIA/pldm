@@ -161,6 +161,52 @@ static exec::task<int> sendRecvRequestTaskInt(
     co_return rc;
 }
 
+static exec::task<int> sendRecvRequestTaskIntPassthrough(
+    Handler<Request>& reqHandler, mctp_eid_t eid, uint8_t instanceId)
+{
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    const auto [rc, responseMsg, responseLen] =
+        co_await reqHandler.sendRecvMsg(eid, std::move(request));
+    if (responseMsg == nullptr && responseLen == 0)
+    {
+        co_return rc;
+    }
+
+    co_return rc;
+}
+
+static exec::task<uint8_t> sendRecvRequestTaskUint8(
+    Handler<Request>& reqHandler, mctp_eid_t eid, uint8_t instanceId,
+    int& rcOut, const pldm_msg*& responseMsgOut, size_t& responseLenOut)
+{
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    std::tie(rcOut, responseMsgOut, responseLenOut) =
+        co_await reqHandler.sendRecvMsg(eid, std::move(request));
+    co_return static_cast<uint8_t>(rcOut);
+}
+
+static exec::task<uint8_t> sendRecvMockRequestTaskUint8(
+    Handler<MockRequest>& reqHandler, mctp_eid_t eid, uint8_t instanceId,
+    int& rcOut, const pldm_msg*& responseMsgOut, size_t& responseLenOut)
+{
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    std::tie(rcOut, responseMsgOut, responseLenOut) =
+        co_await reqHandler.sendRecvMsg(eid, std::move(request));
+    co_return static_cast<uint8_t>(rcOut);
+}
+
 TEST(HandlerStandaloneTest, requestKeyHasher)
 {
     RequestKey key{0x12, 0x34, 0x56, 0x78};
@@ -1149,7 +1195,7 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeout)
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
@@ -1172,10 +1218,46 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeout)
         }),
         exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(50));
 
     stdexec::sync_wait(scope.on_empty());
     EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineCompletion)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    const pldm_msg* resultResp = nullptr;
+    size_t resultRespLen = 0;
+
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            requestPtr->hdr.request = 1;
+
+            std::tie(resultRc, resultResp, resultRespLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+        }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    waitEventExpiry(milliseconds(1));
+
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                              response.size());
+
+    stdexec::sync_wait(scope.on_empty());
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(resultResp, responsePtr);
+    EXPECT_EQ(resultRespLen, response.size());
 }
 
 TEST_F(HandlerTest, requestTypeCoroutineCancellation)
@@ -1210,11 +1292,43 @@ TEST_F(HandlerTest, requestTypeCoroutineCancellation)
     stdexec::sync_wait(scope.on_empty());
 }
 
+TEST_F(HandlerTest, requestTypeCoroutinePreCancelled)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+
+    scope.request_stop();
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            const pldm_msg* responseMsg;
+            size_t responseLen;
+
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            requestPtr->hdr.request = 1;
+            int rc;
+
+            std::tie(rc, responseMsg, responseLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+
+            EXPECT_TRUE(false);
+        }) | stdexec::upon_stopped([&] { stopped = true; }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
 TEST_F(HandlerTest, requestTypeCoroutineTimeoutTaskInt)
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
@@ -1222,10 +1336,11 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeoutTaskInt)
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     resultRc = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                                instanceId);
+                    co_return;
                 }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(50));
 
     stdexec::sync_wait(scope.on_empty());
     EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
@@ -1245,6 +1360,7 @@ TEST_F(HandlerTest, requestTypeCoroutineCancellationTaskInt)
                                                               instanceId);
                     (void)rc;
                     EXPECT_TRUE(false);
+                    co_return;
                 }) | stdexec::upon_stopped([&] { stopped = true; }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
@@ -1265,6 +1381,7 @@ TEST_F(HandlerTest, requestTypeCoroutineTaskIntCompletesWithResponse)
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     resultRc = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                                instanceId);
+                    co_return;
                 }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
@@ -1278,6 +1395,104 @@ TEST_F(HandlerTest, requestTypeCoroutineTaskIntCompletesWithResponse)
 
     stdexec::sync_wait(scope.on_empty());
     EXPECT_EQ(resultRc, PLDM_SUCCESS);
+}
+
+TEST_F(HandlerTest, requestTypePassthroughTaskIntCancellation)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    auto rc = co_await sendRecvRequestTaskIntPassthrough(
+                        reqHandler, eid, instanceId);
+                    (void)rc;
+                    EXPECT_TRUE(false);
+                }) | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    scope.request_stop();
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, requestTypePassthroughTaskIntCompletesWithResponse)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                                  response.size());
+    });
+
+    auto result = stdexec::sync_wait(
+        sendRecvRequestTaskIntPassthrough(reqHandler, eid, instanceId));
+    responder.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_SUCCESS);
+}
+
+TEST_F(HandlerTest, requestTypePassthroughTaskIntTimeout)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+
+    std::thread expiryInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto result = stdexec::sync_wait(
+        sendRecvRequestTaskIntPassthrough(reqHandler, eid, instanceId));
+    expiryInjector.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_ERROR_NOT_READY);
+}
+
+TEST_F(HandlerTest, requestTypePassthroughTaskIntTimeoutWithTransportError)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+
+    std::thread transportErrorInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+
+        pldm::transport::MctpError mctpError{};
+        mctpError.error_code = ETIMEDOUT;
+        mctpError.direction = MCTP_DIR_TX;
+        mctpError.src_eid = 1;
+        mctpError.dest_eid = eid;
+        mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+        mctpError.payload_len = 2;
+        mctpError.payload[0] = PLDM_BASE;
+        mctpError.payload[1] = PLDM_GET_TID;
+        mctpError.binding = 2;
+        mctpError.timestamp_ns = 0;
+        reqHandler.storeTransportError(mctpError);
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto result = stdexec::sync_wait(
+        sendRecvRequestTaskIntPassthrough(reqHandler, eid, instanceId));
+    transportErrorInjector.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
 }
 
 TEST_F(HandlerTest, requestTypeSendRecvMsgRegisterFailure)
@@ -1302,6 +1517,135 @@ TEST_F(HandlerTest, requestTypeSendRecvMsgRegisterFailure)
     EXPECT_EQ(responseLen, 0u);
 }
 
+TEST_F(HandlerTest, requestTypeSendRecvMsgSyncWaitCompletesWithResponse)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(5));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                                  response.size());
+    });
+
+    auto respOpt =
+        stdexec::sync_wait(reqHandler.sendRecvMsg(eid, std::move(request)));
+    responder.join();
+
+    ASSERT_TRUE(respOpt.has_value());
+    auto& sendRecvResp = std::get<0>(*respOpt);
+    auto& [rc, responseMsg, responseLen] = sendRecvResp;
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, responsePtr);
+    EXPECT_EQ(responseLen, response.size());
+}
+
+TEST_F(HandlerTest, requestTypeSendRecvMsgSyncWaitTimeout)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    std::thread expiryInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto respOpt =
+        stdexec::sync_wait(reqHandler.sendRecvMsg(eid, std::move(request)));
+    expiryInjector.join();
+
+    ASSERT_TRUE(respOpt.has_value());
+    auto& sendRecvResp = std::get<0>(*respOpt);
+    auto& [rc, responseMsg, responseLen] = sendRecvResp;
+    EXPECT_EQ(rc, PLDM_ERROR_NOT_READY);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, requestTypeSendRecvMsgSyncWaitTimeoutWithTransportError)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    std::thread transportErrorInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+
+        pldm::transport::MctpError mctpError{};
+        mctpError.error_code = EHOSTUNREACH;
+        mctpError.direction = MCTP_DIR_TX;
+        mctpError.src_eid = 1;
+        mctpError.dest_eid = eid;
+        mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+        mctpError.payload_len = 2;
+        mctpError.payload[0] = PLDM_FWUP;
+        mctpError.payload[1] = 0x01;
+        mctpError.binding = 2;
+        mctpError.timestamp_ns = 0;
+        reqHandler.storeTransportError(mctpError);
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto respOpt =
+        stdexec::sync_wait(reqHandler.sendRecvMsg(eid, std::move(request)));
+    transportErrorInjector.join();
+
+    ASSERT_TRUE(respOpt.has_value());
+    auto& sendRecvResp = std::get<0>(*respOpt);
+    auto& [rc, responseMsg, responseLen] = sendRecvResp;
+    EXPECT_EQ(rc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, requestTypeSendRecvMsgSyncWaitNullResponseNonZeroLength)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto requestPtr = new (request.data()) pldm_msg;
+    requestPtr->hdr.instance_id = instanceId;
+    requestPtr->hdr.request = 1;
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    });
+
+    auto respOpt =
+        stdexec::sync_wait(reqHandler.sendRecvMsg(eid, std::move(request)));
+    responder.join();
+
+    ASSERT_TRUE(respOpt.has_value());
+    auto& sendRecvResp = std::get<0>(*respOpt);
+    auto& [rc, responseMsg, responseLen] = sendRecvResp;
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 1u);
+}
+
 TEST_F(HandlerTest, requestTypeCoroutinePreCancelledTaskInt)
 {
     exec::async_scope scope;
@@ -1311,8 +1655,8 @@ TEST_F(HandlerTest, requestTypeCoroutinePreCancelledTaskInt)
     auto instanceId = instanceIdDb.next(eid).value();
     bool stopped = false;
 
-    scope.request_stop();
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    std::this_thread::sleep_for(milliseconds(10));
                     auto rc = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                               instanceId);
                     (void)rc;
@@ -1320,8 +1664,188 @@ TEST_F(HandlerTest, requestTypeCoroutinePreCancelledTaskInt)
                 }) | stdexec::upon_stopped([&] { stopped = true; }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
+    scope.request_stop();
     EXPECT_TRUE(stopped);
     stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineCancellationUint8)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+    int resultRc = PLDM_SUCCESS;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    co_await sendRecvRequestTaskUint8(reqHandler, eid,
+                                                      instanceId, resultRc,
+                                                      responseMsg, responseLen);
+                }) | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    scope.request_stop();
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, requestTypeCoroutinePreCancelledUint8)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+    int resultRc = PLDM_SUCCESS;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    scope.request_stop();
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    co_await sendRecvRequestTaskUint8(reqHandler, eid,
+                                                      instanceId, resultRc,
+                                                      responseMsg, responseLen);
+                }) | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineCompletionUint8)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    waitEventExpiry(milliseconds(1));
+
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                              response.size());
+
+    stdexec::sync_wait(scope.on_empty());
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_SUCCESS));
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, responsePtr);
+    EXPECT_EQ(responseLen, response.size());
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineTimeoutUint8)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_SUCCESS;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 1;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    waitEventExpiry(milliseconds(50));
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_ERROR_NOT_READY));
+    EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineTimeoutUint8WithTransportError)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_SUCCESS;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 1;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    pldm::transport::MctpError mctpError{};
+    mctpError.error_code = ETIMEDOUT;
+    mctpError.direction = MCTP_DIR_TX;
+    mctpError.src_eid = 1;
+    mctpError.dest_eid = eid;
+    mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+    mctpError.payload_len = 2;
+    mctpError.payload[0] = PLDM_BASE;
+    mctpError.payload[1] = PLDM_GET_TID;
+    mctpError.binding = 2;
+    mctpError.timestamp_ns = 0;
+    reqHandler.storeTransportError(mctpError);
+
+    waitEventExpiry(milliseconds(50));
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result,
+              static_cast<uint8_t>(PLDM_REQUESTER_MCTP_TRANSPORT_ERROR));
+    EXPECT_EQ(resultRc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, requestTypeCoroutineNullResponseNonZeroLengthUint8)
+{
+    exec::async_scope scope;
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(2), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 0;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_SUCCESS));
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 1u);
 }
 
 // =====================================================================
@@ -1420,6 +1944,36 @@ TEST_F(HandlerTest, asyncRequestCancellationByCoroutine)
     stdexec::sync_wait(scope.on_empty());
 }
 
+TEST_F(HandlerTest, mockRequestCoroutinePreCancelled)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(1), 2, milliseconds(100));
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+
+    scope.request_stop();
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            const pldm_msg* responseMsg;
+            size_t responseLen;
+
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            int rc;
+
+            std::tie(rc, responseMsg, responseLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+
+            EXPECT_TRUE(false);
+        }) | stdexec::upon_stopped([&] { stopped = true; }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
 // =====================================================================
 // Additional SendRecvMsgOperation receiver-type coverage tests
 // Each exec::task<T> creates a distinct receiver type with its own
@@ -1495,10 +2049,165 @@ TEST_F(HandlerTest, mockRequestCoroutineCancellationUint8)
 
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     co_await _::cancelTask(reqHandler, eid, instanceId);
+                    co_return;
                 }) | stdexec::upon_stopped([&] { stopped = true; }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
     scope.request_stop();
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, mockRequestCoroutinePreCancelledUint8)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(1), 2, milliseconds(100));
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+    int resultRc = PLDM_SUCCESS;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    scope.request_stop();
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    co_await sendRecvMockRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }) | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    EXPECT_TRUE(stopped);
+    stdexec::sync_wait(scope.on_empty());
+}
+
+TEST_F(HandlerTest, mockRequestCoroutineCompletionUint8)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(1), 2, milliseconds(100));
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = nullptr;
+    size_t responseLen = 0;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvMockRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    waitEventExpiry(milliseconds(1));
+
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                              response.size());
+
+    stdexec::sync_wait(scope.on_empty());
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_SUCCESS));
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, responsePtr);
+    EXPECT_EQ(responseLen, response.size());
+}
+
+TEST_F(HandlerTest, mockRequestCoroutineTimeoutUint8)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(0), 0, milliseconds(1));
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_SUCCESS;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 1;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvMockRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    waitEventExpiry(milliseconds(20));
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_ERROR_NOT_READY));
+    EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, mockRequestCoroutineTimeoutUint8WithTransportError)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(0), 0, milliseconds(1));
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_SUCCESS;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 1;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvMockRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    pldm::transport::MctpError mctpError{};
+    mctpError.error_code = EHOSTUNREACH;
+    mctpError.direction = MCTP_DIR_TX;
+    mctpError.src_eid = 1;
+    mctpError.dest_eid = eid;
+    mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+    mctpError.payload_len = 2;
+    mctpError.payload[0] = PLDM_FWUP;
+    mctpError.payload[1] = 0x01;
+    mctpError.binding = 2;
+    mctpError.timestamp_ns = 0;
+    reqHandler.storeTransportError(mctpError);
+
+    waitEventExpiry(milliseconds(20));
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result,
+              static_cast<uint8_t>(PLDM_REQUESTER_MCTP_TRANSPORT_ERROR));
+    EXPECT_EQ(resultRc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 0u);
+}
+
+TEST_F(HandlerTest, niceMockRequestCoroutinePreCancelled)
+{
+    exec::async_scope scope;
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(1), 2,
+        milliseconds(100));
+    auto instanceId = instanceIdDb.next(eid).value();
+    bool stopped = false;
+
+    scope.request_stop();
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            const pldm_msg* responseMsg;
+            size_t responseLen;
+
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            int rc;
+
+            std::tie(rc, responseMsg, responseLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+
+            EXPECT_TRUE(false);
+        }) | stdexec::upon_stopped([&] { stopped = true; }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
     EXPECT_TRUE(stopped);
     stdexec::sync_wait(scope.on_empty());
 }
@@ -1871,6 +2580,97 @@ TEST_F(HandlerTest, requestTypeCoroutineNullResponseNonZeroLength)
     EXPECT_EQ(resultRespLen, 1u);
 }
 
+TEST_F(HandlerTest, mockRequestCoroutineNullResponseNonZeroLength)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(2), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    const pldm_msg* resultResp = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t resultRespLen = 0;
+
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            requestPtr->hdr.request = 1;
+
+            std::tie(resultRc, resultResp, resultRespLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+        }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(resultResp, nullptr);
+    EXPECT_EQ(resultRespLen, 1u);
+}
+
+TEST_F(HandlerTest, mockRequestCoroutineNullResponseNonZeroLengthUint8)
+{
+    exec::async_scope scope;
+    Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                    seconds(2), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    uint8_t result = 0;
+    const pldm_msg* responseMsg = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t responseLen = 0;
+
+    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+                    result = co_await sendRecvMockRequestTaskUint8(
+                        reqHandler, eid, instanceId, resultRc, responseMsg,
+                        responseLen);
+                }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(result, static_cast<uint8_t>(PLDM_SUCCESS));
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(responseMsg, nullptr);
+    EXPECT_EQ(responseLen, 1u);
+}
+
+TEST_F(HandlerTest, niceMockRequestCoroutineNullResponseNonZeroLength)
+{
+    exec::async_scope scope;
+    Handler<NiceMock<MockRequest>> reqHandler(
+        pldmTransport, event, instanceIdDb, false, seconds(2), 2,
+        milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    int resultRc = PLDM_ERROR;
+    const pldm_msg* resultResp = reinterpret_cast<const pldm_msg*>(0x1);
+    size_t resultRespLen = 0;
+
+    scope.spawn(
+        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
+            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+            auto requestPtr = new (request.data()) pldm_msg;
+            requestPtr->hdr.instance_id = instanceId;
+            requestPtr->hdr.request = 1;
+
+            std::tie(resultRc, resultResp, resultRespLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+        }),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+
+    reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    stdexec::sync_wait(scope.on_empty());
+
+    EXPECT_EQ(resultRc, PLDM_SUCCESS);
+    EXPECT_EQ(resultResp, nullptr);
+    EXPECT_EQ(resultRespLen, 1u);
+}
+
 TEST_F(HandlerTest, mockRequestSingleRequestResponseScenario)
 {
     Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
@@ -1939,12 +2739,114 @@ TEST_F(HandlerTest, requestTypeCoroutineCompletionTaskInt)
                                                               instanceId);
                     (void)rc;
                     completed = true;
+                    co_return;
                 }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(1));
+
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                              response.size());
     stdexec::sync_wait(scope.on_empty());
     EXPECT_TRUE(completed);
+}
+
+TEST_F(HandlerTest, requestTypeTaskIntSyncWaitCompletesWithResponse)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+    pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+    auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+                                  response.size());
+    });
+
+    auto result =
+        stdexec::sync_wait(sendRecvRequestTaskInt(reqHandler, eid, instanceId));
+    responder.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_SUCCESS);
+}
+
+TEST_F(HandlerTest, requestTypeTaskIntSyncWaitTimeout)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+
+    std::thread expiryInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto result =
+        stdexec::sync_wait(sendRecvRequestTaskInt(reqHandler, eid, instanceId));
+    expiryInjector.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_ERROR_NOT_READY);
+}
+
+TEST_F(HandlerTest, requestTypeTaskIntSyncWaitTimeoutWithTransportError)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(0), 2, milliseconds(1));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+
+    std::thread transportErrorInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+
+        pldm::transport::MctpError mctpError{};
+        mctpError.error_code = ETIMEDOUT;
+        mctpError.direction = MCTP_DIR_TX;
+        mctpError.src_eid = 1;
+        mctpError.dest_eid = eid;
+        mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+        mctpError.payload_len = 2;
+        mctpError.payload[0] = PLDM_BASE;
+        mctpError.payload[1] = PLDM_GET_TID;
+        mctpError.binding = 2;
+        mctpError.timestamp_ns = 0;
+        reqHandler.storeTransportError(mctpError);
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
+    auto result =
+        stdexec::sync_wait(sendRecvRequestTaskInt(reqHandler, eid, instanceId));
+    transportErrorInjector.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
+}
+
+TEST_F(HandlerTest, requestTypeTaskIntSyncWaitNullResponseNonZeroLength)
+{
+    Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
+                                seconds(5), 2, milliseconds(100));
+
+    auto instanceId = instanceIdDb.next(eid).value();
+
+    std::thread responder([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.handleResponse(eid, instanceId, 0, 0, nullptr, 1);
+    });
+
+    auto result =
+        stdexec::sync_wait(sendRecvRequestTaskInt(reqHandler, eid, instanceId));
+    responder.join();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::get<0>(*result), PLDM_SUCCESS);
 }
 
 TEST_F(HandlerTest, failingSendRequestTransportErrorMethods)
@@ -2125,7 +3027,7 @@ TEST_F(HandlerTest, mockRequestCoroutineTimeoutNoTransportError)
 {
     exec::async_scope scope;
     Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                    seconds(1), 2, milliseconds(100));
+                                    seconds(0), 0, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
@@ -2144,7 +3046,7 @@ TEST_F(HandlerTest, mockRequestCoroutineTimeoutNoTransportError)
         }),
         exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(20));
     stdexec::sync_wait(scope.on_empty());
 
     EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
@@ -2186,7 +3088,7 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeoutWithTransportError)
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
     const pldm_msg* resultResp = nullptr;
@@ -2217,7 +3119,7 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeoutWithTransportError)
     mctpError.timestamp_ns = 0;
     reqHandler.storeTransportError(mctpError);
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(50));
     stdexec::sync_wait(scope.on_empty());
 
     EXPECT_EQ(resultRc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
@@ -2229,7 +3131,7 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeoutTaskIntWithTransportError)
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int result = PLDM_SUCCESS;
@@ -2237,24 +3139,32 @@ TEST_F(HandlerTest, requestTypeCoroutineTimeoutTaskIntWithTransportError)
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     result = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                              instanceId);
+                    co_return;
                 }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    pldm::transport::MctpError mctpError{};
-    mctpError.error_code = ETIMEDOUT;
-    mctpError.direction = MCTP_DIR_TX;
-    mctpError.src_eid = 1;
-    mctpError.dest_eid = eid;
-    mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
-    mctpError.payload_len = 2;
-    mctpError.payload[0] = PLDM_BASE;
-    mctpError.payload[1] = PLDM_GET_TID;
-    mctpError.binding = 2;
-    mctpError.timestamp_ns = 0;
-    reqHandler.storeTransportError(mctpError);
+    std::this_thread::sleep_for(milliseconds(5));
 
-    waitEventExpiry(milliseconds(500));
+    std::thread transportErrorInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+
+        pldm::transport::MctpError mctpError{};
+        mctpError.error_code = ETIMEDOUT;
+        mctpError.direction = MCTP_DIR_TX;
+        mctpError.src_eid = 1;
+        mctpError.dest_eid = eid;
+        mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+        mctpError.payload_len = 2;
+        mctpError.payload[0] = PLDM_BASE;
+        mctpError.payload[1] = PLDM_GET_TID;
+        mctpError.binding = 2;
+        mctpError.timestamp_ns = 0;
+        reqHandler.storeTransportError(mctpError);
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
+
     stdexec::sync_wait(scope.on_empty());
+    transportErrorInjector.join();
 
     EXPECT_EQ(result, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
 }
@@ -2263,7 +3173,7 @@ TEST_F(HandlerTest, mockRequestCoroutineTimeoutWithTransportError)
 {
     exec::async_scope scope;
     Handler<MockRequest> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                    seconds(1), 2, milliseconds(100));
+                                    seconds(0), 0, milliseconds(1));
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
     const pldm_msg* resultResp = nullptr;
@@ -2294,7 +3204,7 @@ TEST_F(HandlerTest, mockRequestCoroutineTimeoutWithTransportError)
     mctpError.timestamp_ns = 0;
     reqHandler.storeTransportError(mctpError);
 
-    waitEventExpiry(milliseconds(500));
+    waitEventExpiry(milliseconds(20));
     stdexec::sync_wait(scope.on_empty());
 
     EXPECT_EQ(resultRc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
@@ -2353,7 +3263,7 @@ TEST_F(HandlerTest,
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
@@ -2362,12 +3272,19 @@ TEST_F(HandlerTest,
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     resultRc = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                                instanceId);
+                    co_return;
                 }) | stdexec::upon_stopped([&] { stopped = true; }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    waitEventExpiry(milliseconds(500));
+    std::this_thread::sleep_for(milliseconds(5));
+
+    std::thread expiryInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
 
     stdexec::sync_wait(scope.on_empty());
+    expiryInjector.join();
     EXPECT_FALSE(stopped);
     EXPECT_EQ(resultRc, PLDM_ERROR_NOT_READY);
 }
@@ -2377,7 +3294,7 @@ TEST_F(HandlerTest,
 {
     exec::async_scope scope;
     Handler<Request> reqHandler(pldmTransport, event, instanceIdDb, false,
-                                seconds(1), 2, milliseconds(100));
+                                seconds(0), 2, milliseconds(1));
 
     auto instanceId = instanceIdDb.next(eid).value();
     int resultRc = PLDM_SUCCESS;
@@ -2386,25 +3303,32 @@ TEST_F(HandlerTest,
     scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
                     resultRc = co_await sendRecvRequestTaskInt(reqHandler, eid,
                                                                instanceId);
+                    co_return;
                 }) | stdexec::upon_stopped([&] { stopped = true; }),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    pldm::transport::MctpError mctpError{};
-    mctpError.error_code = ETIMEDOUT;
-    mctpError.direction = MCTP_DIR_TX;
-    mctpError.src_eid = 1;
-    mctpError.dest_eid = eid;
-    mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
-    mctpError.payload_len = 2;
-    mctpError.payload[0] = PLDM_BASE;
-    mctpError.payload[1] = PLDM_GET_TID;
-    mctpError.binding = 2;
-    mctpError.timestamp_ns = 0;
-    reqHandler.storeTransportError(mctpError);
+    std::this_thread::sleep_for(milliseconds(5));
 
-    waitEventExpiry(milliseconds(500));
+    std::thread transportErrorInjector([&]() {
+        std::this_thread::sleep_for(milliseconds(20));
+
+        pldm::transport::MctpError mctpError{};
+        mctpError.error_code = ETIMEDOUT;
+        mctpError.direction = MCTP_DIR_TX;
+        mctpError.src_eid = 1;
+        mctpError.dest_eid = eid;
+        mctpError.msg_type = MCTP_MSG_TYPE_PLDM;
+        mctpError.payload_len = 2;
+        mctpError.payload[0] = PLDM_BASE;
+        mctpError.payload[1] = PLDM_GET_TID;
+        mctpError.binding = 2;
+        mctpError.timestamp_ns = 0;
+        reqHandler.storeTransportError(mctpError);
+        reqHandler.instanceIdExpiryCallBack({eid, instanceId, 0, 0});
+    });
 
     stdexec::sync_wait(scope.on_empty());
+    transportErrorInjector.join();
     EXPECT_FALSE(stopped);
     EXPECT_EQ(resultRc, PLDM_REQUESTER_MCTP_TRANSPORT_ERROR);
 }
