@@ -915,7 +915,24 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
                                                parsedPdr.get());
     if (rc)
     {
-        return nullptr;
+        /* WORKAROUND: CPU/SatMC firmware does not comply with DSP0248
+         * Table 87, which requires max_settable and min_settable to be
+         * sized exactly by effecter_data_size on the wire.  Instead, the
+         * firmware always sends both fields as 8 bytes
+         * (sizeof(union_effecter_data_size)), leaking the in-memory union
+         * size into the wire format.  This causes
+         * decode_numeric_effecter_pdr_data() to read range_field_format
+         * from the wrong offset, failing validation.  When the PDR size
+         * exactly matches the struct size, fall back to memcpy which is
+         * compatible with the non-compliant firmware wire format. */
+        if (pdr.size() != sizeof(*parsedPdr))
+        {
+            lg2::error("decode_numeric_effecter_pdr_data failed: rc={RC}, "
+                       "pdr_size={SIZE}",
+                       "RC", rc, "SIZE", pdr.size());
+            return nullptr;
+        }
+        memcpy(parsedPdr.get(), pdr.data(), pdr.size());
     }
     return parsedPdr;
 }
