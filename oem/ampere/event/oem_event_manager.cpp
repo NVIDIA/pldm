@@ -8,7 +8,6 @@
 
 #include <config.h>
 #include <libpldm/pldm.h>
-#include <libpldm/utils.h>
 #include <systemd/sd-journal.h>
 
 #include <phosphor-logging/lg2.hpp>

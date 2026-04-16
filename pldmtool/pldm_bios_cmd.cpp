@@ -1,7 +1,7 @@
 #include "pldm_bios_cmd.hpp"
 
 #include "libpldm/bios_table.h"
-#include "libpldm/utils.h"
+#include "libpldm/pldm_types.h"
 
 #include "common/bios_utils.hpp"
 #include "common/utils.hpp"

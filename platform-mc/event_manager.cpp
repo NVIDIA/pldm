@@ -17,7 +17,6 @@
 #include "event_manager.hpp"
 
 #include "libpldm/platform.h"
-#include "libpldm/utils.h"
 
 #include "common/sleep.hpp"
 #include "fw-update/manager.hpp"
@@ -25,6 +24,8 @@
 #include "platform_manager.hpp"
 #include "sensor_manager.hpp"
 #include "terminus_manager.hpp"
+
+#include <libpldm/edac.h>
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>

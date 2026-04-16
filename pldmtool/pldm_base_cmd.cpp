@@ -3,7 +3,6 @@
 #include "pldm_cmd_helper.hpp"
 
 #include <libpldm/firmware_update.h>
-#include <libpldm/utils.h>
 
 #ifdef OEM_IBM
 #include <libpldm/oem/ibm/file_io.h>
@@ -249,7 +248,7 @@ class GetPLDMVersion : public CommandInterface
         {
             ordered_json versionList = ordered_json::array();
             char buffer[16] = {0};
-            int ret = ver2str(&version, buffer, sizeof(buffer));
+            int ret = pldm_base_ver2str(&version, buffer, sizeof(buffer));
             if (ret < 0)
             {
                 std::cerr << "Failed to convert version to string\n";
@@ -269,7 +268,8 @@ class GetPLDMVersion : public CommandInterface
                 ver32_t additionalVersion;
                 std::memcpy(&additionalVersion, responsePtr->payload + offset,
                             sizeof(ver32_t));
-                ret = ver2str(&additionalVersion, buffer, sizeof(buffer));
+                ret = pldm_base_ver2str(&additionalVersion, buffer,
+                                        sizeof(buffer));
                 if (ret < 0)
                 {
                     break;

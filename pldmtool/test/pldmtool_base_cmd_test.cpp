@@ -25,7 +25,6 @@ extern "C" int __wrap_pldm_instance_db_init_default(
 
 #include <libpldm/base.h>
 #include <libpldm/firmware_update.h>
-#include <libpldm/utils.h>
 
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "../pldm_base_cmd.cpp"

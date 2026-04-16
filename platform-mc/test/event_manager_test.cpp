@@ -17,7 +17,6 @@
 #include "libpldm/base.h"
 #include "libpldm/entity.h"
 #include "libpldm/platform.h"
-#include "libpldm/utils.h"
 
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
@@ -42,6 +41,8 @@
 #include "platform-mc/sensor_manager.hpp"
 #include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
+
+#include <libpldm/edac.h>
 
 #include <array>
 
