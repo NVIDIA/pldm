@@ -1225,8 +1225,19 @@ bool InventoryManager::logDeviceStatusErrors(const mctp_eid_t eid,
 
     for (const auto& errorInfo : errorInfos)
     {
+        // Forward the RAS OEM identifiers so bmcweb can populate
+        // Oem.Nvidia.{Device,ErrorId} on the FW update task message/log.
+        std::map<std::string, std::string> extraData;
+        if (!errorInfo.deviceName.empty())
+        {
+            extraData["DEVICE_NAME"] = errorInfo.deviceName;
+        }
+        if (!errorInfo.errorId.empty())
+        {
+            extraData["ERROR_ID"] = errorInfo.errorId;
+        }
         createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1, "",
-                       logNamespace, overrideSeverity);
+                       logNamespace, overrideSeverity, std::nullopt, extraData);
     }
     return true;
 }

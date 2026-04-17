@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,7 +57,8 @@ bool test_queryDeviceStatus(mctp_eid_t eid);
 void test_createLogEntry(
     const std::string& messageID, const std::string& messageArgs,
     const std::string& resolution, const std::string& logNamespace,
-    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level);
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
+    const std::map<std::string, std::string>& extraData = {});
 } // namespace pldm::transport
 
 namespace phosphor::logging::mctp
@@ -140,7 +142,8 @@ bool test_queryDeviceStatus(mctp_eid_t)
 void test_createLogEntry(
     const std::string& messageID, const std::string& messageArgs,
     const std::string& resolution, const std::string& logNamespace,
-    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level)
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
+    const std::map<std::string, std::string>&)
 {
     logCalls.push_back(
         {messageID, messageArgs, resolution, logNamespace, level});

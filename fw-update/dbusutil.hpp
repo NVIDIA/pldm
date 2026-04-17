@@ -244,11 +244,15 @@ inline void setDBusPropertyAsync(std::string_view objectPath,
  *  @param[in] resolution - Resolution field
  *  @param[in] logNamespace - Logging namespace
  *  @param[in] level - Severity level for the log entry
+ *  @param[in] extraData - Optional additional key/value pairs to merge into
+ *                         AdditionalData (e.g. DEVICE_NAME, ERROR_ID). Keys
+ *                         here override any defaults set above.
  */
 inline void createLogEntry(
     const std::string& messageID, const std::string& messageArgs,
     const std::string& resolution, const std::string& logNamespace,
-    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level)
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
+    const std::map<std::string, std::string>& extraData = {})
 {
     std::map<std::string, std::string> addData;
     addData["REDFISH_MESSAGE_ID"] = messageID;
@@ -262,6 +266,11 @@ inline void createLogEntry(
     if (!logNamespace.empty())
     {
         addData["namespace"] = logNamespace;
+    }
+
+    for (const auto& [key, value] : extraData)
+    {
+        addData[key] = value;
     }
 
     auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
@@ -297,7 +306,8 @@ inline void createLogEntry(
     const std::string& messageID, const std::string& arg0,
     const std::string& arg1, const std::string& resolution,
     const std::string logNamespace = "FWUpdate", bool overrideSeverity = false,
-    std::optional<LogLevel> overrideLevel = std::nullopt)
+    std::optional<LogLevel> overrideLevel = std::nullopt,
+    const std::map<std::string, std::string>& extraData = {})
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -357,7 +367,7 @@ inline void createLogEntry(
     }
 
     createLogEntry(messageID, messageArgs, resolution, logNamespace,
-                   overrideLevel.value_or(level));
+                   overrideLevel.value_or(level), extraData);
 }
 
 /** @brief Simple structure to hold Redfish error information */
@@ -368,6 +378,10 @@ struct RedfishErrorInfo
     std::string arg1;
     std::string resolution;
     LogLevel severity;
+    // RAS OEM identifiers forwarded so bmcweb can populate
+    // Oem.Nvidia.Device / Oem.Nvidia.ErrorId on the FW update task message.
+    std::string deviceName;
+    std::string errorId;
 };
 
 /** @brief Query device status via D-Bus and get Redfish error info
@@ -482,6 +496,19 @@ inline std::vector<RedfishErrorInfo> queryDeviceStatusError(
                 errorInfo.severity = LogLevel::Informational;
             }
 
+            // Forward the device name and RAS catalog error ID so bmcweb can
+            // populate Oem.Nvidia.{Device,ErrorId} on the task message/log.
+            if (auto dnIt = additionalData.find("DEVICE_NAME");
+                dnIt != additionalData.end())
+            {
+                errorInfo.deviceName = dnIt->second;
+            }
+            if (auto eidIt = additionalData.find("ERROR_ID");
+                eidIt != additionalData.end())
+            {
+                errorInfo.errorId = eidIt->second;
+            }
+
             errorInfos.push_back(errorInfo);
         }
     }
@@ -521,8 +548,18 @@ inline bool queryDeviceStatusAndLog(mctp_eid_t eid, bool forceCritical = true)
 
     for (const auto& errorInfo : errorInfos)
     {
+        std::map<std::string, std::string> extraData;
+        if (!errorInfo.deviceName.empty())
+        {
+            extraData["DEVICE_NAME"] = errorInfo.deviceName;
+        }
+        if (!errorInfo.errorId.empty())
+        {
+            extraData["ERROR_ID"] = errorInfo.errorId;
+        }
         createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1,
-                       errorInfo.resolution, "FWUpdate", false, overrideLevel);
+                       errorInfo.resolution, "FWUpdate", false, overrideLevel,
+                       extraData);
     }
     return true;
 }
