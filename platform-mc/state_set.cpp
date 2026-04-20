@@ -36,6 +36,7 @@
 #include "state_set/performance.hpp"
 #include "state_set/powerSupplyInput.hpp"
 #include "state_set/presenceState.hpp"
+#include "state_set/processorOsStates.hpp"
 
 namespace pldm
 {
@@ -123,6 +124,11 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     {
         return std::make_unique<StateSetHealthState>(stateSetId, compId, path,
                                                      stateAssociation);
+    }
+    else if (stateSetId == PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES)
+    {
+        return std::make_unique<StateSetProcessorOsStates>(
+            stateSetId, compId, path, stateAssociation);
     }
 
     lg2::error(

@@ -528,6 +528,8 @@ class GetPDR : public CommandInterface
         {PLDM_STATE_SET_BOOT_PROGRESS, "Boot Progress"},
         {PLDM_STATE_SET_SYS_FIRMWARE_HANG, "System Firmware Hang"},
         {PLDM_STATE_SET_POST_ERRORS, "POST Errors"},
+        {PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES,
+         "Embedded Processor OS States"},
         {PLDM_STATE_SET_LOG_FILL_STATUS, "Log Fill Status"},
         {PLDM_STATE_SET_LOG_FILTER_STATUS, "Log Filter Status"},
         {PLDM_STATE_SET_LOG_TIMESTAMP_CHANGE, "Log Timestamp Change"},
@@ -690,6 +692,26 @@ class GetPDR : public CommandInterface
          "Intermediate State-2"},
         {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_OFF, "Off"}};
 
+    static inline const std::map<uint8_t, std::string> setEmbeddedProcOsStates{
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM, "Reset/Boot-ROM"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE1, "FW Boot Stage 1"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE2, "FW Boot Stage 2"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_PRE_OS, "Pre-OS"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_BOOTING, "OS Booting"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RUNNING, "OS Running"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_QUIESCED, "OS Quiesced"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_UPDATE_IN_PROGRESS,
+         "FW Update In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_IN_PROGRESS,
+         "OS Crash Dump In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_COMPLETED,
+         "OS Crash Dump Completed"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_IN_PROGRESS,
+         "FW Fault In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_COMPLETED,
+         "FW Fault Completed"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM_2, "Reset/Boot-ROM"}};
+
     static inline const std::map<uint16_t, const std::map<uint8_t, std::string>>
         populatePStateMaps{
             {PLDM_STATE_SET_THERMAL_TRIP, setThermalTrip},
@@ -703,6 +725,8 @@ class GetPDR : public CommandInterface
             {PLDM_STATE_SET_OPERATIONAL_RUNNING_STATUS,
              setOperationalRunningState},
             {PLDM_STATE_SET_DEVICE_POWER_STATE, setPowerDeviceState},
+            {PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES,
+             setEmbeddedProcOsStates},
         };
 
     const std::map<std::string, uint8_t> strToPdrType = {
