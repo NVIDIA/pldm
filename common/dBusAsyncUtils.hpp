@@ -149,10 +149,10 @@ struct coGetServiceMap
              this](boost::system::error_code ec, MapperServiceMap value) {
                 if (ec)
                 {
-                    lg2::error(
-                        "error while xyz.openbmc_project.ObjectMapperGetObject for intf={INTERFACE} and path={OBJECT_PATH}. {ERROR_MESSAGE} ",
-                        "OBJECT_PATH", objectPath, "ERROR_MESSAGE",
-                        ec.message());
+                    lg2::debug("coGetServiceMap: GetObject failed for "
+                               "path={OBJECT_PATH}: {ERROR_MESSAGE}",
+                               "OBJECT_PATH", objectPath, "ERROR_MESSAGE",
+                               ec.message());
                 }
                 else
                 {

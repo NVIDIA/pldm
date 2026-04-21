@@ -1028,9 +1028,21 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
 
 exec::task<int> Terminus::getInventoryParent(const std::string objPath)
 {
+    const std::string assocPath = objPath + "/parent_chassis";
+    const dbus::Interfaces assocIfaces = {"xyz.openbmc_project.Association"};
+
+    /* Use the mapper to find which service owns the association object.
+     * Hardcoding mapperService here is wrong — association objects are
+     * owned by entity-manager or inventory services, not the mapper. */
+    auto serviceMap = co_await utils::coGetServiceMap(assocPath, assocIfaces);
+    if (serviceMap.empty())
+    {
+        co_return PLDM_SUCCESS;
+    }
+
+    const auto& service = serviceMap.begin()->first;
     auto parents = co_await utils::coGetDbusProperty<std::vector<std::string>>(
-        objPath + "/parent_chassis", "endpoints",
-        "xyz.openbmc_project.Association", pldm::utils::mapperService);
+        assocPath, "endpoints", "xyz.openbmc_project.Association", service);
     if (parents.size())
     {
         inventoryParentMap[objPath] = parents[0];
