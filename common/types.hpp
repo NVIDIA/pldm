@@ -205,8 +205,9 @@ using MatchDeviceInfo = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>;
 
 // FirmwareInventory
 using ComponentName = std::string;
+using Manufacturer = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
-using ComponentObject = std::tuple<ComponentName, Associations>;
+using ComponentObject = std::tuple<ComponentName, Associations, Manufacturer>;
 using CreateComponentIdNameMap =
     std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;

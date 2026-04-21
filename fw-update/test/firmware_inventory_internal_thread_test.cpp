@@ -201,8 +201,8 @@ TEST(FirmwareInventoryInternalThreadTest, updateFWVersionUpdatesExistingEntry)
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    auto entry =
-        std::make_unique<Entry>(busMock, objPath, "old-version", "0x1234");
+    auto entry = std::make_unique<Entry>(busMock, objPath, "old-version",
+                                         "0x1234", "NVIDIA");
     auto key = std::make_pair(eid1, compIdentifier);
     manager.firmwareInventoryMap.emplace(key, std::move(entry));
 
@@ -234,7 +234,8 @@ TEST(FirmwareInventoryInternalThreadTest, updateEntryUpdatesMappedInventory)
     const std::string objPath{"/xyz/openbmc_project/software/CompName2"};
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
-    auto entry = std::make_unique<Entry>(busMock, objPath, "v0.0.1", "0x4321");
+    auto entry =
+        std::make_unique<Entry>(busMock, objPath, "v0.0.1", "0x4321", "NVIDIA");
     auto key = std::make_pair(eid1, compIdentifier);
     manager.firmwareInventoryMap.emplace(key, std::move(entry));
 
