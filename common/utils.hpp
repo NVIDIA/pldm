@@ -78,6 +78,9 @@ constexpr auto mapperService = ObjectMapper::default_service;
 constexpr auto inventoryPath = "/xyz/openbmc_project/inventory";
 constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
 constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
+constexpr auto logService = "xyz.openbmc_project.Logging";
+constexpr auto logObjPath = "/xyz/openbmc_project/logging";
+constexpr auto logCreateInterface = "xyz.openbmc_project.Logging.Create";
 
 /** @struct CustomFD
  *

@@ -203,19 +203,15 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
 {
     auto createLog = [&messageID](std::map<std::string, std::string>& addData,
                                   Level& level) {
-        static constexpr auto logObjPath = "/xyz/openbmc_project/logging";
-        static constexpr auto logInterface =
-            "xyz.openbmc_project.Logging.Create";
         auto& bus = pldm::utils::DBusHandler::getBus();
 
         try
         {
-            auto service =
-                pldm::utils::DBusHandler().getService(logObjPath, logInterface);
             auto severity = sdbusplus::xyz::openbmc_project::Logging::server::
                 convertForMessage(level);
-            auto method = bus.new_method_call(service.c_str(), logObjPath,
-                                              logInterface, "Create");
+            auto method = bus.new_method_call(
+                pldm::utils::logService, pldm::utils::logObjPath,
+                pldm::utils::logCreateInterface, "Create");
             method.append(messageID, severity, addData);
             bus.call_noreply(method);
         }
@@ -243,19 +239,15 @@ void StateSensor::createLogEntryAdditionalOEMArgs(
 {
     auto createLog = [&messageID](std::map<std::string, std::string>& addData,
                                   Level& level) {
-        static constexpr auto logObjPath = "/xyz/openbmc_project/logging";
-        static constexpr auto logInterface =
-            "xyz.openbmc_project.Logging.Create";
         auto& bus = pldm::utils::DBusHandler::getBus();
 
         try
         {
-            auto service =
-                pldm::utils::DBusHandler().getService(logObjPath, logInterface);
             auto severity = sdbusplus::xyz::openbmc_project::Logging::server::
                 convertForMessage(level);
-            auto method = bus.new_method_call(service.c_str(), logObjPath,
-                                              logInterface, "Create");
+            auto method = bus.new_method_call(
+                pldm::utils::logService, pldm::utils::logObjPath,
+                pldm::utils::logCreateInterface, "Create");
             method.append(messageID, severity, addData);
             bus.call_noreply(method);
         }
