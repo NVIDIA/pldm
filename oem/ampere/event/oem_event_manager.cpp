@@ -10,6 +10,8 @@
 #include <libpldm/pldm.h>
 #include <systemd/sd-journal.h>
 
+#include <com/ampere/Event/ReportedSEL/event.hpp>
+#include <phosphor-logging/commit.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
@@ -26,6 +28,8 @@ namespace oem_ampere
 {
 namespace fs = std::filesystem;
 using namespace std::chrono;
+namespace ReportedErrorSEL = sdbusplus::error::com::ampere::event::ReportedSEL;
+namespace ReportedEventSEL = sdbusplus::event::com::ampere::event::ReportedSEL;
 
 namespace boot_stage = boot::stage;
 namespace ddr_status = ddr::status;
@@ -34,9 +38,6 @@ namespace dimm_syndrome = dimm::training_failure::dimm_syndrome;
 namespace phy_syndrome = dimm::training_failure::phy_syndrome;
 namespace training_failure = dimm::training_failure;
 
-constexpr const char* ampereEventRegistry = "OpenBMC.0.1.AmpereEvent";
-constexpr const char* ampereWarningRegistry = "OpenBMC.0.1.AmpereWarning";
-constexpr const char* ampereCriticalRegistry = "OpenBMC.0.1.AmpereCritical";
 constexpr const char* BIOSFWPanicRegistry =
     "OpenBMC.0.1.BIOSFirmwarePanicReason";
 constexpr auto maxDIMMIdxBitNum = 24;
@@ -183,16 +184,6 @@ std::unordered_map<uint8_t, std::pair<std::string, EventToMsgMap_t>>
          std::make_pair("DIMM training failure",
                         dimmTrainingFailureSyndromeToMsgMap)}};
 
-/*
-    A map between log level and the registry used for Redfish SEL log
-    Using pldm::oem::log_level
-*/
-std::unordered_map<log_level, std::string> logLevelToRedfishMsgIdMap = {
-    {log_level::OK, ampereEventRegistry},
-    {log_level::WARNING, ampereWarningRegistry},
-    {log_level::CRITICAL, ampereCriticalRegistry},
-    {log_level::BIOSFWPANIC, BIOSFWPanicRegistry}};
-
 std::unordered_map<
     uint16_t,
     std::vector<std::pair<
@@ -224,28 +215,30 @@ std::string OemEventManager::prefixMsgStrCreation(pldm_tid_t tid,
                                                   uint16_t sensorId)
 {
     std::string description;
-    if (!tidToSocketNameMap.contains(tid))
-    {
-        description += "TID " + std::to_string(tid) + ": ";
-    }
-    else
-    {
-        description += tidToSocketNameMap[tid] + ": ";
-    }
 
     if (!sensorIdToStrMap.contains(sensorId))
     {
-        description += "Sensor ID " + std::to_string(sensorId) + ": ";
+        description += "Sensor ID " + std::to_string(sensorId) + " of ";
     }
     else
     {
-        description += sensorIdToStrMap[sensorId] + ": ";
+        description += "Sensor " + sensorIdToStrMap[sensorId] + " of ";
+    }
+
+    if (!tidToSocketNameMap.contains(tid))
+    {
+        description += "TID " + std::to_string(tid);
+    }
+    else
+    {
+        description += tidToSocketNameMap[tid];
     }
 
     return description;
 }
 
-void OemEventManager::sendJournalRedfish(const std::string& description,
+void OemEventManager::sendJournalRedfish(const std::string& source,
+                                         const std::string& description,
                                          log_level& logLevel)
 {
     if (description.empty())
@@ -253,15 +246,31 @@ void OemEventManager::sendJournalRedfish(const std::string& description,
         return;
     }
 
-    if (!logLevelToRedfishMsgIdMap.contains(logLevel))
+    switch (logLevel)
     {
-        lg2::error("Invalid {LEVEL} Description {DES}", "LEVEL", logLevel,
-                   "DES", description);
-        return;
+        case log_level::OK:
+            lg2::commit(ReportedEventSEL::ReportedSELInfo(
+                "SOURCE", source, "MESSAGE", description, "RAW_DATA", ""));
+            break;
+        case log_level::WARNING:
+            lg2::commit(ReportedErrorSEL::ReportedSELWarning(
+                "SOURCE", source, "MESSAGE", description, "RAW_DATA", ""));
+            break;
+        case log_level::CRITICAL:
+            lg2::commit(ReportedErrorSEL::ReportedSELCritical(
+                "SOURCE", source, "MESSAGE", description, "RAW_DATA", ""));
+            break;
+        case log_level::BIOSFWPANIC:
+            lg2::info("MESSAGE={DES}", "DES", description, "REDFISH_MESSAGE_ID",
+                      BIOSFWPanicRegistry, "REDFISH_MESSAGE_ARGS", description);
+            break;
+        default:
+        {
+            lg2::error("Invalid {LEVEL} Description {DES}", "LEVEL", logLevel,
+                       "DES", description);
+            return;
+        }
     }
-    auto redfishMsgId = logLevelToRedfishMsgIdMap[logLevel];
-    lg2::info("MESSAGE={DES}", "DES", description, "REDFISH_MESSAGE_ID",
-              redfishMsgId, "REDFISH_MESSAGE_ARGS", description);
 }
 
 std::string OemEventManager::dimmIdxsToString(uint32_t dimmIdxs)
@@ -289,11 +298,12 @@ uint8_t OemEventManager::sensorIdToDIMMIdx(const uint16_t& sensorId)
     return dimmIdx;
 }
 
-void OemEventManager::handleBootOverallEvent(
-    pldm_tid_t /*tid*/, uint16_t /*sensorId*/, uint32_t presentReading)
+void OemEventManager::handleBootOverallEvent(pldm_tid_t tid, uint16_t sensorId,
+                                             uint32_t presentReading)
 {
     log_level logLevel{log_level::OK};
     std::string description;
+    std::string source;
     std::stringstream strStream;
 
     uint8_t byte0 = (presentReading & 0x000000ff);
@@ -378,8 +388,9 @@ void OemEventManager::handleBootOverallEvent(
         }
     }
 
+    source = prefixMsgStrCreation(tid, sensorId);
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 int OemEventManager::processNumericSensorEvent(
@@ -513,12 +524,12 @@ int OemEventManager::processStateSensorEvent(pldm_tid_t tid, uint16_t sensorId,
     }
 
     std::string description;
+    std::string source = prefixMsgStrCreation(tid, sensorId);
 
     if (stateSensorToMsgMap.contains(sensorId))
     {
         log_level logLevel = log_level::OK;
 
-        description += prefixMsgStrCreation(tid, sensorId);
         auto componentMap = stateSensorToMsgMap[sensorId];
         if (sensorOffset < componentMap.size())
         {
@@ -551,7 +562,7 @@ int OemEventManager::processStateSensorEvent(pldm_tid_t tid, uint16_t sensorId,
                            std::to_string(sensorOffset);
         }
 
-        sendJournalRedfish(description, logLevel);
+        sendJournalRedfish(source, description, logLevel);
     }
     else
     {
@@ -677,6 +688,7 @@ void OemEventManager::handlePCIeHotPlugEvent(pldm_tid_t tid, uint16_t sensorId,
                                              uint32_t presentReading)
 {
     std::string description;
+    std::string source;
     std::stringstream strStream;
     PCIeHotPlugEventRecord_t record{presentReading};
 
@@ -685,7 +697,7 @@ void OemEventManager::handlePCIeHotPlugEvent(pldm_tid_t tid, uint16_t sensorId,
     log_level logLevel =
         (!record.bits.opStatus) ? log_level::OK : log_level::WARNING;
 
-    description += prefixMsgStrCreation(tid, sensorId);
+    source = prefixMsgStrCreation(tid, sensorId);
 
     strStream << "Segment (0x" << std::setfill('0') << std::hex << std::setw(2)
               << static_cast<uint32_t>(record.bits.segment) << "); Bus (0x"
@@ -700,7 +712,7 @@ void OemEventManager::handlePCIeHotPlugEvent(pldm_tid_t tid, uint16_t sensorId,
     description += strStream.str();
 
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 std::string OemEventManager::dimmTrainingFailureToMsg(uint32_t failureInfo)
@@ -756,10 +768,11 @@ void OemEventManager::handleDIMMStatusEvent(pldm_tid_t tid, uint16_t sensorId,
 {
     log_level logLevel{log_level::WARNING};
     std::string description;
+    std::string source;
     uint8_t byte3 = (presentReading & 0xff000000) >> 24;
     uint32_t byte012 = presentReading & 0xffffff;
 
-    description += prefixMsgStrCreation(tid, sensorId);
+    source = prefixMsgStrCreation(tid, sensorId);
 
     // DIMMx_Status sensorID 4+2*index (index 0 -> maxDIMMInstantNum-1)
     auto dimmIdx = sensorIdToDIMMIdx(sensorId);
@@ -832,7 +845,7 @@ void OemEventManager::handleDIMMStatusEvent(pldm_tid_t tid, uint16_t sensorId,
     }
 
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 void OemEventManager::handleDDRStatusEvent(pldm_tid_t tid, uint16_t sensorId,
@@ -840,10 +853,11 @@ void OemEventManager::handleDDRStatusEvent(pldm_tid_t tid, uint16_t sensorId,
 {
     log_level logLevel{log_level::WARNING};
     std::string description;
+    std::string source;
     uint8_t byte3 = (presentReading & 0xff000000) >> 24;
     uint32_t byte012 = presentReading & 0xffffff;
 
-    description += prefixMsgStrCreation(tid, sensorId);
+    source = prefixMsgStrCreation(tid, sensorId);
 
     description += "DDR ";
     if (ddrStatusToMsgMap.contains(byte3))
@@ -868,7 +882,7 @@ void OemEventManager::handleDDRStatusEvent(pldm_tid_t tid, uint16_t sensorId,
     }
 
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 void OemEventManager::handleVRDStatusEvent(pldm_tid_t tid, uint16_t sensorId,
@@ -876,9 +890,10 @@ void OemEventManager::handleVRDStatusEvent(pldm_tid_t tid, uint16_t sensorId,
 {
     log_level logLevel{log_level::WARNING};
     std::string description;
+    std::string source;
     std::stringstream strStream;
 
-    description += prefixMsgStrCreation(tid, sensorId);
+    source = prefixMsgStrCreation(tid, sensorId);
 
     VRDStatus_t status{presentReading};
 
@@ -917,16 +932,17 @@ void OemEventManager::handleVRDStatusEvent(pldm_tid_t tid, uint16_t sensorId,
     description += strStream.str();
 
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 void OemEventManager::handleNumericWatchdogEvent(
     pldm_tid_t tid, uint16_t sensorId, uint32_t presentReading)
 {
     std::string description;
+    std::string source;
     log_level logLevel = log_level::CRITICAL;
 
-    description += prefixMsgStrCreation(tid, sensorId);
+    source = prefixMsgStrCreation(tid, sensorId);
 
     if (presentReading & 0x01)
     {
@@ -942,7 +958,7 @@ void OemEventManager::handleNumericWatchdogEvent(
     }
 
     // Log to Redfish event
-    sendJournalRedfish(description, logLevel);
+    sendJournalRedfish(source, description, logLevel);
 }
 
 int OemEventManager::processOemMsgPollEvent(pldm_tid_t tid, uint16_t eventId,

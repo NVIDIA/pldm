@@ -88,6 +88,72 @@ static bool descriptorsMatch(const Descriptors& deviceDescriptors,
     return true;
 }
 
+std::string UpdateManager::getSwId()
+{
+    return std::to_string(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+}
+
+int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
+{
+    if (activation &&
+        activation->activation() == software::Activation::Activations::Activating)
+    {
+        error("Activation of a PLDM firmware package is already in progress.");
+        return -1;
+    }
+
+    clearExistingActivation();
+
+    std::ifstream package(packageFilePath,
+                          std::ios::binary | std::ios::in | std::ios::ate);
+    if (!package.good())
+    {
+        error("Failed to open the PLDM fw update package file '{FILE}', "
+              "error - {ERROR}.",
+              "ERROR", errno, "FILE", packageFilePath);
+        return -1;
+    }
+
+    auto packageSize = static_cast<uintmax_t>(package.tellg());
+    package.seekg(0, std::ios::beg);
+    if (!package.good())
+    {
+        error("Failed to seek the PLDM fw update package file '{FILE}'.",
+              "FILE", packageFilePath);
+        return -1;
+    }
+
+    objPath = swRootPath + getSwId();
+    forceUpdate = false;
+    lastProgress = 0;
+
+    otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
+        pldm::utils::DBusHandler::getBus(), this,
+        std::vector<sdbusplus::message::object_path>{});
+
+    activation = std::make_unique<Activation>(
+        pldm::utils::DBusHandler::getBus(), objPath,
+        software::Activation::Activations::Ready, this);
+    activationProgress = std::make_unique<ActivationProgress>(
+        pldm::utils::DBusHandler::getBus(), objPath);
+
+    try
+    {
+        stdexec::sync_wait(processStream(package, packageSize, {}));
+        return 0;
+    }
+    catch (const std::exception& e)
+    {
+        error("Exception occurred while processing the package: {ERROR}",
+              "ERROR", e);
+        clearActivationInfo();
+        return -1;
+    }
+}
+
 UpdateManager::UpdateManager(
     Event& event, pldm::requester::Handler<pldm::requester::Request>& handler,
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
@@ -98,24 +164,26 @@ UpdateManager::UpdateManager(
     fwDebug(fwDebug),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
-    componentNameMap(componentNameMap),
+    componentNameMap(componentNameMap)
+#ifdef FW_UPDATE_INOTIFY_ENABLED
+    ,
+    watch(event.get(),
+          [this](std::string& packageFilePath) {
+              return this->processPackage(
+                  std::filesystem::path(packageFilePath));
+          })
+#else
+    ,
     updater(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
+#endif
 {
     progressTimer = nullptr;
     forceUpdate = false;
 }
 
 UpdateManager::~UpdateManager() = default;
-
-std::string UpdateManager::getSwId()
-{
-    return std::to_string(
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count());
-}
 
 std::string UpdateManager::getActivationMethod(
     bitfield16_t compActivationModification)
@@ -329,12 +397,31 @@ exec::task<void> UpdateManager::processStream(
         co_return;
     }
 
+    std::vector<uint8_t> packageData;
+    const uint8_t* pkgData = nullptr;
     auto* mmapStream = dynamic_cast<pldm::MmapStream*>(&package);
-
     if (mmapStream != nullptr)
     {
-        parser = parsePkgHeader(mmapStream->data(), mmapStream->size());
+        pkgData = mmapStream->data();
+        packageSize = mmapStream->size();
     }
+    else
+    {
+        packageData.resize(packageSize);
+        package.read(reinterpret_cast<char*>(packageData.data()),
+                     static_cast<std::streamsize>(packageSize));
+        if (package.gcount() != static_cast<std::streamsize>(packageSize))
+        {
+            error("Failed to read the complete PLDM firmware package stream");
+            handleInvalidPackageError();
+            co_return;
+        }
+        pkgData = packageData.data();
+        package.clear();
+        package.seekg(0, std::ios::beg);
+    }
+
+    parser = parsePkgHeader(pkgData, packageSize);
 
     if (parser == nullptr)
     {
@@ -343,10 +430,9 @@ exec::task<void> UpdateManager::processStream(
         parser.reset();
         co_return;
     }
-
     try
     {
-        parser->parse(mmapStream->data(), packageSize);
+        parser->parse(pkgData, packageSize);
     }
     catch (const sdbusplus::error::xyz::openbmc_project::software::update::
                InvalidSignature&)
@@ -451,6 +537,7 @@ exec::task<void> UpdateManager::processStream(
     package.clear();
     package.seekg(0, std::ios::beg);
 
+    static constexpr uint32_t maxTransferSize = 4096;
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
     {
         const auto& fwDeviceIDRecord =
@@ -474,7 +561,7 @@ exec::task<void> UpdateManager::processStream(
             std::make_unique<DeviceUpdater>(
                 deviceUpdaterInfo.first, package, fwDeviceIDRecord,
                 compImageInfos, search->second, compIdNameInfo,
-                MAXIMUM_TRANSFER_SIZE, this));
+                maxTransferSize, this));
     }
 
     // delay activation object creation if there are non-pldm updates
@@ -1071,7 +1158,6 @@ void UpdateManager::clearActivationInfo()
     activationBlocksTransition.reset();
     objPath.clear();
     fwDeviceIDRecords.clear();
-
     deviceUpdaterMap.clear();
     deviceUpdateCompletionMap.clear();
     parser.reset();
@@ -1082,6 +1168,7 @@ void UpdateManager::clearActivationInfo()
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
     listCompNames.clear();
+    lastProgress = 0;
     if (progressTimer)
     {
         progressTimer->stop();
@@ -1132,11 +1219,45 @@ void UpdateManager::updatePackageCompletion()
 void UpdateManager::updateActivationProgress()
 {
     compUpdateCompletedCount++;
-    if (compUpdateCompletedCount == totalNumComponentUpdates)
+    refreshActivationProgress();
+    if (compUpdateCompletedCount >= totalNumComponentUpdates)
     {
-        progressTimer->stop();
-        progressTimer.reset();
-        activationProgress->progress(100);
+        if (progressTimer)
+        {
+            progressTimer->stop();
+            progressTimer.reset();
+        }
+        if (activationProgress)
+        {
+            activationProgress->progress(100);
+            lastProgress = 100;
+        }
+    }
+}
+
+void UpdateManager::refreshActivationProgress()
+{
+    if (!activationProgress || deviceUpdaterMap.empty())
+    {
+        return;
+    }
+
+    using mapEl = std::pair<const mctp_eid_t, std::unique_ptr<DeviceUpdater>>;
+    auto min = std::ranges::min_element(
+        deviceUpdaterMap, [](const mapEl& lhs, const mapEl& rhs) {
+            return lhs.second->getProgress() < rhs.second->getProgress();
+        });
+
+    if (min == deviceUpdaterMap.end())
+    {
+        return;
+    }
+
+    uint8_t progress = min->second->getProgress();
+    if (progress > lastProgress)
+    {
+        activationProgress->progress(progress);
+        lastProgress = progress;
     }
 }
 
@@ -1263,7 +1384,11 @@ void UpdateManager::createProgressUpdateTimer()
             std::floor((100 * updateInterval) / totalInterval));
         info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
              progressPercent);
-        activationProgress->progress(progressPercent);
+        if (activationProgress && progressPercent > lastProgress)
+        {
+            activationProgress->progress(progressPercent);
+            lastProgress = progressPercent;
+        }
         // percent update should always be less than 100 when task is
         // aborted/cancelled. Setting to 100 percent will cause redfish task
         // service to show running and 100 percent

@@ -26,6 +26,7 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <functional>
 
 PHOSPHOR_LOG2_USING;
@@ -35,6 +36,184 @@ namespace pldm
 
 namespace fw_update
 {
+
+// The highest percentage that component transfer can give
+static constexpr uint8_t componentXferProgressPercent = 97;
+static constexpr uint8_t componentVerifyProgressPercent = 98;
+static constexpr uint8_t componentApplyProgressPercent = 99;
+static constexpr uint8_t firmwareActivationProgressPercent = 100;
+
+UpdateProgress::UpdateProgress(uint32_t totalSize, mctp_eid_t eid) :
+    progress{}, eid{eid}, totalSize{totalSize}, totalUpdated{},
+    currentState{state::Update}
+{}
+
+uint32_t UpdateProgress::getTotalSize() const
+{
+    return totalSize;
+}
+
+uint8_t UpdateProgress::getProgress() const
+{
+    return progress;
+}
+
+void UpdateProgress::updateState(state newState)
+{
+    switch (newState)
+    {
+        case state::Update:
+            break;
+        case state::Verify:
+            progress = componentVerifyProgressPercent;
+            break;
+        case state::Apply:
+            progress = componentApplyProgressPercent;
+            break;
+        default:
+            warning("Invalid state {STATE} provided", "STATE", newState);
+            return;
+    };
+    currentState = newState;
+}
+
+void UpdateProgress::reportFwUpdate(uint32_t amountUpdated)
+{
+    if (currentState != state::Update)
+    {
+        error("invalid state when updating progress: eid {EID}", "EID", eid);
+        return;
+    }
+
+    if (amountUpdated > totalSize)
+    {
+        error("invalid size when updating progress: eid {EID}", "EID", eid);
+        return;
+    }
+
+    if (amountUpdated + totalUpdated > totalSize)
+    {
+        error("invalid total size when updating progress: eid {EID}", "EID",
+              eid);
+        return;
+    }
+
+    if (totalSize == 0)
+    {
+        error("invalid package size when updating progress: eid {EID}", "EID",
+              eid);
+        return;
+    }
+
+    totalUpdated += amountUpdated;
+    progress = static_cast<uint8_t>(std::floor(
+        1.0 * componentXferProgressPercent * totalUpdated / totalSize));
+}
+
+DeviceUpdater::DeviceUpdater(
+    mctp_eid_t eid, std::istream& package,
+    const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    const ComponentImageInfos& compImageInfos, const ComponentInfo& compInfo,
+    const ComponentIdNameMap& compIdNameInfo, uint32_t maxTransferSize,
+    UpdateManager* updateManager) :
+    fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(), eid(eid),
+    package(package), compImageInfos(compImageInfos), compInfo(compInfo),
+    compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
+    updateManager(updateManager)
+{
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    for (const auto& applicableComponent : applicableComponents)
+    {
+        const auto& componentSize =
+            std::get<6>(compImageInfos[applicableComponent]);
+        progress.emplace_back(componentSize, eid);
+    }
+}
+
+uint8_t DeviceUpdater::getProgress() const
+{
+    if (progress.empty())
+    {
+        return activationComplete ? firmwareActivationProgressPercent : 0;
+    }
+
+    if (activationComplete)
+    {
+        return firmwareActivationProgressPercent;
+    }
+
+    uint64_t totalSize = 0;
+    uint64_t weightedProgress = 0;
+    for (const auto& el : progress)
+    {
+        totalSize += el.getTotalSize();
+        weightedProgress +=
+            el.getTotalSize() * static_cast<uint64_t>(el.getProgress());
+    }
+
+    if (totalSize == 0)
+    {
+        error("total component size is 0 on eid {EID}", "EID", eid);
+        return 0;
+    }
+
+    const double percentage =
+        static_cast<double>(weightedProgress) / static_cast<double>(totalSize);
+    return static_cast<uint8_t>(std::floor(percentage));
+}
+
+void DeviceUpdater::reportComponentDataProgress(size_t compIndex,
+                                                uint32_t amountUpdated)
+{
+    if (compIndex >= progress.size())
+    {
+        return;
+    }
+
+    progress[compIndex].reportFwUpdate(amountUpdated);
+    if (updateManager)
+    {
+        updateManager->refreshActivationProgress();
+    }
+}
+
+void DeviceUpdater::reportComponentVerifyProgress(size_t compIndex)
+{
+    if (compIndex >= progress.size())
+    {
+        return;
+    }
+
+    progress[compIndex].updateState(UpdateProgress::state::Verify);
+    if (updateManager)
+    {
+        updateManager->refreshActivationProgress();
+    }
+}
+
+void DeviceUpdater::reportComponentApplyProgress(size_t compIndex)
+{
+    if (compIndex >= progress.size())
+    {
+        return;
+    }
+
+    progress[compIndex].updateState(UpdateProgress::state::Apply);
+    if (updateManager)
+    {
+        updateManager->refreshActivationProgress();
+    }
+}
+
+void DeviceUpdater::markActivationComplete()
+{
+    activationComplete = true;
+    if (updateManager)
+    {
+        updateManager->refreshActivationProgress();
+    }
+}
 
 void DeviceUpdater::startFwUpdateFlow()
 {
@@ -80,8 +259,8 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
         if (rc)
         {
             error("Error while sending PassComponentTable.");
-            auto rc = co_await sendCancelUpdateRequest();
-            if (rc)
+            auto cancelRc = co_await sendCancelUpdateRequest();
+            if (cancelRc)
             {
                 error("Error while sending CancelUpdate.");
             }
@@ -114,7 +293,12 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
 
 exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
 {
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     // NumberOfComponents
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -135,7 +319,7 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
         sizeof(pldm_msg_hdr) + sizeof(struct pldm_request_update_req) +
         compImgSetVerStrInfo.length);
     auto requestMsg = new (request.data()) pldm_msg;
-    const pldm_msg* response = NULL;
+    const pldm_msg* response = nullptr;
     size_t respMsgLen = 0;
 
     auto rc = encode_request_update_req(
@@ -159,7 +343,6 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
                                           &response, &respMsgLen);
     if (rc)
     {
-        // Handle error scenario
         error("Failed to send request update for endpoint ID '{EID}', response "
               "code '{RC}'",
               "EID", eid, "RC", rc);
@@ -171,23 +354,19 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
         else
         {
             bool logged = queryDeviceStatusAndLog(eid);
-            if (!logged)
+            if (!logged && rc == PLDM_ERROR_NOT_READY)
             {
-                if (rc == PLDM_ERROR_NOT_READY)
+                for (size_t compIndex = 0;
+                     compIndex < applicableComponents.size(); compIndex++)
                 {
-                    for (size_t compIndex = 0;
-                         compIndex < applicableComponents.size(); compIndex++)
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
+                        getOemMessage(PLDM_REQUEST_UPDATE, PLDM_FWUP_TIME_OUT);
+                    if (messageStatus)
                     {
-                        auto [messageStatus, oemMessageId, oemMessageError,
-                              oemResolution] =
-                            getOemMessage(PLDM_REQUEST_UPDATE,
-                                          PLDM_FWUP_TIME_OUT);
-                        if (messageStatus)
-                        {
-                            updateManager->createMessageRegistryResourceErrors(
-                                eid, fwDeviceIDRecord, compIndex, oemMessageId,
-                                oemMessageError, oemResolution);
-                        }
+                        updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, compIndex, oemMessageId,
+                            oemMessageError, oemResolution);
                     }
                 }
             }
@@ -197,16 +376,14 @@ exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
     }
     rc = co_await processRequestUpdateResponse(eid, response, respMsgLen,
                                                retryCount);
-    if (rc == PLDM_ERROR_INVALID_DATA)
+    if (rc == PLDM_ERROR_INVALID_DATA &&
+        retryCount < maxDecodeFailureRetries)
     {
-        if (retryCount < maxDecodeFailureRetries)
-        {
-            warning(
-                "Decode failure for RequestUpdate, retry {RETRY} of {MAX}, EID={EID}",
-                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
-                eid);
-            co_return co_await sendRequestUpdate(retryCount + 1);
-        }
+        warning(
+            "Decode failure for RequestUpdate, retry {RETRY} of {MAX}, EID={EID}",
+            "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+            eid);
+        co_return co_await sendRequestUpdate(retryCount + 1);
     }
     if (rc)
     {
@@ -286,12 +463,17 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
 {
     pldmRequest.reset();
 
-    auto instanceId = updateManager->instanceIdDb.next(eid);
-    // TransferFlag
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     uint8_t transferFlag = 0;
-    const pldm_msg* response = NULL;
+    const pldm_msg* response = nullptr;
     size_t respMsgLen = 0;
     if (applicableComponents.size() == 1)
     {
@@ -310,14 +492,11 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
         transferFlag = PLDM_MIDDLE;
     }
     const auto& comp = compImageInfos[applicableComponents[offset]];
-    // ComponentClassification
     CompClassification compClassification = std::get<static_cast<size_t>(
         ComponentImageInfoPos::CompClassificationPos)>(comp);
-    // ComponentIdentifier
     CompIdentifier compIdentifier =
         std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
             comp);
-    // ComponentClassificationIndex
     CompClassificationIndex compClassificationIndex{};
     auto compKey = std::make_pair(compClassification, compIdentifier);
     if (compInfo.contains(compKey))
@@ -328,7 +507,6 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
     else
     {
         updateManager->instanceIdDb.free(eid, instanceId);
-        // Handle error scenario
         error("Failed to find component classification '{CLASSIFICATION}' and "
               "identifier '{IDENTIFIER}'",
               "CLASSIFICATION", compClassification, "IDENTIFIER",
@@ -345,10 +523,8 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }
-    // ComponentComparisonStamp
     CompComparisonStamp compComparisonStamp = std::get<static_cast<size_t>(
         ComponentImageInfoPos::CompComparisonStampPos)>(comp);
-    // ComponentVersionString
     const auto& compVersion =
         std::get<static_cast<size_t>(ComponentImageInfoPos::CompVersionPos)>(
             comp);
@@ -394,20 +570,17 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
         else
         {
             bool logged = queryDeviceStatusAndLog(eid);
-            if (!logged)
+            if (!logged && rc == PLDM_ERROR_NOT_READY)
             {
-                if (rc == PLDM_ERROR_NOT_READY)
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_PASS_COMPONENT_TABLE,
+                                  PLDM_FWUP_TIME_OUT);
+                if (messageStatus)
                 {
-                    auto [messageStatus, oemMessageId, oemMessageError,
-                          oemResolution] =
-                        getOemMessage(PLDM_PASS_COMPONENT_TABLE,
-                                      PLDM_FWUP_TIME_OUT);
-                    if (messageStatus)
-                    {
-                        updateManager->createMessageRegistryResourceErrors(
-                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                            oemMessageError, oemResolution);
-                    }
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                        oemMessageError, oemResolution);
                 }
             }
         }
@@ -416,16 +589,14 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
 
     rc = co_await processPassCompTableResponse(eid, response, respMsgLen,
                                                retryCount);
-    if (rc == PLDM_ERROR_INVALID_DATA)
+    if (rc == PLDM_ERROR_INVALID_DATA &&
+        retryCount < maxDecodeFailureRetries)
     {
-        if (retryCount < maxDecodeFailureRetries)
-        {
-            warning(
-                "Decode failure for PassCompTable, retry {RETRY} of {MAX}, EID={EID}",
-                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
-                eid);
-            co_return co_await sendPassCompTableRequest(offset, retryCount + 1);
-        }
+        warning(
+            "Decode failure for PassCompTable, retry {RETRY} of {MAX}, EID={EID}",
+            "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+            eid);
+        co_return co_await sendPassCompTableRequest(offset, retryCount + 1);
     }
     if (rc)
     {
@@ -482,7 +653,6 @@ exec::task<int> DeviceUpdater::processPassCompTableResponse(
     }
     if (completionCode)
     {
-        // Handle error scenario
         error(
             "Failed to pass component table response for endpoint ID '{EID}', "
             "completion code '{CC}'",
@@ -519,10 +689,7 @@ Response DeviceUpdater::requestFwData(const pldm_msg* request,
         return componentUpdaterMap[componentIndex].first->requestFwData(
             request, payloadLength);
     }
-    else
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
+    return sendCommandNotExpectedResponse(request, payloadLength);
 }
 
 Response DeviceUpdater::transferComplete(const pldm_msg* request,
@@ -533,10 +700,7 @@ Response DeviceUpdater::transferComplete(const pldm_msg* request,
         return componentUpdaterMap[componentIndex].first->transferComplete(
             request, payloadLength);
     }
-    else
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
+    return sendCommandNotExpectedResponse(request, payloadLength);
 }
 
 Response DeviceUpdater::verifyComplete(const pldm_msg* request,
@@ -547,10 +711,7 @@ Response DeviceUpdater::verifyComplete(const pldm_msg* request,
         return componentUpdaterMap[componentIndex].first->verifyComplete(
             request, payloadLength);
     }
-    else
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
+    return sendCommandNotExpectedResponse(request, payloadLength);
 }
 
 Response DeviceUpdater::applyComplete(const pldm_msg* request,
@@ -561,10 +722,7 @@ Response DeviceUpdater::applyComplete(const pldm_msg* request,
         return componentUpdaterMap[componentIndex].first->applyComplete(
             request, payloadLength);
     }
-    else
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
-    }
+    return sendCommandNotExpectedResponse(request, payloadLength);
 }
 
 void DeviceUpdater::onResponseSendComplete(bool success)
@@ -579,11 +737,16 @@ void DeviceUpdater::onResponseSendComplete(bool success)
 exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
 {
     pldmRequest.reset();
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(
         sizeof(pldm_msg_hdr) + sizeof(struct pldm_activate_firmware_req));
     auto requestMsg = new (request.data()) pldm_msg;
-    const pldm_msg* response = NULL;
+    const pldm_msg* response = nullptr;
     size_t respMsgLen = 0;
 
     bool useSelfContained = isLiveActivationSupported();
@@ -649,16 +812,14 @@ exec::task<int> DeviceUpdater::sendActivateFirmwareRequest(uint8_t retryCount)
     }
     rc = co_await processActivateFirmwareResponse(eid, response, respMsgLen,
                                                   retryCount);
-    if (rc == PLDM_ERROR_INVALID_DATA)
+    if (rc == PLDM_ERROR_INVALID_DATA &&
+        retryCount < maxDecodeFailureRetries)
     {
-        if (retryCount < maxDecodeFailureRetries)
-        {
-            warning(
-                "Decode failure for ActivateFirmware, retry {RETRY} of {MAX}, EID={EID}",
-                "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
-                eid);
-            co_return co_await sendActivateFirmwareRequest(retryCount + 1);
-        }
+        warning(
+            "Decode failure for ActivateFirmware, retry {RETRY} of {MAX}, EID={EID}",
+            "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+            eid);
+        co_return co_await sendActivateFirmwareRequest(retryCount + 1);
     }
     if (rc)
     {
@@ -710,7 +871,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
     }
 
     // On receiving ActivateFirmware response success/failure make the UA state
-    // to Invalid to further not responds to any PLDM Type 5 requests from FD.
+    // Invalid to not respond to any more PLDM Type 5 requests from the FD.
     deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
 
     if (completionCode)
@@ -781,6 +942,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                     }
                 }
 
+                markActivationComplete();
                 updateManager->updateDeviceCompletion(eid, true,
                                                       successCompNames);
 
@@ -832,6 +994,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
             }
         }
 
+        markActivationComplete();
         updateManager->updateDeviceCompletion(eid, true, successCompNames);
         deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
                                      numComponents);
@@ -843,14 +1006,9 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
 exec::task<int> DeviceUpdater::updateComponentCompletion(
     const size_t compIndex, const ComponentUpdateStatus compStatus)
 {
-    if (compStatus == ComponentUpdateStatus::UpdateComplete)
-    {
-        componentUpdaterMap[compIndex].second = true;
-    }
-    else
-    {
-        componentUpdaterMap[compIndex].second = false;
-    }
+    componentUpdaterMap[compIndex].second =
+        (compStatus == ComponentUpdateStatus::UpdateComplete);
+
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     if (compStatus == ComponentUpdateStatus::UpdateComplete)
@@ -860,7 +1018,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
     }
     if (compIndex < applicableComponents.size() - 1)
     {
-        updateManager->updateActivationProgress(); // for previous component
+        updateManager->updateActivationProgress(); // previous component done
         componentIndex++;
         std::unique_ptr<ComponentUpdater> compUpdater =
             std::make_unique<ComponentUpdater>(
@@ -879,49 +1037,51 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
         }
         co_return PLDM_SUCCESS;
     }
+
+    for (const auto& compUpdater : componentUpdaterMap)
+    {
+        if (compUpdater.second.second == true)
+        {
+            auto rc = co_await sendActivateFirmwareRequest();
+            if (rc)
+            {
+                error("Error while sending ActivateFirmware.");
+                co_return PLDM_ERROR;
+            }
+            co_return PLDM_SUCCESS;
+        }
+    }
+
+    auto rc = co_await sendCancelUpdateRequest();
+    if (rc)
+    {
+        error("Error while sending CancelUpdate.");
+        updateManager->updateDeviceCompletion(eid, false);
+        co_return PLDM_ERROR;
+    }
+    if (compStatus != ComponentUpdateStatus::UpdateFailed)
+    {
+        updateManager->updateDeviceCompletion(eid, true);
+    }
     else
     {
-        for (const auto& compUpdater : componentUpdaterMap)
-        {
-            // Activate firmware if atleast one component update is success.
-            if (compUpdater.second.second == true)
-            {
-                auto rc = co_await sendActivateFirmwareRequest();
-                if (rc)
-                {
-                    error("Error while sending ActivateFirmware.");
-                    co_return PLDM_ERROR;
-                }
-                co_return PLDM_SUCCESS;
-            }
-        }
-        // None of the component update is success, cancel the update
-        auto rc = co_await sendCancelUpdateRequest();
-        if (rc)
-        {
-            error("Error while sending CancelUpdate.");
-            updateManager->updateDeviceCompletion(eid, false);
-            co_return PLDM_ERROR;
-        }
-        if (compStatus != ComponentUpdateStatus::UpdateFailed)
-        {
-            updateManager->updateDeviceCompletion(eid, true);
-        }
-        else
-        {
-            updateManager->updateDeviceCompletion(eid, false);
-        }
-        co_return PLDM_SUCCESS;
+        updateManager->updateDeviceCompletion(eid, false);
     }
+    co_return PLDM_SUCCESS;
 }
 
 exec::task<int> DeviceUpdater::sendCancelUpdateRequest()
 {
     deviceUpdaterState.set(DeviceUpdaterSequence::CancelUpdate);
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-    const pldm_msg* response = NULL;
+    const pldm_msg* response = nullptr;
     size_t respMsgLen = 0;
 
     auto rc = encode_cancel_update_req(instanceId, requestMsg,
@@ -972,7 +1132,7 @@ exec::task<int> DeviceUpdater::processCancelUpdateResponse(
                  std::to_string(eid)));
 
     uint8_t completionCode = 0;
-    bool8_t nonFunctioningComponentIndication;
+    bool8_t nonFunctioningComponentIndication{};
     bitfield64_t nonFunctioningComponentBitmap{0};
     auto rc = decode_cancel_update_resp(response, respMsgLen, &completionCode,
                                         &nonFunctioningComponentIndication,
@@ -1120,16 +1280,16 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
                 info("Refreshing firmware version for EID={EID} after "
                      "activation",
                      "EID", eid);
-                co_await updateManager->refreshSingleEndpointCallback(
-                    eid, true);
+                co_await updateManager->refreshSingleEndpointCallback(eid, true);
             }
 
+            markActivationComplete();
             updateManager->updateDeviceCompletion(eid, true, successCompNames);
             deviceUpdaterState.nextState(deviceUpdaterState.current,
                                          componentIndex, numComponents);
             co_return;
         }
-        else if (status == ActivationPollStatus::Failed)
+        if (status == ActivationPollStatus::Failed)
         {
             error("Self-contained activation failed during polling for "
                   "EID={EID}",
@@ -1152,7 +1312,6 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
             deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
             co_return;
         }
-        // status == InProgress, continue polling
     }
 
     error("Self-contained activation timed out for EID={EID}", "EID", eid);
@@ -1172,14 +1331,17 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
 
     updateManager->updateDeviceCompletion(eid, false);
     deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-
-    co_return;
 }
 
 exec::task<ActivationPollStatus>
     DeviceUpdater::pollSelfContainedActivationStatus()
 {
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr) + PLDM_GET_STATUS_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
 
@@ -1217,16 +1379,14 @@ exec::task<ActivationPollStatus>
         bool logged = queryDeviceStatusAndLog(eid);
         if (!logged)
         {
+            auto [messageStatus, oemMessageId, oemMessageError,
+                  oemResolution] =
+                getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+            if (messageStatus)
             {
-                auto [messageStatus, oemMessageId, oemMessageError,
-                      oemResolution] =
-                    getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
-                if (messageStatus)
-                {
-                    updateManager->createMessageRegistryResourceErrors(
-                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                        oemMessageError, oemResolution);
-                }
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
             }
         }
         co_return ActivationPollStatus::Failed;
@@ -1271,21 +1431,19 @@ exec::task<ActivationPollStatus>
         info("Activation poll: success detected for EID={EID}", "EID", eid);
         co_return ActivationPollStatus::Success;
     }
-    else if (currentState == PLDM_FD_STATE_ACTIVATE &&
-             auxState == PLDM_FD_OPERATION_IN_PROGRESS)
+    if (currentState == PLDM_FD_STATE_ACTIVATE &&
+        auxState == PLDM_FD_OPERATION_IN_PROGRESS)
     {
         info("Activation poll: still in progress for EID={EID}", "EID", eid);
         co_return ActivationPollStatus::InProgress;
     }
-    else
-    {
-        error("Activation poll returned unexpected state for endpoint ID "
-              "{EID}, FD state={STATE}, auxState={AUXSTATE}, "
-              "auxStateStatus={AUXSTATUS}",
-              "EID", eid, "STATE", currentState, "AUXSTATE", auxState,
-              "AUXSTATUS", auxStateStatus);
-        co_return ActivationPollStatus::Failed;
-    }
+
+    error("Activation poll returned unexpected state for endpoint ID "
+          "{EID}, FD state={STATE}, auxState={AUXSTATE}, "
+          "auxStateStatus={AUXSTATUS}",
+          "EID", eid, "STATE", currentState, "AUXSTATE", auxState,
+          "AUXSTATUS", auxStateStatus);
+    co_return ActivationPollStatus::Failed;
 }
 
 } // namespace fw_update

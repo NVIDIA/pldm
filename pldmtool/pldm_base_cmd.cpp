@@ -2,6 +2,7 @@
 
 #include "pldm_cmd_helper.hpp"
 
+#include <libpldm/base.h>
 #include <libpldm/firmware_update.h>
 
 #ifdef OEM_IBM
@@ -24,11 +25,11 @@ using namespace pldmtool::helper;
 
 std::vector<std::unique_ptr<CommandInterface>> commands;
 const std::map<const char*, pldm_supported_types> pldmTypes{
-    {"base", PLDM_BASE},   {"platform", PLDM_PLATFORM},    {"bios", PLDM_BIOS},
-    {"fru", PLDM_FRU},     {"firmware update", PLDM_FWUP},
-#ifdef OEM_IBM
-    {"oem-ibm", PLDM_OEM},
-#endif
+    {"base", PLDM_BASE},         {"smbios", PLDM_SMBIOS},
+    {"platform", PLDM_PLATFORM}, {"bios", PLDM_BIOS},
+    {"fru", PLDM_FRU},           {"firmware update", PLDM_FWUP},
+    {"RDE", PLDM_RDE},           {"file transfer", PLDM_FILE},
+    {"oem", PLDM_OEM},
 };
 
 const std::map<const char*, pldm_supported_commands> pldmBaseCmds{
@@ -43,74 +44,152 @@ const std::map<const char*, pldm_supported_commands> pldmBaseCmds{
 // {"MultipartReceive", PLDM_MULTIPART_RECEIVE},
 // {"GetMultipartTransferSupport", PLDM_GET_MULTIPART_TRANSFER_SUPPORT}};
 
+const std::map<const char*, pldm_smbios_commands> pldmSmbiosCmds{
+    {"GetSMBIOSStructureTableMetadata",
+     PLDM_SMBIOS_CMD_GET_SMBIOS_STRUCTURE_TABLE_METADATA},
+    {"SetSMBIOSStructureTableMetadata",
+     PLDM_SMBIOS_CMD_SET_SMBIOS_STRUCTURE_TABLE_METADATA},
+    {"GetSMBIOSStructureTable", PLDM_SMBIOS_CMD_GET_SMBIOS_STRUCTURE_TABLE},
+    {"SetSMBIOSStructureTable", PLDM_SMBIOS_CMD_SET_SMBIOS_STRUCTURE_TABLE},
+    {"GetSMBIOSStructureByType", PLDM_SMBIOS_CMD_GET_SMBIOS_STRUCTURE_BY_TYPE},
+    {"GetSMBIOSStructureByHandle",
+     PLDM_SMBIOS_CMD_GET_SMBIOS_STRUCTURE_BY_HANDLE}};
+
 const std::map<const char*, pldm_bios_commands> pldmBiosCmds{
     {"GetBIOSTable", PLDM_GET_BIOS_TABLE},
     {"SetBIOSTable", PLDM_SET_BIOS_TABLE},
+    {"UpdateBIOSTable", PLDM_UPDATE_BIOS_TABLE},
+    {"GetBIOSTableTags", PLDM_GET_BIOS_TABLE_TAGS},
+    {"SetBIOSTableTags", PLDM_SET_BIOS_TBALE_TAGS},
+    {"AcceptBIOSAttributesPendingValues",
+     PLDM_ACCEPT_BIOS_ATTRIBUTES_PENDING_VALUES},
     {"SetBIOSAttributeCurrentValue", PLDM_SET_BIOS_ATTRIBUTE_CURRENT_VALUE},
     {"GetBIOSAttributeCurrentValueByHandle",
      PLDM_GET_BIOS_ATTRIBUTE_CURRENT_VALUE_BY_HANDLE},
+    {"GetBIOSAttributePendingValueByHandle",
+     PLDM_GET_BIOS_ATTRIBUTE_PENDING_VALUE_BY_HANDLE},
+    {"GetBIOSAttributeCurrentValueByType",
+     PLDM_GET_BIOS_ATTRIBUTE_CURRENT_VALUE_BY_TYPE},
+    {"GetBIOSAttributePendingValueByType",
+     PLDM_GET_BIOS_ATTRIBUTE_PENDING_VALUE_BY_TYPE},
     {"GetDateTime", PLDM_GET_DATE_TIME},
-    {"SetDateTime", PLDM_SET_DATE_TIME}};
+    {"SetDateTime", PLDM_SET_DATE_TIME},
+    {"GetBIOSStringTableStringType", PLDM_GET_BIOS_STRING_TABLE_STRING_TYPE},
+    {"SetBIOSStringTableStringType", PLDM_SET_BIOS_STRING_TABLE_STRING_TYPE}};
 
-// const std::map<const char*, pldm_platform_commands> pldmPlatformCmds{
-//     {"GetTerminusUID", PLDM_GET_TERMINUS_UID},
-//     {"SetEventReceiver", PLDM_SET_EVENT_RECEIVER},
-//     {"GetEventReceiver", PLDM_GET_EVENT_RECEIVER},
-//     {"PlatformEventMessage", PLDM_PLATFORM_EVENT_MESSAGE},
-//     {"PollForPlatformEventMessage", PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE},
-//     {"EventMessageSupported", PLDM_EVENT_MESSAGE_SUPPORTED},
-//     {"EventMessageBufferSize", PLDM_EVENT_MESSAGE_BUFFER_SIZE},
-//     {"SetNumericSensorEnable", PLDM_SET_NUMERIC_SENSOR_ENABLE},
-//     {"GetSensorReading", PLDM_GET_SENSOR_READING},
-//     {"GetSensorThresholds", PLDM_GET_SENSOR_THRESHOLDS},
-//     {"SetSensorThresholds", PLDM_SET_SENSOR_THRESHOLDS},
-//     {"RestoreSensorThresholds", PLDM_RESTORE_SENSOR_THRESHOLDS},
-//     {"GetSensorHysteresis", PLDM_GET_SENSOR_HYSTERESIS},
-//     {"SetSensorHysteresis", PLDM_SET_SENSOR_HYSTERESIS},
-//     {"InitNumericSensor", PLDM_INIT_NUMERIC_SENSOR},
-//     {"SetStateSensorEnables", PLDM_SET_STATE_SENSOR_ENABLES},
-//     {"GetStateSensorReadings", PLDM_GET_STATE_SENSOR_READINGS},
-//     {"InitStateSensor", PLDM_INIT_STATE_SENSOR},
-//     {"SetNumericEffecterEnable", PLDM_SET_NUMERIC_EFFECTER_ENABLE},
-//     {"SetNumericEffecterValue", PLDM_SET_NUMERIC_EFFECTER_VALUE},
-//     {"GetNumericEffecterValue", PLDM_GET_NUMERIC_EFFECTER_VALUE},
-//     {"SetStateEffecterEnables", PLDM_SET_STATE_EFFECTER_ENABLES},
-//     {"SetStateEffecterStates", PLDM_SET_STATE_EFFECTER_STATES},
-//     {"GetStateEffecterStates", PLDM_GET_STATE_EFFECTER_STATES},
-//     {"GetPLDMEventLogInfo", PLDM_GET_PLDM_EVENT_LOG_INFO},
-//     {"EnablePLDMEventLogging", PLDM_ENABLE_PLDM_EVENT_LOGGING},
-//     {"ClearPLDMEventLog", PLDM_CLEAR_PLDM_EVENT_LOG},
-//     {"GetPLDMEventLogTimestamp", PLDM_GET_PLDM_EVENT_LOG_TIMESTAMP},
-//     {"SetPLDMEventLogTimestamp", PLDM_SET_PLDM_EVENT_LOG_TIMESTAMP},
-//     {"ReadPLDMEventLog", PLDM_READ_PLDM_EVENT_LOG},
-//     {"GetPLDMEventLogPolicyInfo", PLDM_GET_PLDM_EVENT_LOG_POLICY_INFO},
-//     {"SetPLDMEventLogPolicy", PLDM_SET_PLDM_EVENT_LOG_POLICY},
-//     {"FindPLDMEventLogEntry", PLDM_FIND_PLDM_EVENT_LOG_ENTRY},
-//     {"GetPDRRepositoryInfo", PLDM_GET_PDR_REPOSITORY_INFO},
-//     {"GetPDR", PLDM_GET_PDR},
-//     {"FindPDR", PLDM_FIND_PDR},
-//     {"RunInitAgent", PLDM_RUN_INIT_AGENT},
-//     {"GetPDRRepositorySignature", PLDM_GET_PDR_REPOSITORY_SIGNATURE}};
+const std::map<const char*, pldm_platform_commands> pldmPlatformCmds{
+    {"GetTerminusUID", PLDM_GET_TERMINUS_UID},
+    {"SetEventReceiver", PLDM_SET_EVENT_RECEIVER},
+    {"GetEventReceiver", PLDM_GET_EVENT_RECEIVER},
+    {"PlatformEventMessage", PLDM_PLATFORM_EVENT_MESSAGE},
+    {"PollForPlatformEventMessage", PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE},
+    {"EventMessageSupported", PLDM_EVENT_MESSAGE_SUPPORTED},
+    {"EventMessageBufferSize", PLDM_EVENT_MESSAGE_BUFFER_SIZE},
+    {"SetNumericSensorEnable", PLDM_SET_NUMERIC_SENSOR_ENABLE},
+    {"GetSensorReading", PLDM_GET_SENSOR_READING},
+    {"GetSensorThresholds", PLDM_GET_SENSOR_THRESHOLDS},
+    {"SetSensorThresholds", PLDM_SET_SENSOR_THRESHOLDS},
+    {"RestoreSensorThresholds", PLDM_RESTORE_SENSOR_THRESHOLDS},
+    {"GetSensorHysteresis", PLDM_GET_SENSOR_HYSTERESIS},
+    {"SetSensorHysteresis", PLDM_SET_SENSOR_HYSTERESIS},
+    {"InitNumericSensor", PLDM_INIT_NUMERIC_SENSOR},
+    {"SetStateSensorEnables", PLDM_SET_STATE_SENSOR_ENABLES},
+    {"GetStateSensorReadings", PLDM_GET_STATE_SENSOR_READINGS},
+    {"InitStateSensor", PLDM_INIT_STATE_SENSOR},
+    {"SetNumericEffecterEnable", PLDM_SET_NUMERIC_EFFECTER_ENABLE},
+    {"SetNumericEffecterValue", PLDM_SET_NUMERIC_EFFECTER_VALUE},
+    {"GetNumericEffecterValue", PLDM_GET_NUMERIC_EFFECTER_VALUE},
+    {"SetStateEffecterEnables", PLDM_SET_STATE_EFFECTER_ENABLES},
+    {"SetStateEffecterStates", PLDM_SET_STATE_EFFECTER_STATES},
+    {"GetStateEffecterStates", PLDM_GET_STATE_EFFECTER_STATES},
+    {"GetPLDMEventLogInfo", PLDM_GET_PLDM_EVENT_LOG_INFO},
+    {"EnablePLDMEventLogging", PLDM_ENABLE_PLDM_EVENT_LOGGING},
+    {"ClearPLDMEventLog", PLDM_CLEAR_PLDM_EVENT_LOG},
+    {"GetPLDMEventLogTimestamp", PLDM_GET_PLDM_EVENT_LOG_TIMESTAMP},
+    {"SetPLDMEventLogTimestamp", PLDM_SET_PLDM_EVENT_LOG_TIMESTAMP},
+    {"ReadPLDMEventLog", PLDM_READ_PLDM_EVENT_LOG},
+    {"GetPLDMEventLogPolicyInfo", PLDM_GET_PLDM_EVENT_LOG_POLICY_INFO},
+    {"SetPLDMEventLogPolicy", PLDM_SET_PLDM_EVENT_LOG_POLICY},
+    {"FindPLDMEventLogEntry", PLDM_FIND_PLDM_EVENT_LOG_ENTRY},
+    {"GetPDRRepositoryInfo", PLDM_GET_PDR_REPOSITORY_INFO},
+    {"GetPDR", PLDM_GET_PDR},
+    {"FindPDR", PLDM_FIND_PDR},
+    {"RunInitAgent", PLDM_RUN_INIT_AGENT},
+    {"GetPDRRepositorySignature", PLDM_GET_PDR_REPOSITORY_SIGNATURE}};
 
-// const std::map<const char*, pldm_fru_commands> pldmFruCmds{
-//     {"GetFRURecordTableMetadata", PLDM_GET_FRU_RECORD_TABLE_METADATA},
-//     {"GetFRURecordTable", PLDM_GET_FRU_RECORD_TABLE},
-//     {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION}};
+const std::map<const char*, pldm_fru_commands> pldmFruCmds{
+    {"GetFRURecordTableMetadata", PLDM_GET_FRU_RECORD_TABLE_METADATA},
+    {"GetFRURecordTable", PLDM_GET_FRU_RECORD_TABLE},
+    {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION},
+    {"SetFRURecordTable", PLDM_SET_FRU_RECORD_TABLE},
+    {"GetFRURecordByOption", PLDM_GET_FRU_RECORD_BY_OPTION},
+    {"ReadFRUDataItem", PLDM_READ_FRU_DATA_ITEM},
+    {"WriteFRUDataItem", PLDM_WRITE_FRU_DATA_ITEM},
+    {"FindFRUFiles", PLDM_FIND_FRU_FILES},
+    {"GetFRUFileMetadata", PLDM_GET_FRU_FILE_METADATA}};
 
 const std::map<const char*, pldm_firmware_update_commands> pldmFwUpdateCmds{
     {"QueryDeviceIdentifiers", PLDM_QUERY_DEVICE_IDENTIFIERS},
     {"GetFirmwareParameters", PLDM_GET_FIRMWARE_PARAMETERS},
+    {"QueryDownstreamDevices", PLDM_QUERY_DOWNSTREAM_DEVICES},
+    {"QueryDownstreamIdentifiers", PLDM_QUERY_DOWNSTREAM_IDENTIFIERS},
+    {"GetDownstreamFirmwareParameters",
+     PLDM_QUERY_DOWNSTREAM_FIRMWARE_PARAMETERS},
     {"RequestUpdate", PLDM_REQUEST_UPDATE},
+    {"GetPackageData", PLDM_GET_PACKAGE_DATA},
+    {"GetDeviceMetaData", PLDM_GET_DEVICE_META_DATA},
     {"PassComponentTable", PLDM_PASS_COMPONENT_TABLE},
     {"UpdateComponent", PLDM_UPDATE_COMPONENT},
     {"RequestFirmwareData", PLDM_REQUEST_FIRMWARE_DATA},
     {"TransferComplete", PLDM_TRANSFER_COMPLETE},
     {"VerifyComplete", PLDM_VERIFY_COMPLETE},
     {"ApplyComplete", PLDM_APPLY_COMPLETE},
+    {"GetMetaData", PLDM_GET_META_DATA},
     {"ActivateFirmware", PLDM_ACTIVATE_FIRMWARE},
     {"GetStatus", PLDM_GET_STATUS},
     {"CancelUpdateComponent", PLDM_CANCEL_UPDATE_COMPONENT},
-    {"CancelUpdate", PLDM_CANCEL_UPDATE}};
+    {"CancelUpdate", PLDM_CANCEL_UPDATE},
+    {"ActivatePendingComponentImageSet",
+     PLDM_ACTIVATE_PENDING_COMPONENT_IMAGE_SET},
+    {"ActivatePendingComponentImage", PLDM_ACTIVATE_PENDING_COMPONENT_IMAGE},
+    {"RequestDownstreamDeviceUpdate", PLDM_REQUEST_DOWNSTREAM_DEVICE_UPDATE},
+    {"GetComponentOpaqueData", PLDM_GET_COMPONENT_OPAQUE_DATA},
+    {"UpdateSecurityRevision", PLDM_UPTATE_SECURITY_REVISION}};
+
+const std::map<const char*, pldm_rde_commands> pldmRdeCmds{
+    {"NegotiateRedfishParameters", PLDM_RDE_CMD_NEGOTIATE_REDFISH_PARAMETERS},
+    {"NegotiateMediumParameters", PLDM_RDE_CMD_NEGOTIATE_MEDIUM_PARAMETERS},
+    {"GetSchemaDictionary", PLDM_RDE_CMD_GET_SCHEMA_DICTIONARY},
+    {"GetSchemaURI", PLDM_RDE_CMD_GET_SCHEMA_URI},
+    {"GetResourceETag", PLDM_RDE_CMD_GET_RESOURCE_ETAG},
+    {"GetOEMCount", PLDM_RDE_CMD_GET_OEM_COUNT},
+    {"GetOEMName", PLDM_RDE_CMD_GET_OEM_NAME},
+    {"GetRegistryCount", PLDM_RDE_CMD_GET_REGISTRY_COUNT},
+    {"GetRegistryDetails", PLDM_RDE_CMD_GET_REGISTRY_DETAILS},
+    {"SelectRegistryVersion", PLDM_RDE_CMD_SELECT_REGISTRY_VERSION},
+    {"GetMessageRegistry", PLDM_RDE_CMD_GET_MESSAGE_REGISTRY},
+    {"GetSchemaFile", PLDM_RDE_CMD_GET_SCHEMA_FILE},
+    {"RDEOperationInit", PLDM_RDE_CMD_RDE_OPERATION_INIT},
+    {"SupplyCustomRequestParameters",
+     PLDM_RDE_CMD_SUPPLY_CUSTOM_REQUEST_PARAMETERS},
+    {"RetrieveCustomResponseParameters",
+     PLDM_RDE_CMD_RETRIEVE_CUSTOM_RESPONSE_PARAMETERS},
+    {"RDEOperationComplete", PLDM_RDE_CMD_RDE_OPERATION_COMPLETE},
+    {"RDEOperationStatus", PLDM_RDE_CMD_RDE_OPERATION_STATUS},
+    {"RDEOperationKill", PLDM_RDE_CMD_RDE_OPERATION_KILL},
+    {"RDEOperationEnumerate", PLDM_RDE_CMD_RDE_OPERATION_ENUMERATE},
+    {"RDEMultipartSend", PLDM_RDE_CMD_RDE_MULTIPART_SEND},
+    {"RDEMultipartReceive", PLDM_RDE_CMD_RDE_MULTIPART_RECEIVE}};
+
+const std::map<const char*, pldm_file_cmd> pldmFileTransferCmds{
+    {"DfOpen", PLDM_FILE_CMD_DF_OPEN},
+    {"DfClose", PLDM_FILE_CMD_DF_CLOSE},
+    {"DfHeartbeat", PLDM_FILE_CMD_DF_HEARTBEAT},
+    {"DfProperties", PLDM_FILE_CMD_DF_PROPERTIES},
+    {"DfGetFileAttribute", PLDM_FILE_CMD_DF_GET_FILE_ATTRIBUTE},
+    {"DfSetFileAttribute", PLDM_FILE_CMD_DF_SET_FILE_ATTRIBUTE},
+    {"DfRead", PLDM_FILE_CMD_DF_READ},
+    {"DfFIFOSend", PLDM_FILE_CMD_DF_FIFO_SEND}};
 
 #ifdef OEM_IBM
 const std::map<const char*, pldm_host_commands> pldmIBMHostCmds{
@@ -191,9 +270,13 @@ class GetPLDMTypes : public CommandInterface
                 if (it != pldmTypes.end())
                 {
                     jarray["PLDM Type"] = it->first;
-                    jarray["PLDM Type Code"] = i;
-                    jPldmTypes.emplace_back(jarray);
                 }
+                else
+                {
+                    jarray["PLDM Type"] = "unknown";
+                }
+                jarray["PLDM Type Code"] = i;
+                jPldmTypes.emplace_back(jarray);
             }
         }
         data["PLDMTypes"] = jPldmTypes;
@@ -276,7 +359,6 @@ class GetPLDMVersion : public CommandInterface
                 }
                 versionList.push_back(buffer);
             }
-
             auto it = std::find_if(pldmTypes.begin(), pldmTypes.end(),
                                    [&](const auto& typePair) {
                                        return typePair.second == pldmType;
@@ -423,9 +505,13 @@ class GetPLDMCommands : public CommandInterface
             [i](const auto& typePair) { return typePair.second == i; });
         if (it != commandMap.end())
         {
-            jarray["PLDM Command Code"] = i;
             jarray["PLDM Command"] = it->first;
         }
+        else
+        {
+            jarray["PLDM Command"] = "unknown";
+        }
+        jarray["PLDM Command Code"] = i;
     }
 
     void printPldmCommands(std::vector<bitfield8_t>& cmdTypes,
@@ -443,17 +529,26 @@ class GetPLDMCommands : public CommandInterface
                     case PLDM_BASE:
                         printCommand(pldmBaseCmds, i, cmdinfo);
                         break;
-                    // case PLDM_PLATFORM:
-                    //     printCommand(pldmPlatformCmds, i, cmdinfo);
-                    //     break;
+                    case PLDM_SMBIOS:
+                        printCommand(pldmSmbiosCmds, i, cmdinfo);
+                        break;
+                    case PLDM_PLATFORM:
+                        printCommand(pldmPlatformCmds, i, cmdinfo);
+                        break;
                     case PLDM_BIOS:
                         printCommand(pldmBiosCmds, i, cmdinfo);
                         break;
-                    // case PLDM_FRU:
-                    //     printCommand(pldmFruCmds, i, cmdinfo);
-                    //     break;
+                    case PLDM_FRU:
+                        printCommand(pldmFruCmds, i, cmdinfo);
+                        break;
                     case PLDM_FWUP:
                         printCommand(pldmFwUpdateCmds, i, cmdinfo);
+                        break;
+                    case PLDM_RDE:
+                        printCommand(pldmRdeCmds, i, cmdinfo);
+                        break;
+                    case PLDM_FILE:
+                        printCommand(pldmFileTransferCmds, i, cmdinfo);
                         break;
 #ifdef OEM_IBM
                     case PLDM_OEM:
@@ -462,6 +557,8 @@ class GetPLDMCommands : public CommandInterface
                         break;
 #endif
                     default:
+                        std::map<char*, int> emptyMap;
+                        printCommand(emptyMap, i, cmdinfo);
                         break;
                 }
 

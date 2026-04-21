@@ -382,3 +382,45 @@ TEST(Manager, test_private_method_updateSwId_emptyObjPath)
 
     EXPECT_NO_THROW({ manager.updateSwId(emptyObjPath, compName1); });
 }
+
+class FirmwareInventoryObjectTest : public pldm::fw_update::FirmwareInventory
+{
+  public:
+    using pldm::fw_update::FirmwareInventory::FirmwareInventory;
+    const std::string& getSoftwarePath() const
+    {
+        return softwarePath;
+    }
+    const SoftwareAssociationDefinitions& getAssociation() const
+    {
+        return association;
+    }
+    const SoftwareVersion& getVersion() const
+    {
+        return version;
+    }
+};
+
+TEST(FirmwareInventoryObjectTest, ConstructorSetsProperties)
+{
+    SoftwareIdentifier softwareIdentifier{1, 100};
+    const std::string expectedSoftwarePath =
+        "/xyz/openbmc_project/software/PLDM_Device_TestDevice_1234";
+    const std::string expectedSoftwareVersion = "2.3.4";
+    const std::string expectedEndpointPath =
+        "/xyz/openbmc_project/inventory/system/board/PLDM_Device";
+    SoftwareVersionPurpose expectedPurpose = SoftwareVersionPurpose::Unknown;
+
+    FirmwareInventoryObjectTest inventory(softwareIdentifier,
+                                          expectedSoftwarePath,
+                                          expectedSoftwareVersion,
+                                          expectedEndpointPath,
+                                          expectedPurpose);
+
+    EXPECT_EQ(inventory.getSoftwarePath(), expectedSoftwarePath);
+    auto associationTuples = inventory.getAssociation().associations();
+    ASSERT_FALSE(associationTuples.empty());
+    EXPECT_EQ(std::get<2>(associationTuples[0]), expectedEndpointPath);
+    EXPECT_EQ(inventory.getVersion().version(), expectedSoftwareVersion);
+    EXPECT_EQ(inventory.getVersion().purpose(), expectedPurpose);
+}

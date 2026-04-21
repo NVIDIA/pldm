@@ -3,22 +3,49 @@
 #include "libpldm/platform.h"
 #include "oem/ibm/libpldm/state_set_oem_ibm.h"
 
+#include "collect_slot_vpd.hpp"
+#include "common/utils.hpp"
+#include "file_table.hpp"
 #include "inband_code_update.hpp"
+#include "libpldmresponder/bios_config.hpp"
 #include "libpldmresponder/oem_handler.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "libpldmresponder/platform.hpp"
 #include "requester/handler.hpp"
 
+#include <libpldm/entity.h>
+#include <libpldm/oem/ibm/state_set.h>
+#include <libpldm/platform.h>
+#include <libpldm/state_set.h>
+
+#include <sdbusplus/bus/match.hpp>
+#include <sdeventplus/event.hpp>
+#include <sdeventplus/utility/timer.hpp>
+#include <xyz/openbmc_project/State/Host/client.hpp>
 typedef ibm_oem_pldm_state_set_firmware_update_state_values CodeUpdateState;
+
+using HostState = sdbusplus::common::xyz::openbmc_project::state::Host;
 
 namespace pldm
 {
 namespace responder
 {
+using ObjectPath = std::string;
+using AssociatedEntityMap = std::map<ObjectPath, pldm_entity>;
+using namespace pldm::bios;
+using namespace pldm::utils;
 namespace oem_ibm_platform
 {
 constexpr uint16_t ENTITY_INSTANCE_0 = 0;
 constexpr uint16_t ENTITY_INSTANCE_1 = 1;
+constexpr uint32_t BMC_PDR_START_RANGE = 0x00000000;
+constexpr uint32_t BMC_PDR_END_RANGE = 0x00FFFFFF;
+constexpr uint32_t HOST_PDR_START_RANGE = 0x01000000;
+constexpr uint32_t HOST_PDR_END_RANGE = 0x01FFFFFF;
+
+const pldm::pdr::TerminusID HYPERVISOR_TID = 208;
+
+static constexpr uint8_t HEARTBEAT_TIMEOUT_DELTA = 10;
 
 enum SetEventReceiverCount
 {
@@ -29,23 +56,28 @@ class Handler : public oem_platform::Handler
 {
   public:
     Handler(const pldm::utils::DBusHandler* dBusIntf,
-            pldm::responder::CodeUpdate* codeUpdate, int mctp_fd,
-            uint8_t mctp_eid, pldm::dbus_api::Requester& requester,
+            pldm::responder::CodeUpdate* codeUpdate,
+            pldm::responder::SlotHandler* slotHandler, int mctp_fd,
+            uint8_t mctp_eid, pldm::InstanceIdDb& instanceIdDb,
             sdeventplus::Event& event,
             pldm::requester::Handler<pldm::requester::Request>* handler) :
         oem_platform::Handler(dBusIntf), codeUpdate(codeUpdate),
-        platformHandler(nullptr), mctp_fd(mctp_fd), mctp_eid(mctp_eid),
-        requester(requester), event(event), handler(handler)
+        slotHandler(slotHandler), platformHandler(nullptr), mctp_fd(mctp_fd),
+        mctp_eid(mctp_eid), instanceIdDb(instanceIdDb), event(event),
+        handler(handler),
+        timer(event, std::bind(std::mem_fn(&Handler::setSurvTimer), this,
+                               HYPERVISOR_TID, false)),
+        hostTransitioningToOff(true)
     {
         codeUpdate->setVersions();
         setEventReceiverCnt = 0;
 
         using namespace sdbusplus::bus::match::rules;
-        hostOffMatch = std::make_unique<sdbusplus::bus::match::match>(
+        hostOffMatch = std::make_unique<sdbusplus::bus::match_t>(
             pldm::utils::DBusHandler::getBus(),
             propertiesChanged("/xyz/openbmc_project/state/host0",
-                              "xyz.openbmc_project.State.Host"),
-            [this](sdbusplus::message::message& msg) {
+                              HostState::interface),
+            [this](sdbusplus::message_t& msg) {
                 pldm::utils::DbusChangedProps props{};
                 std::string intf;
                 msg.read(intf, props);
@@ -60,20 +92,145 @@ class Handler : public oem_platform::Handler
                         hostOff = true;
                         setEventReceiverCnt = 0;
                         disableWatchDogTimer();
+                        startStopTimer(false);
+                        pldm::filetable::clearFileTable();
                     }
                     else if (propVal ==
                              "xyz.openbmc_project.State.Host.HostState.Running")
                     {
                         hostOff = false;
+                        hostTransitioningToOff = false;
                     }
+                    else if (
+                        propVal ==
+                        "xyz.openbmc_project.State.Host.HostState.TransitioningToOff")
+                    {
+                        hostTransitioningToOff = true;
+                    }
+                }
+            });
+
+        powerStateOffMatch = std::make_unique<sdbusplus::bus::match_t>(
+            pldm::utils::DBusHandler::getBus(),
+            propertiesChanged("/xyz/openbmc_project/state/chassis0",
+                              "xyz.openbmc_project.State.Chassis"),
+            [this](sdbusplus::message_t& msg) {
+                pldm::utils::DbusChangedProps props{};
+                std::string intf;
+                msg.read(intf, props);
+                const auto itr = props.find("CurrentPowerState");
+                if (itr != props.end())
+                {
+                    pldm::utils::PropertyValue value = itr->second;
+                    auto propVal = std::get<std::string>(value);
+                    if (propVal ==
+                        "xyz.openbmc_project.State.Chassis.PowerState.Off")
+                    {
+                        handleBootTypesAtChassisOff();
+                        static constexpr auto searchpath =
+                            "/xyz/openbmc_project/inventory/system/chassis/motherboard";
+                        int depth = 0;
+                        std::vector<std::string> powerInterface = {
+                            "xyz.openbmc_project.State.Decorator.PowerState"};
+                        pldm::utils::GetSubTreeResponse response =
+                            pldm::utils::DBusHandler().getSubtree(
+                                searchpath, depth, powerInterface);
+                        for (const auto& [objPath, serviceMap] : response)
+                        {
+                            pldm::utils::DBusMapping dbusMapping{
+                                objPath,
+                                "xyz.openbmc_project.State.Decorator.PowerState",
+                                "PowerState", "string"};
+                            value =
+                                "xyz.openbmc_project.State.Decorator.PowerState.State.Off";
+                            try
+                            {
+                                pldm::utils::DBusHandler().setDbusProperty(
+                                    dbusMapping, value);
+                            }
+                            catch (const std::exception& e)
+                            {
+                                error(
+                                    "Unable to set the slot power state to Off error - {ERROR}",
+                                    "ERROR", e);
+                            }
+                        }
+                    }
+                }
+            });
+
+        updateBIOSMatch = std::make_unique<sdbusplus::bus::match_t>(
+            pldm::utils::DBusHandler::getBus(),
+            propertiesChanged("/xyz/openbmc_project/bios_config/manager",
+                              "xyz.openbmc_project.BIOSConfig.Manager"),
+            [codeUpdate](sdbusplus::message_t& msg) {
+                constexpr auto propertyName = "PendingAttributes";
+                using Value =
+                    std::variant<std::string, PendingAttributes, BaseBIOSTable>;
+                using Properties = std::map<pldm::utils::DbusProp, Value>;
+                Properties props{};
+                std::string intf;
+                msg.read(intf, props);
+                auto valPropMap = props.find(propertyName);
+                if (valPropMap == props.end())
+                {
+                    return;
+                }
+
+                PendingAttributes pendingAttributes =
+                    std::get<PendingAttributes>(valPropMap->second);
+                for (auto it : pendingAttributes)
+                {
+                    if (it.first == "fw_boot_side")
+                    {
+                        auto& [attributeType, attributevalue] = it.second;
+                        std::string nextBootSideAttr =
+                            std::get<std::string>(attributevalue);
+                        std::string nextBootSide =
+                            (nextBootSideAttr == "Perm" ? Pside : Tside);
+                        codeUpdate->setNextBootSide(nextBootSide);
+                    }
+                }
+            });
+
+        platformSAIMatch = std::make_unique<sdbusplus::bus::match_t>(
+            pldm::utils::DBusHandler::getBus(),
+            propertiesChanged(
+                "/xyz/openbmc_project/led/groups/partition_system_attention_indicator",
+                "xyz.openbmc_project.Led.Group"),
+            [this](sdbusplus::message_t& msg) {
+                pldm::utils::DbusChangedProps props{};
+                std::string intf;
+                msg.read(intf, props);
+                const auto itr = props.find("Asserted");
+                if (itr != props.end())
+                {
+                    processSAIUpdate();
+                }
+            });
+
+        partitionSAIMatch = std::make_unique<sdbusplus::bus::match_t>(
+            pldm::utils::DBusHandler::getBus(),
+            propertiesChanged(
+                "/xyz/openbmc_project/led/groups/platform_system_attention_indicator",
+                "xyz.openbmc_project.Led.Group"),
+            [this](sdbusplus::message_t& msg) {
+                pldm::utils::DbusChangedProps props{};
+                std::string intf;
+                msg.read(intf, props);
+                const auto itr = props.find("Asserted");
+                if (itr != props.end())
+                {
+                    processSAIUpdate();
                 }
             });
     }
 
     int getOemStateSensorReadingsHandler(
-        EntityType entityType, pldm::pdr::EntityInstance entityInstance,
-        pldm::pdr::StateSetId stateSetId,
-        pldm::pdr::CompositeCount compSensorCnt,
+        pldm::pdr::EntityType entityType,
+        pldm::pdr::EntityInstance entityInstance,
+        pldm::pdr::ContainerID containerId, pldm::pdr::StateSetId stateSetId,
+        pldm::pdr::CompositeCount compSensorCnt, uint16_t sensorId,
         std::vector<get_sensor_state_field>& stateField);
 
     int oemSetStateEffecterStatesHandler(
@@ -105,6 +262,17 @@ class Handler : public oem_platform::Handler
     virtual uint16_t getNextSensorId()
     {
         return platformHandler->getNextSensorId();
+    }
+
+    /** @brief Get std::map associated with the entity
+     *         key: object path
+     *         value: pldm_entity
+     *
+     *  @return std::map<ObjectPath, pldm_entity>
+     */
+    virtual const AssociatedEntityMap& getAssociateEntityMap()
+    {
+        return platformHandler->getAssociateEntityMap();
     }
 
     /** @brief Method to Generate the OEM PDRs
@@ -180,9 +348,79 @@ class Handler : public oem_platform::Handler
     /** @brief to check the BMC state*/
     int checkBMCState();
 
+    /** @brief update the dbus object paths */
+    void updateOemDbusPaths(std::string& dbusPath);
+
+    /** @brief Method to fetch the last BMC record from the PDR repo
+     *
+     * @param[in] repo - pointer to BMC's primary PDR repo
+     *
+     * @return the last BMC record from the repo
+     */
+    const pldm_pdr_record* fetchLastBMCRecord(const pldm_pdr* repo);
+
+    /** @brief Method to check if the record handle passed is in remote PDR
+     *         record handle range
+     *
+     *  @param[in] record_handle - record handle of the PDR
+     *
+     *  @return true if record handle passed is in host PDR record handle range
+     */
+    bool checkRecordHandleInRange(const uint32_t& record_handle);
+
+    /** *brief Method to call the setEventReceiver command*/
+    void processSetEventReceiver();
+
+    /** @brief Method to call the setEventReceiver through the platform
+     *   handler
+     */
+    virtual void setEventReceiver()
+    {
+        platformHandler->setEventReceiver();
+    }
+
+    /** @brief Method to Enable/Disable timer to see if remote terminus sends
+     *  the surveillance ping and logs informational error if remote terminus
+     *  fails to send the surveillance pings
+     *
+     * @param[in] tid - TID of the remote terminus
+     * @param[in] value - true or false, to indicate if the timer is
+     *                    running or not
+     */
+    void setSurvTimer(uint8_t tid, bool value);
+
+    /** @brief To handle the boot types bios attributes at power on*/
+    void handleBootTypesAtPowerOn();
+
+    /** @brief To handle the boot types bios attributes at shutdown*/
+    void handleBootTypesAtChassisOff();
+
+    /** @brief To set the boot types bios attributes based on the RestartCause
+     *  of host
+     *
+     *  @param[in] RestartCause - Host restart cause
+     */
+    void setBootTypesBiosAttr(const std::string& restartCause);
+
+    /** @brief To turn off Real SAI effecter*/
+    void turnOffRealSAIEffecter();
+
+    /** @brief Fetch Real SAI status based on the partition SAI and platform SAI
+     *  sensor states. Real SAI is turned on if any of the partition or platform
+     *  SAI turned on else Real SAI is turned off
+     *  @return Real SAI sensor state PLDM_SENSOR_WARNING/PLDM_SENSOR_NORMAL
+     */
+    uint8_t fetchRealSAIStatus();
+
+    /** @brief Method to process virtual platform/partition SAI update*/
+    void processSAIUpdate();
     ~Handler() = default;
 
     pldm::responder::CodeUpdate* codeUpdate; //!< pointer to CodeUpdate object
+
+    pldm::responder::SlotHandler*
+        slotHandler; //!< pointer to SlotHandler object
+
     pldm::responder::platform::Handler*
         platformHandler; //!< pointer to PLDM platform handler
 
@@ -192,14 +430,17 @@ class Handler : public oem_platform::Handler
     /** @brief MCTP EID of host firmware */
     uint8_t mctp_eid;
 
-    /** @brief reference to Requester object, primarily used to access API to
-     *  obtain PLDM instance id.
-     */
-    pldm::dbus_api::Requester& requester;
+    /** @brief reference to an InstanceIdDb object, used to obtain a PLDM
+     * instance id. */
+    pldm::InstanceIdDb& instanceIdDb;
     /** @brief sdeventplus event source */
     std::unique_ptr<sdeventplus::source::Defer> assembleImageEvent;
     std::unique_ptr<sdeventplus::source::Defer> startUpdateEvent;
     std::unique_ptr<sdeventplus::source::Defer> systemRebootEvent;
+
+    /** @brief Effecterid to dbus object path map
+     */
+    std::unordered_map<uint16_t, std::string> effecterIdToDbusMap;
 
     /** @brief reference of main event loop of pldmd, primarily used to schedule
      *  work
@@ -207,16 +448,42 @@ class Handler : public oem_platform::Handler
     sdeventplus::Event& event;
 
   private:
+    /** @brief Method to reset or stop the surveillance timer
+     *
+     * @param[in] value - true or false, to indicate if the timer
+     *                    should be reset or turned off
+     */
+    void startStopTimer(bool value);
+
     /** @brief D-Bus property changed signal match for CurrentPowerState*/
-    std::unique_ptr<sdbusplus::bus::match::match> chassisOffMatch;
+    std::unique_ptr<sdbusplus::bus::match_t> chassisOffMatch;
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>* handler;
 
     /** @brief D-Bus property changed signal match */
-    std::unique_ptr<sdbusplus::bus::match::match> hostOffMatch;
+    std::unique_ptr<sdbusplus::bus::match_t> updateBIOSMatch;
+
+    /** @brief D-Bus property changed signal match */
+    std::unique_ptr<sdbusplus::bus::match_t> hostOffMatch;
+
+    /** @brief D-Bus property changed signal match */
+    std::unique_ptr<sdbusplus::bus::match_t> powerStateOffMatch;
+
+    /** @brief Timer used for monitoring surveillance pings from host */
+    sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> timer;
+
+    /** @brief D-Bus Interface added signal match for virtual platform SAI */
+    std::unique_ptr<sdbusplus::bus::match_t> platformSAIMatch;
+
+    /** @brief D-Bus Interface added signal match for virtual partition SAI */
+    std::unique_ptr<sdbusplus::bus::match_t> partitionSAIMatch;
+
+    /** @brief Real SAI sensor id*/
+    uint16_t realSAISensorId;
 
     bool hostOff = true;
+    bool hostTransitioningToOff;
 
     int setEventReceiverCnt = 0;
 };
@@ -232,6 +499,59 @@ int encodeEventMsg(uint8_t eventType, const std::vector<uint8_t>& eventDataVec,
                    std::vector<uint8_t>& requestMsg, uint8_t instanceId);
 
 } // namespace oem_ibm_platform
+
+namespace oem_ibm_bios
+{
+/** @brief The file where bootside data will be saved */
+constexpr auto bootSideDirPath = "/var/lib/pldm/bootSide";
+
+class Handler : public oem_bios::Handler
+{
+  public:
+    Handler() {}
+
+    void processOEMBaseBiosTable(const BaseBIOSTable& biosTable)
+    {
+        for (const auto& [attrName, biostabObj] : biosTable)
+        {
+            // The additional check to see if /var/lib/pldm/bootSide file exists
+            // is added to make sure we are doing the fw_boot_side setting after
+            // the base bios table is initialised.
+            if ((attrName == "fw_boot_side") && fs::exists(bootSideDirPath))
+            {
+                PendingAttributesList biosAttrList;
+
+                std::string nextBootSide =
+                    std::get<std::string>(std::get<5>(biostabObj));
+
+                std::string currNextBootSide;
+                auto attributeValue =
+                    getBiosAttrValue<std::string>("fw_boot_side");
+
+                if (attributeValue.has_value())
+                {
+                    currNextBootSide = attributeValue.value();
+                }
+                else
+                {
+                    info(
+                        "Boot side is not initialized yet, so setting default value");
+                    currNextBootSide = "Temp";
+                }
+
+                if (currNextBootSide != nextBootSide)
+                {
+                    biosAttrList.emplace_back(std::make_pair(
+                        attrName,
+                        std::make_tuple(EnumAttribute, nextBootSide)));
+                    setBiosAttr(biosAttrList);
+                }
+            }
+        }
+    }
+};
+
+} // namespace oem_ibm_bios
 
 } // namespace responder
 

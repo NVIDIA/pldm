@@ -25,6 +25,8 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
 
+class FirmwareInventoryTest;
+
 namespace pldm::fw_update::fw_inventory
 {
 
@@ -185,3 +187,49 @@ class Manager
 };
 
 } // namespace pldm::fw_update::fw_inventory
+
+namespace pldm::fw_update
+{
+
+using SoftwareVersion = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Software::server::Version>;
+using SoftwareAssociationDefinitions = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
+using SoftwareVersionPurpose = SoftwareVersion::VersionPurpose;
+
+class FirmwareInventory
+{
+  public:
+    friend class ::FirmwareInventoryTest;
+    FirmwareInventory() = delete;
+    FirmwareInventory(const FirmwareInventory&) = delete;
+    FirmwareInventory(FirmwareInventory&&) = delete;
+    FirmwareInventory& operator=(const FirmwareInventory&) = delete;
+    FirmwareInventory& operator=(FirmwareInventory&&) = delete;
+    ~FirmwareInventory() = default;
+
+    /**
+     * @brief Constructor
+     * @param[in] softwareIdentifier - Software identifier containing EID and
+     *                                 component identifier
+     * @param[in] softwarePath - D-Bus object path for the firmware inventory
+     * entry
+     * @param[in] softwareVersion - Active version of the firmware
+     * @param[in] associatedEndpoint - D-Bus object path of the endpoint
+     * associated with the firmware
+     * @param[in] purpose - Purpose of the software version, default is Unknown
+     */
+    explicit FirmwareInventory(
+        SoftwareIdentifier softwareIdentifier, const std::string& softwarePath,
+        const std::string& softwareVersion,
+        const std::string& associatedEndpoint,
+        SoftwareVersionPurpose purpose = SoftwareVersionPurpose::Unknown);
+
+  private:
+    sdbusplus::bus_t& bus = utils::DBusHandler::getBus();
+    std::string softwarePath;
+    SoftwareAssociationDefinitions association;
+    SoftwareVersion version;
+};
+
+} // namespace pldm::fw_update

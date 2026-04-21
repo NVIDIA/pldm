@@ -124,16 +124,17 @@ def write_component_bitmap_bit_length(pldm_fw_up_pkg, metadata):
             represent the bitmap in the ApplicableComponents field for a
             matching device
     '''
-    # The script supports upto 32 components now
+    # The script supports up to 32 components now
     max_components = 32
     bitmap_multiple = 8
 
     num_components = len(metadata["ComponentImageInformationArea"])
     if num_components > max_components:
-        sys.exit("ERROR: only upto 32 components supported now")
-    component_bitmap_bit_length = bitmap_multiple * \
-        math.ceil(num_components/bitmap_multiple)
-    pldm_fw_up_pkg.write(struct.pack('<H', int(component_bitmap_bit_length)))
+        sys.exit("ERROR: only up to 32 components supported now")
+    component_bitmap_bit_length = bitmap_multiple * math.ceil(
+        num_components / bitmap_multiple
+    )
+    pldm_fw_up_pkg.write(struct.pack("<H", int(component_bitmap_bit_length)))
     return component_bitmap_bit_length
 
 PACKAGE_FORMAT_REVISIONS = {
@@ -302,8 +303,9 @@ def write_fw_device_identification_area(pldm_fw_up_pkg, metadata,
     device_id_record_count = len(devices)
     if device_id_record_count > max_device_id_record_count:
         sys.exit(
-            "ERROR: there can be only upto 255 entries in the \
-                FirmwareDeviceIdentificationArea section")
+            "ERROR: there can be only up to 255 entries in the                "
+            " FirmwareDeviceIdentificationArea section"
+        )
 
     # DeviceIDRecordCount
     pldm_fw_up_pkg.write(struct.pack('<B', device_id_record_count))

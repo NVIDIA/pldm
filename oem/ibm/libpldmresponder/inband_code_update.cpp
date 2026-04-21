@@ -8,11 +8,18 @@
 
 #include <arpa/inet.h>
 
+#include <nlohmann/json.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/server.hpp>
+#include <xyz/openbmc_project/Association/common.hpp>
 #include <xyz/openbmc_project/Dump/NewDump/server.hpp>
 
 #include <exception>
 #include <fstream>
+
+using Association = sdbusplus::common::xyz::openbmc_project::Association;
+
+PHOSPHOR_LOG2_USING;
 namespace pldm
 {
 using namespace utils;
@@ -20,6 +27,7 @@ using namespace utils;
 namespace responder
 {
 using namespace oem_ibm_platform;
+using namespace oem_ibm_bios;
 
 /** @brief Directory where the lid files without a header are stored */
 auto lidDirPath = fs::path(LID_STAGING_DIR) / "lid";
@@ -46,6 +54,12 @@ auto hostfwImagePath = fs::path(imageDirPath) / hostfwImageName;
  *         manager */
 auto updateImagePath = fs::path("/tmp/images") / tarImageName;
 
+/** @brief Current boot side */
+constexpr auto bootSideAttrName = "fw_boot_side_current";
+
+/** @brief Next boot side */
+constexpr auto bootNextSideAttrName = "fw_boot_side";
+
 std::string CodeUpdate::fetchCurrentBootSide()
 {
     return currBootSide;
@@ -64,19 +78,48 @@ int CodeUpdate::setCurrentBootSide(const std::string& currSide)
 
 int CodeUpdate::setNextBootSide(const std::string& nextSide)
 {
+    info("setNextBootSide, nextSide={NXT_SIDE}", "NXT_SIDE", nextSide);
+    pldm_boot_side_data pldmBootSideData = readBootSideFile();
+    currBootSide =
+        (pldmBootSideData.current_boot_side == "Perm" ? Pside : Tside);
     nextBootSide = nextSide;
+    pldmBootSideData.next_boot_side = (nextSide == Pside ? "Perm" : "Temp");
     std::string objPath{};
     if (nextBootSide == currBootSide)
     {
+        info(
+            "Current bootside is same as next boot side, setting priority of running version 0");
         objPath = runningVersion;
     }
     else
     {
+        info(
+            "Current bootside is not same as next boot side, setting priority of non running version 0");
         objPath = nonRunningVersion;
     }
     if (objPath.empty())
     {
         std::cerr << "no nonRunningVersion present \n";
+        return PLDM_PLATFORM_INVALID_STATE_VALUE;
+    }
+
+    try
+    {
+        auto priorityPropValue = dBusIntf->getDbusPropertyVariant(
+            objPath.c_str(), "Priority", redundancyIntf);
+        const auto& priorityValue = std::get<uint8_t>(priorityPropValue);
+        if (priorityValue == 0)
+        {
+            // Requested next boot side is already set
+            return PLDM_SUCCESS;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        // Alternate side may not be present due to a failed code update
+        error("Alternate side may not be present due to a failed code update. "
+              "ERROR: {ERR}",
+              "ERR", e);
         return PLDM_PLATFORM_INVALID_STATE_VALUE;
     }
 
@@ -94,6 +137,7 @@ int CodeUpdate::setNextBootSide(const std::string& nextSide)
                   << " ERROR=" << e.what() << "\n";
         return PLDM_ERROR;
     }
+    writeBootSideFile(pldmBootSideData);
     return PLDM_SUCCESS;
 }
 
@@ -145,29 +189,34 @@ int CodeUpdate::setRequestedActivation()
 
 void CodeUpdate::setVersions()
 {
+    PendingAttributesList biosAttrList;
     static constexpr auto mapperService = "xyz.openbmc_project.ObjectMapper";
     static constexpr auto functionalObjPath =
         "/xyz/openbmc_project/software/functional";
     static constexpr auto activeObjPath =
         "/xyz/openbmc_project/software/active";
     static constexpr auto propIntf = "org.freedesktop.DBus.Properties";
+    static constexpr auto pathIntf = "xyz.openbmc_project.Common.FilePath";
 
     auto& bus = dBusIntf->getBus();
     try
     {
         auto method = bus.new_method_call(mapperService, functionalObjPath,
                                           propIntf, "Get");
-        method.append("xyz.openbmc_project.Association", "endpoints");
+        method.append(Association::interface, "Endpoints");
         std::variant<std::vector<std::string>> paths;
 
         auto reply = bus.call(method);
         reply.read(paths);
 
         runningVersion = std::get<std::vector<std::string>>(paths)[0];
+        auto runningPathPropValue = dBusIntf->getDbusPropertyVariant(
+            runningVersion.c_str(), "Path", pathIntf);
+        const auto& runningPath = std::get<std::string>(runningPathPropValue);
 
         auto method1 =
             bus.new_method_call(mapperService, activeObjPath, propIntf, "Get");
-        method1.append("xyz.openbmc_project.Association", "endpoints");
+        method1.append(Association::interface, "Endpoints");
 
         auto reply1 = bus.call(method1);
         reply1.read(paths);
@@ -178,6 +227,95 @@ void CodeUpdate::setVersions()
                 nonRunningVersion = path;
                 break;
             }
+        }
+        if (!fs::exists(bootSideDirPath))
+        {
+            pldm_boot_side_data pldmBootSideData;
+            std::string nextBootSideBiosValue = "Temp";
+            auto attributeValue = getBiosAttrValue<std::string>("fw_boot_side");
+
+            // We enter this path during Genesis boot/boot after Factory reset.
+            // PLDM waits for Entity manager to populate System Type. After
+            // receiving system Type from EM it populates the bios attributes
+            // specific to that system We do not have bios attributes populated
+            // when we reach here so setting it to default value of the
+            // attribute as mentioned in the json files.
+            if (attributeValue.has_value())
+            {
+                nextBootSideBiosValue = attributeValue.value();
+            }
+            else
+            {
+                info(
+                    "Boot side is not initialized yet, so setting default value(Temp). Request was ignored to set the Boot side to {SIDE}",
+                    "SIDE", nextBootSideBiosValue);
+                nextBootSideBiosValue = "Temp";
+            }
+            pldmBootSideData.current_boot_side = nextBootSideBiosValue;
+            pldmBootSideData.next_boot_side = nextBootSideBiosValue;
+            pldmBootSideData.running_version_object = runningPath;
+
+            writeBootSideFile(pldmBootSideData);
+            biosAttrList.emplace_back(std::make_pair(
+                bootSideAttrName,
+                std::make_tuple(EnumAttribute,
+                                pldmBootSideData.current_boot_side)));
+            biosAttrList.push_back(std::make_pair(
+                bootNextSideAttrName,
+                std::make_tuple(EnumAttribute,
+                                pldmBootSideData.next_boot_side)));
+            setBiosAttr(biosAttrList);
+        }
+        else
+        {
+            pldm_boot_side_data pldmBootSideData = readBootSideFile();
+            if (pldmBootSideData.running_version_object != runningPath)
+            {
+                info(
+                    "BMC have booted with the new image runningPath={RUNN_PATH}",
+                    "RUNN_PATH", runningPath.c_str());
+                info("Previous Image was: {RUNN_VERS}", "RUNN_VERS",
+                     pldmBootSideData.running_version_object);
+                auto current_boot_side =
+                    (pldmBootSideData.current_boot_side == "Temp" ? "Perm"
+                                                                  : "Temp");
+                pldmBootSideData.current_boot_side = current_boot_side;
+                pldmBootSideData.next_boot_side = current_boot_side;
+                pldmBootSideData.running_version_object = runningPath;
+                writeBootSideFile(pldmBootSideData);
+                biosAttrList.emplace_back(std::make_pair(
+                    bootSideAttrName,
+                    std::make_tuple(EnumAttribute,
+                                    pldmBootSideData.current_boot_side)));
+                biosAttrList.push_back(std::make_pair(
+                    bootNextSideAttrName,
+                    std::make_tuple(EnumAttribute,
+                                    pldmBootSideData.next_boot_side)));
+                setBiosAttr(biosAttrList);
+            }
+            else
+            {
+                info(
+                    "BMC have booted with the previous image runningPath={RUNN_PATH}",
+                    "RUNN_PATH", pldmBootSideData.running_version_object);
+                pldm_boot_side_data pldmBootSideData = readBootSideFile();
+                pldmBootSideData.next_boot_side =
+                    pldmBootSideData.current_boot_side;
+                writeBootSideFile(pldmBootSideData);
+                biosAttrList.emplace_back(std::make_pair(
+                    bootSideAttrName,
+                    std::make_tuple(EnumAttribute,
+                                    pldmBootSideData.current_boot_side)));
+                biosAttrList.push_back(std::make_pair(
+                    bootNextSideAttrName,
+                    std::make_tuple(EnumAttribute,
+                                    pldmBootSideData.next_boot_side)));
+                setBiosAttr(biosAttrList);
+            }
+            currBootSide =
+                (pldmBootSideData.current_boot_side == "Temp" ? Tside : Pside);
+            nextBootSide =
+                (pldmBootSideData.next_boot_side == "Temp" ? Tside : Pside);
         }
     }
     catch (const std::exception& e)
@@ -205,7 +343,7 @@ void CodeUpdate::setVersions()
         "member='InterfacesAdded',path='/xyz/openbmc_project/software'",
         [this](sdbusplus::message::message& msg) {
             DBusInterfaceAdded interfaces;
-            sdbusplus::message::object_path path;
+            sdbusplus::object_path path;
             msg.read(path, interfaces);
 
             for (auto& interface : interfaces)
@@ -319,16 +457,98 @@ void CodeUpdate::setVersions()
 
 void CodeUpdate::processRenameEvent()
 {
+    info("Processing Rename Event");
+
+    PendingAttributesList biosAttrList;
+    pldm_boot_side_data pldmBootSideData = readBootSideFile();
+    pldmBootSideData.current_boot_side = "Perm";
+    pldmBootSideData.next_boot_side = "Perm";
+
     currBootSide = Pside;
+    nextBootSide = Pside;
+
     auto sensorId = getBootSideRenameStateSensor();
+    info("Received sendor id for rename {ID}", "ID", sensorId);
     sendStateSensorEvent(sensorId, PLDM_STATE_SENSOR_STATE, 0,
                          PLDM_OEM_IBM_BOOT_SIDE_RENAME_STATE_RENAMED,
                          PLDM_OEM_IBM_BOOT_SIDE_RENAME_STATE_NOT_RENAMED);
+    writeBootSideFile(pldmBootSideData);
+    biosAttrList.emplace_back(std::make_pair(
+        bootSideAttrName,
+        std::make_tuple(EnumAttribute, pldmBootSideData.current_boot_side)));
+    biosAttrList.push_back(std::make_pair(
+        bootNextSideAttrName,
+        std::make_tuple(EnumAttribute, pldmBootSideData.next_boot_side)));
+    setBiosAttr(biosAttrList);
+}
+
+void CodeUpdate::writeBootSideFile(const pldm_boot_side_data& pldmBootSideData)
+{
+    try
+    {
+        fs::create_directories(fs::path(bootSideDirPath).parent_path());
+        std::ofstream writeFile(bootSideDirPath, std::ios::out);
+        if (!writeFile.is_open())
+        {
+            error("Failed to open bootside file {FILE} for writing", "FILE",
+                  bootSideDirPath);
+            return;
+        }
+
+        nlohmann::json data;
+        data["CurrentBootSide"] = pldmBootSideData.current_boot_side;
+        data["NextBootSide"] = pldmBootSideData.next_boot_side;
+        data["RunningObject"] = pldmBootSideData.running_version_object;
+
+        try
+        {
+            writeFile << data.dump(4);
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            error("JSON serialization for BootSide failed: {ERROR}", "ERROR",
+                  e);
+            return;
+        }
+
+        writeFile.close();
+    }
+    catch (const std::exception& e)
+    {
+        error("Error {ERROR] while writing bootside file: {FILE}", "ERROR", e,
+              "FILE", bootSideDirPath);
+    }
+}
+
+pldm_boot_side_data CodeUpdate::readBootSideFile()
+{
+    pldm_boot_side_data pldmBootSideDataRead{};
+
+    std::ifstream readFile(bootSideDirPath, std::ios::in);
+
+    if (!readFile)
+    {
+        error("Failed to read Bootside file");
+        return pldmBootSideDataRead;
+    }
+
+    nlohmann::json jsonBootSideData;
+    readFile >> jsonBootSideData;
+
+    pldm_boot_side_data data;
+    data.current_boot_side = jsonBootSideData.value("CurrentBootSide", "");
+    data.next_boot_side = jsonBootSideData.value("NextBootSide", "");
+    data.running_version_object = jsonBootSideData.value("RunningObject", "");
+
+    readFile.close();
+
+    return pldmBootSideDataRead;
 }
 
 void CodeUpdate::processPriorityChangeNotification(
     const DbusChangedProps& chProperties)
 {
+    error("Processing priority change notification");
     static constexpr auto propName = "Priority";
     const auto it = chProperties.find(propName);
     if (it == chProperties.end())
@@ -336,8 +556,31 @@ void CodeUpdate::processPriorityChangeNotification(
         return;
     }
     uint8_t newVal = std::get<uint8_t>(it->second);
-    nextBootSide = (newVal == 0) ? currBootSide
-                                 : ((currBootSide == Tside) ? Pside : Tside);
+
+    pldm_boot_side_data pldmBootSideData = readBootSideFile();
+    pldmBootSideData.next_boot_side =
+        (newVal == 0)
+            ? pldmBootSideData.current_boot_side
+            : ((pldmBootSideData.current_boot_side == "Temp") ? "Perm"
+                                                              : "Temp");
+    writeBootSideFile(pldmBootSideData);
+    nextBootSide = (pldmBootSideData.next_boot_side == "Temp" ? Tside : Pside);
+    std::string currNextBootSide;
+    auto attributeValue = getBiosAttrValue<std::string>(bootNextSideAttrName);
+    if (attributeValue.has_value())
+    {
+        currNextBootSide = attributeValue.value();
+    }
+
+    if (currNextBootSide == nextBootSide)
+    {
+        return;
+    }
+    PendingAttributesList biosAttrList;
+    biosAttrList.push_back(std::make_pair(
+        bootNextSideAttrName,
+        std::make_tuple(EnumAttribute, pldmBootSideData.next_boot_side)));
+    setBiosAttr(biosAttrList);
 }
 
 void CodeUpdate::setOemPlatformHandler(

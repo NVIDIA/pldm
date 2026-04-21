@@ -28,12 +28,15 @@
 #include <libpldm/edac.h>
 
 #include <phosphor-logging/lg2.hpp>
+#include <xyz/openbmc_project/Dump/Create/common.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <algorithm>
 #include <cerrno>
 #include <queue>
 #include <variant>
+
+using DumpCreate = sdbusplus::common::xyz::openbmc_project::dump::Create;
 
 namespace pldm
 {
@@ -63,7 +66,6 @@ int EventManager::handlePlatformEvent(
     lg2::debug(
         "handlePlatformEvent: tid={TID}, eventClass={EC:#x}, size={SIZE}",
         "TID", tid, "EC", eventClass, "SIZE", eventDataSize);
-
     if (eventClass == PLDM_SENSOR_EVENT)
     {
         uint16_t sensorId = 0;

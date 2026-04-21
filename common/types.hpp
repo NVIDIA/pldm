@@ -6,13 +6,20 @@
 #include <algorithm>
 #include <bitset>
 #include <cstdint>
+#include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+namespace sdbusplus
+{
+using object_path = message::object_path;
+}
 
 namespace pldm
 {
@@ -95,6 +102,10 @@ constexpr uint8_t BmcMctpEid = 8;
  */
 #define PLDM_PLATFORM_DEFAULT_MESSAGE_BUFFER_SIZE 256
 
+inline constexpr uint16_t HEARTBEAT_TIMEOUT = 120;
+inline constexpr uint8_t TERMINUS_ID = 1;
+inline constexpr uint16_t TERMINUS_HANDLE = 1;
+
 namespace dbus
 {
 
@@ -110,7 +121,8 @@ using Value = std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
 
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
-using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree =
+    std::map<sdbusplus::message::object_path, InterfaceMap>;
 
 using MctpInterfaces = std::map<UUID, InterfaceMap>;
 typedef struct _pathAssociation
@@ -128,6 +140,8 @@ using Configurations = std::map<dbus::ObjectPath, MctpInfo>;
 
 namespace fw_update
 {
+using InventoryPath = std::string;
+using SoftwareName = std::string;
 
 // Descriptor definition
 using DescriptorType = uint16_t;
@@ -149,6 +163,7 @@ using DownstreamDescriptorMap = std::unordered_map<eid, DownstreamDeviceInfo>;
 // Component information
 using CompClassification = uint16_t;
 using CompIdentifier = uint16_t;
+using SoftwareIdentifier = std::pair<eid, CompIdentifier>;
 using CompKey = std::pair<CompClassification, CompIdentifier>;
 using CompClassificationIndex = uint8_t;
 using CompVersion = std::string;
@@ -432,6 +447,36 @@ using SensorOffset = uint8_t;
 using EventState = uint8_t;
 using TerminusValidity = uint8_t;
 using EffecterID = uint16_t;
+using EntityName = std::string;
+using SensorCount = uint8_t;
+using NameLanguageTag = std::string;
+using SensorName = std::string;
+using SensorAuxiliaryNames = std::tuple<
+    SensorID, SensorCount,
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>>;
+using AuxiliaryNames = std::vector<std::pair<NameLanguageTag, std::string>>;
+
+/** @struct EntityKey
+ *
+ *  EntityKey uniquely identifies the PLDM entity and a combination of Entity
+ *  Type, Entity Instance Number, Entity Container ID
+ *
+ */
+struct EntityKey
+{
+    EntityType type;            //!< Entity type
+    EntityInstance instanceIdx; //!< Entity instance number
+    ContainerID containerId;    //!< Entity container ID
+
+    bool operator==(const EntityKey& e) const
+    {
+        return ((type == e.type) && (instanceIdx == e.instanceIdx) &&
+                (containerId == e.containerId));
+    }
+};
+
+using EntityKey = struct EntityKey;
+using EntityAuxiliaryNames = std::tuple<EntityKey, AuxiliaryNames>;
 
 //!< Subset of the State Set that is supported by a effecter/sensor
 using PossibleStates = std::set<uint8_t>;
@@ -481,5 +526,31 @@ using EnitityAssociations =
              std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
 using ParentObjPath = std::string;
 } // namespace platform_mc
+
+namespace bios
+{
+
+using AttributeName = std::string;
+using AttributeType = std::string;
+using ReadonlyStatus = bool;
+using DisplayName = std::string;
+using Description = std::string;
+using MenuPath = std::string;
+using CurrentValue = std::variant<int64_t, std::string>;
+using DefaultValue = std::variant<int64_t, std::string>;
+using OptionString = std::string;
+using OptionValue = std::variant<int64_t, std::string>;
+using ValueDisplayName = std::string;
+using Option =
+    std::vector<std::tuple<OptionString, OptionValue, ValueDisplayName>>;
+using BIOSTableObj =
+    std::tuple<AttributeType, ReadonlyStatus, DisplayName, Description,
+               MenuPath, CurrentValue, DefaultValue, Option>;
+using BaseBIOSTable = std::map<AttributeName, BIOSTableObj>;
+using PendingObj = std::tuple<AttributeType, CurrentValue>;
+using PendingAttributes = std::map<AttributeName, PendingObj>;
+using Callback = std::function<void()>;
+
+} // namespace bios
 
 } // namespace pldm

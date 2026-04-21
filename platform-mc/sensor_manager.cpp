@@ -53,7 +53,7 @@ SensorManager::SensorManager(
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
     bool verbose, const std::filesystem::path& configJson) :
     event(event), terminusManager(terminusManager), termini(termini),
-    pollingTime(SENSOR_POLLING_TIME), verbose(verbose), manager(manager)
+    pollingTime(kSensorPollingTimeMs), verbose(verbose), manager(manager)
 {
     enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);
 

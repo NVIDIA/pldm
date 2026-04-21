@@ -2,13 +2,16 @@
 
 #include "bios_attribute.hpp"
 #include "bios_table.hpp"
+#include "common/instance_id.hpp"
+#include "common/types.hpp"
+#include "common/utils.hpp"
+#include "oem_handler.hpp"
 #include "requester/handler.hpp"
 
 #include <libpldm/bios_table.h>
 
 #include <nlohmann/json.hpp>
 
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -116,6 +119,14 @@ class BIOSConfig
     int setBIOSTable(uint8_t tableType, const Table& table,
                      bool updateBaseBIOSTable = true);
 
+    /** @brief Set OEM bios handler
+     *
+     *  @param[in] oemBiosHandler - OEM Bios handler
+     */
+    inline void setOemBiosHandler(pldm::responder::oem_bios::Handler* handler)
+    {
+        oemBiosHandler = handler;
+    }
   private:
     /** @enum Index into the fields in the BaseBIOSTable
      */
@@ -135,6 +146,7 @@ class BIOSConfig
     const fs::path tableDir;
     pldm::utils::DBusHandler* const dbusHandler;
     BaseBIOSTable baseBIOSTableMaps;
+    pldm::responder::oem_bios::Handler* oemBiosHandler = nullptr;
 
     /** @brief socket descriptor to communicate to host */
     [[maybe_unused]] int fd;
@@ -199,6 +211,24 @@ class BIOSConfig
                             msg.read(iface, props);
                             processBiosAttrChangeNotification(props,
                                                               biosAttrIndex);
+                        }));
+
+                biosAttrMatch.push_back(
+                    std::make_unique<sdbusplus::bus::match_t>(
+                        pldm::utils::DBusHandler::getBus(),
+                        interfacesAdded() + argNpath(0, dBusMap->objectPath),
+                        [this, biosAttrIndex, interface = dBusMap->interface](
+                            sdbusplus::message_t& msg) {
+                            sdbusplus::object_path path;
+                            pldm::utils::InterfaceMap interfaces;
+
+                            msg.read(path, interfaces);
+                            auto ifaceIt = interfaces.find(interface);
+                            if (ifaceIt != interfaces.end())
+                            {
+                                processBiosAttrChangeNotification(
+                                    ifaceIt->second, biosAttrIndex);
+                            }
                         }));
             }
         }

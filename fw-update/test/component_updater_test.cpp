@@ -1579,7 +1579,8 @@ TEST_F(ComponentUpdaterTest,
 {
     initializeFromParsedPackage();
     auto [responseBytes, payloadLen] = makeUpdateComponentResp(
-        PLDM_SUCCESS, 1, PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
+        PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
+        PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
 
     auto co = componentUpdater.processUpdateComponentResponse(
@@ -1594,11 +1595,12 @@ TEST_F(ComponentUpdaterTest,
 }
 
 TEST_F(ComponentUpdaterTest,
-       processUpdateComponentResponseCompatibilityFailureSchedulesCompletion)
+       processUpdateComponentResponseCompatibilityCannotUpdateSchedulesSkip)
 {
     initializeFromParsedPackage();
     auto [responseBytes, payloadLen] = makeUpdateComponentResp(
-        PLDM_SUCCESS, 1, PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
+        PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
+        PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
 
     auto co = componentUpdater.processUpdateComponentResponse(
@@ -1612,6 +1614,24 @@ TEST_F(ComponentUpdaterTest,
     runEvent();
     runEvent();
     waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest,
+       processUpdateComponentResponseUnknownCompatibilityFails)
+{
+    initializeFromParsedPackage();
+    auto [responseBytes, payloadLen] =
+        makeUpdateComponentResp(PLDM_SUCCESS, 0xFF, PLDM_CCRC_NO_RESPONSE_CODE);
+    auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+
+    auto co = componentUpdater.processUpdateComponentResponse(
+        0x1, responseMsg, payloadLen, 0);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+    EXPECT_EQ(componentUpdater.componentUpdaterState.current,
+              ComponentUpdaterSequence::Invalid);
+    EXPECT_NE(componentUpdater.pldmRequest, nullptr);
 }
 
 TEST_F(ComponentUpdaterTest, requestFwDataTimerCallbackTriggersCancelPath)

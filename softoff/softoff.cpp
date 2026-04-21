@@ -14,12 +14,15 @@
 #include <sdeventplus/exception.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/time.hpp>
+#include <xyz/openbmc_project/State/Host/common.hpp>
 
 #include <array>
 #include <filesystem>
 #include <fstream>
 
 PHOSPHOR_LOG2_USING;
+
+using HostState = sdbusplus::common::xyz::openbmc_project::state::Host;
 
 namespace pldm
 {
@@ -98,7 +101,7 @@ int SoftPowerOff::getHostState()
         pldm::utils::PropertyValue propertyValue =
             pldm::utils::DBusHandler().getDbusPropertyVariant(
                 "/xyz/openbmc_project/state/host0", "CurrentHostState",
-                "xyz.openbmc_project.State.Host");
+                HostState::interface);
 
         if ((std::get<std::string>(propertyValue) !=
              "xyz.openbmc_project.State.Host.HostState.Running") &&
@@ -271,21 +274,40 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
 {
     constexpr uint8_t effecterCount = 1;
     PldmTransport pldmTransport{};
-    uint8_t instanceID;
     uint8_t mctpEID;
 
     mctpEID = pldm::utils::readHostEID();
     // TODO: fix mapping to work around OpenBMC ecosystem deficiencies
     pldm_tid_t pldmTID = static_cast<pldm_tid_t>(mctpEID);
 
+    uint8_t effecterState;
+    auto requestHostTransition =
+        pldm::utils::DBusHandler().getDbusProperty<std::string>(
+            "/xyz/openbmc_project/state/host0",
+            "RequestedHostTransition",
+            sdbusplus::common::xyz::openbmc_project::state::Host::interface);
+    if (requestHostTransition !=
+        "xyz.openbmc_project.State.Host.Transition.Off")
+    {
+        effecterState = PLDM_SW_TERM_GRACEFUL_RESTART_REQUESTED;
+    }
+    else
+    {
+        effecterState = PLDM_SW_TERM_GRACEFUL_SHUTDOWN_REQUESTED;
+    }
+
     std::array<uint8_t,
                sizeof(pldm_msg_hdr) + sizeof(effecterID) +
                    sizeof(effecterCount) + sizeof(set_effecter_state_field)>
         requestMsg{};
     auto request = new (requestMsg.data()) pldm_msg;
-    set_effecter_state_field stateField{
-        PLDM_REQUEST_SET, PLDM_SW_TERM_GRACEFUL_SHUTDOWN_REQUESTED};
-    instanceID = instanceIdDb.next(pldmTID);
+    set_effecter_state_field stateField{PLDM_REQUEST_SET, effecterState};
+    auto instanceIdResult = instanceIdDb.next(pldmTID);
+    if (!instanceIdResult)
+    {
+        return PLDM_ERROR;
+    }
+    auto instanceID = instanceIdResult.value();
     auto rc = encode_set_state_effecter_states_req(
         instanceID, effecterID, effecterCount, &stateField, request);
     if (rc != PLDM_SUCCESS)

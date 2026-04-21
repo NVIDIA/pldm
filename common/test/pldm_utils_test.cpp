@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <set>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -2777,10 +2778,13 @@ TEST(fruFieldParserU32, BadTest)
 TEST(CheckIfLogicalBitSet, testCases)
 {
     EXPECT_EQ(checkIfLogicalBitSet(0x0000), true);
+    EXPECT_EQ(checkIfLogicalBitSet(0x0001), true);
+    EXPECT_EQ(checkIfLogicalBitSet(0x1234), true);
     EXPECT_EQ(checkIfLogicalBitSet(0x7FFF), true);
     EXPECT_EQ(checkIfLogicalBitSet(0x8000), false);
+    EXPECT_EQ(checkIfLogicalBitSet(0x8001), false);
+    EXPECT_EQ(checkIfLogicalBitSet(0xABCD), false);
     EXPECT_EQ(checkIfLogicalBitSet(0xFFFF), false);
-    EXPECT_EQ(checkIfLogicalBitSet(0x0001), true);
 }
 
 TEST(JsonEntryToDbusVal, testAllTypes)
@@ -2938,10 +2942,20 @@ TEST(GenerateSwId, returnsValueInRange)
 TEST(DecimalToBcd, testCases)
 {
     EXPECT_EQ(decimalToBcd(0u), 0u);
+    EXPECT_EQ(decimalToBcd(5u), 0x05u);
+    EXPECT_EQ(decimalToBcd(9u), 0x09u);
+    EXPECT_EQ(decimalToBcd(10u), 0x10u);
     EXPECT_EQ(decimalToBcd(12u), 0x12u);
+    EXPECT_EQ(decimalToBcd(25u), 0x25u);
     EXPECT_EQ(decimalToBcd(99u), 0x99u);
     EXPECT_EQ(decimalToBcd(100u), 0x100u);
+    EXPECT_EQ(decimalToBcd(123u), 0x123u);
     EXPECT_EQ(decimalToBcd(255u), 0x255u);
+    EXPECT_EQ(decimalToBcd(456u), 0x456u);
+    EXPECT_EQ(decimalToBcd(9999u), 0x9999u);
+    EXPECT_EQ(decimalToBcd<uint8_t>(42), 0x42u);
+    EXPECT_EQ(decimalToBcd<uint16_t>(1234), 0x1234u);
+    EXPECT_EQ(decimalToBcd<uint32_t>(56789), 0x56789u);
 }
 
 TEST(FindParent, testCases)
@@ -2966,6 +2980,23 @@ TEST(GenerateSwId, testRange)
         EXPECT_GE(id, 0);
         EXPECT_LE(id, 9999);
     }
+}
+
+TEST(GenerateSwId, testRandomness)
+{
+    for (int i = 0; i < 100; ++i)
+    {
+        auto id = generateSwId();
+        EXPECT_GE(id, 0);
+        EXPECT_LT(id, 10000);
+    }
+
+    std::set<long int> ids;
+    for (int i = 0; i < 50; ++i)
+    {
+        ids.insert(generateSwId());
+    }
+    EXPECT_GT(ids.size(), 1);
 }
 
 TEST(PrintBuffer, testVectorOverload)
@@ -3212,10 +3243,61 @@ TEST(GetStateSensorPDRsByType, testMatch)
     pldm_pdr_destroy(repo);
 }
 
-TEST(GetStateSensorPDRsByType, testNoMatch)
+TEST(GetStateSensorPDRsByType, testMultipleMatches)
 {
     auto repo = pldm_pdr_init();
 
+    std::vector<uint8_t> pdr1(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
+
+    auto rec1 = new (pdr1.data()) pldm_state_sensor_pdr;
+    auto state1 = new (rec1->possible_states) state_sensor_possible_states;
+
+    rec1->hdr.type = 4;
+    rec1->hdr.record_handle = 1;
+    rec1->entity_type = 5;
+    rec1->entity_instance = 1;
+    rec1->container_id = 0;
+    rec1->composite_sensor_count = 1;
+    rec1->sensor_id = 100;
+    state1->state_set_id = 1;
+    state1->possible_states_size = 1;
+
+    uint32_t handle = 0;
+    ASSERT_EQ(pldm_pdr_add(repo, pdr1.data(), pdr1.size(), false, 1, &handle),
+              0);
+
+    std::vector<uint8_t> pdr2(
+        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_sensor_possible_states));
+
+    auto rec2 = new (pdr2.data()) pldm_state_sensor_pdr;
+    auto state2 = new (rec2->possible_states) state_sensor_possible_states;
+
+    rec2->hdr.type = 4;
+    rec2->hdr.record_handle = 2;
+    rec2->entity_type = 5;
+    rec2->entity_instance = 1;
+    rec2->container_id = 0;
+    rec2->composite_sensor_count = 1;
+    rec2->sensor_id = 200;
+    state2->state_set_id = 2;
+    state2->possible_states_size = 1;
+
+    handle = 0;
+    ASSERT_EQ(pldm_pdr_add(repo, pdr2.data(), pdr2.size(), false, 1, &handle),
+              0);
+
+    auto result = getStateSensorPDRsByType(5, repo);
+    EXPECT_EQ(result.size(), 2);
+
+    pldm_pdr_destroy(repo);
+}
+
+TEST(GetStateSensorPDRsByType, testNoMatch)
+{
+    auto repo = pldm_pdr_init();
     std::vector<uint8_t> pdr(
         sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
         sizeof(struct state_sensor_possible_states));
@@ -3286,6 +3368,58 @@ TEST(GetStateEffecterPDRsByType, testMatch)
     pldm_pdr_destroy(repo);
 }
 
+TEST(GetStateEffecterPDRsByType, testMultipleMatches)
+{
+    auto repo = pldm_pdr_init();
+
+    std::vector<uint8_t> pdr1(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
+
+    auto rec1 = new (pdr1.data()) pldm_state_effecter_pdr;
+    auto state1 = new (rec1->possible_states) state_effecter_possible_states;
+
+    rec1->hdr.type = 11;
+    rec1->hdr.record_handle = 1;
+    rec1->entity_type = 33;
+    rec1->entity_instance = 1;
+    rec1->container_id = 0;
+    rec1->composite_effecter_count = 1;
+    rec1->effecter_id = 50;
+    state1->state_set_id = 196;
+    state1->possible_states_size = 1;
+
+    uint32_t handle = 0;
+    ASSERT_EQ(pldm_pdr_add(repo, pdr1.data(), pdr1.size(), false, 1, &handle),
+              0);
+
+    std::vector<uint8_t> pdr2(
+        sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
+        sizeof(struct state_effecter_possible_states));
+
+    auto rec2 = new (pdr2.data()) pldm_state_effecter_pdr;
+    auto state2 = new (rec2->possible_states) state_effecter_possible_states;
+
+    rec2->hdr.type = 11;
+    rec2->hdr.record_handle = 2;
+    rec2->entity_type = 33;
+    rec2->entity_instance = 1;
+    rec2->container_id = 0;
+    rec2->composite_effecter_count = 1;
+    rec2->effecter_id = 60;
+    state2->state_set_id = 197;
+    state2->possible_states_size = 1;
+
+    handle = 0;
+    ASSERT_EQ(pldm_pdr_add(repo, pdr2.data(), pdr2.size(), false, 1, &handle),
+              0);
+
+    auto result = getStateEffecterPDRsByType(33, repo);
+    EXPECT_EQ(result.size(), 2);
+
+    pldm_pdr_destroy(repo);
+}
+
 TEST(GetStateEffecterPDRsByType, testNullRepo)
 {
     auto result = getStateEffecterPDRsByType(33, nullptr);
@@ -3303,7 +3437,6 @@ TEST(GetStateEffecterPDRsByType, testEmptyRepo)
 TEST(GetStateEffecterPDRsByType, testNoMatch)
 {
     auto repo = pldm_pdr_init();
-
     std::vector<uint8_t> pdr(
         sizeof(struct pldm_state_effecter_pdr) - sizeof(uint8_t) +
         sizeof(struct state_effecter_possible_states));
@@ -3326,58 +3459,6 @@ TEST(GetStateEffecterPDRsByType, testNoMatch)
 
     auto result = getStateEffecterPDRsByType(33, repo);
     EXPECT_TRUE(result.empty());
-
-    pldm_pdr_destroy(repo);
-}
-
-TEST(FindSensorIds, testMatch)
-{
-    auto repo = pldm_pdr_init();
-
-    std::vector<uint8_t> pdr1(
-        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
-        sizeof(struct state_sensor_possible_states));
-
-    auto rec1 = new (pdr1.data()) pldm_state_sensor_pdr;
-    auto state1 = new (rec1->possible_states) state_sensor_possible_states;
-
-    rec1->hdr.type = 4;
-    rec1->hdr.record_handle = 1;
-    rec1->entity_type = 5;
-    rec1->entity_instance = 1;
-    rec1->container_id = 0;
-    rec1->composite_sensor_count = 1;
-    rec1->sensor_id = 100;
-    state1->state_set_id = 1;
-    state1->possible_states_size = 1;
-
-    uint32_t handle = 0;
-    ASSERT_EQ(pldm_pdr_add(repo, pdr1.data(), pdr1.size(), false, 1, &handle),
-              0);
-
-    std::vector<uint8_t> pdr2(
-        sizeof(struct pldm_state_sensor_pdr) - sizeof(uint8_t) +
-        sizeof(struct state_sensor_possible_states));
-
-    auto rec2 = new (pdr2.data()) pldm_state_sensor_pdr;
-    auto state2 = new (rec2->possible_states) state_sensor_possible_states;
-
-    rec2->hdr.type = 4;
-    rec2->hdr.record_handle = 2;
-    rec2->entity_type = 5;
-    rec2->entity_instance = 1;
-    rec2->container_id = 0;
-    rec2->composite_sensor_count = 1;
-    rec2->sensor_id = 200;
-    state2->state_set_id = 1;
-    state2->possible_states_size = 1;
-
-    handle = 0;
-    ASSERT_EQ(pldm_pdr_add(repo, pdr2.data(), pdr2.size(), false, 1, &handle),
-              0);
-
-    auto result = findSensorIds(repo, 5, 1, 0);
-    EXPECT_EQ(result.size(), 2);
 
     pldm_pdr_destroy(repo);
 }

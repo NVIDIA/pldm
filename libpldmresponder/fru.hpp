@@ -3,7 +3,9 @@
 #include "config.h"
 
 #include "fru_parser.hpp"
+#include "oem_handler.hpp"
 #include "pldmd/handler.hpp"
+#include "pdr_utils.hpp"
 
 #include <libpldm/fru.h>
 #include <libpldm/pdr.h>
@@ -20,18 +22,25 @@ namespace pldm
 
 namespace responder
 {
+namespace platform
+{
+class Handler; // forward declaration
+}
 
 namespace dbus
 {
 
 using Value =
     std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
-                 uint64_t, double, std::string, std::vector<uint8_t>>;
+                 uint64_t, double, std::string, std::vector<uint8_t>,
+                 std::vector<uint64_t>, std::vector<std::string>>;
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
-using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree =
+    std::map<sdbusplus::message::object_path, InterfaceMap>;
 using ObjectPath = std::string;
 using AssociatedEntityMap = std::map<ObjectPath, pldm_entity>;
+using ObjectPathToRSIMap = std::map<ObjectPath, uint16_t>;
 
 } // namespace dbus
 
@@ -143,12 +152,78 @@ class FruImpl
         return associatedEntityMap;
     }
 
+    /* @brief Method to set the oem platform handler in FRU handler class
+     *
+     * @param[in] handler - oem platform handler
+     */
+    inline void setOemPlatformHandler(
+        pldm::responder::oem_platform::Handler* handler)
+    {
+        oemPlatformHandler = handler;
+    }
+
+    /** @brief Get pldm entity by the object path
+     *
+     *  @param[in] intfMaps - D-Bus interfaces and the associated property
+     *                        values for the FRU
+     *
+     *  @return pldm_entity
+     */
+    std::optional<pldm_entity> getEntityByObjectPath(
+        const dbus::InterfaceMap& intfMaps);
+
+    /** @brief Update pldm entity to association tree
+     *
+     *  @param[in] objects - std::map The object value tree
+     *  @param[in] path    - Object path
+     *
+     *  Ex: Input path =
+     *  "/xyz/openbmc_project/inventory/system/chassis/motherboard/powersupply0"
+     *
+     *  Get the parent class in turn and store it in a temporary vector
+     *
+     *  Output tmpObjPaths = {
+     *  "/xyz/openbmc_project/inventory/system",
+     *  "/xyz/openbmc_project/inventory/system/chassis/",
+     *  "/xyz/openbmc_project/inventory/system/chassis/motherboard",
+     *  "/xyz/openbmc_project/inventory/system/chassis/motherboard/powersupply0"}
+     *
+     */
+    void updateAssociationTree(const dbus::ObjectValueTree& objects,
+                               const std::string& path);
     /* @brief Method to populate the firmware version ID
      *
      * @return firmware version ID
      */
     std::string populatefwVersion();
 
+    /* @brief Method to resize the table
+     *
+     * @return resized table
+     */
+    std::vector<uint8_t> tableResize();
+
+    /* @brief set FRU Record Table
+     *
+     * @param[in] fruData - the data of the fru
+     *
+     * @return PLDM completion code
+     */
+    int setFRUTable(const std::vector<uint8_t>& fruData);
+
+    /* @brief Method to set the oem platform handler in fru handler class
+     *
+     * @param[in] handler - oem fru handler
+     */
+    inline void setOemFruHandler(pldm::responder::oem_fru::Handler* handler)
+    {
+        oemFruHandler = handler;
+    }
+
+    inline void setPlatformHandler(pldm::responder::platform::Handler* handler)
+    {
+        platformHandler = handler;
+    }
   private:
     uint16_t nextRSI()
     {
@@ -172,8 +247,19 @@ class FruImpl
     pldm_pdr* pdrRepo;
     pldm_entity_association_tree* entityTree;
     pldm_entity_association_tree* bmcEntityTree;
+    pldm::responder::oem_fru::Handler* oemFruHandler = nullptr;
+    dbus::ObjectValueTree objects;
+    pldm::responder::platform::Handler* platformHandler = nullptr;
+
+    /** @OEM platform handler */
+    pldm::responder::oem_platform::Handler* oemPlatformHandler;
 
     std::map<dbus::ObjectPath, pldm_entity_node*> objToEntityNode{};
+
+    dbus::ObjectPathToRSIMap objectPathToRSIMap{};
+
+    pdr_utils::DbusObjMaps effecterDbusObjMaps{};
+    pdr_utils::DbusObjMaps sensorDbusObjMaps{};
 
     /** @brief populateRecord builds the FRU records for an instance of FRU and
      *         updates the FRU table with the FRU records.
@@ -186,6 +272,30 @@ class FruImpl
     void populateRecords(const dbus::InterfaceMap& interfaces,
                          const fru_parser::FruRecordInfos& recordInfos,
                          const pldm_entity& entity);
+
+    /** @brief Add hotplug record that was modified or added to the PDR entry
+     *  HotPlug is a feature where a FRU can be removed or added when
+     *  the system is running, without needing it to power off.
+     *
+     *  @param[in] pdrEntry - PDR record structure in PDR repository
+     *
+     *  @return record handle of added or modified hotplug record
+     */
+    uint32_t addHotPlugRecord(pldm::responder::pdr_utils::PdrEntry pdrEntry);
+
+    /** @brief Deletes a FRU record from record set table.
+     *  @param[in] rsi - the FRU Record Set Identifier
+     *
+     *  @return
+     */
+    void deleteFRURecord(uint16_t rsi);
+
+    /** @brief Deletes a FRU record set PDR and it's associated PDRs after
+     *         a concurrent remove operation.
+     *  @param[in] fruObjectPath - the FRU object path
+     *  @return
+     */
+    void removeIndividualFRU(const std::string& fruObjPath);
 
     /** @brief Associate sensor/effecter to FRU entity
      */
@@ -261,6 +371,15 @@ class Handler : public CmdHandler
         return impl.getAssociateEntityMap();
     }
 
+    /* @brief Method to set the oem platform  handler in host pdr handler class
+     *
+     * @param[in] handler - oem platform handler
+     */
+    void setOemPlatformHandler(pldm::responder::oem_platform::Handler* handler)
+    {
+        return impl.setOemPlatformHandler(handler);
+    }
+
     /** @brief Handler for GetFRURecordByOption
      *
      *  @param[in] request - Request message payload
@@ -271,6 +390,30 @@ class Handler : public CmdHandler
     Response getFRURecordByOption(const pldm_msg* request,
                                   size_t payloadLength);
 
+    /** @brief Handler for SetFRURecordTable
+     *
+     *  @param[in] request - Request message
+     *  @param[in] payloadLength - Request payload length
+     *
+     *  @return PLDM response message
+     */
+    Response setFRURecordTable(const pldm_msg* request, size_t payloadLength);
+
+    /* @brief Method to set the oem platform handler in fru handler class
+     *
+     * @param[in] handler - oem fru handler
+     */
+    void setOemFruHandler(pldm::responder::oem_fru::Handler* handler)
+    {
+        impl.setOemFruHandler(handler);
+    }
+
+    void setPlatformHandler(pldm::responder::platform::Handler* handler)
+    {
+        impl.setPlatformHandler(handler);
+    }
+
+    using Table = std::vector<uint8_t>;
   private:
     FruImpl impl;
 };

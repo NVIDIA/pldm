@@ -32,6 +32,11 @@ if get_option('oem-ibm').enabled()
         '../oem/ibm/configurations/host_eid',
         install_dir: package_datadir,
     )
+    install_symlink(
+        'com.ibm.Hardware.Chassis.Model.Balcones',
+        pointing_to: 'com.ibm.Hardware.Chassis.Model.Bonnell',
+        install_dir: join_paths(package_datadir, 'bios'),
+    )
 endif
 
 if get_option('oem-nvidia').enabled()

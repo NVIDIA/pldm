@@ -3,6 +3,7 @@
 #include "base.hpp"
 
 #include "common/instance_id.hpp"
+#include "common/types.hpp"
 #include "common/utils.hpp"
 #include "libpldmresponder/pdr.hpp"
 
@@ -184,7 +185,14 @@ void Handler::processSetEventReceiver(
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_SET_EVENT_RECEIVER_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        std::cerr << "Failed to allocate instance ID for setEventReceiver"
+                  << std::endl;
+        return;
+    }
+    auto instanceId = instanceIdResult.value();
     uint8_t eventMessageGlobalEnable =
         PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE;
     uint8_t transportProtocolType = PLDM_TRANSPORT_PROTOCOL_TYPE_MCTP;

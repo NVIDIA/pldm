@@ -80,7 +80,12 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
 {
     pldmRequest.reset();
 
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     const auto& comp = compImageInfos[applicableComponents[offset]];
@@ -261,12 +266,44 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
                       ComponentUpdateStatus::UpdateFailed));
         co_return PLDM_ERROR;
     }
-    if (compCompatibilityResp)
+
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    if (applicableComponents.empty())
     {
-        error(
-            "In UpdateComponent response, ComponentCompatibilityResponse is non-zero EID={EID}, RC= {RC}, CompletionCode= {CC}, compCompatibilityResp={CCR}, compCompatibilityRespCode= {CCRC}",
-            "EID", eid, "RC", rc, "CC", completionCode, "CCR",
-            compCompatibilityResp, "CCRC", compCompatibilityRespCode);
+        error("No applicable components for endpoint ID '{EID}'", "EID", eid);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
+        co_return PLDM_ERROR;
+    }
+
+    const auto& comp = compImageInfos[applicableComponents[componentIndex]];
+    const auto& compVersion =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompVersionPos)>(
+            comp);
+
+    if (compCompatibilityResp != PLDM_CCR_COMP_CAN_BE_UPDATED &&
+        compCompatibilityResp != PLDM_CCR_COMP_CANNOT_BE_UPDATED)
+    {
+        error("Unknown compCompatibilityResp '{RESP}' for endpoint ID '{EID}'",
+              "RESP", compCompatibilityResp, "EID", eid);
+        componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateFailed));
+        co_return PLDM_ERROR;
+    }
+
+    if (compCompatibilityResp == PLDM_CCR_COMP_CANNOT_BE_UPDATED)
+    {
+        info(
+            "Component at endpoint ID '{EID}' with version '{COMPONENT_VERSION}' cannot be updated, response code '{RESP_CODE}', skipping",
+            "EID", eid, "COMPONENT_VERSION", compVersion, "RESP_CODE",
+            compCompatibilityRespCode);
 
         auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
             getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
@@ -278,28 +315,16 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
                 oemMessageError, oemResolution);
         }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
-        if (compCompatibilityRespCode ==
-            PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL)
-        {
-            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-                updateManager->event,
-                std::bind(&ComponentUpdater::updateComponentComplete, this,
-                          ComponentUpdateStatus::UpdateSkipped));
-        }
-        // Set updateComponentComplete to UpdateFailed when
-        // compCompatibilityRespCode is either
-        // PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER or any value other than
-        // PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL and
-        // PLDM_CCRC_NO_RESPONSE_CODE
-        else
-        {
-            pldmRequest = std::make_unique<sdeventplus::source::Defer>(
-                updateManager->event,
-                std::bind(&ComponentUpdater::updateComponentComplete, this,
-                          ComponentUpdateStatus::UpdateFailed));
-        }
+        pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+            updateManager->event,
+            std::bind(&ComponentUpdater::updateComponentComplete, this,
+                      ComponentUpdateStatus::UpdateSkipped));
         co_return PLDM_ERROR;
     }
+
+    info(
+        "Component at endpoint ID '{EID}' with version '{COMPONENT_VERSION}' can be updated",
+        "EID", eid, "COMPONENT_VERSION", compVersion);
 
     componentUpdaterState.nextState(componentUpdaterState.current);
 
@@ -460,6 +485,11 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         reinterpret_cast<char*>(
             response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode)),
         length - padBytes);
+    if (length > padBytes)
+    {
+        deviceUpdater->reportComponentDataProgress(componentIndex,
+                                                   length - padBytes);
+    }
     rc = encode_request_firmware_data_resp(
         request->hdr.instance_id, completionCode, responseMsg,
         sizeof(completionCode));
@@ -717,6 +747,7 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
         info(
             "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' verification complete.",
             "EID", eid, "COMPONENT_VERSION", compVersion);
+        deviceUpdater->reportComponentVerifyProgress(componentIndex);
         componentUpdaterState.nextState(componentUpdaterState.current);
     }
     else
@@ -780,6 +811,7 @@ void ComponentUpdater::applyCompleteSucceededStatusHandler(
 
     deviceUpdater->accumulateActivationModifications(
         compActivationModification);
+    deviceUpdater->reportComponentApplyProgress(componentIndex);
 
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          updateSuccessful);
@@ -1092,7 +1124,12 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 exec::task<int> ComponentUpdater::sendcancelUpdateComponentRequest()
 {
     pldmRequest.reset();
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;
@@ -1223,7 +1260,12 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
 exec::task<int> ComponentUpdater::sendGetStatusRequest(
     std::function<void(uint8_t)> getStatusCallback, uint8_t retryCount)
 {
-    auto instanceId = updateManager->instanceIdDb.next(eid);
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     const pldm_msg* response = NULL;

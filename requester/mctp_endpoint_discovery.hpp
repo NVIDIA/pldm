@@ -6,10 +6,15 @@
 #include <libpldm/pldm.h>
 
 #include <sdbusplus/bus/match.hpp>
+#include <xyz/openbmc_project/Common/UUID/common.hpp>
+#include <xyz/openbmc_project/MCTP/Endpoint/client.hpp>
 
 #include <filesystem>
 #include <initializer_list>
 #include <vector>
+
+using MCTPEndpoint = sdbusplus::common::xyz::openbmc_project::mctp::Endpoint;
+using CommonUUID = sdbusplus::common::xyz::openbmc_project::common::UUID;
 
 class TestMctpDiscovery;
 
@@ -18,9 +23,9 @@ namespace pldm
 
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 constexpr const char* MCTPService = "au.com.codeconstruct.MCTP1";
-constexpr const char* MCTPInterface = "xyz.openbmc_project.MCTP.Endpoint";
+constexpr const char* MCTPInterface = MCTPEndpoint::interface;
 constexpr const char* MCTPBindingInterface = "xyz.openbmc_project.MCTP.Binding";
-constexpr const char* EndpointUUID = "xyz.openbmc_project.Common.UUID";
+constexpr const char* EndpointUUID = CommonUUID::interface;
 constexpr const char* MCTPPath = "/au/com/codeconstruct/mctp1";
 constexpr const char* MCTPNetworksPath =
     "/au/com/codeconstruct/mctp1/networks/";

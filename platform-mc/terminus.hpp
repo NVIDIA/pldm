@@ -402,7 +402,6 @@ class Terminus
     std::optional<std::string> getAuxNameForNumericSensor(SensorID id);
 
     tid_t tid;
-
     std::bitset<64> supportedTypes;
 
     UUID uuid;

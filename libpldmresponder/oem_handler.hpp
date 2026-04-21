@@ -2,6 +2,7 @@
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "libpldmresponder/pdr_utils.hpp"
 #include "pldmd/handler.hpp"
 
 namespace pldm
@@ -34,9 +35,11 @@ class Handler : public CmdHandler
      *            fails
      */
     virtual int getOemStateSensorReadingsHandler(
-        EntityType entityType, pldm::pdr::EntityInstance entityInstance,
-        pldm::pdr::StateSetId stateSetId,
+        pldm::pdr::EntityType entityType,
+        pldm::pdr::EntityInstance entityInstance,
+        pldm::pdr::ContainerID containerId, pldm::pdr::StateSetId stateSetId,
         pldm::pdr::CompositeCount compSensorCnt,
+        uint16_t sensorId,
         std::vector<get_sensor_state_field>& stateField) = 0;
 
     /** @brief Interface to set the effecter requested by pldm requester
@@ -91,6 +94,42 @@ class Handler : public CmdHandler
     /** @brief Interface to check the BMC state */
     virtual int checkBMCState() = 0;
 
+    /** @brief update the dbus object paths */
+    virtual void updateOemDbusPaths(std::string& dbusPath) = 0;
+
+    /** @brief Interface to fetch the last BMC record from the PDR repository
+     *
+     *  @param[in] repo - pointer to BMC's primary PDR repo
+     *
+     *  @return the last BMC record from the repo
+     */
+    virtual const pldm_pdr_record* fetchLastBMCRecord(const pldm_pdr* repo) = 0;
+
+    /** @brief Interface to check if the record handle passed is in remote PDR
+     *         record handle range
+     *
+     *  @param[in] record_handle - record handle of the PDR
+     *
+     *  @return true if record handle passed is in host PDR record handle range
+     */
+    virtual bool checkRecordHandleInRange(const uint32_t& record_handle) = 0;
+
+    /** @brief Interface to the process setEventReceiver*/
+    virtual void processSetEventReceiver() = 0;
+
+    /** @brief Interface to monitor the surveillance pings from remote terminus
+     *
+     * @param[in] tid - TID of the remote terminus
+     * @param[in] value - true or false, to indicate if the timer is
+     *                   running or not
+     * */
+    virtual void setSurvTimer(uint8_t tid, bool value) = 0;
+
+    /** @brief To handle the boot types bios attributes at power on*/
+    virtual void handleBootTypesAtPowerOn() = 0;
+
+    /** @brief To handle the boot types bios attributes at shutdown*/
+    virtual void handleBootTypesAtChassisOff() = 0;
     virtual ~Handler() = default;
 
   protected:
@@ -99,6 +138,72 @@ class Handler : public CmdHandler
 
 } // namespace oem_platform
 
+namespace oem_fru
+{
+
+class Handler : public CmdHandler
+{
+  public:
+    Handler() {}
+
+    /** @brief Process OEM FRU record
+     *
+     * @param[in] fruData - the data of the fru
+     *
+     * @return success or failure
+     */
+    virtual int processOEMFRUTable(const std::vector<uint8_t>& fruData) = 0;
+
+    virtual ~Handler() = default;
+};
+
+} // namespace oem_fru
+
+namespace oem_utils
+{
+using namespace pldm::utils;
+
+class Handler : public CmdHandler
+{
+  public:
+    Handler(const pldm::utils::DBusHandler* dBusIntf) : dBusIntf(dBusIntf) {}
+
+    /** @brief Collecting core count data and setting to Dbus properties
+     *
+     *  @param[in] associations - the data of entity association
+     *  @param[in] entityMaps - the mapping of entity to DBus string
+     *
+     */
+    virtual int setCoreCount(const EntityAssociations& associations,
+                             const EntityMaps entityMaps) = 0;
+
+    virtual ~Handler() = default;
+
+  protected:
+    const pldm::utils::DBusHandler* dBusIntf;
+};
+
+} // namespace oem_utils
+
+namespace oem_bios
+{
+using namespace pldm::utils;
+
+class Handler : public CmdHandler
+{
+  public:
+    Handler() {}
+
+    /** @brief Process BaseBiosTable and update the locally cached attributes
+     *  @param[in] biosTable - Bios table
+     */
+    virtual void processOEMBaseBiosTable(
+        const pldm::bios::BaseBIOSTable& biosTable) = 0;
+
+    virtual ~Handler() = default;
+};
+
+} // namespace oem_bios
 } // namespace responder
 
 } // namespace pldm

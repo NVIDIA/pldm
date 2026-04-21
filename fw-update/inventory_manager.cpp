@@ -55,7 +55,6 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
         discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
         exec::default_task_context<void>(exec::inline_scheduler{}));
 }
-
 exec::task<int> InventoryManager::discoverFDsTask()
 {
     while (!queuedMctpInfos.empty())
@@ -76,7 +75,12 @@ exec::task<int> InventoryManager::discoverFDsTask()
 exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
                                                uint64_t& supportedTypes)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr) + PLDM_GET_TYPES_REQ_BYTES);
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_types_req(instanceId, requestMsg);
@@ -303,12 +307,30 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
 {
     mctpEidMap.erase(eid);
     descriptorMap.erase(eid);
+    downstreamDescriptorMap.erase(eid);
+    componentInfoMap.erase(eid);
+    firmwareDeviceNameMap.erase(eid);
+    mctpInfoMap.clear();
+}
+
+void InventoryManager::removeFDs(const MctpInfos& mctpInfos)
+{
+    for (const auto& mctpInfo : mctpInfos)
+    {
+        auto eid = std::get<pldm::eid>(mctpInfo);
+        cleanUpResources(eid);
+    }
 }
 
 exec::task<int> InventoryManager::queryDeviceIdentifiers(
     mctp_eid_t eid, std::string& messageError, std::string& resolution)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
@@ -483,13 +505,10 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
         deviceIdentifiersLen -= nextDescriptorOffset;
     }
 
-    if (descriptorMap.contains(eid))
-    {
-        descriptorMap.erase(eid);
-    }
+    obtainFirmwareDeviceName(eid, descriptors);
     info("EID={EID} Descriptors=[{DESC}]", "EID", eid, "DESC",
          descriptorLog.str());
-    descriptorMap.emplace(eid, std::move(descriptors));
+    descriptorMap.insert_or_assign(eid, std::move(descriptors));
 
     co_return PLDM_SUCCESS;
 }
@@ -498,7 +517,12 @@ exec::task<int> InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
     dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_GET_FIRMWARE_PARAMETERS_REQ_BYTES);
     auto request = new (requestMsg.data()) pldm_msg;
@@ -736,7 +760,12 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
     mctp_eid_t eid)
 {
     Request requestMsg(sizeof(pldm_msg_hdr));
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     auto request = new (requestMsg.data()) pldm_msg;
     auto rc = encode_query_downstream_devices_req(instanceId, request);
 
@@ -857,7 +886,12 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamIdentifiers(
     mctp_eid_t eid, uint32_t dataTransferHandle,
     enum transfer_op_flag transferOperationFlag)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     Request requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_QUERY_DOWNSTREAM_IDENTIFIERS_REQ_BYTES);
     auto request = new (requestMsg.data()) pldm_msg;
@@ -1057,7 +1091,12 @@ sdbusplus::async::task<int> InventoryManager::getDownstreamFirmwareParameters(
 {
     Request requestMsg(sizeof(pldm_msg_hdr) +
                        PLDM_GET_DOWNSTREAM_FIRMWARE_PARAMETERS_REQ_BYTES);
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     auto request = new (requestMsg.data()) pldm_msg;
     pldm_get_downstream_firmware_parameters_req requestParameters{
         dataTransferHandle, static_cast<uint8_t>(transferOperationFlag)};
@@ -1283,6 +1322,66 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     info("Successfully refreshed firmware inventory for endpoint ID {EID}",
          "EID", eid);
     co_return PLDM_SUCCESS;
+}
+
+void InventoryManager::obtainFirmwareDeviceName(pldm::eid eid,
+                                                const Descriptors& descriptors)
+{
+    auto firmwareDeviceName =
+        obtainDeviceNameFromConfigurations(configurations, eid);
+
+    if (!firmwareDeviceName)
+    {
+        firmwareDeviceName = obtainDeviceNameFromDescriptors(descriptors);
+    }
+
+    if (!firmwareDeviceName)
+    {
+        firmwareDeviceName = std::format("Firmware_Device_{}", eid);
+    }
+
+    firmwareDeviceNameMap.insert_or_assign(eid, *firmwareDeviceName);
+}
+
+std::optional<SoftwareName> obtainDeviceNameFromConfigurations(
+    const Configurations& configurations, pldm::eid eid)
+{
+    for (const auto& [_, mctpInfo] : configurations)
+    {
+        if (std::get<pldm::eid>(mctpInfo) == eid)
+        {
+            auto nameOption = std::get<std::optional<std::string>>(mctpInfo);
+            if (nameOption)
+            {
+                return *nameOption;
+            }
+            break;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<SoftwareName> obtainDeviceNameFromDescriptors(
+    const Descriptors& descriptors)
+{
+    for (const auto& [descriptorType, descriptorData] : descriptors)
+    {
+        if (descriptorType == PLDM_FWUP_VENDOR_DEFINED)
+        {
+            auto vendorInfo =
+                std::get<VendorDefinedDescriptorInfo>(descriptorData);
+            auto title = std::get<VendorDefinedDescriptorTitle>(vendorInfo);
+            if (title == "OpenBMC.Name")
+            {
+                auto deviceNameData =
+                    std::get<VendorDefinedDescriptorData>(vendorInfo);
+                return SoftwareName{
+                    reinterpret_cast<const char*>(deviceNameData.data()),
+                    deviceNameData.size()};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace fw_update

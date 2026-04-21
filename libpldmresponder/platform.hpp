@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include "common/instance_id.hpp"
 #include "common/utils.hpp"
 #include "event_parser.hpp"
 #include "fru.hpp"
@@ -11,12 +12,14 @@
 #include "libpldmresponder/pdr_utils.hpp"
 #include "oem_handler.hpp"
 #include "pldmd/handler.hpp"
+#include "requester/handler.hpp"
 
 #include <libpldm/pdr.h>
 #include <libpldm/platform.h>
 #include <libpldm/states.h>
 #include <stdint.h>
 
+#include <iterator>
 #include <map>
 
 namespace pldm
@@ -44,6 +47,8 @@ using EventHandlers = std::vector<EventHandler>;
 using EventMap = std::map<EventType, EventHandlers>;
 using AssociatedEntityMap = std::map<DbusPath, pldm_entity>;
 
+using ChangeEntry = uint32_t;
+
 class Handler : public CmdHandler
 {
   public:
@@ -54,8 +59,13 @@ class Handler : public CmdHandler
             fru::Handler* fruHandler,
             pldm::responder::oem_platform::Handler* oemPlatformHandler,
             sdeventplus::Event& event, bool buildPDRLazily = false,
+            uint8_t eid = 0, pldm::InstanceIdDb* instanceIdDb = nullptr,
+            pldm::requester::Handler<pldm::requester::Request>*
+                requesterHandler = nullptr,
             const std::optional<EventMap>& addOnHandlersMap = std::nullopt) :
-        pdrRepo(repo), hostPDRHandler(hostPDRHandler),
+        eid(eid), instanceIdDb(instanceIdDb),
+        requesterHandler(requesterHandler), pdrRepo(repo),
+        hostPDRHandler(hostPDRHandler),
         dbusToPLDMEventHandler(dbusToPLDMEventHandler), fruHandler(fruHandler),
         dBusIntf(dBusIntf), oemPlatformHandler(oemPlatformHandler),
         event(event), pdrJsonsDir(pdrJsonsDir), pdrCreated(false)
@@ -191,6 +201,20 @@ class Handler : public CmdHandler
      *
      */
     EventMap eventHandlers;
+
+    void registerEventHandlers(EventType eventType, EventHandlers handlers)
+    {
+        auto& registeredHandlers = eventHandlers[eventType];
+        registeredHandlers.insert(registeredHandlers.end(),
+                                  std::make_move_iterator(handlers.begin()),
+                                  std::make_move_iterator(handlers.end()));
+    }
+
+    inline void setOemPlatformHandler(
+        pldm::responder::oem_platform::Handler* handler)
+    {
+        oemPlatformHandler = handler;
+    }
 
     /** @brief Handler for GetPDR
      *
@@ -440,7 +464,23 @@ class Handler : public CmdHandler
 
     void _processPostPldmMessagePollEvent(uint8_t tid);
 
+    void setEventReceiver();
+
+    /* @brief Send a PLDM event to host firmware containing a list of record
+     *        handles of PDRs that the host firmware has to fetch.
+     *
+     * @param[in] pdrRecordHandles - list of PDR record handles
+     * @param[in] eventDataOps - event data operation for PDRRepositoryChgEvent
+     *                           as in DSP0248 SPEC
+     */
+    void sendPDRRepositoryChgEventbyPDRHandles(
+        const std::vector<uint32_t>& pdrRecordHandles,
+        const std::vector<uint8_t>& eventDataOps);
+
   private:
+    uint8_t eid;
+    pldm::InstanceIdDb* instanceIdDb;
+    pldm::requester::Handler<pldm::requester::Request>* requesterHandler;
     pdr_utils::Repo pdrRepo;
     uint16_t nextEffecterId{};
     uint16_t nextSensorId{};
@@ -475,7 +515,7 @@ class Handler : public CmdHandler
 bool isOemStateSensor(Handler& handler, uint16_t sensorId,
                       uint8_t sensorRearmCount, uint8_t& compSensorCnt,
                       uint16_t& entityType, uint16_t& entityInstance,
-                      uint16_t& stateSetId);
+                      uint16_t& stateSetId, uint16_t& containerId);
 
 /** @brief Function to check if an effecter falls in OEM range
  *         An effecter is considered to be oem if either of entity

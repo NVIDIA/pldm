@@ -231,15 +231,15 @@ const std::map<uint16_t, std::string> componentClassification{
     {PLDM_COMP_SOFTWARE_BUNDLE, "Software Bundle"},
     {PLDM_COMP_DOWNSTREAM_DEVICE, "Downstream Device"}};
 
-class GetFwParams : public CommandInterface
+class GetFirmwareParameters : public CommandInterface
 {
   public:
-    ~GetFwParams() = default;
-    GetFwParams() = delete;
-    GetFwParams(const GetFwParams&) = delete;
-    GetFwParams(GetFwParams&&) = delete;
-    GetFwParams& operator=(const GetFwParams&) = delete;
-    GetFwParams& operator=(GetFwParams&&) = delete;
+    ~GetFirmwareParameters() = default;
+    GetFirmwareParameters() = delete;
+    GetFirmwareParameters(const GetFirmwareParameters&) = delete;
+    GetFirmwareParameters(GetFirmwareParameters&&) = default;
+    GetFirmwareParameters& operator=(const GetFirmwareParameters&) = delete;
+    GetFirmwareParameters& operator=(GetFirmwareParameters&&) = delete;
 
     using CommandInterface::CommandInterface;
 
@@ -1348,6 +1348,85 @@ class CancelUpdate : public CommandInterface
     }
 };
 
+class UpdateSecurityRevision : public CommandInterface
+{
+  public:
+    ~UpdateSecurityRevision() = default;
+    UpdateSecurityRevision() = delete;
+    UpdateSecurityRevision(const UpdateSecurityRevision&) = delete;
+    UpdateSecurityRevision(UpdateSecurityRevision&&) = delete;
+    UpdateSecurityRevision& operator=(const UpdateSecurityRevision&) = delete;
+    UpdateSecurityRevision& operator=(UpdateSecurityRevision&&) = delete;
+
+    explicit UpdateSecurityRevision(const char* type, const char* name,
+                                    CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option("--component_classification",
+                        req.component_classification,
+                        "ComponentClassification value")
+            ->required();
+
+        app->add_option("--component_identifier", req.component_identifier,
+                        "ComponentIdentifier value")
+            ->required();
+
+        app->add_option("--component_classification_index",
+                        req.component_classification_index,
+                        "ComponentClassificationIndex value")
+            ->required();
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) +
+            PLDM_FWUP_UPDATE_SECURITY_REVISION_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        size_t payload_length = PLDM_FWUP_UPDATE_SECURITY_REVISION_REQ_BYTES;
+
+        auto rc = encode_pldm_fwup_update_security_revision_req(
+            instanceId, &req, request, &payload_length);
+
+        if (rc == 0 &&
+            payload_length != PLDM_FWUP_UPDATE_SECURITY_REVISION_REQ_BYTES)
+        {
+            std::cerr << "Payload length mismatch: expected "
+                      << PLDM_FWUP_UPDATE_SECURITY_REVISION_REQ_BYTES
+                      << " but got " << payload_length << "\n";
+            return {PLDM_ERROR, requestMsg};
+        }
+
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        uint8_t completionCode = 0;
+
+        auto rc = decode_pldm_fwup_update_security_revision_resp(
+            responsePtr, payloadLength, &completionCode);
+
+        if (rc != 0)
+        {
+            std::cerr << "Response Message Error: "
+                      << "rc=" << rc << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(completionCode, data, PLDM_FWUP);
+
+        pldmtool::helper::DisplayInJson(data);
+
+        return;
+    }
+
+  private:
+    struct pldm_fwup_update_security_revision_req req = {};
+};
+
 void registerCommand(CLI::App& app)
 {
     auto fwUpdate =
@@ -1358,10 +1437,14 @@ void registerCommand(CLI::App& app)
     commands.push_back(
         std::make_unique<GetStatus>("fw_update", "GetStatus", getStatus));
 
+    auto getFirmwareParameters = fwUpdate->add_subcommand(
+        "GetFirmwareParameters", "To get the component details of the FD");
+    commands.push_back(std::make_unique<GetFirmwareParameters>(
+        "fw_update", "GetFirmwareParameters", getFirmwareParameters));
     auto getFwParams = fwUpdate->add_subcommand(
-        "GetFwParams", "To get the component details of the FD");
-    commands.push_back(
-        std::make_unique<GetFwParams>("fw_update", "GetFwParams", getFwParams));
+        "GetFwParams", "[Deprecated] To get the component details of the FD");
+    commands.push_back(std::make_unique<GetFirmwareParameters>(
+        "fw_update", "GetFwParams", getFwParams));
 
     auto queryDeviceIdentifiers = fwUpdate->add_subcommand(
         "QueryDeviceIdentifiers", "To query device identifiers of the FD");
@@ -1397,6 +1480,11 @@ void registerCommand(CLI::App& app)
         fwUpdate->add_subcommand("CancelUpdate", "To cancel update");
     commands.push_back(std::make_unique<CancelUpdate>(
         "fw_update", "CancelUpdate", cancelUpdate));
+
+    auto updateSecurityRevision = fwUpdate->add_subcommand(
+        "UpdateSecurityRevision", "To update security revision");
+    commands.push_back(std::make_unique<UpdateSecurityRevision>(
+        "fw_update", "UpdateSecurityRevision", updateSecurityRevision));
 }
 
 } // namespace fw_update

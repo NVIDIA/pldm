@@ -7,6 +7,7 @@
 #include "common/utils.hpp"
 #include "pldm_cmd_helper.hpp"
 
+#include <libpldm/bcd.h>
 #include <map>
 #include <optional>
 
@@ -72,9 +73,9 @@ class GetDateTime : public CommandInterface
 
         std::stringstream dt;
         ordered_json data;
-        dt << bcd2dec16(year) << "-" << setWidth(month) << "-" << setWidth(day)
-           << " " << setWidth(hours) << ":" << setWidth(minutes) << ":"
-           << setWidth(seconds);
+        dt << pldm_bcd_bcd2dec16(year) << "-" << setWidth(month) << "-"
+           << setWidth(day) << " " << setWidth(hours) << ":"
+           << setWidth(minutes) << ":" << setWidth(seconds);
         data["Response"] = dt.str();
         pldmtool::helper::DisplayInJson(data);
     }
@@ -84,7 +85,7 @@ class GetDateTime : public CommandInterface
     {
         std::stringstream s;
         s << std::setfill('0') << std::setw(2)
-          << static_cast<uint32_t>(bcd2dec8(data));
+          << static_cast<uint32_t>(pldm_bcd_bcd2dec8(data));
         return s.str();
     }
 };

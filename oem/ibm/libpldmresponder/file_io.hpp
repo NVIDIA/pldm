@@ -30,7 +30,7 @@ namespace dma
 // The minimum data size of dma transfer in bytes
 constexpr uint32_t minSize = 16;
 
-constexpr size_t maxSize = DMA_MAXSIZE;
+constexpr size_t maxSize = 8384512;
 
 namespace fs = std::filesystem;
 
@@ -247,7 +247,7 @@ class Handler : public CmdHandler
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
                     interfaces;
-                sdbusplus::message::object_path path;
+                sdbusplus::object_path path;
                 msg.read(path, interfaces);
                 std::string vspstring;
                 std::string password;
@@ -290,7 +290,7 @@ class Handler : public CmdHandler
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
                     interfaces;
-                sdbusplus::message::object_path path;
+                sdbusplus::object_path path;
                 msg.read(path, interfaces);
                 std::string csr;
 
@@ -304,8 +304,7 @@ class Handler : public CmdHandler
                             {
                                 csr = std::get<std::string>(property.second);
                                 auto fileHandle =
-                                    sdbusplus::message::object_path(path)
-                                        .filename();
+                                    sdbusplus::object_path(path).filename();
 
                                 dbusToFileHandlers
                                     .emplace_back(std::make_unique<
@@ -434,7 +433,7 @@ class Handler : public CmdHandler
      *  @param[in] request - PLDM request msg
      *  @param[in] payloadLength - length of the message payload
      *
-     *  @return PLDM response messsage
+     *  @return PLDM response message
      */
     Response newFileAvailableWithMetaData(const pldm_msg* request,
                                           size_t payloadLength);

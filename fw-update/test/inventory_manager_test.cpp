@@ -35,12 +35,13 @@ class InventoryManagerTest : public testing::Test
         event(sdeventplus::Event::get_default()), instanceIdDb(),
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
-        inventoryManager(reqHandler, instanceIdDb, nullptr, nullptr,
-                         outDescriptorMap, outDownstreamDescriptorMap,
+        inventoryManager(&dBusHandler, reqHandler, instanceIdDb, nullptr,
+                         nullptr, outDescriptorMap, outDownstreamDescriptorMap,
                          outComponentInfoMap, deviceInventoryInfo)
     {}
 
     int fd = -1;
+    const pldm::utils::DBusHandler dBusHandler;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;

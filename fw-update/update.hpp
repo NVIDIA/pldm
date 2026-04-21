@@ -8,7 +8,6 @@
 #include <xyz/openbmc_project/Software/Update/server.hpp>
 
 #include <memory>
-
 namespace pldm
 {
 

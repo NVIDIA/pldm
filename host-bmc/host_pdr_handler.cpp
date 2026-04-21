@@ -2,23 +2,36 @@
 
 #include "host_pdr_handler.hpp"
 
+#include "common/types.hpp"
+#include "dbus/custom_dbus.hpp"
 #include "libpldm/pldm.h"
+#include <libpldm/fru.h>
+#ifdef OEM_IBM
+#include <libpldm/oem/ibm/fru.h>
+#endif
 
 #include <nlohmann/json.hpp>
 #include <sdeventplus/clock.hpp>
 #include <sdeventplus/exception.hpp>
 #include <sdeventplus/source/io.hpp>
 #include <sdeventplus/source/time.hpp>
+#include <xyz/openbmc_project/State/Host/client.hpp>
 
 #include <cassert>
 #include <fstream>
+#include <stdexcept>
+
+using HostState = sdbusplus::common::xyz::openbmc_project::state::Host;
 
 namespace pldm
 {
 
 using namespace pldm::responder::events;
+using namespace pldm::responder::pdr_utils;
 using namespace pldm::utils;
 using namespace sdbusplus::bus::match::rules;
+using namespace pldm::hostbmc::utils;
+using namespace pldm::dbus;
 using Json = nlohmann::json;
 namespace fs = std::filesystem;
 constexpr auto fruJson = "host_frus.json";
@@ -52,8 +65,12 @@ HostPDRHandler::HostPDRHandler(
     pldm::requester::Handler<pldm::requester::Request>* handler) :
     mctp_eid(mctp_eid), event(event), repo(repo),
     stateSensorHandler(eventsJsonsDir), entityTree(entityTree),
-    instanceIdDb(instanceIdDb), handler(handler)
+    instanceIdDb(instanceIdDb), handler(handler),
+    entityMaps(parseEntityMap(ENTITY_MAP_JSON))
 {
+    responseReceived = false;
+    mergedHostParents = false;
+
     fs::path hostFruJson(fs::path(HOST_JSONS_DIR) / fruJson);
     if (fs::exists(hostFruJson))
     {
@@ -88,12 +105,11 @@ HostPDRHandler::HostPDRHandler(
         }
     }
 
-    hostOffMatch = std::make_unique<sdbusplus::bus::match::match>(
+    hostOffMatch = std::make_unique<sdbusplus::bus::match_t>(
         pldm::utils::DBusHandler::getBus(),
         propertiesChanged("/xyz/openbmc_project/state/host0",
-                          "xyz.openbmc_project.State.Host"),
-        [this, repo, entityTree,
-         bmcEntityTree](sdbusplus::message::message& msg) {
+                          HostState::interface),
+        [this, repo, entityTree, bmcEntityTree](sdbusplus::message_t& msg) {
             DbusChangedProps props{};
             std::string intf;
             msg.read(intf, props);
@@ -115,6 +131,23 @@ HostPDRHandler::HostPDRHandler(
                                                            entityTree);
                     this->sensorMap.clear();
                     this->responseReceived = false;
+                    this->mergedHostParents = false;
+
+                    // After a power off , the remote nodes will be deleted
+                    // from the entity association tree, making the nodes point
+                    // to junk values, so set them to nullptr
+                    for (const auto& element : this->objPathMap)
+                    {
+                        this->objPathMap[element.first] = nullptr;
+                    }
+                }
+                else if (propVal ==
+                         "xyz.openbmc_project.State.Host.HostState.Running")
+                {
+                    if (oemPlatformHandler)
+                    {
+                        oemPlatformHandler->handleBootTypesAtPowerOn();
+                    }
                 }
             }
         });
@@ -158,7 +191,12 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
     {
         recordHandle = nextRecordHandle;
     }
-    auto instanceId = instanceIdDb.next(mctp_eid);
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
 
     auto rc =
         encode_get_pdr_req(instanceId, recordHandle, 0, PLDM_GET_FIRSTPART,
@@ -308,7 +346,12 @@ void HostPDRHandler::sendPDRRepositoryChgEvent(std::vector<uint8_t>&& pdrTypes,
             << rc << std::endl;
         return;
     }
-    auto instanceId = instanceIdDb.next(mctp_eid);
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
         actualSize);
@@ -562,7 +605,12 @@ void HostPDRHandler::_processFetchPDREvent(
 void HostPDRHandler::setHostFirmwareCondition()
 {
     responseReceived = false;
-    auto instanceId = instanceIdDb.next(mctp_eid);
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_GET_VERSION_REQ_BYTES);
     auto request = reinterpret_cast<pldm_msg*>(requestMsg.data());
@@ -635,7 +683,12 @@ void HostPDRHandler::setHostSensorState(const PDRList& stateSensorPDRs)
                 sensorRearm.byte = 0;
                 uint8_t tid = std::get<0>(terminusInfo);
 
-                auto instanceId = instanceIdDb.next(mctp_eid);
+                auto instanceIdResult = instanceIdDb.next(mctp_eid);
+                if (!instanceIdResult)
+                {
+                    throw pldm::InstanceIdError(instanceIdResult.error());
+                }
+                auto instanceId = instanceIdResult.value();
                 std::vector<uint8_t> requestMsg(
                     sizeof(pldm_msg_hdr) +
                     PLDM_GET_STATE_SENSOR_READINGS_REQ_BYTES);
@@ -768,6 +821,374 @@ void HostPDRHandler::setHostSensorState(const PDRList& stateSensorPDRs)
                               << std::endl;
                 }
             }
+        }
+    }
+}
+
+void HostPDRHandler::getFRURecordTableMetadataByRemote(
+    const PDRList& fruRecordSetPDRs)
+{
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_GET_FRU_RECORD_TABLE_METADATA_REQ_BYTES);
+
+    // GetFruRecordTableMetadata
+    auto request = new (requestMsg.data()) pldm_msg;
+    auto rc = encode_get_fru_record_table_metadata_req(
+        instanceId, request, requestMsg.size() - sizeof(pldm_msg_hdr));
+    if (rc != PLDM_SUCCESS)
+    {
+        instanceIdDb.free(mctp_eid, instanceId);
+        error(
+            "Failed to encode get fru record table metadata request, response code '{RC}'",
+            "RC", lg2::hex, rc);
+        return;
+    }
+
+    auto getFruRecordTableMetadataResponseHandler = [this, fruRecordSetPDRs](
+                                                        mctp_eid_t /*eid*/,
+                                                        const pldm_msg*
+                                                            response,
+                                                        size_t respMsgLen) {
+        if (response == nullptr || !respMsgLen)
+        {
+            error(
+                "Failed to receive response for the get fru record table metadata");
+            return;
+        }
+
+        uint8_t cc = 0;
+        uint8_t fru_data_major_version, fru_data_minor_version;
+        uint32_t fru_table_maximum_size, fru_table_length;
+        uint16_t total_record_set_identifiers;
+        uint16_t total;
+        uint32_t checksum;
+
+        auto rc = decode_get_fru_record_table_metadata_resp(
+            response, respMsgLen, &cc, &fru_data_major_version,
+            &fru_data_minor_version, &fru_table_maximum_size, &fru_table_length,
+            &total_record_set_identifiers, &total, &checksum);
+
+        if (rc != PLDM_SUCCESS || cc != PLDM_SUCCESS)
+        {
+            error(
+                "Failed to decode get fru record table metadata response, response code '{RC}' and completion code '{CC}'",
+                "RC", lg2::hex, rc, "CC", cc);
+            return;
+        }
+
+        // pass total to getFRURecordTableByRemote
+        this->getFRURecordTableByRemote(fruRecordSetPDRs, total);
+    };
+
+    rc = handler->registerRequest(
+        mctp_eid, instanceId, PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE_METADATA,
+        std::move(requestMsg),
+        std::move(getFruRecordTableMetadataResponseHandler));
+    if (rc != PLDM_SUCCESS)
+    {
+        error(
+            "Failed to send the the set state effecter states request, response code '{RC}'",
+            "RC", rc);
+    }
+
+    return;
+}
+
+void HostPDRHandler::getFRURecordTableByRemote(const PDRList& fruRecordSetPDRs,
+                                               uint16_t totalTableRecords)
+{
+    fruRecordData.clear();
+
+    if (!totalTableRecords)
+    {
+        error("Failed to get fru record table");
+        return;
+    }
+
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_GET_FRU_RECORD_TABLE_REQ_BYTES);
+
+    // send the getFruRecordTable command
+    auto request = new (requestMsg.data()) pldm_msg;
+    auto rc = encode_get_fru_record_table_req(
+        instanceId, 0, PLDM_GET_FIRSTPART, request,
+        requestMsg.size() - sizeof(pldm_msg_hdr));
+    if (rc != PLDM_SUCCESS)
+    {
+        instanceIdDb.free(mctp_eid, instanceId);
+        error(
+            "Failed to encode get fru record table request, response code '{RC}'",
+            "RC", lg2::hex, rc);
+        return;
+    }
+
+    auto getFruRecordTableResponseHandler = [totalTableRecords, this,
+                                             fruRecordSetPDRs](
+                                                mctp_eid_t /*eid*/,
+                                                const pldm_msg* response,
+                                                size_t respMsgLen) {
+        if (response == nullptr || !respMsgLen)
+        {
+            error("Failed to receive response for the get fru record table");
+            return;
+        }
+
+        uint8_t cc = 0;
+        uint32_t next_data_transfer_handle = 0;
+        uint8_t transfer_flag = 0;
+        size_t fru_record_table_length = 0;
+        std::vector<uint8_t> fru_record_table_data(
+            respMsgLen - sizeof(pldm_msg_hdr));
+        auto responsePtr = reinterpret_cast<const struct pldm_msg*>(response);
+        auto rc = decode_get_fru_record_table_resp(
+            responsePtr, respMsgLen, &cc, &next_data_transfer_handle,
+            &transfer_flag, fru_record_table_data.data(),
+            &fru_record_table_length);
+
+        if (rc != PLDM_SUCCESS || cc != PLDM_SUCCESS)
+        {
+            error(
+                "Failed to decode get fru record table resp, response code '{RC}' and completion code '{CC}'",
+                "RC", lg2::hex, rc, "CC", cc);
+            return;
+        }
+
+        fruRecordData = parseFruRecordTable(fru_record_table_data);
+
+        if (totalTableRecords != fruRecordData.size())
+        {
+            fruRecordData.clear();
+
+            error("Failed to parse fru record data format.");
+            return;
+        }
+
+        this->setFRUDataOnDBus(fruRecordSetPDRs, fruRecordData);
+    };
+
+    rc = handler->registerRequest(
+        mctp_eid, instanceId, PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE,
+        std::move(requestMsg), std::move(getFruRecordTableResponseHandler));
+    if (rc != PLDM_SUCCESS)
+    {
+        error("Failed to send the the set state effecter states request");
+    }
+}
+
+std::optional<uint16_t> HostPDRHandler::getRSI(const PDRList& fruRecordSetPDRs,
+                                               const pldm_entity& entity)
+{
+    for (const auto& pdr : fruRecordSetPDRs)
+    {
+        auto fruPdr = reinterpret_cast<const pldm_pdr_fru_record_set*>(
+            const_cast<uint8_t*>(pdr.data()) + sizeof(pldm_pdr_hdr));
+
+        if (fruPdr->entity_type == entity.entity_type &&
+            fruPdr->entity_instance == entity.entity_instance_num &&
+            fruPdr->container_id == entity.entity_container_id)
+        {
+            return fruPdr->fru_rsi;
+        }
+    }
+
+    return std::nullopt;
+}
+
+void HostPDRHandler::setFRUDataOnDBus(
+    [[maybe_unused]] const PDRList& fruRecordSetPDRs,
+    [[maybe_unused]] const std::vector<HostFruRecordData>& fruRecordData)
+{
+#ifdef OEM_IBM
+    for (const auto& entity : objPathMap)
+    {
+        pldm_entity node = pldm_entity_extract(entity.second);
+        auto fruRSI = getRSI(fruRecordSetPDRs, node);
+
+        for (const auto& data : fruRecordData)
+        {
+            if (!fruRSI || *fruRSI != data.fruRSI)
+            {
+                continue;
+            }
+
+            if (data.fruRecType == PLDM_FRU_RECORD_TYPE_OEM)
+            {
+                for (const auto& tlv : data.fruTLV)
+                {
+                    if (tlv.fruFieldType ==
+                        PLDM_OEM_FRU_FIELD_TYPE_LOCATION_CODE)
+                    {
+                        CustomDBus::getCustomDBus().setLocationCode(
+                            entity.first,
+                            std::string(reinterpret_cast<const char*>(
+                                            tlv.fruFieldValue.data()),
+                                        tlv.fruFieldLen));
+                    }
+                }
+            }
+        }
+    }
+#endif
+}
+
+std::vector<HostFruRecordData> HostPDRHandler::parseFruRecordTable(
+    const std::vector<uint8_t>& fruTableData) const
+{
+    std::vector<HostFruRecordData> records;
+    size_t offset = 0;
+
+    while (offset < fruTableData.size())
+    {
+        constexpr size_t recordHeaderSize =
+            sizeof(pldm_fru_record_data_format) - sizeof(pldm_fru_record_tlv);
+        constexpr size_t tlvHeaderSize =
+            sizeof(pldm_fru_record_tlv) - sizeof(uint8_t);
+
+        if ((fruTableData.size() - offset) < recordHeaderSize)
+        {
+            throw std::runtime_error("Incomplete FRU record header");
+        }
+
+        auto record = reinterpret_cast<const pldm_fru_record_data_format*>(
+            fruTableData.data() + offset);
+
+        HostFruRecordData parsedRecord{
+            .fruRSI = le16toh(record->record_set_id),
+            .fruRecType = record->record_type,
+            .fruTLV = {},
+        };
+
+        offset += recordHeaderSize;
+
+        for (uint8_t i = 0; i < record->num_fru_fields; ++i)
+        {
+            if ((fruTableData.size() - offset) < tlvHeaderSize)
+            {
+                throw std::runtime_error("Incomplete FRU TLV header");
+            }
+
+            auto tlv = reinterpret_cast<const pldm_fru_record_tlv*>(
+                fruTableData.data() + offset);
+            size_t tlvSize = tlvHeaderSize + tlv->length;
+
+            if ((fruTableData.size() - offset) < tlvSize)
+            {
+                throw std::runtime_error("Incomplete FRU TLV payload");
+            }
+
+            parsedRecord.fruTLV.emplace_back(HostFruRecordTLV{
+                .fruFieldType = tlv->type,
+                .fruFieldLen = tlv->length,
+                .fruFieldValue =
+                    std::vector<uint8_t>(tlv->value, tlv->value + tlv->length),
+            });
+
+            offset += tlvSize;
+        }
+
+        records.emplace_back(std::move(parsedRecord));
+    }
+
+    return records;
+}
+
+void HostPDRHandler::setPresentPropertyStatus(const std::string& path)
+{
+    CustomDBus::getCustomDBus().updateItemPresentStatus(path, true);
+}
+
+void HostPDRHandler::setAvailabilityState(const std::string& path)
+{
+    CustomDBus::getCustomDBus().setAvailabilityState(path, true);
+}
+
+void HostPDRHandler::createDbusObjects(const PDRList& fruRecordSetPDRs)
+{
+    // Creating and Refreshing dbus hosted by remote PLDM entity Fru PDRs
+
+    for (const auto& entity : objPathMap)
+    {
+        // update the Present Property
+        setPresentPropertyStatus(entity.first);
+        // Implement & update the Availability to true
+        setAvailabilityState(entity.first);
+
+        pldm_entity node = pldm_entity_extract(entity.second);
+        switch (node.entity_type)
+        {
+            case PLDM_ENTITY_PROC | 0x8000:
+                CustomDBus::getCustomDBus().implementCpuCoreInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_SYSTEM_CHASSIS:
+                CustomDBus::getCustomDBus().implementChassisInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_POWER_SUPPLY:
+                CustomDBus::getCustomDBus().implementPowerSupplyInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_CHASSIS_FRONT_PANEL_BOARD:
+                CustomDBus::getCustomDBus().implementPanelInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_POWER_CONVERTER:
+                CustomDBus::getCustomDBus().implementVRMInterface(entity.first);
+                break;
+            case PLDM_ENTITY_SLOT:
+                CustomDBus::getCustomDBus().implementPCIeSlotInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_CONNECTOR:
+                CustomDBus::getCustomDBus().implementConnecterInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_BOARD:
+                CustomDBus::getCustomDBus().implementBoard(entity.first);
+                break;
+            case PLDM_ENTITY_CARD:
+                CustomDBus::getCustomDBus().implementPCIeDeviceInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_SYS_BOARD:
+                CustomDBus::getCustomDBus().implementMotherboardInterface(
+                    entity.first);
+                break;
+            case PLDM_ENTITY_FAN:
+                CustomDBus::getCustomDBus().implementFanInterface(entity.first);
+                break;
+            case PLDM_ENTITY_IO_MODULE:
+                CustomDBus::getCustomDBus().implementFabricAdapter(
+                    entity.first);
+                break;
+            default:
+                break;
+        }
+    }
+    getFRURecordTableMetadataByRemote(fruRecordSetPDRs);
+}
+
+void HostPDRHandler::deletePDRFromRepo(PDRRecordHandles&& recordHandles)
+{
+    for (auto& recordHandle : recordHandles)
+    {
+        int rc = pldm_pdr_delete_by_record_handle(repo, recordHandle, true);
+        if (rc)
+        {
+            error("Failed to delete the record handle: {REC_HANDLE}",
+                  "REC_HANDLE", recordHandle);
         }
     }
 }

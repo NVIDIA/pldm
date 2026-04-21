@@ -1,7 +1,7 @@
 #include "dbus_to_event_handler.hpp"
 
+#include "common/types.hpp"
 #include "libpldm/pldm.h"
-
 #include "libpldmresponder/pdr.hpp"
 
 namespace pldm
@@ -26,7 +26,12 @@ DbusToPLDMEvent::DbusToPLDMEvent(
 void DbusToPLDMEvent::sendEventMsg(uint8_t eventType,
                                    const std::vector<uint8_t>& eventDataVec)
 {
-    auto instanceId = instanceIdDb.next(mctp_eid);
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
         eventDataVec.size());

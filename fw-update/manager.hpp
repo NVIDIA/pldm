@@ -60,7 +60,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     Manager& operator=(Manager&&) = delete;
     ~Manager() = default;
 
-    /** @brief Constructor
+    /**
+     * @brief Constructor for the PLDM Firmware Update Manager
      *
      *  @param[in] event - reference to PLDM daemon's main event loop
      *  @param[in] handler - PLDM request handler
@@ -68,12 +69,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] fwUpdateConfigFile - Config file for firmware update
      *  @param[in] fwDebug - Verbosity flag to enable debug traces for fw update
      */
-    explicit Manager(Event& event,
+    explicit Manager(const pldm::utils::DBusHandler* dbusHandler, Event& event,
                      requester::Handler<requester::Request>& handler,
                      InstanceIdDb& instanceIdDb,
                      const std::filesystem::path& fwUpdateConfigFile,
                      bool fwDebug) :
-        inventoryMgr(handler, instanceIdDb,
+        inventoryMgr(dbusHandler, handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
                      std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap,
@@ -227,6 +228,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
+    void handleConfigurations(const Configurations& configurations) override
+    {
+        this->configurations = configurations;
+        inventoryMgr.setConfigurations(configurations);
+    }
+
     /** @brief Helper function to invoke registered handlers for
      *         the removed MCTP endpoints
      *
@@ -241,11 +248,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) override
     {
-        for (const auto& mctpInfo : mctpInfos)
-        {
-            auto eid = std::get<pldm::eid>(mctpInfo);
-            inventoryMgr.cleanUpResources(eid);
-        }
+        inventoryMgr.removeFDs(mctpInfos);
     }
 
     /** @brief Helper function to invoke registered handlers for
@@ -387,12 +390,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** Component information of all the discovered MCTP endpoints */
     ComponentInfoMap componentInfoMap;
 
-    /** @brief PLDM firmware inventory manager */
-    InventoryManager inventoryMgr;
+    /** Configuration bindings from the Entity Manager */
+    Configurations configurations;
 
     /** @brief PLDM firmware update manager */
-    UpdateManager updateManager;
-
     /** @brief Config info to create D-Bus device inventory */
     DeviceInventoryInfo deviceInventoryInfo;
 
@@ -404,6 +405,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     /** @brief Component information to create message registries */
     ComponentNameMap componentNameMap;
+
+    /** @brief PLDM firmware inventory/discovery manager */
+    InventoryManager inventoryMgr;
+
+    /** @brief PLDM firmware update manager */
+    UpdateManager updateManager;
 
     /** @brief Device inventory D-Bus object manager */
     device_inventory::Manager deviceInventoryManager;

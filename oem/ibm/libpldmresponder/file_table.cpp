@@ -1,6 +1,7 @@
 #include "file_table.hpp"
 
 #include <libpldm/edac.h>
+#include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -128,14 +129,21 @@ Table FileTable::operator()() const
     return table;
 }
 
+/** Single instance of filetable*/
+static FileTable fileTable;
+
 FileTable& buildFileTable(const std::string& fileTablePath)
 {
-    static FileTable table;
-    if (table.isEmpty())
+    if (fileTable.isEmpty())
     {
-        table = std::move(FileTable(fileTablePath));
+        fileTable = FileTable(fileTablePath);
     }
-    return table;
+    return fileTable;
+}
+
+void clearFileTable()
+{
+    fileTable.clear();
 }
 
 } // namespace filetable

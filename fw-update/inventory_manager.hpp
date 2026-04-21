@@ -136,6 +136,7 @@ class InventoryManager
      * registry
      */
     explicit InventoryManager(
+        [[maybe_unused]] const pldm::utils::DBusHandler* dbusHandler,
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
@@ -175,11 +176,20 @@ class InventoryManager
      *  commands are sent to every FD and the response is used to populate
      *  the firmware identifiers and component details of the FDs.
      *
-     *  @param[in] eids - MCTP endpoint ID of the FDs
+     *  @param[in] mctpInfos - List of MCTP endpoint information
      */
     void discoverFDs(const MctpInfos& mctpInfos,
                      dbus::MctpInterfaces mctpInterfaces);
     exec::task<int> discoverFDsTask();
+
+    /** @brief Remove cached firmware identifiers and component details of FDs.
+     */
+    void removeFDs(const MctpInfos& mctpInfos);
+
+    void setConfigurations(const Configurations& updatedConfigurations)
+    {
+        configurations = updatedConfigurations;
+    }
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -327,6 +337,11 @@ class InventoryManager
     exec::task<int> queryDeviceIdentifiers(
         mctp_eid_t eid, std::string& messageError, std::string& resolution);
 
+    /** @brief Obtain Firmware Device Name from configuration or descriptors.
+     */
+    void obtainFirmwareDeviceName(pldm::eid eid,
+                                  const Descriptors& descriptors);
+
     /** @brief Send GetFirmwareParameters command request
      *
      *  @param[in] eid - Remote MCTP endpoint
@@ -396,6 +411,9 @@ class InventoryManager
     /** @brief Device identifiers of the managed FDs */
     DescriptorMap& descriptorMap;
 
+    /** @brief Firmware Device names of the managed FDs */
+    std::map<eid, SoftwareName> firmwareDeviceNameMap;
+
     /** @brief Downstream Device identifiers of the managed FDs */
     DownstreamDescriptorMap& downstreamDescriptorMap;
 
@@ -423,7 +441,31 @@ class InventoryManager
     /** @brief coroutine handle of discoverFDsTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
         discoverFDsTaskHandle{};
+
+    /** @brief Latest configuration bindings from Entity Manager */
+    Configurations configurations;
 };
+
+/**
+ * @brief Obtain the device name from the configurations
+ *
+ * @param[in] configurations - Configurations from Entity Manager
+ * @param[in] eid - Remote MCTP endpoint
+ *
+ * @return SoftwareName - The Device name, std::nullopt if not found
+ */
+std::optional<SoftwareName> obtainDeviceNameFromConfigurations(
+    const Configurations& configurations, pldm::eid eid);
+
+/**
+ * @brief Obtain the device name from the descriptors
+ *
+ * @param[in] descriptors - Descriptors of the device
+ *
+ * @return SoftwareName - The Device name, std::nullopt if not found
+ */
+std::optional<SoftwareName> obtainDeviceNameFromDescriptors(
+    const Descriptors& descriptors);
 
 } // namespace fw_update
 

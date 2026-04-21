@@ -52,7 +52,6 @@ endif
 if cpp.has_header('poll.h')
     conf_data.set('PLDM_HAS_POLL', 1)
 endif
-
 conf_data.set_quoted('HOST_JSONS_DIR', join_paths(package_datadir, 'host'))
 
 if get_option('omit-heartbeat').enabled()
@@ -153,11 +152,8 @@ if get_option('libpldmresponder').allowed()
         'EVENTS_JSONS_DIR',
         join_paths(package_datadir, 'events'),
     )
-    conf_data.set('TERMINUS_ID', get_option('terminus-id'))
-    conf_data.set('TERMINUS_HANDLE', get_option('terminus-handle'))
     add_project_arguments('-DLIBPLDMRESPONDER', language: 'cpp')
 endif
-conf_data.set('HEARTBEAT_TIMEOUT', get_option('heartbeat-timeout-seconds'))
 conf_data.set('DBUS_TIMEOUT', get_option('dbus-timeout-value'))
 if get_option('softoff').allowed()
     conf_data.set(
@@ -194,17 +190,8 @@ if get_option('oem-ibm').allowed()
         'LID_ALTERNATE_PATCH_DIR',
         '/usr/local/share/hostfw/alternate',
     )
-    conf_data.set('DMA_MAXSIZE', get_option('oem-ibm-dma-maxsize'))
     add_project_arguments('-DOEM_IBM', language: 'cpp')
 endif
-conf_data.set(
-    'NUMBER_OF_REQUEST_RETRIES',
-    get_option('number-of-request-retries'),
-)
-conf_data.set(
-    'INSTANCE_ID_EXPIRATION_INTERVAL',
-    get_option('instance-id-expiration-interval'),
-)
 conf_data.set('RESPONSE_TIME_OUT', get_option('response-time-out'))
 conf_data.set(
     'FLIGHT_RECORDER_MAX_ENTRIES',
@@ -240,7 +227,6 @@ conf_data.set(
     'STALE_SENSOR_UPPER_LIMITS_POLLING_TIME',
     get_option('stale-sensor-upper-limitms-polling-time'),
 )
-
 if get_option('transport-implementation') == 'mctp-demux'
     conf_data.set('PLDM_TRANSPORT_WITH_MCTP_DEMUX', 1)
 elif get_option('transport-implementation') == 'af-mctp'
@@ -253,6 +239,10 @@ conf_data.set(
 )
 conf_data.set('SENSOR_POLLING_TIME', get_option('sensor-polling-time'))
 conf_data.set('UPDATE_TIMEOUT_SECONDS', get_option('update-timeout-seconds'))
+# Firmware update inotify option
+if get_option('fw-update-pkg-inotify').allowed()
+    conf_data.set('FW_UPDATE_INOTIFY_ENABLED', 1)
+endif
 
 if get_option('platform-prefix') != ''
     conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
@@ -292,35 +282,49 @@ add_project_arguments(
 
 filesystem = import('fs')
 
-phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
-sdbusplus = dependency('sdbusplus')
-sdeventplus = dependency('sdeventplus')
-stdplus = dependency('stdplus')
-phosphor_logging_dep = dependency('phosphor-logging')
+phosphor_dbus_interfaces = dependency(
+    'phosphor-dbus-interfaces',
+    include_type: 'system',
+)
+sdbusplus = dependency('sdbusplus', include_type: 'system')
+sdeventplus = dependency('sdeventplus', include_type: 'system')
+stdplus = dependency('stdplus', include_type: 'system')
+phosphor_logging_dep = dependency('phosphor-logging', include_type: 'system')
 
 nlohmann_json_dep = dependency('nlohmann_json', include_type: 'system')
 
 if cpp.has_header('CLI/CLI.hpp')
     CLI11_dep = declare_dependency()
 else
-    CLI11_dep = dependency('CLI11')
+    CLI11_dep = dependency('CLI11', include_type: 'system')
 endif
 
 if get_option('tests').allowed()
     add_project_arguments('-DPLDM_PACKAGE_VERIFICATION', language: ['c', 'cpp'])
-    gtest = dependency('gtest', main: true, disabler: true, required: false)
-    gmock = dependency('gmock', disabler: true, required: false)
+    gtest = dependency(
+        'gtest',
+        main: true,
+        disabler: true,
+        required: false,
+        include_type: 'system',
+    )
+    gmock = dependency(
+        'gmock',
+        disabler: true,
+        required: false,
+        include_type: 'system',
+    )
     if not gtest.found() or not gmock.found()
         gtest_proj = import('cmake').subproject('googletest', required: false)
         if gtest_proj.found()
             gtest = declare_dependency(
                 dependencies: [
                     dependency('threads'),
-                    gtest_proj.dependency('gtest'),
-                    gtest_proj.dependency('gtest_main'),
+                    gtest_proj.dependency('gtest', include_type: 'system'),
+                    gtest_proj.dependency('gtest_main', include_type: 'system'),
                 ],
             )
-            gmock = gtest_proj.dependency('gmock')
+            gmock = gtest_proj.dependency('gmock', include_type: 'system')
         else
             assert(
                 not get_option('tests').allowed(),
@@ -342,7 +346,16 @@ if get_option('oem-ampere').allowed()
     add_project_arguments('-DOEM_AMPERE', language: 'cpp')
 endif
 
-libpldmutils_headers = ['.']
+if get_option('oem-meta').allowed()
+    add_project_arguments('-DOEM_META', language: 'cpp')
+endif
+
+if get_option('oem-nvidia').allowed()
+    add_project_arguments('-DOEM_NVIDIA', language: 'cpp')
+endif
+
+libpldmutils_headers = include_directories('.')
+libpldm_source_headers = include_directories('../include', is_system: true)
 libpldmutils = library(
     'pldmutils',
     'common/transport.cpp',
@@ -360,11 +373,11 @@ libpldmutils = library(
         sdeventplus,
     ],
     install: true,
-    include_directories: include_directories(libpldmutils_headers),
+    include_directories: [libpldmutils_headers, libpldm_source_headers],
 )
 
 libpldmutils = declare_dependency(
-    include_directories: include_directories(libpldmutils_headers),
+    include_directories: [libpldmutils_headers, libpldm_source_headers],
     link_with: libpldmutils,
 )
 
@@ -377,6 +390,7 @@ phosphor_logging = phosphor_logging_dep
 dynamic_linker = []
 
 deps = [
+    CLI11_dep,
     libpldm_dep,
     libpldmutils,
     nlohmann_json_dep,
@@ -393,6 +407,10 @@ if get_option('oem-ampere').allowed()
     subdir('oem/ampere')
 endif
 
+if get_option('oem-meta').allowed()
+    subdir('oem/meta')
+endif
+
 if get_option('libpldmresponder').allowed()
     subdir('libpldmresponder')
     deps += [libpldmresponder_dep]
@@ -403,7 +421,9 @@ source_files = [
     'common/transport.cpp',
     'common/mctp_error_handling.cpp',
     'fw-update/activation.cpp',
+    'fw-update/aggregate_update_manager.cpp',
     'fw-update/inventory_manager.cpp',
+    'fw-update/firmware_inventory_manager.cpp',
     'fw-update/package_parser.cpp',
     'fw-update/component_updater.cpp',
     'fw-update/device_updater.cpp',
@@ -418,6 +438,10 @@ source_files = [
     oem_files,
     'requester/mctp_endpoint_discovery.cpp',
 ]
+
+if get_option('fw-update-pkg-inotify').allowed()
+    source_files += ['fw-update/watch.cpp']
+endif
 
 if get_option('pldm-type2').enabled()
     source_files += [
@@ -434,6 +458,7 @@ if get_option('pldm-type2').enabled()
         'platform-mc/state_effecter.cpp',
         'platform-mc/state_set.cpp',
         'platform-mc/smbios_mdr.cpp',
+        'platform-mc/dbus_to_terminus_effecters.cpp',
         'pldmd/dbus_impl_pdr.cpp',
     ]
 

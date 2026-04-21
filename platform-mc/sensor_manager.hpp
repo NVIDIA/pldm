@@ -58,6 +58,8 @@ class SensorPollingEnableIntf : public EnableIntf
     SensorManager& parent;
 };
 
+inline constexpr uint64_t kSensorPollingTimeMs = 249;
+
 /**
  * @brief SensorManager
  *

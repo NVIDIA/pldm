@@ -4,3 +4,4 @@ subprojects/*
 subprojects/function2.wrap
 
 .vscode
+.idea

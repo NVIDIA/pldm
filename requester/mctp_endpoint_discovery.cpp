@@ -78,7 +78,7 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
     {
         error(
             "Failed to getSubtree call at path '{PATH}' and interface '{INTERFACE}', error - {ERROR} ",
-            "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPInterface);
+            "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPEndpoint::interface);
         return;
     }
 
@@ -223,7 +223,7 @@ Availability MctpDiscovery::getEndpointConnectivityProp(const std::string& path)
 void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                                       MctpInfos& mctpInfos)
 {
-    using ObjectPath = sdbusplus::message::object_path;
+    using ObjectPath = sdbusplus::object_path;
     ObjectPath objPath;
     using Property = std::string;
     using PropertyMap = std::map<Property, dbus::Value>;
@@ -317,7 +317,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
 
     for (const auto& [intfName, properties] : interfaces)
     {
-        if (intfName == MCTPInterface)
+        if (intfName == MCTPEndpoint::interface)
         {
             if (properties.contains("NetworkId") &&
                 properties.contains("EID") &&
@@ -632,8 +632,7 @@ void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
         std::string associatedObjPath;
         std::string associatedService;
         std::string associatedInterface;
-        sdbusplus::message::object_path inventorySubtreePath(
-            inventorySubtreePathStr);
+        sdbusplus::object_path inventorySubtreePath(inventorySubtreePathStr);
 
         //"/{board or chassis type}/{board or chassis}/{device}"
         auto constexpr subTreeDepth = 3;
@@ -695,11 +694,16 @@ void MctpDiscovery::removeConfigs(const MctpInfos& removedInfos)
 {
     for (const auto& mctpInfo : removedInfos)
     {
-        auto eidToRemove = std::get<eid>(mctpInfo);
-        std::erase_if(configurations, [eidToRemove](const auto& config) {
-            auto& [__, mctpInfo] = config;
-            auto eidValue = std::get<eid>(mctpInfo);
-            return eidValue == eidToRemove;
+        const auto eidToRemove = std::get<eid>(mctpInfo);
+        const auto netToRemove = std::get<NetworkId>(mctpInfo);
+
+        std::erase_if(configurations, [eidToRemove,
+                                       netToRemove](const auto& config) {
+            const auto& [__, mctpInfo] = config;
+            const auto eidValue = std::get<eid>(mctpInfo);
+            const auto netValue = std::get<NetworkId>(mctpInfo);
+
+            return eidValue == eidToRemove && netValue == netToRemove;
         });
     }
 }

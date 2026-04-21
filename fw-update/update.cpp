@@ -11,7 +11,6 @@
 #include <stdexcept>
 
 PHOSPHOR_LOG2_USING;
-
 namespace pldm
 {
 namespace fw_update

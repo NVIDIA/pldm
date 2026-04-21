@@ -480,9 +480,10 @@ int Handler::sensorEvent(const pldm_msg* request, size_t payloadLength,
 
 int Handler::pldmPDRRepositoryChgEvent(
     const pldm_msg* request, size_t payloadLength, uint8_t /*formatVersion*/,
-    uint8_t /*tid*/, size_t eventDataOffset, uint8_t& /*platformEventStatus*/)
+    uint8_t tid, size_t eventDataOffset, uint8_t& /*platformEventStatus*/)
 {
     uint8_t eventDataFormat{};
+    uint8_t eventDataOperation{};
     uint8_t numberOfChangeRecords{};
     size_t dataOffset{};
 
@@ -507,7 +508,6 @@ int Handler::pldmPDRRepositoryChgEvent(
 
     if (eventDataFormat == FORMAT_IS_PDR_HANDLES)
     {
-        uint8_t eventDataOperation{};
         uint8_t numberOfChangeEntries{};
 
         auto changeRecordData = eventData + dataOffset;
@@ -524,7 +524,9 @@ int Handler::pldmPDRRepositoryChgEvent(
                 return rc;
             }
 
-            if (eventDataOperation == PLDM_RECORDS_ADDED)
+            if (eventDataOperation == PLDM_RECORDS_ADDED ||
+                eventDataOperation == PLDM_RECORDS_MODIFIED ||
+                eventDataOperation == PLDM_RECORDS_DELETED)
             {
                 rc = getPDRRecordHandles(
                     changeRecordData + dataOffset,
@@ -538,11 +540,6 @@ int Handler::pldmPDRRepositoryChgEvent(
                 }
             }
 
-            if (eventDataOperation == PLDM_RECORDS_MODIFIED)
-            {
-                return PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
-            }
-
             changeRecordData +=
                 dataOffset + (numberOfChangeEntries * sizeof(ChangeEntry));
             changeRecordDataSize -=
@@ -551,7 +548,37 @@ int Handler::pldmPDRRepositoryChgEvent(
     }
     if (hostPDRHandler)
     {
-        hostPDRHandler->fetchPDR(std::move(pdrRecordHandles));
+        // if we get a Repository change event with the eventDataFormat
+        // as REFRESH_ENTIRE_REPOSITORY, then delete all the PDR's that
+        // have the matched Terminus handle
+        if (eventDataFormat == REFRESH_ENTIRE_REPOSITORY)
+        {
+            // We cannot get the Repo change event from the Terminus
+            // that is not already added to the BMC repository
+
+            for (auto it = hostPDRHandler->tlPDRInfo.cbegin();
+                 it != hostPDRHandler->tlPDRInfo.cend();)
+            {
+                if (std::get<0>(it->second) == tid)
+                {
+                    pldm_pdr_remove_pdrs_by_terminus_handle(pdrRepo.getPdr(),
+                                                            it->first);
+                    hostPDRHandler->tlPDRInfo.erase(it++);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
+        if (eventDataOperation == PLDM_RECORDS_DELETED)
+        {
+            hostPDRHandler->deletePDRFromRepo(std::move(pdrRecordHandles));
+        }
+        else
+        {
+            hostPDRHandler->fetchPDR(std::move(pdrRecordHandles));
+        }
     }
 
     return PLDM_SUCCESS;
@@ -673,13 +700,15 @@ Response Handler::getStateSensorReadings(const pldm_msg* request,
     uint16_t entityType{};
     uint16_t entityInstance{};
     uint16_t stateSetId{};
+    uint16_t containerId{};
 
     if (isOemStateSensor(*this, sensorId, sensorRearmCount, comSensorCnt,
-                         entityType, entityInstance, stateSetId) &&
+                         entityType, entityInstance, stateSetId, containerId) &&
         oemPlatformHandler != nullptr && !sensorDbusObjMaps.contains(sensorId))
     {
         rc = oemPlatformHandler->getOemStateSensorReadingsHandler(
-            entityType, entityInstance, stateSetId, comSensorCnt, stateField);
+            entityType, entityInstance, containerId, stateSetId, comSensorCnt,
+            sensorId, stateField);
     }
     else
     {
@@ -719,7 +748,7 @@ void Handler::_processPostGetPDRActions(sdeventplus::source::EventBase&
 bool isOemStateSensor(Handler& handler, uint16_t sensorId,
                       uint8_t sensorRearmCount, uint8_t& compSensorCnt,
                       uint16_t& entityType, uint16_t& entityInstance,
-                      uint16_t& stateSetId)
+                      uint16_t& stateSetId, uint16_t& containerId)
 {
     pldm_state_sensor_pdr* pdr = nullptr;
 
@@ -747,6 +776,7 @@ bool isOemStateSensor(Handler& handler, uint16_t sensorId,
         }
         auto tmpEntityType = pdr->entity_type;
         auto tmpEntityInstance = pdr->entity_instance;
+        auto tmpEntityContainerId = pdr->container_id;
         auto tmpCompSensorCnt = pdr->composite_sensor_count;
         auto tmpPossibleStates =
             reinterpret_cast<state_sensor_possible_states*>(
@@ -771,6 +801,7 @@ bool isOemStateSensor(Handler& handler, uint16_t sensorId,
             entityInstance = tmpEntityInstance;
             stateSetId = tmpStateSetId;
             compSensorCnt = tmpCompSensorCnt;
+            containerId = tmpEntityContainerId;
             return true;
         }
         else
@@ -844,6 +875,174 @@ bool isOemStateEffecter(Handler& handler, uint16_t effecterId,
     return false;
 }
 
+void Handler::setEventReceiver()
+{
+    if (!instanceIdDb || !requesterHandler)
+    {
+        error("Platform handler is missing requester or instance ID state");
+        return;
+    }
+
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_SET_EVENT_RECEIVER_REQ_BYTES);
+    auto request = new (requestMsg.data()) pldm_msg;
+    auto instanceIdResult = instanceIdDb->next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+    uint8_t eventMessageGlobalEnable =
+        PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE;
+    uint8_t transportProtocolType = PLDM_TRANSPORT_PROTOCOL_TYPE_MCTP;
+    uint8_t eventReceiverAddressInfo = pldm::BmcMctpEid;
+    uint16_t heartbeatTimer = HEARTBEAT_TIMEOUT;
+
+    auto rc = encode_set_event_receiver_req(
+        instanceId, eventMessageGlobalEnable, transportProtocolType,
+        eventReceiverAddressInfo, heartbeatTimer, request);
+    if (rc != PLDM_SUCCESS)
+    {
+        instanceIdDb->free(eid, instanceId);
+        error(
+            "Failed to encode set event receiver request, response code '{RC}'",
+            "RC", lg2::hex, rc);
+        return;
+    }
+
+    auto processSetEventReceiverResponse = [](mctp_eid_t /*eid*/,
+                                              const pldm_msg* response,
+                                              size_t respMsgLen) {
+        if (response == nullptr || !respMsgLen)
+        {
+            error("Failed to receive response for setEventReceiver command");
+            return;
+        }
+
+        uint8_t completionCode{};
+        auto rc = decode_set_event_receiver_resp(response, respMsgLen,
+                                                 &completionCode);
+        if (rc || completionCode)
+        {
+            error(
+                "Failed to decode setEventReceiver command, response code '{RC}' and completion code '{CC}'",
+                "RC", rc, "CC", completionCode);
+            pldm::utils::reportError(
+                "xyz.openbmc_project.bmc.pldm.InternalFailure");
+        }
+    };
+    rc = requesterHandler->registerRequest(
+        eid, instanceId, PLDM_PLATFORM, PLDM_SET_EVENT_RECEIVER,
+        std::move(requestMsg), std::move(processSetEventReceiverResponse));
+
+    if (rc != PLDM_SUCCESS)
+    {
+        error("Failed to send the setEventReceiver request");
+    }
+
+    if (oemPlatformHandler)
+    {
+        oemPlatformHandler->countSetEventReceiver();
+        oemPlatformHandler->checkAndDisableWatchDog();
+    }
+}
+
+void Handler::sendPDRRepositoryChgEventbyPDRHandles(
+    const std::vector<ChangeEntry>& pdrRecordHandles,
+    const std::vector<uint8_t>& eventDataOps)
+{
+    if (!instanceIdDb || !requesterHandler)
+    {
+        error("Platform handler is missing requester or instance ID state");
+        return;
+    }
+
+    uint8_t eventDataFormat = FORMAT_IS_PDR_HANDLES;
+    std::vector<uint8_t> numsOfChangeEntries(1);
+    std::vector<std::vector<ChangeEntry>> changeEntries(
+        numsOfChangeEntries.size());
+    for (auto pdrRecordHandle : pdrRecordHandles)
+    {
+        changeEntries[0].push_back(pdrRecordHandle);
+    }
+    if (changeEntries.empty())
+    {
+        return;
+    }
+    numsOfChangeEntries[0] = changeEntries[0].size();
+    size_t maxSize = PLDM_PDR_REPOSITORY_CHG_EVENT_MIN_LENGTH +
+                     PLDM_PDR_REPOSITORY_CHANGE_RECORD_MIN_LENGTH +
+                     changeEntries[0].size() * sizeof(uint32_t);
+    std::vector<uint8_t> eventDataVec{};
+    eventDataVec.resize(maxSize);
+    auto eventData =
+        reinterpret_cast<struct pldm_pdr_repository_chg_event_data*>(
+            eventDataVec.data());
+    size_t actualSize{};
+    auto firstEntry = changeEntries[0].data();
+    auto rc = encode_pldm_pdr_repository_chg_event_data(
+        eventDataFormat, 1, eventDataOps.data(), numsOfChangeEntries.data(),
+        &firstEntry, eventData, &actualSize, maxSize);
+    if (rc != PLDM_SUCCESS)
+    {
+        error(
+            "Failed to encode the repository change event data with response code '{RC}'",
+            "RC", static_cast<int>(rc));
+        return;
+    }
+    auto instanceIdResult = instanceIdDb->next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+    std::vector<uint8_t> requestMsg(
+        sizeof(pldm_msg_hdr) + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES +
+        actualSize);
+    auto request = new (requestMsg.data()) pldm_msg;
+    rc = encode_platform_event_message_req(
+        instanceId, 1, TERMINUS_ID, PLDM_PDR_REPOSITORY_CHG_EVENT,
+        eventDataVec.data(), actualSize, request,
+        actualSize + PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES);
+    if (rc != PLDM_SUCCESS)
+    {
+        instanceIdDb->free(eid, instanceId);
+        error(
+            "Failed to encode the platform event message with response code '{RC}'",
+            "RC", static_cast<unsigned>(rc));
+        return;
+    }
+    auto platformEventMessageResponseHandler = [](mctp_eid_t /*eid*/,
+                                                  const pldm_msg* response,
+                                                  size_t respMsgLen) {
+        if (response == nullptr || !respMsgLen)
+        {
+            error(
+                "Failed to receive response for the PDR repository changed event");
+            return;
+        }
+        uint8_t completionCode{};
+        uint8_t status{};
+        auto responsePtr = reinterpret_cast<const struct pldm_msg*>(response);
+        auto rc = decode_platform_event_message_resp(responsePtr, respMsgLen,
+                                                     &completionCode, &status);
+        if (rc || completionCode)
+        {
+            error(
+                "Failed to decode platform event message with response code '{RC}' and completion code '{CC}'",
+                "RC", static_cast<int>(rc), "CC",
+                static_cast<unsigned>(completionCode));
+        }
+    };
+    rc = requesterHandler->registerRequest(
+        eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
+        std::move(requestMsg), std::move(platformEventMessageResponseHandler));
+    if (rc)
+    {
+        error(
+            "Failed to send the PDR repository changed event request after CM");
+    }
+}
 } // namespace platform
 } // namespace responder
 } // namespace pldm

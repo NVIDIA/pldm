@@ -66,14 +66,6 @@ option(
                     message before timing out''',
 )
 
-option(
-    'heartbeat-timeout-seconds',
-    type: 'integer',
-    value: 120,
-    description: '''The amount of time host waits for BMC to respond to pings
-                    from host, as part of host-bmc surveillance''',
-)
-
 # Flight Recorder for PLDM Daemon
 option(
     'flightrecorder-max-entries',
@@ -132,7 +124,6 @@ option(
     value: 5,
     description: 'Instance ID expiration interval in seconds',
 )
-
 # Default response-time-out set to 2 seconds to facilitate a minimum retry of
 # the request of 2.
 option(
@@ -143,28 +134,6 @@ option(
     value: 2000,
     description: '''The amount of time a requester has to wait for a response
                     message in milliseconds''',
-)
-
-# Firmware update configuration parameters
-option(
-    'maximum-transfer-size',
-    type: 'integer',
-    min: 16,
-    max: 4294967295,
-    value: 4096,
-    description: '''Maximum size in bytes of the variable payload allowed to be
-                    requested by the FD, via RequestFirmwareData command''',
-)
-
-option(
-    'update-timeout-seconds',
-    type: 'integer',
-    min: 60,
-    max: 90,
-    value: 60,
-    description: '''Timeout in seconds for the UA to cancel the component update
-                    if no command is received from the FD during component image
-                    transfer stage''',
 )
 
 # Bios Attributes option
@@ -199,16 +168,6 @@ option(
     value: 'disabled',
     description: 'Enable IBM OEM PLDM',
 )
-
-option(
-    'oem-ibm-dma-maxsize',
-    type: 'integer',
-    min: 4096,
-    max: 16773120,
-    value: 8384512,
-    description: 'OEM-IBM: max DMA size',
-)
-
 
 ## OEM AMPERE Options
 option(
@@ -266,19 +225,12 @@ option(
     description: 'Time in minutes for firmware update to complete. Note: This value should be greater than webserver task timeout.',
 )
 
-## Default Sensor Update Interval Options
+## OEM META Options
 option(
-    'default-sensor-update-interval',
-    type: 'integer',
-    min: 1,
-    max: 4294967295,
-    description: '''The default sensor polling interval in milliseconds.
-                    The value will be used when the internal is not configured
-                    in the PLDM sensor PDRs use `updateInterval` field. `pldmd`
-                    will send `GetSensorReading` to get the PLDM sensor values
-                    of the monitoring terminus after each configured
-                    interval.''',
-    value: 999,
+    'oem-meta',
+    type: 'feature',
+    description: 'Enable META OEM PLDM',
+    value: 'enabled',
 )
 
 option(
@@ -300,19 +252,18 @@ option(
 
 ## Sensor Polling Options
 option(
-    'sensor-polling-time',
-    type: 'integer',
-    min: 1,
-    max: 10000,
-    description: '''The configured timeout in milliseconds of the common sensor
-                    polling timer of each terminus which will trigger the
-                    terminus sensor reading task. The task will check
-                    whether the sensor in the terminus sensors list need to
-                    be updated by comparing the sensor `updateInterval` with the
-                    interval between current timestamp and latest updated
-                    timestamp of the sensor. The task will send
-                    `GetSensorReading` if the sensor need to be updated.''',
-    value: 249,
+    'oem-nvidia',
+    type: 'feature',
+    description: 'Enable NVIDIA OEM PLDM',
+    value: 'enabled',
+)
+
+# Firmware Update configuration parameters
+option(
+    'fw-update-pkg-inotify',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable inotify-based firmware update package monitoring',
 )
 
 option(
@@ -332,6 +283,42 @@ option(
     type: 'integer',
     value: 750,
     description: 'The interval time of sensor polling in milliseconds',
+)
+
+option(
+    'maximum-transfer-size',
+    type: 'integer',
+    min: 16,
+    max: 4294967295,
+    value: 4096,
+    description: 'Maximum PLDM firmware transfer size in bytes',
+)
+
+option(
+    'default-sensor-update-interval',
+    type: 'integer',
+    min: 1,
+    max: 4294967295,
+    value: 999,
+    description: 'Default sensor update interval in milliseconds',
+)
+
+option(
+    'sensor-polling-time',
+    type: 'integer',
+    min: 1,
+    max: 10000,
+    value: 249,
+    description: 'Sensor polling time in milliseconds',
+)
+
+option(
+    'update-timeout-seconds',
+    type: 'integer',
+    min: 60,
+    max: 90,
+    value: 60,
+    description: 'Firmware update timeout in seconds',
 )
 
 # Public key to verify signed PLDM package. The default value is public key which is used in the unit tests. Please do not modify.
@@ -361,13 +348,6 @@ option(
     type: 'feature',
     value: 'enabled',
     description: 'expose enpoint PDI for nvlink c2c faric',
-)
-
-option(
-    'oem-nvidia',
-    type: 'feature',
-    value: 'enabled',
-    description: 'Enable NVIDIA OEM PLDM',
 )
 
 option(

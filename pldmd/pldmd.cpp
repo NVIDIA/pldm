@@ -25,6 +25,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <CLI/CLI.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/source/io.hpp>
@@ -56,7 +57,6 @@ PHOSPHOR_LOG2_USING;
 #ifdef LIBPLDMRESPONDER
 #include "dbus_impl_pdr.hpp"
 #include "host-bmc/dbus_to_event_handler.hpp"
-#include "host-bmc/dbus_to_host_effecters.hpp"
 #include "host-bmc/host_condition.hpp"
 #include "host-bmc/host_pdr_handler.hpp"
 #include "libpldmresponder/base.hpp"
@@ -67,12 +67,20 @@ PHOSPHOR_LOG2_USING;
 #include "xyz/openbmc_project/PLDM/Event/server.hpp"
 #endif
 
+#ifdef OEM_META
+#include "oem/meta/oem_meta.hpp"
+#endif
+
 #ifdef OEM_IBM
 #include "oem_ibm.hpp"
 #endif
 
 #ifdef OEM_AMPERE
 #include "oem/ampere/oem_ampere.hpp"
+#endif
+
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/oem_nvidia.hpp"
 #endif
 
 constexpr const char* PLDMService = "xyz.openbmc_project.PLDM";
@@ -88,7 +96,7 @@ using namespace pldm::flightrecorder;
 void interruptFlightRecorderCallBack(Signal& /*signal*/,
                                      const struct signalfd_siginfo*)
 {
-    error("Received SIGUR1(10) Signal interrupt");
+    error("Received SIGUSR1(10) Signal interrupt");
     // obtain the flight recorder instance and dump the recorder
     FlightRecorder::GetInstance().playRecorder();
 }
@@ -274,18 +282,17 @@ int main(int argc, char** argv)
     sdbusplus::server::manager_t inventoryManager(
         bus, "/xyz/openbmc_project/inventory");
 
+    DBusHandler dbusHandler;
     Invoker invoker{};
     requester::Handler<requester::Request> reqHandler(&pldmTransport, event,
                                                       instanceIdDb, verbose);
 
     std::unique_ptr<fw_update::Manager> fwManager =
-        std::make_unique<fw_update::Manager>(event, reqHandler, instanceIdDb,
+        std::make_unique<fw_update::Manager>(&dbusHandler, event, reqHandler,
+                                             instanceIdDb,
                                              FW_UPDATE_CONFIG_JSON, fwDebug);
 
     event.set_watchdog(true);
-
-    // TODO: Check if we need to create PDR repo here.
-    DBusHandler dbusHandler;
 
 #ifdef PLDM_TYPE2
     std::unique_ptr<pldm::platform_mc::Manager> platformManager =
@@ -340,12 +347,6 @@ int main(int argc, char** argv)
 
     if (hostEID)
     {
-        std::unique_ptr<pldm::host_effecters::HostEffecterParser>
-            hostEffecterParser =
-                std::make_unique<pldm::host_effecters::HostEffecterParser>(
-                    &instanceIdDb, pldmTransport.getEventSource(),
-                    pdrRepo.get(), &dbusHandler, HOST_JSONS_DIR, &reqHandler);
-
         hostPDRHandler = std::make_shared<HostPDRHandler>(
             pldmTransport.getEventSource(), hostEID, event, pdrRepo.get(),
             EVENTS_JSONS_DIR, entityTree.get(), bmcEntityTree.get(),
@@ -475,14 +476,17 @@ int main(int argc, char** argv)
     auto platformHandler = std::make_unique<pldm::responder::platform::Handler>(
         &dbusHandler, PDR_JSONS_DIR, pdrRepo.get(), hostPDRHandler.get(),
         dbusToPLDMEventHandler.get(), fruHandler.get(),
-        oemPlatformHandler.get(), event, true
+        oemPlatformHandler.get(), event, true, hostEID, &instanceIdDb,
+        &reqHandler
 #ifdef PLDM_TYPE2
         ,
         addOnEventHandlers
 #endif
     );
 
-    auto biosHandler = std::make_unique<bios::Handler>(
+    fruHandler->setPlatformHandler(platformHandler.get());
+
+    auto biosHandler = std::make_unique<pldm::responder::bios::Handler>(
         pldmTransport.getEventSource(), hostEID, &instanceIdDb, &reqHandler);
 
     auto baseHandler = std::make_unique<base::Handler>(
@@ -496,12 +500,22 @@ int main(int argc, char** argv)
         biosHandler.get(), platformManager.get(), &reqHandler);
 #endif
 
+#ifdef OEM_META
+    pldm::oem_meta::OemMETA oemMETA(&dbusHandler, invoker,
+                                    platformHandler.get());
+#endif
+
+#ifdef OEM_NVIDIA
+    pldm::oem_nvidia::OemNVIDIA oemNVIDIA(platformHandler.get(),
+                                          platformManager.get());
+#endif
+
 #ifdef OEM_IBM
     pldm::oem_ibm::OemIBM oemIBM(
         &dbusHandler, pldmTransport.getEventSource(), hostEID, pdrRepo.get(),
         instanceIdDb, event, invoker, hostPDRHandler.get(),
         platformHandler.get(), fruHandler.get(), baseHandler.get(),
-        &reqHandler);
+        biosHandler.get(), &reqHandler);
 #endif
 
     invoker.registerHandler(PLDM_BIOS, std::move(biosHandler));
@@ -571,7 +585,7 @@ int main(int argc, char** argv)
         }
 
         int returnCode = 0;
-        void* requestMsg;
+        void* requestMsg = nullptr;
         size_t recvDataLength;
         returnCode = pldmTransport.recvMsg(TID, requestMsg, recvDataLength);
 

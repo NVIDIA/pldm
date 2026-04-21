@@ -1,6 +1,8 @@
 #include "fru.hpp"
 
+#include "common/types.hpp"
 #include "common/utils.hpp"
+#include "libpldmresponder/platform.hpp"
 
 #include <config.h>
 #include <libpldm/edac.h>
@@ -9,11 +11,15 @@
 
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
+#include <xyz/openbmc_project/Association/common.hpp>
+#include <xyz/openbmc_project/Software/Version/client.hpp>
 
 PHOSPHOR_LOG2_USING;
 
 #include <iostream>
-#include <set>
+using SoftwareVersion =
+    sdbusplus::common::xyz::openbmc_project::software::Version;
+using Association = sdbusplus::common::xyz::openbmc_project::Association;
 
 namespace pldm
 {
@@ -145,14 +151,13 @@ std::string FruImpl::populatefwVersion()
         auto method =
             bus.new_method_call(pldm::utils::mapperService, fwFunctionalObjPath,
                                 pldm::utils::dbusProperties, "Get");
-        method.append("xyz.openbmc_project.Association", "endpoints");
+        method.append(Association::interface, "Endpoints");
         std::variant<std::vector<std::string>> paths;
         auto reply = bus.call(method);
         reply.read(paths);
         auto fwRunningVersion = std::get<std::vector<std::string>>(paths)[0];
-        constexpr auto versionIntf = "xyz.openbmc_project.Software.Version";
         auto version = pldm::utils::DBusHandler().getDbusPropertyVariant(
-            fwRunningVersion.c_str(), "Version", versionIntf);
+            fwRunningVersion.c_str(), "Version", SoftwareVersion::interface);
         currentBmcVersion = std::get<std::string>(version);
     }
     catch (const std::exception& e)
@@ -256,6 +261,306 @@ void FruImpl::populateRecords(
     }
 }
 
+void FruImpl::deleteFRURecord(uint16_t rsi)
+{
+    std::vector<uint8_t> updatedFruTbl;
+    size_t pos = 0;
+
+    while (pos < table.size())
+    {
+        // Ensure enough space for the record header
+        if ((table.size() - pos) < sizeof(struct pldm_fru_record_data_format))
+        {
+            // Log or handle corrupt/truncated record
+            error("Error: Incomplete FRU record header");
+            return;
+        }
+
+        auto recordSetSrc =
+            reinterpret_cast<const struct pldm_fru_record_data_format*>(
+                &table[pos]);
+
+        size_t recordLen = sizeof(struct pldm_fru_record_data_format) -
+                           sizeof(struct pldm_fru_record_tlv);
+
+        const struct pldm_fru_record_tlv* tlv = recordSetSrc->tlvs;
+
+        for (uint8_t i = 0; i < recordSetSrc->num_fru_fields; ++i)
+        {
+            if ((table.size() - pos) < (recordLen + sizeof(*tlv)))
+            {
+                error("Error: Incomplete TLV header");
+                return;
+            }
+
+            size_t len = sizeof(*tlv) - 1 + tlv->length;
+
+            if ((table.size() - pos) < (recordLen + len))
+            {
+                error("Error: Incomplete TLV data");
+                return;
+            }
+
+            recordLen += len;
+
+            // Advance to next tlv
+            tlv = reinterpret_cast<const struct pldm_fru_record_tlv*>(
+                reinterpret_cast<const uint8_t*>(tlv) + len);
+        }
+
+        if ((le16toh(recordSetSrc->record_set_id) != rsi && rsi != 0))
+        {
+            std::copy(table.begin() + pos, table.begin() + pos + recordLen,
+                      std::back_inserter(updatedFruTbl));
+        }
+        else
+        {
+            // Deleted record
+            numRecs--;
+        }
+
+        pos += recordLen;
+    }
+    // Replace the old table with the updated one
+    table = std::move(updatedFruTbl);
+}
+
+void FruImpl::removeIndividualFRU(const std::string& fruObjPath)
+{
+    uint16_t rsi = objectPathToRSIMap[fruObjPath];
+    if (!rsi)
+    {
+        info("No Pdrs to delete for the object path {PATH}", "PATH",
+             fruObjPath);
+        return;
+    }
+    pldm_entity removeEntity;
+    uint16_t terminusHdl{};
+    uint16_t entityType{};
+    uint16_t entityInsNum{};
+    uint16_t containerId{};
+    uint32_t updateRecordHdlBmc = 0;
+    uint32_t updateRecordHdlHost = 0;
+    uint32_t deleteRecordHdl = 0;
+    bool hasError = false;
+
+    auto fruRecord = pldm_pdr_fru_record_set_find_by_rsi(
+        pdrRepo, rsi, &terminusHdl, &entityType, &entityInsNum, &containerId);
+
+    if (fruRecord == nullptr)
+    {
+        error("No matching FRU record found for RSI {RSI}", "RSI", rsi);
+        hasError = true;
+        return;
+    }
+
+    removeEntity = {entityType, entityInsNum, containerId};
+
+    auto removeBmcEntityRc =
+        pldm_entity_association_pdr_remove_contained_entity(
+            pdrRepo, &removeEntity, false, &updateRecordHdlBmc);
+    if (removeBmcEntityRc)
+    {
+        hasError = true;
+        error(
+            "Failed to remove entity [Type={TYPE}, Instance={INS}, Container={CONT}] "
+            "from BMC PDR. RC = {RC}",
+            "TYPE", static_cast<unsigned>(removeEntity.entity_type), "INS",
+            static_cast<unsigned>(removeEntity.entity_instance_num), "CONT",
+            static_cast<unsigned>(removeEntity.entity_container_id), "RC",
+            static_cast<int>(removeBmcEntityRc));
+    }
+
+    pldm::responder::pdr_utils::PdrEntry pdrEntry;
+    uint8_t* pdrData = nullptr;
+    auto record =
+        pldm_pdr_find_record(pdrRepo, updateRecordHdlBmc, &pdrData,
+                             &pdrEntry.size, &pdrEntry.handle.nextRecordHandle);
+    if (record)
+    {
+        info("Found BMC Record {REC}", "REC", updateRecordHdlBmc);
+    }
+    auto bmcEventDataOps =
+        record ? PLDM_RECORDS_MODIFIED : PLDM_RECORDS_DELETED;
+
+    int removeHostEntityRc = -1;
+    uint8_t hostEventDataOps = 0;
+    if (!hasError)
+    {
+        removeHostEntityRc =
+            pldm_entity_association_pdr_remove_contained_entity(
+                pdrRepo, &removeEntity, true, &updateRecordHdlHost);
+        if (removeHostEntityRc)
+        {
+            hasError = true;
+            error(
+                "Failed to remove entity [Type={TYPE}, Instance={INS}, Container={CONT}] "
+                "from Host PDR. RC = {RC}",
+                "TYPE", static_cast<unsigned>(removeEntity.entity_type), "INS",
+                static_cast<unsigned>(removeEntity.entity_instance_num), "CONT",
+                static_cast<unsigned>(removeEntity.entity_container_id), "RC",
+                static_cast<int>(removeHostEntityRc));
+        }
+
+        record = pldm_pdr_find_record(pdrRepo, updateRecordHdlHost, &pdrData,
+                                      &pdrEntry.size,
+                                      &pdrEntry.handle.nextRecordHandle);
+        if (record)
+        {
+            info("Found Host Record {REC}", "REC", updateRecordHdlHost);
+        }
+
+        hostEventDataOps = record ? PLDM_RECORDS_MODIFIED
+                                  : PLDM_RECORDS_DELETED;
+    }
+    if (hasError)
+    {
+        error("Partial failure occurred while removing FRU {FRU_OBJ_PATH}",
+              "FRU_OBJ_PATH", fruObjPath);
+        return;
+    }
+
+    auto rc = pldm_pdr_remove_fru_record_set_by_rsi(pdrRepo, rsi, false,
+                                                    &deleteRecordHdl);
+    if (rc)
+    {
+        hasError = true;
+        error("Failed to remove FRU record set for RSI {RSI}. RC = {RC}", "RSI",
+              rsi, "RC", rc);
+    }
+
+    if (!hasError)
+    {
+        auto rc =
+            pldm_entity_association_tree_delete_node(entityTree, &removeEntity);
+        if (rc)
+        {
+            hasError = true;
+            error("Failed to delete entity from association tree. RC = {RC}",
+                  "RC", rc);
+        }
+
+        rc = pldm_entity_association_tree_delete_node(bmcEntityTree,
+                                                      &removeEntity);
+        if (rc)
+        {
+            hasError = true;
+            error(
+                "Failed to delete entity from BMC association tree. RC = {RC}",
+                "RC", rc);
+        }
+    }
+
+    if (hasError)
+    {
+        error("Partial failure occurred while removing FRU {FRU_OBJ_PATH}",
+              "FRU_OBJ_PATH", fruObjPath);
+        return;
+    }
+
+    objectPathToRSIMap.erase(fruObjPath);
+    objToEntityNode.erase(fruObjPath);
+    info(
+        "Removing Individual FRU [ {FRU_OBJ_PATH} ] with entityid [ {ENTITY_TYPE}, {ENTITY_NUM}, {ENTITY_ID} ]",
+        "FRU_OBJ_PATH", fruObjPath, "ENTITY_TYPE",
+        static_cast<unsigned>(removeEntity.entity_type), "ENTITY_NUM",
+        static_cast<unsigned>(removeEntity.entity_instance_num), "ENTITY_ID",
+        static_cast<unsigned>(removeEntity.entity_container_id));
+    associatedEntityMap.erase(fruObjPath);
+
+    deleteFRURecord(rsi);
+
+    std::vector<ChangeEntry> handlesTobeDeleted;
+    if (deleteRecordHdl != 0)
+    {
+        handlesTobeDeleted.push_back(deleteRecordHdl);
+    }
+
+    std::vector<uint16_t> effecterIDs = pldm::utils::findEffecterIds(
+        pdrRepo, removeEntity.entity_type, removeEntity.entity_instance_num,
+        removeEntity.entity_container_id);
+
+    for (const auto& ids : effecterIDs)
+    {
+        uint32_t delEffecterHdl = 0;
+        int rc = pldm_pdr_delete_by_effecter_id(pdrRepo, ids, false,
+                                                &delEffecterHdl);
+
+        if (rc != 0)
+        {
+            error("Failed to delete PDR by effecter ID {ID}. RC = {RC}", "ID",
+                  ids, "RC", rc);
+            continue;
+        }
+        effecterDbusObjMaps.erase(ids);
+        if (delEffecterHdl != 0)
+        {
+            handlesTobeDeleted.push_back(delEffecterHdl);
+        }
+    }
+    std::vector<uint16_t> sensorIDs = pldm::utils::findSensorIds(
+        pdrRepo, removeEntity.entity_type, removeEntity.entity_instance_num,
+        removeEntity.entity_container_id);
+
+    for (const auto& ids : sensorIDs)
+    {
+        uint32_t delSensorHdl = 0;
+        int rc =
+            pldm_pdr_delete_by_sensor_id(pdrRepo, ids, false, &delSensorHdl);
+
+        if (rc != 0)
+        {
+            error("Failed to delete PDR by sensor ID {ID}. RC = {RC}", "ID",
+                  ids, "RC", rc);
+            continue;
+        }
+        sensorDbusObjMaps.erase(ids);
+        if (delSensorHdl != 0)
+        {
+            handlesTobeDeleted.push_back(delSensorHdl);
+        }
+    }
+
+    // need to send both remote and local records. Host keeps track of BMC
+    // only records
+    std::vector<ChangeEntry> handlesTobeModified;
+    if (removeBmcEntityRc == 0 && updateRecordHdlBmc != 0)
+    {
+        (bmcEventDataOps == PLDM_RECORDS_DELETED)
+            ? handlesTobeDeleted.push_back(updateRecordHdlBmc)
+            : handlesTobeModified.push_back(updateRecordHdlBmc);
+    }
+    if (removeHostEntityRc == 0 && updateRecordHdlHost != 0)
+    {
+        (hostEventDataOps == PLDM_RECORDS_DELETED)
+            ? handlesTobeDeleted.push_back(updateRecordHdlHost)
+            : handlesTobeModified.push_back(updateRecordHdlHost);
+    }
+    // Adapter PDRs can have deleted records
+    if (!handlesTobeDeleted.empty())
+    {
+        platformHandler->sendPDRRepositoryChgEventbyPDRHandles(
+            handlesTobeDeleted, std::vector<uint8_t>{PLDM_RECORDS_DELETED});
+    }
+    if (!handlesTobeModified.empty())
+    {
+        platformHandler->sendPDRRepositoryChgEventbyPDRHandles(
+            handlesTobeModified, std::vector<uint8_t>{PLDM_RECORDS_MODIFIED});
+    }
+}
+
+std::vector<uint8_t> FruImpl::tableResize()
+{
+    std::vector<uint8_t> tempTable;
+
+    if (table.size())
+    {
+        std::copy(table.begin(), table.end(), std::back_inserter(tempTable));
+        padBytes = pldm::utils::getNumPadBytes(table.size());
+        tempTable.resize(tempTable.size() + padBytes, 0);
+    }
+    return tempTable;
+}
 void FruImpl::getFRUTable(Response& response)
 {
     auto hdrSize = response.size();
@@ -303,6 +608,42 @@ int FruImpl::getFRURecordByOption(
     return PLDM_SUCCESS;
 }
 
+int FruImpl::setFRUTable(const std::vector<uint8_t>& fruData)
+{
+    auto record =
+        reinterpret_cast<const pldm_fru_record_data_format*>(fruData.data());
+    if (record)
+    {
+        if (oemFruHandler && record->record_type == PLDM_FRU_RECORD_TYPE_OEM)
+        {
+            auto rc = oemFruHandler->processOEMFRUTable(fruData);
+            if (!rc)
+            {
+                return PLDM_SUCCESS;
+            }
+        }
+    }
+    return PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
+}
+
+uint32_t FruImpl::addHotPlugRecord(
+    pldm::responder::pdr_utils::PdrEntry pdrEntry)
+{
+    uint32_t lastHandle = 0;
+    uint32_t recordHandle = 0;
+
+    if (oemPlatformHandler)
+    {
+        auto lastLocalRecord = oemPlatformHandler->fetchLastBMCRecord(pdrRepo);
+        lastHandle = pldm_pdr_get_record_handle(pdrRepo, lastLocalRecord);
+    }
+
+    pdrEntry.handle.recordHandle = lastHandle + 1;
+    pldm_pdr_add(pdrRepo, pdrEntry.data, pdrEntry.size, false,
+                 pdrEntry.handle.recordHandle, &recordHandle);
+
+    return recordHandle;
+}
 namespace fru
 {
 

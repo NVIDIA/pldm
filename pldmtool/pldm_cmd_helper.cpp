@@ -90,7 +90,12 @@ void fillCompletionCode(uint8_t completionCode, ordered_json& data,
 
 void CommandInterface::exec()
 {
-    instanceId = instanceIdDb.next(mctp_eid);
+    auto instanceIdResult = instanceIdDb.next(mctp_eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
     auto [rc, requestMsg] = createRequestMsg();
     if (rc != PLDM_SUCCESS)
     {
@@ -183,7 +188,7 @@ int CommandInterface::pldmSendRecv(std::vector<uint8_t>& requestMsg,
     }
 
     auto tid = mctp_eid;
-    PldmTransport pldmTransport{};
+    PldmTransport pldmTransport(false);
     uint8_t retry = 0;
     int rc = PLDM_ERROR;
 

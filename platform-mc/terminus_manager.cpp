@@ -300,10 +300,9 @@ void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
         discoverMctpTerminusTaskHandle.reset();
     }
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-    stdexec::start_detached(
-        discoverMctpTerminusTask() |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+    scope.spawn(discoverMctpTerminusTask() |
+                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
+                exec::default_task_context<void>(exec::inline_scheduler{}));
 }
 
 exec::task<int> TerminusManager::discoverMctpTerminusTask()
@@ -368,35 +367,81 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto rc = co_await getTidOverMctp(eid, tid);
     if (rc || tid == PLDM_TID_RESERVED)
     {
-        lg2::error("getTidOverMctp failed, eid={EID} rc={RC}.", "EID", eid,
-                   "RC", rc);
-        co_return PLDM_ERROR;
+        // Assigning a tid. If it has been mapped, mapTid()
+        // returns the tid assigned before.
+        auto mappedTid = mapTid(mctpInfo);
+        if (!mappedTid)
+        {
+            lg2::error("Failed to store Terminus Info for terminus {TID}.",
+                       "TID", tid);
+            co_return PLDM_ERROR;
+        }
+
+        tid = mappedTid.value();
+        rc = co_await setTidOverMctp(eid, tid);
+        if (rc != PLDM_SUCCESS)
+        {
+            if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+            {
+                lg2::error("Terminus {TID} does not support SetTID command.",
+                           "TID", tid);
+            }
+            else
+            {
+                lg2::error(
+                    "Failed to Set terminus TID for terminus {TID}, error {ERROR}.",
+                    "TID", tid, "ERROR", rc);
+            }
+            unmapTid(tid);
+            co_return rc;
+        }
+
+        if (termini.contains(tid))
+        {
+            // the terminus has been discovered before
+            co_return PLDM_SUCCESS;
+        }
+    }
+    else
+    {
+        auto mappedTid = mapTid(mctpInfo, tid);
+        if (!mappedTid)
+        {
+            auto existingTid = toTid(mctpInfo);
+            if (!existingTid || existingTid.value() != tid)
+            {
+                lg2::error(
+                    "Failed to store Terminus Info for terminus {TID}.",
+                    "TID", tid);
+                co_return PLDM_ERROR;
+            }
+        }
+
+        if (termini.contains(tid))
+        {
+            co_return PLDM_SUCCESS;
+        }
     }
 
-    // Assigning a tid. If it has been mapped, mapTid() returns the tid assigned
-    // before.
-    auto mappedTid = mapTid(mctpInfo);
-    if (!mappedTid)
+    if (rc || tid == PLDM_TID_RESERVED)
     {
-        co_return PLDM_ERROR;
-    }
+        // Assigning a tid. If it has been mapped, mapTid() returns the tid
+        // assigned before.
+        auto mappedTid = mapTid(mctpInfo);
+        if (!mappedTid)
+        {
+            co_return PLDM_ERROR;
+        }
 
-    tid = mappedTid.value();
-    rc = co_await setTidOverMctp(eid, tid);
-    if (rc != PLDM_SUCCESS && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
-    {
-        unmapTid(tid);
-        lg2::info("setTidOverMctp failed, eid={EID} tid={TID} rc={RC}.", "EID",
-                  eid, "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    auto it = termini.find(tid);
-    if (it != termini.end())
-    {
-        lg2::info("terminus tid={TID} eid={EID} has been initialized.", "TID",
-                  tid, "EID", eid);
-        co_return PLDM_SUCCESS;
+        tid = mappedTid.value();
+        rc = co_await setTidOverMctp(eid, tid);
+        if (rc != PLDM_SUCCESS && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+        {
+            unmapTid(tid);
+            lg2::info("setTidOverMctp failed, eid={EID} tid={TID} rc={RC}.",
+                      "EID", eid, "TID", tid, "RC", rc);
+            co_return rc;
+        }
     }
 
     uint64_t supportedTypes = 0;
@@ -486,7 +531,12 @@ exec::task<int> TerminusManager::SendRecvPldmMsgOverMctp(
 
 exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        co_return PLDM_ERROR;
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_tid_req(instanceId, requestMsg);
@@ -523,7 +573,12 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 
 exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        co_return PLDM_ERROR;
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_tid_req(instanceId, tid, requestMsg);
@@ -651,7 +706,12 @@ exec::task<int> TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
 
         auto eid = std::get<0>(mctpInfo.value());
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-        requestMsg->hdr.instance_id = instanceIdDb.next(eid);
+        auto instanceIdResult = instanceIdDb.next(eid);
+        if (!instanceIdResult)
+        {
+            co_return PLDM_ERROR;
+        }
+        requestMsg->hdr.instance_id = instanceIdResult.value();
         auto rc = co_await SendRecvPldmMsgOverMctp(eid, request, responseMsg,
                                                    responseLen);
         co_return rc;

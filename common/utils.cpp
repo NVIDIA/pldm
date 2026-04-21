@@ -9,10 +9,12 @@
 #include <libpldm/pldm_types.h>
 #include <linux/mctp.h>
 
-#include <phosphor-logging/lg2.hpp>
+#include <xyz/openbmc_project/BIOSConfig/Manager/client.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Inventory/Item/common.hpp>
 #include <xyz/openbmc_project/Logging/Create/client.hpp>
 #include <xyz/openbmc_project/ObjectMapper/client.hpp>
+#include <xyz/openbmc_project/PLDM/Event/common.hpp>
 
 #include <algorithm>
 #include <array>
@@ -36,6 +38,10 @@ namespace utils
 {
 
 using ObjectMapper = sdbusplus::client::xyz::openbmc_project::ObjectMapper<>;
+using BIOSConfigManager =
+    sdbusplus::client::xyz::openbmc_project::bios_config::Manager<>;
+using PLDMEvent = sdbusplus::common::xyz::openbmc_project::pldm::Event;
+using InventoryItem = sdbusplus::common::xyz::openbmc_project::inventory::Item;
 
 constexpr const char* MCTP_INTERFACE_CC = "au.com.codeconstruct.MCTP.Endpoint1";
 constexpr const char* MCTP_ENDPOINT_RECOVER_METHOD = "Recover";
@@ -241,9 +247,9 @@ std::string DBusHandler::getService(const char* path,
     std::map<std::string, std::vector<std::string>> mapperResponse;
     auto& bus = DBusHandler::getBus();
 
-    auto mapper = bus.new_method_call(ObjectMapper::default_service,
-                                      ObjectMapper::instance_path,
-                                      ObjectMapper::interface, "GetObject");
+    auto mapper = bus.new_method_call(
+        ObjectMapper::default_service, ObjectMapper::instance_path,
+        ObjectMapper::interface, "GetObject");
 
     if (interface)
     {
@@ -271,13 +277,14 @@ GetSubTreeResponse DBusHandler::getSubtree(
     const std::vector<std::string>& ifaceList) const
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
-    auto method = bus.new_method_call(ObjectMapper::default_service,
-                                      ObjectMapper::instance_path,
-                                      ObjectMapper::interface, "GetSubTree");
+    auto method = bus.new_method_call(
+        ObjectMapper::default_service, ObjectMapper::instance_path,
+        ObjectMapper::interface, "GetSubTree");
     method.append(searchPath, depth, ifaceList);
     auto reply = bus.call(method, dbusTimeout);
     GetSubTreeResponse response;
     reply.read(response);
+
     return response;
 }
 
@@ -301,13 +308,14 @@ GetAncestorsResponse DBusHandler::getAncestors(
     const std::string& path, const std::vector<std::string>& ifaceList) const
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
-    auto method = bus.new_method_call(ObjectMapper::default_service,
-                                      ObjectMapper::instance_path,
-                                      ObjectMapper::interface, "GetAncestors");
+    auto method = bus.new_method_call(
+        ObjectMapper::default_service, ObjectMapper::instance_path,
+        ObjectMapper::interface, "GetAncestors");
     method.append(path, ifaceList);
     auto reply = bus.call(method, dbusTimeout);
     GetAncestorsResponse response;
     reply.read(response);
+
     return response;
 }
 
@@ -323,9 +331,9 @@ void reportError(const char* errorMsg)
             sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
                 sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level::
                     Error);
-        auto method = bus.new_method_call(LoggingCreate::default_service,
-                                          LoggingCreate::instance_path,
-                                          LoggingCreate::interface, "Create");
+        auto method = bus.new_method_call(
+            LoggingCreate::default_service, LoggingCreate::instance_path,
+            LoggingCreate::interface, "Create");
 
         std::map<std::string, std::string> addlData{};
         method.append(errorMsg, severity, addlData);
@@ -448,6 +456,7 @@ GetAssociatedSubTreeResponse DBusHandler::getAssociatedSubTree(
     auto reply = bus.call(method, dbusTimeout);
     GetAssociatedSubTreeResponse response;
     reply.read(response);
+
     return response;
 }
 
@@ -601,9 +610,9 @@ int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
     try
     {
         auto& bus = DBusHandler::getBus();
-        auto msg = bus.new_signal("/xyz/openbmc_project/pldm",
-                                  "xyz.openbmc_project.PLDM.Event",
-                                  "StateSensorEvent");
+        auto msg =
+            bus.new_signal("/xyz/openbmc_project/pldm", PLDMEvent::interface,
+                           "StateSensorEvent");
         msg.append(tid, sensorId, sensorOffset, eventState, previousEventState);
 
         msg.signal_send();
@@ -747,13 +756,10 @@ std::string getCurrentSystemTime()
 bool checkForFruPresence(const std::string& objPath)
 {
     bool isPresent = false;
-    static constexpr auto presentInterface =
-        "xyz.openbmc_project.Inventory.Item";
-    static constexpr auto presentProperty = "Present";
     try
     {
         auto propVal = pldm::utils::DBusHandler().getDbusPropertyVariant(
-            objPath.c_str(), presentProperty, presentInterface);
+            objPath.c_str(), "Present", InventoryItem::interface);
         isPresent = std::get<bool>(propVal);
     }
     catch (const sdbusplus::exception::SdBusError& e)
@@ -774,7 +780,7 @@ void setFruPresence(const std::string& fruObjPath, bool present)
     pldm::utils::PropertyValue value{present};
     pldm::utils::DBusMapping dbusMapping;
     dbusMapping.objectPath = fruObjPath;
-    dbusMapping.interface = "xyz.openbmc_project.Inventory.Item";
+    dbusMapping.interface = InventoryItem::interface;
     dbusMapping.propertyName = "Present";
     dbusMapping.propertyType = "bool";
     try
@@ -1114,6 +1120,43 @@ long int generateSwId()
 {
     static auto gen = std::mt19937{std::random_device{}()};
     return std::uniform_int_distribution<long int>{0, 9999}(gen);
+}
+
+void setBiosAttr(const PendingAttributesList& biosAttrList)
+{
+    pldm::bios::PendingAttributes pendingAttributes;
+    for (const auto& [attrName, biosAttrDetails] : biosAttrList)
+    {
+        const auto& [attrType, attrValue] = biosAttrDetails;
+        pldm::bios::CurrentValue currentValue{};
+        std::visit(
+            [&currentValue](const auto& value) {
+                using T = std::decay_t<decltype(value)>;
+                currentValue = T{value};
+            },
+            attrValue);
+        pendingAttributes.emplace(
+            attrName, std::make_tuple(attrType, std::move(currentValue)));
+    }
+
+    auto& bus = DBusHandler::getBus();
+    try
+    {
+        auto service = pldm::utils::DBusHandler().getService(
+            biosConfigPath, BIOSConfigManager::interface);
+        auto method = bus.new_method_call(service.c_str(), biosConfigPath,
+                                          "org.freedesktop.DBus.Properties",
+                                          "Set");
+        method.append(BIOSConfigManager::interface, "PendingAttributes",
+                      std::variant<pldm::bios::PendingAttributes>(
+                          std::move(pendingAttributes)));
+        bus.call_noreply(method, dbusTimeout);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        info("Error setting BIOS pending attributes: {ERR_EXCEP}",
+             "ERR_EXCEP", e);
+    }
 }
 
 } // namespace utils
