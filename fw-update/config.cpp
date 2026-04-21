@@ -151,8 +151,13 @@ void parseConfig(const fs::path& jsonPath,
                     {
                         auto componentID = createObject.value()["component_id"];
                         auto componentName = createObject.key();
-                        createcomponentIdNameMap[componentID] = {componentName,
-                                                                 assocs};
+                        std::string manufacturer = "NVIDIA";
+                        if (createObject.value().contains("manufacturer"))
+                        {
+                            manufacturer = createObject.value()["manufacturer"];
+                        }
+                        createcomponentIdNameMap[componentID] = {
+                            componentName, assocs, manufacturer};
                     }
                 }
             }
@@ -485,7 +490,8 @@ std::unordered_map<std::string, mctp_eid_t> buildNameToEidMap()
             const auto& [createFwInfo, updateFwInfo] = fwInfo;
             for (const auto& [compId, componentObject] : createFwInfo)
             {
-                const auto& [componentName, compAssocs] = componentObject;
+                const auto& [componentName, compAssocs, compManufacturer] =
+                    componentObject;
                 insertMapping(componentName, *eidOpt);
             }
             for (const auto& [compId, componentName] : updateFwInfo)
