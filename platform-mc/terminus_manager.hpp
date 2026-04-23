@@ -202,9 +202,10 @@ class TerminusManager
     std::map<tid_t, SupportedTransportLayer> transportLayerTable;
     std::map<tid_t, MctpInfo> mctpInfoTable;
 
-    /** @brief Mapping of EID to configured terminus name from JSON config */
-    std::unordered_map<mctp_eid_t, std::pair<uint8_t, std::string>>
-        eidToTerminusNameMap;
+    /** @brief Mapping of EID to terminus config (instance, name, cpuIndex) */
+    std::unordered_map<mctp_eid_t,
+                       std::tuple<int, std::string, std::optional<uint16_t>>>
+        eidToTerminusConfigMap;
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};

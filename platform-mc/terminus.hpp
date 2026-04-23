@@ -367,6 +367,18 @@ class Terminus
         return instance;
     }
 
+    /** @brief The setter to set terminus's CPU index */
+    void setCpuIndex(uint16_t idx)
+    {
+        cpuIndex = idx;
+    }
+
+    /** @brief The getter to get terminus's CPU index */
+    std::optional<uint16_t> getCpuIndex()
+    {
+        return cpuIndex;
+    }
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr> parseNumericSensorPDR(
         const std::vector<uint8_t>& pdrData);
@@ -401,6 +413,26 @@ class Terminus
 
     std::optional<std::string> getAuxNameForNumericSensor(SensorID id);
 
+    /** @brief Build sensor name prefix using terminusName, entity type string,
+     *         and cpuIndex. Returns "{terminusName}_{EntityTypeStr}_{cpuIndex}"
+     *         when entity type is mapped, or "{terminusName}" otherwise.
+     *
+     *  @param[in] entityType - raw entity type from PDR (physical bit included)
+     *  @return string prefix to prepend to the aux name
+     */
+    std::string buildSensorNamePrefix(uint16_t entityType) const;
+
+    /** @brief Build entity-type tag without terminus name
+     *
+     *  Returns just the entity-type name + optional CPU index
+     *  (e.g. "CPU_0"), without the terminus name prefix.
+     *  Used for backward-compat detection of old firmware aux names.
+     *
+     *  @param[in] entityType - raw entity type from PDR (physical bit included)
+     *  @return entity tag string, or empty if entity type is unknown
+     */
+    std::string buildEntityTypeTag(uint16_t entityType) const;
+
     tid_t tid;
 
     std::bitset<64> supportedTypes;
@@ -412,6 +444,9 @@ class Terminus
 
     /** @brief Terminus instance from configuration */
     std::optional<uint16_t> instance;
+
+    /** @brief CPU index from configuration */
+    std::optional<uint16_t> cpuIndex;
 
     std::vector<std::shared_ptr<SensorAuxiliaryNames>>
         sensorAuxiliaryNamesTbl{};
