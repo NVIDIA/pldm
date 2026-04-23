@@ -74,7 +74,8 @@ std::vector<uint8_t> makeHeaderMessage(uint8_t msgType, uint8_t instance,
 
 } // namespace
 
-PldmTransport::PldmTransport() : pfd{}, impl{}, transport(nullptr)
+PldmTransport::PldmTransport([[maybe_unused]] bool listening) :
+    pfd{}, impl{}, transport(nullptr)
 {
     auto& state = fakeTransportState();
     int fds[2] = {-1, -1};
