@@ -309,8 +309,8 @@ int EventManager::handlePlatformEvent(
 
             // Trigger async rediscovery task
             stdexec::start_detached(
-                processTelemetryRediscoveryEvent(tid),
-                exec::default_task_context<int>(exec::inline_scheduler{}));
+                stdexec::on(stdexec::inline_scheduler{},
+                processTelemetryRediscoveryEvent(tid)));
         }
         else if (telemetryState == PLDM_TELEMETRY_RESUME)
         {

@@ -103,9 +103,9 @@ class CpuDiagnosticsRefreshEffecterIntf : public CpuDiagnosticsRefreshStateIntf
         {
             // Trigger the effecter to request data collection
             stdexec::start_detached(
+                stdexec::on(stdexec::inline_scheduler{},
                 effecter.setStateEffecterStates(
-                    compId, PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                    compId, PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED)));
         }
         // Auto-clear the refresh flag after triggering
         return TriggerIntf::refresh(false);

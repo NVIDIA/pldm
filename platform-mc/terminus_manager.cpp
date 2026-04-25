@@ -302,7 +302,7 @@ void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
     scope.spawn(discoverMctpTerminusTask() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                stdexec::inline_scheduler{});
 }
 
 exec::task<int> TerminusManager::discoverMctpTerminusTask()

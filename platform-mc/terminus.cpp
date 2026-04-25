@@ -1853,9 +1853,9 @@ void Terminus::refreshAssociations()
     }
     auto& [scope, rcOpt] = refreshAssociationsTaskHandle.emplace();
     stdexec::start_detached(
+        stdexec::on(stdexec::inline_scheduler{},
         refreshAssociationsTask() |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 exec::task<int> Terminus::refreshAssociationsTask()

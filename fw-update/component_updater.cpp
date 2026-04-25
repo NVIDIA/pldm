@@ -515,8 +515,8 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
             componentUpdaterState.set(
                 ComponentUpdaterSequence::CancelUpdateComponent);
             stdexec::start_detached(
-                sendcancelUpdateComponentRequest(),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                stdexec::on(stdexec::inline_scheduler{},
+                sendcancelUpdateComponentRequest()));
             return sendCommandNotExpectedResponse(request, payloadLength);
         }
 
@@ -799,9 +799,9 @@ void ComponentUpdater::completeFailedStatusHandler(
     }
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
     stdexec::start_detached(
+        stdexec::on(stdexec::inline_scheduler{},
         sendcancelUpdateComponentRequest() |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
@@ -1023,14 +1023,14 @@ void ComponentUpdater::createRequestFwDataTimer()
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
             stdexec::start_detached(
+                stdexec::on(stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                    stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
         stdexec::start_detached(
-            queryAndCancelTask(),
-            exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::on(stdexec::inline_scheduler{},
+            queryAndCancelTask()));
     });
 }
 
@@ -1110,14 +1110,14 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
             stdexec::start_detached(
+                stdexec::on(stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
-                    stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                    stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
         stdexec::start_detached(
-            queryAndCancelTask(),
-            exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::on(stdexec::inline_scheduler{},
+            queryAndCancelTask()));
     });
 }
 
@@ -1232,9 +1232,9 @@ void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
     }
     auto& [scope, rcOpt] = updateCompletionCoHandle.emplace();
     stdexec::start_detached(
+        stdexec::on(stdexec::inline_scheduler{},
         deviceUpdater->updateComponentCompletion(componentIndex, status) |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
@@ -1252,9 +1252,9 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
 
     auto& [scope, rcOpt] = getStatusTaskHandle.emplace();
     stdexec::start_detached(
+        stdexec::on(stdexec::inline_scheduler{},
         sendGetStatusRequest(getStatusCallback) |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 exec::task<int> ComponentUpdater::sendGetStatusRequest(

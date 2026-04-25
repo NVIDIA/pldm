@@ -365,8 +365,8 @@ std::string UpdateManager::processStreamDefer(
                 targets](sdeventplus::source::EventBase&) {
             // Start processStream coroutine in detached mode
             stdexec::start_detached(
-                this->processStream(package, packageSize, targets),
-                exec::default_task_context<void>(exec::inline_scheduler{}));
+                stdexec::on(stdexec::inline_scheduler{},
+                this->processStream(package, packageSize, targets)));
         });
 
     return objPath;

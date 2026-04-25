@@ -75,8 +75,8 @@ class ClearNonVolatileVariablesEffecterIntf :
         }
 
         stdexec::start_detached(
-            effecter.setStateEffecterStates(compId, requestState),
-            exec::default_task_context<void>(exec::inline_scheduler{}));
+            stdexec::on(stdexec::inline_scheduler{},
+            effecter.setStateEffecterStates(compId, requestState)));
         return value;
     }
 

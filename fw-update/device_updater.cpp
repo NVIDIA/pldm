@@ -237,8 +237,8 @@ void DeviceUpdater::deviceUpdaterHandler()
     }
     auto& [scope, rcOpt] = deviceUpdaterHandle.emplace();
     stdexec::start_detached(
-        startDeviceUpdate() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+        stdexec::on(stdexec::inline_scheduler{},
+        startDeviceUpdate() | stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 exec::task<int> DeviceUpdater::startDeviceUpdate()

@@ -167,6 +167,7 @@ void SensorManager::doSensorPolling(tid_t tid)
 
     terminus->sensorPollingTaskRc.reset();
     stdexec::start_detached(
+        stdexec::on(stdexec::inline_scheduler{},
         doSensorPollingTask(tid) | stdexec::then([terminus](int rc) {
             if (terminus)
             {
@@ -175,8 +176,7 @@ void SensorManager::doSensorPolling(tid_t tid)
                     "TID", terminus->getTid(), "RC", rc);
                 terminus->sensorPollingTaskRc.emplace(rc);
             }
-        }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+        })));
 }
 
 exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)

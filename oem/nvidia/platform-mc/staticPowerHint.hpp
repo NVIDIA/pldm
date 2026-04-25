@@ -177,9 +177,9 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             StateOfEstimatePower::InProgress);
         auto& [scope, rcOpt] = estimationTaskHandle.emplace();
         stdexec::start_detached(
+            stdexec::on(stdexec::inline_scheduler{},
             estimationTask(cpuClockFrequency, workloadFactor, temperature) |
-                stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-            exec::default_task_context<void>(exec::inline_scheduler{}));
+                stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
     }
 
   private:

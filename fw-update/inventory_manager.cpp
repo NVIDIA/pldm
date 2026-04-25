@@ -52,8 +52,8 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
 
     auto& [scope, rcOpt] = discoverFDsTaskHandle.emplace();
     stdexec::start_detached(
-        discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
-        exec::default_task_context<void>(exec::inline_scheduler{}));
+        stdexec::on(stdexec::inline_scheduler{},
+        discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 exec::task<int> InventoryManager::discoverFDsTask()
 {
