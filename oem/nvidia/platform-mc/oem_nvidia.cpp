@@ -18,6 +18,7 @@
 
 #include "common/dBusAsyncUtils.hpp"
 #include "common/utils.hpp"
+#include "mirrorEffecter.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
@@ -189,8 +190,12 @@ void nvidiaInitTerminus(Terminus& terminus)
     for (auto effecter : terminus.numericEffecters)
     {
         auto& [containerId, entityType, entityInstance] = effecter->entityInfo;
-        if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_MINUTES &&
-            entityType == PLDM_ENTITY_SYS_BOARD)
+        if (entityType == PLDM_OEM_ENTITY_TYPE_MIRROR)
+        {
+            NumericEffecterValueInft::createMirrorValueIntf(*effecter);
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_MINUTES &&
+                 entityType == PLDM_ENTITY_SYS_BOARD)
         {
             remoteDebugNumericEffecter = effecter;
         }

@@ -17,6 +17,7 @@
 #include "libpldm/entity.h"
 
 #include "common/instance_id.hpp"
+#include "oem/nvidia/platform-mc/mirrorEffecter.hpp"
 #include "oem/nvidia/platform-mc/oem_nvidia.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "oem/nvidia/platform-mc/state_set/memoryPerformance.hpp"
@@ -3046,6 +3047,163 @@ TEST_F(TerminusTest, switchBandwidthSensorCoverage)
 
     EXPECT_GT(sensor.switchIntf->maxBandwidth(), 0);
 }
+
+static std::vector<uint8_t> makeSetNumericEffecterValueResp(
+    uint8_t completionCode = PLDM_SUCCESS)
+{
+    std::vector<uint8_t> response(
+        sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES, 0);
+    auto* responseMsg = reinterpret_cast<pldm_msg*>(response.data());
+    auto rc = encode_set_numeric_effecter_value_resp(
+        0, completionCode, responseMsg,
+        PLDM_SET_NUMERIC_EFFECTER_VALUE_RESP_BYTES);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    return response;
+}
+
+TEST_F(TerminusTest, nvidiaInitTerminusMirrorWattsCreatesValueIntf)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000160");
+    Terminus terminus(0x60, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::string associationPath{
+        "/xyz/openbmc_project/inventory/system/chassis/mirror0"};
+
+    auto pdr =
+        makeNumericEffecterValuePdrStruct(0x0D01, PLDM_OEM_ENTITY_TYPE_MIRROR);
+    pdr->base_unit = PLDM_SENSOR_UNIT_WATTS;
+    pdr->effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT32;
+    pdr->max_settable.value_u32 = 100000;
+    pdr->min_settable.value_u32 = 100;
+    std::string effecterName{"mirror_watts_effecter"};
+    auto effecter = std::make_shared<NumericEffecter>(
+        terminus.getTid(), false, pdr, effecterName, associationPath,
+        terminusManager);
+    terminus.numericEffecters.emplace_back(effecter);
+
+    nvidia::nvidiaInitTerminus(terminus);
+
+    auto* valueIntf =
+        dynamic_cast<NumericEffecterValueInft*>(effecter->unitIntf.get());
+    ASSERT_NE(valueIntf, nullptr);
+
+    valueIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, 50, 40);
+    EXPECT_DOUBLE_EQ(50.0, valueIntf->value());
+
+    valueIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 50, 75);
+    EXPECT_DOUBLE_EQ(75.0, valueIntf->value());
+
+    valueIntf->handleGetNumericEffecterValue(EFFECTER_OPER_STATE_DISABLED, 50,
+                                             75);
+    EXPECT_TRUE(std::isnan(valueIntf->value()));
+
+    valueIntf->handleErrGetNumericEffecterValue();
+    EXPECT_TRUE(std::isnan(valueIntf->value()));
+}
+
+TEST_F(TerminusTest, nvidiaInitTerminusMirrorDegreesCCreatesValueIntf)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000161");
+    Terminus terminus(0x61, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::string associationPath{
+        "/xyz/openbmc_project/inventory/system/chassis/mirror1"};
+
+    auto pdr =
+        makeNumericEffecterValuePdrStruct(0x0D02, PLDM_OEM_ENTITY_TYPE_MIRROR);
+    pdr->base_unit = PLDM_SENSOR_UNIT_DEGRESS_C;
+    pdr->effecter_data_size = PLDM_EFFECTER_DATA_SIZE_SINT32;
+    pdr->max_settable.value_s32 = 100000;
+    pdr->min_settable.value_s32 = -100000;
+    std::string effecterName{"mirror_temp_effecter"};
+    auto effecter = std::make_shared<NumericEffecter>(
+        terminus.getTid(), false, pdr, effecterName, associationPath,
+        terminusManager);
+    terminus.numericEffecters.emplace_back(effecter);
+
+    nvidia::nvidiaInitTerminus(terminus);
+
+    auto* valueIntf =
+        dynamic_cast<NumericEffecterValueInft*>(effecter->unitIntf.get());
+    ASSERT_NE(valueIntf, nullptr);
+}
+
+TEST_F(TerminusTest, nvidiaInitTerminusMirrorUnsupportedUnitFallsBack)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000162");
+    Terminus terminus(0x62, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::string associationPath{
+        "/xyz/openbmc_project/inventory/system/chassis/mirror2"};
+
+    auto pdr =
+        makeNumericEffecterValuePdrStruct(0x0D03, PLDM_OEM_ENTITY_TYPE_MIRROR);
+    pdr->base_unit = PLDM_SENSOR_UNIT_HERTZ;
+    std::string effecterName{"mirror_hertz_effecter"};
+    auto effecter = std::make_shared<NumericEffecter>(
+        terminus.getTid(), false, pdr, effecterName, associationPath,
+        terminusManager);
+    terminus.numericEffecters.emplace_back(effecter);
+
+    nvidia::nvidiaInitTerminus(terminus);
+
+    auto* valueIntf =
+        dynamic_cast<NumericEffecterValueInft*>(effecter->unitIntf.get());
+    EXPECT_EQ(valueIntf, nullptr);
+    EXPECT_NE(effecter->unitIntf.get(), nullptr);
+}
+
+TEST_F(TerminusTest, nvidiaInitTerminusMirrorValueSetterPath)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000163");
+    Terminus terminus(0x63, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::string associationPath{
+        "/xyz/openbmc_project/inventory/system/chassis/mirror3"};
+
+    auto pdr =
+        makeNumericEffecterValuePdrStruct(0x0D04, PLDM_OEM_ENTITY_TYPE_MIRROR);
+    pdr->base_unit = PLDM_SENSOR_UNIT_WATTS;
+    pdr->effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT32;
+    pdr->max_settable.value_u32 = 100000;
+    pdr->min_settable.value_u32 = 100;
+    std::string effecterName{"mirror_value_setter"};
+    auto effecter = std::make_shared<NumericEffecter>(
+        terminus.getTid(), false, pdr, effecterName, associationPath,
+        terminusManager);
+    terminus.numericEffecters.emplace_back(effecter);
+
+    nvidia::nvidiaInitTerminus(terminus);
+
+    auto* valueIntf =
+        dynamic_cast<NumericEffecterValueInft*>(effecter->unitIntf.get());
+    ASSERT_NE(valueIntf, nullptr);
+
+    valueIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 25, 25);
+    EXPECT_DOUBLE_EQ(25.0, valueIntf->value());
+
+    // Enqueue the SET response for the async SetNumericEffecterValue command
+    std::vector<uint8_t> response;
+    response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+
+    // Setting a valid value must not throw; the D-Bus value updates on the
+    // next polling cycle, not synchronously
+    EXPECT_NO_THROW((void)valueIntf->value(500));
+
+    // Simulate the polling cycle returning the acknowledged value
+    valueIntf->handleGetNumericEffecterValue(
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, 500, 500);
+    EXPECT_DOUBLE_EQ(500.0, valueIntf->value());
+
+    // Out-of-range values must throw before any command is sent
+    EXPECT_THROW((void)valueIntf->value(200000), errors::InvalidArgument);
+    EXPECT_THROW((void)valueIntf->value(50), errors::InvalidArgument);
+}
+
 #endif
 
 // Currently due to async nature of polling this can't be tested.
