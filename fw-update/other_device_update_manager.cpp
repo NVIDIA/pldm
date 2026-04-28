@@ -184,12 +184,18 @@ void OtherDeviceUpdateManager::onActivationChanged(
     auto prop = properties.find("Activation");
     if (prop != properties.end())
     {
-        activationString = std::get<std::string>(prop->second);
+        if (const auto* p = std::get_if<std::string>(&prop->second))
+        {
+            activationString = *p;
+        }
     }
     prop = properties.find("RequestedActivation");
     if (prop != properties.end())
     {
-        reqActivation = std::get<std::string>(prop->second);
+        if (const auto* p = std::get_if<std::string>(&prop->second))
+        {
+            reqActivation = *p;
+        }
     }
     if (otherDevices.find(objPath) != otherDevices.end())
     {
@@ -250,7 +256,13 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
             {
                 if (property.first == "UUID")
                 {
-                    std::string uuid = std::get<std::string>(property.second);
+                    const auto* uuidPtr =
+                        std::get_if<std::string>(&property.second);
+                    if (uuidPtr == nullptr)
+                    {
+                        continue;
+                    }
+                    std::string uuid = *uuidPtr;
                     using namespace std;
                     transform(uuid.begin(), uuid.end(), uuid.begin(),
                               ::toupper);

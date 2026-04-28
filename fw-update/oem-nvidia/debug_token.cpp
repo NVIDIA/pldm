@@ -115,7 +115,10 @@ void DebugToken::onActivationChangedMsg(sdbusplus::message::message& msg)
         auto prop = properties.find("Activation");
         if (prop != properties.end())
         {
-            activationString = std::get<std::string>(prop->second);
+            if (const auto* p = std::get_if<std::string>(&prop->second))
+            {
+                activationString = *p;
+            }
         }
         if (activationString.has_value())
         {

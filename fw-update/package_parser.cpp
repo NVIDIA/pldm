@@ -333,6 +333,21 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
         throw InternalFailure();
     }
 
+    for (auto& fdr : fwDeviceIDRecords)
+    {
+        auto& applicable = std::get<ApplicableComponents>(fdr);
+        std::erase_if(applicable, [&](const auto& idx) {
+            if (idx >= componentImageInfos.size())
+            {
+                error(
+                    "Dropping out-of-range applicable-component index '{IDX}' (componentImageInfos size '{SIZE}')",
+                    "IDX", idx, "SIZE", componentImageInfos.size());
+                return true;
+            }
+            return false;
+        });
+    }
+
     size_t expectedChecksumSize = sizeof(PackageHeaderChecksum);
     if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
     {

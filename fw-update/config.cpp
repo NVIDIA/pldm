@@ -61,139 +61,171 @@ void parseConfig(const fs::path& jsonPath,
     auto entries = data.value("entries", emptyJson);
     for (const auto& entry : entries.items())
     {
-        auto match = entry.value()["match"];
-        auto intf = match["Interface"].get<std::string>();
-        auto props = match["Properties"];
-        dbus::PropertyMap propMap;
-        for (const auto& prop : props.items())
+        try
         {
-            auto name = prop.value()["Name"].get<std::string>();
-            auto type = prop.value()["Type"].get<std::string>();
-            dbus::Value value;
-            if (type == "s")
+            auto match = entry.value()["match"];
+            auto intf = match["Interface"].get<std::string>();
+            auto props = match["Properties"];
+            dbus::PropertyMap propMap;
+            for (const auto& prop : props.items())
             {
-                value = prop.value()["Value"].get<std::string>();
-            }
-            else if (type == "u")
-            {
-                value = prop.value()["Value"].get<uint32_t>();
-            }
-            else if (type == "y")
-            {
-                value = prop.value()["Value"].get<uint8_t>();
-            }
-            propMap.emplace(name, value);
-        }
-
-        DBusIntfMatch toMatch = {intf, propMap};
-
-        if (entry.value().contains("device_inventory"))
-        {
-            DeviceObjPath createObjPath{};
-            DeviceObjPath updateObjPath{};
-            Associations assocs{};
-            if (entry.value()["device_inventory"].contains("update"))
-            {
-                updateObjPath =
-                    entry.value()["device_inventory"]["update"]["object_path"]
-                        .get<std::string>();
-            }
-            if (entry.value()["device_inventory"].contains("create"))
-            {
-                createObjPath =
-                    entry.value()["device_inventory"]["create"]["object_path"]
-                        .get<std::string>();
-
-                if (entry.value()["device_inventory"]["create"].contains(
-                        "associations"))
+                auto name = prop.value()["Name"].get<std::string>();
+                auto type = prop.value()["Type"].get<std::string>();
+                dbus::Value value;
+                if (type == "s")
                 {
-                    auto associations = entry.value()["device_inventory"]
-                                                     ["create"]["associations"];
-                    for (const auto& assocEntry : associations.items())
-                    {
-                        auto forward = assocEntry.value()["forward"];
-                        auto reverse = assocEntry.value()["reverse"];
-                        auto endpoint = assocEntry.value()["endpoint"];
-                        assocs.emplace_back(
-                            std::make_tuple(forward, reverse, endpoint));
-                    }
+                    value = prop.value()["Value"].get<std::string>();
                 }
+                else if (type == "u")
+                {
+                    value = prop.value()["Value"].get<uint32_t>();
+                }
+                else if (type == "y")
+                {
+                    value = prop.value()["Value"].get<uint8_t>();
+                }
+                else
+                {
+                    error(
+                        "Skipping property '{NAME}' with unrecognised type '{TYPE}'",
+                        "NAME", name, "TYPE", type);
+                    continue;
+                }
+                propMap.emplace(name, value);
             }
 
-            deviceInventoryInfo.infos.push_back(std::make_tuple(
-                toMatch,
-                std::make_tuple(std::make_tuple(std::move(createObjPath),
-                                                std::move(assocs)),
-                                std::move(updateObjPath))));
-        }
+            DBusIntfMatch toMatch = {intf, propMap};
 
-        if (entry.value().contains("firmware_inventory"))
-        {
-            CreateComponentIdNameMap createcomponentIdNameMap{};
-            UpdateComponentIdNameMap updatecomponentIdNameMap{};
-
-            if (entry.value()["firmware_inventory"].contains("create"))
+            if (entry.value().contains("device_inventory"))
             {
-                for (const auto& createObject :
-                     entry.value()["firmware_inventory"]["create"].items())
+                DeviceObjPath createObjPath{};
+                DeviceObjPath updateObjPath{};
+                Associations assocs{};
+                if (entry.value()["device_inventory"].contains("update"))
                 {
-                    Associations assocs{};
+                    updateObjPath = entry
+                                        .value()["device_inventory"]["update"]
+                                                ["object_path"]
+                                        .get<std::string>();
+                }
+                if (entry.value()["device_inventory"].contains("create"))
+                {
+                    createObjPath = entry
+                                        .value()["device_inventory"]["create"]
+                                                ["object_path"]
+                                        .get<std::string>();
 
-                    if (createObject.value().contains("associations"))
+                    if (entry.value()["device_inventory"]["create"].contains(
+                            "associations"))
                     {
                         auto associations =
-                            createObject.value()["associations"];
+                            entry.value()["device_inventory"]["create"]
+                                         ["associations"];
                         for (const auto& assocEntry : associations.items())
                         {
-                            auto forward = assocEntry.value()["forward"];
-                            auto reverse = assocEntry.value()["reverse"];
-                            auto endpoint = assocEntry.value()["endpoint"];
+                            auto forward = assocEntry.value()["forward"]
+                                               .get<std::string>();
+                            auto reverse = assocEntry.value()["reverse"]
+                                               .get<std::string>();
+                            auto endpoint = assocEntry.value()["endpoint"]
+                                                .get<std::string>();
                             assocs.emplace_back(
                                 std::make_tuple(forward, reverse, endpoint));
                         }
                     }
+                }
 
-                    if (createObject.value().contains("component_id"))
+                deviceInventoryInfo.infos.push_back(std::make_tuple(
+                    toMatch,
+                    std::make_tuple(std::make_tuple(std::move(createObjPath),
+                                                    std::move(assocs)),
+                                    std::move(updateObjPath))));
+            }
+
+            if (entry.value().contains("firmware_inventory"))
+            {
+                CreateComponentIdNameMap createcomponentIdNameMap{};
+                UpdateComponentIdNameMap updatecomponentIdNameMap{};
+
+                if (entry.value()["firmware_inventory"].contains("create"))
+                {
+                    for (const auto& createObject :
+                         entry.value()["firmware_inventory"]["create"].items())
                     {
-                        auto componentID = createObject.value()["component_id"];
-                        auto componentName = createObject.key();
-                        std::string manufacturer = "NVIDIA";
-                        if (createObject.value().contains("manufacturer"))
+                        Associations assocs{};
+
+                        if (createObject.value().contains("associations"))
                         {
-                            manufacturer = createObject.value()["manufacturer"];
+                            auto associations =
+                                createObject.value()["associations"];
+                            for (const auto& assocEntry : associations.items())
+                            {
+                                auto forward = assocEntry.value()["forward"]
+                                                   .get<std::string>();
+                                auto reverse = assocEntry.value()["reverse"]
+                                                   .get<std::string>();
+                                auto endpoint = assocEntry.value()["endpoint"]
+                                                    .get<std::string>();
+                                assocs.emplace_back(std::make_tuple(
+                                    forward, reverse, endpoint));
+                            }
                         }
-                        createcomponentIdNameMap[componentID] = {
-                            componentName, assocs, manufacturer};
+
+                        if (createObject.value().contains("component_id"))
+                        {
+                            auto componentID =
+                                createObject.value()["component_id"]
+                                    .get<uint16_t>();
+                            auto componentName = createObject.key();
+                            std::string manufacturer = "NVIDIA";
+                            if (createObject.value().contains("manufacturer"))
+                            {
+                                manufacturer =
+                                    createObject.value()["manufacturer"]
+                                        .get<std::string>();
+                            }
+                            createcomponentIdNameMap[componentID] = {
+                                componentName, assocs, manufacturer};
+                        }
                     }
                 }
-            }
-            if (entry.value()["firmware_inventory"].contains("update"))
-            {
-                for (auto& [componentName, componentID] :
-                     entry.value()["firmware_inventory"]["update"].items())
+                if (entry.value()["firmware_inventory"].contains("update"))
                 {
-                    updatecomponentIdNameMap[componentID] = componentName;
+                    for (auto& [componentName, componentID] :
+                         entry.value()["firmware_inventory"]["update"].items())
+                    {
+                        updatecomponentIdNameMap[componentID.get<uint16_t>()] =
+                            componentName;
+                    }
+                }
+
+                fwInventoryInfo.infos.push_back(std::make_tuple(
+                    toMatch,
+                    std::make_tuple(std::move(createcomponentIdNameMap),
+                                    std::move(updatecomponentIdNameMap))));
+            }
+
+            if (entry.value().contains("component_info"))
+            {
+                ComponentIdNameMap componentIdNameMap{};
+                for (auto& [componentName, componentID] :
+                     entry.value()["component_info"].items())
+                {
+                    componentIdNameMap[componentID.get<uint16_t>()] =
+                        componentName;
+                }
+                if (!componentIdNameMap.empty())
+                {
+                    componentNameMapInfo.infos.push_back(std::make_tuple(
+                        std::move(toMatch), std::move(componentIdNameMap)));
                 }
             }
-
-            fwInventoryInfo.infos.push_back(std::make_tuple(
-                toMatch, std::make_tuple(std::move(createcomponentIdNameMap),
-                                         std::move(updatecomponentIdNameMap))));
         }
-
-        if (entry.value().contains("component_info"))
+        catch (const std::exception& e)
         {
-            ComponentIdNameMap componentIdNameMap{};
-            for (auto& [componentName, componentID] :
-                 entry.value()["component_info"].items())
-            {
-                componentIdNameMap[componentID] = componentName;
-            }
-            if (componentIdNameMap.size())
-            {
-                componentNameMapInfo.infos.push_back(std::make_tuple(
-                    std::move(toMatch), std::move(componentIdNameMap)));
-            }
+            error("Skipping malformed fw_update config entry '{KEY}': {ERROR}",
+                  "KEY", entry.key(), "ERROR", e);
+            continue;
         }
     }
 }

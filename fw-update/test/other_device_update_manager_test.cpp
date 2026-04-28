@@ -1532,7 +1532,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
-       onActivationChangedThrowsForNonStringActivationValue)
+       onActivationChangedIgnoresNonStringActivationValue)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
@@ -1547,13 +1547,15 @@ TEST_F(OtherDeviceUpdateManagerTest,
     pldm::dbus::PropertyMap properties;
     properties.emplace("Activation", true);
 
-    EXPECT_THROW(
-        { otherDeviceUpdateManager.onActivationChanged(objPath, properties); },
-        std::bad_variant_access);
+    EXPECT_NO_THROW({
+        otherDeviceUpdateManager.onActivationChanged(objPath, properties);
+    });
+    EXPECT_EQ(otherDeviceUpdateManager.otherDevices[objPath]->activationState,
+              Server::Activation::Activations::Ready);
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
-       onActivationChangedThrowsForNonStringRequestedActivationValue)
+       onActivationChangedIgnoresNonStringRequestedActivationValue)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
@@ -1572,9 +1574,14 @@ TEST_F(OtherDeviceUpdateManagerTest,
                     "Active"));
     properties.emplace("RequestedActivation", true);
 
-    EXPECT_THROW(
-        { otherDeviceUpdateManager.onActivationChanged(objPath, properties); },
-        std::bad_variant_access);
+    EXPECT_NO_THROW({
+        otherDeviceUpdateManager.onActivationChanged(objPath, properties);
+    });
+    EXPECT_EQ(otherDeviceUpdateManager.otherDevices[objPath]->activationState,
+              Server::Activation::Activations::Active);
+    EXPECT_EQ(
+        otherDeviceUpdateManager.otherDevices[objPath]->requestedActivation,
+        Server::Activation::RequestedActivations::None);
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,
@@ -1841,7 +1848,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_FALSE(updateManager.otherDeviceCompleted.contains(uuid));
 }
 
-TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedThrowsForNonStringUuidValue)
+TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedIgnoresNonStringUuidValue)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
@@ -1862,9 +1869,9 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedThrowsForNonStringUuidValue)
                interfaces);
     sealAndRewind(msg);
 
-    EXPECT_THROW(
-        { otherDeviceUpdateManager.interfaceAdded(msg); },
-        std::bad_variant_access);
+    EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
+    EXPECT_FALSE(otherDeviceUpdateManager.otherDevices.contains(
+        "/xyz/openbmc_project/software/other/invalid_uuid_type"));
 }
 
 TEST_F(OtherDeviceUpdateManagerTest,

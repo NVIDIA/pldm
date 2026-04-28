@@ -385,9 +385,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 {
                     if (intfName == EndpointUUID)
                     {
-                        std::string uuid =
-                            std::get<std::string>(properties.at("UUID"));
-                        mctpInterfaces[uuid] = interfaces;
+                        auto uuidIt = properties.find("UUID");
+                        if (uuidIt == properties.end())
+                        {
+                            continue;
+                        }
+                        const auto* uuidPtr =
+                            std::get_if<std::string>(&uuidIt->second);
+                        if (uuidPtr == nullptr)
+                        {
+                            continue;
+                        }
+                        mctpInterfaces[*uuidPtr] = interfaces;
                     }
                 }
             }

@@ -953,7 +953,7 @@ TEST_F(DebugTokenInternalTest, getValidPathsHandlesSubTreeQueryException)
 }
 
 TEST_F(DebugTokenInternalTest,
-       onActivationChangedMsgThrowsForNonStringActivationProperty)
+       onActivationChangedMsgIgnoresNonStringActivationProperty)
 {
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
@@ -967,8 +967,7 @@ TEST_F(DebugTokenInternalTest,
     msg.append(std::string(Server::Activation::interface), properties);
     sealAndRewind(msg);
 
-    EXPECT_THROW(
-        { debugToken.onActivationChangedMsg(msg); }, std::bad_variant_access);
+    EXPECT_NO_THROW({ debugToken.onActivationChangedMsg(msg); });
     EXPECT_FALSE(debugToken.tokenStatus);
 }
 
