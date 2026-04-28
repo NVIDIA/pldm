@@ -62,7 +62,8 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
         return std::make_unique<StateSetMemorySpareChannel>(
             stateSetId, compId, path, stateAssociation, *sensor);
     }
-    else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK &&
+    else if ((stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK ||
+              stateSetId == oem_nvidia::PLDM_NVIDIA_OEM_STATE_SET_CLINK) &&
              entityType == PLDM_ENTITY_SYS_BUS)
     {
         return std::make_unique<oem_nvidia::StateSetNvlink>(

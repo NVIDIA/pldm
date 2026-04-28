@@ -1252,6 +1252,47 @@ exec::task<int> Terminus::updateAssociations()
                     break;
                 }
             }
+            // SYS_BUS numeric sensors (e.g. CLink/NVLink counters for
+            // bandwidth, CRC, replay) should be associated with the
+            // CPU in the containing ProcessorModule. SYS_BUS has no
+            // inventory interface so findInventory returns empty; walk
+            // up to ProcessorModule and find the CPU sibling.
+            else if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS)
+            {
+                const auto& containerId = std::get<0>(entityInfo);
+                auto containerItr = entityAssociations.find(containerId);
+                if (containerItr != entityAssociations.end())
+                {
+                    const auto& [containerEntity, containedEntities] =
+                        containerItr->second;
+                    uint16_t containerType =
+                        std::get<1>(containerEntity) & 0x7FFF;
+                    if (containerType == PLDM_ENTITY_PROC)
+                    {
+                        auto cpuPaths = findInventory(containerEntity, true);
+                        if (!cpuPaths.empty())
+                        {
+                            inventoryPaths = cpuPaths;
+                        }
+                    }
+                    else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+                    {
+                        for (const auto& child : containedEntities)
+                        {
+                            if ((std::get<1>(child) & 0x7FFF) ==
+                                PLDM_ENTITY_PROC)
+                            {
+                                auto cpuPaths = findInventory(child, true);
+                                if (!cpuPaths.empty())
+                                {
+                                    inventoryPaths = cpuPaths;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             // Workaround: count/metric sensors (baseUnit == COUNTS) are
             // global per CPU (e.g. PageRetirementCount, TjMaxDramIndex),
             // so associate with CPU regardless of entity type.
@@ -1309,6 +1350,46 @@ exec::task<int> Terminus::updateAssociations()
         else
         {
             inventoryPaths = findInventory(entityInfo);
+        }
+
+        // SYS_BUS state sensors (CLink/NVLink port state) need CPU
+        // associations. SYS_BUS has no inventory interface so
+        // findInventory returns empty; walk up to the container and
+        // locate the CPU entity.
+        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS &&
+            inventoryPaths.empty())
+        {
+            const auto& containerId = std::get<0>(entityInfo);
+            auto containerItr = entityAssociations.find(containerId);
+            if (containerItr != entityAssociations.end())
+            {
+                const auto& [containerEntity, containedEntities] =
+                    containerItr->second;
+                uint16_t containerType = std::get<1>(containerEntity) & 0x7FFF;
+                if (containerType == PLDM_ENTITY_PROC)
+                {
+                    auto cpuPaths = findInventory(containerEntity, true);
+                    if (!cpuPaths.empty())
+                    {
+                        inventoryPaths = cpuPaths;
+                    }
+                }
+                else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+                {
+                    for (const auto& child : containedEntities)
+                    {
+                        if ((std::get<1>(child) & 0x7FFF) == PLDM_ENTITY_PROC)
+                        {
+                            auto cpuPaths = findInventory(child, true);
+                            if (!cpuPaths.empty())
+                            {
+                                inventoryPaths = cpuPaths;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         // Workaround: MEMORY_CONTROLLER state sensors (e.g.

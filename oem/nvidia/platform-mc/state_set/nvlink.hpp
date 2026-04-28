@@ -41,6 +41,11 @@ namespace platform_mc
 namespace oem_nvidia
 {
 
+/** @brief NVIDIA OEM State Set ID for CPU-to-CPU (CLink) link state.
+ *  Reported by SatMC for system-bus CLink
+ */
+constexpr uint16_t PLDM_NVIDIA_OEM_STATE_SET_CLINK = 0x8003;
+
 using PortIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::item::Port>;
 using PortInfoIntf = sdbusplus::server::object_t<
@@ -233,6 +238,10 @@ class StateSetNvlink : public StateSet
 
     std::string getStringStateType() const override
     {
+        if (id == PLDM_NVIDIA_OEM_STATE_SET_CLINK)
+        {
+            return std::string("CLink");
+        }
         return std::string("NVLink");
     }
 
@@ -294,6 +303,13 @@ class StateSetNvlink : public StateSet
               stateAssociation.path.c_str()}});
 
 #ifdef NVLINK_C2C_FABRIC_OBJECT
+        // C2CLinkFabric_* endpoints model the CPU<->GPU NVLink fabric only.
+        // CLink (CPU<->CPU) reuses this handler purely for Port creation and
+        // does not participate in that fabric, so skip the endpoint setup.
+        if (id == PLDM_NVIDIA_OEM_STATE_SET_CLINK)
+        {
+            return;
+        }
         pldm::pdr::EntityInstance instanceNumber = 0;
         constexpr auto instanceInterface =
             "xyz.openbmc_project.Inventory.Decorator.Instance";
