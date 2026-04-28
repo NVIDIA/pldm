@@ -330,6 +330,7 @@ exec::task<void> UpdateManager::processStream(
     std::vector<sdbusplus::message::object_path> targets)
 {
     startTime = std::chrono::steady_clock::now();
+    unavailableTargetEids.clear();
 
     package.clear();
     package.seekg(0, std::ios::beg);
@@ -388,6 +389,41 @@ exec::task<void> UpdateManager::processStream(
     ComponentTargetList compTargetList =
         getComponentTargetList(componentNameMap, targets);
 
+    // Snapshot the user-requested target names along with each one's PLDM EID
+    // so logUnupdatedTargets can emit a per-target Critical
+    // ResourceErrorsDetected entry at terminal state for any requested target
+    // whose image wasn't in the package. Names that don't resolve to any PLDM
+    // EID in the live componentNameMap (e.g. non-PLDM targets) are
+    // intentionally skipped.
+    requestedTargets.clear();
+    for (const auto& path : targets)
+    {
+        std::string pathStr = path;
+        if (!pathStr.starts_with("/xyz/openbmc_project/software/"))
+        {
+            continue;
+        }
+        auto name = pathStr.substr(pathStr.find_last_of('/') + 1);
+
+        for (const auto& [eid, compIdNameMap] : componentNameMap)
+        {
+            bool found = false;
+            for (const auto& [compId, compName] : compIdNameMap)
+            {
+                if (compName == name)
+                {
+                    requestedTargets[name] = eid;
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+            {
+                break;
+            }
+        }
+    }
+
     if (refreshSingleEndpointCallback && !descriptorMap.empty())
     {
         info("Refreshing firmware inventory for {COUNT} discovered endpoints",
@@ -418,10 +454,20 @@ exec::task<void> UpdateManager::processStream(
         info("Firmware inventory refresh completed");
     }
 
+    recordUnavailableTargetEids(compTargetList);
+
     const auto& compImageInfos = parser->getComponentImageInfos();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         compTargetList, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+
+    // Emit per-target ResourceErrorsDetected entries for requested targets
+    // whose image isn't in the package BEFORE any update transfer starts.
+    // Running this here (rather than at terminal-state) ensures the Critical
+    // entries reach bmcweb's loggingMatch ahead of the Activation
+    // PropertiesChanged signal that triggers setTaskStatus(), so TaskStatus
+    // reflects the Critical severity.
+    logUnupdatedTargets(deviceUpdaterInfos);
 
     info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
          "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
@@ -899,6 +945,62 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     return deviceUpdaterInfos;
 }
 
+void UpdateManager::recordUnavailableTargetEids(
+    const ComponentTargetList& compTargetList)
+{
+    for (const auto& [eid, _] : compTargetList)
+    {
+        if (!descriptorMap.contains(eid))
+        {
+            unavailableTargetEids.emplace(eid);
+        }
+    }
+}
+
+void UpdateManager::logUnupdatedTargets(
+    const DeviceUpdaterInfos& deviceUpdaterInfos)
+{
+    if (requestedTargets.empty())
+    {
+        return;
+    }
+
+    std::unordered_set<mctp_eid_t> scheduledEids;
+    scheduledEids.reserve(deviceUpdaterInfos.size());
+    for (const auto& [eid, _] : deviceUpdaterInfos)
+    {
+        scheduledEids.insert(eid);
+    }
+
+    const std::string messageError =
+        "No matching firmware image in package for the requested target";
+    const std::string resolution =
+        "Verify the firmware package contains a matching image for the "
+        "specified target and retry the update.";
+    const std::string unreachableError =
+        "Target endpoint is unreachable";
+    const std::string unreachableResolution =
+        "Verify the target endpoint is powered on and responsive, then "
+        "retry the update.";
+
+    for (const auto& [name, eid] : requestedTargets)
+    {
+        if (scheduledEids.contains(eid))
+        {
+            continue;
+        }
+        if (!descriptorMap.contains(eid))
+        {
+            createLogEntry(resourceErrorDetected, name, unreachableError,
+                           unreachableResolution);
+            continue;
+        }
+        createLogEntry(resourceErrorDetected, name, messageError, resolution);
+    }
+
+    requestedTargets.clear();
+}
+
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status,
     const std::vector<ComponentName>& successCompNames)
@@ -1086,6 +1188,7 @@ void UpdateManager::clearActivationInfo()
 
     deviceUpdaterMap.clear();
     deviceUpdateCompletionMap.clear();
+    unavailableTargetEids.clear();
     parser.reset();
     clearFirmwareUpdatePackage();
     totalNumComponentUpdates = 0;
@@ -1124,6 +1227,7 @@ void UpdateManager::updatePackageCompletion()
         }
 
         if ((pldmState == software::Activation::Activations::Failed) ||
+            !unavailableTargetEids.empty() ||
             (otherState == software::Activation::Activations::Failed))
         {
             activation->activation(software::Activation::Activations::Failed);

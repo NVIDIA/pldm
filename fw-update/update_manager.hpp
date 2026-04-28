@@ -34,6 +34,7 @@
 #include <fstream>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef OEM_NVIDIA
@@ -497,6 +498,25 @@ class UpdateManager
     RefreshSingleEndpointCallback refreshSingleEndpointCallback;
 
   private:
+    /** @brief Record explicitly targeted endpoints that are no longer present
+     *         in the live descriptor map after refresh.
+     */
+    void recordUnavailableTargetEids(const ComponentTargetList& compTargetList);
+
+    /** @brief Emit a Critical ResourceErrorsDetected log entry for each
+     *         user-requested PLDM target whose image is not in the package.
+     *         Called right after associatePkgToDevices so the "no matching
+     *         image" entries are dispatched before any PLDM transfer begins
+     *         (and therefore before bmcweb's TaskStatus evaluation on the
+     *         terminal Activation transition).
+     *
+     *  @param[in] deviceUpdaterInfos - Targets that will be scheduled for
+     *                                  update; any requested target EID not
+     *                                  in this set is treated as having no
+     *                                  matching package image.
+     */
+    void logUnupdatedTargets(const DeviceUpdaterInfos& deviceUpdaterInfos);
+
     /** @brief Requested apply time for the current update session */
     sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
         RequestedApplyTimes requestedApplyTime;
@@ -518,6 +538,18 @@ class UpdateManager
     std::unordered_map<mctp_eid_t, std::unique_ptr<DeviceUpdater>>
         deviceUpdaterMap;
     std::unordered_map<mctp_eid_t, bool> deviceUpdateCompletionMap;
+    std::unordered_set<mctp_eid_t> unavailableTargetEids;
+
+    /** @brief User-requested PLDM targets, keyed by the name supplied in the
+     *         Redfish target path (preserved verbatim so the log entry
+     *         references the exact component the user asked for rather than
+     *         a differently-named component on the same EID). Each name is
+     *         resolved to its owning PLDM EID once at processStream time
+     *         against the live componentNameMap; names that don't resolve to
+     *         a PLDM EID (e.g. non-PLDM targets) are intentionally omitted.
+     *         Drained by logUnupdatedTargets() at terminal state.
+     */
+    std::unordered_map<std::string, mctp_eid_t> requestedTargets;
 
     /* for other devices associated UUID maps to if it has prepared the
        activation interface */

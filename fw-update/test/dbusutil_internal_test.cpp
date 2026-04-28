@@ -84,10 +84,19 @@ struct FakeBus
 struct FakeAsioConnection
 {
     boost::system::error_code nextError{};
+    std::string lastMessageId{};
+    std::string lastSeverity{};
+    std::map<std::string, std::string> lastAddData{};
 
-    template <typename Callback, typename... Args>
-    void async_method_call(Callback&& cb, Args&&...)
+    template <typename Callback>
+    void async_method_call(Callback&& cb, const char*, const char*,
+                           const char*, const char*, const std::string& messageId,
+                           const std::string& severity,
+                           const std::map<std::string, std::string>& addData)
     {
+        lastMessageId = messageId;
+        lastSeverity = severity;
+        lastAddData = addData;
         cb(nextError);
     }
 };
@@ -159,6 +168,9 @@ class DBusUtilInternalTest : public testing::Test
 
         auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
         conn->nextError.clear();
+        conn->lastMessageId.clear();
+        conn->lastSeverity.clear();
+        conn->lastAddData.clear();
     }
 };
 
@@ -278,6 +290,208 @@ TEST_F(DBusUtilInternalTest, queryDeviceStatusAndLogAndBooleanHelpers)
         makeStatusMap(DeviceState::DeviceHealth::Healthy, {});
     EXPECT_FALSE(queryDeviceStatus(8));
     EXPECT_FALSE(queryDeviceStatusAndLog(8));
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorParsesFirstCommaAndTrimsOnlySecondArgument)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{11,
+          DeviceState::ErrorClass::MCTP,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+           {"REDFISH_MESSAGE_ARGS", "GPU0,  retry, later  "}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_EQ(infos[0].arg0, "GPU0");
+    EXPECT_EQ(infos[0].arg1, "retry, later");
+    EXPECT_TRUE(infos[0].resolution.empty());
+}
+
+TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorTrimsBlankSecondArgument)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{12,
+          DeviceState::ErrorClass::Power,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+           {"REDFISH_MESSAGE_ARGS", "GPU0,   "},
+           {"REDFISH_RESOLUTION", "Retry"}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_EQ(infos[0].arg0, "GPU0");
+    EXPECT_TRUE(infos[0].arg1.empty());
+    EXPECT_EQ(infos[0].resolution, "Retry");
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorHandlesPresentButEmptyMessageArgs)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{15,
+          DeviceState::ErrorClass::Recovery,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.AwaitToActivate"},
+           {"REDFISH_MESSAGE_ARGS", ""}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_EQ(infos[0].messageId, "Update.1.0.AwaitToActivate");
+    EXPECT_TRUE(infos[0].arg0.empty());
+    EXPECT_TRUE(infos[0].arg1.empty());
+    EXPECT_TRUE(infos[0].resolution.empty());
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorKeepsOnlyEntriesWithMessageIdsAcrossMultipleErrors)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    const std::vector<
+        std::tuple<pldm::fw_update::DeviceStatusErrorCode,
+                   DeviceState::ErrorClass, pldm::fw_update::AdditionalData>>
+        errors{
+            {16,
+             DeviceState::ErrorClass::Recovery,
+             {{"REDFISH_MESSAGE_ARGS", "ignored"},
+              {"REDFISH_RESOLUTION", "IgnoredResolution"}}},
+            {17,
+             DeviceState::ErrorClass::Power,
+             {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+              {"REDFISH_MESSAGE_ARGS", "GPU17"},
+              {"REDFISH_RESOLUTION", "RetryPower"}}},
+            {18,
+             DeviceState::ErrorClass::MCTP,
+             {{"REDFISH_MESSAGE_ID", "Update.1.0.ComponentUpdateTime"},
+              {"REDFISH_MESSAGE_ARGS", "GPU18, 1200"}}},
+        };
+    bus.deviceStatusValue =
+        makeStatusMap(DeviceState::DeviceHealth::Degraded, errors);
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 2u);
+    EXPECT_EQ(infos[0].messageId, "Update.1.0.TransferFailed");
+    EXPECT_EQ(infos[0].arg0, "");
+    EXPECT_EQ(infos[0].arg1, "GPU17");
+    EXPECT_EQ(infos[0].resolution, "RetryPower");
+    EXPECT_EQ(infos[1].messageId, "Update.1.0.ComponentUpdateTime");
+    EXPECT_EQ(infos[1].arg0, "GPU18");
+    EXPECT_EQ(infos[1].arg1, "1200");
+    EXPECT_TRUE(infos[1].resolution.empty());
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusAndBooleanHelpersReturnFalseOnCallFailure)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.throwOnCall = true;
+
+    EXPECT_FALSE(queryDeviceStatus(8));
+    EXPECT_FALSE(queryDeviceStatusAndLog(8));
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusAndBooleanHelpersReturnFalseOnMethodCreationFailure)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.throwOnNewMethodCall = true;
+
+    EXPECT_FALSE(queryDeviceStatus(8));
+    EXPECT_FALSE(queryDeviceStatusAndLog(8));
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusAndLogProcessesMultipleErrorsFromOneDevice)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{21,
+          DeviceState::ErrorClass::Power,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+           {"REDFISH_MESSAGE_ARGS", "GPU0, 1.0 "},
+           {"REDFISH_RESOLUTION", "Retry"}}},
+         {22,
+          DeviceState::ErrorClass::Recovery,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.AwaitToActivate"},
+           {"REDFISH_MESSAGE_ARGS", "GPU1, 2.0 "}}}});
+
+    EXPECT_TRUE(queryDeviceStatusAndLog(8));
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusAndLogForceCriticalOverridesInformationalSeverity)
+{
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{22,
+          DeviceState::ErrorClass::Recovery,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.AwaitToActivate"},
+           {"REDFISH_MESSAGE_ARGS", "GPU1, 2.0 "},
+           {"REDFISH_RESOLUTION", "Wait"}}}});
+
+    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+
+    EXPECT_TRUE(queryDeviceStatusAndLog(8, true));
+    EXPECT_EQ(conn->lastMessageId, "Update.1.0.AwaitToActivate");
+    EXPECT_EQ(
+        conn->lastSeverity,
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Critical));
+    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "2.0,GPU1");
+}
+
+TEST_F(DBusUtilInternalTest, createLogEntryCoversRemainingKnownMessageIds)
+{
+    createLogEntry(updateSuccessful, "GPU0", "1.2.3", "");
+    createLogEntry(componentUpdateSkipped, "GPU0", "AlreadyCurrent", "");
+    createLogEntry(verificationFailed, "GPU0", "DigestMismatch", "Retry");
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorHandlesLeadingCommaAndResolutionCoverage)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{13,
+          DeviceState::ErrorClass::Power,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.TransferFailed"},
+           {"REDFISH_MESSAGE_ARGS", ",  delayed retry  "},
+           {"REDFISH_RESOLUTION", "RetryLater"}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_TRUE(infos[0].arg0.empty());
+    EXPECT_EQ(infos[0].arg1, "delayed retry");
+    EXPECT_EQ(infos[0].resolution, "RetryLater");
+}
+
+TEST_F(DBusUtilInternalTest,
+       queryDeviceStatusErrorHandlesResolutionWithoutMessageArgsCoverage)
+{
+    auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
+    bus.deviceStatusValue = makeStatusMap(
+        DeviceState::DeviceHealth::Degraded,
+        {{14,
+          DeviceState::ErrorClass::Recovery,
+          {{"REDFISH_MESSAGE_ID", "Update.1.0.AwaitToActivate"},
+           {"REDFISH_RESOLUTION", "WaitForActivation"}}}});
+
+    const auto infos = queryDeviceStatusError(8);
+    ASSERT_EQ(infos.size(), 1u);
+    EXPECT_EQ(infos[0].messageId, "Update.1.0.AwaitToActivate");
+    EXPECT_TRUE(infos[0].arg0.empty());
+    EXPECT_TRUE(infos[0].arg1.empty());
+    EXPECT_EQ(infos[0].resolution, "WaitForActivation");
 }
 
 } // namespace
