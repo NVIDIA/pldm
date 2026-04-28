@@ -55,6 +55,7 @@ struct FakeReply
 struct FakeBus
 {
     bool throwOnCall = false;
+    bool throwOnNewMethodCall = false;
     StatusValue deviceStatusValue{};
     std::map<std::string, std::vector<std::string>> mapperResponse{
         {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};
@@ -62,6 +63,10 @@ struct FakeBus
     FakeMethodCall new_method_call(const char*, const char*, const char*,
                                    const char*)
     {
+        if (throwOnNewMethodCall)
+        {
+            throw std::runtime_error("FakeBus new_method_call failure");
+        }
         return {};
     }
 
@@ -89,8 +94,8 @@ struct FakeAsioConnection
     std::map<std::string, std::string> lastAddData{};
 
     template <typename Callback>
-    void async_method_call(Callback&& cb, const char*, const char*,
-                           const char*, const char*, const std::string& messageId,
+    void async_method_call(Callback&& cb, const char*, const char*, const char*,
+                           const char*, const std::string& messageId,
                            const std::string& severity,
                            const std::map<std::string, std::string>& addData)
     {
@@ -162,6 +167,7 @@ class DBusUtilInternalTest : public testing::Test
     {
         auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();
         bus.throwOnCall = false;
+        bus.throwOnNewMethodCall = false;
         bus.deviceStatusValue = pldm::fw_update::DeviceStatusMap{};
         bus.mapperResponse = {
             {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};

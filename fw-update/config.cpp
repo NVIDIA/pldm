@@ -20,6 +20,7 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
+#include <ranges>
 
 PHOSPHOR_LOG2_USING;
 
@@ -393,15 +394,141 @@ std::unordered_map<mctp_eid_t, std::string> buildEidToNameMap()
     return map;
 }
 
+const std::unordered_map<mctp_eid_t, std::string>& getEidToNameMap()
+{
+    // Static map cached on first call - thread-safe initialization per C++11
+    static const std::unordered_map<mctp_eid_t, std::string> eidToNameMap =
+        buildEidToNameMap();
+    return eidToNameMap;
+}
+
+/**
+ * @brief Build a reverse map from target name to EID using config JSON.
+ *
+ * The "name" is what appears as the last segment of a D-Bus object path
+ * supplied as a firmware update target. We index:
+ *   - device_inventory object path filename (create or update)
+ *   - firmware_inventory create component names
+ *   - firmware_inventory update component names
+ *   - component_info component names
+ *
+ * If the same name appears under multiple EIDs the last one wins; in
+ * well-formed configs names are unique per target.
+ */
+std::unordered_map<std::string, mctp_eid_t> buildNameToEidMap()
+{
+    std::unordered_map<std::string, mctp_eid_t> map;
+
+    try
+    {
+        DeviceInventoryInfo deviceInventoryInfo;
+        FirmwareInventoryInfo fwInventoryInfo;
+        ComponentNameMapInfo componentNameMapInfo;
+
+        parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
+                    componentNameMapInfo);
+
+        auto extractEidFromMatch =
+            [](const DBusIntfMatch& match) -> std::optional<mctp_eid_t> {
+            const auto& propertyMap = match.second;
+            auto it = propertyMap.find("EID");
+            if (it == propertyMap.end())
+            {
+                return std::nullopt;
+            }
+            return extractEid(it->second);
+        };
+
+        auto insertMapping = [&map](const std::string& name, mctp_eid_t eid) {
+            if (name.empty())
+            {
+                return;
+            }
+            if (auto it = map.find(name); it != map.end() && it->second != eid)
+            {
+                debug(
+                    "Overwriting target name→EID mapping for {NAME}: {OLD_EID} → {NEW_EID}",
+                    "NAME", name, "OLD_EID", it->second, "NEW_EID", eid);
+            }
+            map[name] = eid;
+        };
+
+        for (const auto& [dbusIntfMatch, deviceInfo] :
+             deviceInventoryInfo.infos)
+        {
+            auto eidOpt = extractEidFromMatch(dbusIntfMatch);
+            if (!eidOpt.has_value())
+            {
+                continue;
+            }
+            const auto& [createDeviceInfo, updateDeviceInfo] = deviceInfo;
+            const auto& [createObjPath, assocs] = createDeviceInfo;
+            for (const auto& objPath : {createObjPath, updateDeviceInfo})
+            {
+                if (objPath.empty())
+                {
+                    continue;
+                }
+                insertMapping(
+                    std::filesystem::path(objPath).filename().string(),
+                    *eidOpt);
+            }
+        }
+
+        for (const auto& [dbusIntfMatch, fwInfo] : fwInventoryInfo.infos)
+        {
+            auto eidOpt = extractEidFromMatch(dbusIntfMatch);
+            if (!eidOpt.has_value())
+            {
+                continue;
+            }
+            const auto& [createFwInfo, updateFwInfo] = fwInfo;
+            for (const auto& [compId, componentObject] : createFwInfo)
+            {
+                const auto& [componentName, compAssocs] = componentObject;
+                insertMapping(componentName, *eidOpt);
+            }
+            for (const auto& [compId, componentName] : updateFwInfo)
+            {
+                insertMapping(componentName, *eidOpt);
+            }
+        }
+
+        for (const auto& [dbusIntfMatch, componentMap] :
+             componentNameMapInfo.infos)
+        {
+            auto eidOpt = extractEidFromMatch(dbusIntfMatch);
+            if (!eidOpt.has_value())
+            {
+                continue;
+            }
+            for (const auto& [compId, componentName] : componentMap)
+            {
+                insertMapping(componentName, *eidOpt);
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        error("Failed to load name→EID map from config: {ERROR}", "ERROR",
+              e.what());
+    }
+
+    return map;
+}
+
+const std::unordered_map<std::string, mctp_eid_t>& getNameToEidMap()
+{
+    static const std::unordered_map<std::string, mctp_eid_t> nameToEidMap =
+        buildNameToEidMap();
+    return nameToEidMap;
+}
+
 } // anonymous namespace
 
 std::optional<std::string> getDeviceNameFromEid(mctp_eid_t eid)
 {
-    // Static map cached on first call - thread-safe initialization per C++11
-    static std::unordered_map<mctp_eid_t, std::string> eidToNameMap =
-        buildEidToNameMap();
-
-    // Fast lookup in cached map
+    const auto& eidToNameMap = getEidToNameMap();
     auto it = eidToNameMap.find(eid);
     if (it != eidToNameMap.end())
     {
@@ -409,6 +536,23 @@ std::optional<std::string> getDeviceNameFromEid(mctp_eid_t eid)
     }
 
     return std::nullopt; // EID not found in config
+}
+
+std::vector<mctp_eid_t> getConfigEids()
+{
+    auto keys = getEidToNameMap() | std::views::keys;
+    return {keys.begin(), keys.end()};
+}
+
+std::optional<mctp_eid_t> getConfigEidForTargetName(const std::string& name)
+{
+    const auto& nameToEidMap = getNameToEidMap();
+    auto it = nameToEidMap.find(name);
+    if (it != nameToEidMap.end())
+    {
+        return it->second;
+    }
+    return std::nullopt;
 }
 
 } // namespace pldm::fw_update

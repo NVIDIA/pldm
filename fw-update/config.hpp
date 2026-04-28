@@ -23,8 +23,10 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 PHOSPHOR_LOG2_USING;
 
@@ -89,5 +91,32 @@ void parseConfig(const fs::path& jsonPath,
  * component name), std::nullopt if not found
  */
 std::optional<std::string> getDeviceNameFromEid(mctp_eid_t eid);
+
+/** @brief Get all EIDs configured in fw_update_config.json
+ *
+ *  Parses the config file and extracts all unique MCTP endpoint IDs from the
+ *  match criteria across device_inventory, firmware_inventory, and
+ *  component_info entries.
+ *
+ *  @return vector of unique mctp_eid_t values from the config
+ */
+std::vector<mctp_eid_t> getConfigEids();
+
+/** @brief Look up the EID associated with a target name from
+ *         fw_update_config.json.
+ *
+ *  The name is typically the last segment of a D-Bus object path supplied as
+ *  a firmware update target (e.g. "HGX_SBIOS_FMC_0" from
+ *  "/xyz/openbmc_project/software/HGX_SBIOS_FMC_0"). Matches against device
+ *  names (device_inventory object paths) and firmware component names
+ *  (firmware_inventory create/update and component_info entries).
+ *
+ *  Used to classify a target EID even when the endpoint was never discovered
+ *  over MCTP, so refresh error paths can log against it.
+ *
+ *  @param[in] name - target name (path filename or component name)
+ *  @return EID from config, std::nullopt if no match
+ */
+std::optional<mctp_eid_t> getConfigEidForTargetName(const std::string& name);
 
 } // namespace pldm::fw_update

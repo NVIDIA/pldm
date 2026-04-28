@@ -19,6 +19,7 @@
 #include "activation.hpp"
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
+#include "config.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
@@ -40,6 +41,22 @@ namespace pldm
 
 namespace fw_update
 {
+
+/** @brief Extract a target name from a software D-Bus object path
+ *
+ *  Returns the final path segment for paths under
+ *  /xyz/openbmc_project/software/, or nullopt for any other path.
+ */
+static std::optional<std::string> extractTargetName(
+    const sdbusplus::message::object_path& path)
+{
+    std::string pathStr = path;
+    if (!pathStr.starts_with("/xyz/openbmc_project/software/"))
+    {
+        return std::nullopt;
+    }
+    return pathStr.substr(pathStr.find_last_of('/') + 1);
+}
 
 /** @brief Check if package descriptors are a subset of device descriptor
  *
@@ -392,56 +409,83 @@ exec::task<void> UpdateManager::processStream(
     // Snapshot the user-requested target names along with each one's PLDM EID
     // so logUnupdatedTargets can emit a per-target Critical
     // ResourceErrorsDetected entry at terminal state for any requested target
-    // whose image wasn't in the package. Names that don't resolve to any PLDM
-    // EID in the live componentNameMap (e.g. non-PLDM targets) are
-    // intentionally skipped.
+    // whose image wasn't in the package. Resolution prefers the config
+    // (fw_update_config.json) and falls back to the live componentNameMap for
+    // discovery-only entries. Names that don't resolve to any PLDM EID (e.g.
+    // non-PLDM targets) are intentionally skipped.
     requestedTargets.clear();
     for (const auto& path : targets)
     {
-        std::string pathStr = path;
-        if (!pathStr.starts_with("/xyz/openbmc_project/software/"))
+        auto name = extractTargetName(path);
+        if (!name.has_value())
         {
             continue;
         }
-        auto name = pathStr.substr(pathStr.find_last_of('/') + 1);
 
-        for (const auto& [eid, compIdNameMap] : componentNameMap)
+        std::optional<mctp_eid_t> resolvedEid =
+            getConfigEidForTargetName(*name);
+        if (!resolvedEid.has_value())
         {
-            bool found = false;
-            for (const auto& [compId, compName] : compIdNameMap)
+            for (const auto& [eid, compIdNameMap] : componentNameMap)
             {
-                if (compName == name)
+                bool found = false;
+                for (const auto& [compId, compName] : compIdNameMap)
                 {
-                    requestedTargets[name] = eid;
-                    found = true;
+                    if (compName == *name)
+                    {
+                        resolvedEid = eid;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                {
                     break;
                 }
             }
-            if (found)
-            {
-                break;
-            }
+        }
+
+        if (resolvedEid.has_value())
+        {
+            requestedTargets[*name] = *resolvedEid;
         }
     }
 
-    if (refreshSingleEndpointCallback && !descriptorMap.empty())
+    auto refreshEids = getConfigEids();
+    if (refreshEids.empty())
     {
-        info("Refreshing firmware inventory for {COUNT} discovered endpoints",
-             "COUNT", descriptorMap.size());
+        // Fall back to discovered endpoints when config has no EIDs
+        auto keys = descriptorMap | std::views::keys;
+        refreshEids.assign(keys.begin(), keys.end());
+    }
 
-        // Copy EIDs to avoid iterator invalidation and from modifications to
-        // descriptorMap during refresh
-        std::vector<mctp_eid_t> eids;
-        eids.reserve(descriptorMap.size());
-        for (const auto& [eid, _] : descriptorMap)
+    // Config-derived target EIDs: resolve each target object path's
+    // component/device name to an EID using fw_update_config.json so that
+    // undiscovered targets (e.g. a powered-off CPU) are still classified as
+    // targets and their refresh failures log at error severity.
+    std::unordered_set<mctp_eid_t> configTargetEids;
+    for (const auto& path : targets)
+    {
+        auto name = extractTargetName(path);
+        if (!name.has_value())
         {
-            eids.push_back(eid);
+            continue;
         }
+        if (auto eidOpt = getConfigEidForTargetName(*name); eidOpt.has_value())
+        {
+            configTargetEids.insert(*eidOpt);
+        }
+    }
+    if (refreshSingleEndpointCallback && !refreshEids.empty())
+    {
+        info("Refreshing firmware inventory for {COUNT} endpoints", "COUNT",
+             refreshEids.size());
 
         exec::async_scope refreshScope;
-        for (const auto& eid : eids)
+        for (const auto& eid : refreshEids)
         {
-            bool isTarget = compTargetList.contains(eid);
+            bool isTarget = compTargetList.contains(eid) ||
+                            configTargetEids.contains(eid);
             refreshScope.spawn(
                 stdexec::just() |
                 stdexec::let_value([this, eid, isTarget]() -> exec::task<void> {
@@ -977,8 +1021,7 @@ void UpdateManager::logUnupdatedTargets(
     const std::string resolution =
         "Verify the firmware package contains a matching image for the "
         "specified target and retry the update.";
-    const std::string unreachableError =
-        "Target endpoint is unreachable";
+    const std::string unreachableError = "Target endpoint is unreachable";
     const std::string unreachableResolution =
         "Verify the target endpoint is powered on and responsive, then "
         "retry the update.";
