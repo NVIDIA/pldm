@@ -3929,6 +3929,8 @@ TEST_F(TerminusTest, privateFindInventoryAndPhysicalContextCoverage)
               terminus.toPhysicalContextType(PLDM_ENTITY_PROC_IO_MODULE));
     EXPECT_EQ(PhysicalContextType::VoltageRegulator,
               terminus.toPhysicalContextType(PLDM_ENTITY_DC_DC_CONVERTER));
+    EXPECT_EQ(PhysicalContextType::VoltageRegulator,
+              terminus.toPhysicalContextType(PLDM_ENTITY_POWER_SUPPLY));
     EXPECT_EQ(PhysicalContextType::NetworkingDevice,
               terminus.toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
     EXPECT_EQ(PhysicalContextType::SystemBoard,

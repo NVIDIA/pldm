@@ -1961,6 +1961,7 @@ PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
             return PhysicalContextType::CPU;
         case PLDM_ENTITY_DC_DC_CONVERTER:
         case PLDM_ENTITY_POWER_CONVERTER:
+        case PLDM_ENTITY_POWER_SUPPLY:
             return PhysicalContextType::VoltageRegulator;
         case PLDM_ENTITY_NETWORK_CONTROLLER:
             return PhysicalContextType::NetworkingDevice;
