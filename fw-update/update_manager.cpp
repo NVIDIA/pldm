@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ranges>
+#include <set>
 #include <string>
 
 PHOSPHOR_LOG2_USING;
@@ -796,6 +797,11 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     TotalComponentUpdates& totalNumComponentUpdates)
 {
     DeviceUpdaterInfos deviceUpdaterInfos;
+    // Per DSP0267 the first package record whose descriptors match an FD is
+    // selected for that FD; later matches are ignored. Track EIDs that have
+    // already been associated so progress accounting (totalNumComponentUpdates)
+    // stays consistent with the single DeviceUpdater created per EID.
+    std::set<mctp_eid_t> matchedEids;
     for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
     {
         const auto& deviceIDDescriptors =
@@ -804,6 +810,13 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
         {
             if (descriptorsMatch(descriptors, deviceIDDescriptors))
             {
+                if (!matchedEids.insert(eid).second)
+                {
+                    warning(
+                        "Multiple package records match EID={EID}; using first match per spec and ignoring record at index {INDEX}",
+                        "EID", eid, "INDEX", index);
+                    continue;
+                }
                 if (compTargetList.empty() && objectPaths.empty())
                 {
                     outFwDeviceIDRecords.emplace_back(
