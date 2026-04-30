@@ -208,7 +208,8 @@ void UpdateManager::createMessageRegistry(
 void UpdateManager::createMessageRegistryResourceErrors(
     mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     size_t compIndex, const std::string& messageID,
-    const std::string& messageError, const std::string& resolution)
+    const std::string& messageError, const std::string& resolution,
+    bool overrideSeverity)
 {
     if (!parser)
     {
@@ -244,7 +245,27 @@ void UpdateManager::createMessageRegistryResourceErrors(
         compName = std::to_string(compIdentifier);
     }
 
-    createLogEntry(messageID, compName, messageError, resolution);
+    createLogEntry(messageID, compName, messageError, resolution, "FWUpdate",
+                   overrideSeverity);
+}
+
+void UpdateManager::handleDuplicateDescriptorMatch(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+{
+    const std::string messageError =
+        "Multiple Firmware Device ID Records in the package match this"
+        " device";
+    const std::string resolution =
+        "Ensure every Firmware Device ID Record in the package is unique"
+        " so the correct firmware version is installed";
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    for (size_t compIdx = 0; compIdx < applicableComponents.size(); ++compIdx)
+    {
+        createMessageRegistryResourceErrors(
+            eid, fwDeviceIDRecord, compIdx, resourceErrorDetected, messageError,
+            resolution, /*overrideSeverity=*/true);
+    }
 }
 
 std::string UpdateManager::processStreamDefer(
@@ -808,9 +829,17 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
             {
                 if (!matchedEids.insert(eid).second)
                 {
-                    warning(
-                        "Multiple package records match EID={EID}; using first match per spec and ignoring record at index {INDEX}",
-                        "EID", eid, "INDEX", index);
+                    bool isTarget =
+                        (compTargetList.empty() && objectPaths.empty()) ||
+                        compTargetList.contains(eid);
+                    if (isTarget)
+                    {
+                        warning(
+                            "Multiple package records match EID={EID}; using first match per spec and ignoring record at index {INDEX}",
+                            "EID", eid, "INDEX", index);
+                        handleDuplicateDescriptorMatch(
+                            eid, inFwDeviceIDRecords[index]);
+                    }
                     continue;
                 }
                 if (compTargetList.empty() && objectPaths.empty())

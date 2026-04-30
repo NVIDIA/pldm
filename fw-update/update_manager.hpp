@@ -301,7 +301,23 @@ class UpdateManager
     void createMessageRegistryResourceErrors(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         size_t compIndex, const std::string& messageID,
-        const std::string& messageError, const std::string& resolution);
+        const std::string& messageError, const std::string& resolution,
+        bool overrideSeverity = false);
+
+    /** @brief Emit an Info-severity ResourceErrorsDetected entry per
+     *         applicable component when multiple package records match
+     *         the same device.
+     *
+     *  The first matching record is used for the update; this records the
+     *  duplicate in Redfish for visibility/audit without flagging it as a
+     *  failure.
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] fwDeviceIDRecord - duplicate (skipped) firmware device ID
+     *                                record
+     */
+    void handleDuplicateDescriptorMatch(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord);
 
     /** @brief Generate a unique software ID based on current timestamp
      *
