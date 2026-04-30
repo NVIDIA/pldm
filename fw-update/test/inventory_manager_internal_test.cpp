@@ -519,11 +519,14 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
     EXPECT_NE(std::get<0>(getActiveRc.value()), PLDM_SUCCESS);
     EXPECT_FALSE(callbackCalled);
 
+    // initiateGetActiveFirmwareVersion returns early for unknown EIDs
+    const pldm::eid unknownEid = 99;
     auto initiate = manager.initiateGetActiveFirmwareVersion(
-        eid, [&](pldm::eid) { callbackCalled = true; });
+        unknownEid, [&](pldm::eid) { callbackCalled = true; });
     auto initiateRc = stdexec::sync_wait(std::move(initiate));
     ASSERT_TRUE(initiateRc.has_value());
-    EXPECT_NE(std::get<0>(initiateRc.value()), PLDM_SUCCESS);
+    EXPECT_EQ(std::get<0>(initiateRc.value()), PLDM_SUCCESS);
+    EXPECT_FALSE(callbackCalled);
 
     auto refresh = manager.refreshSingleEndpoint(eid, mctpInterfaces, true);
     auto refreshRc = stdexec::sync_wait(std::move(refresh));
