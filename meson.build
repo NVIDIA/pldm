@@ -368,7 +368,6 @@ libpldmutils = library(
     'common/transport.cpp',
     'common/mctp_error_handling.cpp',
     'common/utils.cpp',
-    'fw-update/fw_update_utility.cpp',
     'fw-update/config.cpp',
     version: meson.project_version(),
     dependencies: [

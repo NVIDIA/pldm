@@ -17,6 +17,9 @@
 
 #include "fw_update_utility.hpp"
 
+#include "requester/handler.hpp"
+#include "requester/request.hpp"
+
 namespace pldm::fw_update
 {
 

@@ -17,18 +17,39 @@
 #pragma once
 
 #include "libpldm/firmware_update.h"
+#include "libpldm/pldm.h"
 
 #include "common/types.hpp"
-#include "requester/handler.hpp"
-#include "requester/request.hpp"
 
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/async.hpp>
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace pldm
 {
 
+namespace utils
+{
+void printBuffer(bool isTx, const std::vector<uint8_t>& buffer);
+} // namespace utils
+
+namespace requester
+{
+class Request;
+
+template <class RequestInterface>
+class Handler;
+} // namespace requester
+
 namespace fw_update
 {
+
+PHOSPHOR_LOG2_USING;
 
 using RequesterHandler = requester::Handler<pldm::requester::Request>;
 using ComponentIndex = size_t;
