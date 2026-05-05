@@ -264,6 +264,10 @@ conf_data.set_quoted(
 if get_option('nvlink-c2c-fabric-object').enabled()
     add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
+conf_data.set(
+    'NUMBER_OF_LINKS_PER_PARTITION',
+    get_option('number-of-links-per-partition'),
+)
 conf_data.set_quoted(
     'CPU_PRIMARY_TEMP_SENSOR',
     get_option('cpu-primary-temp-sensor'),

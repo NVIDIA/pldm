@@ -19,13 +19,11 @@
 #include "libpldm/oem/nvidia/state_set_oem_nvidia.h"
 
 #include "common/types.hpp"
+#include "nvlinkPortMirror.hpp"
 #include "platform-mc/state_set.hpp"
 
 #include <xyz/openbmc_project/Inventory/Decorator/Instance/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Endpoint/server.hpp>
-#include <xyz/openbmc_project/Inventory/Item/Port/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
 
 #include <filesystem>
@@ -46,22 +44,6 @@ namespace oem_nvidia
  */
 constexpr uint16_t PLDM_NVIDIA_OEM_STATE_SET_CLINK = 0x8003;
 
-using PortIntf = sdbusplus::server::object_t<
-    sdbusplus::server::xyz::openbmc_project::inventory::item::Port>;
-using PortInfoIntf = sdbusplus::server::object_t<
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
-using PortStateIntf = sdbusplus::server::object_t<
-    sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortState>;
-
-using PortType = sdbusplus::server::xyz::openbmc_project::inventory::decorator::
-    PortInfo::PortType;
-using PortProtocol = sdbusplus::server::xyz::openbmc_project::inventory::
-    decorator::PortInfo::PortProtocol;
-using PortLinkStates = sdbusplus::server::xyz::openbmc_project::inventory::
-    decorator::PortState::LinkStates;
-using PortLinkStatus = sdbusplus::server::xyz::openbmc_project::inventory::
-    decorator::PortState::LinkStatusType;
-
 using EndpointIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Inventory::Item::server::Endpoint>;
 using InstanceIntf = sdbusplus::server::object_t<
@@ -80,6 +62,9 @@ class StateSetNvlink : public StateSet
     std::string objPath;
     const StateSensor& stateSensor;
 
+    // WORKAROUND: NVLink per-partition Port mirroring
+    NvlinkPortMirror portMirror;
+
     // C2CLink fabric prefix
     const std::string fabricsObjectPath =
         "/xyz/openbmc_project/inventory/system/fabrics/";
@@ -96,18 +81,32 @@ class StateSetNvlink : public StateSet
         StateSet(stateSetId), objPath(objectPath), stateSensor(sensorRef)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
+
+        // WORKAROUND: NVLink per-partition Port mirroring
+        const std::vector<std::string> portPaths =
+            NvlinkPortMirror::computePaths(id, objectPath);
+        objPath = portPaths.front();
+        if (portPaths.size() > 1)
+        {
+            lg2::info("NVLink mirror: {SRC} -> {COUNT} Ports (primary {PRI})",
+                      "SRC", objectPath, "COUNT", portPaths.size(), "PRI",
+                      objPath);
+        }
+
         associationDefinitionsIntf =
-            std::make_unique<AssociationDefinitionsInft>(bus,
-                                                         objectPath.c_str());
+            std::make_unique<AssociationDefinitionsInft>(bus, objPath.c_str());
         associationDefinitionsIntf->associations(
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
-        ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
+        ValuePortIntf = std::make_unique<PortIntf>(bus, objPath.c_str());
         ValuePortInfoIntf =
-            std::make_unique<PortInfoIntf>(bus, objectPath.c_str());
+            std::make_unique<PortInfoIntf>(bus, objPath.c_str());
         ValuePortStateIntf =
-            std::make_unique<PortStateIntf>(bus, objectPath.c_str());
+            std::make_unique<PortStateIntf>(bus, objPath.c_str());
+
+        // WORKAROUND: create mirror Ports for paths[1..N-1] (no-op if N == 1).
+        portMirror.init(bus, portPaths, stateAssociation);
 
         setDefaultValue();
     }
@@ -153,6 +152,9 @@ class StateSetNvlink : public StateSet
                     tal::TelemetryAggregator::updateTelemetry(
                         objPath, ifaceName, propertyName, rawPropValue,
                         steadyTimeStamp, retCode, propValue, endpoint);
+                    // WORKAROUND: publish the same reading on every mirror.
+                    portMirror.publishShmem(ifaceName, propertyName, propValue,
+                                            steadyTimeStamp, endpoint);
                 }
             }
         }
@@ -160,25 +162,32 @@ class StateSetNvlink : public StateSet
 #endif
     void setValue(uint8_t value) override
     {
+        PortLinkStates newLinkState = PortLinkStates::Unknown;
+        PortLinkStatus newLinkStatus = PortLinkStatus::NoLink;
+
         switch (value)
         {
             case PLDM_STATE_SET_NVLINK_INACTIVE:
-                ValuePortStateIntf->linkState(PortLinkStates::Disabled);
-                ValuePortStateIntf->linkStatus(PortLinkStatus::LinkDown);
+                newLinkState = PortLinkStates::Disabled;
+                newLinkStatus = PortLinkStatus::LinkDown;
                 break;
             case PLDM_STATE_SET_NVLINK_ACTIVE:
-                ValuePortStateIntf->linkState(PortLinkStates::Enabled);
-                ValuePortStateIntf->linkStatus(PortLinkStatus::LinkUp);
+                newLinkState = PortLinkStates::Enabled;
+                newLinkStatus = PortLinkStatus::LinkUp;
                 break;
             case PLDM_STATE_SET_NVLINK_ERROR:
-                ValuePortStateIntf->linkState(PortLinkStates::Error);
-                ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
+                newLinkState = PortLinkStates::Error;
+                newLinkStatus = PortLinkStatus::NoLink;
                 break;
             default:
-                ValuePortStateIntf->linkState(PortLinkStates::Unknown);
-                ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
                 break;
         }
+
+        ValuePortStateIntf->linkState(newLinkState);
+        ValuePortStateIntf->linkStatus(newLinkStatus);
+        // WORKAROUND: mirror the partition state onto every sibling Port.
+        portMirror.applyState(newLinkState, newLinkStatus);
+
 #ifdef OEM_NVIDIA
         updateShmemReading("LinkState");
         updateShmemReading("LinkStatus");
@@ -191,6 +200,9 @@ class StateSetNvlink : public StateSet
         ValuePortInfoIntf->protocol(PortProtocol::NVLink);
         ValuePortStateIntf->linkState(PortLinkStates::Unknown);
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
+        // WORKAROUND: apply the same defaults to every mirror Port.
+        portMirror.applyDefaults(PortType::BidirectionalPort,
+                                 PortProtocol::NVLink);
     }
 
     std::tuple<std::string, std::string, Level, std::string, std::string>
@@ -301,6 +313,8 @@ class StateSetNvlink : public StateSet
             {{stateAssociation.forward.c_str(),
               stateAssociation.reverse.c_str(),
               stateAssociation.path.c_str()}});
+        // WORKAROUND: mirror the chassis association onto every sibling Port.
+        portMirror.applyAssociation(stateAssociation);
 
 #ifdef NVLINK_C2C_FABRIC_OBJECT
         // C2CLinkFabric_* endpoints model the CPU<->GPU NVLink fabric only.

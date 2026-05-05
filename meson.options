@@ -364,6 +364,14 @@ option(
 )
 
 option(
+    'number-of-links-per-partition',
+    type: 'integer',
+    min: 1,
+    value: 1,
+    description: 'NVLink Ports count per SatMC Partition',
+)
+
+option(
     'oem-nvidia',
     type: 'feature',
     value: 'enabled',
