@@ -178,6 +178,15 @@ TEST_F(OtherDeviceUpdateManagerTest, getValidTargets)
     EXPECT_EQ(result, expectedResult);
 }
 
+TEST_F(OtherDeviceUpdateManagerTest, getMaxItemUpdaterTimeoutSec_emptySet)
+{
+    OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
+                                                      updatePolicyTargets);
+    // No Item Updater paths registered in otherDevices yet; the function
+    // must return 0 so callers can fall back to FIRMWARE_UPDATE_TIME.
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 0u);
+}
+
 TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
 {
     int expectedResult(0);

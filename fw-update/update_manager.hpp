@@ -592,11 +592,25 @@ class UpdateManager
     uint8_t updateInterval;
 
     /**
-     * @brief Total intervals to update progress percent
+     * @brief Total intervals to update progress percent.
      *
+     * Set per-update by activatePackage() based on
+     * computeEffectiveTimeoutSec(); not const.
      */
-    uint8_t totalInterval = static_cast<uint8_t>(
-        std::floor((FIRMWARE_UPDATE_TIME / PROGRESS_UPDATE_INTERVAL)));
+    uint8_t totalInterval = 0;
+
+    /**
+     * @brief Per-package effective timeout in seconds. Lower-bounded by
+     *        FIRMWARE_UPDATE_TIME, raised by the max UpdateTimeout
+     *        advertised by descriptor-matched Item Updaters.
+     *
+     *        bmcweb's per-task watchdog is reset by every
+     *        ActivationProgress.Progress signal, so the cadence of
+     *        synthetic progress ticks (PROGRESS_UPDATE_INTERVAL) must
+     *        stay smaller than BMCWEB_UPDATE_SERVICE_TASK_TIMEOUT
+     *        regardless of how large this value grows.
+     */
+    uint64_t computeEffectiveTimeoutSec() const;
 
     /**
      * @brief Create a Progress Update Timer. This timer updates progress

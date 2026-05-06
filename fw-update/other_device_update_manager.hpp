@@ -194,6 +194,15 @@ class OtherDeviceUpdateManager
      */
     size_t getValidTargets(void);
 
+    /**
+     * @brief Compute the max UpdateTimeout (seconds) advertised by the
+     *        Item Updaters that descriptor-matched the current package.
+     *
+     * @return 0 if no Item Updater publishes the property; caller falls
+     *         back to FIRMWARE_UPDATE_TIME.
+     */
+    uint64_t getMaxItemUpdaterTimeoutSec() const;
+
   private:
     static pldm::utils::DBusHandlerInterface& defaultDbusHandler();
 

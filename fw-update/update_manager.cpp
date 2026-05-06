@@ -30,6 +30,7 @@
 #include <bitset>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <ranges>
 #include <set>
 #include <string>
@@ -1137,6 +1138,19 @@ void UpdateManager::onResponseSendComplete(mctp_eid_t eid, bool success)
 software::Activation::Activations UpdateManager::activatePackage()
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+
+    const uint64_t effectiveSec = computeEffectiveTimeoutSec();
+    constexpr uint64_t intervalSec =
+        static_cast<uint64_t>(PROGRESS_UPDATE_INTERVAL) * 60;
+    const uint64_t rawTicks = std::max<uint64_t>(1, effectiveSec / intervalSec);
+    constexpr uint64_t maxTicks = std::numeric_limits<uint8_t>::max();
+    const uint64_t clampedTicks = std::min(rawTicks, maxTicks);
+    totalInterval = static_cast<uint8_t>(clampedTicks);
+    info(
+        "Firmware Update timeout set to {SEC}s ({TICKS} ticks of {INT}s){CLAMPED}",
+        "SEC", effectiveSec, "TICKS", static_cast<unsigned>(totalInterval),
+        "INT", intervalSec, "CLAMPED", rawTicks > maxTicks ? " [clamped]" : "");
+
     createProgressUpdateTimer();
     progressTimer->start(std::chrono::minutes(PROGRESS_UPDATE_INTERVAL), true);
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
@@ -1414,6 +1428,19 @@ ComponentName UpdateManager::getComponentName(
         }
     }
     return compName;
+}
+
+uint64_t UpdateManager::computeEffectiveTimeoutSec() const
+{
+    const uint64_t defaultSec =
+        static_cast<uint64_t>(FIRMWARE_UPDATE_TIME) * 60;
+    if (otherDeviceUpdateManager)
+    {
+        return std::max(
+            defaultSec,
+            otherDeviceUpdateManager->getMaxItemUpdaterTimeoutSec());
+    }
+    return defaultSec;
 }
 
 void UpdateManager::createProgressUpdateTimer()

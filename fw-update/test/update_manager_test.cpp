@@ -2454,6 +2454,41 @@ TEST_F(UpdateManagerTest,
     EXPECT_EQ(updateManager.otherDeviceComponents.size(), 2U);
 }
 
+TEST_F(UpdateManagerTest,
+       computeEffectiveTimeoutSec_returnsFirmwareUpdateTimeWhenNoOtherMgr)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    // No otherDeviceUpdateManager constructed -> falls back to the
+    // FIRMWARE_UPDATE_TIME default (in seconds).
+    const uint64_t result = updateManager.computeEffectiveTimeoutSec();
+    EXPECT_GE(result, 60u);
+}
+
+TEST_F(UpdateManagerTest,
+       computeEffectiveTimeoutSec_emptyOtherDevices_matchesNoMgrCase)
+{
+    // A single UpdateManager is reused across the two configurations because
+    // its constructor registers /xyz/openbmc_project/software/pldm on the
+    // global D-Bus; constructing two simultaneously would collide.
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    const uint64_t withoutMgr = updateManager.computeEffectiveTimeoutSec();
+
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(
+            busMock, &updateManager,
+            std::vector<sdbusplus::message::object_path>{});
+    const uint64_t withMgr = updateManager.computeEffectiveTimeoutSec();
+
+    // Empty otherDevices -> max == 0 -> result is the default in both
+    // cases. The two paths must agree.
+    EXPECT_EQ(withMgr, withoutMgr);
+    EXPECT_GT(withMgr, 0u);
+}
+
 TEST_F(UpdateManagerTest, clearActivationInfoResetsAllTrackedMembers)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
