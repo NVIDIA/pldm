@@ -440,6 +440,51 @@ TEST(InventoryManagerHeaderInternalTest,
     EXPECT_FALSE(fastBinding < slowBinding);
 }
 
+// MctpEidInfo::operator< must tolerate empty or unrecognized medium/binding
+// strings without throwing; unknown values rank below any known value so a
+// priority_queue keeps known entries on top.
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoOperatorLessUnknownMediumOrBindingDoesNotThrow)
+{
+    const MctpMedium pcieMedium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding pcieBinding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    MctpEidInfo known{1, pcieMedium, pcieBinding};
+    MctpEidInfo emptyMediumBinding{2, "", ""};
+    MctpEidInfo unknownMedium{
+        3, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.NotARealMedium",
+        pcieBinding};
+    MctpEidInfo unknownBinding{
+        4, pcieMedium,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.NotARealBinding"};
+
+    // Unknown values must never throw and must compare as lower priority.
+    EXPECT_NO_THROW({
+        EXPECT_TRUE(emptyMediumBinding < known);
+        EXPECT_FALSE(known < emptyMediumBinding);
+        EXPECT_TRUE(unknownMedium < known);
+        EXPECT_FALSE(known < unknownMedium);
+        EXPECT_TRUE(unknownBinding < known);
+        EXPECT_FALSE(known < unknownBinding);
+    });
+
+    // priority_queue uses operator<; pushing entries with unknown values must
+    // not blow up the queue.
+    EXPECT_NO_THROW({
+        std::priority_queue<MctpEidInfo> queue;
+        queue.push(emptyMediumBinding);
+        queue.push(known);
+        queue.push(unknownMedium);
+        queue.push(unknownBinding);
+        // The known (PCIe/PCIe) entry has the highest priority and should be
+        // the first popped from the priority queue.
+        ASSERT_FALSE(queue.empty());
+        EXPECT_EQ(queue.top().eid, 1);
+    });
+}
+
 TEST_F(InventoryManagerInternalTest, transportWrapperPathsReturnErrors)
 {
     InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,

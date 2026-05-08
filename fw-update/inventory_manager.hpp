@@ -26,6 +26,7 @@
 
 #include <sdeventplus/event.hpp>
 
+#include <limits>
 #include <queue>
 
 namespace pldm
@@ -64,6 +65,25 @@ static std::unordered_map<MctpBinding, Priority> bindingPriority = {
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
+/** @brief Look up the priority for a medium/binding string.
+ *
+ *  @param[in] table - priority table to query
+ *  @param[in] key   - medium or binding string sourced from D-Bus
+ *
+ *  @return The priority value for the key, or
+ *          std::numeric_limits<Priority>::max() when the key is not
+ *          present in the table. Strings absent from the priority
+ *          maps therefore rank as lowest priority.
+ */
+inline Priority lookupPriority(
+    const std::unordered_map<std::string, Priority>& table,
+    const std::string& key)
+{
+    auto it = table.find(key);
+    return it != table.end() ? it->second
+                             : std::numeric_limits<Priority>::max();
+}
+
 struct MctpEidInfo
 {
     pldm::eid eid;
@@ -72,16 +92,14 @@ struct MctpEidInfo
 
     friend bool operator<(const MctpEidInfo& lhs, const MctpEidInfo& rhs)
     {
-        if (mediumPriority.at(lhs.medium) == mediumPriority.at(rhs.medium))
+        auto lhsMediumPrio = lookupPriority(mediumPriority, lhs.medium);
+        auto rhsMediumPrio = lookupPriority(mediumPriority, rhs.medium);
+        if (lhsMediumPrio == rhsMediumPrio)
         {
-            return (bindingPriority.at(lhs.binding) >
-                    bindingPriority.at(rhs.binding));
+            return lookupPriority(bindingPriority, lhs.binding) >
+                   lookupPriority(bindingPriority, rhs.binding);
         }
-        else
-        {
-            return (mediumPriority.at(lhs.medium) >
-                    mediumPriority.at(rhs.medium));
-        }
+        return lhsMediumPrio > rhsMediumPrio;
     }
 };
 

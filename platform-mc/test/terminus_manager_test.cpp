@@ -140,6 +140,46 @@ TEST_F(TerminusManagerTest, preferredMediumAndBindingTest)
     EXPECT_EQ(mctpInfo1_Faster, mctpInfo2.value());
 }
 
+// mapTid must tolerate empty or unrecognized medium/binding strings without
+// throwing; unknown values rank below any known medium/binding so an existing
+// known mapping is preserved.
+TEST_F(TerminusManagerTest, mapTidUnknownMediumOrBindingDoesNotThrow)
+{
+    pldm::MctpInfo known(
+        1, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    auto knownTid = terminusManager.mapTid(known);
+    ASSERT_NE(knownTid, std::nullopt);
+
+    pldm::MctpInfo emptyMediumBinding(2, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+                                      "", 0, std::nullopt, "", std::nullopt);
+    EXPECT_NO_THROW({
+        auto tid = terminusManager.mapTid(emptyMediumBinding);
+        EXPECT_EQ(tid, std::nullopt);
+    });
+
+    pldm::MctpInfo unknownMedium(
+        3, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.NotARealMedium", 0,
+        std::nullopt, "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe",
+        std::nullopt);
+    EXPECT_NO_THROW({
+        auto tid = terminusManager.mapTid(unknownMedium);
+        EXPECT_EQ(tid, std::nullopt);
+    });
+
+    pldm::MctpInfo unknownBinding(
+        4, "f72d6f90-5675-11ed-9b6a-0242ac120002",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 0, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.NotARealBinding",
+        std::nullopt);
+    EXPECT_NO_THROW({
+        auto tid = terminusManager.mapTid(unknownBinding);
+        EXPECT_EQ(tid, std::nullopt);
+    });
+}
+
 TEST_F(TerminusManagerTest, negativeMapTidTest)
 {
     // map null EID(0) to TID

@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 namespace pldm
 {
@@ -114,23 +115,39 @@ static std::unordered_map<MctpBinding, Priority> bindingPriority = {
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
+/** @brief Look up the priority for a medium/binding string.
+ *
+ *  @param[in] table - priority table to query
+ *  @param[in] key   - medium or binding string sourced from D-Bus
+ *
+ *  @return The priority value for the key, or
+ *          std::numeric_limits<Priority>::max() when the key is not
+ *          present in the table. Strings absent from the priority
+ *          maps therefore rank as lowest priority.
+ */
+static Priority lookupPriority(
+    const std::unordered_map<std::string, Priority>& table,
+    const std::string& key)
+{
+    auto it = table.find(key);
+    return it != table.end() ? it->second
+                             : std::numeric_limits<Priority>::max();
+}
+
 static bool isPreferred(const MctpInfo& currentMctpInfo,
                         const MctpInfo& newMctpInfo)
 {
-    auto currentMedium = std::get<2>(currentMctpInfo);
-    auto newMedium = std::get<2>(newMctpInfo);
-    auto currentBinding = std::get<5>(currentMctpInfo);
-    auto newBinding = std::get<5>(newMctpInfo);
+    auto currentMediumPrio =
+        lookupPriority(mediumPriority, std::get<2>(currentMctpInfo));
+    auto newMediumPrio =
+        lookupPriority(mediumPriority, std::get<2>(newMctpInfo));
 
-    if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
+    if (currentMediumPrio == newMediumPrio)
     {
-        return bindingPriority.at(currentBinding) >
-               bindingPriority.at(newBinding);
+        return lookupPriority(bindingPriority, std::get<5>(currentMctpInfo)) >
+               lookupPriority(bindingPriority, std::get<5>(newMctpInfo));
     }
-    else
-    {
-        return mediumPriority.at(currentMedium) > mediumPriority.at(newMedium);
-    }
+    return currentMediumPrio > newMediumPrio;
 }
 
 std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
