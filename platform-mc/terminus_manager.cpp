@@ -365,7 +365,11 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
     tid_t tid = 0;
     auto rc = co_await getTidOverMctp(eid, tid);
-    if (rc || tid == PLDM_TID_RESERVED)
+    // tid == 0 per DSP0240 means the
+    // remote terminus has not been assigned a TID yet
+    // Treat it the same as PLDM_TID_RESERVED so that 
+    // we can assign a fresh TID via mapTid(mctpInfo)
+    if (rc || !tid || tid == PLDM_TID_RESERVED)
     {
         // Assigning a tid. If it has been mapped, mapTid()
         // returns the tid assigned before.
