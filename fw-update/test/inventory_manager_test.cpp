@@ -37,13 +37,15 @@ class InventoryManagerTest : public testing::Test
                    milliseconds(100)),
         inventoryManager(reqHandler, instanceIdDb, nullptr, nullptr,
                          outDescriptorMap, outDownstreamDescriptorMap,
-                         outComponentInfoMap, deviceInventoryInfo)
+                         outComponentInfoMap, deviceInventoryInfo,
+                         excludedFwUpdateEids)
     {}
 
     int fd = -1;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
+    ExcludedFwUpdateEids excludedFwUpdateEids{};
     InventoryManager inventoryManager;
     DescriptorMap outDescriptorMap{};
     DownstreamDescriptorMap outDownstreamDescriptorMap{};

@@ -77,7 +77,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      std::bind_front(&Manager::createInventory, this),
                      std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap,
-                     deviceInventoryInfo),
+                     deviceInventoryInfo, excludedFwUpdateEids),
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug,
                       // manager_internal_test.cpp triggers a false-positive
@@ -101,7 +101,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         try
         {
             parseConfig(fwUpdateConfigFile, deviceInventoryInfo,
-                        fwInventoryInfo, componentNameMapInfo);
+                        fwInventoryInfo, componentNameMapInfo,
+                        excludedFwUpdateEids);
         }
         catch (const std::exception& e)
         {
@@ -141,6 +142,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
                           localEid] : mctpInfos)
         {
+            if (excludedFwUpdateEids.contains(eid))
+            {
+                continue;
+            }
+
             ComponentIdNameMap componentIdNameMap;
             if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
                                                          componentIdNameMap))
@@ -395,6 +401,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     /** Component information of all the discovered MCTP endpoints */
     ComponentInfoMap componentInfoMap;
+
+    /** @brief EIDs excluded from PLDM T5 firmware discovery */
+    ExcludedFwUpdateEids excludedFwUpdateEids;
 
     /** @brief PLDM firmware inventory manager */
     InventoryManager inventoryMgr;

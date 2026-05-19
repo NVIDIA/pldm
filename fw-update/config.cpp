@@ -32,7 +32,8 @@ using Json = nlohmann::json;
 void parseConfig(const fs::path& jsonPath,
                  DeviceInventoryInfo& deviceInventoryInfo,
                  FirmwareInventoryInfo& fwInventoryInfo,
-                 ComponentNameMapInfo& componentNameMapInfo)
+                 ComponentNameMapInfo& componentNameMapInfo,
+                 ExcludedFwUpdateEids& excludedFwUpdateEids)
 {
     if (!fs::exists(jsonPath))
     {
@@ -51,6 +52,11 @@ void parseConfig(const fs::path& jsonPath,
     }
 
     const Json emptyJson{};
+
+    for (const auto& eidJson : data.value("excluded_fw_update_eids", emptyJson))
+    {
+        excludedFwUpdateEids.insert(eidJson.get<mctp_eid_t>());
+    }
 
     auto entries = data.value("entries", emptyJson);
     for (const auto& entry : entries.items())
@@ -251,9 +257,10 @@ std::unordered_map<mctp_eid_t, std::string> buildEidToNameMap()
         DeviceInventoryInfo deviceInventoryInfo;
         FirmwareInventoryInfo fwInventoryInfo;
         ComponentNameMapInfo componentNameMapInfo;
+        ExcludedFwUpdateEids excludedFwUpdateEids;
 
         parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                    componentNameMapInfo);
+                    componentNameMapInfo, excludedFwUpdateEids);
 
         // Build component_id → component_name map for fallback lookups
         std::unordered_map<uint8_t, std::unordered_map<uint16_t, std::string>>
@@ -429,9 +436,10 @@ std::unordered_map<std::string, mctp_eid_t> buildNameToEidMap()
         DeviceInventoryInfo deviceInventoryInfo;
         FirmwareInventoryInfo fwInventoryInfo;
         ComponentNameMapInfo componentNameMapInfo;
+        ExcludedFwUpdateEids excludedFwUpdateEids;
 
         parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                    componentNameMapInfo);
+                    componentNameMapInfo, excludedFwUpdateEids);
 
         auto extractEidFromMatch =
             [](const DBusIntfMatch& match) -> std::optional<mctp_eid_t> {
@@ -444,8 +452,9 @@ std::unordered_map<std::string, mctp_eid_t> buildNameToEidMap()
             return extractEid(it->second);
         };
 
-        auto insertMapping = [&map](const std::string& name, mctp_eid_t eid) {
-            if (name.empty())
+        auto insertMapping = [&map, &excludedFwUpdateEids](
+                                 const std::string& name, mctp_eid_t eid) {
+            if (name.empty() || excludedFwUpdateEids.contains(eid))
             {
                 return;
             }

@@ -49,14 +49,16 @@ TEST(ParseConfig, SingleEntry)
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
     ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
 
     parseConfig("./fw_update_jsons/fw_update_config_single_entry.json",
                 outdeviceInventoryInfo, outFwInventoryInfo,
-                outComponentNameMapConfig);
+                outComponentNameMapConfig, outExcludedFwUpdateEids);
 
     EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
     EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
     EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
+    EXPECT_TRUE(outExcludedFwUpdateEids.empty());
 }
 
 TEST(ParseConfig, CombinedPropertyMatch)
@@ -86,10 +88,12 @@ TEST(ParseConfig, CombinedPropertyMatch)
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
     ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
 
     parseConfig(
         "./fw_update_jsons/fw_update_config_combined_properties_match.json",
-        outdeviceInventoryInfo, outFwInventoryInfo, outComponentNameMapConfig);
+        outdeviceInventoryInfo, outFwInventoryInfo, outComponentNameMapConfig,
+        outExcludedFwUpdateEids);
 
     EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
     EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
@@ -147,10 +151,11 @@ TEST(ParseConfig, MultipleEntry)
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
     ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
 
     parseConfig("./fw_update_jsons/fw_update_config_multiple_entry.json",
                 outdeviceInventoryInfo, outFwInventoryInfo,
-                outComponentNameMapConfig);
+                outComponentNameMapConfig, outExcludedFwUpdateEids);
 
     EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
     EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
@@ -178,10 +183,11 @@ TEST(ParseConfig, LimitedEntry)
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
     ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
 
     parseConfig("./fw_update_jsons/fw_update_config_limited_entry.json",
                 outdeviceInventoryInfo, outFwInventoryInfo,
-                outComponentNameMapConfig);
+                outComponentNameMapConfig, outExcludedFwUpdateEids);
 
     EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
     EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
@@ -210,12 +216,30 @@ TEST(ParseConfig, SingleEntryWithoutFwInvAssociations)
     DeviceInventoryInfo outdeviceInventoryInfo;
     FirmwareInventoryInfo outFwInventoryInfo;
     ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
 
     parseConfig(
         "./fw_update_jsons/fw_update_config_fw_inv_without_associations.json",
-        outdeviceInventoryInfo, outFwInventoryInfo, outComponentNameMapConfig);
+        outdeviceInventoryInfo, outFwInventoryInfo, outComponentNameMapConfig,
+        outExcludedFwUpdateEids);
 
     EXPECT_EQ(outdeviceInventoryInfo.infos, deviceInventoryInfo.infos);
     EXPECT_EQ(outFwInventoryInfo.infos, fwInventoryInfo.infos);
     EXPECT_EQ(outComponentNameMapConfig.infos, componentNameMapInfo.infos);
+}
+
+TEST(ParseConfig, ExcludedFwUpdateEidsPopulated)
+{
+    DeviceInventoryInfo outdeviceInventoryInfo;
+    FirmwareInventoryInfo outFwInventoryInfo;
+    ComponentNameMapInfo outComponentNameMapConfig;
+    ExcludedFwUpdateEids outExcludedFwUpdateEids;
+
+    parseConfig("./fw_update_jsons/fw_update_config_excluded_eids.json",
+                outdeviceInventoryInfo, outFwInventoryInfo,
+                outComponentNameMapConfig, outExcludedFwUpdateEids);
+
+    EXPECT_EQ(outExcludedFwUpdateEids, ExcludedFwUpdateEids({56, 57}));
+    EXPECT_TRUE(outdeviceInventoryInfo.infos.empty());
+    EXPECT_TRUE(outFwInventoryInfo.infos.empty());
 }
