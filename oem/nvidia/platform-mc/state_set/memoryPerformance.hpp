@@ -21,6 +21,8 @@
 #include <com/nvidia/MemoryPerformance/server.hpp>
 
 #ifdef OEM_NVIDIA
+#include "common/shared_mem_manager.hpp"
+
 #include <tal.hpp>
 #endif
 
@@ -66,12 +68,7 @@ class StateSetMemoryPerformance : public StateSet
     {
         std::string propertyName = propName;
         std::string ifaceName = ValueIntf->interface;
-        uint16_t retCode = 0;
         std::vector<uint8_t> rawPropValue = {};
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
 
         DbusVariantType propValue{
             MemoryPerformanceIntf::convertPerformanceStatesToString(
@@ -88,9 +85,9 @@ class StateSetMemoryPerformance : public StateSet
                 endpoint = std::get<2>(assoc);
                 if (endpoint.size() > 0)
                 {
-                    tal::TelemetryAggregator::updateTelemetry(
+                    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
                         objPath, ifaceName, propertyName, rawPropValue,
-                        steadyTimeStamp, retCode, propValue, endpoint);
+                        propValue, endpoint);
                 }
             }
         }

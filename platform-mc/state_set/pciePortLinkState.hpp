@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include "common/shared_mem_manager.hpp"
 #include "platform-mc/state_set.hpp"
 
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
@@ -80,12 +81,7 @@ class StateSetPciePortLinkState : public StateSet
     {
         std::string propertyName = propName;
         std::string ifaceName = ValuePortStateIntf->interface;
-        uint16_t retCode = 0;
         std::vector<uint8_t> rawPropValue = {};
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
 
         DbusVariantType propValue{PortStateIntf::convertLinkStatesToString(
             ValuePortStateIntf->linkState())};
@@ -102,9 +98,9 @@ class StateSetPciePortLinkState : public StateSet
                 if ((endpoint.size() > 0) &&
                     (!stateSensor.isDefaultInventoryAssociated()))
                 {
-                    tal::TelemetryAggregator::updateTelemetry(
+                    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
                         objPath, ifaceName, propertyName, rawPropValue,
-                        steadyTimeStamp, retCode, propValue, endpoint);
+                        propValue, endpoint);
                 }
             }
         }
