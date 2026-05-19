@@ -116,6 +116,44 @@ TEST_F(DebugTokenInternalTest, activateDoesNotThrowWithAsyncCall)
     EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.activate()); });
 }
 
+TEST_F(DebugTokenInternalTest, activateReturnsFalseOnAsyncCallFailure)
+{
+    // Pins the activate() -> exec::task<bool> contract: on the mock bus
+    // coSetDbusProperty resolves to false, so activate() must surface
+    // false to its caller. Guards the startTimer-only-on-success gate in
+    // updateDebugToken().
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    DebugToken debugToken(busMock, &updateManager);
+    debugToken.tokenPath =
+        "/xyz/openbmc_project/software/HGX_FW_Debug_Token_Erase";
+
+    auto result = stdexec::sync_wait(debugToken.activate());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(std::get<0>(result.value()));
+}
+
+TEST_F(DebugTokenInternalTest, activateFailureRunsSynchronousCleanup)
+{
+    // No functional regression guard for the failure branch inside
+    // activate(): tokenStatus must flip to true, activationMatches must be
+    // drained, and startUpdate() must have run (proven by survival without
+    // a null deref now that the timer is no longer constructed on this
+    // path).
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    DebugToken debugToken(busMock, &updateManager);
+    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenVersion = "1.2.3";
+    debugToken.tokenStatus = false;
+
+    EXPECT_NO_THROW({ stdexec::sync_wait(debugToken.activate()); });
+
+    EXPECT_TRUE(debugToken.tokenStatus);
+    EXPECT_TRUE(debugToken.activationMatches.empty());
+    EXPECT_EQ(debugToken.timer, nullptr);
+}
+
 TEST_F(DebugTokenInternalTest, getFilePathReturnsEmptyWhenNoMatchingUuid)
 {
     DebugToken debugToken(busMock, &updateManager);
@@ -674,6 +712,64 @@ TEST_F(DebugTokenInternalTest, getFilePathHandlesEmptyUuidAndEmptyPath)
     EXPECT_TRUE(objectPath.empty());
 }
 
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenDoesNotStartTimerWhenActivateFails)
+{
+    // End-to-end regression guard for the "start timer only on activate
+    // success" gate. On the mock bus the install-token path runs all the
+    // way through activate(), whose coSetDbusProperty fails, so timer
+    // must remain unset (was unconditionally constructed previously).
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/install_no_timer"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char* objPath, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_no_timer" &&
+                std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            if (std::string(objPath) ==
+                    "/xyz/openbmc_project/software/other/install_no_timer" &&
+                std::string(property) == "Path")
+            {
+                return std::string("/tmp/debug-token/install_no_timer/token");
+            }
+            throw std::runtime_error("unexpected property request");
+        });
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionNoTimer",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}}};
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionNoTimer"}};
+    std::istringstream package("WXYZ");
+
+    EXPECT_NO_THROW({
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
+    });
+    EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+    EXPECT_EQ(debugToken.timer, nullptr);
+    EXPECT_TRUE(debugToken.tokenStatus);
+    EXPECT_TRUE(debugToken.activationMatches.empty());
+}
+
 TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
 {
     wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
@@ -1127,8 +1223,12 @@ TEST_F(DebugTokenInternalTest,
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
+    // TODO(async-writes): setVersion / activate now go through
+    // coSetDbusProperty, which bypasses MockdBusHandler::setDbusProperty.
+    // The earlier `EXPECT_CALL(setDbusProperty).Times(AtLeast(2))` is no
+    // longer observable; isDebugTokenComponentPresent() remains a valid
+    // assertion because it is set in the synchronous prologue of
+    // updateDebugToken before any co_await.
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -1198,8 +1298,8 @@ TEST_F(DebugTokenInternalTest,
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
+    // TODO(async-writes): see updateDebugTokenContinuesPastEmpty... above.
+    // setDbusProperty mock is bypassed by the new coSetDbusProperty path.
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,

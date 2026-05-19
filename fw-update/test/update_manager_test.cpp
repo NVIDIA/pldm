@@ -2345,7 +2345,11 @@ TEST_F(UpdateManagerTest,
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
+    // TODO(async-writes): the RequestedActivation property write triggered
+    // by startNonPLDMUpdate -> OtherDeviceUpdateManager::activate() now
+    // goes through setDBusPropertyAsync (free function) and is not
+    // observable through MockdBusHandler::setDbusProperty. The assertion
+    // on `state == Activating` below still validates the public contract.
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -2661,7 +2665,10 @@ TEST_F(UpdateManagerTest,
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
+    // TODO(async-writes): same as
+    // startNonPLDMUpdateReturnsActivatingWhenTrackedOtherDevicesExist —
+    // the RequestedActivation write inside activatePackage's non-PLDM
+    // branch is now dispatched via setDBusPropertyAsync.
 
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,

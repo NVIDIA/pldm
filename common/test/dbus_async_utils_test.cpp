@@ -563,56 +563,62 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyReturnsDefaultsOnError)
 }
 
 TEST_F(DBusAsyncUtilsTest,
-       coGetDbusPropertyThrowsOnVariantMismatchAcrossSupportedTypes)
+       coGetDbusPropertyReturnsDefaultOnVariantMismatchAcrossSupportedTypes)
 {
+    // coGetDbusProperty::await_suspend catches std::bad_variant_access
+    // inside the Properties.Get callback (see common/dBusAsyncUtils.hpp),
+    // logs the mismatch, and resolves await_resume with the default-
+    // constructed value of the requested type. This matches the
+    // error_code failure path so callers do not need to wrap co_await in
+    // try/catch.
     constexpr auto path = "/xyz/openbmc_project/test/object";
     constexpr auto iface = "xyz.openbmc_project.Test.Interface";
     auto& conn = connection();
 
     conn.nextPropertyValue = uint64_t(99);
     pldm::utils::coGetDbusProperty<std::string> stringProp(path, "Name", iface);
-    EXPECT_THROW(stringProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(stringProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(stringProp.await_resume().empty());
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<uint64_t> numericProp(path, "Bus", iface);
-    EXPECT_THROW(numericProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(numericProp.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(numericProp.await_resume(), uint64_t(0));
 
     conn.nextPropertyValue = std::string("true");
     pldm::utils::coGetDbusProperty<bool> boolProp(path, "Present", iface);
-    EXPECT_THROW(boolProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(boolProp.await_suspend(std::noop_coroutine()));
+    EXPECT_FALSE(boolProp.await_resume());
 
     conn.nextPropertyValue = true;
     pldm::utils::coGetDbusProperty<std::vector<std::string>> parentsProp(
         path, "Parents", iface);
-    EXPECT_THROW(parentsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(parentsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(parentsProp.await_resume().empty());
 
     conn.nextPropertyValue = std::string("not-associations");
     pldm::utils::coGetDbusProperty<Associations> associationsProp(
         path, "Associations", iface);
-    EXPECT_THROW(associationsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(associationsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(associationsProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<uint64_t>{1, 2};
     pldm::utils::coGetDbusProperty<std::vector<uint8_t>> rawDataProp(
         path, "RawData", iface);
-    EXPECT_THROW(rawDataProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(rawDataProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(rawDataProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<uint8_t>{0x11, 0x22};
     pldm::utils::coGetDbusProperty<std::vector<uint64_t>> countersProp(
         path, "Counters", iface);
-    EXPECT_THROW(countersProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(countersProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(countersProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<std::string>{"not", "paths"};
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
         path, "ObjectPaths", iface);
-    EXPECT_THROW(objectPathsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(objectPathsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(objectPathsProp.await_resume().empty());
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyAssociationsAwaitSuspendCoverage)
@@ -638,12 +644,15 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyAssociationsAwaitSuspendCoverage)
     EXPECT_TRUE(errorProp.await_suspend(std::noop_coroutine()));
     EXPECT_TRUE(errorProp.await_resume().empty());
 
+    // Variant mismatch: the awaitable catches bad_variant_access inside
+    // the Properties.Get callback and resolves with an empty
+    // Associations, mirroring the error_code failure path above.
     conn.nextPropertyError.clear();
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<Associations> mismatchProp(
         path, "Associations", iface);
-    EXPECT_THROW(mismatchProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(mismatchProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(mismatchProp.await_resume().empty());
 }
 
 TEST_F(DBusAsyncUtilsTest,
@@ -782,47 +791,51 @@ TEST_F(DBusAsyncUtilsTest,
     EXPECT_DOUBLE_EQ(doubleProp.await_resume(), 0.0);
 }
 
-TEST_F(DBusAsyncUtilsTest,
-       coGetDbusPropertyThrowsOnVariantMismatchForRemainingPrimitiveTypes)
+TEST_F(
+    DBusAsyncUtilsTest,
+    coGetDbusPropertyReturnsDefaultOnVariantMismatchForRemainingPrimitiveTypes)
 {
+    // See coGetDbusPropertyReturnsDefaultOnVariantMismatchAcrossSupportedTypes
+    // for the contract: variant mismatch is caught inside the callback,
+    // logged, and surfaces as a default-constructed value via await_resume.
     constexpr auto path = "/xyz/openbmc_project/test/object";
     constexpr auto iface = "xyz.openbmc_project.Test.Interface";
     auto& conn = connection();
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<uint8_t> u8Prop(path, "U8", iface);
-    EXPECT_THROW(u8Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u8Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u8Prop.await_resume(), static_cast<uint8_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<int16_t> i16Prop(path, "I16", iface);
-    EXPECT_THROW(i16Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i16Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i16Prop.await_resume(), static_cast<int16_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<uint16_t> u16Prop(path, "U16", iface);
-    EXPECT_THROW(u16Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u16Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u16Prop.await_resume(), static_cast<uint16_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<int32_t> i32Prop(path, "I32", iface);
-    EXPECT_THROW(i32Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i32Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i32Prop.await_resume(), static_cast<int32_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<uint32_t> u32Prop(path, "U32", iface);
-    EXPECT_THROW(u32Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u32Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u32Prop.await_resume(), static_cast<uint32_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<int64_t> i64Prop(path, "I64", iface);
-    EXPECT_THROW(i64Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i64Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i64Prop.await_resume(), static_cast<int64_t>(0));
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<double> doubleProp(path, "Double", iface);
-    EXPECT_THROW(doubleProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(doubleProp.await_suspend(std::noop_coroutine()));
+    EXPECT_DOUBLE_EQ(doubleProp.await_resume(), 0.0);
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetServiceMapCoversSuccessAndErrorPaths)
@@ -1335,8 +1348,10 @@ TEST_F(DBusAsyncUtilsTest,
 }
 
 TEST_F(DBusAsyncUtilsTest,
-       coGetDbusPropertyHeapBackedTypesThrowOnShortServiceMismatches)
+       coGetDbusPropertyHeapBackedTypesReturnDefaultOnShortServiceMismatches)
 {
+    // Same default-on-mismatch contract as the long-service-name tests
+    // above, exercising the short-string heap-allocated paths.
     const std::string path = "/x";
     const std::string iface = "i";
     const std::string service = "svc";
@@ -1345,38 +1360,38 @@ TEST_F(DBusAsyncUtilsTest,
     conn.nextPropertyValue = uint64_t{9};
     pldm::utils::coGetDbusProperty<std::string> stringProp(
         path, "Name", iface, service);
-    EXPECT_THROW(stringProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(stringProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(stringProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<uint64_t>{1, 2};
     pldm::utils::coGetDbusProperty<std::vector<std::string>> parentsProp(
         path, "Parents", iface, service);
-    EXPECT_THROW(parentsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(parentsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(parentsProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<std::string>{"not", "assoc"};
     pldm::utils::coGetDbusProperty<Associations> associationsProp(
         path, "Associations", iface, service);
-    EXPECT_THROW(associationsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(associationsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(associationsProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<uint64_t>{7, 8};
     pldm::utils::coGetDbusProperty<std::vector<uint8_t>> rawDataProp(
         path, "RawData", iface, service);
-    EXPECT_THROW(rawDataProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(rawDataProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(rawDataProp.await_resume().empty());
 
     conn.nextPropertyValue = std::string("bad");
     pldm::utils::coGetDbusProperty<std::vector<uint64_t>> countersProp(
         path, "Counters", iface, service);
-    EXPECT_THROW(countersProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(countersProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(countersProp.await_resume().empty());
 
     conn.nextPropertyValue = std::vector<std::string>{"not", "paths"};
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
         path, "ObjectPaths", iface, service);
-    EXPECT_THROW(objectPathsProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(objectPathsProp.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(objectPathsProp.await_resume().empty());
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetServiceMapHandlesLargeMapsAndLongPaths)
@@ -2094,46 +2109,51 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyReturnsScalarDefaultsOnError)
     EXPECT_DOUBLE_EQ(doubleProp.await_resume(), 0.0);
 }
 
-TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyThrowsOnRemainingScalarMismatches)
+TEST_F(DBusAsyncUtilsTest,
+       coGetDbusPropertyReturnsDefaultOnRemainingScalarMismatches)
 {
+    // Exercises the variant-mismatch -> default-value path for additional
+    // numeric source types (different from the std::string("wrong") cases
+    // above). Confirms the catch-and-default behavior is uniform across
+    // any source variant that doesn't match the requested type.
     constexpr auto path = "/xyz/openbmc_project/test/object";
     constexpr auto iface = "xyz.openbmc_project.Test.Interface";
     auto& conn = connection();
 
     conn.nextPropertyValue = std::string("wrong-u8");
     pldm::utils::coGetDbusProperty<uint8_t> u8Prop(path, "U8", iface);
-    EXPECT_THROW(u8Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u8Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u8Prop.await_resume(), static_cast<uint8_t>(0));
 
     conn.nextPropertyValue = true;
     pldm::utils::coGetDbusProperty<int16_t> i16Prop(path, "I16", iface);
-    EXPECT_THROW(i16Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i16Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i16Prop.await_resume(), static_cast<int16_t>(0));
 
     conn.nextPropertyValue = static_cast<int64_t>(77);
     pldm::utils::coGetDbusProperty<uint16_t> u16Prop(path, "U16", iface);
-    EXPECT_THROW(u16Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u16Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u16Prop.await_resume(), static_cast<uint16_t>(0));
 
     conn.nextPropertyValue = static_cast<uint32_t>(88);
     pldm::utils::coGetDbusProperty<int32_t> i32Prop(path, "I32", iface);
-    EXPECT_THROW(i32Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i32Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i32Prop.await_resume(), static_cast<int32_t>(0));
 
     conn.nextPropertyValue = static_cast<int32_t>(-99);
     pldm::utils::coGetDbusProperty<uint32_t> u32Prop(path, "U32", iface);
-    EXPECT_THROW(u32Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(u32Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(u32Prop.await_resume(), static_cast<uint32_t>(0));
 
     conn.nextPropertyValue = static_cast<uint16_t>(123);
     pldm::utils::coGetDbusProperty<int64_t> i64Prop(path, "I64", iface);
-    EXPECT_THROW(i64Prop.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(i64Prop.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(i64Prop.await_resume(), static_cast<int64_t>(0));
 
     conn.nextPropertyValue = static_cast<uint64_t>(456);
     pldm::utils::coGetDbusProperty<double> doubleProp(path, "Double", iface);
-    EXPECT_THROW(doubleProp.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(doubleProp.await_suspend(std::noop_coroutine()));
+    EXPECT_DOUBLE_EQ(doubleProp.await_resume(), 0.0);
 }
 
 TEST_F(DBusAsyncUtilsTest,

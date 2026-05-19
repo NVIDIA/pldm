@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #pragma once
+#include "common/dBusAsyncUtils.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"

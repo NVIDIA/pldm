@@ -465,22 +465,31 @@ TEST_F(DBusAsyncUtilsCrossTuTest,
     EXPECT_TRUE(parentsProp.await_resume().empty());
 
     conn.nextPropertyError.clear();
+    // coGetDbusProperty catches std::bad_variant_access inside the
+    // Properties.Get callback (see common/dBusAsyncUtils.hpp). On a type
+    // mismatch await_suspend returns normally and await_resume yields the
+    // default-constructed value, mirroring the error_code failure path
+    // above.
     conn.nextPropertyValue = uint64_t(99);
     pldm::utils::coGetDbusProperty<std::string> badString(path, "Name", iface);
-    EXPECT_THROW(badString.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(badString.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(badString.await_resume().empty());
 
     conn.nextPropertyValue = std::string("wrong");
     pldm::utils::coGetDbusProperty<uint64_t> badNumeric(path, "Bus", iface);
-    EXPECT_THROW(badNumeric.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(badNumeric.await_suspend(std::noop_coroutine()));
+    EXPECT_EQ(badNumeric.await_resume(), uint64_t(0));
 
     conn.nextPropertyValue = std::vector<uint8_t>{0x11, 0x22};
     pldm::utils::coGetDbusProperty<std::vector<uint64_t>> badCounters(
         path, "Counters", iface);
-    EXPECT_THROW(badCounters.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(badCounters.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(badCounters.await_resume().empty());
 
+    // The mock raising a non-variant exception from inside
+    // async_method_call (i.e. *outside* the awaitable's own callback) is
+    // still expected to propagate out of await_suspend — the variant
+    // catch only swallows std::bad_variant_access.
     conn.throwOnPropertyCall = true;
     pldm::utils::coGetDbusProperty<std::string> throwingProp(
         path, "Name", iface);
@@ -664,18 +673,21 @@ TEST_F(DBusAsyncUtilsCrossTuTest,
     EXPECT_TRUE(bytesError.await_suspend(std::noop_coroutine()));
     EXPECT_TRUE(bytesError.await_resume().empty());
 
+    // Variant-mismatch path: coGetDbusProperty catches bad_variant_access
+    // inside the Properties.Get callback and resolves await_resume with an
+    // empty container, matching the error_code path above.
     conn.nextPropertyError.clear();
     conn.nextPropertyValue = objectPaths;
     pldm::utils::coGetDbusProperty<Associations> badAssociations(
         path, "Associations", iface, customService);
-    EXPECT_THROW(badAssociations.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(badAssociations.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(badAssociations.await_resume().empty());
 
     conn.nextPropertyValue = associations;
     pldm::utils::coGetDbusProperty<ObjectPaths> badObjectPaths(
         path, "ObjectPaths", iface, customService);
-    EXPECT_THROW(badObjectPaths.await_suspend(std::noop_coroutine()),
-                 std::bad_variant_access);
+    EXPECT_TRUE(badObjectPaths.await_suspend(std::noop_coroutine()));
+    EXPECT_TRUE(badObjectPaths.await_resume().empty());
 
     {
         async_utils_cross_tu::ScopedAllocationPause pause;

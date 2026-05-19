@@ -460,17 +460,17 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
     return TransferPackageState::SUCCESS;
 }
 
-size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
+exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
     [[maybe_unused]] const FirmwareDeviceIDRecords& fwDeviceIDRecords,
     [[maybe_unused]] const ComponentImageInfos& componentImageInfos,
     [[maybe_unused]] std::istream& package)
 {
 #ifndef NON_PLDM
-    return 0;
+    co_return 0;
 #else
     size_t totalNumImages = 0;
     startWatchingInterfaceAddition();
-    buildDeviceDescriptorMap();
+    co_await buildDeviceDescriptorMap();
 
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
@@ -518,7 +518,7 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 directoryName, componentImageInfo, package, objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
-                return 0;
+                co_return 0;
             }
             if (transferState == TransferPackageState::SKIPPED)
             {
@@ -532,15 +532,18 @@ size_t OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
-                return 0;
+                co_return 0;
             }
         }
 
         totalNumImages++;
         isImageFileProcessed[uuid] = false;
     }
+    // Populate the timeout cache before the synchronous getter is called by
+    // UpdateManager::activatePackage.
+    [[maybe_unused]] auto _rc2 = co_await populateMaxItemUpdaterTimeoutCache();
     startTimer(totalNumImages * UPDATER_ACTIVATION_WAIT_PER_IMAGE_SEC);
-    return totalNumImages;
+    co_return totalNumImages;
 #endif
 }
 
@@ -594,70 +597,83 @@ int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 #endif
 }
 
-void OtherDeviceUpdateManager::buildDeviceDescriptorMap()
+exec::task<void> OtherDeviceUpdateManager::buildDeviceDescriptorMap()
 {
     otherDeviceDescriptorMap.clear();
 
-    std::vector<std::string> paths;
-    getValidPaths(paths);
+#ifdef NON_PLDM
+    const std::string uuidIface{
+        sdbusplus::xyz::openbmc_project::Common::server::UUID::interface};
+    const std::string skuIface{sdbusplus::xyz::openbmc_project::Inventory::
+                                   Decorator::server::SKU::interface};
+    const std::string pathIface{
+        sdbusplus::xyz::openbmc_project::Common::server::FilePath::interface};
+    const std::string searchRoot{"/xyz/openbmc_project/software/other"};
+    const std::string uuidProp{"UUID"};
+    const std::string skuProp{"SKU"};
+    const std::string pathProp{"Path"};
+    pldm::dbus::Interfaces uuidOnly{uuidIface};
 
-    for (const auto& objPath : paths)
+    try
     {
-        UUID uuid{};
-        try
-        {
-            uuid = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
-                objPath.c_str(), "UUID",
-                sdbusplus::xyz::openbmc_project::Common::server::UUID::
-                    interface));
-        }
-        catch (const std::exception&)
-        {
-            continue;
-        }
+        auto subtree =
+            co_await pldm::utils::coGetSubTree(searchRoot, 0, uuidOnly);
 
-        std::transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
-
-        SKU sku{};
-        try
+        for (const auto& [objPath, serviceMap] : subtree)
         {
-            sku = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
-                objPath.c_str(), "SKU",
-                sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
-                    SKU::interface));
-        }
-        catch (const std::exception&)
-        {
-            // If the SKU property is not present, we default to an empty
-            // string.
-        }
+            if (serviceMap.empty())
+            {
+                continue;
+            }
+            const std::string serviceName = serviceMap.begin()->first;
+            const std::string objPathStr = objPath;
 
-        std::transform(sku.begin(), sku.end(), sku.begin(), ::toupper);
+            std::string uuid;
+            try
+            {
+                uuid = co_await pldm::utils::coGetDbusProperty<std::string>(
+                    objPathStr, uuidProp, uuidIface, serviceName);
+            }
+            catch (const std::exception& e)
+            {
+                error("Failed to get UUID for {PATH} on {SERVICE}: {ERROR}",
+                      "PATH", objPathStr, "SERVICE", serviceName, "ERROR", e);
+                continue;
+            }
+            if (uuid.empty())
+            {
+                continue;
+            }
+            std::transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
 
-        std::string filePath{};
-        try
-        {
-            filePath = std::get<std::string>(dbusHandler.getDbusPropertyVariant(
-                objPath.c_str(), "Path",
-                sdbusplus::xyz::openbmc_project::Common::server::FilePath::
-                    interface));
-        }
-        catch (const std::exception&)
-        {
-            continue;
-        }
+            auto sku = co_await pldm::utils::coGetDbusProperty<std::string>(
+                objPathStr, skuProp, skuIface, serviceName);
+            std::transform(sku.begin(), sku.end(), sku.begin(), ::toupper);
 
-        auto dirPath = std::filesystem::path(filePath).parent_path().string();
+            auto filePath =
+                co_await pldm::utils::coGetDbusProperty<std::string>(
+                    objPathStr, pathProp, pathIface, serviceName);
+            if (filePath.empty())
+            {
+                continue;
+            }
+            auto dirPath =
+                std::filesystem::path(filePath).parent_path().string();
 
-        otherDeviceDescriptorMap[{uuid, sku}] = {dirPath, objPath};
+            otherDeviceDescriptorMap[{uuid, sku}] = {dirPath, objPathStr};
 
-        // This covers the scenario where the package has no SKU but we still
-        // match on just UUID.
-        if (!sku.empty())
-        {
-            otherDeviceDescriptorMap[{uuid, ""}] = {dirPath, objPath};
+            if (!sku.empty())
+            {
+                otherDeviceDescriptorMap[{uuid, ""}] = {dirPath, objPathStr};
+            }
         }
     }
+    catch (const std::exception& e)
+    {
+        error("buildDeviceDescriptorMap failed: {ERROR}", "ERROR", e);
+    }
+#endif
+    co_return;
 }
 
 size_t OtherDeviceUpdateManager::getValidTargets(void)
@@ -670,8 +686,27 @@ size_t OtherDeviceUpdateManager::getValidTargets(void)
 
 void OtherDeviceUpdateManager::updateValidTargets(void)
 {
+    // Called synchronously from the constructor — see header comment.
+    // The remaining sync reads are bounded to this single call site at
+    // startup of an update and intentionally use the sync dbusHandler so
+    // the count is available when UpdateManager::processStreamDefer checks
+    // getValidTargets() immediately after construction.
     std::vector<std::string> paths;
-    getValidPaths(paths);
+#ifdef NON_PLDM
+    try
+    {
+        paths = dbusHandler.getSubTreePaths(
+            "/xyz/openbmc_project/software/other", 0,
+            std::vector<std::string>{sdbusplus::xyz::openbmc_project::Common::
+                                         server::UUID::interface});
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
+            "ERROR", e);
+    }
+#endif
     validTargetCount = 0;
     for (auto& obj : paths)
     {
@@ -698,53 +733,42 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
 
 uint64_t OtherDeviceUpdateManager::getMaxItemUpdaterTimeoutSec() const
 {
-#ifndef NON_PLDM
-    return 0;
-#else
-    constexpr auto updateTimeoutInterface = "com.nvidia.Software.UpdateTimeout";
-    constexpr auto timeoutProperty = "Timeout";
-
-    uint64_t maxTimeout = 0;
-    for (const auto& [path, _] : otherDevices)
-    {
-        try
-        {
-            auto value = dbusHandler.getDbusPropertyVariant(
-                path.c_str(), timeoutProperty, updateTimeoutInterface);
-            maxTimeout = std::max(maxTimeout, std::get<uint64_t>(value));
-        }
-        catch (const std::exception&)
-        {
-            // Path doesn't publish UpdateTimeout (older nvidia-code-mgmt
-            // build) — skip silently, not an error.
-            continue;
-        }
-    }
-    return maxTimeout;
-#endif
+    return maxItemUpdaterTimeoutCacheSec;
 }
 
-void OtherDeviceUpdateManager::getValidPaths(
-    std::vector<std::string>& paths) const
+exec::task<int> OtherDeviceUpdateManager::populateMaxItemUpdaterTimeoutCache()
 {
-#ifndef NON_PLDM
-    (void)paths; // suppress unused warning
-    return;
-#endif
+    maxItemUpdaterTimeoutCacheSec = 0;
+#ifdef NON_PLDM
+    const std::string updateTimeoutInterface{
+        "com.nvidia.Software.UpdateTimeout"};
+    const std::string timeoutProperty{"Timeout"};
+    pldm::dbus::Interfaces timeoutIfaceList{updateTimeoutInterface};
 
     try
     {
-        paths = dbusHandler.getSubTreePaths(
-            "/xyz/openbmc_project/software/other", 0,
-            std::vector<std::string>{sdbusplus::xyz::openbmc_project::Common::
-                                         server::UUID::interface});
+        for (const auto& kv : otherDevices)
+        {
+            const std::string path = kv.first;
+            auto serviceMap =
+                co_await pldm::utils::coGetServiceMap(path, timeoutIfaceList);
+            if (serviceMap.empty())
+            {
+                continue;
+            }
+            const std::string serviceName = serviceMap.begin()->first;
+            auto value = co_await pldm::utils::coGetDbusProperty<uint64_t>(
+                path, timeoutProperty, updateTimeoutInterface, serviceName);
+            maxItemUpdaterTimeoutCacheSec =
+                std::max(maxItemUpdaterTimeoutCacheSec, value);
+        }
     }
     catch (const std::exception& e)
     {
-        error(
-            "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
-            "ERROR", e);
+        error("populateMaxItemUpdaterTimeoutCache failed: {ERROR}", "ERROR", e);
     }
+#endif
+    co_return 0;
 }
 
 } // namespace fw_update

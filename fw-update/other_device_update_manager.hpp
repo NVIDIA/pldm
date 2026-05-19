@@ -19,6 +19,7 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
@@ -167,14 +168,14 @@ class OtherDeviceUpdateManager
 
     /**
      * @brief From pldm image extracts the other device images and copies to
-     * respective location
+     * respective location. Drives D-Bus property reads asynchronously.
      *
      * @param fwDeviceIDRecords - Device records
      * @param componentImageInfos - Image info like offset, size
      * @param package - pldm image input stream
-     * @return size_t - number of other device images
+     * @return exec::task yielding the number of other device images
      */
-    size_t extractOtherDevicePkgs(
+    exec::task<size_t> extractOtherDevicePkgs(
         const FirmwareDeviceIDRecords& fwDeviceIDRecords,
         const ComponentImageInfos& componentImageInfos, std::istream& package);
 
@@ -194,8 +195,10 @@ class OtherDeviceUpdateManager
     size_t getValidTargets(void);
 
     /**
-     * @brief Compute the max UpdateTimeout (seconds) advertised by the
-     *        Item Updaters that descriptor-matched the current package.
+     * @brief Return the cached max UpdateTimeout (seconds) advertised by the
+     *        Item Updaters that descriptor-matched the current package. The
+     *        cache is populated asynchronously during extractOtherDevicePkgs,
+     *        so this synchronous getter never blocks the event loop.
      *
      * @return 0 if no Item Updater publishes the property; caller falls
      *         back to FIRMWARE_UPDATE_TIME.
@@ -218,7 +221,7 @@ class OtherDeviceUpdateManager
      * otherDeviceDescriptorMap.
      *
      */
-    void buildDeviceDescriptorMap();
+    exec::task<void> buildDeviceDescriptorMap();
 
     /**
      * @brief Interface Addition monitoring
@@ -236,15 +239,20 @@ class OtherDeviceUpdateManager
     Server::Activation::Activations getOverAllActivationState();
 
     /**
-     * @brief Get the Valid Paths that may contain UUIDs
-     *
-     * @param paths object to store the paths into
+     * @brief Async populate maxItemUpdaterTimeoutCacheSec by reading the
+     *        com.nvidia.Software.UpdateTimeout property from each known
+     *        Item Updater path.
      */
-    void getValidPaths(std::vector<std::string>& paths) const;
+    exec::task<int> populateMaxItemUpdaterTimeoutCache();
 
     /**
-     * @brief updates the valid target count
+     * @brief updates the valid target count.
      *
+     * TODO: This is the only remaining synchronous D-Bus read in this class.
+     * Its caller (processStreamDefer) is not a coroutine and inspects
+     * getValidTargets() synchronously immediately after construction, so
+     * converting it requires restructuring processStreamDefer. Tracked
+     * separately.
      */
     void updateValidTargets(void);
 
@@ -310,6 +318,13 @@ class OtherDeviceUpdateManager
      *
      */
     size_t validTargetCount;
+
+    /**
+     * @brief Cached max UpdateTimeout (seconds) across Item Updaters that
+     *        descriptor-matched the current package. Populated asynchronously
+     *        inside extractOtherDevicePkgs so the sync getter never blocks.
+     */
+    uint64_t maxItemUpdaterTimeoutCacheSec{0};
 
     /**
      * @brief D-Bus object referance

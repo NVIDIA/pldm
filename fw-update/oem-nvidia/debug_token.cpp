@@ -313,6 +313,13 @@ void DebugToken::startTokenUpdate(
 std::pair<std::string, std::string> DebugToken::getFilePath(
     const std::string& uuid)
 {
+    // TODO(async-reads): convert to exec::task once the caller chain
+    // (updateDebugToken -> activatePackage -> sdbusplus property setter in
+    // activation.cpp) supports coroutines. Today the property setter is a
+    // synchronous sdbusplus handler so co_await-ing from here would require
+    // bubbling exec::task through it. The blocking reads here run only
+    // during the single updateDebugToken setup step, not in the steady-state
+    // event loop, so the stall window is bounded.
     std::vector<std::string> paths;
     getValidPaths(paths);
     for (auto& obj : paths)

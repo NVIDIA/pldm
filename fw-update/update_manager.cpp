@@ -631,7 +631,7 @@ exec::task<void> UpdateManager::processStream(
 
     // get non-pldm components, add to total component count
     size_t otherDevicesImageCount =
-        otherDeviceUpdateManager->extractOtherDevicePkgs(
+        co_await otherDeviceUpdateManager->extractOtherDevicePkgs(
             parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
             package);
     totalNumComponentUpdates += otherDevicesImageCount;
