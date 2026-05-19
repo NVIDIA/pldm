@@ -21,6 +21,8 @@
 #include <com/nvidia/ProcessorPowerBreak/server.hpp>
 
 #ifdef OEM_NVIDIA
+#include "common/shared_mem_manager.hpp"
+
 #include <tal.hpp>
 #endif
 
@@ -71,12 +73,7 @@ class StateSetProcessorPowerBreak : public StateSet
     {
         std::string propertyName = propName;
         std::string ifaceName = ValueIntf->interface;
-        uint16_t retCode = 0;
         std::vector<uint8_t> rawPropValue = {};
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
 
         DbusVariantType propValue{
             ProcessorPowerBreakIntf::convertPowerBreakStatesToString(
@@ -94,9 +91,9 @@ class StateSetProcessorPowerBreak : public StateSet
                 if ((endpoint.size() > 0) &&
                     (!stateSensor.isDefaultInventoryAssociated()))
                 {
-                    tal::TelemetryAggregator::updateTelemetry(
+                    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
                         objPath, ifaceName, propertyName, rawPropValue,
-                        steadyTimeStamp, retCode, propValue, endpoint);
+                        propValue, endpoint);
                 }
             }
         }

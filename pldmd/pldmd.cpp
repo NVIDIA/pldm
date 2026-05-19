@@ -1,6 +1,7 @@
 #include "common/flight_recorder.hpp"
 #include "common/instance_id.hpp"
 #include "common/mctp_error_handling.hpp"
+#include "common/shared_mem_manager.hpp"
 #include "common/transport.hpp"
 #include "common/utils.hpp"
 #include "fw-update/fw_update_utility.hpp"
@@ -319,11 +320,7 @@ int main(int argc, char** argv)
         PLDM_STATIC_CONFIG_JSON);
 
     // Initializing telemetry for pldmd
-    if (tal::TelemetryAggregator::namespaceInit(tal::ProcessType::Producer,
-                                                "pldmd"))
-    {
-        info("Initialized tal from pldmd");
-    }
+    pldm::shmem_utils::SharedMemoryManager::initTALNamespace();
 #endif
 
 #ifdef LIBPLDMRESPONDER

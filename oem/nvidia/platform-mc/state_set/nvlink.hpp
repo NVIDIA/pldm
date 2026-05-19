@@ -29,6 +29,8 @@
 #include <filesystem>
 
 #ifdef OEM_NVIDIA
+#include "common/shared_mem_manager.hpp"
+
 #include <tal.hpp>
 #endif
 
@@ -118,12 +120,7 @@ class StateSetNvlink : public StateSet
     {
         std::string propertyName = propName;
         std::string ifaceName = ValuePortStateIntf->interface;
-        uint16_t retCode = 0;
         std::vector<uint8_t> rawPropValue = {};
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
 
         DbusVariantType propValue{};
         if (propName == "LinkStatus")
@@ -149,12 +146,12 @@ class StateSetNvlink : public StateSet
                 if ((endpoint.size() > 0) &&
                     (!stateSensor.isDefaultInventoryAssociated()))
                 {
-                    tal::TelemetryAggregator::updateTelemetry(
+                    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
                         objPath, ifaceName, propertyName, rawPropValue,
-                        steadyTimeStamp, retCode, propValue, endpoint);
+                        propValue, endpoint);
                     // WORKAROUND: publish the same reading on every mirror.
                     portMirror.publishShmem(ifaceName, propertyName, propValue,
-                                            steadyTimeStamp, endpoint);
+                                            endpoint);
                 }
             }
         }

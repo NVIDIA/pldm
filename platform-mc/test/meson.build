@@ -4,6 +4,7 @@ dep_src_files = [
     '../platform_manager.cpp',
     '../sensor_manager.cpp',
     '../numeric_sensor.cpp',
+    '../../common/shared_mem_manager.cpp',
     '../state_sensor.cpp',
     '../state_effecter.cpp',
     '../state_set.cpp',

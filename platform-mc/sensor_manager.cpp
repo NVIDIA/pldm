@@ -17,6 +17,7 @@
 
 #include "sensor_manager.hpp"
 
+#include "common/shared_mem_manager.hpp"
 #include "common/sleep.hpp"
 #include "manager.hpp"
 #include "terminus_manager.hpp"
@@ -353,6 +354,12 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 sensor->setLastUpdatedTimeStamp(t1);
             }
         }
+
+        // Flush all batched TAL writes from this cycle's priority-sensor pass.
+        // Mirrors nsmd 3cb9d9e2: one aggregated write per cycle, immediately
+        // after priority sensors. Round-robin updates queued below flush at
+        // the start of the next cycle's priority-sensor flush.
+        pldm::shmem_utils::SharedMemoryManager::updateAggregateTelemetryOnTAL();
 
         if (verbose)
         {

@@ -26,6 +26,8 @@
 #include <vector>
 
 #ifdef OEM_NVIDIA
+#include "common/shared_mem_manager.hpp"
+
 #include <tal.hpp>
 #endif
 
@@ -176,16 +178,14 @@ class NvlinkPortMirror
 #ifdef OEM_NVIDIA
     /** @brief Publish a shmem telemetry reading for every mirror Port. */
     void publishShmem(const std::string& iface, const std::string& property,
-                      DbusVariantType& value, uint64_t timestamp,
+                      const DbusVariantType& value,
                       const std::string& endpoint) const
     {
         std::vector<uint8_t> emptyRaw;
-        constexpr uint16_t okRetCode = 0;
         for (const auto& mp : mirrors)
         {
-            tal::TelemetryAggregator::updateTelemetry(
-                mp.path, iface, property, emptyRaw, timestamp, okRetCode, value,
-                endpoint);
+            pldm::shmem_utils::SharedMemoryManager::cacheTALData(
+                mp.path, iface, property, emptyRaw, value, endpoint);
         }
     }
 #endif

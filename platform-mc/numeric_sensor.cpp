@@ -18,6 +18,8 @@
 
 #include "libpldm/platform.h"
 
+#include "common/shared_mem_manager.hpp"
+
 #include <phosphor-logging/lg2.hpp>
 #include <tal.hpp>
 
@@ -726,12 +728,8 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     std::string ifaceName =
         useMetricInterface ? metricIntf->interface : valueIntf->interface;
     // TODO: update retCode for errors once error code handling defined for pldm
-    uint16_t retCode = 0;
+    int retCode = 0;
 
-    uint64_t steadyTimeStamp = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
-            .count());
     // tal telemetry update for all Numeric Sensors.
     double convertVal =
         useMetricInterface ? metricIntf->value() : valueIntf->value();
@@ -747,9 +745,9 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         endpoint = std::get<2>(definitions[0]);
         if (endpoint.size() > 0 && !defaultInventoryAssociated)
         {
-            tal::TelemetryAggregator::updateTelemetry(
-                objPath, ifaceName, propertyName, rawSmbpbiData,
-                steadyTimeStamp, retCode, propValue, endpoint);
+            pldm::shmem_utils::SharedMemoryManager::cacheTALData(
+                objPath, ifaceName, propertyName, rawSmbpbiData, propValue,
+                endpoint, retCode);
         }
     }
 }

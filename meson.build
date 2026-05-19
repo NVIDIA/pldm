@@ -410,6 +410,7 @@ source_files = [
     'pldmd/pldmd.cpp',
     'common/transport.cpp',
     'common/mctp_error_handling.cpp',
+    'common/shared_mem_manager.cpp',
     'fw-update/activation.cpp',
     'fw-update/inventory_manager.cpp',
     'fw-update/package_parser.cpp',

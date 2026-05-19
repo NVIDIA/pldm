@@ -18,6 +18,7 @@
 
 #include "libpldm/platform.h"
 
+#include "common/shared_mem_manager.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
@@ -113,25 +114,18 @@ void SwitchBandwidthSensor::addAssociatedSensorID(uint16_t id)
 
 void SwitchBandwidthSensor::updateOnSharedMemory()
 {
-    uint64_t steadyTimeStamp = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
-            .count());
-    uint16_t retCode = 0;
     std::vector<uint8_t> rawSmbpbiData = {};
     auto ifaceName = std::string(switchIntf->interface);
 
     DbusVariantType variantCB{switchIntf->currentBandwidth()};
     std::string propertyName = "CurrentBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(
-        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode,
-        variantCB);
+    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
+        path, ifaceName, propertyName, rawSmbpbiData, variantCB);
 
     DbusVariantType variantMB{switchIntf->maxBandwidth()};
     propertyName = "MaxBandwidth";
-    tal::TelemetryAggregator::updateTelemetry(
-        path, ifaceName, propertyName, rawSmbpbiData, steadyTimeStamp, retCode,
-        variantMB);
+    pldm::shmem_utils::SharedMemoryManager::cacheTALData(
+        path, ifaceName, propertyName, rawSmbpbiData, variantMB);
 }
 
 } // namespace oem_nvidia

@@ -18,6 +18,7 @@
 
 #include "libpldm/entity.h"
 
+#include "common/shared_mem_manager.hpp"
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/state_set.hpp"
 
@@ -248,34 +249,29 @@ class StateSetEthIBPortLinkState : public StateSet
     void updateSharedMemory()
     {
         // add values in tal
-        uint64_t steadyTimeStamp = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
-        uint16_t retCode = 0;
         std::vector<uint8_t> rawSmbpbiData = {};
         auto ifaceName = std::string(ValuePortInfoIntf->interface);
 
         DbusVariantType variantCS{ValuePortInfoIntf->currentSpeed()};
         std::string propertyName = "CurrentSpeed";
-        tal::TelemetryAggregator::updateTelemetry(
+        pldm::shmem_utils::SharedMemoryManager::cacheTALData(
             sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
-            steadyTimeStamp, retCode, variantCS);
+            variantCS);
 
         DbusVariantType variantMS{ValuePortInfoIntf->maxSpeed()};
         propertyName = "MaxSpeed";
-        tal::TelemetryAggregator::updateTelemetry(
+        pldm::shmem_utils::SharedMemoryManager::cacheTALData(
             sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
-            steadyTimeStamp, retCode, variantMS);
+            variantMS);
 
         DbusVariantType variantLS{
             ValuePortStateIntf->convertLinkStatusTypeToString(
                 ValuePortStateIntf->linkStatus())};
         ifaceName = std::string(ValuePortStateIntf->interface);
         propertyName = "LinkStatus";
-        tal::TelemetryAggregator::updateTelemetry(
+        pldm::shmem_utils::SharedMemoryManager::cacheTALData(
             sharedMemObjectPath, ifaceName, propertyName, rawSmbpbiData,
-            steadyTimeStamp, retCode, variantLS);
+            variantLS);
     }
 #endif
 
