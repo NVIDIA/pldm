@@ -88,13 +88,15 @@ TEST(ConfigInternal, parseConfigInvalidJsonReturnsEmptyOutputs)
     DeviceInventoryInfo deviceInventoryInfo;
     FirmwareInventoryInfo fwInventoryInfo;
     ComponentNameMapInfo componentNameMapInfo;
+    ExcludedFwUpdateEids excludedFwUpdateEids;
 
     parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                componentNameMapInfo);
+                componentNameMapInfo, excludedFwUpdateEids);
 
     EXPECT_TRUE(deviceInventoryInfo.infos.empty());
     EXPECT_TRUE(fwInventoryInfo.infos.empty());
     EXPECT_TRUE(componentNameMapInfo.infos.empty());
+    EXPECT_TRUE(excludedFwUpdateEids.empty());
 }
 
 TEST(ConfigInternal, getDeviceNameFromEidLoadsFromRuntimeConfig)
@@ -241,6 +243,56 @@ TEST(ConfigInternal, buildEidToNameMapExercisesFallbackAndSkipBranches)
     EXPECT_FALSE(eidToNameMap.contains(24));
     EXPECT_FALSE(eidToNameMap.contains(25));
     EXPECT_FALSE(eidToNameMap.contains(26));
+}
+
+TEST(ConfigInternal, targetNameLookupSkipsExcludedFwUpdateEids)
+{
+    const std::string config = R"({
+        "excluded_fw_update_eids": [31],
+        "entries": [
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 31}]
+                },
+                "device_inventory": {
+                    "create": {"object_path": "/xyz/openbmc_project/inventory/system/chassis/ExcludedDevice"}
+                },
+                "firmware_inventory": {
+                    "create": {"ExcludedComponent": {"component_id": 1}},
+                    "update": {"ExcludedUpdateComponent": 2}
+                },
+                "component_info": {"ExcludedComponentInfo": 3}
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 32}]
+                },
+                "device_inventory": {
+                    "create": {"object_path": "/xyz/openbmc_project/inventory/system/chassis/IncludedDevice"}
+                },
+                "firmware_inventory": {
+                    "create": {"IncludedComponent": {"component_id": 4}}
+                },
+                "component_info": {"IncludedComponentInfo": 5}
+            }
+        ]
+    })";
+    writeRuntimeConfig(config);
+
+    auto eidToNameMap = buildEidToNameMap();
+    auto nameToEidMap = buildNameToEidMap();
+
+    ASSERT_TRUE(eidToNameMap.contains(31));
+    EXPECT_EQ(eidToNameMap.at(31), "ExcludedDevice");
+    EXPECT_TRUE(eidToNameMap.contains(32));
+    EXPECT_FALSE(nameToEidMap.contains("ExcludedDevice"));
+    EXPECT_FALSE(nameToEidMap.contains("ExcludedComponent"));
+    EXPECT_FALSE(nameToEidMap.contains("ExcludedUpdateComponent"));
+    EXPECT_FALSE(nameToEidMap.contains("ExcludedComponentInfo"));
+    ASSERT_TRUE(nameToEidMap.contains("IncludedDevice"));
+    EXPECT_EQ(nameToEidMap.at("IncludedDevice"), 32);
 }
 
 } // namespace pldm::fw_update

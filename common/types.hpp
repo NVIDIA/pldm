@@ -13,6 +13,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -158,6 +159,13 @@ using DownstreamDeviceInfo =
 
 using DescriptorMap = std::unordered_map<eid, Descriptors>;
 using DownstreamDescriptorMap = std::unordered_map<eid, DownstreamDeviceInfo>;
+
+/** @brief EIDs that advertise PLDM T5 but must not be treated as firmware
+ *         update targets on this BMC (e.g., devices updated through another
+ *         path such as a downstream BMC). Loaded from the
+ *         `excluded_fw_update_eids` top-level array in fw_update_config.json.
+ */
+using ExcludedFwUpdateEids = std::unordered_set<eid>;
 
 // Component information
 using CompClassification = uint16_t;
