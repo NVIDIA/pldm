@@ -57,12 +57,14 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         std::shared_ptr<NumericEffecter> effecterCpuClockFrequency,
         std::shared_ptr<NumericEffecter> effecterTemperature,
         std::shared_ptr<NumericEffecter> effecterWorkloadFactor,
+        std::shared_ptr<NumericEffecter> effecterNumberOfCores,
         std::shared_ptr<NumericEffecter> effecterPowerEstimation,
         bool verbose = false) :
         StaticPowerHintInft(bus, path),
         effecterCpuClockFrequency(*effecterCpuClockFrequency),
         effecterTemperature(*effecterTemperature),
         effecterWorkloadFactor(*effecterWorkloadFactor),
+        effecterNumberOfCores(std::move(effecterNumberOfCores)),
         effecterPowerEstimation(*effecterPowerEstimation), verbose(verbose)
     {}
 
@@ -122,8 +124,28 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         return 0;
     }
 
+    uint32_t maxNumberOfCores() const override
+    {
+        if (effecterNumberOfCores && effecterNumberOfCores->unitIntf)
+        {
+            return static_cast<uint32_t>(
+                effecterNumberOfCores->unitIntf->pdrMaxSettable());
+        }
+        return 0;
+    }
+
+    uint32_t minNumberOfCores() const override
+    {
+        if (effecterNumberOfCores && effecterNumberOfCores->unitIntf)
+        {
+            return static_cast<uint32_t>(
+                effecterNumberOfCores->unitIntf->pdrMinSettable());
+        }
+        return 0;
+    }
+
     void estimatePower(double cpuClockFrequency, double workloadFactor,
-                       double temperature) override
+                       double temperature, uint32_t numberOfCores) override
     {
         if (estimationTaskHandle.has_value())
         {
@@ -167,24 +189,38 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
                 InvalidArgument();
         }
 
+        // NumberOfCores effecter is optional for legacy device support; only
+        // range-check the argument when the effecter is actually present.
+        if (effecterNumberOfCores && (numberOfCores > maxNumberOfCores() ||
+                                      numberOfCores < minNumberOfCores()))
+        {
+            StaticPowerHintInft::stateOfLastEstimatePower(
+                StateOfEstimatePower::InvalidArgument);
+            throw sdbusplus::xyz::openbmc_project::Common::Error::
+                InvalidArgument();
+        }
+
         // start task
         StaticPowerHintInft::cpuClockFrequency(cpuClockFrequency, true);
         StaticPowerHintInft::workloadFactor(workloadFactor, true);
         StaticPowerHintInft::temperature(temperature, true);
+        StaticPowerHintInft::numberOfCores(numberOfCores, true);
         StaticPowerHintInft::powerEstimate(0, true);
         StaticPowerHintInft::valid(false, true);
         StaticPowerHintInft::stateOfLastEstimatePower(
             StateOfEstimatePower::InProgress);
         auto& [scope, rcOpt] = estimationTaskHandle.emplace();
         stdexec::start_detached(
-            estimationTask(cpuClockFrequency, workloadFactor, temperature) |
+            estimationTask(cpuClockFrequency, workloadFactor, temperature,
+                           numberOfCores) |
                 stdexec::then([&](int rc) { rcOpt.emplace(rc); }),
             exec::default_task_context<void>(exec::inline_scheduler{}));
     }
 
   private:
     exec::task<int> estimationTask(double cpuClockFrequency,
-                                   double workloadFactor, double temperature)
+                                   double workloadFactor, double temperature,
+                                   uint32_t numberOfCores)
     {
         uint64_t t0 = 0;
         uint64_t t1 = 0;
@@ -221,6 +257,18 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
             co_return PLDM_ERROR;
         }
 
+        if (effecterNumberOfCores)
+        {
+            rc = co_await effecterNumberOfCores->setNumericEffecterValue(
+                effecterNumberOfCores->baseToRaw(numberOfCores));
+            if (rc)
+            {
+                StaticPowerHintInft::stateOfLastEstimatePower(
+                    StateOfEstimatePower::Failed);
+                co_return PLDM_ERROR;
+            }
+        }
+
         rc = co_await effecterPowerEstimation.getNumericEffecterValue();
         if (rc)
         {
@@ -248,6 +296,10 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
     NumericEffecter& effecterCpuClockFrequency;
     NumericEffecter& effecterTemperature;
     NumericEffecter& effecterWorkloadFactor;
+    /** @brief Optional NumberOfCores effecter; null when the device doesn't
+     *  expose one. Legacy devices without this effecter are silently tolerated.
+     */
+    std::shared_ptr<NumericEffecter> effecterNumberOfCores;
     NumericEffecter& effecterPowerEstimation;
 
     /** @brief coroutine handle of estimationTask */

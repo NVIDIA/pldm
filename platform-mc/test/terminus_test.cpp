@@ -2783,6 +2783,7 @@ TEST_F(TerminusTest, nvidiaRemoteDebugAndStaticPowerHintCoverage)
     const auto minWorkload = staticPowerIntf->minWorkloadFactor();
     const auto maxTemperature = staticPowerIntf->maxTemperature();
     const auto minTemperature = staticPowerIntf->minTemperature();
+    const auto minCores = staticPowerIntf->minNumberOfCores();
 
     EXPECT_GT(maxClock, minClock);
     EXPECT_GT(maxWorkload, minWorkload);
@@ -2790,28 +2791,28 @@ TEST_F(TerminusTest, nvidiaRemoteDebugAndStaticPowerHintCoverage)
 
     EXPECT_THROW(
         staticPowerIntf->estimatePower(maxClock + 1, minWorkload,
-                                       minTemperature),
+                                       minTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(minClock, maxWorkload + 1,
-                                       minTemperature),
+                                       minTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(minClock, minWorkload,
-                                       maxTemperature + 1),
+                                       maxTemperature + 1, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 
     const double validClock = (maxClock + minClock) / 2.0;
     const double validWorkload = (maxWorkload + minWorkload) / 2.0;
     const double validTemperature = (maxTemperature + minTemperature) / 2.0;
 
-    EXPECT_NO_THROW(staticPowerIntf->estimatePower(validClock, validWorkload,
-                                                   validTemperature));
+    EXPECT_NO_THROW(staticPowerIntf->estimatePower(
+        validClock, validWorkload, validTemperature, minCores));
     runEventLoopForMilliseconds(10);
     try
     {
         staticPowerIntf->estimatePower(validClock, validWorkload,
-                                       validTemperature);
+                                       validTemperature, minCores);
     }
     catch (const sdbusplus::xyz::openbmc_project::Common::Error::Unavailable&)
     {}
