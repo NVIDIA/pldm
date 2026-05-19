@@ -66,6 +66,7 @@ NumericEffecter::NumericEffecter(
         case PLDM_SENSOR_UNIT_DEGRESS_C:
         case PLDM_SENSOR_UNIT_HERTZ:
         case PLDM_SENSOR_UNIT_MINUTES:
+        case PLDM_SENSOR_UNIT_COUNTS:
             unitIntf = std::make_unique<NumericEffecterBaseUnit>(*this);
             break;
         default:

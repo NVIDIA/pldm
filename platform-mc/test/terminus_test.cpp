@@ -4849,6 +4849,7 @@ TEST_F(TerminusTest, nvidiaRemoteDebugAndStaticPowerHintCoverage)
     const auto minWorkload = staticPowerIntf->minWorkloadFactor();
     const auto maxTemperature = staticPowerIntf->maxTemperature();
     const auto minTemperature = staticPowerIntf->minTemperature();
+    const auto minCores = staticPowerIntf->minNumberOfCores();
 
     EXPECT_GT(maxClock, minClock);
     EXPECT_GT(maxWorkload, minWorkload);
@@ -4856,15 +4857,15 @@ TEST_F(TerminusTest, nvidiaRemoteDebugAndStaticPowerHintCoverage)
 
     EXPECT_THROW(
         staticPowerIntf->estimatePower(maxClock + 1, minWorkload,
-                                       minTemperature),
+                                       minTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(minClock, maxWorkload + 1,
-                                       minTemperature),
+                                       minTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(minClock, minWorkload,
-                                       maxTemperature + 1),
+                                       maxTemperature + 1, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 
     const double validClock = (maxClock + minClock) / 2.0;
@@ -4872,12 +4873,12 @@ TEST_F(TerminusTest, nvidiaRemoteDebugAndStaticPowerHintCoverage)
     const double validTemperature = (maxTemperature + minTemperature) / 2.0;
 
     EXPECT_NO_THROW(staticPowerIntf->estimatePower(validClock, validWorkload,
-                                                   validTemperature));
+                                                   validTemperature, minCores));
     runEventLoopForMilliseconds(10);
     try
     {
         staticPowerIntf->estimatePower(validClock, validWorkload,
-                                       validTemperature);
+                                       validTemperature, minCores);
     }
     catch (const sdbusplus::xyz::openbmc_project::Common::Error::Unavailable&)
     {}
@@ -4943,6 +4944,7 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintFailureCoverage)
     const auto minWorkload = staticPowerIntf->minWorkloadFactor();
     const auto maxTemperature = staticPowerIntf->maxTemperature();
     const auto minTemperature = staticPowerIntf->minTemperature();
+    const auto minCores = staticPowerIntf->minNumberOfCores();
 
     const double validClock = (maxClock + minClock) / 2.0;
     const double validWorkload = (maxWorkload + minWorkload) / 2.0;
@@ -4950,15 +4952,15 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintFailureCoverage)
 
     EXPECT_THROW(
         staticPowerIntf->estimatePower(minClock - 1, validWorkload,
-                                       validTemperature),
+                                       validTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(validClock, minWorkload - 1,
-                                       validTemperature),
+                                       validTemperature, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         staticPowerIntf->estimatePower(validClock, validWorkload,
-                                       minTemperature - 1),
+                                       minTemperature - 1, minCores),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 
     auto runFailureEstimate = [&](std::vector<std::vector<uint8_t>> responses) {
@@ -4968,7 +4970,7 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintFailureCoverage)
             ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
         }
         EXPECT_NO_THROW(staticPowerIntf->estimatePower(
-            validClock, validWorkload, validTemperature));
+            validClock, validWorkload, validTemperature, minCores));
         runEventLoopForMilliseconds(10);
     };
 
@@ -5505,11 +5507,12 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintEstimateInProgressCoverage)
     ASSERT_NE(nullptr, staticPowerIntf);
 
     staticPowerIntf->estimationTaskHandle.emplace();
-    EXPECT_THROW(
-        staticPowerIntf->estimatePower(staticPowerIntf->minCpuClockFrequency(),
-                                       staticPowerIntf->minWorkloadFactor(),
-                                       staticPowerIntf->minTemperature()),
-        sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
+    EXPECT_THROW(staticPowerIntf->estimatePower(
+                     staticPowerIntf->minCpuClockFrequency(),
+                     staticPowerIntf->minWorkloadFactor(),
+                     staticPowerIntf->minTemperature(),
+                     staticPowerIntf->minNumberOfCores()),
+                 sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
     EXPECT_TRUE(staticPowerIntf->estimationTaskHandle.has_value());
     staticPowerIntf->estimationTaskHandle.reset();
 }
@@ -5888,6 +5891,8 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintCompletedHandleCoverage)
                           "static_power_clock_completed");
     auto staticPowerPowerEffecter = createNumericEffecter(
         0x833, PLDM_SENSOR_UNIT_WATTS, 5, 250, "static_power_power_completed");
+    createNumericEffecter(0x834, PLDM_SENSOR_UNIT_COUNTS, 0, 128,
+                          "PowerHint_cores_completed");
 
     nvidia::nvidiaInitTerminus(terminus);
 
@@ -5911,7 +5916,11 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintCompletedHandleCoverage)
     auto getResp2 = makeGetNumericEffecterValueResp(
         PLDM_EFFECTER_DATA_SIZE_UINT8,
         EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    auto setResp3 = makeSetNumericEffecterValueResp();
     auto getResp3 = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    auto getResp4 = makeGetNumericEffecterValueResp(
         PLDM_EFFECTER_DATA_SIZE_UINT8,
         EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(setResp0));
@@ -5920,12 +5929,14 @@ TEST_F(TerminusTest, nvidiaStaticPowerHintCompletedHandleCoverage)
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(getResp1));
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(setResp2));
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(getResp2));
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(setResp3));
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(getResp3));
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(getResp4));
 
     EXPECT_NO_THROW(staticPowerIntf->estimatePower(
         staticPowerIntf->minCpuClockFrequency(),
-        staticPowerIntf->minWorkloadFactor(),
-        staticPowerIntf->minTemperature()));
+        staticPowerIntf->minWorkloadFactor(), staticPowerIntf->minTemperature(),
+        staticPowerIntf->minNumberOfCores()));
     runEventLoopForMilliseconds(10);
 }
 

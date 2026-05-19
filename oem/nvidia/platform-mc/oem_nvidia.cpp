@@ -173,6 +173,8 @@ void nvidiaInitTerminus(Terminus& terminus)
         nullptr;
     std::shared_ptr<NumericEffecter> staticPowerHintCpuClockFrequencyEffecter =
         nullptr;
+    std::shared_ptr<NumericEffecter> staticPowerHintNumberOfCoresEffecter =
+        nullptr;
     std::shared_ptr<NumericEffecter> staticPowerHintPowerEstimationEffecter =
         nullptr;
 
@@ -218,6 +220,12 @@ void nvidiaInitTerminus(Terminus& terminus)
                  entityType == PLDM_ENTITY_SYS_BOARD)
         {
             staticPowerHintCpuClockFrequencyEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS &&
+                 entityType == PLDM_ENTITY_SYS_BOARD &&
+                 effecter->path.find("PowerHint") != std::string::npos)
+        {
+            staticPowerHintNumberOfCoresEffecter = effecter;
         }
     }
 
@@ -291,6 +299,10 @@ void nvidiaInitTerminus(Terminus& terminus)
         }
     }
 
+    // NumberOfCores is optional for legacy devices that don't expose the
+    // effecter; the static power hint interface is still constructed without
+    // it. The interface accepts a NumberOfCores argument from D-Bus callers
+    // but silently ignores the value when no effecter is present.
     if (staticPowerHintTemperatureEffecter &&
         staticPowerHintWorkloadFactorEffecter &&
         staticPowerHintCpuClockFrequencyEffecter &&
@@ -303,6 +315,7 @@ void nvidiaInitTerminus(Terminus& terminus)
                 staticPowerHintCpuClockFrequencyEffecter,
                 staticPowerHintTemperatureEffecter,
                 staticPowerHintWorkloadFactorEffecter,
+                staticPowerHintNumberOfCoresEffecter,
                 staticPowerHintPowerEstimationEffecter);
         staticPowerHintPowerEstimationEffecter->oemIntfs.push_back(
             std::move(staticPowerHintPowerEstimation));
