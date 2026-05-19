@@ -202,7 +202,14 @@ inline void createLogEntry(
     else if (messageID == firmwareInRecovery)
     {
         messageArgs = arg1;
-        level = Level::Critical;
+        if (overrideSeverity)
+        {
+            level = Level::Informational;
+        }
+        else
+        {
+            level = Level::Critical;
+        }
     }
     else
     {
