@@ -119,9 +119,21 @@ exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
 exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
     mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces)
 {
-    uint8_t rc = 0;
+    uint8_t rc = PLDM_ERROR;
+    uint8_t getPLDMTypesAttempts = numAttempts;
     uint64_t supportedTypes = 0;
-    rc = co_await getPLDMTypes(eid, supportedTypes);
+
+    while (getPLDMTypesAttempts--)
+    {
+        rc = co_await getPLDMTypes(eid, supportedTypes);
+        if (rc == PLDM_SUCCESS)
+        {
+            break;
+        }
+        info(
+            "Failed to attempt the execute of 'getPLDMTypes' function., EID={EID}, RC={RC} ",
+            "EID", eid, "RC", rc);
+    }
     if (rc)
     {
         error("getPLDMTypes failed, EID={EID} rc={RC}.", "EID", eid, "RC", rc);
