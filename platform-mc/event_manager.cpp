@@ -596,14 +596,15 @@ void EventManager::createSensorThresholdLogEntry(
 #endif
 
     if (messageId == SensorThresholdWarningLowGoingHigh ||
-        messageId == SensorThresholdWarningHighGoingLow)
+        messageId == SensorThresholdWarningHighGoingLow ||
+        messageId == SensorThresholdCriticalLowGoingHigh ||
+        messageId == SensorThresholdCriticalHighGoingLow)
     {
+        // Recovery / deassert transitions (sensor moving back toward Normal)
         level = Level::Informational;
     }
     else if (messageId == SensorThresholdWarningLowGoingLow ||
-             messageId == SensorThresholdWarningHighGoingHigh ||
-             messageId == SensorThresholdCriticalLowGoingHigh ||
-             messageId == SensorThresholdCriticalHighGoingLow)
+             messageId == SensorThresholdWarningHighGoingHigh)
     {
         level = Level::Warning;
     }

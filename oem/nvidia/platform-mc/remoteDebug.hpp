@@ -87,23 +87,25 @@ class StateSetDebugState : public StateSet
     {
         if (value == PLDM_STATE_SET_DEBUG_STATE_DISABLED)
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("Disable"), Level::Informational, "", ""};
         }
         else if (value == PLDM_STATE_SET_DEBUG_STATE_ENABLED)
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Enabled"), Level::Informational, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Enabled"), Level::Warning, "", ""};
         }
         else if (value == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("Offline"), Level::Informational, "", ""};
         }
         else
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Unknown"), Level::Warning, "", ""};
         }
     }
 

@@ -140,7 +140,7 @@ class StateSetProcessorPowerBreak : public StateSet
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Throttled"), Level::Informational, "", ""};
+                std::string("Throttled"), Level::Warning, "", ""};
         }
     }
 

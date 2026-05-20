@@ -189,13 +189,17 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
     }
 
     /** @brief Not used - this effecter is trigger-only, events come via
-     *  separate PLDM OEM event classes (0xF0, 0xF1, 0xF2)
+     *  separate PLDM OEM event classes (0xF0, 0xF1, 0xF2). Returns a
+     *  registered MessageId placeholder so that, if the override is ever
+     *  reached, bmcweb's registry lookup succeeds instead of rendering a
+     *  blank LogEntry.
      */
     std::tuple<std::string, std::string, Level, std::string, std::string>
         getEventData([[maybe_unused]] utils::SensorEventInfo* sensorEventInfo)
             const override
     {
-        return {"", "", Level::Informational, "", ""};
+        return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                std::string("Idle"), Level::Informational, "", ""};
     }
 
     std::string getStringStateType() const override
