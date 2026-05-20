@@ -112,6 +112,7 @@ option(
 option(
     'number-of-command-attempts',
     type: 'integer',
+    min: 1,
     value: 3,
     description: 'The number of command attempts beyond the PLDM Base specification requirements for a PLDM Request',
 )
