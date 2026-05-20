@@ -782,7 +782,7 @@ void UpdateManager::packageIntegrityCheckAsync(
         {
             info("Failed to create signature header parser.");
 
-            onComplete(true);
+            onComplete(false);
             return;
         }
 
