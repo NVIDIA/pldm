@@ -306,6 +306,14 @@ void PackageSignatureV3::parseHeader()
 
     offsetToPublicKey = be16toh(signatureHeader->offsetToPublicKey);
 
+    if (offsetToPublicKey >
+        pldmFwupSignaturePackageSize - pldmFwupPublicKeySizeLength)
+    {
+        error(
+            "Parsing signature header failed, offsetToPublicKey is out of bounds");
+        throw InternalFailure();
+    }
+
     auto iteratorToPublicKeySize = packageSignData.begin() + offsetToPublicKey;
     publicKeySize = static_cast<uint16_t>(*iteratorToPublicKeySize) << 8 |
                     *(iteratorToPublicKeySize + 1);
@@ -314,6 +322,14 @@ void PackageSignatureV3::parseHeader()
         sizeof(PldmSignatureHeaderInformationV3) + pldmFwupPublicKeySizeLength;
     size_t publicKeyEnd = sizeof(PldmSignatureHeaderInformationV3) +
                           pldmFwupPublicKeySizeLength + publicKeySize;
+
+    if (publicKeyEnd >
+        pldmFwupSignaturePackageSize - pldmFwupSignatureSizeLength)
+    {
+        error(
+            "Parsing signature header failed, publicKeySize is out of bounds");
+        throw InternalFailure();
+    }
 
     publicKeyData =
         std::vector<uint8_t>(packageSignData.begin() + publicKeyBegin,
@@ -327,15 +343,21 @@ void PackageSignatureV3::parseHeader()
     if (signatureSize < signatureSha->minimumSignatureSize ||
         signatureSize > signatureSha->maximumSignatureSize)
     {
-        error(
-            "Parsing signature header failed, signatureSize={SIGNATURE_SIZE} is incorrect",
-            "SIGNATURE_SIZE", signatureSize);
+        error("Parsing signature header failed, signatureSize is incorrect");
         throw InternalFailure();
     }
 
     size_t signatureBegin = offsetToSignature + pldmFwupSignatureSizeLength;
     size_t signatureEnd =
         offsetToSignature + pldmFwupSignatureSizeLength + signatureSize;
+
+    if (signatureEnd > pldmFwupSignaturePackageSize ||
+        signatureBegin > signatureEnd)
+    {
+        error(
+            "Parsing signature header failed, signature offset/size is out of bounds");
+        throw InternalFailure();
+    }
 
     signature = std::vector<uint8_t>(packageSignData.begin() + signatureBegin,
                                      packageSignData.begin() + signatureEnd);

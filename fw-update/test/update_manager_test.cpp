@@ -1330,7 +1330,7 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncGetSignatureHeaderFailure)
 }
 
 TEST_F(UpdateManagerTest,
-       packageIntegrityCheckAsyncUnsupportedSignatureVersionFallsBackToPass)
+       packageIntegrityCheckAsyncUnsupportedSignatureVersionFails)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -1355,7 +1355,7 @@ TEST_F(UpdateManagerTest,
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
-    bool result = false;
+    bool result = true;
     updateManager.packageIntegrityCheckAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1365,7 +1365,7 @@ TEST_F(UpdateManagerTest,
 
     std::filesystem::remove(brokenPath);
     EXPECT_TRUE(onCompleteCalled);
-    EXPECT_TRUE(result);
+    EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
 }
 
