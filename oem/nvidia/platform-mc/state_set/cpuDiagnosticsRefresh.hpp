@@ -102,8 +102,8 @@ class CpuDiagnosticsRefreshEffecterIntf : public CpuDiagnosticsRefreshStateIntf
         if (value)
         {
             // Trigger the effecter to request data collection
-            stdexec::start_detached(
-                stdexec::on(stdexec::inline_scheduler{},
+            stdexec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
                 effecter.setStateEffecterStates(
                     compId, PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED)));
         }

@@ -307,6 +307,11 @@ class ComponentUpdater
      */
     void onResponseSendComplete(bool success);
 
+    /** @brief Stop local timers and deferred follow-up work because the parent
+     *         device update timed out and is being cancelled.
+     */
+    void stopComponentUpdateTimers();
+
     /**
      * @brief timeout handler for requestFirmwareData timeout (UA_T2)
      *

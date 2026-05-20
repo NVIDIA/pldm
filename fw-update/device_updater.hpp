@@ -201,80 +201,6 @@ struct DeviceUpdaterState
     DeviceUpdaterSequence prev;
 };
 
-/** @class UpdateProgress
- *
- *  Attempts to provide accurate reporting of firmware update progress
- *  Called at the various phases of firmware update.
- *  A single UpdateProgress object represents a component of a pldm package
- */
-class UpdateProgress
-{
-  public:
-    /** @brief an enum to define the different states of progress
-     *
-     */
-    enum class state
-    {
-        Update,
-        Verify,
-        Apply,
-    };
-
-    /** @brief Construct an UpdateProgress object given to the total component
-     * size
-     *
-     * @param[in] totalSize the size in bytes of a component for a given device
-     * @param[in] eid the eid of the device this class tracks progress for
-     */
-    UpdateProgress(uint32_t totalSize, mctp_eid_t eid);
-    ~UpdateProgress() = default;
-    UpdateProgress& operator=(UpdateProgress&&) = default;
-    UpdateProgress& operator=(const UpdateProgress&) = delete;
-    UpdateProgress(UpdateProgress&&) = default;
-    UpdateProgress(const UpdateProgress&) = delete;
-
-    /** @brief Called when switching between phases of firmware update
-     *
-     * @param[in] newState the state that we are entering. See
-     * UpdateProgress::state
-     */
-    void updateState(state newState);
-
-    /** @brief called when servicing RequestFirmwareData commands
-     *
-     * @param[in] amountUpdated the length of firmware transmitted, in bytes
-     */
-    void reportFwUpdate(uint32_t amountUpdated);
-
-    /** @brief get the progress as a percentage of this component
-     *
-     * @return the progress of this component as an int in [0-100]
-     */
-    uint8_t getProgress() const;
-
-    /** @brief get the total size of the firmware component in bytes
-     *
-     * @return the total number of bytes for the component
-     */
-    uint32_t getTotalSize() const;
-
-  private:
-    /** @brief progress of firmware update in percentage [0-100] */
-    uint8_t progress;
-
-    /** @brief the eid of the device this object tracks */
-    mctp_eid_t eid;
-
-    /** @brief the total size in bytes of this component */
-    uint32_t totalSize;
-
-    /** @brief the total number of bytes sent */
-    uint32_t totalUpdated;
-
-    /** @brief the current state of update for this component */
-    state currentState;
-};
-
 /** @class DeviceUpdater
  *
  *  DeviceUpdater orchestrates the firmware update of the firmware device
@@ -323,30 +249,9 @@ class DeviceUpdater
     explicit DeviceUpdater(
         mctp_eid_t eid, std::istream& package,
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-        const ComponentImageInfos& compImageInfos, const ComponentInfo& compInfo,
-        const ComponentIdNameMap& compIdNameInfo, uint32_t maxTransferSize,
-        UpdateManager* updateManager);
-
-    /** @brief Get the progress of updating this device as percentage
-     *
-     * Goes through each component for this device and calculates
-     *   the percentage we are through the update process
-     *
-     * @return The percentage as an int [0-100], 0 is no progress, 100 is done.
-     */
-    uint8_t getProgress() const;
-
-    /** @brief Update transfer progress for a component */
-    void reportComponentDataProgress(size_t compIndex, uint32_t amountUpdated);
-
-    /** @brief Update verify progress for a component */
-    void reportComponentVerifyProgress(size_t compIndex);
-
-    /** @brief Update apply progress for a component */
-    void reportComponentApplyProgress(size_t compIndex);
-
-    /** @brief Mark device-level activation as complete */
-    void markActivationComplete();
+        const ComponentImageInfos& compImageInfos,
+        const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
+        uint32_t maxTransferSize, UpdateManager* updateManager);
 
     /** @brief Start the firmware update flow for the FD
      *
@@ -445,6 +350,24 @@ class DeviceUpdater
             compActivationModification.value;
     }
 
+    /** @brief Check whether timeout-driven cancellation has made the device
+     *         update terminal.
+     *
+     *  Once set, the normal component update flow must not continue.
+     */
+    bool isTimeoutCancellationRequested() const noexcept
+    {
+        return timeoutCancellationRequested;
+    }
+
+    /**
+     * @brief Cancel firmware update due to timeout.
+     *
+     * Logs timeout error for pending components, stops component-level timers,
+     * and sends CancelUpdate to the FD.
+     */
+    void handleUpdateTimeout();
+
   private:
     /** @brief Component activation method modifications from ApplyComplete
      * responses */
@@ -453,6 +376,9 @@ class DeviceUpdater
     /** @brief coroutine handle of discoverTerminusTask */
     std::optional<std::pair<exec::async_scope, std::optional<int>>>
         deviceUpdaterHandle{};
+    /** @brief True once timeout handling has made the device update terminal.
+     */
+    bool timeoutCancellationRequested = false;
 
     /**
      * @brief device update handler
@@ -587,6 +513,13 @@ class DeviceUpdater
     exec::task<int> processCancelUpdateResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
+    /** @brief Coroutine body for timeout-driven device cancellation.
+     *
+     *  This is scheduled through handleUpdateTimeout() and must only run once
+     *  per device update.
+     */
+    exec::task<int> cancelUpdateAfterTimeout();
+
     /** @brief List of components successfully updated */
     std::vector<ComponentName> successCompNames;
 
@@ -594,17 +527,6 @@ class DeviceUpdater
      */
     std::map<ComponentIndex, std::pair<std::unique_ptr<ComponentUpdater>, bool>>
         componentUpdaterMap;
-
-    /** @brief a list of UpdateProgress objects, one for each firmware
-     *         component applicable to this device
-     */
-    std::vector<UpdateProgress> progress;
-
-    /** @brief Whether this device has gone through application. Needed because
-     *         UpdateProgress handles each component but application happens at
-     *         the device level
-     */
-    bool activationComplete = false;
 
     /** @brief Check if a component already failed during verification/update
      *

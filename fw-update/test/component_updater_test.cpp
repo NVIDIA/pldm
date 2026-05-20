@@ -1578,9 +1578,9 @@ TEST_F(ComponentUpdaterTest,
        processUpdateComponentResponseCompatibilitySkipSchedulesCompletion)
 {
     initializeFromParsedPackage();
-    auto [responseBytes, payloadLen] = makeUpdateComponentResp(
-        PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
-        PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
+    auto [responseBytes, payloadLen] =
+        makeUpdateComponentResp(PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
+                                PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
 
     auto co = componentUpdater.processUpdateComponentResponse(
@@ -1598,9 +1598,9 @@ TEST_F(ComponentUpdaterTest,
        processUpdateComponentResponseCompatibilityCannotUpdateSchedulesSkip)
 {
     initializeFromParsedPackage();
-    auto [responseBytes, payloadLen] = makeUpdateComponentResp(
-        PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
-        PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
+    auto [responseBytes, payloadLen] =
+        makeUpdateComponentResp(PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
+                                PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
 
     auto co = componentUpdater.processUpdateComponentResponse(
@@ -1625,10 +1625,10 @@ TEST_F(ComponentUpdaterTest,
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
 
     auto co = componentUpdater.processUpdateComponentResponse(
-        0x1, responseMsg, payloadLen, 0);
+        0x1, responseMsg, payloadLen, maxDecodeFailureRetries);
     auto rc = stdexec::sync_wait(std::move(co));
     ASSERT_TRUE(rc.has_value());
-    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
+    EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR_INVALID_DATA);
     EXPECT_EQ(componentUpdater.componentUpdaterState.current,
               ComponentUpdaterSequence::Invalid);
     EXPECT_NE(componentUpdater.pldmRequest, nullptr);
@@ -1937,6 +1937,38 @@ TEST_F(ComponentUpdaterTest, requestFwDataTimerCallbackCompletesCancelTask)
     (void)scope;
     EXPECT_TRUE(rcOpt.has_value());
     waitForUpdateCompletionTask();
+}
+
+TEST_F(ComponentUpdaterTest, timeoutCancellationSkipsTimerCancelCallbacks)
+{
+    initializeFromParsedPackage();
+    deviceUpdater.timeoutCancellationRequested = true;
+
+    componentUpdater.createRequestFwDataTimer();
+    ASSERT_NE(componentUpdater.reqFwDataTimer, nullptr);
+    componentUpdater.reqFwDataTimer->start(std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::TransferComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+    EXPECT_TRUE(reqHandler.handlers.empty());
 }
 
 TEST_F(ComponentUpdaterTest,

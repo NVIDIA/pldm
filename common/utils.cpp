@@ -247,9 +247,9 @@ std::string DBusHandler::getService(const char* path,
     std::map<std::string, std::vector<std::string>> mapperResponse;
     auto& bus = DBusHandler::getBus();
 
-    auto mapper = bus.new_method_call(
-        ObjectMapper::default_service, ObjectMapper::instance_path,
-        ObjectMapper::interface, "GetObject");
+    auto mapper = bus.new_method_call(ObjectMapper::default_service,
+                                      ObjectMapper::instance_path,
+                                      ObjectMapper::interface, "GetObject");
 
     if (interface)
     {
@@ -277,9 +277,9 @@ GetSubTreeResponse DBusHandler::getSubtree(
     const std::vector<std::string>& ifaceList) const
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
-    auto method = bus.new_method_call(
-        ObjectMapper::default_service, ObjectMapper::instance_path,
-        ObjectMapper::interface, "GetSubTree");
+    auto method = bus.new_method_call(ObjectMapper::default_service,
+                                      ObjectMapper::instance_path,
+                                      ObjectMapper::interface, "GetSubTree");
     method.append(searchPath, depth, ifaceList);
     auto reply = bus.call(method, dbusTimeout);
     GetSubTreeResponse response;
@@ -308,9 +308,9 @@ GetAncestorsResponse DBusHandler::getAncestors(
     const std::string& path, const std::vector<std::string>& ifaceList) const
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
-    auto method = bus.new_method_call(
-        ObjectMapper::default_service, ObjectMapper::instance_path,
-        ObjectMapper::interface, "GetAncestors");
+    auto method = bus.new_method_call(ObjectMapper::default_service,
+                                      ObjectMapper::instance_path,
+                                      ObjectMapper::interface, "GetAncestors");
     method.append(path, ifaceList);
     auto reply = bus.call(method, dbusTimeout);
     GetAncestorsResponse response;
@@ -331,9 +331,9 @@ void reportError(const char* errorMsg)
             sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
                 sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level::
                     Error);
-        auto method = bus.new_method_call(
-            LoggingCreate::default_service, LoggingCreate::instance_path,
-            LoggingCreate::interface, "Create");
+        auto method = bus.new_method_call(LoggingCreate::default_service,
+                                          LoggingCreate::instance_path,
+                                          LoggingCreate::interface, "Create");
 
         std::map<std::string, std::string> addlData{};
         method.append(errorMsg, severity, addlData);
@@ -610,9 +610,8 @@ int emitStateSensorEventSignal(uint8_t tid, uint16_t sensorId,
     try
     {
         auto& bus = DBusHandler::getBus();
-        auto msg =
-            bus.new_signal("/xyz/openbmc_project/pldm", PLDMEvent::interface,
-                           "StateSensorEvent");
+        auto msg = bus.new_signal("/xyz/openbmc_project/pldm",
+                                  PLDMEvent::interface, "StateSensorEvent");
         msg.append(tid, sensorId, sensorOffset, eventState, previousEventState);
 
         msg.signal_send();
@@ -1144,9 +1143,9 @@ void setBiosAttr(const PendingAttributesList& biosAttrList)
     {
         auto service = pldm::utils::DBusHandler().getService(
             biosConfigPath, BIOSConfigManager::interface);
-        auto method = bus.new_method_call(service.c_str(), biosConfigPath,
-                                          "org.freedesktop.DBus.Properties",
-                                          "Set");
+        auto method =
+            bus.new_method_call(service.c_str(), biosConfigPath,
+                                "org.freedesktop.DBus.Properties", "Set");
         method.append(BIOSConfigManager::interface, "PendingAttributes",
                       std::variant<pldm::bios::PendingAttributes>(
                           std::move(pendingAttributes)));
@@ -1154,8 +1153,8 @@ void setBiosAttr(const PendingAttributesList& biosAttrList)
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        info("Error setting BIOS pending attributes: {ERR_EXCEP}",
-             "ERR_EXCEP", e);
+        info("Error setting BIOS pending attributes: {ERR_EXCEP}", "ERR_EXCEP",
+             e);
     }
 }
 

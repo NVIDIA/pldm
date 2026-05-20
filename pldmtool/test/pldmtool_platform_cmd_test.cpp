@@ -1476,7 +1476,7 @@ TEST(GetPDR, PrivateHelpersHandleNullInputs)
     EXPECT_NO_THROW(cmd.printPDRFruRecordSet(nullptr, output));
     EXPECT_NO_THROW(cmd.printPDREntityAssociation(nullptr, output));
     EXPECT_NO_THROW(cmd.printAuxNamePDR(nullptr, output));
-    EXPECT_NO_THROW(cmd.printNumericEffecterPDR(nullptr, output));
+    EXPECT_NO_THROW(cmd.printNumericEffecterPDR(nullptr, 0, output));
     EXPECT_NO_THROW(cmd.printCompactNumericSensorPDR(nullptr, output));
     EXPECT_NO_THROW(cmd.printPDROem(nullptr, output));
     EXPECT_NO_THROW(

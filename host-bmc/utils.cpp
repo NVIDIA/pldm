@@ -216,7 +216,14 @@ EntityMaps parseEntityMap(const fs::path& filePath)
     const nlohmann::json emptyJson{};
     EntityMaps entityMaps{};
     std::ifstream jsonFile(filePath);
-    auto data = nlohmann::json::parse(jsonFile);
+    if (!jsonFile.good())
+    {
+        error("Unable to open EntityMap json file: '{JSON_PATH}'", "JSON_PATH",
+              filePath);
+        return entityMaps;
+    }
+
+    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
     if (data.is_discarded())
     {
         error("Failed parsing of EntityMap data from json file: '{JSON_PATH}'",

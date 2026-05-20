@@ -693,6 +693,34 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
     }
 }
 
+uint64_t OtherDeviceUpdateManager::getMaxItemUpdaterTimeoutSec() const
+{
+#ifndef NON_PLDM
+    return 0;
+#else
+    constexpr auto updateTimeoutInterface = "com.nvidia.Software.UpdateTimeout";
+    constexpr auto timeoutProperty = "Timeout";
+
+    uint64_t maxTimeout = 0;
+    for (const auto& [path, _] : otherDevices)
+    {
+        try
+        {
+            auto value = dbusHandler.getDbusPropertyVariant(
+                path.c_str(), timeoutProperty, updateTimeoutInterface);
+            maxTimeout = std::max(maxTimeout, std::get<uint64_t>(value));
+        }
+        catch (const std::exception&)
+        {
+            // Path doesn't publish UpdateTimeout (older nvidia-code-mgmt
+            // build) — skip silently, not an error.
+            continue;
+        }
+    }
+    return maxTimeout;
+#endif
+}
+
 void OtherDeviceUpdateManager::getValidPaths(
     std::vector<std::string>& paths) const
 {

@@ -47,8 +47,7 @@ class OemNVIDIA
     void createOemEventHandler(
         [[maybe_unused]] responder::platform::Handler* platformHandler,
         [[maybe_unused]] platform_mc::Manager* platformManager)
-    {
-    }
+    {}
 };
 
 } // namespace oem_nvidia

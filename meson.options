@@ -351,6 +351,14 @@ option(
 )
 
 option(
+    'number-of-links-per-partition',
+    type: 'integer',
+    min: 1,
+    value: 1,
+    description: 'NVLink Ports count per SatMC Partition',
+)
+
+option(
     'non-pldm',
     type: 'feature',
     value: 'enabled',
@@ -398,6 +406,13 @@ option(
     type: 'string',
     description: 'Effecter name substring used to identify the primary CPU TDP power control (nonvolatile) for chassis association.',
     value: 'TDPPowerNonvolatile',
+)
+
+option(
+    'cpu-primary-power-sensor',
+    type: 'string',
+    description: 'Sensor name substring identifying the primary CPU power sensor (enforced power limit) for chassis association.',
+    value: 'EnforcedEDPc',
 )
 
 option(

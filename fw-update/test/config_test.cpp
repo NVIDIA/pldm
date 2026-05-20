@@ -37,7 +37,8 @@ TEST(ParseConfig, SingleEntry)
           {{{1,
              {"ComponentName1",
               {{"inventory", "activation",
-                "/xyz/openbmc_project/software/ComponentName1"}}}}},
+                "/xyz/openbmc_project/software/ComponentName1"}},
+              "NVIDIA"}}},
            {{2, "ComponentName2"}}}}});
 
     ComponentNameMapInfo componentNameMapInfo(
@@ -73,7 +74,8 @@ TEST(ParseConfig, CombinedPropertyMatch)
           {{{1,
              {"ComponentName1",
               {{"inventory", "activation",
-                "/xyz/openbmc_project/software/ComponentName1"}}}}},
+                "/xyz/openbmc_project/software/ComponentName1"}},
+              "NVIDIA"}}},
            {{2, "ComponentName2"}}}}});
 
     ComponentNameMapInfo componentNameMapInfo(
@@ -125,11 +127,13 @@ TEST(ParseConfig, MultipleEntry)
           {{{3,
              {"ComponentName3",
               {{"inventory", "activation",
-                "/xyz/openbmc_project/software/ComponentName3"}}}},
+                "/xyz/openbmc_project/software/ComponentName3"}},
+              "NVIDIA"}},
             {4,
              {"ComponentName4",
               {{"inventory", "activation",
-                "/xyz/openbmc_project/software/ComponentName4"}}}}},
+                "/xyz/openbmc_project/software/ComponentName4"}},
+              "NVIDIA"}}},
            {}}}});
 
     ComponentNameMapInfo componentNameMapInfo(
@@ -162,7 +166,8 @@ TEST(ParseConfig, LimitedEntry)
           {{{1,
              {"ComponentName1",
               {{"inventory", "activation",
-                "/xyz/openbmc_project/software/ComponentName1"}}}}},
+                "/xyz/openbmc_project/software/ComponentName1"}},
+              "NVIDIA"}}},
            {}}}});
 
     ComponentNameMapInfo componentNameMapInfo(
@@ -195,7 +200,7 @@ TEST(ParseConfig, SingleEntryWithoutFwInvAssociations)
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID",
            {{"UUID", "ad4c8360-c54c-11eb-8529-0242ac130003"}}},
-          {{{1, {"ComponentName1", {}}}}, {{2, "ComponentName2"}}}}});
+          {{{1, {"ComponentName1", {}, "NVIDIA"}}}, {{2, "ComponentName2"}}}}});
 
     ComponentNameMapInfo componentNameMapInfo(
         {{{"xyz.openbmc_project.Common.UUID",

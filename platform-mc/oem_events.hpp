@@ -44,30 +44,17 @@ constexpr const char* PCIE_LTSSM_FILE = "PCIeLTSSM_0_0.bin";
 constexpr const char* PCIE_TELEMETRY_FILE = "PCIeTelemetry_0_0.bin";
 
 /**
- * @brief Output directory for Inventory JSON files.
+ * @brief D-Bus identifiers for dbus-sensors nvidia-info CreateInfo.
  *
- * Used when OEM event 0xF3 carries inventory data.
- * Each terminus writes its own file: <terminus>_inventory.json
- * (e.g. ProcessorModule_0_inventory.json, ProcessorModule_1_inventory.json).
- * After writing, the nvidia-inventory service is notified via D-Bus.
+ * OEM event 0xF3 inventory JSON is passed in-band via
+ *   xyz.openbmc_project.NvidiaInfo
+ *     /xyz/openbmc_project/NvidiaInfo
+ *       CreateInfo(int32 processorModuleIndex, string jsonPayload)
+ * (processor module index 0 or 1; matches terminus ProcessorModule_0 / _1).
  */
-constexpr const char* inventoryDir = "/var/lib/inventory";
-
-/**
- * @brief D-Bus identifiers for the nvidia-inventory CreateInventory method.
- *
- * After the JSON file is saved, PLDM calls
- *   xyz.openbmc_project.NvidiaInventory
- *     /xyz/openbmc_project/NvidiaInventory
- *       CreateInventory(string filePath)
- * to trigger an inventory update for the given terminus file.
- */
-constexpr const char* nvidiaInventoryService =
-    "xyz.openbmc_project.NvidiaInventory";
-constexpr const char* nvidiaInventoryObjectPath =
-    "/xyz/openbmc_project/NvidiaInventory";
-constexpr const char* nvidiaInventoryInterface =
-    "xyz.openbmc_project.NvidiaInventory";
+constexpr const char* nvidiaInfoService = "xyz.openbmc_project.NvidiaInfo";
+constexpr const char* nvidiaInfoObjectPath = "/xyz/openbmc_project/NvidiaInfo";
+constexpr const char* nvidiaInfoInterface = "xyz.openbmc_project.NvidiaInfo";
 
 /**
  * @brief Handle CPER Error Counter Event (0xF1)
@@ -114,10 +101,9 @@ bool handlePcieTelemetryEvent(const std::string& terminus,
 /**
  * @brief Handle OEM event 0xF3 as SatMC Inventory JSON
  *
- * Parses the 4-byte OEM event header, then writes the UTF-8 JSON payload
- * to INVENTORY_DIR/<terminus>_inventory.json
- * (e.g. ProcessorModule_0_inventory.json, ProcessorModule_1_inventory.json).
- * (meson option satmc-inventory).
+ * Parses the 4-byte OEM event header, then sends the UTF-8 JSON payload to
+ * NvidiaInfo.CreateInfo over D-Bus (terminus must be ProcessorModule_0 or
+ * ProcessorModule_1). (meson option satmc-inventory).
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
  * @param[in] eventData     Raw event data including the 4-byte OEM header

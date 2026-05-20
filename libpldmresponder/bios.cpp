@@ -3,6 +3,7 @@
 #include "common/utils.hpp"
 
 #include <libpldm/base.h>
+
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Time/EpochTime/common.hpp>
 #include <xyz/openbmc_project/Time/Synchronization/common.hpp>

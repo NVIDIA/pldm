@@ -1,6 +1,7 @@
 #include "file_table.hpp"
 
 #include <libpldm/edac.h>
+
 #include <phosphor-logging/lg2.hpp>
 
 #include <fstream>

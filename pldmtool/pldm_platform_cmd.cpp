@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <format>
 #include <map>
 #include <memory>
@@ -594,7 +595,7 @@ class GetPDR : public CommandInterface
         {PLDM_STATE_SET_SYS_FIRMWARE_HANG, "System Firmware Hang"},
         {PLDM_STATE_SET_POST_ERRORS, "POST Errors"},
         {PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES,
-         "Embedded processor OS States"},
+         "Embedded Processor OS States"},
         {PLDM_STATE_SET_LOG_FILL_STATUS, "Log Fill Status"},
         {PLDM_STATE_SET_LOG_FILTER_STATUS, "Log Filter Status"},
         {PLDM_STATE_SET_LOG_TIMESTAMP_CHANGE, "Log Timestamp Change"},
@@ -893,14 +894,25 @@ class GetPDR : public CommandInterface
          "Intermediate State-2"},
         {PLDM_STATE_SET_ACPI_DEVICE_POWER_STATE_OFF, "Off"}};
 
-    static inline const std::map<uint8_t, std::string> setACPIPowerState{
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S0, "S0"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S1, "S1"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S2, "S2"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S3, "S3"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S4, "S4"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_S5, "S5"},
-        {PLDM_STATE_SET_ACPI_POWER_STATE_G3, "G3"}};
+    static inline const std::map<uint8_t, std::string> setEmbeddedProcOsStates{
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM, "Reset/Boot-ROM"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE1, "FW Boot Stage 1"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE2, "FW Boot Stage 2"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_PRE_OS, "Pre-OS"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_BOOTING, "OS Booting"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RUNNING, "OS Running"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_QUIESCED, "OS Quiesced"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_UPDATE_IN_PROGRESS,
+         "FW Update In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_IN_PROGRESS,
+         "OS Crash Dump In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_COMPLETED,
+         "OS Crash Dump Completed"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_IN_PROGRESS,
+         "FW Fault In Progress"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_COMPLETED,
+         "FW Fault Completed"},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM_2, "Reset/Boot-ROM"}};
 
     static inline const std::map<uint16_t, const std::map<uint8_t, std::string>>
         populatePStateMaps{
@@ -925,7 +937,8 @@ class GetPDR : public CommandInterface
             {PLDM_STATE_SET_OPERATIONAL_RUNNING_STATUS,
              setOperationalRunningState},
             {PLDM_STATE_SET_DEVICE_POWER_STATE, setPowerDeviceState},
-            {PLDM_STATE_SET_ACPI_POWER_STATE, setACPIPowerState},
+            {PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES,
+             setEmbeddedProcOsStates},
         };
 
     const std::map<std::string, uint8_t> strToPdrType = {
@@ -1411,14 +1424,38 @@ class GetPDR : public CommandInterface
         }
     }
 
-    void printNumericEffecterPDR(uint8_t* data, ordered_json& output)
+    void printNumericEffecterPDR(const uint8_t* data,
+                                 const uint16_t data_length,
+                                 ordered_json& output)
     {
-        struct pldm_numeric_effecter_value_pdr* pdr =
-            (struct pldm_numeric_effecter_value_pdr*)data;
-        if (!pdr)
+        if (data == nullptr)
         {
             std::cerr << "Failed to get numeric effecter PDR" << std::endl;
             return;
+        }
+
+        auto pdr = std::make_unique<pldm_numeric_effecter_value_pdr>();
+        int rc = decode_numeric_effecter_pdr_data(data, (size_t)data_length,
+                                                  pdr.get());
+        if (rc != PLDM_SUCCESS)
+        {
+            // Fallback for non-compliant firmware that always encodes
+            // union fields as 8 bytes on the wire regardless of data size.
+            if (data_length <= sizeof(*pdr))
+            {
+                std::cerr << "decode_numeric_effecter_pdr_data failed (rc="
+                          << rc << "), using memcpy fallback for"
+                          << " non-compliant firmware (len=" << data_length
+                          << ")" << std::endl;
+                std::memset(pdr.get(), 0, sizeof(*pdr));
+                std::memcpy(pdr.get(), data, data_length);
+            }
+            else
+            {
+                std::cerr << "Failed to decode numeric effecter PDR (rc=" << rc
+                          << ", len=" << data_length << ")" << std::endl;
+                return;
+            }
         }
 
         output["PLDMTerminusHandle"] = int(pdr->terminus_handle);
@@ -1440,14 +1477,15 @@ class GetPDR : public CommandInterface
         output["auxOEMUnitHandle"] = unsigned(pdr->aux_oem_unit_handle);
         output["isLinear"] = (unsigned(pdr->is_linear) ? true : false);
         output["effecterDataSize"] = unsigned(pdr->effecter_data_size);
-        output["resolution"] = unsigned(pdr->resolution);
-        output["offset"] = unsigned(pdr->offset);
+        output["resolution"] = static_cast<float>(pdr->resolution);
+        output["offset"] = static_cast<float>(pdr->offset);
         output["accuracy"] = unsigned(pdr->accuracy);
         output["plusTolerance"] = unsigned(pdr->plus_tolerance);
         output["minusTolerance"] = unsigned(pdr->minus_tolerance);
         output["stateTransitionInterval"] =
-            unsigned(pdr->state_transition_interval);
-        output["TransitionInterval"] = unsigned(pdr->transition_interval);
+            static_cast<float>(pdr->state_transition_interval);
+        output["TransitionInterval"] =
+            static_cast<float>(pdr->transition_interval);
 
         switch (pdr->effecter_data_size)
         {
@@ -1456,25 +1494,53 @@ class GetPDR : public CommandInterface
                 output["minSettable"] = unsigned(pdr->min_settable.value_u8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT8:
-                output["maxSettable"] = unsigned(pdr->max_settable.value_s8);
-                output["minSettable"] = unsigned(pdr->min_settable.value_s8);
+                output["maxSettable"] =
+                    static_cast<int>(pdr->max_settable.value_s8);
+                output["minSettable"] =
+                    static_cast<int>(pdr->min_settable.value_s8);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT16:
                 output["maxSettable"] = unsigned(pdr->max_settable.value_u16);
                 output["minSettable"] = unsigned(pdr->min_settable.value_u16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_SINT16:
-                output["maxSettable"] = unsigned(pdr->max_settable.value_s16);
-                output["minSettable"] = unsigned(pdr->min_settable.value_s16);
+                output["maxSettable"] =
+                    static_cast<int>(pdr->max_settable.value_s16);
+                output["minSettable"] =
+                    static_cast<int>(pdr->min_settable.value_s16);
                 break;
             case PLDM_EFFECTER_DATA_SIZE_UINT32:
-                output["maxSettable"] = unsigned(pdr->max_settable.value_u32);
-                output["minSettable"] = unsigned(pdr->min_settable.value_u32);
+            {
+                uint32_t mx = pdr->max_settable.value_u32;
+                uint32_t mn = pdr->min_settable.value_u32;
+                output["maxSettable"] = mx;
+                output["minSettable"] = mn;
                 break;
+            }
             case PLDM_EFFECTER_DATA_SIZE_SINT32:
-                output["maxSettable"] = unsigned(pdr->max_settable.value_s32);
-                output["minSettable"] = unsigned(pdr->min_settable.value_s32);
+            {
+                int32_t mx = pdr->max_settable.value_s32;
+                int32_t mn = pdr->min_settable.value_s32;
+                output["maxSettable"] = mx;
+                output["minSettable"] = mn;
                 break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            {
+                uint64_t mx = pdr->max_settable.value_u64;
+                uint64_t mn = pdr->min_settable.value_u64;
+                output["maxSettable"] = mx;
+                output["minSettable"] = mn;
+                break;
+            }
+            case PLDM_EFFECTER_DATA_SIZE_SINT64:
+            {
+                int64_t mx = pdr->max_settable.value_s64;
+                int64_t mn = pdr->min_settable.value_s64;
+                output["maxSettable"] = mx;
+                output["minSettable"] = mn;
+                break;
+            }
             default:
                 break;
         }
@@ -1492,11 +1558,14 @@ class GetPDR : public CommandInterface
                 output["ratedMin"] = unsigned(pdr->rated_min.value_u8);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT8:
-                output["nominalValue"] = unsigned(pdr->nominal_value.value_s8);
-                output["normalMax"] = unsigned(pdr->normal_max.value_s8);
-                output["normalMin"] = unsigned(pdr->normal_min.value_s8);
-                output["ratedMax"] = unsigned(pdr->rated_max.value_s8);
-                output["ratedMin"] = unsigned(pdr->rated_min.value_s8);
+                output["nominalValue"] =
+                    static_cast<int>(pdr->nominal_value.value_s8);
+                output["normalMax"] =
+                    static_cast<int>(pdr->normal_max.value_s8);
+                output["normalMin"] =
+                    static_cast<int>(pdr->normal_min.value_s8);
+                output["ratedMax"] = static_cast<int>(pdr->rated_max.value_s8);
+                output["ratedMin"] = static_cast<int>(pdr->rated_min.value_s8);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT16:
                 output["nominalValue"] = unsigned(pdr->nominal_value.value_u16);
@@ -1506,33 +1575,85 @@ class GetPDR : public CommandInterface
                 output["ratedMin"] = unsigned(pdr->rated_min.value_u16);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_SINT16:
-                output["nominalValue"] = unsigned(pdr->nominal_value.value_s16);
-                output["normalMax"] = unsigned(pdr->normal_max.value_s16);
-                output["normalMin"] = unsigned(pdr->normal_min.value_s16);
-                output["ratedMax"] = unsigned(pdr->rated_max.value_s16);
-                output["ratedMin"] = unsigned(pdr->rated_min.value_s16);
+                output["nominalValue"] =
+                    static_cast<int>(pdr->nominal_value.value_s16);
+                output["normalMax"] =
+                    static_cast<int>(pdr->normal_max.value_s16);
+                output["normalMin"] =
+                    static_cast<int>(pdr->normal_min.value_s16);
+                output["ratedMax"] = static_cast<int>(pdr->rated_max.value_s16);
+                output["ratedMin"] = static_cast<int>(pdr->rated_min.value_s16);
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT32:
-                output["nominalValue"] = unsigned(pdr->nominal_value.value_u32);
-                output["normalMax"] = unsigned(pdr->normal_max.value_u32);
-                output["normalMin"] = unsigned(pdr->normal_min.value_u32);
-                output["ratedMax"] = unsigned(pdr->rated_max.value_u32);
-                output["ratedMin"] = unsigned(pdr->rated_min.value_u32);
+            {
+                uint32_t nv = pdr->nominal_value.value_u32;
+                uint32_t nmx = pdr->normal_max.value_u32;
+                uint32_t nmn = pdr->normal_min.value_u32;
+                uint32_t rmx = pdr->rated_max.value_u32;
+                uint32_t rmn = pdr->rated_min.value_u32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["ratedMax"] = rmx;
+                output["ratedMin"] = rmn;
                 break;
+            }
             case PLDM_RANGE_FIELD_FORMAT_SINT32:
-                output["nominalValue"] = unsigned(pdr->nominal_value.value_s32);
-                output["normalMax"] = unsigned(pdr->normal_max.value_s32);
-                output["normalMin"] = unsigned(pdr->normal_min.value_s32);
-                output["ratedMax"] = unsigned(pdr->rated_max.value_s32);
-                output["ratedMin"] = unsigned(pdr->rated_min.value_s32);
+            {
+                int32_t nv = pdr->nominal_value.value_s32;
+                int32_t nmx = pdr->normal_max.value_s32;
+                int32_t nmn = pdr->normal_min.value_s32;
+                int32_t rmx = pdr->rated_max.value_s32;
+                int32_t rmn = pdr->rated_min.value_s32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["ratedMax"] = rmx;
+                output["ratedMin"] = rmn;
                 break;
+            }
             case PLDM_RANGE_FIELD_FORMAT_REAL32:
-                output["nominalValue"] = unsigned(pdr->nominal_value.value_f32);
-                output["normalMax"] = unsigned(pdr->normal_max.value_f32);
-                output["normalMin"] = unsigned(pdr->normal_min.value_f32);
-                output["ratedMax"] = unsigned(pdr->rated_max.value_f32);
-                output["ratedMin"] = unsigned(pdr->rated_min.value_f32);
+            {
+                float nv = pdr->nominal_value.value_f32;
+                float nmx = pdr->normal_max.value_f32;
+                float nmn = pdr->normal_min.value_f32;
+                float rmx = pdr->rated_max.value_f32;
+                float rmn = pdr->rated_min.value_f32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["ratedMax"] = rmx;
+                output["ratedMin"] = rmn;
                 break;
+            }
+            case PLDM_RANGE_FIELD_FORMAT_UINT64:
+            {
+                uint64_t nv = pdr->nominal_value.value_u64;
+                uint64_t nmx = pdr->normal_max.value_u64;
+                uint64_t nmn = pdr->normal_min.value_u64;
+                uint64_t rmx = pdr->rated_max.value_u64;
+                uint64_t rmn = pdr->rated_min.value_u64;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["ratedMax"] = rmx;
+                output["ratedMin"] = rmn;
+                break;
+            }
+            case PLDM_RANGE_FIELD_FORMAT_SINT64:
+            {
+                int64_t nv = pdr->nominal_value.value_s64;
+                int64_t nmx = pdr->normal_max.value_s64;
+                int64_t nmn = pdr->normal_min.value_s64;
+                int64_t rmx = pdr->rated_max.value_s64;
+                int64_t rmn = pdr->rated_min.value_s64;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["ratedMax"] = rmx;
+                output["ratedMin"] = rmn;
+                break;
+            }
             default:
                 break;
         }
@@ -1695,6 +1816,12 @@ class GetPDR : public CommandInterface
     void printNumericSensorPDR(const uint8_t* data, const uint16_t data_length,
                                ordered_json& output)
     {
+        if (data == nullptr)
+        {
+            std::cerr << "Failed to get numeric sensor PDR" << std::endl;
+            return;
+        }
+
         struct pldm_numeric_sensor_value_pdr pdr;
         int rc =
             decode_numeric_sensor_pdr_data(data, (size_t)data_length, &pdr);
@@ -1751,15 +1878,45 @@ class GetPDR : public CommandInterface
                 output["minReadable"] = pdr.min_readable.value_s16;
                 break;
             case PLDM_SENSOR_DATA_SIZE_UINT32:
-                output["hysteresis"] = pdr.hysteresis.value_u32;
-                output["maxReadable"] = pdr.max_readable.value_u32;
-                output["minReadable"] = pdr.min_readable.value_u32;
+            {
+                uint32_t hys = pdr.hysteresis.value_u32;
+                uint32_t mx = pdr.max_readable.value_u32;
+                uint32_t mn = pdr.min_readable.value_u32;
+                output["hysteresis"] = hys;
+                output["maxReadable"] = mx;
+                output["minReadable"] = mn;
                 break;
+            }
             case PLDM_SENSOR_DATA_SIZE_SINT32:
-                output["hysteresis"] = pdr.hysteresis.value_s32;
-                output["maxReadable"] = pdr.max_readable.value_s32;
-                output["minReadable"] = pdr.min_readable.value_s32;
+            {
+                int32_t hys = pdr.hysteresis.value_s32;
+                int32_t mx = pdr.max_readable.value_s32;
+                int32_t mn = pdr.min_readable.value_s32;
+                output["hysteresis"] = hys;
+                output["maxReadable"] = mx;
+                output["minReadable"] = mn;
                 break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_UINT64:
+            {
+                uint64_t hys = pdr.hysteresis.value_u64;
+                uint64_t mx = pdr.max_readable.value_u64;
+                uint64_t mn = pdr.min_readable.value_u64;
+                output["hysteresis"] = hys;
+                output["maxReadable"] = mx;
+                output["minReadable"] = mn;
+                break;
+            }
+            case PLDM_SENSOR_DATA_SIZE_SINT64:
+            {
+                int64_t hys = pdr.hysteresis.value_s64;
+                int64_t mx = pdr.max_readable.value_s64;
+                int64_t mn = pdr.min_readable.value_s64;
+                output["hysteresis"] = hys;
+                output["maxReadable"] = mx;
+                output["minReadable"] = mn;
+                break;
+            }
             default:
                 break;
         }
@@ -1819,38 +1976,115 @@ class GetPDR : public CommandInterface
                 output["fatalLow"] = pdr.fatal_low.value_s16;
                 break;
             case PLDM_RANGE_FIELD_FORMAT_UINT32:
-                output["nominalValue"] = pdr.nominal_value.value_u32;
-                output["normalMax"] = pdr.normal_max.value_u32;
-                output["normalMin"] = pdr.normal_min.value_u32;
-                output["warningHigh"] = pdr.warning_high.value_u32;
-                output["warningLow"] = pdr.warning_low.value_u32;
-                output["criticalHigh"] = pdr.critical_high.value_u32;
-                output["criticalLow"] = pdr.critical_low.value_u32;
-                output["fatalHigh"] = pdr.fatal_high.value_u32;
-                output["fatalLow"] = pdr.fatal_low.value_u32;
+            {
+                uint32_t nv = pdr.nominal_value.value_u32;
+                uint32_t nmx = pdr.normal_max.value_u32;
+                uint32_t nmn = pdr.normal_min.value_u32;
+                uint32_t wh = pdr.warning_high.value_u32;
+                uint32_t wl = pdr.warning_low.value_u32;
+                uint32_t ch = pdr.critical_high.value_u32;
+                uint32_t cl = pdr.critical_low.value_u32;
+                uint32_t fh = pdr.fatal_high.value_u32;
+                uint32_t fl = pdr.fatal_low.value_u32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["warningHigh"] = wh;
+                output["warningLow"] = wl;
+                output["criticalHigh"] = ch;
+                output["criticalLow"] = cl;
+                output["fatalHigh"] = fh;
+                output["fatalLow"] = fl;
                 break;
+            }
             case PLDM_RANGE_FIELD_FORMAT_SINT32:
-                output["nominalValue"] = pdr.nominal_value.value_s32;
-                output["normalMax"] = pdr.normal_max.value_s32;
-                output["normalMin"] = pdr.normal_min.value_s32;
-                output["warningHigh"] = pdr.warning_high.value_s32;
-                output["warningLow"] = pdr.warning_low.value_s32;
-                output["criticalHigh"] = pdr.critical_high.value_s32;
-                output["criticalLow"] = pdr.critical_low.value_s32;
-                output["fatalHigh"] = pdr.fatal_high.value_s32;
-                output["fatalLow"] = pdr.fatal_low.value_s32;
+            {
+                int32_t nv = pdr.nominal_value.value_s32;
+                int32_t nmx = pdr.normal_max.value_s32;
+                int32_t nmn = pdr.normal_min.value_s32;
+                int32_t wh = pdr.warning_high.value_s32;
+                int32_t wl = pdr.warning_low.value_s32;
+                int32_t ch = pdr.critical_high.value_s32;
+                int32_t cl = pdr.critical_low.value_s32;
+                int32_t fh = pdr.fatal_high.value_s32;
+                int32_t fl = pdr.fatal_low.value_s32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["warningHigh"] = wh;
+                output["warningLow"] = wl;
+                output["criticalHigh"] = ch;
+                output["criticalLow"] = cl;
+                output["fatalHigh"] = fh;
+                output["fatalLow"] = fl;
                 break;
+            }
             case PLDM_RANGE_FIELD_FORMAT_REAL32:
-                output["nominalValue"] = pdr.nominal_value.value_f32;
-                output["normalMax"] = pdr.normal_max.value_f32;
-                output["normalMin"] = pdr.normal_min.value_f32;
-                output["warningHigh"] = pdr.warning_high.value_f32;
-                output["warningLow"] = pdr.warning_low.value_f32;
-                output["criticalHigh"] = pdr.critical_high.value_f32;
-                output["criticalLow"] = pdr.critical_low.value_f32;
-                output["fatalHigh"] = pdr.fatal_high.value_f32;
-                output["fatalLow"] = pdr.fatal_low.value_f32;
+            {
+                float nv = pdr.nominal_value.value_f32;
+                float nmx = pdr.normal_max.value_f32;
+                float nmn = pdr.normal_min.value_f32;
+                float wh = pdr.warning_high.value_f32;
+                float wl = pdr.warning_low.value_f32;
+                float ch = pdr.critical_high.value_f32;
+                float cl = pdr.critical_low.value_f32;
+                float fh = pdr.fatal_high.value_f32;
+                float fl = pdr.fatal_low.value_f32;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["warningHigh"] = wh;
+                output["warningLow"] = wl;
+                output["criticalHigh"] = ch;
+                output["criticalLow"] = cl;
+                output["fatalHigh"] = fh;
+                output["fatalLow"] = fl;
                 break;
+            }
+            case PLDM_RANGE_FIELD_FORMAT_UINT64:
+            {
+                uint64_t nv = pdr.nominal_value.value_u64;
+                uint64_t nmx = pdr.normal_max.value_u64;
+                uint64_t nmn = pdr.normal_min.value_u64;
+                uint64_t wh = pdr.warning_high.value_u64;
+                uint64_t wl = pdr.warning_low.value_u64;
+                uint64_t ch = pdr.critical_high.value_u64;
+                uint64_t cl = pdr.critical_low.value_u64;
+                uint64_t fh = pdr.fatal_high.value_u64;
+                uint64_t fl = pdr.fatal_low.value_u64;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["warningHigh"] = wh;
+                output["warningLow"] = wl;
+                output["criticalHigh"] = ch;
+                output["criticalLow"] = cl;
+                output["fatalHigh"] = fh;
+                output["fatalLow"] = fl;
+                break;
+            }
+            case PLDM_RANGE_FIELD_FORMAT_SINT64:
+            {
+                int64_t nv = pdr.nominal_value.value_s64;
+                int64_t nmx = pdr.normal_max.value_s64;
+                int64_t nmn = pdr.normal_min.value_s64;
+                int64_t wh = pdr.warning_high.value_s64;
+                int64_t wl = pdr.warning_low.value_s64;
+                int64_t ch = pdr.critical_high.value_s64;
+                int64_t cl = pdr.critical_low.value_s64;
+                int64_t fh = pdr.fatal_high.value_s64;
+                int64_t fl = pdr.fatal_low.value_s64;
+                output["nominalValue"] = nv;
+                output["normalMax"] = nmx;
+                output["normalMin"] = nmn;
+                output["warningHigh"] = wh;
+                output["warningLow"] = wl;
+                output["criticalHigh"] = ch;
+                output["criticalLow"] = cl;
+                output["fatalHigh"] = fh;
+                output["fatalLow"] = fl;
+                break;
+            }
             default:
                 break;
         }
@@ -2008,7 +2242,7 @@ class GetPDR : public CommandInterface
                 printStateSensorPDR(data, output);
                 break;
             case PLDM_NUMERIC_EFFECTER_PDR:
-                printNumericEffecterPDR(data, output);
+                printNumericEffecterPDR(data, respCnt, output);
                 break;
             case PLDM_NUMERIC_SENSOR_PDR:
                 printNumericSensorPDR(data, respCnt, output);

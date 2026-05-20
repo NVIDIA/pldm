@@ -993,10 +993,9 @@ TEST_F(UpdateManagerTest, processStreamDefer_noMatchingDevices)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::ifstream package("./test_pkg", std::ios::binary | std::ios::ate);
-    ASSERT_TRUE(package.good());
-    auto packageSize = static_cast<uintmax_t>(package.tellg());
-    package.seekg(0, std::ios::beg);
+    mapPackageToUpdater(updateManager, "./test_pkg");
+    auto& package = *updateManager.updater->mmapStream;
+    auto packageSize = updateManager.updater->mmapFile.size();
     updateManager.setRequestedApplyTime(
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
@@ -1016,10 +1015,9 @@ TEST_F(UpdateManagerTest,
         componentNameMap, true,
         [](mctp_eid_t, bool) -> exec::task<int> { co_return 0; });
 
-    std::ifstream package("./test_pkg", std::ios::binary | std::ios::ate);
-    ASSERT_TRUE(package.good());
-    auto packageSize = static_cast<uintmax_t>(package.tellg());
-    package.seekg(0, std::ios::beg);
+    mapPackageToUpdater(updateManager, "./test_pkg");
+    auto& package = *updateManager.updater->mmapStream;
+    auto packageSize = updateManager.updater->mmapFile.size();
     updateManager.setRequestedApplyTime(
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
@@ -1533,7 +1531,7 @@ TEST_F(UpdateManagerTest, createProgressUpdateTimerStopsAtTimeoutBoundary)
     updateManager.progressTimer->start(std::chrono::milliseconds(1), true);
     waitEventExpiry(std::chrono::milliseconds(20));
 
-    EXPECT_EQ(updateManager.updateInterval, 1U);
+    EXPECT_EQ(updateManager.updateInterval, 2U);
 }
 
 TEST_F(UpdateManagerTest, startNonPLDMUpdateWithPLDMDeviceReturnsActivating)
@@ -1566,6 +1564,25 @@ TEST_F(UpdateManagerTest, updateOtherDeviceCompletionStoresResult)
     });
     EXPECT_TRUE(updateManager.otherDeviceCompleted.contains("UUID_1"));
     EXPECT_EQ(updateManager.listCompNames, "CompA");
+}
+
+TEST_F(UpdateManagerTest, updateDeviceCompletionIgnoresDuplicateCompletion)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath = "/xyz/openbmc_project/software/progress_duplicate";
+    updateManager.activationProgress =
+        std::make_unique<ActivationProgress>(busMock, updateManager.objPath);
+    updateManager.totalNumComponentUpdates = 2;
+
+    updateManager.updateDeviceCompletion(0x01, false);
+    updateManager.updateDeviceCompletion(0x01, true, {"CompA"});
+
+    ASSERT_EQ(updateManager.deviceUpdateCompletionMap.size(), 1U);
+    EXPECT_FALSE(updateManager.deviceUpdateCompletionMap.at(0x01));
+    EXPECT_EQ(updateManager.compUpdateCompletedCount, 1U);
+    EXPECT_TRUE(updateManager.listCompNames.empty());
 }
 
 TEST_F(UpdateManagerTest, clearExistingActivationNoActivationObjectNoop)
@@ -1641,6 +1658,81 @@ TEST_F(UpdateManagerTest, updatePackageCompletionSetsFailedWhenAnyFailure)
     EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
     EXPECT_EQ(updateManager.activation->activation(),
               software::Activation::Activations::Failed);
+}
+
+TEST_F(UpdateManagerTest,
+       updatePackageCompletionSetsFailedWhenExplicitTargetUnavailable)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/pkg_target_unavailable";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+    updateManager.deviceUpdaterMap.emplace(0x1, nullptr);
+    updateManager.deviceUpdateCompletionMap.emplace(0x1, true);
+    updateManager.unavailableTargetEids.emplace(0x2);
+    updateManager.activationBlocksTransition = nullptr;
+
+    EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
+    EXPECT_EQ(updateManager.activation->activation(),
+              software::Activation::Activations::Failed);
+}
+
+TEST_F(
+    UpdateManagerTest,
+    updatePackageCompletionLeavesActivationUnchangedWhilePldmUpdateStillRunning)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    mapPackageToUpdater(updateManager, "./test_pkg");
+
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/pkg_pldm_still_activating";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+    updateManager.deviceUpdaterMap.emplace(0x1, nullptr);
+    updateManager.deviceUpdaterMap.emplace(0x2, nullptr);
+    updateManager.deviceUpdateCompletionMap.emplace(0x1, true);
+    updateManager.otherDeviceComponents.emplace("UUID_A", true);
+    updateManager.otherDeviceCompleted.emplace("UUID_A", true);
+    updateManager.listCompNames = "CompA";
+
+    EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
+    EXPECT_EQ(updateManager.activation->activation(),
+              software::Activation::Activations::Ready);
+}
+
+TEST_F(
+    UpdateManagerTest,
+    updatePackageCompletionLeavesActivationUnchangedWhileOtherDeviceUpdateStillRunning)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    mapPackageToUpdater(updateManager, "./test_pkg");
+
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/pkg_other_device_still_activating";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+    updateManager.deviceUpdaterMap.emplace(0x1, nullptr);
+    updateManager.deviceUpdateCompletionMap.emplace(0x1, true);
+    updateManager.otherDeviceComponents.emplace("UUID_B", true);
+    updateManager.otherDeviceComponents.emplace("UUID_C", true);
+    updateManager.otherDeviceCompleted.emplace("UUID_B", true);
+    updateManager.listCompNames = "CompB";
+
+    EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
+    EXPECT_EQ(updateManager.activation->activation(),
+              software::Activation::Activations::Ready);
 }
 
 TEST_F(UpdateManagerTest, startPLDMUpdateWithMappedDeviceExecutesLoop)
@@ -2011,6 +2103,170 @@ TEST_F(UpdateManagerTest, getActivationMethodIgnoresUnknownBits)
               "Automatic");
 }
 
+TEST_F(UpdateManagerTest, getActivationMethod_DcPowerCycle)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    bitfield16_t dcOnly{};
+    dcOnly.value = 0x10;
+
+    EXPECT_EQ(updateManager.getActivationMethod(dcOnly), "DC power cycle");
+}
+
+TEST_F(UpdateManagerTest, getComponentTargetListSkipsNonSoftwareTargetPaths)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    ComponentNameMap names{
+        {1, {{10, "CompA"}}},
+    };
+    std::vector<sdbusplus::message::object_path> targets{
+        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompA"),
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/inventory/system/chassis/chassis0")};
+
+    auto compTargetList = updateManager.getComponentTargetList(names, targets);
+
+    ASSERT_TRUE(compTargetList.contains(1));
+    ASSERT_EQ(compTargetList.at(1).size(), 1u);
+    EXPECT_EQ(compTargetList.at(1).front(), 10);
+}
+
+TEST_F(UpdateManagerTest, associatePkgToDevicesWithoutTargetFiltering)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    std::vector<uint8_t> uuid{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+                              0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    Descriptors descriptors{{PLDM_FWUP_UUID, uuid}};
+    DescriptorMap matchingDescriptorMap{{9, descriptors}};
+    FirmwareDeviceIDRecords inRecords{
+        {DeviceUpdateOptionFlags{},
+         ApplicableComponents{0, 1},
+         "VersionString",
+         descriptors,
+         {}}};
+    ComponentImageInfos compImageInfos{{10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "V1"},
+                                       {10, 101, 0xFFFFFFFF, 0, 0, 4, 4, "V2"}};
+    FirmwareDeviceIDRecords outRecords;
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inRecords, matchingDescriptorMap, compImageInfos, {}, {}, outRecords,
+        totalNumComponentUpdates);
+
+    ASSERT_EQ(deviceUpdaterInfos.size(), 1u);
+    ASSERT_EQ(outRecords.size(), 1u);
+    EXPECT_EQ(totalNumComponentUpdates, 2u);
+    EXPECT_EQ(std::get<ApplicableComponents>(outRecords.front()).size(), 2u);
+}
+
+TEST_F(UpdateManagerTest, associatePkgToDevicesFiltersRequestedComponents)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    std::vector<uint8_t> uuid{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+                              0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    Descriptors descriptors{{PLDM_FWUP_UUID, uuid}};
+    DescriptorMap matchingDescriptorMap{{9, descriptors}};
+    FirmwareDeviceIDRecords inRecords{
+        {DeviceUpdateOptionFlags{},
+         ApplicableComponents{0, 1},
+         "VersionString",
+         descriptors,
+         {}}};
+    ComponentImageInfos compImageInfos{{10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "V1"},
+                                       {10, 101, 0xFFFFFFFF, 0, 0, 4, 4, "V2"}};
+    ComponentTargetList compTargetList{{9, {101}}};
+    std::vector<sdbusplus::message::object_path> objectPaths{
+        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompB")};
+    FirmwareDeviceIDRecords outRecords;
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inRecords, matchingDescriptorMap, compImageInfos, compTargetList,
+        objectPaths, outRecords, totalNumComponentUpdates);
+
+    ASSERT_EQ(deviceUpdaterInfos.size(), 1u);
+    ASSERT_EQ(outRecords.size(), 1u);
+    EXPECT_EQ(totalNumComponentUpdates, 1u);
+    ASSERT_EQ(std::get<ApplicableComponents>(outRecords.front()).size(), 1u);
+    EXPECT_EQ(std::get<ApplicableComponents>(outRecords.front()).front(), 1u);
+}
+
+TEST_F(UpdateManagerTest, associatePkgToDevicesSkipsEmptyFilteredComponentLists)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+
+    std::vector<uint8_t> uuid{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+                              0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    Descriptors descriptors{{PLDM_FWUP_UUID, uuid}};
+    DescriptorMap matchingDescriptorMap{{9, descriptors}};
+    FirmwareDeviceIDRecords inRecords{
+        {DeviceUpdateOptionFlags{},
+         ApplicableComponents{0, 1},
+         "VersionString",
+         descriptors,
+         {}}};
+    ComponentImageInfos compImageInfos{{10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "V1"},
+                                       {10, 101, 0xFFFFFFFF, 0, 0, 4, 4, "V2"}};
+    ComponentTargetList compTargetList{{9, {999}}};
+    std::vector<sdbusplus::message::object_path> objectPaths{
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/software/NoMatchingComponent")};
+    FirmwareDeviceIDRecords outRecords;
+    TotalComponentUpdates totalNumComponentUpdates = 0;
+
+    auto deviceUpdaterInfos = updateManager.associatePkgToDevices(
+        inRecords, matchingDescriptorMap, compImageInfos, compTargetList,
+        objectPaths, outRecords, totalNumComponentUpdates);
+
+    EXPECT_TRUE(deviceUpdaterInfos.empty());
+    EXPECT_TRUE(outRecords.empty());
+    EXPECT_EQ(totalNumComponentUpdates, 0u);
+}
+
+TEST_F(UpdateManagerTest, recordUnavailableTargetEidsTracksRemovedTargets)
+{
+    std::vector<uint8_t> uuid{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+                              0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    Descriptors descriptors{{PLDM_FWUP_UUID, uuid}};
+    DescriptorMap liveDescriptorMap{{9, descriptors}};
+
+    UpdateManager updateManager(event, reqHandler, instanceIdDb,
+                                liveDescriptorMap, componentInfoMap,
+                                componentNameMap, true, nullptr);
+
+    ComponentTargetList compTargetList{{9, {100}}, {10, {100}}};
+
+    updateManager.recordUnavailableTargetEids(compTargetList);
+
+    EXPECT_FALSE(updateManager.unavailableTargetEids.contains(9));
+    EXPECT_TRUE(updateManager.unavailableTargetEids.contains(10));
+}
+
+TEST_F(UpdateManagerTest, updateDeviceCompletionAppendsToExistingComponentList)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.listCompNames = "Existing";
+
+    updateManager.updateDeviceCompletion(9, true, {"CompA", "CompB"});
+
+    EXPECT_EQ(updateManager.listCompNames, "Existing CompA CompB");
+}
+
 TEST_F(UpdateManagerTest, startNonPLDMUpdateNoDevicesUsesExistingProgressObject)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
@@ -2194,6 +2450,41 @@ TEST_F(UpdateManagerTest,
         updateManager.updateOtherDeviceComponents(otherDeviceMap);
     });
     EXPECT_EQ(updateManager.otherDeviceComponents.size(), 2U);
+}
+
+TEST_F(UpdateManagerTest,
+       computeEffectiveTimeoutSec_returnsFirmwareUpdateTimeWhenNoOtherMgr)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    // No otherDeviceUpdateManager constructed -> falls back to the
+    // FIRMWARE_UPDATE_TIME default (in seconds).
+    const uint64_t result = updateManager.computeEffectiveTimeoutSec();
+    EXPECT_GE(result, 60u);
+}
+
+TEST_F(UpdateManagerTest,
+       computeEffectiveTimeoutSec_emptyOtherDevices_matchesNoMgrCase)
+{
+    // A single UpdateManager is reused across the two configurations because
+    // its constructor registers /xyz/openbmc_project/software/pldm on the
+    // global D-Bus; constructing two simultaneously would collide.
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    const uint64_t withoutMgr = updateManager.computeEffectiveTimeoutSec();
+
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(
+            busMock, &updateManager,
+            std::vector<sdbusplus::message::object_path>{});
+    const uint64_t withMgr = updateManager.computeEffectiveTimeoutSec();
+
+    // Empty otherDevices -> max == 0 -> result is the default in both
+    // cases. The two paths must agree.
+    EXPECT_EQ(withMgr, withoutMgr);
+    EXPECT_GT(withMgr, 0u);
 }
 
 TEST_F(UpdateManagerTest, clearActivationInfoResetsAllTrackedMembers)

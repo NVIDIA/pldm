@@ -81,6 +81,79 @@ class DeviceUpdaterTest : public testing::Test
                           {66666, "ComponentName4"}};
     }
 
+    void TearDown() override
+    {
+        drainRequesterWork();
+    }
+
+    void runEvent(uint64_t timeoutUsec = 200000)
+    {
+        EXPECT_GE(sd_event_run(event.get(), timeoutUsec), 0);
+    }
+
+    bool requesterPending() const
+    {
+        if (!reqHandler.handlers.empty() ||
+            !reqHandler.removeRequestContainer.empty())
+        {
+            return true;
+        }
+
+        for (const auto& [eid, queue] : reqHandler.endpointMessageQueues)
+        {
+            static_cast<void>(eid);
+            if (queue->activeRequest || !queue->requestQueue.empty())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void expireOutstandingRequests()
+    {
+        std::vector<requester::RequestKey> keys;
+        keys.reserve(reqHandler.handlers.size());
+        for (const auto& [key, value] : reqHandler.handlers)
+        {
+            static_cast<void>(value);
+            if (!reqHandler.removeRequestContainer.contains(key))
+            {
+                keys.push_back(key);
+            }
+        }
+
+        for (const auto& key : keys)
+        {
+            if (reqHandler.handlers.contains(key) &&
+                !reqHandler.removeRequestContainer.contains(key))
+            {
+                reqHandler.instanceIdExpiryCallBack(key);
+            }
+        }
+    }
+
+    void drainRequesterWork()
+    {
+        for (int i = 0; i < 64; ++i)
+        {
+            runEvent(0);
+
+            if (requesterPending())
+            {
+                expireOutstandingRequests();
+            }
+
+            runEvent(0);
+
+            if (!requesterPending())
+            {
+                return;
+            }
+        }
+    }
+
     std::ifstream package;
     mctp_eid_t eid{0};
     FirmwareDeviceIDRecord fwDeviceIDRecord;
@@ -224,6 +297,45 @@ TEST_F(DeviceUpdaterTest, sendCommandNotExpectedResponse)
     const pldm_msg pldmmsg{};
 
     EXPECT_NO_THROW({ sendCommandNotExpectedResponse(&pldmmsg, 0); });
+}
+
+TEST_F(DeviceUpdaterTest, requestFwDataRejectedAfterTimeoutCancellation)
+{
+    const pldm_msg pldmmsg{};
+    deviceUpdater.timeoutCancellationRequested = true;
+
+    auto response = deviceUpdater.requestFwData(&pldmmsg, 0);
+
+    ASSERT_GE(response.size(), sizeof(pldm_msg));
+    auto responseMsg = reinterpret_cast<const pldm_msg*>(response.data());
+    EXPECT_EQ(responseMsg->payload[0], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+}
+
+TEST_F(DeviceUpdaterTest,
+       handleUpdateTimeoutStopsComponentTimersAndDeferredWork)
+{
+    constexpr size_t componentOffset = 0;
+    auto compUpdater = std::make_unique<ComponentUpdater>(
+        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+    compUpdater->createRequestFwDataTimer();
+    compUpdater->createCompleteCommandsTimeoutTimer();
+    compUpdater->pendingPostResponseAction = [] {};
+    compUpdater->pldmRequest = std::make_unique<sdeventplus::source::Defer>(
+        updateManager.event, [](EventBase&) {});
+
+    auto* compUpdaterPtr = compUpdater.get();
+    deviceUpdater.componentUpdaterMap.emplace(
+        componentOffset, std::make_pair(std::move(compUpdater), false));
+
+    std::get<ApplicableComponents>(fwDeviceIDRecord).clear();
+    deviceUpdater.handleUpdateTimeout();
+
+    EXPECT_TRUE(deviceUpdater.timeoutCancellationRequested);
+    EXPECT_EQ(compUpdaterPtr->reqFwDataTimer, nullptr);
+    EXPECT_EQ(compUpdaterPtr->completeCommandsTimeoutTimer, nullptr);
+    EXPECT_EQ(compUpdaterPtr->pldmRequest, nullptr);
+    EXPECT_FALSE(static_cast<bool>(compUpdaterPtr->pendingPostResponseAction));
 }
 
 TEST(DeviceUpdaterSequence, command_RequestUpdate)

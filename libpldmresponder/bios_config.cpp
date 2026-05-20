@@ -467,8 +467,8 @@ void BIOSConfig::updateBaseBIOSTableProperty()
             for (const auto& [attrName, biosTableObj] : baseBIOSTableMaps)
             {
                 const auto& [attributeType, readOnly, displayName, description,
-                             menuPath, currentValue, defaultValue, options] =
-                    biosTableObj;
+                             menuPath, currentValue, defaultValue,
+                             options] = biosTableObj;
 
                 pldm::bios::Option oemOptions{};
                 oemOptions.reserve(options.size());

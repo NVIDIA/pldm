@@ -36,9 +36,15 @@
 //
 // 2) Firmware Inventory - The firmware version for the components on the FD is
 // populated on the D-Bus if "create" entry is present in "firmware_inventory"
-// section. The key is the component name and value is the object with two property,
-// the first called component_id contains ComponentIdentifier as defined in DSP0267
-// the second is the collection of associations. The object path is
+// section. The key is the component name and value is the object with up to
+// three properties: "component_id" contains ComponentIdentifier as defined in
+// DSP0267; "associations" is the collection of D-Bus associations (see below);
+// and the optional "manufacturer" string overrides the Manufacturer property on
+// the xyz.openbmc_project.Inventory.Decorator.Asset D-Bus interface for this
+// component's software object. When "manufacturer" is omitted it defaults to
+// "NVIDIA". Use "manufacturer" for third-party firmware components (e.g. a
+// Lattice CPLD) where the vendor differs from the platform integrator. The
+// object path is
 // "ComponentName" appended to "/xyz/openbmc_project/software".
 // "/xyz/openbmc_project/software/ComponentName" D-Bus object will implement
 // xyz.openbmc_project.Software.Version interface and default Purpose to
@@ -109,6 +115,7 @@
 
                     "ComponentName2": {
                         "component_id": 2,
+                        "manufacturer": "Lattice",
                         "associations": [
                             {
                                 "forward": "inventory",

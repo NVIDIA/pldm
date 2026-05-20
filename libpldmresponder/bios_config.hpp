@@ -127,6 +127,7 @@ class BIOSConfig
     {
         oemBiosHandler = handler;
     }
+
   private:
     /** @enum Index into the fields in the BaseBIOSTable
      */

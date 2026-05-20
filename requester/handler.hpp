@@ -659,12 +659,15 @@ struct SendRecvMsgOperation
         }
 
         using namespace std::placeholders;
+        registering = true;
         auto rc = handler.registerRequest(
             requestKey.eid, requestKey.instanceId, requestKey.type,
             requestKey.command, std::move(request),
             std::bind(&SendRecvMsgOperation::onComplete, this, _1, _2, _3));
-        if (rc)
+        registering = false;
+        if (rc && !completed)
         {
+            completed = true;
             return stdexec::set_value(std::move(receiver), rc,
                                       static_cast<const pldm_msg*>(nullptr),
                                       static_cast<size_t>(0));
@@ -685,6 +688,7 @@ struct SendRecvMsgOperation
     {
         handler.unregisterRequest(requestKey.eid, requestKey.instanceId,
                                   requestKey.type, requestKey.command);
+        completed = true;
         return stdexec::set_stopped(std::move(receiver));
     }
 
@@ -708,11 +712,16 @@ struct SendRecvMsgOperation
             {
                 rc = PLDM_REQUESTER_MCTP_TRANSPORT_ERROR;
             }
+            else if (registering)
+            {
+                rc = PLDM_ERROR;
+            }
             else
             {
                 rc = PLDM_ERROR_NOT_READY;
             }
         }
+        completed = true;
         return stdexec::set_value(std::move(receiver), rc, response,
                                   respMsgLen);
     }
@@ -750,6 +759,12 @@ struct SendRecvMsgOperation
     std::optional<typename stdexec::stop_token_of_t<
         stdexec::env_of_t<R>>::template callback_type<std::function<void()>>>
         stopCallback = std::nullopt;
+
+    /** @brief True while registerRequest() is running synchronously. */
+    bool registering = false;
+
+    /** @brief True once the receiver has been completed. */
+    bool completed = false;
 };
 
 /** @class SendRecvMsgSender

@@ -62,8 +62,11 @@ TEST(GetBoardPath_WithMockHandler, ReturnsExpectedBoardPath)
     pldm::MctpMedium endpointMedium = "medium";
     pldm::NetworkId endpointNetId = 0;
     pldm::MctpInfoName endpointName = "BMC";
-    pldm::MctpInfo endpointInfo = std::make_tuple(
-        endpointId, endpointUuid, endpointMedium, endpointNetId, endpointName);
+    pldm::MctpBinding endpointBinding = "binding";
+    pldm::LocalEid endpointLocalEid = std::nullopt;
+    pldm::MctpInfo endpointInfo =
+        std::make_tuple(endpointId, endpointUuid, endpointMedium, endpointNetId,
+                        endpointName, endpointBinding, endpointLocalEid);
     configurations[boardInventoryPath] = endpointInfo;
 
     Event event(sdeventplus::Event::get_default());

@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 namespace pldm
 {
@@ -114,23 +115,39 @@ static std::unordered_map<MctpBinding, Priority> bindingPriority = {
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.Serial", 4},
     {"xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus", 5}};
 
+/** @brief Look up the priority for a medium/binding string.
+ *
+ *  @param[in] table - priority table to query
+ *  @param[in] key   - medium or binding string sourced from D-Bus
+ *
+ *  @return The priority value for the key, or
+ *          std::numeric_limits<Priority>::max() when the key is not
+ *          present in the table. Strings absent from the priority
+ *          maps therefore rank as lowest priority.
+ */
+static Priority lookupPriority(
+    const std::unordered_map<std::string, Priority>& table,
+    const std::string& key)
+{
+    auto it = table.find(key);
+    return it != table.end() ? it->second
+                             : std::numeric_limits<Priority>::max();
+}
+
 static bool isPreferred(const MctpInfo& currentMctpInfo,
                         const MctpInfo& newMctpInfo)
 {
-    auto currentMedium = std::get<2>(currentMctpInfo);
-    auto newMedium = std::get<2>(newMctpInfo);
-    auto currentBinding = std::get<5>(currentMctpInfo);
-    auto newBinding = std::get<5>(newMctpInfo);
+    auto currentMediumPrio =
+        lookupPriority(mediumPriority, std::get<2>(currentMctpInfo));
+    auto newMediumPrio =
+        lookupPriority(mediumPriority, std::get<2>(newMctpInfo));
 
-    if (mediumPriority.at(currentMedium) == mediumPriority.at(newMedium))
+    if (currentMediumPrio == newMediumPrio)
     {
-        return bindingPriority.at(currentBinding) >
-               bindingPriority.at(newBinding);
+        return lookupPriority(bindingPriority, std::get<5>(currentMctpInfo)) >
+               lookupPriority(bindingPriority, std::get<5>(newMctpInfo));
     }
-    else
-    {
-        return mediumPriority.at(currentMedium) > mediumPriority.at(newMedium);
-    }
+    return currentMediumPrio > newMediumPrio;
 }
 
 std::optional<tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
@@ -243,30 +260,31 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
         for (const auto& terminus : termini)
         {
             auto eid = terminus.value("EID", 0xFF);
-            auto name = terminus.value("Name", std::string(""));
             auto terminusName = terminus.value("TerminusName", std::string(""));
             auto inst = terminus.value("Instance", 0);
+            auto cpuIdxVal = terminus.value("CpuIndex", 0);
+            std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
 
-            if (eid == 0xFF || name.empty() || inst < 0)
+            if (eid == 0xFF || terminusName.empty() || inst < 0)
             {
                 lg2::warning(
-                    "Invalid terminus configuration entry, skipping. NAME={NAME}, EID={EID}",
-                    "NAME", name, "EID", eid);
+                    "Invalid terminus configuration entry, skipping. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+                    "TERMINUS_NAME", terminusName, "EID", eid);
                 continue;
             }
 
             lg2::info(
-                "Loading static PLDM terminus config: NAME={NAME}, TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-                "NAME", name, "TERMINUS_NAME", terminusName, "EID", eid);
+                "Loading static PLDM terminus config: TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+                "TERMINUS_NAME", terminusName, "EID", eid);
 
-            // Store EID to TerminusName mapping for runtime check
+            // Store EID to terminus config mapping for runtime check
             // This will be used when the actual MCTP endpoint is discovered
             if (!terminusName.empty())
             {
-                eidToTerminusNameMap[eid] =
-                    std::pair<int, std::string>(inst, terminusName);
+                eidToTerminusConfigMap[eid] =
+                    std::make_tuple(inst, terminusName, cpuIndex);
                 lg2::info(
-                    "Stored EID to TerminusName mapping for future discovery: EID={EID},"
+                    "Stored EID to terminus config for future discovery: EID={EID},"
                     "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
                     "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
                     terminusName);
@@ -274,8 +292,8 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
         }
 
         lg2::info(
-            "Loaded {COUNT} static PLDM terminus name mappings from configuration",
-            "COUNT", eidToTerminusNameMap.size());
+            "Loaded {COUNT} static PLDM terminus config mappings from configuration",
+            "COUNT", eidToTerminusConfigMap.size());
     }
     catch (const std::exception& e)
     {
@@ -367,7 +385,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     auto rc = co_await getTidOverMctp(eid, tid);
     // tid == 0 per DSP0240 means the
     // remote terminus has not been assigned a TID yet
-    // Treat it the same as PLDM_TID_RESERVED so that 
+    // Treat it the same as PLDM_TID_RESERVED so that
     // we can assign a fresh TID via mapTid(mctpInfo)
     if (rc || !tid || tid == PLDM_TID_RESERVED)
     {
@@ -414,9 +432,8 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
             auto existingTid = toTid(mctpInfo);
             if (!existingTid || existingTid.value() != tid)
             {
-                lg2::error(
-                    "Failed to store Terminus Info for terminus {TID}.",
-                    "TID", tid);
+                lg2::error("Failed to store Terminus Info for terminus {TID}.",
+                           "TID", tid);
                 co_return PLDM_ERROR;
             }
         }
@@ -470,16 +487,22 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, uuid, *this);
 
-    // Runtime check: Match EID with configured EID and set terminus name
-    auto eidMappingIt = eidToTerminusNameMap.find(eid);
-    if (eidMappingIt != eidToTerminusNameMap.end())
+    // Runtime check: Match EID with configured EID and set terminus config
+    auto eidConfigIt = eidToTerminusConfigMap.find(eid);
+    if (eidConfigIt != eidToTerminusConfigMap.end())
     {
-        auto inst = eidMappingIt->second.first;
+        auto inst = std::get<0>(eidConfigIt->second);
         termini[tid]->setInstance(inst);
-        const std::string& configuredTerminusName = eidMappingIt->second.second;
+        const std::string& configuredTerminusName =
+            std::get<1>(eidConfigIt->second);
         termini[tid]->setTerminusName(configuredTerminusName);
+        const auto& configuredCpuIndex = std::get<2>(eidConfigIt->second);
+        if (configuredCpuIndex.has_value())
+        {
+            termini[tid]->setCpuIndex(*configuredCpuIndex);
+        }
         lg2::info(
-            "Matched EID with configuration and set terminus name: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+            "Matched EID with configuration and set terminus config: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
             "TID", tid, "EID", eid, "TERMINUS_NAME", configuredTerminusName);
     }
     else

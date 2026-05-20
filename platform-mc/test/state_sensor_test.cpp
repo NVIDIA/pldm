@@ -226,7 +226,7 @@ TEST_F(StateSensorCoverage, healthStateCoverage)
     health->setOpState(EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING);
     EXPECT_EQ(EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING, health->getOpState());
 
-    AuxiliaryNames auxNames{{{"en", "Id_0"}}};
+    pldm::platform_mc::AuxiliaryNames auxNames{{{"en", "Id_0"}}};
     stateSensor->updateSensorNames(auxNames);
     auxNames[0][0].second = "Health-Renamed";
     stateSensor->updateSensorNames(auxNames);

@@ -85,6 +85,12 @@ NumericSensor::NumericSensor(
             hasValueIntf = false;
             useMetricInterface = true;
             break;
+        case PLDM_SENSOR_UNIT_BYTES:
+            sensorNameSpace = "/xyz/openbmc_project/metric/bandwidth/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            metricUnit = MetricUnit::Bytes;
+            break;
         case PLDM_SENSOR_UNIT_SECONDS:
             sensorNameSpace = "/xyz/openbmc_project/metric/time/";
             hasValueIntf = false;
@@ -511,6 +517,12 @@ NumericSensor::NumericSensor(
             hasValueIntf = false;
             useMetricInterface = true;
             metricUnit = MetricUnit::Count;
+            break;
+        case PLDM_SENSOR_UNIT_BYTES:
+            sensorNameSpace = "/xyz/openbmc_project/metric/bandwidth/";
+            hasValueIntf = false;
+            useMetricInterface = true;
+            metricUnit = MetricUnit::Bytes;
             break;
         case PLDM_SENSOR_UNIT_SECONDS:
             sensorNameSpace = "/xyz/openbmc_project/metric/time/";

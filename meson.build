@@ -254,6 +254,10 @@ conf_data.set_quoted(
 if get_option('nvlink-c2c-fabric-object').enabled()
     add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
+conf_data.set(
+    'NUMBER_OF_LINKS_PER_PARTITION',
+    get_option('number-of-links-per-partition'),
+)
 conf_data.set_quoted(
     'CPU_PRIMARY_TEMP_SENSOR',
     get_option('cpu-primary-temp-sensor'),
@@ -261,6 +265,10 @@ conf_data.set_quoted(
 conf_data.set_quoted(
     'CPU_PRIMARY_POWER_CONTROL',
     get_option('cpu-primary-power-control'),
+)
+conf_data.set_quoted(
+    'CPU_PRIMARY_POWER_SENSOR',
+    get_option('cpu-primary-power-sensor'),
 )
 if get_option('nvidia-disable-edpp-effecters').enabled()
     conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
@@ -354,8 +362,7 @@ if get_option('oem-nvidia').allowed()
     add_project_arguments('-DOEM_NVIDIA', language: 'cpp')
 endif
 
-libpldmutils_headers = include_directories('.')
-libpldm_source_headers = include_directories('../include', is_system: true)
+libpldmutils_headers = ['.']
 libpldmutils = library(
     'pldmutils',
     'common/transport.cpp',
@@ -373,11 +380,11 @@ libpldmutils = library(
         sdeventplus,
     ],
     install: true,
-    include_directories: [libpldmutils_headers, libpldm_source_headers],
+    include_directories: include_directories(libpldmutils_headers),
 )
 
 libpldmutils = declare_dependency(
-    include_directories: [libpldmutils_headers, libpldm_source_headers],
+    include_directories: include_directories(libpldmutils_headers),
     link_with: libpldmutils,
 )
 

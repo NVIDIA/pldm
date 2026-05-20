@@ -1,7 +1,8 @@
 #include "dbus_to_event_handler.hpp"
 
-#include "common/types.hpp"
 #include "libpldm/pldm.h"
+
+#include "common/types.hpp"
 #include "libpldmresponder/pdr.hpp"
 
 namespace pldm

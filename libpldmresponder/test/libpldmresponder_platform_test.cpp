@@ -217,8 +217,9 @@ class StubOemPlatformHandler : public pldm::responder::oem_platform::Handler
     {}
 
     int getOemStateSensorReadingsHandler(
-        pldm::EntityType, pldm::pdr::EntityInstance, pldm::pdr::StateSetId,
-        pldm::pdr::CompositeCount,
+        pldm::pdr::EntityType, pldm::pdr::EntityInstance,
+        pldm::pdr::ContainerID, pldm::pdr::StateSetId,
+        pldm::pdr::CompositeCount, uint16_t,
         std::vector<get_sensor_state_field>&) override
     {
         return PLDM_SUCCESS;
@@ -257,6 +258,26 @@ class StubOemPlatformHandler : public pldm::responder::oem_platform::Handler
         ++checkBMCStateCalls;
         return checkBMCStateResult;
     }
+
+    void updateOemDbusPaths(std::string&) override {}
+
+    const pldm_pdr_record* fetchLastBMCRecord(const pldm_pdr*) override
+    {
+        return nullptr;
+    }
+
+    bool checkRecordHandleInRange(const uint32_t&) override
+    {
+        return false;
+    }
+
+    void processSetEventReceiver() override {}
+
+    void setSurvTimer(uint8_t, bool) override {}
+
+    void handleBootTypesAtPowerOn() override {}
+
+    void handleBootTypesAtChassisOff() override {}
 
     size_t buildOEMPDRCalls = 0;
     size_t resetWatchDogCalls = 0;
@@ -1292,7 +1313,7 @@ TEST(PlatformHandlerWrapper, oemWrapperCoveragePaths)
     uint32_t recordHandle = 0;
     auto effecterPdr = makeStateEffecterPdr(0x9002, 1, 64, 1, 1, oemStateSetId);
     ASSERT_EQ(pldm_pdr_add(pdrRepo, effecterPdr.data(), effecterPdr.size(),
-                           true, TERMINUS_HANDLE, &recordHandle),
+                           true, pldm::TERMINUS_HANDLE, &recordHandle),
               0);
 
     std::vector<set_effecter_state_field> effecterStateField{
@@ -1323,23 +1344,27 @@ TEST(PlatformHandlerWrapper, oemHelperDetectionCoveragePaths)
     uint16_t entityType{};
     uint16_t entityInstance{};
     uint16_t stateSetId{};
+    uint16_t containerId{};
 
     auto sensorOnlyRepo = pldm_pdr_init();
     Handler sensorOnlyHandler(&mockedUtils, "./pdr_jsons/state_effecter/good",
                               sensorOnlyRepo, nullptr, nullptr, nullptr,
                               nullptr, event);
-    EXPECT_FALSE(isOemStateSensor(sensorOnlyHandler, 0x1234, 1, compositeCount,
-                                  entityType, entityInstance, stateSetId));
+    EXPECT_FALSE(
+        isOemStateSensor(sensorOnlyHandler, 0x1234, 1, compositeCount,
+                         entityType, entityInstance, stateSetId, containerId));
 
     auto sensorPdr = makeStateSensorPdr(0x9200, 1, PLDM_OEM_ENTITY_TYPE_START);
     uint32_t recordHandle = 0;
     ASSERT_EQ(pldm_pdr_add(sensorOnlyRepo, sensorPdr.data(), sensorPdr.size(),
-                           true, TERMINUS_HANDLE, &recordHandle),
+                           true, pldm::TERMINUS_HANDLE, &recordHandle),
               0);
-    EXPECT_FALSE(isOemStateSensor(sensorOnlyHandler, 0xEE00, 1, compositeCount,
-                                  entityType, entityInstance, stateSetId));
-    EXPECT_TRUE(isOemStateSensor(sensorOnlyHandler, 0x9200, 1, compositeCount,
-                                 entityType, entityInstance, stateSetId));
+    EXPECT_FALSE(
+        isOemStateSensor(sensorOnlyHandler, 0xEE00, 1, compositeCount,
+                         entityType, entityInstance, stateSetId, containerId));
+    EXPECT_TRUE(
+        isOemStateSensor(sensorOnlyHandler, 0x9200, 1, compositeCount,
+                         entityType, entityInstance, stateSetId, containerId));
 
     auto effecterOnlyRepo = pldm_pdr_init();
     Handler effecterOnlyHandler(&mockedUtils, "./pdr_jsons/state_sensor/good",
@@ -1351,7 +1376,7 @@ TEST(PlatformHandlerWrapper, oemHelperDetectionCoveragePaths)
     auto effecterPdr =
         makeStateEffecterPdr(0x9201, 1, PLDM_OEM_ENTITY_TYPE_START);
     ASSERT_EQ(pldm_pdr_add(effecterOnlyRepo, effecterPdr.data(),
-                           effecterPdr.size(), true, TERMINUS_HANDLE,
+                           effecterPdr.size(), true, pldm::TERMINUS_HANDLE,
                            &recordHandle),
               0);
     EXPECT_TRUE(isOemStateEffecter(effecterOnlyHandler, 0x9201, 1, entityType,
@@ -1561,15 +1586,18 @@ TEST(PlatformHandlerWrapper, getPDRRecordHandlesAndOemChecks)
     uint16_t entityType{};
     uint16_t entityInstance{};
     uint16_t stateSetId{};
+    uint16_t containerId{};
     uint8_t compSensorCnt{};
     EXPECT_FALSE(isOemStateEffecter(effecterHandler, 1, 1, entityType,
                                     entityInstance, stateSetId));
     EXPECT_FALSE(isOemStateEffecter(effecterHandler, 1, 8, entityType,
                                     entityInstance, stateSetId));
-    EXPECT_FALSE(isOemStateSensor(sensorHandler, 1, 1, compSensorCnt,
-                                  entityType, entityInstance, stateSetId));
-    EXPECT_FALSE(isOemStateSensor(sensorHandler, 1, 8, compSensorCnt,
-                                  entityType, entityInstance, stateSetId));
+    EXPECT_FALSE(
+        isOemStateSensor(sensorHandler, 1, 1, compSensorCnt, entityType,
+                         entityInstance, stateSetId, containerId));
+    EXPECT_FALSE(
+        isOemStateSensor(sensorHandler, 1, 8, compSensorCnt, entityType,
+                         entityInstance, stateSetId, containerId));
 
     pldm_pdr_destroy(effecterPdrRepo);
     pldm_pdr_destroy(sensorPdrRepo);
@@ -1658,8 +1686,8 @@ TEST(PlatformHandlerWrapper, commandDispatchAndAddOnHandlersCoverage)
         });
 
     Handler handler(&mockedUtils, "./pdr_jsons/state_sensor/good", pdrRepo,
-                    nullptr, nullptr, nullptr, nullptr, event, false,
-                    std::optional<EventMap>{addOnHandlers});
+                    nullptr, nullptr, nullptr, nullptr, event, false, 0,
+                    nullptr, nullptr, std::optional<EventMap>{addOnHandlers});
 
     std::vector<uint8_t> getPdrReq(
         sizeof(pldm_msg_hdr) + PLDM_GET_PDR_REQ_BYTES, 0);

@@ -102,7 +102,7 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(
-        reqHandler, instanceIdDb,
+        nullptr, reqHandler, instanceIdDb,
         [&](pldm::eid callbackEid, UUID callbackUuid, dbus::MctpInterfaces&) {
             createCallbackCalled = true;
             EXPECT_EQ(callbackEid, eid);
@@ -145,7 +145,7 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(
-        reqHandler, instanceIdDb,
+        nullptr, reqHandler, instanceIdDb,
         [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
             createCallbackCalled = true;
         },
@@ -191,8 +191,8 @@ TEST_F(InventoryManagerInternalTest,
     const MctpBinding slowBinding =
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus";
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     manager.mctpEidMap[slowEid] =
@@ -237,8 +237,8 @@ TEST_F(InventoryManagerInternalTest,
     const MctpBinding slowBinding =
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus";
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     manager.mctpEidMap[newFastEid] =
@@ -271,8 +271,8 @@ TEST_F(InventoryManagerInternalTest,
 
 TEST_F(InventoryManagerInternalTest, discoverFDsHandlesEmptyEndpointList)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     MctpInfos mctpInfos{};
@@ -289,8 +289,8 @@ TEST_F(InventoryManagerInternalTest, discoverFDsHandlesEmptyEndpointList)
 
 TEST_F(InventoryManagerInternalTest, discoverFDsReturnsEarlyWhenTaskPending)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     manager.discoverFDsTaskHandle.emplace();
@@ -307,8 +307,8 @@ TEST_F(InventoryManagerInternalTest, discoverFDsReturnsEarlyWhenTaskPending)
 
 TEST_F(InventoryManagerInternalTest, discoverFDsResetsCompletedTaskHandle)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     auto& [scope, rcOpt] = manager.discoverFDsTaskHandle.emplace();
@@ -325,8 +325,8 @@ TEST_F(InventoryManagerInternalTest, discoverFDsResetsCompletedTaskHandle)
 
 TEST_F(InventoryManagerInternalTest, discoverFDsTaskPopsQueuedEntry)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     manager.queuedMctpInfos.emplace(MctpInfos{}, dbus::MctpInterfaces{});
@@ -345,8 +345,8 @@ TEST_F(InventoryManagerInternalTest, cleanUpResourcesErasesTrackedMaps)
     const MctpBinding binding =
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
@@ -362,8 +362,8 @@ TEST_F(InventoryManagerInternalTest, cleanUpResourcesErasesTrackedMaps)
 
 TEST_F(InventoryManagerInternalTest, logDeviceStatusErrorsReturnsFalse)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     EXPECT_FALSE(manager.logDeviceStatusErrors(1));
@@ -379,8 +379,8 @@ TEST_F(InventoryManagerInternalTest,
     const MctpBinding binding =
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     dbus::MctpInterfaces mctpInterfaces{{uuid, {}}};
@@ -410,8 +410,8 @@ TEST_F(InventoryManagerInternalTest,
             {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
            {}}}});
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, matchingDeviceInventoryInfo);
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
 
@@ -440,10 +440,55 @@ TEST(InventoryManagerHeaderInternalTest,
     EXPECT_FALSE(fastBinding < slowBinding);
 }
 
+// MctpEidInfo::operator< must tolerate empty or unrecognized medium/binding
+// strings without throwing; unknown values rank below any known value so a
+// priority_queue keeps known entries on top.
+TEST(InventoryManagerHeaderInternalTest,
+     mctpEidInfoOperatorLessUnknownMediumOrBindingDoesNotThrow)
+{
+    const MctpMedium pcieMedium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding pcieBinding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    MctpEidInfo known{1, pcieMedium, pcieBinding};
+    MctpEidInfo emptyMediumBinding{2, "", ""};
+    MctpEidInfo unknownMedium{
+        3, "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.NotARealMedium",
+        pcieBinding};
+    MctpEidInfo unknownBinding{
+        4, pcieMedium,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.NotARealBinding"};
+
+    // Unknown values must never throw and must compare as lower priority.
+    EXPECT_NO_THROW({
+        EXPECT_TRUE(emptyMediumBinding < known);
+        EXPECT_FALSE(known < emptyMediumBinding);
+        EXPECT_TRUE(unknownMedium < known);
+        EXPECT_FALSE(known < unknownMedium);
+        EXPECT_TRUE(unknownBinding < known);
+        EXPECT_FALSE(known < unknownBinding);
+    });
+
+    // priority_queue uses operator<; pushing entries with unknown values must
+    // not blow up the queue.
+    EXPECT_NO_THROW({
+        std::priority_queue<MctpEidInfo> queue;
+        queue.push(emptyMediumBinding);
+        queue.push(known);
+        queue.push(unknownMedium);
+        queue.push(unknownBinding);
+        // The known (PCIe/PCIe) entry has the highest priority and should be
+        // the first popped from the priority queue.
+        ASSERT_FALSE(queue.empty());
+        EXPECT_EQ(queue.top().eid, 1);
+    });
+}
+
 TEST_F(InventoryManagerInternalTest, transportWrapperPathsReturnErrors)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     uint64_t supportedTypes = 0;
@@ -501,8 +546,8 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
     const MctpBinding binding =
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     descriptorMap.emplace(
@@ -519,11 +564,14 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
     EXPECT_NE(std::get<0>(getActiveRc.value()), PLDM_SUCCESS);
     EXPECT_FALSE(callbackCalled);
 
+    // initiateGetActiveFirmwareVersion returns early for unknown EIDs
+    const pldm::eid unknownEid = 99;
     auto initiate = manager.initiateGetActiveFirmwareVersion(
-        eid, [&](pldm::eid) { callbackCalled = true; });
+        unknownEid, [&](pldm::eid) { callbackCalled = true; });
     auto initiateRc = stdexec::sync_wait(std::move(initiate));
     ASSERT_TRUE(initiateRc.has_value());
-    EXPECT_NE(std::get<0>(initiateRc.value()), PLDM_SUCCESS);
+    EXPECT_EQ(std::get<0>(initiateRc.value()), PLDM_SUCCESS);
+    EXPECT_FALSE(callbackCalled);
 
     auto refresh = manager.refreshSingleEndpoint(eid, mctpInterfaces, true);
     auto refreshRc = stdexec::sync_wait(std::move(refresh));
@@ -535,8 +583,8 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
 
 TEST_F(InventoryManagerInternalTest, downstreamParserErrorPaths)
 {
-    InventoryManager manager(reqHandler, instanceIdDb, nullptr, nullptr,
-                             descriptorMap, downstreamDescriptorMap,
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
                              componentInfoMap, deviceInventoryInfo);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 1> invalidResp{

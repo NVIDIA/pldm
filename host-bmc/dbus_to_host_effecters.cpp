@@ -250,7 +250,14 @@ int HostEffecterParser::setHostStateEffecter(
 {
     uint8_t& mctpEid = hostEffecterInfo[effecterInfoIndex].mctpEid;
     uint8_t& compEffCnt = hostEffecterInfo[effecterInfoIndex].compEffecterCnt;
-    auto instanceId = instanceIdDb->next(mctpEid);
+    auto instanceIdResult = instanceIdDb->next(mctpEid);
+    if (!instanceIdResult)
+    {
+        std::cerr << "Failed to allocate instance ID for Host effecter, ERROR="
+                  << instanceIdResult.error().what() << "\n";
+        return PLDM_ERROR;
+    }
+    auto instanceId = instanceIdResult.value();
 
     std::vector<uint8_t> requestMsg(
         sizeof(pldm_msg_hdr) + sizeof(effecterId) + sizeof(compEffCnt) +

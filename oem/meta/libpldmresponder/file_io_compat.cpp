@@ -1,3 +1,4 @@
+#include <endian.h>
 #include <libpldm/base.h>
 #include <libpldm/oem/meta/file_io.h>
 
@@ -5,11 +6,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <endian.h>
 
 extern "C"
 {
-
 void* pldm_oem_meta_file_io_write_req_data(
     struct pldm_oem_meta_file_io_write_req* req)
 {
@@ -64,9 +63,9 @@ int decode_oem_meta_file_io_write_req(
     return 0;
 }
 
-int decode_oem_meta_file_io_read_req(
-    const struct pldm_msg* msg, size_t payload_length,
-    struct pldm_oem_meta_file_io_read_req* req)
+int decode_oem_meta_file_io_read_req(const struct pldm_msg* msg,
+                                     size_t payload_length,
+                                     struct pldm_oem_meta_file_io_read_req* req)
 {
     if (msg == nullptr || req == nullptr)
     {
@@ -91,8 +90,8 @@ int decode_oem_meta_file_io_read_req(
     switch (req->option)
     {
         case PLDM_OEM_META_FILE_IO_READ_ATTR:
-            if (req->length != 0 || payload_length !=
-                                        PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH)
+            if (req->length != 0 ||
+                payload_length != PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH)
             {
                 return -EPROTO;
             }
@@ -103,15 +102,13 @@ int decode_oem_meta_file_io_read_req(
             {
                 return -EPROTO;
             }
-            if (payload_length <
-                (PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH +
-                 PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH))
+            if (payload_length < (PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH +
+                                  PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH))
             {
                 return -EOVERFLOW;
             }
-            if (payload_length !=
-                (PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH +
-                 PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH))
+            if (payload_length != (PLDM_OEM_META_FILE_IO_READ_REQ_MIN_LENGTH +
+                                   PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH))
             {
                 return -EPROTO;
             }
@@ -166,8 +163,8 @@ int encode_oem_meta_file_io_read_resp(
             minPayloadLength += PLDM_OEM_META_FILE_IO_READ_ATTR_INFO_LENGTH;
             break;
         case PLDM_OEM_META_FILE_IO_READ_DATA:
-            minPayloadLength += PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH +
-                                resp->length;
+            minPayloadLength +=
+                PLDM_OEM_META_FILE_IO_READ_DATA_INFO_LENGTH + resp->length;
             if (resp_len < (sizeof(*resp) + resp->length))
             {
                 return -EOVERFLOW;
@@ -182,7 +179,7 @@ int encode_oem_meta_file_io_read_resp(
         return -EOVERFLOW;
     }
 
-    struct pldm_header_info header {};
+    struct pldm_header_info header{};
     header.instance = instance_id;
     header.msg_type = PLDM_RESPONSE;
     header.pldm_type = PLDM_OEM;

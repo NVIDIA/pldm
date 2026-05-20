@@ -662,8 +662,9 @@ TEST_F(PackageAssociationMultipleDescSameType,
     EXPECT_EQ(totalNumComponentUpdates, expectTotalComponents);
 }
 
-// When multiple package descriptor records match the same EID, the association
-// is ambiguous and the device update is failed.
+// Per DSP0267 the first package record matching an FD wins; later matches for
+// the same FD must be ignored so totalNumComponentUpdates stays consistent
+// with the single DeviceUpdater created per EID.
 class PackageAssociationDuplicateRecordMatch : public testing::Test
 {
   protected:
@@ -695,9 +696,10 @@ class PackageAssociationDuplicateRecordMatch : public testing::Test
     std::vector<sdbusplus::message::object_path> targets;
 };
 
-// Both package records match eid1 (same UUID+IANA, no vendor-defined to
-// distinguish). The device update is failed entirely.
-TEST_F(PackageAssociationDuplicateRecordMatch, SingleDeviceMatchesTwoRecords)
+// Two package records share identical UUID+IANA descriptors so both match
+// eid1. The first (record 0) is selected; the second (record 1) is skipped
+// per DSP0267 first-match-wins.
+TEST_F(PackageAssociationDuplicateRecordMatch, FirstMatchingRecordWins)
 {
     const FirmwareDeviceIDRecords inFwDeviceIDRecords{
         {1,
@@ -741,15 +743,18 @@ TEST_F(PackageAssociationDuplicateRecordMatch, SingleDeviceMatchesTwoRecords)
         inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
-    EXPECT_TRUE(deviceUpdaterInfos.empty());
-    EXPECT_TRUE(outFwDeviceIDRecords.empty());
-    EXPECT_EQ(totalNumComponentUpdates, 0);
+    // Only the first record is associated; second match for same EID skipped.
+    DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}};
+    EXPECT_EQ(deviceUpdaterInfos, expectDeviceUpdaterInfos);
+    ASSERT_EQ(outFwDeviceIDRecords.size(), 1);
+    // First record's applicable components are {0, 1} -> 2 components.
+    EXPECT_EQ(totalNumComponentUpdates, 2);
 }
 
-// eid1 matches two records (0 and 1) -> failed due to ambiguous matching.
-// eid2 matches only record 2 -> proceeds normally.
+// eid1 matches records 0 and 1 (deduped to record 0); eid2 matches record 2.
+// Confirms the dedup is per-EID and unrelated devices proceed normally.
 TEST_F(PackageAssociationDuplicateRecordMatch,
-       DuplicateDeviceFailedOtherDeviceProceeds)
+       DuplicateForOneEidDoesNotAffectOthers)
 {
     const FirmwareDeviceIDRecords inFwDeviceIDRecords{
         {1,
@@ -811,10 +816,10 @@ TEST_F(PackageAssociationDuplicateRecordMatch,
         inFwDeviceIDRecords, descriptorMap, compImageInfos, compTargetList,
         targets, outFwDeviceIDRecords, totalNumComponentUpdates);
 
-    // eid1 matched records 0 and 1 -> failed
-    // eid2 matched record 2 only -> proceeds with 2 components {0, 2}
-    ASSERT_EQ(deviceUpdaterInfos.size(), 1);
-    EXPECT_EQ(deviceUpdaterInfos[0].first, eid2);
-    EXPECT_EQ(outFwDeviceIDRecords.size(), 1);
-    EXPECT_EQ(totalNumComponentUpdates, 2);
+    // eid1 -> first match (record 0, components {0,1}); eid2 -> record 2
+    // (components {0,2}). Total = 4, not 6.
+    DeviceUpdaterInfos expectDeviceUpdaterInfos{{eid1, 0}, {eid2, 1}};
+    EXPECT_EQ(deviceUpdaterInfos, expectDeviceUpdaterInfos);
+    ASSERT_EQ(outFwDeviceIDRecords.size(), 2);
+    EXPECT_EQ(totalNumComponentUpdates, 4);
 }

@@ -104,8 +104,8 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         }
 
         double newValue = value;
-        stdexec::start_detached(
-            stdexec::on(stdexec::inline_scheduler{},
+        stdexec::start_detached(stdexec::on(
+            stdexec::inline_scheduler{},
             effecter.setNumericEffecterValue(effecter.baseToRaw(newValue))));
         return PowerCapInft::powerCap();
     }
@@ -126,7 +126,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         }
         stdexec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
-            effecter.setNumericEffecterEnable(newState)));
+                        effecter.setNumericEffecterEnable(newState)));
         return PowerCapInft::powerCapEnable();
     }
 };

@@ -8,6 +8,7 @@
 #include "pldm_cmd_helper.hpp"
 
 #include <libpldm/bcd.h>
+
 #include <map>
 #include <optional>
 

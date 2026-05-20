@@ -12,8 +12,8 @@
 
 #include <boost/asio.hpp>
 #include <nlohmann/json.hpp>
-#include <sdbusplus/asio/connection.hpp>
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/common.hpp>
 #include <xyz/openbmc_project/Inventory/Manager/client.hpp>
@@ -81,6 +81,9 @@ constexpr auto mapperService = ObjectMapper::default_service;
 constexpr auto inventoryPath = "/xyz/openbmc_project/inventory";
 constexpr auto mapperPath = "/xyz/openbmc_project/object_mapper";
 constexpr auto mapperInterface = "xyz.openbmc_project.ObjectMapper";
+constexpr auto logService = "xyz.openbmc_project.Logging";
+constexpr auto logObjPath = "/xyz/openbmc_project/logging";
+constexpr auto logCreateInterface = "xyz.openbmc_project.Logging.Create";
 
 /** @struct CustomFD
  *
@@ -248,8 +251,7 @@ using GetAncestorsResponse =
     std::vector<std::pair<ObjectPath, MapperServiceMap>>;
 using PropertyMap = std::map<std::string, PropertyValue>;
 using InterfaceMap = std::map<std::string, PropertyMap>;
-using ObjectValueTree =
-    std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
 using AttributeName = std::string;
 using AttributeType = std::string;
 using AttributeValue = std::variant<std::string, int64_t>;
@@ -820,9 +822,9 @@ std::optional<T> getBiosAttrValue(const std::string& dbusAttrName)
     {
         auto service = pldm::utils::DBusHandler().getService(
             biosConfigPath, BIOSConfigManager::interface);
-        auto method = bus.new_method_call(
-            service.c_str(), biosConfigPath, BIOSConfigManager::interface,
-            "GetAttribute");
+        auto method =
+            bus.new_method_call(service.c_str(), biosConfigPath,
+                                BIOSConfigManager::interface, "GetAttribute");
         method.append(dbusAttrName);
         auto reply = bus.call(method, dbusTimeout);
         reply.read(var1, var2, var3);

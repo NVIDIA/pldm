@@ -218,9 +218,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 [this](uint8_t eid) {
                     this->fwInventoryManager.updateFWVersion(eid);
                 };
-            [[maybe_unused]] auto co =
+            stdexec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
                 inventoryMgr.initiateGetActiveFirmwareVersion(
-                    eid, updateFWVersionCallback);
+                    eid, updateFWVersionCallback) |
+                    stdexec::then([eid](int rc) {
+                        if (rc)
+                        {
+                            error(
+                                "Failed to refresh firmware version for EID={EID}, RC={RC}",
+                                "EID", eid, "RC", rc);
+                        }
+                    })));
         }
         catch (const std::exception& e)
         {

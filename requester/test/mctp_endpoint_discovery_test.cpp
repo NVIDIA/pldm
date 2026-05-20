@@ -2040,7 +2040,7 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsNetworkAndEidOnly)
     EXPECT_TRUE(std::get<2>(result).empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadVariantReturnsDefaults)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2056,12 +2056,15 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badProps));
 
-    EXPECT_THROW(TestMctpDiscovery::getMctpEndpointProps(*disc, "test.service",
-                                                         "/test/path"),
-                 std::bad_variant_access);
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+    EXPECT_EQ(std::get<0>(result), 0u);
+    EXPECT_EQ(std::get<1>(result), 0xFF);
+    EXPECT_TRUE(std::get<2>(result).empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadEidVariantThrows)
+TEST(MctpEndpointDiscoveryTest,
+     getMctpEndpointPropsBadEidVariantReturnsDefaults)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2077,12 +2080,15 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadEidVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badProps));
 
-    EXPECT_THROW(TestMctpDiscovery::getMctpEndpointProps(*disc, "test.service",
-                                                         "/test/path"),
-                 std::bad_variant_access);
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+    EXPECT_EQ(std::get<0>(result), 0u);
+    EXPECT_EQ(std::get<1>(result), 0xFF);
+    EXPECT_TRUE(std::get<2>(result).empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadTypesVariantThrows)
+TEST(MctpEndpointDiscoveryTest,
+     getMctpEndpointPropsBadTypesVariantReturnsDefaults)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2098,12 +2104,15 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadTypesVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badProps));
 
-    EXPECT_THROW(TestMctpDiscovery::getMctpEndpointProps(*disc, "test.service",
-                                                         "/test/path"),
-                 std::bad_variant_access);
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+    EXPECT_EQ(std::get<0>(result), 0u);
+    EXPECT_EQ(std::get<1>(result), 0xFF);
+    EXPECT_TRUE(std::get<2>(result).empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadMediumVariantThrows)
+TEST(MctpEndpointDiscoveryTest,
+     getMctpEndpointPropsBadMediumVariantReturnsDefaults)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2119,9 +2128,11 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsBadMediumVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badProps));
 
-    EXPECT_THROW(TestMctpDiscovery::getMctpEndpointProps(*disc, "test.service",
-                                                         "/test/path"),
-                 std::bad_variant_access);
+    auto result = TestMctpDiscovery::getMctpEndpointProps(
+        *disc, "test.service", "/test/path");
+    EXPECT_EQ(std::get<0>(result), 0u);
+    EXPECT_EQ(std::get<1>(result), 0xFF);
+    EXPECT_TRUE(std::get<2>(result).empty());
 }
 
 TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropSuccess)
@@ -2756,7 +2767,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingSupportedTypes)
     EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadVariantSkipsEndpoint)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2787,11 +2798,11 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadVariantThrows)
     sd_bus_message_rewind(msg.get(), true);
 
     pldm::MctpInfos infos;
-    EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
-                 std::bad_variant_access);
+    EXPECT_NO_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos));
+    EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadNetworkVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadNetworkVariantSkipsEndpoint)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2822,11 +2833,11 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadNetworkVariantThrows)
     sd_bus_message_rewind(msg.get(), true);
 
     pldm::MctpInfos infos;
-    EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
-                 std::bad_variant_access);
+    EXPECT_NO_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos));
+    EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadTypesVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadTypesVariantSkipsEndpoint)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2857,11 +2868,11 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadTypesVariantThrows)
     sd_bus_message_rewind(msg.get(), true);
 
     pldm::MctpInfos infos;
-    EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
-                 std::bad_variant_access);
+    EXPECT_NO_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos));
+    EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadMediumVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadMediumVariantSkipsEndpoint)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2892,8 +2903,8 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadMediumVariantThrows)
     sd_bus_message_rewind(msg.get(), true);
 
     pldm::MctpInfos infos;
-    EXPECT_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos),
-                 std::bad_variant_access);
+    EXPECT_NO_THROW(TestMctpDiscovery::getAddedMctpInfos(*disc, msg, infos));
+    EXPECT_TRUE(infos.empty());
 }
 
 TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBindingTypeException)

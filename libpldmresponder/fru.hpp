@@ -4,8 +4,8 @@
 
 #include "fru_parser.hpp"
 #include "oem_handler.hpp"
-#include "pldmd/handler.hpp"
 #include "pdr_utils.hpp"
+#include "pldmd/handler.hpp"
 
 #include <libpldm/fru.h>
 #include <libpldm/pdr.h>
@@ -36,8 +36,7 @@ using Value =
                  std::vector<uint64_t>, std::vector<std::string>>;
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
-using ObjectValueTree =
-    std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
 using ObjectPath = std::string;
 using AssociatedEntityMap = std::map<ObjectPath, pldm_entity>;
 using ObjectPathToRSIMap = std::map<ObjectPath, uint16_t>;
@@ -224,6 +223,7 @@ class FruImpl
     {
         platformHandler = handler;
     }
+
   private:
     uint16_t nextRSI()
     {
@@ -414,6 +414,7 @@ class Handler : public CmdHandler
     }
 
     using Table = std::vector<uint8_t>;
+
   private:
     FruImpl impl;
 };

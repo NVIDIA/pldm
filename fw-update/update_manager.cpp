@@ -19,6 +19,7 @@
 #include "activation.hpp"
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
+#include "config.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
@@ -29,9 +30,10 @@
 #include <bitset>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <ranges>
+#include <set>
 #include <string>
-#include <unordered_set>
 
 PHOSPHOR_LOG2_USING;
 
@@ -40,6 +42,22 @@ namespace pldm
 
 namespace fw_update
 {
+
+/** @brief Extract a target name from a software D-Bus object path
+ *
+ *  Returns the final path segment for paths under
+ *  /xyz/openbmc_project/software/, or nullopt for any other path.
+ */
+static std::optional<std::string> extractTargetName(
+    const sdbusplus::message::object_path& path)
+{
+    std::string pathStr = path;
+    if (!pathStr.starts_with("/xyz/openbmc_project/software/"))
+    {
+        return std::nullopt;
+    }
+    return pathStr.substr(pathStr.find_last_of('/') + 1);
+}
 
 /** @brief Check if package descriptors are a subset of device descriptor
  *
@@ -98,8 +116,8 @@ std::string UpdateManager::getSwId()
 
 int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 {
-    if (activation &&
-        activation->activation() == software::Activation::Activations::Activating)
+    if (activation && activation->activation() ==
+                          software::Activation::Activations::Activating)
     {
         error("Activation of a PLDM firmware package is already in progress.");
         return -1;
@@ -128,7 +146,6 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     objPath = swRootPath + getSwId();
     forceUpdate = false;
-    lastProgress = 0;
 
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this,
@@ -167,11 +184,9 @@ UpdateManager::UpdateManager(
     componentNameMap(componentNameMap)
 #ifdef FW_UPDATE_INOTIFY_ENABLED
     ,
-    watch(event.get(),
-          [this](std::string& packageFilePath) {
-              return this->processPackage(
-                  std::filesystem::path(packageFilePath));
-          })
+    watch(event.get(), [this](std::string& packageFilePath) {
+        return this->processPackage(std::filesystem::path(packageFilePath));
+    })
 #else
     ,
     updater(
@@ -276,7 +291,8 @@ void UpdateManager::createMessageRegistry(
 void UpdateManager::createMessageRegistryResourceErrors(
     mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     size_t compIndex, const std::string& messageID,
-    const std::string& messageError, const std::string& resolution)
+    const std::string& messageError, const std::string& resolution,
+    bool overrideSeverity)
 {
     if (!parser)
     {
@@ -312,7 +328,27 @@ void UpdateManager::createMessageRegistryResourceErrors(
         compName = std::to_string(compIdentifier);
     }
 
-    createLogEntry(messageID, compName, messageError, resolution);
+    createLogEntry(messageID, compName, messageError, resolution, "FWUpdate",
+                   overrideSeverity);
+}
+
+void UpdateManager::handleDuplicateDescriptorMatch(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord)
+{
+    const std::string messageError =
+        "Multiple Firmware Device ID Records in the package match this"
+        " device";
+    const std::string resolution =
+        "Ensure every Firmware Device ID Record in the package is unique"
+        " so the correct firmware version is installed";
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    for (size_t compIdx = 0; compIdx < applicableComponents.size(); ++compIdx)
+    {
+        createMessageRegistryResourceErrors(
+            eid, fwDeviceIDRecord, compIdx, resourceErrorDetected, messageError,
+            resolution, /*overrideSeverity=*/true);
+    }
 }
 
 std::string UpdateManager::processStreamDefer(
@@ -360,13 +396,14 @@ std::string UpdateManager::processStreamDefer(
         return objPath;
     }
 
+    auto* packageStream = &package;
     updateDeferHandler = std::make_unique<sdeventplus::source::Defer>(
-        event, [this, &package, packageSize,
+        event, [this, packageStream, packageSize,
                 targets](sdeventplus::source::EventBase&) {
             // Start processStream coroutine in detached mode
-            stdexec::start_detached(
-                stdexec::on(stdexec::inline_scheduler{},
-                this->processStream(package, packageSize, targets)));
+            stdexec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
+                this->processStream(*packageStream, packageSize, targets)));
         });
 
     return objPath;
@@ -377,6 +414,7 @@ exec::task<void> UpdateManager::processStream(
     std::vector<sdbusplus::message::object_path> targets)
 {
     startTime = std::chrono::steady_clock::now();
+    unavailableTargetEids.clear();
 
     package.clear();
     package.seekg(0, std::ios::beg);
@@ -453,24 +491,86 @@ exec::task<void> UpdateManager::processStream(
     ComponentTargetList compTargetList =
         getComponentTargetList(componentNameMap, targets);
 
-    if (refreshSingleEndpointCallback && !descriptorMap.empty())
+    // Snapshot the user-requested target names along with each one's PLDM EID
+    // so logUnupdatedTargets can emit a per-target Critical
+    // ResourceErrorsDetected entry at terminal state for any requested target
+    // whose image wasn't in the package. Resolution prefers the config
+    // (fw_update_config.json) and falls back to the live componentNameMap for
+    // discovery-only entries. Names that don't resolve to any PLDM EID (e.g.
+    // non-PLDM targets) are intentionally skipped.
+    requestedTargets.clear();
+    for (const auto& path : targets)
     {
-        info("Refreshing firmware inventory for {COUNT} discovered endpoints",
-             "COUNT", descriptorMap.size());
-
-        // Copy EIDs to avoid iterator invalidation and from modifications to
-        // descriptorMap during refresh
-        std::vector<mctp_eid_t> eids;
-        eids.reserve(descriptorMap.size());
-        for (const auto& [eid, _] : descriptorMap)
+        auto name = extractTargetName(path);
+        if (!name.has_value())
         {
-            eids.push_back(eid);
+            continue;
         }
 
-        exec::async_scope refreshScope;
-        for (const auto& eid : eids)
+        std::optional<mctp_eid_t> resolvedEid =
+            getConfigEidForTargetName(*name);
+        if (!resolvedEid.has_value())
         {
-            bool isTarget = compTargetList.contains(eid);
+            for (const auto& [eid, compIdNameMap] : componentNameMap)
+            {
+                bool found = false;
+                for (const auto& [compId, compName] : compIdNameMap)
+                {
+                    if (compName == *name)
+                    {
+                        resolvedEid = eid;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (resolvedEid.has_value())
+        {
+            requestedTargets[*name] = *resolvedEid;
+        }
+    }
+
+    auto refreshEids = getConfigEids();
+    if (refreshEids.empty())
+    {
+        // Fall back to discovered endpoints when config has no EIDs
+        auto keys = descriptorMap | std::views::keys;
+        refreshEids.assign(keys.begin(), keys.end());
+    }
+
+    // Config-derived target EIDs: resolve each target object path's
+    // component/device name to an EID using fw_update_config.json so that
+    // undiscovered targets (e.g. a powered-off CPU) are still classified as
+    // targets and their refresh failures log at error severity.
+    std::unordered_set<mctp_eid_t> configTargetEids;
+    for (const auto& path : targets)
+    {
+        auto name = extractTargetName(path);
+        if (!name.has_value())
+        {
+            continue;
+        }
+        if (auto eidOpt = getConfigEidForTargetName(*name); eidOpt.has_value())
+        {
+            configTargetEids.insert(*eidOpt);
+        }
+    }
+    if (refreshSingleEndpointCallback && !refreshEids.empty())
+    {
+        info("Refreshing firmware inventory for {COUNT} endpoints", "COUNT",
+             refreshEids.size());
+
+        exec::async_scope refreshScope;
+        for (const auto& eid : refreshEids)
+        {
+            bool isTarget = compTargetList.contains(eid) ||
+                            configTargetEids.contains(eid);
             refreshScope.spawn(
                 stdexec::just() |
                 stdexec::let_value([this, eid, isTarget]() -> exec::task<void> {
@@ -483,10 +583,20 @@ exec::task<void> UpdateManager::processStream(
         info("Firmware inventory refresh completed");
     }
 
+    recordUnavailableTargetEids(compTargetList);
+
     const auto& compImageInfos = parser->getComponentImageInfos();
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         compTargetList, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+
+    // Emit per-target ResourceErrorsDetected entries for requested targets
+    // whose image isn't in the package BEFORE any update transfer starts.
+    // Running this here (rather than at terminal-state) ensures the Critical
+    // entries reach bmcweb's loggingMatch ahead of the Activation
+    // PropertiesChanged signal that triggers setTaskStatus(), so TaskStatus
+    // reflects the Critical severity.
+    logUnupdatedTargets(deviceUpdaterInfos);
 
     info("Total Components: {TOTAL_NUM_COMPONENT_UPDATES}",
          "TOTAL_NUM_COMPONENT_UPDATES", totalNumComponentUpdates);
@@ -560,8 +670,8 @@ exec::task<void> UpdateManager::processStream(
             deviceUpdaterInfo.first,
             std::make_unique<DeviceUpdater>(
                 deviceUpdaterInfo.first, package, fwDeviceIDRecord,
-                compImageInfos, search->second, compIdNameInfo,
-                maxTransferSize, this));
+                compImageInfos, search->second, compIdNameInfo, maxTransferSize,
+                this));
     }
 
     // delay activation object creation if there are non-pldm updates
@@ -880,11 +990,11 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     TotalComponentUpdates& totalNumComponentUpdates)
 {
     DeviceUpdaterInfos deviceUpdaterInfos;
-
-    // Pre-scan: count how many descriptor records match each EID. If multiple
-    // package records match the same device the association is ambiguous and
-    // the device update is skipped.
-    std::unordered_map<mctp_eid_t, DescriptorMatchCount> eidRecordMatchCount;
+    // Per DSP0267 the first package record whose descriptors match an FD is
+    // selected for that FD; later matches are ignored. Track EIDs that have
+    // already been associated so progress accounting (totalNumComponentUpdates)
+    // stays consistent with the single DeviceUpdater created per EID.
+    std::set<mctp_eid_t> matchedEids;
     for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
     {
         const auto& deviceIDDescriptors =
@@ -893,36 +1003,21 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
         {
             if (descriptorsMatch(descriptors, deviceIDDescriptors))
             {
-                eidRecordMatchCount[eid]++;
-            }
-        }
-    }
-
-    std::unordered_set<mctp_eid_t> loggedDuplicateEids;
-    for (size_t index = 0; index < inFwDeviceIDRecords.size(); ++index)
-    {
-        const auto& deviceIDDescriptors =
-            std::get<Descriptors>(inFwDeviceIDRecords[index]);
-        for (const auto& [eid, descriptors] : descriptorMap)
-        {
-            if (descriptorsMatch(descriptors, deviceIDDescriptors))
-            {
-                if (eidRecordMatchCount[eid] > 1)
+                if (!matchedEids.insert(eid).second)
                 {
                     bool isTarget =
                         (compTargetList.empty() && objectPaths.empty()) ||
                         compTargetList.contains(eid);
-                    if (isTarget && loggedDuplicateEids.insert(eid).second)
+                    if (isTarget)
                     {
-                        error(
-                            "Failing update for eid={EID}: {COUNT} descriptor records in the package match this device",
-                            "EID", eid, "COUNT", eidRecordMatchCount[eid]);
+                        warning(
+                            "Multiple package records match EID={EID}; using first match per spec and ignoring record at index {INDEX}",
+                            "EID", eid, "INDEX", index);
                         handleDuplicateDescriptorMatch(
                             eid, inFwDeviceIDRecords[index]);
                     }
                     continue;
                 }
-
                 if (compTargetList.empty() && objectPaths.empty())
                 {
                     outFwDeviceIDRecords.emplace_back(
@@ -980,10 +1075,74 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     return deviceUpdaterInfos;
 }
 
+void UpdateManager::recordUnavailableTargetEids(
+    const ComponentTargetList& compTargetList)
+{
+    for (const auto& [eid, _] : compTargetList)
+    {
+        if (!descriptorMap.contains(eid))
+        {
+            unavailableTargetEids.emplace(eid);
+        }
+    }
+}
+
+void UpdateManager::logUnupdatedTargets(
+    const DeviceUpdaterInfos& deviceUpdaterInfos)
+{
+    if (requestedTargets.empty())
+    {
+        return;
+    }
+
+    std::unordered_set<mctp_eid_t> scheduledEids;
+    scheduledEids.reserve(deviceUpdaterInfos.size());
+    for (const auto& [eid, _] : deviceUpdaterInfos)
+    {
+        scheduledEids.insert(eid);
+    }
+
+    const std::string messageError =
+        "No matching firmware image in package for the requested target";
+    const std::string resolution =
+        "Verify the firmware package contains a matching image for the "
+        "specified target and retry the update.";
+    const std::string unreachableError = "Target endpoint is unreachable";
+    const std::string unreachableResolution =
+        "Verify the target endpoint is powered on and responsive, then "
+        "retry the update.";
+
+    for (const auto& [name, eid] : requestedTargets)
+    {
+        if (scheduledEids.contains(eid))
+        {
+            continue;
+        }
+        if (!descriptorMap.contains(eid))
+        {
+            createLogEntry(resourceErrorDetected, name, unreachableError,
+                           unreachableResolution);
+            continue;
+        }
+        createLogEntry(resourceErrorDetected, name, messageError, resolution);
+    }
+
+    requestedTargets.clear();
+}
+
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status,
     const std::vector<ComponentName>& successCompNames)
 {
+    const auto [it, inserted] = deviceUpdateCompletionMap.emplace(eid, status);
+    if (!inserted)
+    {
+        warning(
+            "Ignoring duplicate device completion update for EID={EID}, existing status={STATUS}",
+            "EID", eid, "STATUS", it->second);
+        return;
+    }
+
     // Update listCompNames with the components successfully updated
     if (status && !successCompNames.empty())
     {
@@ -999,9 +1158,6 @@ void UpdateManager::updateDeviceCompletion(
             }
         }
     }
-
-    /* update completion map */
-    deviceUpdateCompletionMap.emplace(eid, status);
 
     updateActivationProgress();
     /* Update package completion */
@@ -1067,6 +1223,19 @@ void UpdateManager::onResponseSendComplete(mctp_eid_t eid, bool success)
 software::Activation::Activations UpdateManager::activatePackage()
 {
     namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+
+    const uint64_t effectiveSec = computeEffectiveTimeoutSec();
+    constexpr uint64_t intervalSec =
+        static_cast<uint64_t>(PROGRESS_UPDATE_INTERVAL) * 60;
+    const uint64_t rawTicks = std::max<uint64_t>(1, effectiveSec / intervalSec);
+    constexpr uint64_t maxTicks = std::numeric_limits<uint8_t>::max();
+    const uint64_t clampedTicks = std::min(rawTicks, maxTicks);
+    totalInterval = static_cast<uint8_t>(clampedTicks);
+    info(
+        "Firmware Update timeout set to {SEC}s ({TICKS} ticks of {INT}s){CLAMPED}",
+        "SEC", effectiveSec, "TICKS", static_cast<unsigned>(totalInterval),
+        "INT", intervalSec, "CLAMPED", rawTicks > maxTicks ? " [clamped]" : "");
+
     createProgressUpdateTimer();
     progressTimer->start(std::chrono::minutes(PROGRESS_UPDATE_INTERVAL), true);
     activationBlocksTransition = std::make_unique<ActivationBlocksTransition>(
@@ -1122,7 +1291,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         progressTimer.reset();
         activationProgress->progress(100);
 #ifdef OEM_NVIDIA
-        if (debugToken->isDebugTokenComponentPresent() &&
+        if (debugToken && debugToken->isDebugTokenComponentPresent() &&
             parser->getComponentImageInfos().size() == 1)
         {
             activationBlocksTransition.reset();
@@ -1160,6 +1329,7 @@ void UpdateManager::clearActivationInfo()
     fwDeviceIDRecords.clear();
     deviceUpdaterMap.clear();
     deviceUpdateCompletionMap.clear();
+    unavailableTargetEids.clear();
     parser.reset();
     clearFirmwareUpdatePackage();
     totalNumComponentUpdates = 0;
@@ -1168,7 +1338,6 @@ void UpdateManager::clearActivationInfo()
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
     listCompNames.clear();
-    lastProgress = 0;
     if (progressTimer)
     {
         progressTimer->stop();
@@ -1199,6 +1368,7 @@ void UpdateManager::updatePackageCompletion()
         }
 
         if ((pldmState == software::Activation::Activations::Failed) ||
+            !unavailableTargetEids.empty() ||
             (otherState == software::Activation::Activations::Failed))
         {
             activation->activation(software::Activation::Activations::Failed);
@@ -1219,45 +1389,14 @@ void UpdateManager::updatePackageCompletion()
 void UpdateManager::updateActivationProgress()
 {
     compUpdateCompletedCount++;
-    refreshActivationProgress();
-    if (compUpdateCompletedCount >= totalNumComponentUpdates)
+    if (compUpdateCompletedCount == totalNumComponentUpdates)
     {
         if (progressTimer)
         {
             progressTimer->stop();
             progressTimer.reset();
         }
-        if (activationProgress)
-        {
-            activationProgress->progress(100);
-            lastProgress = 100;
-        }
-    }
-}
-
-void UpdateManager::refreshActivationProgress()
-{
-    if (!activationProgress || deviceUpdaterMap.empty())
-    {
-        return;
-    }
-
-    using mapEl = std::pair<const mctp_eid_t, std::unique_ptr<DeviceUpdater>>;
-    auto min = std::ranges::min_element(
-        deviceUpdaterMap, [](const mapEl& lhs, const mapEl& rhs) {
-            return lhs.second->getProgress() < rhs.second->getProgress();
-        });
-
-    if (min == deviceUpdaterMap.end())
-    {
-        return;
-    }
-
-    uint8_t progress = min->second->getProgress();
-    if (progress > lastProgress)
-    {
-        activationProgress->progress(progress);
-        lastProgress = progress;
+        activationProgress->progress(100);
     }
 }
 
@@ -1375,30 +1514,55 @@ ComponentName UpdateManager::getComponentName(
     return compName;
 }
 
+uint64_t UpdateManager::computeEffectiveTimeoutSec() const
+{
+    const uint64_t defaultSec =
+        static_cast<uint64_t>(FIRMWARE_UPDATE_TIME) * 60;
+    if (otherDeviceUpdateManager)
+    {
+        return std::max(
+            defaultSec,
+            otherDeviceUpdateManager->getMaxItemUpdaterTimeoutSec());
+    }
+    return defaultSec;
+}
+
 void UpdateManager::createProgressUpdateTimer()
 {
     updateInterval = 0;
     progressTimer = std::make_unique<sdbusplus::Timer>([this]() {
         updateInterval += 1;
+        // Cancel in-progress updates when firmware update time is reached
+        // percent update should always be less than 100 when task is
+        // aborted/cancelled. Setting to 100 percent will cause redfish task
+        // service to show running and 100 percent
+        if (updateInterval == totalInterval)
+        {
+            error("Firmware update timeout - cancelling in-progress updates");
+            progressTimer->stop();
+            cancelAllUpdates();
+            return;
+        }
         auto progressPercent = static_cast<uint8_t>(
             std::floor((100 * updateInterval) / totalInterval));
         info("Progress Percent: {PROGRESSPERCENT}", "PROGRESSPERCENT",
              progressPercent);
-        if (activationProgress && progressPercent > lastProgress)
-        {
-            activationProgress->progress(progressPercent);
-            lastProgress = progressPercent;
-        }
-        // percent update should always be less than 100 when task is
-        // aborted/cancelled. Setting to 100 percent will cause redfish task
-        // service to show running and 100 percent
-        if (updateInterval == totalInterval - 1)
-        {
-            error("Firmware update timeout");
-            progressTimer->stop();
-        }
+        activationProgress->progress(progressPercent);
         return;
     });
+}
+
+void UpdateManager::cancelAllUpdates()
+{
+    for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
+    {
+        if (!deviceUpdaterPtr || deviceUpdateCompletionMap.contains(eid))
+        {
+            continue;
+        }
+
+        deviceUpdaterPtr->handleUpdateTimeout();
+    }
 }
 
 void UpdateManager::handleInvalidPackageError()
@@ -1461,26 +1625,6 @@ void UpdateManager::handleInvalidPackageHeaderError()
         activation = std::make_unique<Activation>(
             pldm::utils::DBusHandler::getBus(), objPath,
             software::Activation::Activations::Failed, this);
-    }
-}
-
-void UpdateManager::handleDuplicateDescriptorMatch(
-    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord)
-{
-    std::string messageError =
-        "Multiple Firmware Device ID Records in the package match this"
-        " device";
-    std::string resolution =
-        "Correct the Firmware Device ID Records in the package header so each"
-        " device is matched by exactly one record, then retry firmware update"
-        " operation.";
-    const auto& applicableComponents =
-        std::get<ApplicableComponents>(fwDeviceIDRecord);
-    for (size_t compIdx = 0; compIdx < applicableComponents.size(); compIdx++)
-    {
-        createMessageRegistryResourceErrors(eid, fwDeviceIDRecord, compIdx,
-                                            resourceErrorDetected, messageError,
-                                            resolution);
     }
 }
 

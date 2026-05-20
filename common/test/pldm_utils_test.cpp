@@ -4202,9 +4202,10 @@ TEST_F(InstanceIdDbTest, nextAndFree)
 {
     pldm::InstanceIdDb db(dbPath.string());
     uint8_t tid = 1;
-    uint8_t id = db.next(tid);
-    EXPECT_LT(id, 32);
-    db.free(tid, id);
+    auto id = db.next(tid);
+    ASSERT_TRUE(id.has_value());
+    EXPECT_LT(id.value(), 32);
+    db.free(tid, id.value());
 }
 
 TEST_F(InstanceIdDbTest, freeUnallocated)
@@ -4234,10 +4235,13 @@ TEST_F(InstanceIdDbTest, nextThrowsWhenNoFreeInstanceIds)
     allocated.reserve(32);
     for (int i = 0; i < 32; ++i)
     {
-        allocated.emplace_back(db.next(tid));
+        auto id = db.next(tid);
+        ASSERT_TRUE(id.has_value());
+        allocated.emplace_back(id.value());
     }
 
-    EXPECT_THROW(db.next(tid), std::runtime_error);
+    auto result = db.next(tid);
+    EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(InstanceIdDbTest, nextThrowsSystemErrorOnProtocolState)
@@ -4249,7 +4253,8 @@ TEST_F(InstanceIdDbTest, nextThrowsSystemErrorOnProtocolState)
     ASSERT_NE(rawDb, nullptr);
     rawDb->state[tid].prev = 32;
 
-    EXPECT_THROW(db.next(tid), std::error_condition);
+    auto result = db.next(tid);
+    EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(InstanceIdDbTest, freeThrowsSystemErrorOnFcntlFailure)
@@ -4257,12 +4262,13 @@ TEST_F(InstanceIdDbTest, freeThrowsSystemErrorOnFcntlFailure)
     pldm::InstanceIdDb db(dbPath.string());
     constexpr uint8_t tid = 9;
     auto id = db.next(tid);
+    ASSERT_TRUE(id.has_value());
 
     auto* rawDb = getRawInstanceDb(db);
     ASSERT_NE(rawDb, nullptr);
     rawDb->lockDbFd = -1;
 
-    EXPECT_THROW(db.free(tid, id), std::error_condition);
+    EXPECT_THROW(db.free(tid, id.value()), std::error_condition);
 }
 
 TEST(InstanceIdDb, constructInvalidPath)

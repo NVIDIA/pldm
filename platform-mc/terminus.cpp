@@ -1050,9 +1050,21 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
 
 exec::task<int> Terminus::getInventoryParent(const std::string objPath)
 {
+    const std::string assocPath = objPath + "/parent_chassis";
+    const dbus::Interfaces assocIfaces = {"xyz.openbmc_project.Association"};
+
+    /* Use the mapper to find which service owns the association object.
+     * Hardcoding mapperService here is wrong — association objects are
+     * owned by entity-manager or inventory services, not the mapper. */
+    auto serviceMap = co_await utils::coGetServiceMap(assocPath, assocIfaces);
+    if (serviceMap.empty())
+    {
+        co_return PLDM_SUCCESS;
+    }
+
+    const auto& service = serviceMap.begin()->first;
     auto parents = co_await utils::coGetDbusProperty<std::vector<std::string>>(
-        objPath + "/parent_chassis", "endpoints",
-        "xyz.openbmc_project.Association", pldm::utils::mapperService);
+        assocPath, "endpoints", "xyz.openbmc_project.Association", service);
     if (parents.size())
     {
         inventoryParentMap[objPath] = parents[0];
@@ -1204,14 +1216,30 @@ exec::task<int> Terminus::updateAssociations()
         auto name = getAuxNameForNumericSensor(ptr->sensorId);
         if (name)
         {
-            // Prepend terminus name if available and name is not from Entity
-            // Manager
+            // Prepend terminus name (+ entity type + cpu index) if available
+            // and name is not from Entity Manager
             std::string updatedName = *name;
             if (!terminusName.empty() &&
                 sensorAuxNameOverwriteTbl.find(ptr->sensorId) ==
                     sensorAuxNameOverwriteTbl.end())
             {
-                updatedName = std::format("{}_{}", terminusName, updatedName);
+                auto entityInfo = ptr->getEntityInfo();
+                auto prefix = buildSensorNamePrefix(std::get<1>(entityInfo));
+                // FixME: Backward compat — old firmware includes
+                // entity-type + CPU index in aux name (e.g. "CPU_0_X").
+                // Detect and prepend only terminus name; remove when
+                // all firmware sends plain aux names.
+                auto entityTag = buildEntityTypeTag(std::get<1>(entityInfo));
+                if (!entityTag.empty() &&
+                    updatedName.starts_with(entityTag + "_"))
+                {
+                    updatedName =
+                        std::format("{}_{}", terminusName, updatedName);
+                }
+                else
+                {
+                    updatedName = std::format("{}_{}", prefix, updatedName);
+                }
             }
             ptr->updateSensorName(updatedName);
         }
@@ -1260,6 +1288,47 @@ exec::task<int> Terminus::updateAssociations()
                         }
                     }
                     break;
+                }
+            }
+            // SYS_BUS numeric sensors (e.g. CLink/NVLink counters for
+            // bandwidth, CRC, replay) should be associated with the
+            // CPU in the containing ProcessorModule. SYS_BUS has no
+            // inventory interface so findInventory returns empty; walk
+            // up to ProcessorModule and find the CPU sibling.
+            else if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS)
+            {
+                const auto& containerId = std::get<0>(entityInfo);
+                auto containerItr = entityAssociations.find(containerId);
+                if (containerItr != entityAssociations.end())
+                {
+                    const auto& [containerEntity, containedEntities] =
+                        containerItr->second;
+                    uint16_t containerType =
+                        std::get<1>(containerEntity) & 0x7FFF;
+                    if (containerType == PLDM_ENTITY_PROC)
+                    {
+                        auto cpuPaths = findInventory(containerEntity, true);
+                        if (!cpuPaths.empty())
+                        {
+                            inventoryPaths = cpuPaths;
+                        }
+                    }
+                    else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+                    {
+                        for (const auto& child : containedEntities)
+                        {
+                            if ((std::get<1>(child) & 0x7FFF) ==
+                                PLDM_ENTITY_PROC)
+                            {
+                                auto cpuPaths = findInventory(child, true);
+                                if (!cpuPaths.empty())
+                                {
+                                    inventoryPaths = cpuPaths;
+                                }
+                                break;
+                            }
+                        }
+                    }
                 }
             }
             // Workaround: count/metric sensors (baseUnit == COUNTS) are
@@ -1319,6 +1388,46 @@ exec::task<int> Terminus::updateAssociations()
         else
         {
             inventoryPaths = findInventory(entityInfo);
+        }
+
+        // SYS_BUS state sensors (CLink/NVLink port state) need CPU
+        // associations. SYS_BUS has no inventory interface so
+        // findInventory returns empty; walk up to the container and
+        // locate the CPU entity.
+        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS &&
+            inventoryPaths.empty())
+        {
+            const auto& containerId = std::get<0>(entityInfo);
+            auto containerItr = entityAssociations.find(containerId);
+            if (containerItr != entityAssociations.end())
+            {
+                const auto& [containerEntity, containedEntities] =
+                    containerItr->second;
+                uint16_t containerType = std::get<1>(containerEntity) & 0x7FFF;
+                if (containerType == PLDM_ENTITY_PROC)
+                {
+                    auto cpuPaths = findInventory(containerEntity, true);
+                    if (!cpuPaths.empty())
+                    {
+                        inventoryPaths = cpuPaths;
+                    }
+                }
+                else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+                {
+                    for (const auto& child : containedEntities)
+                    {
+                        if ((std::get<1>(child) & 0x7FFF) == PLDM_ENTITY_PROC)
+                        {
+                            auto cpuPaths = findInventory(child, true);
+                            if (!cpuPaths.empty())
+                            {
+                                inventoryPaths = cpuPaths;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         // Workaround: MEMORY_CONTROLLER state sensors (e.g.
@@ -1532,6 +1641,37 @@ std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
     return findInventory(containerEntity, findClosest);
 }
 
+std::string Terminus::buildEntityTypeTag(uint16_t entityType) const
+{
+    static const std::map<uint16_t, std::string_view> entityTypeNameMap = {
+        {32, "OS"},       {120, "Vreg"},   {135, "CPU"},
+        {143, "MemCntl"}, {161, "SysBus"}, {166, "PCIeBus"},
+    };
+
+    uint16_t baseEntityType = entityType & 0x7FFF;
+    auto it = entityTypeNameMap.find(baseEntityType);
+    if (it == entityTypeNameMap.end())
+    {
+        return {};
+    }
+
+    if (cpuIndex.has_value())
+    {
+        return std::format("{}_{}", it->second, *cpuIndex);
+    }
+    return std::string(it->second);
+}
+
+std::string Terminus::buildSensorNamePrefix(uint16_t entityType) const
+{
+    auto entityTag = buildEntityTypeTag(entityType);
+    if (entityTag.empty())
+    {
+        return terminusName;
+    }
+    return std::format("{}_{}", terminusName, entityTag);
+}
+
 void Terminus::addNumericSensor(
     const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr)
 {
@@ -1548,13 +1688,26 @@ void Terminus::addNumericSensor(
     sensorEventInfo = getSensorEventInfo(pdr->sensor_id);
 #endif
 
-    // Prepend terminus name if available and name is not from Entity Manager
-    // Names from Entity Manager are stored in sensorAuxNameOverwriteTbl
+    // Prepend terminus name (+ entity type + cpu index) if available and name
+    // is not from Entity Manager. Names from EM are in
+    // sensorAuxNameOverwriteTbl
     if (!terminusName.empty() &&
         sensorAuxNameOverwriteTbl.find(pdr->sensor_id) ==
             sensorAuxNameOverwriteTbl.end())
     {
-        sensorName = std::format("{}_{}", terminusName, sensorName);
+        auto prefix = buildSensorNamePrefix(pdr->entity_type);
+        // FixME: Backward compat — old firmware includes entity-type +
+        // CPU index in aux name. Remove when all firmware sends plain
+        // aux names.
+        auto entityTag = buildEntityTypeTag(pdr->entity_type);
+        if (!entityTag.empty() && sensorName.starts_with(entityTag + "_"))
+        {
+            sensorName = std::format("{}_{}", terminusName, sensorName);
+        }
+        else
+        {
+            sensorName = std::format("{}_{}", prefix, sensorName);
+        }
     }
 
     try
@@ -1632,10 +1785,21 @@ void Terminus::addNumericEffecter(
         }
     }
 
-    // Prepend terminus name if available (names from PDRs only)
     if (!terminusName.empty())
     {
-        effecterName = std::format("{}_{}", terminusName, effecterName);
+        auto prefix = buildSensorNamePrefix(pdr->entity_type);
+        // FixME: Backward compat — old firmware includes entity-type +
+        // CPU index in aux name. Remove when all firmware sends plain
+        // aux names.
+        auto entityTag = buildEntityTypeTag(pdr->entity_type);
+        if (!entityTag.empty() && effecterName.starts_with(entityTag + "_"))
+        {
+            effecterName = std::format("{}_{}", terminusName, effecterName);
+        }
+        else
+        {
+            effecterName = std::format("{}_{}", prefix, effecterName);
+        }
     }
 
     try
@@ -1656,6 +1820,8 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
     std::string sensorName =
         "PLDM_Sensor_" + std::to_string(sId) + "_" + std::to_string(tid);
 
+    uint16_t entityType = std::get<1>(std::get<0>(sensorInfo));
+
     auto sensorAuxiliaryNames = getSensorAuxiliaryNames(sId);
     AuxiliaryNames* sensorNames = nullptr;
     std::shared_ptr<AuxiliaryNames> prependedSensorNames;
@@ -1664,10 +1830,16 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
     {
         sensorNames = &(std::get<2>(*sensorAuxiliaryNames));
 
-        // Prepend terminus name to auxiliary names if available and not from EM
+        // Prepend terminus name (+ entity type + cpu index) to auxiliary names
+        // if available and not from Entity Manager
         if (!terminusName.empty() && sensorAuxNameOverwriteTbl.find(sId) ==
                                          sensorAuxNameOverwriteTbl.end())
         {
+            auto prefix = buildSensorNamePrefix(entityType);
+            // FixME: Backward compat — old firmware includes
+            // entity-type + CPU index in aux name. Remove when all
+            // firmware sends plain aux names.
+            auto entityTag = buildEntityTypeTag(entityType);
             prependedSensorNames = std::make_shared<AuxiliaryNames>();
             for (const auto& compositeSensorNames : *sensorNames)
             {
@@ -1676,8 +1848,17 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
                 prependedCompositeNames.reserve(compositeSensorNames.size());
                 for (const auto& [tag, name] : compositeSensorNames)
                 {
-                    prependedCompositeNames.emplace_back(
-                        tag, std::format("{}_{}", terminusName, name));
+                    std::string newName;
+                    if (!entityTag.empty() && name.starts_with(entityTag + "_"))
+                    {
+                        newName = std::format("{}_{}", terminusName, name);
+                    }
+                    else
+                    {
+                        newName = std::format("{}_{}", prefix, name);
+                    }
+                    prependedCompositeNames.emplace_back(tag,
+                                                         std::move(newName));
                 }
                 prependedSensorNames->emplace_back(
                     std::move(prependedCompositeNames));
@@ -1710,6 +1891,8 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
     std::string effecterName =
         "PLDM_Effecter_" + std::to_string(eId) + "_" + std::to_string(tid);
 
+    uint16_t entityType = std::get<1>(std::get<0>(effecterInfo));
+
     auto effecterAuxiliaryNames = getEffecterAuxiliaryNames(eId);
     AuxiliaryNames* effecterNames = nullptr;
     std::shared_ptr<AuxiliaryNames> prependedEffecterNames;
@@ -1718,10 +1901,13 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
     {
         effecterNames = &(std::get<2>(*effecterAuxiliaryNames));
 
-        // Prepend terminus name to auxiliary names if available (from PDRs
-        // only)
         if (!terminusName.empty())
         {
+            auto prefix = buildSensorNamePrefix(entityType);
+            // FixME: Backward compat — old firmware includes
+            // entity-type + CPU index in aux name. Remove when all
+            // firmware sends plain aux names.
+            auto entityTag = buildEntityTypeTag(entityType);
             prependedEffecterNames = std::make_shared<AuxiliaryNames>();
             for (const auto& compositeEffecterNames : *effecterNames)
             {
@@ -1730,8 +1916,17 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
                 prependedCompositeNames.reserve(compositeEffecterNames.size());
                 for (const auto& [tag, name] : compositeEffecterNames)
                 {
-                    prependedCompositeNames.emplace_back(
-                        tag, std::format("{}_{}", terminusName, name));
+                    std::string newName;
+                    if (!entityTag.empty() && name.starts_with(entityTag + "_"))
+                    {
+                        newName = std::format("{}_{}", terminusName, name);
+                    }
+                    else
+                    {
+                        newName = std::format("{}_{}", prefix, name);
+                    }
+                    prependedCompositeNames.emplace_back(tag,
+                                                         std::move(newName));
                 }
                 prependedEffecterNames->emplace_back(
                     std::move(prependedCompositeNames));
@@ -1854,8 +2049,8 @@ void Terminus::refreshAssociations()
     auto& [scope, rcOpt] = refreshAssociationsTaskHandle.emplace();
     stdexec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
-        refreshAssociationsTask() |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
+                    refreshAssociationsTask() |
+                        stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 exec::task<int> Terminus::refreshAssociationsTask()

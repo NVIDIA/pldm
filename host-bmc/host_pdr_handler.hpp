@@ -259,9 +259,8 @@ class HostPDRHandler
      *  @param[in] fruRecordData - the Fru Record Data
      */
 
-    void setFRUDataOnDBus(
-        const PDRList& fruRecordSetPDRs,
-        const std::vector<HostFruRecordData>& fruRecordData);
+    void setFRUDataOnDBus(const PDRList& fruRecordSetPDRs,
+                          const std::vector<HostFruRecordData>& fruRecordData);
 
     /** @brief Get FRU record table by remote PLDM terminus
      *

@@ -36,6 +36,7 @@
 #include "state_set/performance.hpp"
 #include "state_set/powerSupplyInput.hpp"
 #include "state_set/presenceState.hpp"
+#include "state_set/processorOsStates.hpp"
 
 namespace pldm
 {
@@ -62,7 +63,8 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
         return std::make_unique<StateSetMemorySpareChannel>(
             stateSetId, compId, path, stateAssociation, *sensor);
     }
-    else if (stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK &&
+    else if ((stateSetId == PLDM_NVIDIA_OEM_STATE_SET_NVLINK ||
+              stateSetId == oem_nvidia::PLDM_NVIDIA_OEM_STATE_SET_CLINK) &&
              entityType == PLDM_ENTITY_SYS_BUS)
     {
         return std::make_unique<oem_nvidia::StateSetNvlink>(
@@ -122,6 +124,11 @@ std::unique_ptr<StateSet> StateSetCreator::createSensor(
     {
         return std::make_unique<StateSetHealthState>(stateSetId, compId, path,
                                                      stateAssociation);
+    }
+    else if (stateSetId == PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES)
+    {
+        return std::make_unique<StateSetProcessorOsStates>(
+            stateSetId, compId, path, stateAssociation);
     }
 
     lg2::error(

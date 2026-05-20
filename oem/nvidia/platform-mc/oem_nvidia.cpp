@@ -596,6 +596,54 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
+    // Add primary_power_sensor association for the CPU EnforcedEDPc
+    // numeric sensor, pointing at the non-HGX CPU inventory path that the
+    // generic layer has already associated via chassis/all_sensors.
+    constexpr std::string_view cpuPrimaryPowerSensor(CPU_PRIMARY_POWER_SENSOR);
+    for (auto sensor : terminus.numericSensors)
+    {
+        if (cpuPrimaryPowerSensor.empty() ||
+            sensor->getSensorName().find(cpuPrimaryPowerSensor) ==
+                std::string::npos ||
+            !sensor->associationDefinitionsIntf)
+        {
+            continue;
+        }
+
+        auto assocs = sensor->associationDefinitionsIntf->associations();
+        bool updateRequired = false;
+        const auto count = assocs.size();
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& [fwd, rev, path] = assocs[i];
+            if (fwd != "chassis" || rev != "all_sensors")
+            {
+                continue;
+            }
+            const auto slash = path.rfind('/');
+            const std::string_view base =
+                (slash == std::string::npos)
+                    ? std::string_view{path}
+                    : std::string_view{path}.substr(slash + 1);
+            if (base.starts_with("HGX_"))
+            {
+                continue;
+            }
+            std::tuple<std::string, std::string, std::string> newAssoc{
+                "chassis", "primary_power_sensor", path};
+            if (std::find(assocs.begin(), assocs.end(), newAssoc) ==
+                assocs.end())
+            {
+                assocs.emplace_back(std::move(newAssoc));
+                updateRequired = true;
+            }
+        }
+        if (updateRequired)
+        {
+            sensor->associationDefinitionsIntf->associations(assocs);
+        }
+    }
+
     constexpr std::string_view cpuPrimaryPowerControl(
         CPU_PRIMARY_POWER_CONTROL);
     for (auto effecter : terminus.numericEffecters)

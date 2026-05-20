@@ -67,9 +67,11 @@ class Entry : public Ifaces
      *  @param[in] objPath - D-Bus object path
      *  @param[in] version - Version string
      *  @param[in] swId - Software ID
+     *  @param[in] manufacturer - Manufacturer string
      */
     explicit Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
-                   const std::string& versionStr, const std::string& swId);
+                   const std::string& versionStr, const std::string& swId,
+                   const std::string& manufacturer);
 
     /** @brief Create association {"software_version", "updateable"} between
      * software version object and "/xyz/openbmc_project/software"

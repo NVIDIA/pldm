@@ -1,3 +1,6 @@
+#include "common/utils.hpp"
+#include "libpldmresponder/oem_handler.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <map>

@@ -55,6 +55,7 @@ const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
 const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
 const std::string componentUpdateTime{"NvidiaUpdate.1.0.ComponentUpdateTime"};
+const std::string firmwareInRecovery{"NvidiaUpdate.1.0.FirmwareInRecovery"};
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -152,11 +153,14 @@ inline void createLogEntry(
  *  @param[in] resolution - Resolution field
  *  @param[in] logNamespace - Logging namespace, default is FWUpdate
  *  @param[in] overrideSeverity - Overwrites the severity for the Log
+ *  @param[in] overrideLevel - When set, overrides the severity derived from
+ *                             the message ID
  */
 inline void createLogEntry(
     const std::string& messageID, const std::string& arg0,
     const std::string& arg1, const std::string& resolution,
-    const std::string logNamespace = "FWUpdate", bool overrideSeverity = false)
+    const std::string logNamespace = "FWUpdate", bool overrideSeverity = false,
+    std::optional<LogLevel> overrideLevel = std::nullopt)
 {
     using namespace sdbusplus::xyz::openbmc_project::Logging::server;
     using Level =
@@ -195,6 +199,18 @@ inline void createLogEntry(
             level = Level::Critical;
         }
     }
+    else if (messageID == firmwareInRecovery)
+    {
+        messageArgs = arg1;
+        if (overrideSeverity)
+        {
+            level = Level::Informational;
+        }
+        else
+        {
+            level = Level::Critical;
+        }
+    }
     else
     {
         info("Generic message ID using default ordering for args", "MESSAGEID",
@@ -203,7 +219,8 @@ inline void createLogEntry(
         messageArgs = arg0 + "," + arg1;
     }
 
-    createLogEntry(messageID, messageArgs, resolution, logNamespace, level);
+    createLogEntry(messageID, messageArgs, resolution, logNamespace,
+                   overrideLevel.value_or(level));
 }
 
 /** @brief Simple structure to hold Redfish error information */
@@ -350,9 +367,10 @@ inline bool queryDeviceStatus(mctp_eid_t eid)
  *         for a specific component
  *
  *  @param[in] eid - endpoint ID of the device
+ *  @param[in] forceCritical - force all emitted logs to Critical severity
  *  @return bool - true if error was logged, false otherwise
  */
-inline bool queryDeviceStatusAndLog(mctp_eid_t eid)
+inline bool queryDeviceStatusAndLog(mctp_eid_t eid, bool forceCritical = true)
 {
     auto errorInfos = queryDeviceStatusError(eid);
     if (errorInfos.empty())
@@ -360,11 +378,14 @@ inline bool queryDeviceStatusAndLog(mctp_eid_t eid)
         return false;
     }
 
+    std::optional<LogLevel> overrideLevel =
+        forceCritical ? std::optional<LogLevel>{LogLevel::Critical}
+                      : std::nullopt;
+
     for (const auto& errorInfo : errorInfos)
     {
-        createLogEntry(errorInfo.messageId,
-                       errorInfo.arg0 + "," + errorInfo.arg1,
-                       errorInfo.resolution, "FWUpdate", errorInfo.severity);
+        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1,
+                       errorInfo.resolution, "FWUpdate", false, overrideLevel);
     }
     return true;
 }

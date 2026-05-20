@@ -174,8 +174,8 @@ int EventManager::handlePlatformEvent(
             "Handling 0xF3 Inventory Event from tid={TID}, dataSize={SIZE}",
             "TID", tid, "SIZE", eventDataSize);
 
-        auto terminusIt = termini.find(tid);
         std::string terminusName = DEFAULT_TERMINUS_NAME;
+        auto terminusIt = termini.find(tid);
         if (terminusIt != termini.end() && terminusIt->second)
         {
             auto name = terminusIt->second->getTerminusName();
@@ -183,12 +183,6 @@ int EventManager::handlePlatformEvent(
             {
                 terminusName = std::string(name.value());
             }
-        }
-        if (terminusName == DEFAULT_TERMINUS_NAME)
-        {
-            lg2::warning(
-                "Terminus name not found for tid={TID}, using default: {DEF}",
-                "TID", tid, "DEF", DEFAULT_TERMINUS_NAME);
         }
 
         if (!oem_events::handleInventoryEvent(terminusName, eventData,
@@ -215,9 +209,6 @@ int EventManager::handlePlatformEvent(
                     return std::string(name.value());
                 }
             }
-            lg2::warning(
-                "Terminus name not found for tid={TID}, using default: {DEF}",
-                "TID", tid, "DEF", DEFAULT_TERMINUS_NAME);
             return DEFAULT_TERMINUS_NAME;
         };
 
@@ -310,7 +301,7 @@ int EventManager::handlePlatformEvent(
             // Trigger async rediscovery task
             stdexec::start_detached(
                 stdexec::on(stdexec::inline_scheduler{},
-                processTelemetryRediscoveryEvent(tid)));
+                            processTelemetryRediscoveryEvent(tid)));
         }
         else if (telemetryState == PLDM_TELEMETRY_RESUME)
         {

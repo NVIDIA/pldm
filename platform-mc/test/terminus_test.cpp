@@ -2499,11 +2499,12 @@ TEST_F(TerminusTest, privateGetterAndUpdateAssociationsCoverage)
     terminus.entityAssociations.emplace(
         1, std::make_pair(containerEntity, std::set<EntityInfo>{}));
 
-    AuxiliaryNames pdrAuxNames{{{"en", "AuxSensor"}}};
+    pldm::platform_mc::AuxiliaryNames pdrAuxNames{{{"en", "AuxSensor"}}};
     terminus.sensorAuxiliaryNamesTbl.emplace_back(
         std::make_shared<SensorAuxiliaryNames>(0x52, 1, pdrAuxNames));
 
-    AuxiliaryNames overwriteAuxNames{{{"en", "OverwriteSensor"}}};
+    pldm::platform_mc::AuxiliaryNames overwriteAuxNames{
+        {{"en", "OverwriteSensor"}}};
     terminus.sensorAuxNameOverwriteTbl[0x53] = std::make_tuple(
         overwriteAuxNames,
         "/xyz/openbmc_project/inventory/system/chassis/chassis53");

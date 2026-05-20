@@ -167,8 +167,8 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     {
         stdexec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
-            numericEffecter.setNumericEffecterValue(
-                numericEffecter.baseToRaw(value))));
+                        numericEffecter.setNumericEffecterValue(
+                            numericEffecter.baseToRaw(value))));
         return RemoteDebugIntf::timeout(value, skipSignal);
     }
 
@@ -176,7 +176,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     {
         stdexec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
-            numericEffecter.getNumericEffecterValue()));
+                        numericEffecter.getNumericEffecterValue()));
         return numericEffecter.rawToBase(numericEffecter.getValue());
     }
 
@@ -206,7 +206,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
         stdexec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
-            stateEffecter.setStateEffecterStates(stateField)));
+                        stateEffecter.setStateEffecterStates(stateField)));
     }
 
     void disable(std::vector<DebugPolicy> debugPolicy) override
@@ -236,7 +236,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
         stdexec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
-            stateEffecter.setStateEffecterStates(stateField)));
+                        stateEffecter.setStateEffecterStates(stateField)));
     }
 
     uint8_t toCompId(DebugPolicy value)

@@ -2,6 +2,7 @@
 
 #include <libpldm/base.h>
 #include <libpldm/bios_table.h>
+
 #include <phosphor-logging/lg2.hpp>
 
 #include <fstream>

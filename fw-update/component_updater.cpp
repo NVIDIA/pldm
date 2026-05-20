@@ -485,11 +485,6 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         reinterpret_cast<char*>(
             response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode)),
         length - padBytes);
-    if (length > padBytes)
-    {
-        deviceUpdater->reportComponentDataProgress(componentIndex,
-                                                   length - padBytes);
-    }
     rc = encode_request_firmware_data_resp(
         request->hdr.instance_id, completionCode, responseMsg,
         sizeof(completionCode));
@@ -516,7 +511,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                 ComponentUpdaterSequence::CancelUpdateComponent);
             stdexec::start_detached(
                 stdexec::on(stdexec::inline_scheduler{},
-                sendcancelUpdateComponentRequest()));
+                            sendcancelUpdateComponentRequest()));
             return sendCommandNotExpectedResponse(request, payloadLength);
         }
 
@@ -747,7 +742,6 @@ Response ComponentUpdater::verifyComplete(const pldm_msg* request,
         info(
             "Component endpoint ID '{EID}' and version '{COMPONENT_VERSION}' verification complete.",
             "EID", eid, "COMPONENT_VERSION", compVersion);
-        deviceUpdater->reportComponentVerifyProgress(componentIndex);
         componentUpdaterState.nextState(componentUpdaterState.current);
     }
     else
@@ -779,6 +773,12 @@ void ComponentUpdater::completeFailedStatusHandler(
     const std::string& messageId, pldm_firmware_update_commands command,
     uint8_t result)
 {
+    if (deviceUpdater != nullptr &&
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          messageId, "", command, result);
     componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
@@ -800,18 +800,23 @@ void ComponentUpdater::completeFailedStatusHandler(
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
     stdexec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
-        sendcancelUpdateComponentRequest() |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
+                    sendcancelUpdateComponentRequest() |
+                        stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 void ComponentUpdater::applyCompleteSucceededStatusHandler(
     const std::string& compVersion, bitfield16_t compActivationModification)
 {
+    if (deviceUpdater == nullptr ||
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     logComponentUpdateDuration();
 
     deviceUpdater->accumulateActivationModifications(
         compActivationModification);
-    deviceUpdater->reportComponentApplyProgress(componentIndex);
 
     updateManager->createMessageRegistry(eid, fwDeviceIDRecord, componentIndex,
                                          updateSuccessful);
@@ -981,9 +986,33 @@ void ComponentUpdater::onResponseSendComplete(bool success)
     }
 }
 
+void ComponentUpdater::stopComponentUpdateTimers()
+{
+    pendingPostResponseAction = nullptr;
+    pldmRequest.reset();
+
+    if (reqFwDataTimer)
+    {
+        reqFwDataTimer->stop();
+        reqFwDataTimer.reset();
+    }
+
+    if (completeCommandsTimeoutTimer)
+    {
+        completeCommandsTimeoutTimer->stop();
+        completeCommandsTimeoutTimer.reset();
+    }
+}
+
 void ComponentUpdater::createRequestFwDataTimer()
 {
     reqFwDataTimer = std::make_unique<sdbusplus::Timer>([this]() -> void {
+        if (deviceUpdater != nullptr &&
+            deviceUpdater->isTimeoutCancellationRequested())
+        {
+            return;
+        }
+
         error(
             "RequestFWData timed out. No command received from FD within the expected time of {EXPECTEDTIME}s. EID={EID}, "
             "ComponentIndex={COMPONENTINDEX}",
@@ -1022,15 +1051,14 @@ void ComponentUpdater::createRequestFwDataTimer()
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(
-                stdexec::on(stdexec::inline_scheduler{},
+            stdexec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
         stdexec::start_detached(
-            stdexec::on(stdexec::inline_scheduler{},
-            queryAndCancelTask()));
+            stdexec::on(stdexec::inline_scheduler{}, queryAndCancelTask()));
     });
 }
 
@@ -1038,6 +1066,12 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 {
     completeCommandsTimeoutTimer = std::make_unique<
         sdbusplus::Timer>([this]() -> void {
+        if (deviceUpdater != nullptr &&
+            deviceUpdater->isTimeoutCancellationRequested())
+        {
+            return;
+        }
+
         pldm_firmware_update_commands timedOutCommand{};
         std::string commandName{};
         std::string stateFailedMessageId{};
@@ -1109,15 +1143,14 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(
-                stdexec::on(stdexec::inline_scheduler{},
+            stdexec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
         stdexec::start_detached(
-            stdexec::on(stdexec::inline_scheduler{},
-            queryAndCancelTask()));
+            stdexec::on(stdexec::inline_scheduler{}, queryAndCancelTask()));
     });
 }
 
@@ -1220,6 +1253,12 @@ exec::task<int> ComponentUpdater::processCancelUpdateComponentResponse(
 
 void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
 {
+    if (deviceUpdater != nullptr &&
+        deviceUpdater->isTimeoutCancellationRequested())
+    {
+        return;
+    }
+
     if (updateCompletionCoHandle.has_value())
     {
         auto& [scope, rcOpt] = *updateCompletionCoHandle;
@@ -1231,8 +1270,8 @@ void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
         updateCompletionCoHandle.reset();
     }
     auto& [scope, rcOpt] = updateCompletionCoHandle.emplace();
-    stdexec::start_detached(
-        stdexec::on(stdexec::inline_scheduler{},
+    stdexec::start_detached(stdexec::on(
+        stdexec::inline_scheduler{},
         deviceUpdater->updateComponentCompletion(componentIndex, status) |
             stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
@@ -1253,8 +1292,8 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
     auto& [scope, rcOpt] = getStatusTaskHandle.emplace();
     stdexec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
-        sendGetStatusRequest(getStatusCallback) |
-            stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
+                    sendGetStatusRequest(getStatusCallback) |
+                        stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
 exec::task<int> ComponentUpdater::sendGetStatusRequest(

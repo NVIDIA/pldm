@@ -193,6 +193,25 @@ void optionUsage(void)
     info("Defaulted settings:  --verbose=0");
 }
 
+// Calls fwManager->onResponseSendComplete, catching any exception so it cannot
+// propagate into the event-loop callback and terminate the daemon.  Templated
+// so that unit tests can substitute a lightweight stand-in without linking
+// against the full fw_update::Manager.
+template <typename FwManagerT>
+static void notifyFwUpdateSendComplete(FwManagerT* fwMgr, pldm_tid_t tid,
+                                       bool success)
+{
+    try
+    {
+        fwMgr->onResponseSendComplete(tid, success);
+    }
+    catch (const std::exception& e)
+    {
+        error("Exception in onResponseSendComplete for EID {EID}: {ERROR}",
+              "EID", tid, "ERROR", e.what());
+    }
+}
+
 int main(int argc, char** argv)
 {
     bool verbose = false;
@@ -288,9 +307,9 @@ int main(int argc, char** argv)
                                                       instanceIdDb, verbose);
 
     std::unique_ptr<fw_update::Manager> fwManager =
-        std::make_unique<fw_update::Manager>(&dbusHandler, event, reqHandler,
-                                             instanceIdDb,
-                                             FW_UPDATE_CONFIG_JSON, fwDebug);
+        std::make_unique<fw_update::Manager>(
+            &dbusHandler, event, reqHandler, instanceIdDb,
+            FW_UPDATE_CONFIG_JSON, fwDebug);
 
     event.set_watchdog(true);
 
@@ -622,8 +641,9 @@ int main(int argc, char** argv)
 
                 if (reqHdrFields.pldm_type == PLDM_FWUP)
                 {
-                    fwManager->onResponseSendComplete(
-                        TID, returnCode == PLDM_REQUESTER_SUCCESS);
+                    notifyFwUpdateSendComplete(
+                        fwManager.get(), TID,
+                        returnCode == PLDM_REQUESTER_SUCCESS);
                 }
 
                 if (returnCode != PLDM_REQUESTER_SUCCESS)

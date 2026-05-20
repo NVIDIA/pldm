@@ -23,8 +23,9 @@ class StubOemPlatformHandler : public pldm::responder::oem_platform::Handler
     {}
 
     int getOemStateSensorReadingsHandler(
-        pldm::EntityType, pldm::pdr::EntityInstance, pldm::pdr::StateSetId,
-        pldm::pdr::CompositeCount,
+        pldm::pdr::EntityType, pldm::pdr::EntityInstance,
+        pldm::pdr::ContainerID, pldm::pdr::StateSetId,
+        pldm::pdr::CompositeCount, uint16_t,
         std::vector<get_sensor_state_field>&) override
     {
         return PLDM_SUCCESS;

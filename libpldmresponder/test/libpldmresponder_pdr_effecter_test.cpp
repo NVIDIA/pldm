@@ -1,9 +1,9 @@
 #include "common/test/mocked_utils.hpp"
+#include "common/types.hpp"
 #include "libpldmresponder/event_parser.hpp"
 #include "libpldmresponder/pdr_numeric_effecter.hpp"
 #include "libpldmresponder/pdr_state_effecter.hpp"
 #include "libpldmresponder/pdr_state_sensor.hpp"
-#include "common/types.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "libpldmresponder/platform.hpp"
 

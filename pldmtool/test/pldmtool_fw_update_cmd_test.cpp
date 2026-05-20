@@ -211,7 +211,7 @@ TEST(GetFwParams, CreateRequestMsg)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
-    GetFwParams cmd("fw_update", "GetFwParams", sub);
+    GetFirmwareParameters cmd("fw_update", "GetFwParams", sub);
 
     auto [rc, requestMsg] = cmd.createRequestMsg();
     EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -510,7 +510,7 @@ TEST(GetFwParams, ParseResponseMsgSuccess)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
-    GetFwParams cmd("fw_update", "GetFwParams", sub);
+    GetFirmwareParameters cmd("fw_update", "GetFwParams", sub);
 
     constexpr uint8_t activeVerLen = 1;
     constexpr uint8_t pendingVerLen = 1;
@@ -765,7 +765,7 @@ TEST(GetFwParams, ParseResponseMsgDecodeError)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
-    GetFwParams cmd("fw_update", "GetFwParams", sub);
+    GetFirmwareParameters cmd("fw_update", "GetFwParams", sub);
 
     std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + 1, 0);
     auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
@@ -780,7 +780,7 @@ TEST(GetFwParams, ParseResponseMsgComponentEntryCoversElsePaths)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
-    GetFwParams cmd("fw_update", "GetFwParams", sub);
+    GetFirmwareParameters cmd("fw_update", "GetFwParams", sub);
 
     constexpr uint8_t setVerLen = 1;
     constexpr uint8_t activeCompVerLen = 3;
@@ -1200,7 +1200,7 @@ TEST(GetFwParams, ParseResponseMsgComponentEntryKnownClassificationPaths)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
-    GetFwParams cmd("fw_update", "GetFwParams", sub);
+    GetFirmwareParameters cmd("fw_update", "GetFwParams", sub);
 
     constexpr uint8_t setVerLen = 1;
     constexpr uint8_t activeCompVerLen = 3;

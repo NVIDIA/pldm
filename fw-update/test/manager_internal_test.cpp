@@ -61,7 +61,7 @@ TEST_F(ManagerInternalTest, inlineManagerPathsAreCallable)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     dbus::MctpInterfaces mctpInterfaces;
     EXPECT_NO_THROW({ manager.getMctpInterfaces(mctpInterfaces); });
@@ -104,7 +104,7 @@ TEST_F(ManagerInternalTest, refreshSingleEndpointCallbackPathIsCallable)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     ASSERT_TRUE(manager.updateManager.refreshSingleEndpointCallback);
     auto co = manager.updateManager.refreshSingleEndpointCallback(1, true);
@@ -117,7 +117,8 @@ TEST_F(ManagerInternalTest, constructorHandlesInvalidConfigPath)
     const std::filesystem::path badConfigPath{
         "./fw_update_jsons/does_not_exist.json"};
     EXPECT_NO_THROW({
-        Manager manager(event, reqHandler, instanceIdDb, badConfigPath, true);
+        Manager manager(nullptr, event, reqHandler, instanceIdDb, badConfigPath,
+                        true);
     });
 }
 
@@ -125,7 +126,7 @@ TEST_F(ManagerInternalTest, createAndUpdateInventoryCoverComponentMapBranches)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     const pldm::eid eid = 7;
     const UUID uuid = "00112233445566778899AABBCCDDEEFF";
@@ -148,7 +149,7 @@ TEST_F(ManagerInternalTest, updateFwInventoryAndHandleRequestAreCallable)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     const pldm::eid eid = 5;
     EXPECT_NO_THROW({ manager.updateFWInventory(eid); });
@@ -171,7 +172,7 @@ TEST_F(ManagerInternalTest,
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     const pldm::eid eid = 21;
     const UUID uuid = "00112233445566778899AABBCCDDEEFF";
@@ -195,7 +196,7 @@ TEST_F(ManagerInternalTest,
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
-    Manager manager(event, reqHandler, instanceIdDb, configPath, true);
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     manager.inventoryMgr.discoverFDsTaskHandle.emplace();
 

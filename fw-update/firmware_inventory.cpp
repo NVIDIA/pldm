@@ -28,13 +28,14 @@ namespace pldm::fw_update::fw_inventory
 {
 
 Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
-             const std::string& versionStr, const std::string& swId) :
+             const std::string& versionStr, const std::string& swId,
+             const std::string& manufacturer) :
     Ifaces(bus, objPath.c_str(), action::defer_emit)
 {
     Ifaces::version(versionStr, true);
     Ifaces::purpose(VersionPurpose::Other, true);
     Ifaces::softwareId(swId, true);
-    Ifaces::manufacturer("NVIDIA", true);
+    Ifaces::manufacturer(manufacturer, true);
     Ifaces::emit_object_added();
 }
 
@@ -102,22 +103,22 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
             {
                 auto componentObject =
                     (std::get<0>(fwInfoSearch)).find(compKey.second);
-                std::string objPath =
-                    swBasePath + "/" +
-                    std::get<ComponentName>(componentObject->second);
+                const auto& [compObjName, compObjAssocs, compObjManufacturer] =
+                    componentObject->second;
+                std::string objPath = swBasePath + "/" + compObjName;
 
                 auto swId = std::format("0x{:04X}", compKey.second);
                 auto entry = std::make_unique<Entry>(
-                    bus, objPath, std::get<1>(compInfo), swId);
+                    bus, objPath, std::get<CompVersion>(compInfo), swId,
+                    compObjManufacturer);
                 entry->createUpdateableAssociation(swBasePath);
 
                 lg2::info(
                     "Created software D-Bus object: path={PATH}, component_id={ID}, version={VERSION}",
                     "PATH", objPath, "ID", swId, "VERSION",
-                    std::get<1>(compInfo));
+                    std::get<CompVersion>(compInfo));
 
-                const auto& assocs =
-                    std::get<Associations>(componentObject->second);
+                const auto& assocs = compObjAssocs;
 
                 for (auto& assoc : assocs)
                 {
@@ -157,8 +158,8 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                 swBasePath + "/" + compIdNameMap.at(compKey.second);
 
             auto swId = std::format("0x{:04X}", compKey.second);
-            auto entry = std::make_unique<Entry>(bus, objPath,
-                                                 std::get<1>(compInfo), swId);
+            auto entry = std::make_unique<Entry>(
+                bus, objPath, std::get<1>(compInfo), swId, "NVIDIA");
             entry->createUpdateableAssociation(swBasePath);
 
             lg2::info(

@@ -41,8 +41,7 @@ void Handler::systemCompatibleCallback(sdbusplus::message_t& msg)
     {
         return;
     }
-    auto names = std::get<pldm::utils::Interfaces>(
-        properties.at("Names"));
+    auto names = std::get<pldm::utils::Interfaces>(properties.at("Names"));
 
     if (!names.empty())
     {

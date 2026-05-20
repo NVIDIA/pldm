@@ -283,8 +283,7 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
     uint8_t effecterState;
     auto requestHostTransition =
         pldm::utils::DBusHandler().getDbusProperty<std::string>(
-            "/xyz/openbmc_project/state/host0",
-            "RequestedHostTransition",
+            "/xyz/openbmc_project/state/host0", "RequestedHostTransition",
             sdbusplus::common::xyz::openbmc_project::state::Host::interface);
     if (requestHostTransition !=
         "xyz.openbmc_project.State.Host.Transition.Off")

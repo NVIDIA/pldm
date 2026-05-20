@@ -192,6 +192,9 @@ static ErrorMapping transferCompleteMapping{
     {PLDM_FWUP_FD_ABORTED_TRANSFER_SECURITY_REVISION_ERROR,
      {"Component image transfer aborted due to security revision error",
       "Verify the contents of the FW package"}},
+    {PLDM_FWUP_GENERIC_ERROR,
+     {"Component image transfer failed with a generic error.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {reqGrantError,
      {"SPI Access Error",
@@ -227,6 +230,9 @@ static ErrorMapping verifyCompleteMapping{
     {PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR,
      {"Component image verification failed due to security revision error",
       "Verify the contents of the FW package"}},
+    {PLDM_FWUP_GENERIC_ERROR,
+     {"Component image verification failed with a generic error.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
      {"Component image is identical",
@@ -273,6 +279,9 @@ static ErrorMapping applyCompleteMapping{
     {PLDM_FWUP_APPLY_FAILURE_SECURITY_REVISION_ERROR,
      {"Applying the image failed due to security revision error",
       "Verify the contents of the FW package"}},
+    {PLDM_FWUP_GENERIC_ERROR,
+     {"Applying the image failed with a generic error.",
+      "Retry firmware update operation"}},
 #ifdef OEM_NVIDIA
     {applyAuthFailure,
      {"Authentication failed after applying the image",

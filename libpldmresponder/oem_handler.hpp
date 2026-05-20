@@ -38,8 +38,7 @@ class Handler : public CmdHandler
         pldm::pdr::EntityType entityType,
         pldm::pdr::EntityInstance entityInstance,
         pldm::pdr::ContainerID containerId, pldm::pdr::StateSetId stateSetId,
-        pldm::pdr::CompositeCount compSensorCnt,
-        uint16_t sensorId,
+        pldm::pdr::CompositeCount compSensorCnt, uint16_t sensorId,
         std::vector<get_sensor_state_field>& stateField) = 0;
 
     /** @brief Interface to set the effecter requested by pldm requester

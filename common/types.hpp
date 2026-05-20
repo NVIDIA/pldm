@@ -121,8 +121,7 @@ using Value = std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
 
 using PropertyMap = std::map<Property, Value>;
 using InterfaceMap = std::map<Interface, PropertyMap>;
-using ObjectValueTree =
-    std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
 
 using MctpInterfaces = std::map<UUID, InterfaceMap>;
 typedef struct _pathAssociation
@@ -220,8 +219,9 @@ using MatchDeviceInfo = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>;
 
 // FirmwareInventory
 using ComponentName = std::string;
+using Manufacturer = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
-using ComponentObject = std::tuple<ComponentName, Associations>;
+using ComponentObject = std::tuple<ComponentName, Associations, Manufacturer>;
 using CreateComponentIdNameMap =
     std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;

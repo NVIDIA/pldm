@@ -56,7 +56,7 @@ TEST(Entry, Basic)
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
         .Times(1);
 
-    Entry entry(busMock, objPath, version, swId);
+    Entry entry(busMock, objPath, version, swId, "NVIDIA");
 }
 
 TEST(Entry, BasicEntryCreateAssociation)
@@ -90,7 +90,7 @@ TEST(Entry, BasicEntryCreateAssociation)
                 return 0;
             });
 
-    Entry entry(busMock, objPath, version, swId);
+    Entry entry(busMock, objPath, version, swId, "NVIDIA");
     entry.createAssociation(fwdAssociation, revAssociation, swObjectPath1);
     entry.createUpdateableAssociation(swObjectPath2);
 }
@@ -122,7 +122,7 @@ TEST(Manager, SingleMatch)
     const std::string compName1{"CompName1"};
     const Associations associations = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
-    const ComponentObject componentObject = {compName1, associations};
+    const ComponentObject componentObject = {compName1, associations, "NVIDIA"};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
@@ -179,12 +179,14 @@ TEST(Manager, SingleMatchTwoComponents)
     const std::string compName1{"CompName1"};
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
-    const ComponentObject componentObject1 = {compName1, associations1};
+    const ComponentObject componentObject1 = {compName1, associations1,
+                                              "NVIDIA"};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
-    const ComponentObject componentObject2 = {compName2, associations2};
+    const ComponentObject componentObject2 = {compName2, associations2,
+                                              "NVIDIA"};
     DBusIntfMatch m;
 
     FirmwareInventoryInfo fwInventoryInfo(
@@ -241,17 +243,20 @@ TEST(Manager, MulipleMatch)
     const std::string compName1{"CompName1"};
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
-    const ComponentObject componentObject1 = {compName1, associations1};
+    const ComponentObject componentObject1 = {compName1, associations1,
+                                              "NVIDIA"};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
-    const ComponentObject componentObject2 = {compName2, associations2};
+    const ComponentObject componentObject2 = {compName2, associations2,
+                                              "NVIDIA"};
 
     const std::string compName3{"CompName3"};
     const Associations associations3 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName3"}};
-    const ComponentObject componentObject3 = {compName3, associations3};
+    const ComponentObject componentObject3 = {compName3, associations3,
+                                              "NVIDIA"};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
@@ -343,12 +348,14 @@ TEST(Manager, test_private_method_updateSwId)
     const std::string compName1{"CompName1"};
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
-    const ComponentObject componentObject1 = {compName1, associations1};
+    const ComponentObject componentObject1 = {compName1, associations1,
+                                              "NVIDIA"};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
-    const ComponentObject componentObject2 = {compName2, associations2};
+    const ComponentObject componentObject2 = {compName2, associations2,
+                                              "NVIDIA"};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
@@ -411,11 +418,9 @@ TEST(FirmwareInventoryObjectTest, ConstructorSetsProperties)
         "/xyz/openbmc_project/inventory/system/board/PLDM_Device";
     SoftwareVersionPurpose expectedPurpose = SoftwareVersionPurpose::Unknown;
 
-    FirmwareInventoryObjectTest inventory(softwareIdentifier,
-                                          expectedSoftwarePath,
-                                          expectedSoftwareVersion,
-                                          expectedEndpointPath,
-                                          expectedPurpose);
+    FirmwareInventoryObjectTest inventory(
+        softwareIdentifier, expectedSoftwarePath, expectedSoftwareVersion,
+        expectedEndpointPath, expectedPurpose);
 
     EXPECT_EQ(inventory.getSoftwarePath(), expectedSoftwarePath);
     auto associationTuples = inventory.getAssociation().associations();

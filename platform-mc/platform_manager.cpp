@@ -49,8 +49,9 @@ exec::task<int> PlatformManager::initTerminus()
                 numberEventClassReturned, eventClass);
             if (rc)
             {
-                lg2::error("failed to send eventMessageSupported, rc={RC}.",
-                           "RC", rc);
+                lg2::error("tid={TID} eventMessageSupported failed rc={RC}, "
+                           "setEventReceiver will be skipped.",
+                           "TID", tid, "RC", rc);
                 terminus->synchronyConfigurationSupported.byte = 0;
             }
 
@@ -87,27 +88,27 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
     if (terminus->synchronyConfigurationSupported.byte &
         (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
     {
-        rc = co_await setEventReceiver(tid,
-                                       PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC,
-                                       terminusManager.getLocalEid());
+        auto localEid = terminusManager.getLocalEid();
+        rc = co_await setEventReceiver(
+            tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC, localEid);
         if (rc != PLDM_SUCCESS &&
             rc != terminus->resumptionStatus.eventReciever)
         {
+            auto tName = terminus->getTerminusName().value_or("Unknown");
             auto mctpInfo = terminusManager.toMctpInfo(tid);
             if (!mctpInfo)
             {
-                lg2::error(
-                    "Failed to send setEventReceiver to tid:{TID}, rc={RC}. "
-                    "No match for tid:{TID} in mctpInfo.",
-                    "TID", tid, "RC", rc);
+                lg2::error("setEventReceiver failed for tid={TID} name={NAME}, "
+                           "rc={RC}. No MCTP info found for tid={TID}.",
+                           "TID", tid, "NAME", tName, "RC", rc);
             }
             else
             {
                 auto destEid = std::get<0>(mctpInfo.value());
-                lg2::error(
-                    "failed to send setEventReceiver to tid:{TID}, rc={RC}, localEid:{EID}, destEid:{DESTEID}",
-                    "TID", tid, "RC", rc, "EID", terminusManager.getLocalEid(),
-                    "DESTEID", destEid);
+                lg2::error("setEventReceiver failed for tid={TID} name={NAME}, "
+                           "rc={RC}, localEid={EID}, destEid={DESTEID}",
+                           "TID", tid, "NAME", tName, "RC", rc, "EID", localEid,
+                           "DESTEID", destEid);
             }
         }
 

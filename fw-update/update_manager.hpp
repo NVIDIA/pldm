@@ -40,6 +40,7 @@
 #include <fstream>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef OEM_NVIDIA
@@ -61,7 +62,6 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
-using DescriptorMatchCount = size_t;
 using RefreshSingleEndpointCallback =
     std::function<exec::task<int>(mctp_eid_t, bool)>;
 
@@ -195,10 +195,6 @@ class UpdateManager
      */
     void updateActivationProgress();
 
-    /** @brief Refresh activation progress using per-device progress data
-     */
-    void refreshActivationProgress();
-
     /** @brief Callback function that will be invoked when the
      *         RequestedActivation will be set to active in the Activation
      *         interface
@@ -249,7 +245,23 @@ class UpdateManager
     void createMessageRegistryResourceErrors(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         size_t compIndex, const std::string& messageID,
-        const std::string& messageError, const std::string& resolution);
+        const std::string& messageError, const std::string& resolution,
+        bool overrideSeverity = false);
+
+    /** @brief Emit an Info-severity ResourceErrorsDetected entry per
+     *         applicable component when multiple package records match
+     *         the same device.
+     *
+     *  The first matching record is used for the update; this records the
+     *  duplicate in Redfish for visibility/audit without flagging it as a
+     *  failure.
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] fwDeviceIDRecord - duplicate (skipped) firmware device ID
+     *                                record
+     */
+    void handleDuplicateDescriptorMatch(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord);
 
     /** @brief Generate a unique software ID based on current timestamp
      */
@@ -349,6 +361,26 @@ class UpdateManager
     RefreshSingleEndpointCallback refreshSingleEndpointCallback;
 
   private:
+    /** @brief Record explicitly targeted endpoints that are no longer present
+     *         in the live descriptor map after refresh.
+     */
+    void recordUnavailableTargetEids(const ComponentTargetList& compTargetList);
+
+    /** @brief Emit a Critical ResourceErrorsDetected log entry for each
+     *         user-requested PLDM target whose image is not in the package.
+     *         Called right after associatePkgToDevices so the "no matching
+     *         image" entries are dispatched before any PLDM transfer begins
+     *         (and therefore before bmcweb's TaskStatus evaluation on the
+     *         terminal Activation transition).
+     *
+     *  @param[in] deviceUpdaterInfos - Targets that will be scheduled for
+     *                                  update; any requested target EID not
+     *                                  in this set is treated as having no
+     *                                  matching package image.
+     */
+    void logUnupdatedTargets(const DeviceUpdaterInfos& deviceUpdaterInfos);
+
+    /** @brief Requested apply time for the current update session */
     sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
         RequestedApplyTimes requestedApplyTime;
 
@@ -371,6 +403,18 @@ class UpdateManager
     std::unordered_map<mctp_eid_t, std::unique_ptr<DeviceUpdater>>
         deviceUpdaterMap;
     std::unordered_map<mctp_eid_t, bool> deviceUpdateCompletionMap;
+    std::unordered_set<mctp_eid_t> unavailableTargetEids;
+
+    /** @brief User-requested PLDM targets, keyed by the name supplied in the
+     *         Redfish target path (preserved verbatim so the log entry
+     *         references the exact component the user asked for rather than
+     *         a differently-named component on the same EID). Each name is
+     *         resolved to its owning PLDM EID once at processStream time
+     *         against the live componentNameMap; names that don't resolve to
+     *         a PLDM EID (e.g. non-PLDM targets) are intentionally omitted.
+     *         Drained by logUnupdatedTargets() at terminal state.
+     */
+    std::unordered_map<std::string, mctp_eid_t> requestedTargets;
 
     std::unordered_map<std::string, bool> otherDeviceComponents;
     std::unordered_map<std::string, bool> otherDeviceCompleted;
@@ -394,12 +438,39 @@ class UpdateManager
     /** @brief Counter to keep track of update progress interval */
     uint8_t updateInterval;
 
-    /** @brief Total intervals to update progress percent */
-    uint8_t totalInterval = static_cast<uint8_t>(
-        std::floor((FIRMWARE_UPDATE_TIME / PROGRESS_UPDATE_INTERVAL)));
+    /**
+     * @brief Total intervals to update progress percent.
+     *
+     * Set per-update by activatePackage() based on
+     * computeEffectiveTimeoutSec(); not const.
+     */
+    uint8_t totalInterval = 0;
+
+    /**
+     * @brief Per-package effective timeout in seconds. Lower-bounded by
+     *        FIRMWARE_UPDATE_TIME, raised by the max UpdateTimeout
+     *        advertised by descriptor-matched Item Updaters.
+     *
+     *        bmcweb's per-task watchdog is reset by every
+     *        ActivationProgress.Progress signal, so the cadence of
+     *        synthetic progress ticks (PROGRESS_UPDATE_INTERVAL) must
+     *        stay smaller than BMCWEB_UPDATE_SERVICE_TASK_TIMEOUT
+     *        regardless of how large this value grows.
+     */
+    uint64_t computeEffectiveTimeoutSec() const;
 
     /** @brief Create a Progress Update Timer */
     void createProgressUpdateTimer();
+
+    /**
+     * @brief Cancel all in-progress firmware updates due to timeout.
+     *
+     * This method is called when the firmware update timeout is reached.
+     * It sends CancelUpdate requests to all devices that are still in-progress
+     * (not in deviceUpdateCompletionMap) asynchronously and cleans up
+     * resources.
+     */
+    void cancelAllUpdates();
 
     /** @brief Defer handler for update */
     std::unique_ptr<sdeventplus::source::Defer> updateDeferHandler;
@@ -418,17 +489,6 @@ class UpdateManager
      *         activation state
      */
     void handleInvalidPackageHeaderError();
-
-    /** @brief Log resource errors for all components when multiple descriptor
-     *         records in the package match the same device
-     */
-    void handleDuplicateDescriptorMatch(
-        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord);
-
-    /** @brief The last progress that was calculated. Used to avoid spamming
-     *         D-Bus updates.
-     */
-    uint8_t lastProgress = 0;
 };
 
 } // namespace fw_update

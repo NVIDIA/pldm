@@ -51,8 +51,8 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
     }
 
     auto& [scope, rcOpt] = discoverFDsTaskHandle.emplace();
-    stdexec::start_detached(
-        stdexec::on(stdexec::inline_scheduler{},
+    stdexec::start_detached(stdexec::on(
+        stdexec::inline_scheduler{},
         discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 exec::task<int> InventoryManager::discoverFDsTask()
@@ -233,6 +233,11 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
 exec::task<int> InventoryManager::initiateGetActiveFirmwareVersion(
     mctp_eid_t eid, UpdateFWVersionCallBack updateFWVersionCallback)
 {
+    if (!mctpEidMap.contains(eid))
+    {
+        co_return PLDM_SUCCESS;
+    }
+
     uint64_t supportedTypes = 0;
     auto rc = co_await getPLDMTypes(eid, supportedTypes);
     if (rc)
@@ -248,16 +253,9 @@ exec::task<int> InventoryManager::initiateGetActiveFirmwareVersion(
         co_return PLDM_SUCCESS;
     }
 
-    if (!mctpEidMap.contains(eid))
-    {
-        co_return PLDM_SUCCESS;
-    }
-
     dbus::MctpInterfaces mctpInterfaces;
-    auto co =
-        getActiveFirmwareVersion(eid, mctpInterfaces, updateFWVersionCallback);
-
-    co_return PLDM_SUCCESS;
+    co_return co_await getActiveFirmwareVersion(eid, mctpInterfaces,
+                                                updateFWVersionCallback);
 }
 
 exec::task<int> InventoryManager::getActiveFirmwareVersion(

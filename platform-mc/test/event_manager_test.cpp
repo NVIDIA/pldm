@@ -223,7 +223,7 @@ class EventManagerTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, instanceIdDb, "", false),
+        fwUpdateManager(nullptr, event, reqHandler, instanceIdDb, "", false),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, nullptr),
         eventManager(terminusManager, termini, fwUpdateManager, platformManager,
@@ -250,7 +250,7 @@ class PlatformMcManagerTest : public testing::Test
         event(sdeventplus::Event::get_default()),
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
-        fwUpdateManager(event, reqHandler, instanceIdDb, "", false)
+        fwUpdateManager(nullptr, event, reqHandler, instanceIdDb, "", false)
     {}
 
     sdbusplus::bus::bus& bus;
@@ -270,7 +270,7 @@ class EventManagerProtectedTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, instanceIdDb, "", false),
+        fwUpdateManager(nullptr, event, reqHandler, instanceIdDb, "", false),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, nullptr),
         eventManager(terminusManager, termini, fwUpdateManager, platformManager,
@@ -298,7 +298,7 @@ class EventManagerPollingTest : public testing::Test
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini,
                         mockTerminusManagerLocalEid, nullptr),
-        fwUpdateManager(event, reqHandler, instanceIdDb, "", false),
+        fwUpdateManager(nullptr, event, reqHandler, instanceIdDb, "", false),
         platformManager(terminusManager, termini),
         sensorManager(event, terminusManager, termini, nullptr),
         eventManager(terminusManager, termini, fwUpdateManager, platformManager,
