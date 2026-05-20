@@ -130,8 +130,8 @@ class StateSetPowerSupplyInput : public StateSet
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Current Input out of Range"), Level::Informational,
-                "", ""};
+                std::string("Current Input out of Range"), Level::Warning, "",
+                ""};
         }
     }
 

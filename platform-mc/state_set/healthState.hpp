@@ -97,12 +97,12 @@ class StateSetHealthState : public StateSet
             case HealthType::Critical:
                 return {std::string(
                             "ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                        std::string("Critical"), Level::Informational, "", ""};
+                        std::string("Critical"), Level::Critical, "", ""};
                 break;
             case HealthType::Warning:
                 return {std::string(
                             "ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                        std::string("Warning"), Level::Informational, "", ""};
+                        std::string("Warning"), Level::Warning, "", ""};
                 break;
             case HealthType::OK:
             default:

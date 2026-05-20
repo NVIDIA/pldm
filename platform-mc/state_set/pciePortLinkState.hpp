@@ -148,20 +148,20 @@ class StateSetPciePortLinkState : public StateSet
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("Inactive"), Level::Informational, "", ""};
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Inactive"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error"), Level::Informational, "", ""};
+                std::string("Error"), Level::Critical, "", ""};
         }
         else
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Unknown"), Level::Warning, "", ""};
         }
     }
 

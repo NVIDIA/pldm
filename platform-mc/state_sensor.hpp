@@ -138,6 +138,18 @@ class StateSensor
         std::string& resolution, std::string& eventId,
         std::string& impactedComponent, Level level = Level::Informational);
 
+#ifdef OEM_NVIDIA
+    /** @brief Synthesize a deterministic EventId from the
+     *  (entity, sensor, target-state) tuple when no EM SensorEventInfo
+     *  override supplied one. Result is upper-cased with non-alphanumeric
+     *  runs collapsed to '_', e.g. ("CPU_0","Performance","Throttled")
+     *  -> "CPU_0_PERFORMANCE_THROTTLED". (nvbug 6130100, R2)
+     */
+    static std::string synthesizeEventId(const std::string& entityName,
+                                         const std::string& sensorName,
+                                         const std::string& targetState);
+#endif
+
     /** @brief Terminus ID of the PLDM Terminus which the sensor belongs to
      */
     uint8_t tid;

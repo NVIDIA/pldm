@@ -332,8 +332,11 @@ TEST_F(TestStateEffecter, cpuDiagnosticsRefreshCoverage)
               cpuDiagSet->getValue());
     auto [msg, arg, level, eventId,
           impacted] = cpuDiagSet->getEventData(nullptr);
-    EXPECT_TRUE(msg.empty());
-    EXPECT_TRUE(arg.empty());
+    // Trigger-only effecter: getEventData returns a registered placeholder
+    // (nvbug 6130100, D2) so bmcweb never renders a blank LogEntry if reached.
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", msg);
+    EXPECT_EQ("Idle", arg);
+    EXPECT_EQ(Level::Informational, level);
     EXPECT_EQ("CpuDiagnosticsRefresh", cpuDiagSet->getStringStateType());
 
     auto& bus = pldm::utils::DBusHandler::getBus();

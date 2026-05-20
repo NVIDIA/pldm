@@ -169,8 +169,9 @@ class StateSetEthIBPortLinkState : public StateSet
         }
         else
         {
-            return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    std::string("Unknown"), Level::Error, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Unknown"), Level::Warning, "", ""};
         }
     }
 

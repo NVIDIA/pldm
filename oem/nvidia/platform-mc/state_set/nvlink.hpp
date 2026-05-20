@@ -208,7 +208,7 @@ class StateSetNvlink : public StateSet
     {
         if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkUp)
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("LinkUp"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
@@ -223,25 +223,26 @@ class StateSetNvlink : public StateSet
                 {
                     eventId = it->second;
                 }
-                return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                        std::string("LinkDown"), Level::Informational, eventId,
-                        impactedComponent};
+                return {
+                    std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("LinkDown"), Level::Informational, eventId,
+                    impactedComponent};
             }
 
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
-                std::string("LinkDown"), Level::Informational, "", ""};
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("LinkDown"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
             return {
                 std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Error"), Level::Informational, "", ""};
+                std::string("Error"), Level::Critical, "", ""};
         }
         else
         {
-            return {std::string("ResourceEvent.1.0.ResourceStatusChanged"),
-                    std::string("Unknown"), Level::Informational, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Unknown"), Level::Warning, "", ""};
         }
     }
 

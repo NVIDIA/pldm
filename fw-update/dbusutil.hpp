@@ -181,10 +181,14 @@ inline void createLogEntry(
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
         messageID == componentUpdateSkipped ||
-        messageID == componentUpdateTime || messageID == activateSuccessful ||
-        messageID == debugTokenEraseFailed)
+        messageID == componentUpdateTime || messageID == activateSuccessful)
     {
         messageArgs = arg0 + "," + arg1;
+    }
+    else if (messageID == debugTokenEraseFailed)
+    {
+        messageArgs = arg0 + "," + arg1;
+        level = Level::Critical;
     }
     else if (messageID == transferFailed || messageID == verificationFailed ||
              messageID == applyFailed || messageID == activateFailed)
