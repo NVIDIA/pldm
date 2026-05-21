@@ -33,6 +33,7 @@
 #include <stdplus/signal.hpp>
 #include <tal.hpp>
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -631,12 +632,46 @@ int main(int argc, char** argv)
 
                 if (returnCode != PLDM_REQUESTER_SUCCESS)
                 {
-                    if (reqHdrFields.pldm_type == PLDM_FWUP)
+                    // libpldm's AF_MCTP / mctp-demux transports return
+                    // PLDM_REQUESTER_TRANSPORT_BUSY when the kernel MCTP TX
+                    // queue is full (sendto returned EAGAIN/EWOULDBLOCK via
+                    // MSG_DONTWAIT). Treat that as a transient drop; any
+                    // other non-success is a hard transport failure.
+                    if (returnCode == PLDM_REQUESTER_TRANSPORT_BUSY)
                     {
-                        auto mctpErr = pldm::transport::createMctpErrorObject(
-                            TID, savedErrno, MCTP_BINDING_UNKNOWN,
-                            requestMsgVec);
-                        reqHandler.storeTransportError(mctpErr);
+                        // AF_MCTP TX queue is momentarily full (e.g.
+                        // wide-fanout FW update saturating the socket).
+                        // PLDM requesters retry on response timeout, so the
+                        // drop is recoverable.
+                        warning(
+                            "AF_MCTP TX queue full, dropping PLDM response TID={TID} type={TYPE} cmd={CMD}; requester will retry",
+                            "TID", TID, "TYPE",
+                            static_cast<unsigned>(reqHdrFields.pldm_type),
+                            "CMD", static_cast<unsigned>(reqHdrFields.command));
+                    }
+                    else
+                    {
+                        // Hard transport failure (ECONNRESET, EBADF,
+                        // EPIPE, EHOSTUNREACH, ...). Surface it with
+                        // errno so the loss is diagnosable in the
+                        // journal alongside the TID / type / command,
+                        // and propagate to the FW transport-error path so
+                        // the update state machine can fail cleanly.
+                        error(
+                            "AF_MCTP send failed, dropping PLDM response TID={TID} type={TYPE} cmd={CMD}: rc={RC} errno={ERRNO} ({ERR})",
+                            "TID", TID, "TYPE",
+                            static_cast<unsigned>(reqHdrFields.pldm_type),
+                            "CMD", static_cast<unsigned>(reqHdrFields.command),
+                            "RC", returnCode, "ERRNO", savedErrno, "ERR",
+                            std::strerror(savedErrno));
+                        if (reqHdrFields.pldm_type == PLDM_FWUP)
+                        {
+                            auto mctpErr =
+                                pldm::transport::createMctpErrorObject(
+                                    TID, savedErrno, MCTP_BINDING_UNKNOWN,
+                                    requestMsgVec);
+                            reqHandler.storeTransportError(mctpErr);
+                        }
                     }
                 }
             }
