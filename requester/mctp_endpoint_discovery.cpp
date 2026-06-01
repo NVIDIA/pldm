@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include "mctp_endpoint_discovery.hpp"
+#include "mctp_endpoint_discovery_typed_accessors.hpp"
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
@@ -296,12 +297,22 @@ UUID MctpDiscovery::getEndpointUUIDProp(const std::string& service,
         auto properties = dbusHandler.getDbusPropertiesVariant(
             service.c_str(), path.c_str(), EndpointUUID);
 
-        if (properties.contains("UUID"))
+        // Typed accessor: returns nullopt if "UUID" is absent OR the
+        // variant holds a non-string alternative. Preserves the prior
+        // "log error, return emptyUUID" behaviour for both failure modes
+        // while eliminating the raw std::get<>.
+        //
+        // Note: previously a wrong-type UUID variant threw
+        // std::bad_variant_access which escaped past the catch and could
+        // reach event-loop dispatch. The accessor-version is contractually
+        // immune to that.
+        if (const auto uuid =
+                pldm::dbus_accessors::tryGetProp<UUID>(properties, "UUID"))
         {
-            return std::get<UUID>(properties.at("UUID"));
+            return *uuid;
         }
         error(
-            "UUID property not found for endpoint at path '{PATH}' and service '{SERVICE}'",
+            "UUID property absent or wrong type for endpoint at path '{PATH}' and service '{SERVICE}'",
             "PATH", path, "SERVICE", service);
     }
     catch (const sdbusplus::exception_t& e)
@@ -323,7 +334,12 @@ Availability MctpDiscovery::getEndpointConnectivityProp(const std::string& path)
         pldm::utils::PropertyValue propertyValue =
             dbusHandler.getDbusPropertyVariant(
                 path.c_str(), MCTPConnectivityProp, MCTPInterfaceCC);
-        if (std::get<std::string>(propertyValue) == "Available")
+        // Typed accessor: returns nullopt instead of throwing if the
+        // variant holds a non-string alternative. Same observable
+        // behaviour as the old throw-and-catch path (return false).
+        const auto conn = pldm::dbus_accessors::tryGet<std::string>(
+            propertyValue);
+        if (conn && *conn == "Available")
         {
             available = true;
         }

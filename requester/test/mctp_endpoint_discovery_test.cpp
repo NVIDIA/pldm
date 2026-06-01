@@ -1517,7 +1517,7 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropMissingUuidProperty)
               pldm::emptyUUID);
 }
 
-TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeThrows)
+TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeReturnsEmpty)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -1527,9 +1527,12 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(properties));
 
-    EXPECT_THROW(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
-                                                        "/test/path"),
-                 std::bad_variant_access);
+    // Post-Commit 5: typed accessor returns nullopt on wrong-typed variant
+    // instead of throwing std::bad_variant_access. The caller observes the
+    // emptyUUID fallback — same as the missing-key path.
+    EXPECT_EQ(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
+                                                     "/test/path"),
+              pldm::emptyUUID);
 }
 
 TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropException)
@@ -2197,7 +2200,7 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropNoUUID)
     EXPECT_EQ(result, pldm::emptyUUID);
 }
 
-TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropBadVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropBadVariantReturnsEmpty)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2209,9 +2212,10 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropBadVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badUuidProps));
 
-    EXPECT_THROW(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
-                                                        "/test/path"),
-                 std::bad_variant_access);
+    // Post-Commit 5: typed accessor returns nullopt instead of throwing.
+    EXPECT_EQ(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
+                                                     "/test/path"),
+              pldm::emptyUUID);
 }
 
 TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropAvailable)
@@ -2248,7 +2252,7 @@ TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropDegraded)
     EXPECT_FALSE(result);
 }
 
-TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropBadVariantThrows)
+TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropBadVariantReturnsFalse)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2258,9 +2262,11 @@ TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropBadVariantThrows)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
         .WillOnce(testing::Return(pldm::utils::PropertyValue{uint64_t(99)}));
 
-    EXPECT_THROW(
-        TestMctpDiscovery::getEndpointConnectivityProp(*disc, "/test/path"),
-        std::bad_variant_access);
+    // Post-Commit 5: typed accessor returns nullopt instead of throwing.
+    // The bool result is `false` because the Connectivity check returned
+    // nullopt -> not Available -> Availability=false.
+    EXPECT_FALSE(
+        TestMctpDiscovery::getEndpointConnectivityProp(*disc, "/test/path"));
 }
 
 TEST(MctpEndpointDiscoveryTest, getMctpInfosWithEndpoints)
@@ -3946,4 +3952,32 @@ TEST(UnifyMctpRegression, RefreshEndpoints_BadUUIDVariant_DoesNotThrow)
     EXPECT_NO_THROW(disc->refreshEndpoints(msg));
     EXPECT_EQ(handler.onlineCalls, 0);
     EXPECT_EQ(handler.offlineCalls, 0);
+}
+
+// ---------------------------------------------------------------------------
+// unify-mctp Commit 5 (P6) — Typed optional<T> accessors
+// ---------------------------------------------------------------------------
+
+// `Migration_TypedAccessor_VariantWrongType_ReturnsNullopt_SkipsEndpoint`:
+// Feed getEndpointUUIDProp a properties map where "UUID" holds a uint8_t
+// rather than the expected std::string. After Commit 5, the typed accessor
+// returns std::nullopt; getEndpointUUIDProp logs and returns emptyUUID —
+// observably identical to the missing-key path. Pre-Commit-5 this would
+// have thrown std::bad_variant_access.
+TEST(UnifyMctpRegression,
+     Migration_TypedAccessor_VariantWrongType_ReturnsNullopt_SkipsEndpoint)
+{
+    MockdBusHandler mockedDbusHandler;
+    pldm::MockManager manager;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+
+    pldm::utils::PropertyMap wrongTypeUuidProps{{"UUID", uint8_t(0xAB)}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(wrongTypeUuidProps));
+
+    EXPECT_NO_THROW({
+        const auto result = TestMctpDiscovery::getEndpointUUIDProp(
+            *disc, "test.service", "/test/path");
+        EXPECT_EQ(result, pldm::emptyUUID);
+    });
 }
