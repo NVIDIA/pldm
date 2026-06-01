@@ -66,10 +66,25 @@ class TestMctpDiscovery : public ::testing::Test
     {
         d.getAddedMctpInfos(msg, infos);
     }
-    static void getMctpInfos(pldm::MctpDiscovery& d,
+    static bool getMctpInfos(pldm::MctpDiscovery& d,
                              std::map<pldm::MctpInfo, pldm::Availability>& map)
     {
-        d.getMctpInfos(map);
+        return d.getMctpInfos(map);
+    }
+    /** @brief Shrink the mapper-retry backoff for fast unit tests. The
+     *  production schedule is ~9.25s in aggregate; tests use 5×1ms so
+     *  the retry loop adds <10ms to test runtime. */
+    static void setFastRetryBackoff(pldm::MctpDiscovery& d)
+    {
+        d.retryBackoff =
+            std::vector<std::chrono::milliseconds>(5,
+                                                   std::chrono::milliseconds(1));
+    }
+    /** @brief Disable mapper retry entirely (empty schedule). Useful for
+     *  tests that want a single getSubtree call. */
+    static void disableRetry(pldm::MctpDiscovery& d)
+    {
+        d.retryBackoff.clear();
     }
     static std::string getNameFromProperties(
         pldm::MctpDiscovery& d, const pldm::utils::PropertyMap& properties)
@@ -147,6 +162,13 @@ class TrackingMctpHandler : public pldm::MctpDiscoveryHandlerIntf
     pldm::eid lastOfflineEid = 0;
 };
 
+// Fast retry schedule used in unit tests — keeps the bounded-retry loop in
+// getMctpInfos under 10ms total instead of the production ~9s.
+static const std::vector<std::chrono::milliseconds> kFastRetry{
+    std::chrono::milliseconds(1), std::chrono::milliseconds(1),
+    std::chrono::milliseconds(1), std::chrono::milliseconds(1),
+    std::chrono::milliseconds(1)};
+
 static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
     MockdBusHandler& mockedDbusHandler, pldm::MctpDiscoveryHandlerIntf* handler)
 {
@@ -154,15 +176,18 @@ static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
     // Constructor calls getSubtree TWICE on the empty / no-endpoint path:
     //   1) resolveBusOwner() — Phase 1.A bus-owner resolve
     //   2) getMctpInfos()    — Phase 1.C endpoint enumeration
-    // Both return an empty response in the bare-bones harness so neither
-    // installs any per-endpoint match nor publishes any inventory.
+    // Both return an empty response in the bare-bones harness so no
+    // bounded-retry attempts are made and no per-endpoint match is
+    // installed. Inventory is published (empty + truthful) because
+    // mapperOk=true.
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
         .Times(2)
         .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
 
     return std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{handler},
-        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
 }
 
 static std::vector<std::pair<std::string, std::string>> getMctpEndpoints()
@@ -2301,10 +2326,16 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosSubtreeException)
     pldm::MockManager manager;
 
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
+    // Post-Commit 3: getMctpInfos now retries bounded times on mapper
+    // failure. Shrink the schedule so the explicit getMctpInfos call below
+    // exits in milliseconds, not ~9s.
+    TestMctpDiscovery::setFastRetryBackoff(*disc);
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
-        .WillOnce([](const std::string&, int, const std::vector<std::string>&)
-                      -> pldm::utils::GetSubTreeResponse {
+        .Times(testing::AtLeast(1))
+        .WillRepeatedly([](const std::string&, int,
+                           const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
             throw sdbusplus::exception::SdBusError(EINVAL, "mock");
         });
 
@@ -3575,26 +3606,30 @@ TEST(UnifyMctpRegression, PerEndpoint_ConnectivityChange_CallsRefreshEndpoints)
     EXPECT_EQ(handler.lastOfflineEid, 60);
 }
 
-// Test 16 — `GetMctpInfos_MapperFails_ReturnsEmpty`
-// dbusHandler.getSubtree throws; function logs error and returns;
-// currentMctpInfoMap unchanged. THIS PINS THE "SILENT EMPTY INVENTORY"
-// BUG — COMMIT 3 WILL CHANGE THIS BEHAVIOUR AND UPDATE THIS TEST.
-TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsEmpty)
+// Test 16 (post-Commit 3) — `GetMctpInfos_MapperFails_ReturnsFalse`
+// After Commit 3, getMctpInfos returns bool: true on success, false when all
+// bounded-retry attempts to ObjectMapper.GetSubTree fail. The result map is
+// not mutated on the failure path. Updated from the pre-refactor
+// "silent empty" regression.
+TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsFalse)
 {
     MockdBusHandler mockedDbusHandler;
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    TestMctpDiscovery::setFastRetryBackoff(*disc);
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
-        .WillOnce([](const std::string&, int,
-                     const std::vector<std::string>&)
-                      -> pldm::utils::GetSubTreeResponse {
+        .Times(testing::AtLeast(1))
+        .WillRepeatedly([](const std::string&, int,
+                           const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
             throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
         });
 
     std::map<pldm::MctpInfo, pldm::Availability> infoMap;
-    TestMctpDiscovery::getMctpInfos(*disc, infoMap);
+    const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
 
+    EXPECT_FALSE(ok);
     EXPECT_TRUE(infoMap.empty());
     EXPECT_TRUE(disc->enableMatches.empty());
 }
@@ -3732,5 +3767,127 @@ TEST(UnifyMctpRegression,
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
+    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
+}
+
+// ---------------------------------------------------------------------------
+// unify-mctp Commit 3 (P3) — Bounded retry + don't-publish-empty-inventory
+// ---------------------------------------------------------------------------
+
+// `GetMctpInfos_MapperRetries_OnFirstFailure_RecoversOnSecond`:
+// First attempt throws; second succeeds. getMctpInfos returns true; the
+// recovered subtree drives the normal enumeration.
+TEST(UnifyMctpRegression,
+     GetMctpInfos_MapperRetries_OnFirstFailure_RecoversOnSecond)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    TestMctpDiscovery::setFastRetryBackoff(*disc);
+
+    pldm::utils::GetSubTreeResponse subtree{};  // empty, but healthy
+
+    int callCount = 0;
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(testing::AtLeast(2))
+        .WillRepeatedly([&](const std::string&, int,
+                            const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
+            ++callCount;
+            if (callCount == 1)
+            {
+                throw sdbusplus::exception::SdBusError(EINVAL, "mock-once");
+            }
+            return subtree;
+        });
+
+    std::map<pldm::MctpInfo, pldm::Availability> infoMap;
+    const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
+
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(infoMap.empty());
+    EXPECT_GE(callCount, 2);
+}
+
+// `GetMctpInfos_MapperFailsAllRetries_ReturnsFalse`:
+// All retry attempts fail; getMctpInfos returns false; result map is empty.
+TEST(UnifyMctpRegression, GetMctpInfos_MapperFailsAllRetries_ReturnsFalse)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+    TestMctpDiscovery::setFastRetryBackoff(*disc);
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(testing::AtLeast(1))
+        .WillRepeatedly([](const std::string&, int,
+                           const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
+            throw sdbusplus::exception::SdBusError(EINVAL, "always-fail");
+        });
+
+    std::map<pldm::MctpInfo, pldm::Availability> infoMap;
+    const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
+
+    EXPECT_FALSE(ok);
+    EXPECT_TRUE(infoMap.empty());
+}
+
+// `Constructor_EmptyMapperButHealthy_PublishesEmptyTruthfully`:
+// Mapper returns an empty subtree (healthy, no peers). mapperOk=true; the
+// constructor invokes handleMctpEndpoints once with the empty inventory so
+// downstream consumers see "0 endpoints, healthy" — the truthful state.
+TEST(UnifyMctpRegression,
+     Constructor_EmptyMapperButHealthy_PublishesEmptyTruthfully)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(2)
+        .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
+
+    // handleMctpEndpoints invokes handlers only when the list is non-empty.
+    // existingMctpInfos is empty here (no static endpoints, no dynamic) so
+    // the handler should NOT have seen a call. The mapper-healthy gate is
+    // distinct from "list is empty so nothing to deliver" — both produce a
+    // zero-call observation from a TrackingMctpHandler, but mapperOk=true
+    // means we proceeded past the empty-inventory guard.
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+// `Constructor_MapperFailed_DoesNotPublishEmpty`:
+// Mapper throws on all retries; constructor must NOT call
+// handleMctpEndpoints. The daemon stays in "waiting for endpoints" state.
+TEST(UnifyMctpRegression, Constructor_MapperFailed_DoesNotPublishEmpty)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(testing::AtLeast(1))
+        .WillRepeatedly([](const std::string&, int,
+                           const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+    // resolveBusOwner fell back to MCTPService (legacy constant) because
+    // resolveBusOwner does not retry (deferred to a future MR — see README).
     EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
 }

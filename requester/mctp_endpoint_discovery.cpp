@@ -11,11 +11,13 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 using namespace sdbusplus::bus::match::rules;
@@ -88,7 +90,8 @@ MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath,
-    pldm::utils::DBusHandlerInterface& dbusHandler) :
+    pldm::utils::DBusHandlerInterface& dbusHandler,
+    const std::vector<std::chrono::milliseconds>& retryBackoffOverride) :
     bus(bus), resolvedMctpService(resolveBusOwner(dbusHandler)),
     mctpEndpointAddedSignal(
         bus,
@@ -101,8 +104,15 @@ MctpDiscovery::MctpDiscovery(
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
 {
+    // Apply caller-supplied retry override (test-only mechanism) before
+    // getMctpInfos consults retryBackoff for its bounded-retry loop.
+    if (!retryBackoffOverride.empty())
+    {
+        retryBackoff = retryBackoffOverride;
+    }
+
     std::map<MctpInfo, Availability> currentMctpInfoMap;
-    getMctpInfos(currentMctpInfoMap);
+    const bool mapperOk = getMctpInfos(currentMctpInfoMap);
     for (const auto& mapIt : currentMctpInfoMap)
     {
         if (mapIt.second)
@@ -114,24 +124,72 @@ MctpDiscovery::MctpDiscovery(
         }
     }
     loadStaticEndpoints(existingMctpInfos);
-    handleMctpEndpoints(existingMctpInfos);
+
+    // Per unify-mctp_discovery_guidelines.md mandatory item 6
+    // ("daemon does not publish an empty / partial inventory before at
+    // least one GetManagedObjects round succeeds"), only invoke
+    // handleMctpEndpoints if mapper enumeration succeeded — including the
+    // mapper-healthy-but-no-endpoints case (mapperOk=true, empty list is
+    // the truth). When mapperOk=false the daemon stays in a "waiting for
+    // endpoints" state; subsequent endpoints arriving via the
+    // InterfacesAdded signal will then publish via discoverEndpoints.
+    if (mapperOk)
+    {
+        handleMctpEndpoints(existingMctpInfos);
+    }
+    else
+    {
+        warning(
+            "MctpDiscovery: mapper unhealthy at boot after bounded retry; "
+            "deferring inventory publication until first successful "
+            "InterfacesAdded signal");
+    }
 }
 
-void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
+bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
 {
-    // Find all implementations of the MCTP Endpoint interface
+    // Find all implementations of the MCTP Endpoint interface.
+    //
+    // Per unify-mctp_discovery_guidelines.md mandatory item 7, retry on
+    // mapper failure with bounded exponential backoff. Schedule is taken
+    // from the retryBackoff member so the TestMctpDiscovery fixture can
+    // shrink it for unit-test runtime.
     pldm::utils::GetSubTreeResponse mapperResponse;
-    try
+    auto attempt = [&]() -> bool {
+        try
+        {
+            mapperResponse = dbusHandler.getSubtree(
+                MCTPPath, 0, std::vector<std::string>({MCTPInterface}));
+            return true;
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            error(
+                "getMctpInfos: getSubtree threw at path '{PATH}' interface "
+                "'{INTERFACE}', error - {ERROR}",
+                "PATH", std::string(MCTPPath), "INTERFACE",
+                std::string(MCTPEndpoint::interface), "ERROR", e);
+            return false;
+        }
+    };
+
+    bool ok = attempt();
+    for (size_t i = 0; !ok && i < retryBackoff.size(); ++i)
     {
-        mapperResponse = dbusHandler.getSubtree(
-            MCTPPath, 0, std::vector<std::string>({MCTPInterface}));
+        info(
+            "getMctpInfos: mapper retry {ATTEMPT} in {DELAY_MS}ms",
+            "ATTEMPT", static_cast<unsigned>(i + 1), "DELAY_MS",
+            static_cast<unsigned long long>(retryBackoff[i].count()));
+        std::this_thread::sleep_for(retryBackoff[i]);
+        ok = attempt();
     }
-    catch (const sdbusplus::exception_t& e)
+    if (!ok)
     {
         error(
-            "Failed to getSubtree call at path '{PATH}' and interface '{INTERFACE}', error - {ERROR} ",
-            "ERROR", e, "PATH", MCTPPath, "INTERFACE", MCTPEndpoint::interface);
-        return;
+            "getMctpInfos: mapper unhealthy after {N} retries; deferring "
+            "inventory publication",
+            "N", static_cast<unsigned>(retryBackoff.size()));
+        return false;
     }
 
     for (const auto& [path, services] : mapperResponse)
@@ -178,6 +236,7 @@ void MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
             }
         }
     }
+    return true;
 }
 
 MctpEndpointProps MctpDiscovery::getMctpEndpointProps(

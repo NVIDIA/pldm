@@ -9,6 +9,7 @@
 #include <xyz/openbmc_project/Common/UUID/common.hpp>
 #include <xyz/openbmc_project/MCTP/Endpoint/client.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <initializer_list>
 #include <vector>
@@ -79,7 +80,7 @@ class MctpDiscovery
     MctpDiscovery(MctpDiscovery&&) = delete;
     MctpDiscovery& operator=(const MctpDiscovery&) = delete;
     MctpDiscovery& operator=(MctpDiscovery&&) = delete;
-    ~MctpDiscovery() = default;
+    virtual ~MctpDiscovery() = default;
 
     /** @brief Constructs the MCTP Discovery object to handle discovery of
      *         MCTP enabled devices
@@ -88,12 +89,19 @@ class MctpDiscovery
      *  @param[in] list - initializer list to the MctpDiscoveryHandlerIntf
      *  @param[in] staticEidTablePath - Path to Static EID Table file
      *  @param[in] dbusHandler - D-Bus handler for discovery lookups
+     *  @param[in] retryBackoffOverride - optional mapper-retry backoff
+     *             schedule. When non-empty, replaces the production
+     *             retryBackoff member before any mapper call is made by the
+     *             constructor. Used by tests to shrink retry latency. An
+     *             empty vector means "use the default production schedule".
      */
     explicit MctpDiscovery(
         sdbusplus::bus_t& bus,
         std::initializer_list<MctpDiscoveryHandlerIntf*> list,
         const std::filesystem::path& staticEidTablePath = STATIC_EID_TABLE_PATH,
-        pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler());
+        pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler(),
+        const std::vector<std::chrono::milliseconds>& retryBackoffOverride =
+            {});
 
     /** @brief reference to the systemd bus */
     sdbusplus::bus_t& bus;
@@ -183,10 +191,29 @@ class MctpDiscovery
 
     /** @brief Get list of MctpInfos in MCTP control interface.
      *
+     *  Per unify-mctp_discovery_guidelines.md § 2.2 mandatory items 6 + 7,
+     *  this function retries on ObjectMapper.GetSubTree failure with bounded
+     *  backoff and reports the mapper-health outcome to the caller via the
+     *  return value. The constructor uses the return value to suppress an
+     *  empty-inventory publication when the mapper was unhealthy.
+     *
      *  @param[in] mctpInfoMap - information of discovered MCTP endpoints
      *  and the availability status of each endpoint
+     *  @return true if the mapper call (eventually) succeeded; false if all
+     *          retries failed. On false, mctpInfoMap is unchanged.
      */
-    void getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap);
+    bool getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap);
+
+    /** @brief Mapper-retry backoff schedule (cumulative bound ~9.25s).
+     *
+     *  Used by getMctpInfos and the bus-owner resolve helper. Mutable so the
+     *  TestMctpDiscovery test fixture can substitute a small schedule (e.g.
+     *  five 1ms entries) for fast unit tests. Defaults to the production
+     *  schedule. */
+    std::vector<std::chrono::milliseconds> retryBackoff{
+        std::chrono::milliseconds(50), std::chrono::milliseconds(200),
+        std::chrono::milliseconds(1000), std::chrono::milliseconds(3000),
+        std::chrono::milliseconds(5000)};
 
     /** @brief Get list of new MctpInfos in addedInterace D-Bus signal message.
      *
