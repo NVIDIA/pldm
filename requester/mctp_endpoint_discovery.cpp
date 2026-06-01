@@ -377,9 +377,23 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         const auto& ccProps = interfaces.at(MCTPInterfaceCC);
         if (ccProps.contains(MCTPConnectivityProp))
         {
-            availability =
-                (std::get<std::string>(ccProps.at(MCTPConnectivityProp)) ==
-                 "Available");
+            // Wrap std::get<std::string> against bad_variant_access — if the
+            // variant arrives with a non-string alternative, default to
+            // Unavailable rather than terminate. Typed-accessor migration in
+            // a follow-up commit removes the raw std::get from this site.
+            try
+            {
+                availability =
+                    (std::get<std::string>(ccProps.at(MCTPConnectivityProp)) ==
+                     "Available");
+            }
+            catch (const std::bad_variant_access& e)
+            {
+                warning(
+                    "getAddedMctpInfos: {PATH} Connectivity variant wrong type, defaulting to Unavailable",
+                    "PATH", objPath.str);
+                availability = false;
+            }
         }
         else
         {
@@ -405,7 +419,20 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         const auto& uuidProps = interfaces.at(EndpointUUID);
         if (uuidProps.contains("UUID"))
         {
-            uuid = std::get<UUID>(uuidProps.at("UUID"));
+            // Wrap std::get<UUID> against bad_variant_access — if the
+            // variant arrives with a non-string alternative, drop the
+            // endpoint rather than terminate the daemon.
+            try
+            {
+                uuid = std::get<UUID>(uuidProps.at("UUID"));
+            }
+            catch (const std::bad_variant_access& e)
+            {
+                error(
+                    "getAddedMctpInfos: {PATH} UUID variant wrong type, dropping endpoint",
+                    "PATH", objPath.str);
+                return;
+            }
         }
         else
         {
@@ -777,16 +804,27 @@ void MctpDiscovery::removeConfigs(const MctpInfos& removedInfos)
 
 void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
 {
-    std::string interface;
-    pldm::dbus::PropertyMap properties;
-    std::string objPath = msg.get_path();
-    std::string service = msg.get_sender();
-
-    msg.read(interface, properties);
-    auto prop = properties.find("Connectivity");
-    if (prop != properties.end())
+    // Outer try-catch belt: msg.read() can throw sdbusplus::exception_t on
+    // malformed payloads; std::get<std::string>(prop->second) can throw
+    // std::bad_variant_access if the Connectivity variant arrives with a
+    // non-string alternative. Per unify-mctp_discovery_guidelines.md § 2.2
+    // mandatory item 5, no uncaught exception may escape this callback —
+    // that would propagate to sd-event and cause std::terminate.
+    try
     {
-        auto connectivity = std::get<std::string>(prop->second);
+        std::string interface;
+        pldm::dbus::PropertyMap properties;
+        std::string objPath = msg.get_path();
+        std::string service = msg.get_sender();
+
+        msg.read(interface, properties);
+        auto prop = properties.find("Connectivity");
+        if (prop == properties.end())
+        {
+            return;
+        }
+
+        const auto connectivity = std::get<std::string>(prop->second);
         info(
             "Received au.com.codeconstruct.MCTP.Endpoint1 PropertiesChanged signal for "
             "Connectivity={CONN} at PATH={OBJ_PATH} from SERVICE={SERVICE}",
@@ -818,10 +856,20 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
             catch (const std::exception& e)
             {
                 error(
-                    "refreshEndpoints: failed to get UUID for {PATH}, error - {ERROR}",
+                    "refreshEndpoints: failed to get UUID/EID for {PATH}, error - {ERROR}",
                     "PATH", objPath, "ERROR", e);
             }
         }
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        error("refreshEndpoints: bad signal payload, error - {ERROR}", "ERROR",
+              e);
+    }
+    catch (const std::exception& e)
+    {
+        error("refreshEndpoints: unexpected error, error - {ERROR}", "ERROR",
+              e.what());
     }
 }
 

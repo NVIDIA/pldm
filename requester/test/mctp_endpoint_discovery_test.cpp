@@ -3891,3 +3891,59 @@ TEST(UnifyMctpRegression, Constructor_MapperFailed_DoesNotPublishEmpty)
     // resolveBusOwner does not retry (deferred to a future MR — see README).
     EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
 }
+
+// ---------------------------------------------------------------------------
+// unify-mctp Commit 4 (P4) — try-catch audit on remaining mapper / msg.read
+// ---------------------------------------------------------------------------
+
+// `RefreshEndpoints_BadMessage_DoesNotThrow`:
+// Feed refreshEndpoints a malformed message (wrong signature). Without the
+// outer try-catch added in Commit 4, msg.read() would throw
+// sdbusplus::exception_t and escape to the sd-event loop, terminating the
+// daemon. Asserts no exception escapes.
+TEST(UnifyMctpRegression, RefreshEndpoints_BadMessage_DoesNotThrow)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    // Build a message whose payload signature does NOT match the
+    // (interface, properties) shape refreshEndpoints expects.
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg =
+        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+    msg.append(uint32_t(7), std::vector<uint8_t>{1, 2, 3});
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+
+    // No handler call: refreshEndpoints reads the malformed payload, the
+    // outer try-catch catches the read exception, and the function returns.
+    EXPECT_NO_THROW(disc->refreshEndpoints(msg));
+    EXPECT_EQ(handler.onlineCalls, 0);
+    EXPECT_EQ(handler.offlineCalls, 0);
+}
+
+// `RefreshEndpoints_BadUUIDVariant_DoesNotThrow`:
+// Inner property-fetch returns a UUID variant with the wrong alternative
+// type. The inner try-catch on each handler iteration catches
+// std::bad_variant_access; no handler call is dispatched but the function
+// returns cleanly.
+TEST(UnifyMctpRegression, RefreshEndpoints_BadUUIDVariant_DoesNotThrow)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/9/endpoints/91";
+    auto msg = makeRefreshEndpointsMessage(objPath, "Available");
+
+    // Return UUID variant holding a uint64_t — refreshEndpoints does
+    // std::get<std::string>(UUID), which throws.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{uint64_t(0xDEAD)}));
+
+    EXPECT_NO_THROW(disc->refreshEndpoints(msg));
+    EXPECT_EQ(handler.onlineCalls, 0);
+    EXPECT_EQ(handler.offlineCalls, 0);
+}
