@@ -43,9 +43,6 @@ MctpDiscovery::MctpDiscovery(
     mctpEndpointRemovedSignal(
         bus, interfacesRemovedAtPath(MCTPNetworksPath) + sender(MCTPService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
-    mctpEndpointPropChangedSignal(
-        bus, propertiesChangedNamespace(MCTPPath, MCTPInterfaceCC),
-        [this](sdbusplus::message_t& msg) { this->propertiesChangedCb(msg); }),
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
 {
@@ -454,90 +451,6 @@ void MctpDiscovery::addToExistingMctpInfos(const MctpInfos& addedInfos)
                       mctpInfo) == existingMctpInfos.end())
         {
             existingMctpInfos.emplace_back(mctpInfo);
-        }
-    }
-}
-
-void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
-{
-    using Interface = std::string;
-    using Property = std::string;
-    using Value = std::string;
-    using Properties = std::map<Property, std::variant<Value>>;
-
-    Interface interface;
-    Properties properties;
-    std::string objPath{};
-    std::string service{};
-
-    try
-    {
-        msg.read(interface, properties);
-        objPath = msg.get_path();
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        error(
-            "Error handling Connectivity property changed message, error - {ERROR}",
-            "ERROR", e);
-        return;
-    }
-
-    for (const auto& [key, valueVariant] : properties)
-    {
-        Value propVal = std::get<std::string>(valueVariant);
-        auto availability = (propVal == "Available") ? true : false;
-
-        if (key == MCTPConnectivityProp)
-        {
-            try
-            {
-                service =
-                    dbusHandler.getService(objPath.c_str(), MCTPInterface);
-                const MctpEndpointProps& epProps =
-                    getMctpEndpointProps(service, objPath);
-
-                auto types = std::get<MCTPMsgTypes>(epProps);
-                if (!std::ranges::contains(types, mctpTypePLDM))
-                {
-                    return;
-                }
-                const UUID& uuid = getEndpointUUIDProp(service, objPath);
-                const auto& mctpBinding = std::get<4>(epProps);
-                const auto& mctpMedium = std::get<3>(epProps);
-                const auto& mctpLocalEid = std::get<5>(epProps);
-
-                MctpInfo mctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
-                                  std::get<NetworkId>(epProps), std::nullopt,
-                                  mctpBinding, mctpLocalEid);
-                searchConfigurationFor(mctpInfo);
-                if (!std::ranges::contains(existingMctpInfos, mctpInfo))
-                {
-                    if (availability)
-                    {
-                        // The endpoint not in existingMctpInfos and is
-                        // available Add it to existingMctpInfos
-                        info(
-                            "Adding Endpoint networkId {NETWORK} ID {EID} by propertiesChanged signal",
-                            "NETWORK", std::get<3>(mctpInfo), "EID",
-                            unsigned(std::get<0>(mctpInfo)));
-                        addToExistingMctpInfos(MctpInfos(1, mctpInfo));
-                        handleMctpEndpoints(MctpInfos(1, mctpInfo));
-                    }
-                }
-                else
-                {
-                    // The endpoint already in existingMctpInfos
-                    updateMctpEndpointAvailability(mctpInfo, availability);
-                }
-            }
-            catch (const sdbusplus::exception_t& e)
-            {
-                error(
-                    "Error in propertiesChangedCb for path '{PATH}', error - {ERROR}",
-                    "PATH", objPath, "ERROR", e);
-                return;
-            }
         }
     }
 }

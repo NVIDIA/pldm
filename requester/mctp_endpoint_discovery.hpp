@@ -104,9 +104,6 @@ class MctpDiscovery
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
-    /** @brief Used to watch for new MCTP endpoints */
-    sdbusplus::bus::match_t mctpEndpointPropChangedSignal;
-
     /** @brief List of handlers need to notify when new MCTP
      * Endpoint is Added/Removed */
     std::vector<MctpDiscoveryHandlerIntf*> handlers;
@@ -130,13 +127,6 @@ class MctpDiscovery
      * xyz.openbmc_project.Object.Enable dbus object
      */
     std::map<std::string, sdbusplus::bus::match_t> enableMatches;
-
-    /** @brief Callback function when the propertiesChanged D-Bus
-     * signal is triggered for MCTP endpoint's properties.
-     *
-     *  @param[in] msg - Data associated with subscribed signal
-     */
-    void propertiesChangedCb(sdbusplus::message_t& msg);
 
     /** @brief Callback function when MCTP endpoints addedInterface
      * D-Bus signal raised.

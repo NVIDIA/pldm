@@ -71,11 +71,6 @@ class TestMctpDiscovery : public ::testing::Test
     {
         d.getMctpInfos(map);
     }
-    static void propertiesChangedCb(pldm::MctpDiscovery& d,
-                                    sdbusplus::message_t& msg)
-    {
-        d.propertiesChangedCb(msg);
-    }
     static std::string getNameFromProperties(
         pldm::MctpDiscovery& d, const pldm::utils::PropertyMap& properties)
     {
@@ -200,24 +195,6 @@ static std::optional<std::pair<std::string, std::string>>
         }
     }
     return std::nullopt;
-}
-
-static sdbusplus::message_t makePropertiesChangedMessage(
-    const std::string& objPath, const std::string& connectivity)
-{
-    auto bus = sdbusplus::bus::new_default();
-    auto msg =
-        bus.new_signal(objPath.c_str(), "org.freedesktop.DBus.Properties",
-                       "PropertiesChanged");
-
-    std::string interface = pldm::MCTPInterfaceCC;
-    std::map<std::string, std::variant<std::string>> properties = {
-        {pldm::MCTPConnectivityProp, std::variant<std::string>{connectivity}}};
-    msg.append(interface, properties);
-    sd_bus_message_set_sender(msg.get(), "org.test.Sender");
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-    return msg;
 }
 
 static sdbusplus::message_t makeRefreshEndpointsMessage(
@@ -663,46 +640,6 @@ TEST_F(DbusBackedMctpDiscoveryTest,
     discovery->removeEndpoints(msg);
 
     EXPECT_FALSE(std::ranges::contains(discovery->existingMctpInfos, sentinel));
-}
-
-TEST_F(DbusBackedMctpDiscoveryTest, propertiesChangedCbCoversDefaultDbusPath)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    TrackingMctpHandler handler;
-
-    auto discovery = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
-
-    discovery->existingMctpInfos.clear();
-    handler.handleMctpEndpointsCalls = 0;
-    handler.updateAvailabilityCalls = 0;
-
-    auto nonPldmMsg =
-        makePropertiesChangedMessage(env->nonPldmEndpoint().path, "Available");
-    TestMctpDiscovery::propertiesChangedCb(*discovery, nonPldmMsg);
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-
-    auto unavailableAddMsg =
-        makePropertiesChangedMessage(env->onlinePldm().path, "Degraded");
-    TestMctpDiscovery::propertiesChangedCb(*discovery, unavailableAddMsg);
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-    EXPECT_FALSE(
-        containsEid(discovery->existingMctpInfos, env->onlinePldm().eid));
-
-    auto addMsg =
-        makePropertiesChangedMessage(env->onlinePldm().path, "Available");
-    TestMctpDiscovery::propertiesChangedCb(*discovery, addMsg);
-    EXPECT_GE(handler.handleMctpEndpointsCalls, 1);
-    EXPECT_TRUE(
-        containsEid(discovery->existingMctpInfos, env->onlinePldm().eid));
-
-    auto degradeMsg =
-        makePropertiesChangedMessage(env->onlinePldm().path, "Degraded");
-    TestMctpDiscovery::propertiesChangedCb(*discovery, degradeMsg);
-    EXPECT_GE(handler.updateAvailabilityCalls, 1);
-    EXPECT_FALSE(handler.lastAvailability);
 }
 
 TEST_F(DbusBackedMctpDiscoveryTest, refreshEndpointsReadsUuidAndEidFromDbus)
@@ -1676,173 +1613,6 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosWrongSignatureReturnsEmpty)
     EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbInvalidMsg)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    // Create a dummy D-Bus message - msg.read() in propertiesChangedCb fails
-    sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
-        "xyz.openbmc_project.sdbusplus.test.Object",
-        "/xyz/openbmc_project/sdbusplus/test/object",
-        "xyz.openbmc_project.sdbusplus.test.Object", "Unused");
-
-    // propertiesChangedCb will fail on msg.read() and return early
-    TestMctpDiscovery::propertiesChangedCb(*mctpDiscoveryHandler, msg);
-
-    // Should not crash - just return early
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbWrongSignatureReturnsEarly)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg =
-        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
-    msg.append(uint32_t(7), std::vector<uint8_t>{1, 2, 3});
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbValidMsgDbusException)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    // Create a message with proper PropertiesChanged content
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call(
-        "org.test", "/au/com/codeconstruct/mctp1/networks/1/endpoints/10",
-        "org.test.Interface", "Method");
-
-    // Append PropertiesChanged format: interface_name, changed_properties
-    std::string interface = "au.com.codeconstruct.MCTP.Endpoint1";
-    std::map<std::string, std::variant<std::string>> properties = {
-        {"Connectivity", std::variant<std::string>{"Available"}}};
-    msg.append(interface, properties);
-
-    // Seal and rewind message for reading
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    // propertiesChangedCb reads interface & properties successfully,
-    // then tries getService for the path - throws (no MCTP service)
-    TestMctpDiscovery::propertiesChangedCb(*mctpDiscoveryHandler, msg);
-
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbNonConnectivityProperty)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call(
-        "org.test", "/au/com/codeconstruct/mctp1/networks/1/endpoints/11",
-        "org.test.Interface", "Method");
-
-    std::string interface = "au.com.codeconstruct.MCTP.Endpoint1";
-    std::map<std::string, std::variant<std::string>> properties = {
-        {"NotConnectivity", std::variant<std::string>{"Available"}}};
-    msg.append(interface, properties);
-
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    TestMctpDiscovery::propertiesChangedCb(*mctpDiscoveryHandler, msg);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbEmptyProperties)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call(
-        "org.test", "/au/com/codeconstruct/mctp1/networks/1/endpoints/12",
-        "org.test.Interface", "Method");
-
-    std::string interface = "au.com.codeconstruct.MCTP.Endpoint1";
-    std::map<std::string, std::variant<std::string>> properties{};
-    msg.append(interface, properties);
-
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    TestMctpDiscovery::propertiesChangedCb(*mctpDiscoveryHandler, msg);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbMultipleNonConnectivityProps)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
-
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call(
-        "org.test", "/au/com/codeconstruct/mctp1/networks/1/endpoints/13",
-        "org.test.Interface", "Method");
-
-    std::string interface = "au.com.codeconstruct.MCTP.Endpoint1";
-    std::map<std::string, std::variant<std::string>> properties = {
-        {"NotConnectivityA", std::variant<std::string>{"v1"}},
-        {"NotConnectivityB", std::variant<std::string>{"v2"}}};
-    msg.append(interface, properties);
-
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    TestMctpDiscovery::propertiesChangedCb(*mctpDiscoveryHandler, msg);
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, propertiesChangedCbMockDbusServiceThrows)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-
-    auto msg = makePropertiesChangedMessage(
-        "/au/com/codeconstruct/mctp1/networks/1/endpoints/15", "Available");
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce([](const char*, const char*) -> std::string {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
-        });
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_TRUE(disc->existingMctpInfos.empty());
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-}
-
 TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosValidMsgGetServiceFails)
 {
     auto& bus = pldm::utils::DBusHandler::getBus();
@@ -2030,56 +1800,6 @@ TEST(MctpEndpointDiscoveryTest, liveMapperConstructorDiscoversAvailableEndpoint)
 
     EXPECT_GE(handler.handleMctpEndpointsCalls, 0);
     EXPECT_GE(disc->existingMctpInfos.size(), 0u);
-}
-
-TEST(MctpEndpointDiscoveryTest, liveMapperPropertiesChangedCbReturnsForNonPldm)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    TrackingMctpHandler handler;
-    auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
-    auto endpoint = findEndpointByPldmType(*disc, false);
-    if (!endpoint.has_value())
-    {
-        GTEST_SKIP() << "No non-PLDM endpoint found";
-    }
-
-    handler.handleMctpEndpointsCalls = 0;
-    handler.updateAvailabilityCalls = 0;
-
-    auto msg = makePropertiesChangedMessage(endpoint->first, "Available");
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-}
-
-TEST(MctpEndpointDiscoveryTest, liveMapperPropertiesChangedCbAddAndUpdatePaths)
-{
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    TrackingMctpHandler handler;
-
-    auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
-    auto endpoint = findEndpointByPldmType(*disc, true);
-    if (!endpoint.has_value())
-    {
-        GTEST_SKIP() << "No PLDM endpoint found";
-    }
-
-    disc->existingMctpInfos.clear();
-    handler.handleMctpEndpointsCalls = 0;
-    handler.updateAvailabilityCalls = 0;
-
-    auto addMsg = makePropertiesChangedMessage(endpoint->first, "Available");
-    TestMctpDiscovery::propertiesChangedCb(*disc, addMsg);
-    EXPECT_GE(handler.handleMctpEndpointsCalls, 1);
-    ASSERT_FALSE(disc->existingMctpInfos.empty());
-
-    auto updateMsg = makePropertiesChangedMessage(endpoint->first, "Degraded");
-    TestMctpDiscovery::propertiesChangedCb(*disc, updateMsg);
-    EXPECT_GE(handler.updateAvailabilityCalls, 1);
-    EXPECT_FALSE(handler.lastAvailability);
 }
 
 TEST(MctpEndpointDiscoveryTest, liveMapperRefreshEndpointsOnlineAndOffline)
@@ -2587,156 +2307,6 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosSubtreeException)
 
     EXPECT_TRUE(mctpInfoMap.empty());
     EXPECT_TRUE(disc->enableMatches.empty());
-}
-
-TEST(MctpEndpointDiscoveryTest,
-     propertiesChangedCbAddsAvailableEndpointWithMockDbus)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-    auto msg = makePropertiesChangedMessage(
-        "/au/com/codeconstruct/mctp1/networks/7/endpoints/77", "Available");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(7)},
-        {"EID", uint8_t(77)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("77777777-1111-2222-3333-444455556666")}};
-    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
-        .WillOnce(testing::Return(emptyAssocResponse));
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
-    EXPECT_EQ(handler.lastHandledSize, 1u);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
-    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 77);
-}
-
-TEST(MctpEndpointDiscoveryTest,
-     propertiesChangedCbDoesNotAddUnavailableEndpointWithMockDbus)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-    auto msg = makePropertiesChangedMessage(
-        "/au/com/codeconstruct/mctp1/networks/8/endpoints/78", "Degraded");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(8)},
-        {"EID", uint8_t(78)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("88888888-1111-2222-3333-444455556666")}};
-    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
-        .WillOnce(testing::Return(emptyAssocResponse));
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-    EXPECT_TRUE(disc->existingMctpInfos.empty());
-}
-
-TEST(MctpEndpointDiscoveryTest,
-     propertiesChangedCbUpdatesExistingEndpointWithMockDbus)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-    auto msg = makePropertiesChangedMessage(
-        "/au/com/codeconstruct/mctp1/networks/9/endpoints/79", "Degraded");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(9)},
-        {"EID", uint8_t(79)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("99999999-1111-2222-3333-444455556666")}};
-    pldm::utils::GetAssociatedSubTreeResponse emptyAssocResponse{};
-
-    disc->existingMctpInfos.emplace_back(pldm::MctpInfo(
-        79, "99999999-1111-2222-3333-444455556666", "SMBus", uint32_t(9),
-        std::nullopt, "MctpOverSMBus", std::nullopt));
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
-        .WillOnce(testing::Return(emptyAssocResponse));
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 1);
-    EXPECT_FALSE(handler.lastAvailability);
-    EXPECT_EQ(std::get<pldm::eid>(handler.lastMctpInfo), 79);
-}
-
-TEST(MctpEndpointDiscoveryTest,
-     propertiesChangedCbReturnsForNonPldmEndpointWithMockDbus)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-    auto msg = makePropertiesChangedMessage(
-        "/au/com/codeconstruct/mctp1/networks/10/endpoints/80", "Available");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(10)},
-        {"EID", uint8_t(80)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{0, 2}},
-        {"MediumType", std::string("SMBus")}};
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
-    EXPECT_EQ(handler.updateAvailabilityCalls, 0);
-    EXPECT_TRUE(disc->existingMctpInfos.empty());
 }
 
 TEST(MctpEndpointDiscoveryTest, getMctpInfosDuplicatePathNoDuplicateMatch)
@@ -3932,91 +3502,27 @@ TEST(UnifyMctpRegression, InterfacesRemoved_NonMCTPInterface_Ignored)
     EXPECT_TRUE(std::ranges::contains(disc->existingMctpInfos, endpoint));
 }
 
-// Test 13 — `PropertiesChanged_TopLevel_ConnectivityAvailable_AddsNewEndpoint`
-// Existing behaviour at cpp lines 461-543: top-level mctpEndpointPropChanged
-// callback adds an endpoint not in cache when Connectivity becomes Available.
-// THIS BEHAVIOUR IS REMOVED BY COMMIT 1 — pinning it first to make the
-// diff explicit.
-TEST(UnifyMctpRegression,
-     PropertiesChanged_TopLevel_ConnectivityAvailable_AddsNewEndpoint)
+// Tests 13 + 14 — REMOVED by Commit 1 (P5).
+// The top-level propertiesChangedNamespace subscription was redundant with
+// the per-endpoint matches in `enableMatches`. After Commit 1 these tests
+// no longer apply; replaced by `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`
+// below, which asserts the subscription is gone.
+
+// Test 13 (post-Commit 1) — `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`
+// Asserts that after Commit 1 the discovery object no longer installs the
+// top-level mctpEndpointPropChangedSignal subscription. Per-endpoint matches
+// in enableMatches are the contract.
+TEST(UnifyMctpRegression, PerEndpoint_Connectivity_NoLongerRoutedToTopLevel)
 {
     MockdBusHandler mockedDbusHandler;
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
-    const std::string objPath =
-        "/au/com/codeconstruct/mctp1/networks/5/endpoints/50";
-    auto msg = makePropertiesChangedMessage(objPath, "Available");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(5)},
-        {"EID", uint8_t(50)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("55555555-1111-2222-3333-444455556666")}};
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
-        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
-    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
-    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 50);
-}
-
-// Test 14 — `PropertiesChanged_TopLevel_ConnectivityDegraded_UpdatesExisting`
-// Existing behaviour: top-level callback updates availability for known
-// endpoints. ALSO REMOVED BY COMMIT 1.
-TEST(UnifyMctpRegression,
-     PropertiesChanged_TopLevel_ConnectivityDegraded_UpdatesExisting)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-
-    const std::string objPath =
-        "/au/com/codeconstruct/mctp1/networks/5/endpoints/51";
-    auto msg = makePropertiesChangedMessage(objPath, "Degraded");
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(5)},
-        {"EID", uint8_t(51)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("55555555-1111-2222-3333-444455556667")}};
-
-    // Pre-existing endpoint in cache — propertiesChangedCb takes the "update"
-    // branch.
-    disc->existingMctpInfos.emplace_back(pldm::MctpInfo(
-        51, "55555555-1111-2222-3333-444455556667", "SMBus", uint32_t(5),
-        std::nullopt, "MctpOverSMBus", std::nullopt));
-
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
-    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
-        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
-
-    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
-
-    EXPECT_EQ(handler.updateAvailabilityCalls, 1);
-    EXPECT_FALSE(handler.lastAvailability);
+    // The class no longer carries a top-level propertiesChangedNamespace
+    // subscription as a member. With no endpoints discovered, enableMatches
+    // must be empty: there is no longer any subtree-wide Connectivity match.
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+    EXPECT_TRUE(disc->enableMatches.empty());
 }
 
 // Test 15 — `PerEndpoint_ConnectivityChange_CallsRefreshEndpoints`
