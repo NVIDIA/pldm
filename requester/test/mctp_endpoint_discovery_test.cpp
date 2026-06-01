@@ -151,8 +151,14 @@ static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
     MockdBusHandler& mockedDbusHandler, pldm::MctpDiscoveryHandlerIntf* handler)
 {
     auto& bus = mockedDbusHandler.getBus();
+    // Constructor calls getSubtree TWICE on the empty / no-endpoint path:
+    //   1) resolveBusOwner() — Phase 1.A bus-owner resolve
+    //   2) getMctpInfos()    — Phase 1.C endpoint enumeration
+    // Both return an empty response in the bare-bones harness so neither
+    // installs any per-endpoint match nor publishes any inventory.
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
+        .Times(2)
+        .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
 
     return std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{handler},
@@ -3141,8 +3147,11 @@ TEST(UnifyMctpRegression, Startup_SingleEndpoint_Available)
     pldm::utils::GetSubTreeResponse subtree{
         {epPath, {{svc, {pldm::MCTPInterface}}}}};
 
+    // Constructor calls getSubtree twice: once for resolveBusOwner (Phase
+    // 1.A) and once for getMctpInfos (Phase 1.C).
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
-        .WillOnce(testing::Return(subtree));
+        .Times(2)
+        .WillRepeatedly(testing::Return(subtree));
 
     pldm::utils::PropertyMap epProps{
         {"NetworkId", uint32_t(1)},
@@ -3190,8 +3199,10 @@ TEST(UnifyMctpRegression, Startup_MultipleEndpoints_MixedAvailability)
         {availPath, {{svc, {pldm::MCTPInterface}}}},
         {degrPath, {{svc, {pldm::MCTPInterface}}}}};
 
+    // resolveBusOwner + getMctpInfos in the constructor each call getSubtree.
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
-        .WillOnce(testing::Return(subtree));
+        .Times(2)
+        .WillRepeatedly(testing::Return(subtree));
 
     pldm::utils::PropertyMap availEpProps{
         {"NetworkId", uint32_t(1)},
@@ -3250,9 +3261,11 @@ TEST(UnifyMctpRegression, Startup_StaticEndpoints_LoadedAfterDynamic)
     TrackingMctpHandler handler;
     auto& bus = mockedDbusHandler.getBus();
 
-    // No dynamic endpoints — mapper returns empty.
+    // No dynamic endpoints — mapper returns empty for both
+    // resolveBusOwner and getMctpInfos.
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
-        .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
+        .Times(2)
+        .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
@@ -3584,4 +3597,140 @@ TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsEmpty)
 
     EXPECT_TRUE(infoMap.empty());
     EXPECT_TRUE(disc->enableMatches.empty());
+}
+
+// ---------------------------------------------------------------------------
+// unify-mctp Commit 2 (P1) — Cache resolved bus-owner name
+// ---------------------------------------------------------------------------
+
+// `BusOwnerResolve_MapperReturnsServiceName_UsedInFilter`:
+// Mapper returns au.com.codeconstruct.MCTP1; resolvedMctpService must hold
+// that name.
+TEST(UnifyMctpRegression, BusOwnerResolve_MapperReturnsServiceName_UsedInFilter)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string svc = "au.com.codeconstruct.MCTP1";
+    const std::string epPath =
+        "/au/com/codeconstruct/mctp1/networks/0/endpoints/0";
+    pldm::utils::GetSubTreeResponse subtree{
+        {epPath, {{svc, {pldm::MCTPInterface}}}}};
+
+    // Both resolveBusOwner (Phase 1.A) and getMctpInfos (Phase 1.C) consume
+    // a getSubtree response. resolveBusOwner picks the first service name
+    // from the first entry — that becomes resolvedMctpService.
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(2)
+        .WillRepeatedly(testing::Return(subtree));
+
+    // EID=0 in the mapper response is non-PLDM (no SupportedMessageTypes
+    // entry of 1), so the endpoint enumeration walk skips it and no
+    // associated-subtree query fires. Provide minimal stub responses for
+    // the property reads getMctpInfos will perform.
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(0)},
+        {"EID", uint8_t(0)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("00000000-0000-0000-0000-000000000001")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("Available")}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+
+    EXPECT_EQ(disc->resolvedMctpService, svc);
+}
+
+// `BusOwnerResolve_MapperReturnsAlternateName_UsedInFilter`:
+// Mapper returns com.nvidia.MCTP1; resolvedMctpService must reflect that —
+// the daemon is now bus-owner-agnostic.
+TEST(UnifyMctpRegression,
+     BusOwnerResolve_MapperReturnsAlternateName_UsedInFilter)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string altSvc = "com.nvidia.MCTP1";
+    const std::string epPath =
+        "/au/com/codeconstruct/mctp1/networks/0/endpoints/0";
+    pldm::utils::GetSubTreeResponse subtree{
+        {epPath, {{altSvc, {pldm::MCTPInterface}}}}};
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(2)
+        .WillRepeatedly(testing::Return(subtree));
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(0)},
+        {"EID", uint8_t(0)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("00000000-0000-0000-0000-000000000002")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("Available")}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+
+    EXPECT_EQ(disc->resolvedMctpService, altSvc);
+    EXPECT_NE(disc->resolvedMctpService, std::string(pldm::MCTPService));
+}
+
+// `BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant`:
+// Mapper throws; resolveBusOwner returns the legacy MCTPService constant
+// so the constructor's match-rule initialisers can still proceed.
+TEST(UnifyMctpRegression, BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    // First call (resolveBusOwner) throws; second call (getMctpInfos) also
+    // throws — also tolerated by existing getMctpInfos try-catch.
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .Times(2)
+        .WillRepeatedly([](const std::string&, int,
+                           const std::vector<std::string>&)
+                            -> pldm::utils::GetSubTreeResponse {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
+        });
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+
+    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
+}
+
+// `BusOwnerResolve_MapperReturnsEmpty_FallsBackToLegacyConstant`:
+// Mapper returns an empty subtree; resolveBusOwner cannot pick a name —
+// falls back to the legacy MCTPService constant.
+TEST(UnifyMctpRegression,
+     BusOwnerResolve_MapperReturnsEmpty_FallsBackToLegacyConstant)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
 }

@@ -98,6 +98,22 @@ class MctpDiscovery
     /** @brief reference to the systemd bus */
     sdbusplus::bus_t& bus;
 
+    /** @brief Cached bus-owner service name resolved from
+     *         ObjectMapper.GetSubTree(MCTPPath, [MCTPInterface]) at
+     *         construction. Used as the `sender=` filter for the
+     *         InterfacesAdded/Removed match rules so the daemon does NOT
+     *         hardcode `au.com.codeconstruct.MCTP1` (or any future
+     *         alternative bus-owner name) in its source.
+     *
+     *         If the mapper lookup fails or returns no matching service the
+     *         fallback is the legacy `MCTPService` constant — see
+     *         resolveBusOwner() in the .cpp. Bounded retry on mapper failure
+     *         is added in a later commit in this series.
+     *
+     *         Declared BEFORE the match members so it is initialised first
+     *         in the constructor initialiser list. */
+    const std::string resolvedMctpService;
+
     /** @brief Used to watch for new MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointAddedSignal;
 

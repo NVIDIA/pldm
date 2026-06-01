@@ -31,17 +31,72 @@ pldm::utils::DBusHandlerInterface& MctpDiscovery::defaultDbusHandler()
     return handler;
 }
 
+namespace
+{
+
+/** @brief Resolve the bus-owner service name implementing MCTPInterface at
+ *         the MCTPPath subtree via ObjectMapper.GetSubTree.
+ *
+ *  Per unify-mctp_discovery_guidelines.md § 2.1 Phase 1.A and § 2.4
+ *  Anti-patterns, consumers MUST resolve the bus-owner dynamically and use
+ *  the resolved name in the `sender=` filter for subscription matches —
+ *  not hardcode a constant. Today the only owner is
+ *  `au.com.codeconstruct.MCTP1`, but pinning to that constant locks the
+ *  daemon to a specific upstream choice; resolution at startup keeps the
+ *  consumer bus-owner-implementation-agnostic.
+ *
+ *  Falls back to the legacy `MCTPService` constant on any failure so the
+ *  constructor's match-rule initialisers can still proceed. Bounded retry
+ *  on mapper failure lands in a later commit in this series.
+ */
+std::string resolveBusOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
+{
+    try
+    {
+        auto resp = dbusHandler.getSubtree(
+            pldm::MCTPPath, /*depth=*/0,
+            std::vector<std::string>({pldm::MCTPInterface}));
+        if (!resp.empty() && !resp.begin()->second.empty())
+        {
+            return resp.begin()->second.begin()->first;
+        }
+        info(
+            "resolveBusOwner: mapper returned no service for MCTP subtree; "
+            "falling back to legacy service constant {SERVICE}",
+            "SERVICE", std::string(pldm::MCTPService));
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        error(
+            "resolveBusOwner: getSubtree threw; falling back to legacy "
+            "service constant {SERVICE}, error - {ERROR}",
+            "SERVICE", std::string(pldm::MCTPService), "ERROR", e);
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "resolveBusOwner: unexpected error; falling back to legacy "
+            "service constant {SERVICE}, error - {ERROR}",
+            "SERVICE", std::string(pldm::MCTPService), "ERROR", e.what());
+    }
+    return pldm::MCTPService;
+}
+
+} // namespace
+
 MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath,
     pldm::utils::DBusHandlerInterface& dbusHandler) :
-    bus(bus),
+    bus(bus), resolvedMctpService(resolveBusOwner(dbusHandler)),
     mctpEndpointAddedSignal(
-        bus, interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPService),
+        bus,
+        interfacesAddedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
         [this](sdbusplus::message_t& msg) { this->discoverEndpoints(msg); }),
     mctpEndpointRemovedSignal(
-        bus, interfacesRemovedAtPath(MCTPNetworksPath) + sender(MCTPService),
+        bus,
+        interfacesRemovedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
