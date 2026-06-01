@@ -3491,3 +3491,591 @@ TEST(MctpEndpointDiscoveryTest, NullHandlersAreSkipped)
     EXPECT_CALL(manager, updateMctpEndpointAvailability(_, true)).Times(1);
     disc->updateMctpEndpointAvailability(mctpInfo, true);
 }
+
+// ---------------------------------------------------------------------------
+// unify-mctp regression test pack (Commit 0)
+//
+// Locks in the current pldmd MCTP discovery behaviour observable to handlers
+// BEFORE the unify-mctp refactor begins. Subsequent commits must keep these
+// tests green; any test that needs to be updated is a red flag indicating a
+// behaviour-changing refactor. Tests are explicitly named with a
+// `UnifyMctpRegression_` prefix so the bar at refactor time is obvious.
+//
+// Reference: unify-mctp_discovery_guidelines.md verification mandatory items
+// 1–7 + recommended 10–12; work order
+// openbmc-automation/skills/unify-mctp/work-orders/pldm.md § 5 Commit 0.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// Build an InterfacesAdded D-Bus message with caller-controlled interfaces.
+sdbusplus::message_t makeInterfacesAddedMsgFull(
+    const std::string& objPath,
+    const std::map<std::string, std::map<std::string, pldm::dbus::Value>>&
+        interfaces)
+{
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg =
+        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+    return msg;
+}
+
+// Helper: a typical "all interfaces present + Available" endpoint signal.
+std::map<std::string, std::map<std::string, pldm::dbus::Value>>
+    buildFullEndpointInterfaces(uint32_t networkId, uint8_t eid,
+                                const std::string& uuid,
+                                const std::string& connectivity = "Available",
+                                const std::vector<uint8_t>& types = {1})
+{
+    using PropertyMap = std::map<std::string, pldm::dbus::Value>;
+    std::map<std::string, PropertyMap> interfaces;
+    PropertyMap mctpProps;
+    mctpProps["NetworkId"] = networkId;
+    mctpProps["EID"] = eid;
+    mctpProps["SupportedMessageTypes"] = types;
+    mctpProps["MediumType"] = std::string("SMBus");
+    interfaces[pldm::MCTPInterface] = mctpProps;
+
+    PropertyMap bindingProps;
+    bindingProps["BindingType"] = std::string("MctpOverSMBus");
+    interfaces[pldm::MCTPBindingInterface] = bindingProps;
+
+    PropertyMap uuidProps;
+    uuidProps["UUID"] = uuid;
+    interfaces[pldm::EndpointUUID] = uuidProps;
+
+    PropertyMap ccProps;
+    ccProps["Connectivity"] = connectivity;
+    interfaces[pldm::MCTPInterfaceCC] = ccProps;
+    return interfaces;
+}
+
+} // namespace
+
+// Test 1 — `Startup_SingleEndpoint_Available`
+// Constructor calls getMctpInfos; mapper returns one endpoint; handler sees
+// exactly one handleMctpEndpoints call with the endpoint.
+TEST(UnifyMctpRegression, Startup_SingleEndpoint_Available)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string epPath =
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/10";
+    const std::string svc = "au.com.codeconstruct.MCTP1";
+    pldm::utils::GetSubTreeResponse subtree{
+        {epPath, {{svc, {pldm::MCTPInterface}}}}};
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillOnce(testing::Return(subtree));
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(1)},
+        {"EID", uint8_t(10)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("aaaa1111-1111-1111-1111-111111111111")}};
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("Available")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 10);
+}
+
+// Test 2 — `Startup_MultipleEndpoints_MixedAvailability`
+// Two endpoints, one Available + one Degraded; only Available appears in
+// existingMctpInfos after init (current cpp lines 56-62 — Available-only
+// gate).
+TEST(UnifyMctpRegression, Startup_MultipleEndpoints_MixedAvailability)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string availPath =
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/11";
+    const std::string degrPath =
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/12";
+    const std::string svc = "au.com.codeconstruct.MCTP1";
+    pldm::utils::GetSubTreeResponse subtree{
+        {availPath, {{svc, {pldm::MCTPInterface}}}},
+        {degrPath, {{svc, {pldm::MCTPInterface}}}}};
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillOnce(testing::Return(subtree));
+
+    pldm::utils::PropertyMap availEpProps{
+        {"NetworkId", uint32_t(1)},
+        {"EID", uint8_t(11)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap availUuidProps{
+        {"UUID", std::string("aaaa2222-1111-1111-1111-111111111111")}};
+    pldm::utils::PropertyMap degrEpProps{
+        {"NetworkId", uint32_t(1)},
+        {"EID", uint8_t(12)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap degrUuidProps{
+        {"UUID", std::string("bbbb2222-1111-1111-1111-111111111111")}};
+
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(availEpProps))
+        .WillOnce(testing::Return(availUuidProps))
+        .WillOnce(testing::Return(degrEpProps))
+        .WillOnce(testing::Return(degrUuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("Available")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("Degraded")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .Times(2)
+        .WillRepeatedly(
+            testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler);
+
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 11);
+}
+
+// Test 3 — `Startup_StaticEndpoints_LoadedAfterDynamic`
+// Static endpoints are appended after dynamic discovery (constructor calls
+// loadStaticEndpoints between getMctpInfos walk and handleMctpEndpoints).
+TEST(UnifyMctpRegression, Startup_StaticEndpoints_LoadedAfterDynamic)
+{
+    const auto staticJsonPath = "unify_mctp_static_eid_table_test.json";
+    {
+        std::ofstream out(staticJsonPath);
+        out << R"({"Endpoints":[{"EID":201,"SupportedMessageTypes":[1]}]})";
+    }
+
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    // No dynamic endpoints — mapper returns empty.
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        staticJsonPath, mockedDbusHandler);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 201);
+    std::filesystem::remove(staticJsonPath);
+}
+
+// Test 4 — `InterfacesAdded_SinglePldmEndpoint`
+// Payload-first read; handler called with new endpoint; per-endpoint
+// enableMatches entry installed.
+TEST(UnifyMctpRegression, InterfacesAdded_SinglePldmEndpoint)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/30";
+    auto interfaces = buildFullEndpointInterfaces(
+        3, 30, "11111111-1111-2222-3333-444455556666");
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+    // No D-Bus property reads expected on payload-first happy path.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _)).Times(0);
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _)).Times(0);
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    EXPECT_EQ(handler.lastHandledSize, 1u);
+    EXPECT_EQ(disc->enableMatches.count(objPath), 1u);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 30);
+}
+
+// Test 5 — `InterfacesAdded_NonPldmEndpoint_Ignored`
+// Endpoint missing mctpTypePLDM (=1) in SupportedMessageTypes is skipped; no
+// handler call.
+TEST(UnifyMctpRegression, InterfacesAdded_NonPldmEndpoint_Ignored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/31";
+    auto interfaces = buildFullEndpointInterfaces(
+        3, 31, "11111111-1111-2222-3333-444455556667",
+        /*connectivity=*/"Available", /*types=*/{0, 2});
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+    EXPECT_EQ(disc->enableMatches.count(objPath), 0u);
+}
+
+// Test 6 — `InterfacesAdded_MCTPInterfaceAbsent_Ignored`
+// Signal arrives without MCTPInterface in payload (e.g. Bridge interface
+// add); function returns early; no handler call.
+TEST(UnifyMctpRegression, InterfacesAdded_MCTPInterfaceAbsent_Ignored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/32";
+
+    using PropertyMap = std::map<std::string, pldm::dbus::Value>;
+    std::map<std::string, PropertyMap> interfaces;
+    PropertyMap unrelatedProps;
+    unrelatedProps["Foo"] = std::string("bar");
+    interfaces["xyz.openbmc_project.MCTP.Bridge"] = unrelatedProps;
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+// Test 7 — `InterfacesAdded_UUIDAbsent_Dropped`
+// Signal without xyz.openbmc_project.Common.UUID in payload is dropped;
+// no handler call.
+TEST(UnifyMctpRegression, InterfacesAdded_UUIDAbsent_Dropped)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/33";
+    auto interfaces = buildFullEndpointInterfaces(
+        3, 33, "11111111-1111-2222-3333-444455556668");
+    interfaces.erase(pldm::EndpointUUID);
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+// Test 8 — `InterfacesAdded_BindingTypeAbsent_Skipped`
+// Endpoint without BindingType in signal payload is skipped.
+TEST(UnifyMctpRegression, InterfacesAdded_BindingTypeAbsent_Skipped)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/34";
+    auto interfaces = buildFullEndpointInterfaces(
+        3, 34, "11111111-1111-2222-3333-444455556669");
+    interfaces.erase(pldm::MCTPBindingInterface);
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+// Test 9 — `InterfacesAdded_DegradedEndpoint_StillAdded`
+// Connectivity=Degraded in signal: endpoint IS added (current behaviour at
+// cpp lines 392-399 — error logged but not skipped).
+TEST(UnifyMctpRegression, InterfacesAdded_DegradedEndpoint_StillAdded)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/3/endpoints/35";
+    auto interfaces = buildFullEndpointInterfaces(
+        3, 35, "11111111-1111-2222-3333-444455556670",
+        /*connectivity=*/"Degraded");
+    auto msg = makeInterfacesAddedMsgFull(objPath, interfaces);
+
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    TestMctpDiscovery::discoverEndpoints(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 35);
+}
+
+// Test 10 — `InterfacesRemoved_KnownEndpoint_HandlerCalled`
+// Endpoint exists in existingMctpInfos; signal arrives; handler sees
+// removal call; cache cleared.
+TEST(UnifyMctpRegression, InterfacesRemoved_KnownEndpoint_HandlerCalled)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const pldm::MctpInfo endpoint{40,
+                                  "deadbeef-1111-2222-3333-444455556666",
+                                  "SMBus",
+                                  uint32_t(4),
+                                  std::nullopt,
+                                  "MctpOverSMBus",
+                                  std::nullopt};
+    disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/4/endpoints/40";
+    auto msg = makeInterfacesRemovedMessage(objPath, {pldm::MCTPInterface});
+    disc->removeEndpoints(msg);
+
+    EXPECT_EQ(handler.handleRemovedMctpEndpointsCalls, 1);
+    EXPECT_EQ(handler.lastRemovedSize, 1u);
+    EXPECT_FALSE(std::ranges::contains(disc->existingMctpInfos, endpoint));
+}
+
+// Test 11 — `InterfacesRemoved_UnknownPath_NoOp`
+// Signal for path not matching any existingMctpInfos entry: no handler
+// call, no cache change.
+TEST(UnifyMctpRegression, InterfacesRemoved_UnknownPath_NoOp)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const pldm::MctpInfo endpoint{40,
+                                  "deadbeef-1111-2222-3333-444455556666",
+                                  "SMBus",
+                                  uint32_t(4),
+                                  std::nullopt,
+                                  "MctpOverSMBus",
+                                  std::nullopt};
+    disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
+
+    const std::string unknownPath =
+        "/au/com/codeconstruct/mctp1/networks/99/endpoints/99";
+    auto msg = makeInterfacesRemovedMessage(unknownPath, {pldm::MCTPInterface});
+    disc->removeEndpoints(msg);
+
+    EXPECT_EQ(handler.handleRemovedMctpEndpointsCalls, 0);
+    EXPECT_TRUE(std::ranges::contains(disc->existingMctpInfos, endpoint));
+}
+
+// Test 12 — `InterfacesRemoved_NonMCTPInterface_Ignored`
+// Signal payload lacks MCTPInterface in the removed-interfaces list:
+// function returns early (cpp line 575).
+TEST(UnifyMctpRegression, InterfacesRemoved_NonMCTPInterface_Ignored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const pldm::MctpInfo endpoint{41,
+                                  "deadbeef-1111-2222-3333-444455556667",
+                                  "SMBus",
+                                  uint32_t(4),
+                                  std::nullopt,
+                                  "MctpOverSMBus",
+                                  std::nullopt};
+    disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/4/endpoints/41";
+    auto msg = makeInterfacesRemovedMessage(
+        objPath, {std::string("xyz.openbmc_project.MCTP.Bridge")});
+    disc->removeEndpoints(msg);
+
+    EXPECT_EQ(handler.handleRemovedMctpEndpointsCalls, 0);
+    EXPECT_TRUE(std::ranges::contains(disc->existingMctpInfos, endpoint));
+}
+
+// Test 13 — `PropertiesChanged_TopLevel_ConnectivityAvailable_AddsNewEndpoint`
+// Existing behaviour at cpp lines 461-543: top-level mctpEndpointPropChanged
+// callback adds an endpoint not in cache when Connectivity becomes Available.
+// THIS BEHAVIOUR IS REMOVED BY COMMIT 1 — pinning it first to make the
+// diff explicit.
+TEST(UnifyMctpRegression,
+     PropertiesChanged_TopLevel_ConnectivityAvailable_AddsNewEndpoint)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/5/endpoints/50";
+    auto msg = makePropertiesChangedMessage(objPath, "Available");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(5)},
+        {"EID", uint8_t(50)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("55555555-1111-2222-3333-444455556666")}};
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    EXPECT_EQ(std::get<pldm::eid>(disc->existingMctpInfos.front()), 50);
+}
+
+// Test 14 — `PropertiesChanged_TopLevel_ConnectivityDegraded_UpdatesExisting`
+// Existing behaviour: top-level callback updates availability for known
+// endpoints. ALSO REMOVED BY COMMIT 1.
+TEST(UnifyMctpRegression,
+     PropertiesChanged_TopLevel_ConnectivityDegraded_UpdatesExisting)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/5/endpoints/51";
+    auto msg = makePropertiesChangedMessage(objPath, "Degraded");
+
+    pldm::utils::PropertyMap epProps{
+        {"NetworkId", uint32_t(5)},
+        {"EID", uint8_t(51)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SMBus")}};
+    pldm::utils::PropertyMap uuidProps{
+        {"UUID", std::string("55555555-1111-2222-3333-444455556667")}};
+
+    // Pre-existing endpoint in cache — propertiesChangedCb takes the "update"
+    // branch.
+    disc->existingMctpInfos.emplace_back(pldm::MctpInfo(
+        51, "55555555-1111-2222-3333-444455556667", "SMBus", uint32_t(5),
+        std::nullopt, "MctpOverSMBus", std::nullopt));
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return(std::string("au.com.codeconstruct.MCTP1")));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(epProps))
+        .WillOnce(testing::Return(uuidProps));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    TestMctpDiscovery::propertiesChangedCb(*disc, msg);
+
+    EXPECT_EQ(handler.updateAvailabilityCalls, 1);
+    EXPECT_FALSE(handler.lastAvailability);
+}
+
+// Test 15 — `PerEndpoint_ConnectivityChange_CallsRefreshEndpoints`
+// Per-endpoint enableMatches registers refreshEndpoints; signal arrives;
+// onlineMctpEndpoint / offlineMctpEndpoint called on handlers with correct
+// (uuid, eid).
+TEST(UnifyMctpRegression, PerEndpoint_ConnectivityChange_CallsRefreshEndpoints)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    const std::string objPath =
+        "/au/com/codeconstruct/mctp1/networks/6/endpoints/60";
+    auto onlineMsg = makeRefreshEndpointsMessage(objPath, "Available");
+
+    // refreshEndpoints reads UUID + EID from D-Bus per handler.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{std::string(
+            "60606060-1111-2222-3333-444455556666")}))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{uint8_t(60)}));
+
+    disc->refreshEndpoints(onlineMsg);
+    EXPECT_EQ(handler.onlineCalls, 1);
+    EXPECT_EQ(handler.lastOnlineEid, 60);
+    EXPECT_EQ(handler.lastOnlineUuid,
+              "60606060-1111-2222-3333-444455556666");
+
+    auto offlineMsg = makeRefreshEndpointsMessage(objPath, "Degraded");
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{std::string(
+            "60606060-1111-2222-3333-444455556666")}))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{uint8_t(60)}));
+
+    disc->refreshEndpoints(offlineMsg);
+    EXPECT_EQ(handler.offlineCalls, 1);
+    EXPECT_EQ(handler.lastOfflineEid, 60);
+}
+
+// Test 16 — `GetMctpInfos_MapperFails_ReturnsEmpty`
+// dbusHandler.getSubtree throws; function logs error and returns;
+// currentMctpInfoMap unchanged. THIS PINS THE "SILENT EMPTY INVENTORY"
+// BUG — COMMIT 3 WILL CHANGE THIS BEHAVIOUR AND UPDATE THIS TEST.
+TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsEmpty)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillOnce([](const std::string&, int,
+                     const std::vector<std::string>&)
+                      -> pldm::utils::GetSubTreeResponse {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
+        });
+
+    std::map<pldm::MctpInfo, pldm::Availability> infoMap;
+    TestMctpDiscovery::getMctpInfos(*disc, infoMap);
+
+    EXPECT_TRUE(infoMap.empty());
+    EXPECT_TRUE(disc->enableMatches.empty());
+}
