@@ -1580,6 +1580,27 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
                     const auto& parentContainerId =
                         std::get<0>(containerEntity);
                     auto modulePaths = findInventory(parentContainerId, true);
+                    if (modulePaths.size() == 1 &&
+                        modulePaths.front() == systemInventoryPath &&
+                        !terminusName.empty())
+                    {
+                        for (const auto& inventory : inventories)
+                        {
+                            const auto& candidatePath = std::get<0>(inventory);
+                            auto candidateType = std::get<1>(inventory);
+                            uint16_t rawCandidateType = candidateType & 0x7FFF;
+                            if (rawCandidateType ==
+                                    PLDM_ENTITY_PROC_IO_MODULE &&
+                                std::filesystem::path(candidatePath)
+                                        .filename()
+                                        .string() == terminusName)
+                            {
+                                modulePaths.clear();
+                                modulePaths.emplace_back(candidatePath);
+                                break;
+                            }
+                        }
+                    }
                     if (!modulePaths.empty())
                     {
                         effectiveContainerPaths = modulePaths;
