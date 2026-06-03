@@ -21,7 +21,6 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
-#include "device_inventory.hpp"
 #include "device_updater.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
@@ -78,8 +77,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         inventoryMgr(dbusHandler, handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
                      std::bind_front(&Manager::updateInventory, this),
-                     descriptorMap, downstreamDescriptorMap, componentInfoMap,
-                     deviceInventoryInfo, excludedFwUpdateEids),
+                     descriptorMap, downstreamDescriptorMap, componentInfoMap),
         updateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, fwDebug,
                       // manager_internal_test.cpp triggers false-positive
@@ -93,16 +91,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                           co_return co_await inventoryMgr.refreshSingleEndpoint(
                               eid, mctpInterfaces, isTarget);
                       }),
-        deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
-                               deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap, componentNameMap)
     {
         try
         {
-            parseConfig(fwUpdateConfigFile, deviceInventoryInfo,
-                        fwInventoryInfo, componentNameMapInfo,
-                        excludedFwUpdateEids);
+            parseConfig(fwUpdateConfigFile, fwInventoryInfo,
+                        componentNameMapInfo);
         }
         catch (const std::exception& e)
         {
@@ -142,22 +137,31 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
                           localEid] : mctpInfos)
         {
-            if (excludedFwUpdateEids.contains(eid))
+            // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2
+            // step 3b/3d: source per-component naming/Associations/Manufacturer
+            // from the entity-manager Configuration.PLDMFirmwareDevice.Components
+            // array (joined by MCTPTargetName). Falls back to the legacy
+            // JSON-parsed componentNameMapInfo only if no EM entry is present.
+            if (!populateComponentInfoFromEM(eid))
             {
-                continue;
-            }
-
-            ComponentIdNameMap componentIdNameMap;
-            if (componentNameMapInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                         componentIdNameMap))
-            {
-                componentNameMap[eid] = componentIdNameMap;
+                ComponentIdNameMap componentIdNameMap;
+                if (componentNameMapInfo.matchInventoryEntry(
+                        mctpInterfaces[uuid], componentIdNameMap))
+                {
+                    componentNameMap[eid] = componentIdNameMap;
+                }
             }
         }
     }
 
-    /** @brief Create device and firmware inventory based on the firmware update
-     *         config file and firmware inventory commands
+    /** @brief Create firmware inventory and write the device UUID to the
+     *         entity-manager-owned RoT chassis (PLDM FW Update Config
+     *         Migration, DGXOPENBMC-25121).
+     *
+     *  RoT chassis objects are no longer created by pldmd; entity-manager owns
+     *  them via Configuration.PLDMDeviceInventory.CreateInventoryPath. pldmd
+     *  writes only the dynamic Common.UUID to that EM-created object (and to the
+     *  optional UpdateInventoryPath if declared).
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
@@ -165,30 +169,43 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void createInventory(eid eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
-        deviceInventoryManager.createEntry(eid, uuid, mctpInterfaces);
+        writeDeviceInventoryUuid(eid, uuid);
         if (componentInfoMap.contains(eid))
         {
-            // If no config JSON match, populate componentNameMap with
-            // generated names for target filtering, logging, and D-Bus object
-            // path consistency
-            if (!componentNameMap.contains(eid))
+            // FCM-REQ-16: ensure EVERY component the device reports has a name,
+            // even those absent from the EM Components array. EM-declared names
+            // (from populateComponentInfoFromEM) are kept; any device-reported
+            // component without one gets the SADD fallback
+            // "<targetName>_C<ComponentIdentifier>" (or a generated name when no
+            // configured_by target name is available).
+            const std::string targetName = getTargetNameForEid(eid);
+            auto& componentIdNameMap = componentNameMap[eid];
+            for (const auto& [compKey, compInfo] : componentInfoMap[eid])
             {
-                ComponentIdNameMap componentIdNameMap;
-                for (const auto& [compKey, compInfo] : componentInfoMap[eid])
+                if (componentIdNameMap.contains(compKey.second))
+                {
+                    continue;
+                }
+                if (!targetName.empty())
+                {
+                    componentIdNameMap[compKey.second] = std::format(
+                        "{}_C{}", targetName, compKey.second);
+                }
+                else
                 {
                     componentIdNameMap[compKey.second] = std::format(
                         "PLDM_Device_Firmware_Device_{}_Component_{}_{}",
                         static_cast<int>(eid), compKey.second,
                         pldm::utils::generateSwId());
                 }
-                componentNameMap[eid] = std::move(componentIdNameMap);
             }
             fwInventoryManager.createEntry(eid, uuid, mctpInterfaces);
         }
     }
 
-    /** @brief Update device and firmware inventory based on refreshed
-     *         descriptor and firmware parameter information
+    /** @brief Update firmware inventory based on refreshed descriptor and
+     *         firmware parameter information, and re-write the device UUID to
+     *         the entity-manager-owned RoT chassis.
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
@@ -197,7 +214,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void updateInventory(eid eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
-        deviceInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
+        writeDeviceInventoryUuid(eid, uuid);
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
@@ -416,10 +433,6 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** Configuration bindings from the Entity Manager */
     Configurations configurations;
 
-    /** @brief PLDM firmware update manager */
-    /** @brief Config info to create D-Bus device inventory */
-    DeviceInventoryInfo deviceInventoryInfo;
-
     /** @brief Config info to create D-Bus firmware inventory */
     FirmwareInventoryInfo fwInventoryInfo;
 
@@ -438,11 +451,378 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief PLDM firmware update manager */
     UpdateManager updateManager;
 
-    /** @brief Device inventory D-Bus object manager */
-    device_inventory::Manager deviceInventoryManager;
-
     /** @brief Firmware inventory D-Bus object manager */
     fw_inventory::Manager fwInventoryManager;
+
+    /** @brief Write the device UUID to the entity-manager-owned RoT chassis.
+     *
+     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.2.2/§3.3.2
+     *  step 3e. pldmd creates no inventory objects: the RoT chassis is created
+     *  by entity-manager from Configuration.PLDMDeviceInventory. This helper
+     *  resolves the device's PLDMDeviceInventory config entry by string-match
+     *  on MCTPTargetName, then writes the dynamic device UUID
+     *  (xyz.openbmc_project.Common.UUID) to CreateInventoryPath and, if set, to
+     *  the optional UpdateInventoryPath. No Decorator.SKU write (ECSKU/APSKU
+     *  descoped).
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @param[in] uuid - device UUID obtained over MCTP/PLDM
+     */
+    /** @brief Resolve a device's friendly Name (the MCTPTargetName join key)
+     *         for a discovered endpoint.
+     *
+     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 Step 2.
+     *
+     *  Identity is resolved via configured_by ONLY: the configurations map is
+     *  keyed by the entity-manager config path that the endpoint's configured_by
+     *  association resolves to; the stored name is the transport object's
+     *  `.Name`, which equals the MCTPTargetName cited by every PLDM-* entry for
+     *  the same device. This is the canonical, transport-agnostic key.
+     *
+     *  StaticEID plays NO part in identity resolution (SADD §3.3.2 Step 2,
+     *  FCM-REQ-11): the optional PLDMFirmwareDevice.StaticEID is used solely to
+     *  seed the pre-FW-update descriptor refresh in UpdateManager::processStream
+     *  (SADD §2.3 / §3.3.2), never to resolve a device's identity, inventory, or
+     *  the MCTPTargetName join. If configured_by is absent the name is empty and
+     *  the endpoint is treated as not (yet) resolvable.
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @return the device's target Name, empty if not resolved
+     */
+    std::string getTargetNameForEid(eid eid) const
+    {
+        // configured_by-resolved name (the only identity path).
+        for (const auto& [emPath, mctpInfo] : configurations)
+        {
+            if (std::get<pldm::eid>(mctpInfo) != eid)
+            {
+                continue;
+            }
+            const auto& nameOpt =
+                std::get<std::optional<std::string>>(mctpInfo);
+            if (nameOpt)
+            {
+                return *nameOpt;
+            }
+            break;
+        }
+
+        return {};
+    }
+
+    /** @brief Populate per-component naming/Associations/Manufacturer from the
+     *         entity-manager Configuration.PLDMFirmwareDevice.Components array.
+     *
+     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step 3b.
+     *  Resolves the device's target Name via getTargetNameForEid (configured_by
+     *  only — SADD §3.3.2 Step 2), runs a global ObjectMapper GetSubTree for
+     *  Configuration.PLDMFirmwareDevice, keeps the entry whose MCTPTargetName
+     *  equals the target Name, unpacks the nested
+     *  Components array (D-Bus aa{sv}) into a ComponentIdentifier → {Name,
+     *  Associations, Manufacturer} map, and hands it to the firmware inventory
+     *  manager (drives one Software.Version per component with RelatedItem and
+     *  per-component update Task name — FCM-REQ-13/14/17). Also seeds
+     *  componentNameMap[eid] (id → Name) for target filtering and the
+     *  FCM-REQ-16 fallback.
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @return true if a matching PLDMFirmwareDevice entry was found and applied
+     */
+    bool populateComponentInfoFromEM(eid eid)
+    {
+        const std::string targetName = getTargetNameForEid(eid);
+        if (targetName.empty())
+        {
+            return false;
+        }
+
+        constexpr auto pldmFwDeviceIntf =
+            "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+        pldm::utils::GetSubTreeResponse subtree;
+        try
+        {
+            subtree = pldm::utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/inventory", 0, {pldmFwDeviceIntf});
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "populateComponentInfoFromEM: GetSubTree for PLDMFirmwareDevice failed for EID {EID}, error - {ERROR}",
+                "EID", eid, "ERROR", e);
+            return false;
+        }
+
+        for (const auto& [objPath, serviceMap] : subtree)
+        {
+            if (serviceMap.empty())
+            {
+                continue;
+            }
+            const std::string service = serviceMap.begin()->first;
+
+            pldm::utils::PropertyMap props;
+            try
+            {
+                props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    service.c_str(), objPath.c_str(), pldmFwDeviceIntf);
+            }
+            catch (const std::exception& e)
+            {
+                warning(
+                    "populateComponentInfoFromEM: reading props at {PATH} failed, error - {ERROR}",
+                    "PATH", objPath, "ERROR", e);
+                continue;
+            }
+
+            auto nameIt = props.find("MCTPTargetName");
+            if (nameIt == props.end() ||
+                std::get<std::string>(nameIt->second) != targetName)
+            {
+                continue;
+            }
+
+            CreateComponentIdNameMap emComponents;
+            ComponentIdNameMap idNameMap;
+            unpackComponents(props, emComponents, idNameMap);
+
+            fwInventoryManager.setEmComponentObjects(eid, emComponents);
+            if (!idNameMap.empty())
+            {
+                componentNameMap[eid] = std::move(idNameMap);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** @brief Unpack the nested Components array (aa{sv}) of a
+     *         Configuration.PLDMFirmwareDevice entry. The EM entity-manager
+     *         publishes nested arrays-of-objects flattened on D-Bus; each
+     *         element carries Name, ComponentIdentifier, optional Manufacturer,
+     *         and optional Associations (Forward/Backward/AbsolutePath triples).
+     *
+     *  @param[in]  props        - PLDMFirmwareDevice property map
+     *  @param[out] emComponents - id → {Name, Associations, Manufacturer}
+     *  @param[out] idNameMap    - id → Name (for target filtering / fallback)
+     */
+    static void unpackComponents(const pldm::utils::PropertyMap& props,
+                                 CreateComponentIdNameMap& emComponents,
+                                 ComponentIdNameMap& idNameMap)
+    {
+        // entity-manager exposes a nested object array's element count under a
+        // top-level property and each element's fields under indexed keys (the
+        // established EM nested-array encoding, mirroring sensor Thresholds).
+        // We tolerate either an explicit count or scan indexed keys until a gap.
+        for (size_t index = 0;; ++index)
+        {
+            const std::string prefix = "Components" + std::to_string(index);
+            auto nameIt = props.find(prefix + "Name");
+            auto idIt = props.find(prefix + "ComponentIdentifier");
+            if (nameIt == props.end() || idIt == props.end())
+            {
+                // No more elements at this index.
+                if (index == 0)
+                {
+                    // Components may be absent entirely (FCM-REQ-16 fallback).
+                    return;
+                }
+                break;
+            }
+
+            std::string compName;
+            try
+            {
+                compName = std::get<std::string>(nameIt->second);
+            }
+            catch (const std::exception&)
+            {
+                continue;
+            }
+
+            uint16_t compId = 0;
+            try
+            {
+                compId = extractUint16(idIt->second);
+            }
+            catch (const std::exception&)
+            {
+                continue;
+            }
+
+            std::string manufacturer = "NVIDIA";
+            if (auto it = props.find(prefix + "Manufacturer");
+                it != props.end())
+            {
+                try
+                {
+                    manufacturer = std::get<std::string>(it->second);
+                }
+                catch (const std::exception&)
+                {}
+            }
+
+            Associations assocs;
+            for (size_t a = 0;; ++a)
+            {
+                const std::string aprefix =
+                    prefix + "Associations" + std::to_string(a);
+                auto fIt = props.find(aprefix + "Forward");
+                auto bIt = props.find(aprefix + "Backward");
+                auto pIt = props.find(aprefix + "AbsolutePath");
+                if (fIt == props.end() || bIt == props.end() ||
+                    pIt == props.end())
+                {
+                    break;
+                }
+                try
+                {
+                    assocs.emplace_back(std::get<std::string>(fIt->second),
+                                        std::get<std::string>(bIt->second),
+                                        std::get<std::string>(pIt->second));
+                }
+                catch (const std::exception&)
+                {}
+            }
+
+            emComponents[compId] = {compName, assocs, manufacturer};
+            idNameMap[compId] = compName;
+        }
+    }
+
+    /** @brief Extract a uint16 ComponentIdentifier from a D-Bus variant that
+     *         entity-manager may publish as several integral types.
+     */
+    static uint16_t extractUint16(const pldm::utils::PropertyValue& v)
+    {
+        if (auto p = std::get_if<uint16_t>(&v))
+        {
+            return *p;
+        }
+        if (auto p = std::get_if<uint64_t>(&v))
+        {
+            return static_cast<uint16_t>(*p);
+        }
+        if (auto p = std::get_if<uint32_t>(&v))
+        {
+            return static_cast<uint16_t>(*p);
+        }
+        if (auto p = std::get_if<int64_t>(&v))
+        {
+            return static_cast<uint16_t>(*p);
+        }
+        if (auto p = std::get_if<double>(&v))
+        {
+            return static_cast<uint16_t>(*p);
+        }
+        throw std::bad_variant_access();
+    }
+
+    void writeDeviceInventoryUuid(eid eid, const UUID& uuid)
+    {
+        const std::string targetName = getTargetNameForEid(eid);
+        if (targetName.empty())
+        {
+            // No configured_by-resolved name: cannot match a PLDMDeviceInventory
+            // entry. Nothing to write (device may simply have no RoT chassis).
+            return;
+        }
+
+        constexpr auto pldmDeviceInventoryIntf =
+            "xyz.openbmc_project.Configuration.PLDMDeviceInventory";
+        constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
+
+        pldm::utils::GetSubTreeResponse subtree;
+        try
+        {
+            subtree = pldm::utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/inventory", 0,
+                {pldmDeviceInventoryIntf});
+        }
+        catch (const std::exception& e)
+        {
+            error(
+                "writeDeviceInventoryUuid: GetSubTree for PLDMDeviceInventory failed for EID {EID}, error - {ERROR}",
+                "EID", eid, "ERROR", e);
+            return;
+        }
+
+        for (const auto& [objPath, serviceMap] : subtree)
+        {
+            std::string service;
+            if (!serviceMap.empty())
+            {
+                service = serviceMap.begin()->first;
+            }
+            if (service.empty())
+            {
+                continue;
+            }
+
+            std::string entryTargetName;
+            std::string createPath;
+            std::string updatePath;
+            try
+            {
+                auto props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    service.c_str(), objPath.c_str(), pldmDeviceInventoryIntf);
+                if (auto it = props.find("MCTPTargetName"); it != props.end())
+                {
+                    entryTargetName = std::get<std::string>(it->second);
+                }
+                if (auto it = props.find("CreateInventoryPath");
+                    it != props.end())
+                {
+                    createPath = std::get<std::string>(it->second);
+                }
+                if (auto it = props.find("UpdateInventoryPath");
+                    it != props.end())
+                {
+                    updatePath = std::get<std::string>(it->second);
+                }
+            }
+            catch (const std::exception& e)
+            {
+                error(
+                    "writeDeviceInventoryUuid: failed reading PLDMDeviceInventory props at {PATH}, error - {ERROR}",
+                    "PATH", objPath, "ERROR", e);
+                continue;
+            }
+
+            if (entryTargetName != targetName)
+            {
+                continue;
+            }
+
+            // Write the UUID to the EM-created chassis (CreateInventoryPath) and
+            // to the optional pre-existing inventory object (UpdateInventoryPath)
+            for (const auto& path : {createPath, updatePath})
+            {
+                if (path.empty())
+                {
+                    continue;
+                }
+                try
+                {
+                    pldm::utils::DBusMapping dbusMapping{path, uuidIntf, "UUID",
+                                                         "string"};
+                    pldm::utils::DBusHandler().setDbusProperty(
+                        dbusMapping, pldm::utils::PropertyValue{uuid});
+                    info(
+                        "writeDeviceInventoryUuid: wrote UUID for EID {EID} to {PATH}",
+                        "EID", eid, "PATH", path);
+                }
+                catch (const std::exception& e)
+                {
+                    error(
+                        "writeDeviceInventoryUuid: failed to set UUID at {PATH} for EID {EID}, error - {ERROR}",
+                        "PATH", path, "EID", eid, "ERROR", e);
+                }
+            }
+            // At most one PLDMDeviceInventory entry matches a target.
+            break;
+        }
+    }
 };
 
 } // namespace fw_update

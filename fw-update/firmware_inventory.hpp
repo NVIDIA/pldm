@@ -147,6 +147,25 @@ class Manager
      */
     void updateFWVersion(pldm::eid eid);
 
+    /** @brief Provide per-component metadata sourced from the entity-manager
+     *         Configuration.PLDMFirmwareDevice.Components array for an endpoint.
+     *
+     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step
+     *  3b/3d. When present for an EID, createEntry() prefers this EM-sourced map
+     *  (component Name, Associations → RelatedItem, optional Manufacturer) over
+     *  the legacy JSON-parsed firmwareInventoryInfo. Match is by
+     *  ComponentIdentifier against the PLDM GetFirmwareParameters response.
+     *
+     *  @param[in] eid - MCTP endpointID
+     *  @param[in] components - ComponentIdentifier → {Name, Associations,
+     *                          Manufacturer}
+     */
+    void setEmComponentObjects(pldm::eid eid,
+                               const CreateComponentIdNameMap& components)
+    {
+        emComponentObjectMap[eid] = components;
+    }
+
     const std::string swBasePath = "/xyz/openbmc_project/software";
 
   private:
@@ -160,6 +179,11 @@ class Manager
 
     /** @brief Component name map for D-Bus object paths */
     const ComponentNameMap& componentNameMap;
+
+    /** @brief Per-endpoint component metadata sourced from entity-manager
+     *         Configuration.PLDMFirmwareDevice.Components (DGXOPENBMC-25121).
+     */
+    std::unordered_map<eid, CreateComponentIdNameMap> emComponentObjectMap;
 
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<eid, CompIdentifier>, std::unique_ptr<Entry>>

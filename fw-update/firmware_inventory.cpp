@@ -84,6 +84,63 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
     auto compInfoSearch = componentInfoMap.find(eid);
     FirmwareInfo fwInfoSearch;
 
+    // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step
+    // 3b/3d: prefer per-component metadata sourced from the entity-manager
+    // Configuration.PLDMFirmwareDevice.Components array (Name, Associations →
+    // RelatedItem, optional Manufacturer). Match by ComponentIdentifier against
+    // the GetFirmwareParameters response; unmatched components fall through to
+    // the FCM-REQ-16 fallback names in componentNameMap below.
+    if (auto emIt = emComponentObjectMap.find(eid);
+        emIt != emComponentObjectMap.end() && !emIt->second.empty())
+    {
+        const auto& emComponents = emIt->second;
+        for (const auto& [compKey, compInfo] : compInfoSearch->second)
+        {
+            auto compObjIt = emComponents.find(compKey.second);
+            std::string compObjName;
+            Associations compObjAssocs;
+            std::string compObjManufacturer = "NVIDIA";
+            if (compObjIt != emComponents.end())
+            {
+                std::tie(compObjName, compObjAssocs, compObjManufacturer) =
+                    compObjIt->second;
+            }
+            else if (componentNameMap.contains(eid) &&
+                     componentNameMap.at(eid).contains(compKey.second))
+            {
+                // FCM-REQ-16: component reported by the device but not declared
+                // in the EM Components array — use the fallback name.
+                compObjName = componentNameMap.at(eid).at(compKey.second);
+            }
+            else
+            {
+                continue;
+            }
+
+            std::string objPath = swBasePath + "/" + compObjName;
+            auto swId = std::format("0x{:04X}", compKey.second);
+            auto entry = std::make_unique<Entry>(
+                bus, objPath, std::get<CompVersion>(compInfo), swId,
+                compObjManufacturer);
+            entry->createUpdateableAssociation(swBasePath);
+
+            lg2::info(
+                "Created software D-Bus object (EM config): path={PATH}, component_id={ID}, version={VERSION}",
+                "PATH", objPath, "ID", swId, "VERSION",
+                std::get<CompVersion>(compInfo));
+
+            for (const auto& assoc : compObjAssocs)
+            {
+                entry->createAssociation(std::get<0>(assoc), std::get<1>(assoc),
+                                         std::get<2>(assoc));
+            }
+
+            firmwareInventoryMap.emplace(std::make_pair(eid, compKey.second),
+                                         std::move(entry));
+        }
+        return;
+    }
+
     if (mctpInterfaces.find(uuid) == mctpInterfaces.end())
     {
         lg2::info(

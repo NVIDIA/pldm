@@ -149,11 +149,6 @@ class InventoryManager
      *                                        by the BMC.
      *  @param[out] componentInfoMap - Populate the component info for the FDs
      *                                 managed by the BMC.
-     *  @param[in] deviceInventoryInfo - device inventory info for message
-     *                                    registry
-     *  @param[in] excludedFwUpdateEids - EIDs to skip from PLDM T5 firmware
-     *                                    discovery (populated from
-     *                                    fw_update_config.json)
      *  @param[in] numAttempts - number of command attempts
      */
     explicit InventoryManager(
@@ -165,8 +160,6 @@ class InventoryManager
         DescriptorMap& descriptorMap,
         DownstreamDescriptorMap& downstreamDescriptorMap,
         ComponentInfoMap& componentInfoMap,
-        DeviceInventoryInfo& deviceInventoryInfo,
-        const ExcludedFwUpdateEids& excludedFwUpdateEids,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
@@ -174,9 +167,7 @@ class InventoryManager
         updateInventoryCallBack(updateInventoryCallBack),
         descriptorMap(descriptorMap),
         downstreamDescriptorMap(downstreamDescriptorMap),
-        componentInfoMap(componentInfoMap),
-        deviceInventoryInfo(deviceInventoryInfo),
-        excludedFwUpdateEids(excludedFwUpdateEids), numAttempts(numAttempts)
+        componentInfoMap(componentInfoMap), numAttempts(numAttempts)
     {}
 
     /** @brief Destructor
@@ -442,12 +433,6 @@ class InventoryManager
 
     /** @brief Component information needed for the update of the managed FDs */
     ComponentInfoMap& componentInfoMap;
-
-    /** @brief device information to create message registries */
-    [[maybe_unused]] DeviceInventoryInfo& deviceInventoryInfo;
-
-    /** @brief EIDs to skip from PLDM T5 firmware discovery */
-    const ExcludedFwUpdateEids& excludedFwUpdateEids;
 
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;

@@ -1263,23 +1263,20 @@ bool InventoryManager::logDeviceStatusErrors(const mctp_eid_t eid,
 
 void InventoryManager::logDiscoveryFailedMessage(
     const mctp_eid_t eid, const std::string& messageError,
-    const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
+    const std::string& resolution,
+    [[maybe_unused]] dbus::MctpInterfaces mctpInterfaces,
     const std::string& logNamespace, bool forceInformational)
 {
-    if (mctpEidMap.contains(eid))
+    // PLDM FW Update Config Migration (DGXOPENBMC-25121): the device name for
+    // the log entry is taken from firmwareDeviceNameMap, which is resolved from
+    // the entity-manager configuration via the configured_by association (see
+    // obtainFirmwareDeviceName / obtainDeviceNameFromConfigurations). This
+    // replaces the previous EID-keyed device_inventory object-path lookup.
+    auto nameIt = firmwareDeviceNameMap.find(eid);
+    if (nameIt != firmwareDeviceNameMap.end() && !nameIt->second.empty())
     {
-        const auto& [uuid, mediumType, bindingType] = mctpEidMap[eid];
-        DeviceInfo deviceInfo;
-        if (deviceInventoryInfo.matchInventoryEntry(mctpInterfaces[uuid],
-                                                    deviceInfo))
-        {
-            const auto& deviceObjPath =
-                std::get<DeviceObjPath>(std::get<CreateDeviceInfo>(deviceInfo));
-            std::string compName =
-                std::filesystem::path(deviceObjPath).filename();
-            createLogEntry(resourceErrorDetected, compName, messageError,
-                           resolution, logNamespace, forceInformational);
-        }
+        createLogEntry(resourceErrorDetected, nameIt->second, messageError,
+                       resolution, logNamespace, forceInformational);
     }
 }
 

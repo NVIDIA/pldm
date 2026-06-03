@@ -450,7 +450,6 @@ source_files = [
     'fw-update/update_manager.cpp',
     'fw-update/other_device_update_manager.cpp',
     'fw-update/config.cpp',
-    'fw-update/device_inventory.cpp',
     'fw-update/firmware_inventory.cpp',
     'fw-update/package_signature.cpp',
     'fw-update/fw_update_utility.cpp',

@@ -62,6 +62,134 @@ static std::optional<std::string> extractTargetName(
     return pathStr.substr(pathStr.find_last_of('/') + 1);
 }
 
+/** @brief Read the optional StaticEID (uint8) property from a
+ *         Configuration.PLDMFirmwareDevice property map.
+ *
+ *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
+ *  (TEMPORARY WORKAROUND — descriptor-refresh seeding only). StaticEID is
+ *  OPTIONAL: returns std::nullopt when the property is absent (entries without
+ *  it are skipped) or when the published variant does not hold an integral
+ *  value. entity-manager may publish the configured integer under any of
+ *  several integral variant alternatives, so several are tolerated. Never
+ *  throws.
+ *
+ *  @param[in] props - PLDMFirmwareDevice property map
+ *  @return the StaticEID as uint8, or std::nullopt if absent / not integral
+ */
+static std::optional<uint8_t> extractOptionalStaticEid(
+    const pldm::utils::PropertyMap& props)
+{
+    auto it = props.find("StaticEID");
+    if (it == props.end())
+    {
+        // Absent: skip this entry (no static EID to add).
+        return std::nullopt;
+    }
+    const auto& v = it->second;
+    if (auto p = std::get_if<uint8_t>(&v))
+    {
+        return *p;
+    }
+    if (auto p = std::get_if<uint16_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<uint32_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<uint64_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<int64_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<double>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    // Present but not an integral type we recognise: skip.
+    return std::nullopt;
+}
+
+/** @brief Seed the pre-FW-update descriptor-refresh EID set with the optional
+ *         StaticEID values declared on Configuration.PLDMFirmwareDevice
+ *         entity-manager entries.
+ *
+ *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
+ *  ("StaticEID — descriptor-refresh seeding only", TEMPORARY WORKAROUND).
+ *
+ *  Under the migrated dynamic model the refresh-EID set derives from the live
+ *  discovered endpoints (the descriptorMap keys), which can omit a device whose
+ *  configured_by association mctpreactor has not yet published. This restores
+ *  the coverage the migration lost when getConfigEids() was replaced by
+ *  descriptorMap keys: it runs a global ObjectMapper GetSubTree for
+ *  Configuration.PLDMFirmwareDevice and inserts each entry's optional StaticEID
+ *  into @p refreshEidSet. Entries without a StaticEID are skipped; because the
+ *  set already holds the descriptorMap keys, a StaticEID that is also a live
+ *  key is deduplicated by std::set and never double-refreshes.
+ *
+ *  StaticEID influences ONLY this refresh set — never device identity,
+ *  inventory / Software.Version creation, or the MCTPTargetName join (those are
+ *  configured_by-resolved, FCM-REQ-11). When no entry carries a StaticEID this
+ *  is a no-op and the set is left as the descriptorMap keys. D-Bus read
+ *  failures are logged at warning and treated as "no static EIDs to add" (never
+ *  thrown).
+ *
+ *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
+ */
+static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
+{
+    constexpr auto pldmFwDeviceIntf =
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+    pldm::utils::GetSubTreeResponse subtree;
+    try
+    {
+        subtree = pldm::utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/inventory", 0, {pldmFwDeviceIntf});
+    }
+    catch (const std::exception& e)
+    {
+        warning(
+            "seedRefreshEidsFromStaticConfig: GetSubTree for PLDMFirmwareDevice failed, error - {ERROR}; no static EIDs added to refresh set",
+            "ERROR", e);
+        return;
+    }
+
+    for (const auto& [objPath, serviceMap] : subtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const std::string service = serviceMap.begin()->first;
+
+        pldm::utils::PropertyMap props;
+        try
+        {
+            props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                service.c_str(), objPath.c_str(), pldmFwDeviceIntf);
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "seedRefreshEidsFromStaticConfig: reading props at {PATH} failed, error - {ERROR}; skipping entry",
+                "PATH", objPath, "ERROR", e);
+            continue;
+        }
+
+        // StaticEID is optional; entries without it are skipped. std::set
+        // dedups against EIDs already present from the descriptorMap keys.
+        if (auto staticEid = extractOptionalStaticEid(props))
+        {
+            refreshEidSet.insert(*staticEid);
+        }
+    }
+}
+
 /** @brief Check if package descriptors are a subset of device descriptor
  *
  *  Determines whether a firmware package is applicable to a device by
@@ -497,10 +625,11 @@ exec::task<void> UpdateManager::processStream(
     // Snapshot the user-requested target names along with each one's PLDM EID
     // so logUnupdatedTargets can emit a per-target Critical
     // ResourceErrorsDetected entry at terminal state for any requested target
-    // whose image wasn't in the package. Resolution prefers the config
-    // (fw_update_config.json) and falls back to the live componentNameMap for
-    // discovery-only entries. Names that don't resolve to any PLDM EID (e.g.
-    // non-PLDM targets) are intentionally skipped.
+    // whose image wasn't in the package. PLDM FW Update Config Migration
+    // (DGXOPENBMC-25121) removed the EID-keyed fw_update_config.json lookup;
+    // resolution is now solely against the live componentNameMap (populated
+    // from the configured_by-resolved discovery flow). Names that don't resolve
+    // to any PLDM EID (e.g. non-PLDM targets) are intentionally skipped.
     requestedTargets.clear();
     for (const auto& path : targets)
     {
@@ -510,26 +639,22 @@ exec::task<void> UpdateManager::processStream(
             continue;
         }
 
-        std::optional<mctp_eid_t> resolvedEid =
-            getConfigEidForTargetName(*name);
-        if (!resolvedEid.has_value())
+        std::optional<mctp_eid_t> resolvedEid;
+        for (const auto& [eid, compIdNameMap] : componentNameMap)
         {
-            for (const auto& [eid, compIdNameMap] : componentNameMap)
+            bool found = false;
+            for (const auto& [compId, compName] : compIdNameMap)
             {
-                bool found = false;
-                for (const auto& [compId, compName] : compIdNameMap)
+                if (compName == *name)
                 {
-                    if (compName == *name)
-                    {
-                        resolvedEid = eid;
-                        found = true;
-                        break;
-                    }
-                }
-                if (found)
-                {
+                    resolvedEid = eid;
+                    found = true;
                     break;
                 }
+            }
+            if (found)
+            {
+                break;
             }
         }
 
@@ -539,31 +664,27 @@ exec::task<void> UpdateManager::processStream(
         }
     }
 
-    auto refreshEids = getConfigEids();
-    if (refreshEids.empty())
+    // Refresh every discovered endpoint. The EID set is derived from the live
+    // descriptorMap (built from configured_by-resolved discovery).
+    //
+    // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
+    // ("StaticEID — descriptor-refresh seeding only", TEMPORARY WORKAROUND):
+    // union the optional PLDMFirmwareDevice.StaticEID values into the refresh
+    // set so a device whose configured_by is not yet published still gets its
+    // descriptors refreshed before an update. StaticEID is used for THIS
+    // purpose ONLY — it does not affect identity, inventory/Software.Version
+    // creation, or the MCTPTargetName join (those stay configured_by-resolved,
+    // FCM-REQ-11). When no PLDMFirmwareDevice entry carries a StaticEID this is
+    // a no-op and the set equals the descriptorMap keys, as before.
+    std::set<mctp_eid_t> refreshEidSet;
     {
-        // Fall back to discovered endpoints when config has no EIDs
         auto keys = descriptorMap | std::views::keys;
-        refreshEids.assign(keys.begin(), keys.end());
+        refreshEidSet.insert(keys.begin(), keys.end());
     }
+    seedRefreshEidsFromStaticConfig(refreshEidSet);
+    std::vector<mctp_eid_t> refreshEids(refreshEidSet.begin(),
+                                        refreshEidSet.end());
 
-    // Config-derived target EIDs: resolve each target object path's
-    // component/device name to an EID using fw_update_config.json so that
-    // undiscovered targets (e.g. a powered-off CPU) are still classified as
-    // targets and their refresh failures log at error severity.
-    std::unordered_set<mctp_eid_t> configTargetEids;
-    for (const auto& path : targets)
-    {
-        auto name = extractTargetName(path);
-        if (!name.has_value())
-        {
-            continue;
-        }
-        if (auto eidOpt = getConfigEidForTargetName(*name); eidOpt.has_value())
-        {
-            configTargetEids.insert(*eidOpt);
-        }
-    }
     if (refreshSingleEndpointCallback && !refreshEids.empty())
     {
         info("Refreshing firmware inventory for {COUNT} endpoints", "COUNT",
@@ -572,8 +693,7 @@ exec::task<void> UpdateManager::processStream(
         exec::async_scope refreshScope;
         for (const auto& eid : refreshEids)
         {
-            bool isTarget = compTargetList.contains(eid) ||
-                            configTargetEids.contains(eid);
+            bool isTarget = compTargetList.contains(eid);
             refreshScope.spawn(
                 [this, eid, isTarget]() -> exec::task<void> {
                     [[maybe_unused]] auto rc =

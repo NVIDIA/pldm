@@ -210,15 +210,13 @@ using ComponentImageInfos = std::vector<ComponentImageInfo>;
 
 using DownstreamDeviceIDRecordCount = uint8_t;
 
-// DeviceInventory
+// Shared inventory helper types (device-inventory chassis types removed in the
+// PLDM FW Update Config Migration, DGXOPENBMC-25121 — RoT chassis are now owned
+// by entity-manager via Configuration.PLDMDeviceInventory).
 using DeviceObjPath = std::string;
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
 using DBusIntfMatch = std::pair<dbus::Interface, dbus::PropertyMap>;
-using CreateDeviceInfo = std::tuple<DeviceObjPath, Associations>;
-using UpdateDeviceInfo = DeviceObjPath;
-using DeviceInfo = std::tuple<CreateDeviceInfo, UpdateDeviceInfo>;
-using MatchDeviceInfo = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>;
 
 // FirmwareInventory
 using ComponentName = std::string;
@@ -390,11 +388,6 @@ struct MatchEntryInfo
     }
 };
 
-/** @struct DeviceInventoryInfo
- *  @brief the Device inventory infor parsed from config file and find the
- * matched configured info for an dbus interface from mctp endpoint
- */
-using DeviceInventoryInfo = MatchEntryInfo<MatchDeviceInfo, DeviceInfo>;
 /** @struct FirmwareInventoryInfo
  *  @brief the Firmware inventory info parsed from config file and find the
  * matched configured info for an dbus interface from mctp endpoint
