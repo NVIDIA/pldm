@@ -62,27 +62,19 @@ static std::optional<std::string> extractTargetName(
     return pathStr.substr(pathStr.find_last_of('/') + 1);
 }
 
-/** @brief Read the optional StaticEID (uint8) property from a
- *         Configuration.PLDMFirmwareDevice property map.
+/** @brief Read an optional EID-valued (uint8) property from an entity-manager
+ *         Configuration property map.
  *
- *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
- *  (TEMPORARY WORKAROUND — descriptor-refresh seeding only). StaticEID is
- *  OPTIONAL: returns std::nullopt when the property is absent (entries without
- *  it are skipped) or when the published variant does not hold an integral
- *  value. entity-manager may publish the configured integer under any of
- *  several integral variant alternatives, so several are tolerated. Never
- *  throws.
- *
- *  @param[in] props - PLDMFirmwareDevice property map
- *  @return the StaticEID as uint8, or std::nullopt if absent / not integral
+ *  Tolerates the integral and string variant alternatives entity-manager may
+ *  publish (the migrated config writes StaticEndpointID / BridgePool* as decimal
+ *  strings). Returns std::nullopt when absent or unparseable. Never throws.
  */
-static std::optional<uint8_t> extractOptionalStaticEid(
-    const pldm::utils::PropertyMap& props)
+static std::optional<uint8_t> extractOptionalEid(
+    const pldm::utils::PropertyMap& props, const std::string& key)
 {
-    auto it = props.find("StaticEID");
+    auto it = props.find(key);
     if (it == props.end())
     {
-        // Absent: skip this entry (no static EID to add).
         return std::nullopt;
     }
     const auto& v = it->second;
@@ -106,86 +98,95 @@ static std::optional<uint8_t> extractOptionalStaticEid(
     {
         return static_cast<uint8_t>(*p);
     }
-    if (auto p = std::get_if<double>(&v))
+    if (auto p = std::get_if<std::string>(&v))
     {
-        return static_cast<uint8_t>(*p);
+        try
+        {
+            return static_cast<uint8_t>(std::stoul(*p));
+        }
+        catch (const std::exception&)
+        {
+            return std::nullopt;
+        }
     }
-    // Present but not an integral type we recognise: skip.
     return std::nullopt;
 }
 
-/** @brief Seed the pre-FW-update descriptor-refresh EID set with the optional
- *         StaticEID values declared on Configuration.PLDMFirmwareDevice
- *         entity-manager entries.
+/** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
+ *         set of statically-configured device EIDs.
  *
- *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
- *  ("StaticEID — descriptor-refresh seeding only", TEMPORARY WORKAROUND).
- *
- *  Under the migrated dynamic model the refresh-EID set derives from the live
- *  discovered endpoints (the descriptorMap keys), which can omit a device whose
- *  configured_by association mctpreactor has not yet published. This restores
- *  the coverage the migration lost when getConfigEids() was replaced by
- *  descriptorMap keys: it runs a global ObjectMapper GetSubTree for
- *  Configuration.PLDMFirmwareDevice and inserts each entry's optional StaticEID
- *  into @p refreshEidSet. Entries without a StaticEID are skipped; because the
- *  set already holds the descriptorMap keys, a StaticEID that is also a live
- *  key is deduplicated by std::set and never double-refreshes.
- *
- *  StaticEID influences ONLY this refresh set — never device identity,
- *  inventory / Software.Version creation, or the MCTPTargetName join (those are
- *  configured_by-resolved, FCM-REQ-11). When no entry carries a StaticEID this
- *  is a no-op and the set is left as the descriptorMap keys. D-Bus read
- *  failures are logged at warning and treated as "no static EIDs to add" (never
- *  thrown).
+ *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2. The
+ *  refresh-EID set otherwise derives from the live descriptorMap keys
+ *  (configured_by-resolved discovery), which can omit a device not yet
+ *  discovered at update time. To guarantee the COMPLETE device set is refreshed
+ *  before an update, union every statically-assigned EID from the MCTP transport
+ *  config: each entry's StaticEndpointID, plus the full
+ *  [BridgePoolStartEid, BridgePoolEndEID] range on bridge entries (covering the
+ *  bridged downstream devices). std::set dedups against the live keys. This
+ *  influences ONLY the refresh set — never device identity, inventory, or the
+ *  MCTPTargetName join (those stay configured_by-resolved, FCM-REQ-11). D-Bus
+ *  read failures are logged and skipped; never thrown.
  *
  *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
  */
 static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
 {
-    constexpr auto pldmFwDeviceIntf =
-        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
-
-    pldm::utils::GetSubTreeResponse subtree;
-    try
+    for (const char* intf :
+         {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
+          "xyz.openbmc_project.Configuration.MCTPI2CTarget",
+          "xyz.openbmc_project.Configuration.MCTPSPIDevice"})
     {
-        subtree = pldm::utils::DBusHandler().getSubtree(
-            "/xyz/openbmc_project/inventory", 0, {pldmFwDeviceIntf});
-    }
-    catch (const std::exception& e)
-    {
-        warning(
-            "seedRefreshEidsFromStaticConfig: GetSubTree for PLDMFirmwareDevice failed, error - {ERROR}; no static EIDs added to refresh set",
-            "ERROR", e);
-        return;
-    }
-
-    for (const auto& [objPath, serviceMap] : subtree)
-    {
-        if (serviceMap.empty())
-        {
-            continue;
-        }
-        const std::string service = serviceMap.begin()->first;
-
-        pldm::utils::PropertyMap props;
+        pldm::utils::GetSubTreeResponse subtree;
         try
         {
-            props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
-                service.c_str(), objPath.c_str(), pldmFwDeviceIntf);
+            subtree = pldm::utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/inventory", 0, {intf});
         }
         catch (const std::exception& e)
         {
             warning(
-                "seedRefreshEidsFromStaticConfig: reading props at {PATH} failed, error - {ERROR}; skipping entry",
-                "PATH", objPath, "ERROR", e);
+                "seedRefreshEidsFromStaticConfig: GetSubTree for {INTF} failed, error - {ERROR}; skipping",
+                "INTF", intf, "ERROR", e);
             continue;
         }
 
-        // StaticEID is optional; entries without it are skipped. std::set
-        // dedups against EIDs already present from the descriptorMap keys.
-        if (auto staticEid = extractOptionalStaticEid(props))
+        for (const auto& [objPath, serviceMap] : subtree)
         {
-            refreshEidSet.insert(*staticEid);
+            if (serviceMap.empty())
+            {
+                continue;
+            }
+            const std::string service = serviceMap.begin()->first;
+
+            pldm::utils::PropertyMap props;
+            try
+            {
+                props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    service.c_str(), objPath.c_str(), intf);
+            }
+            catch (const std::exception& e)
+            {
+                warning(
+                    "seedRefreshEidsFromStaticConfig: reading props at {PATH} failed, error - {ERROR}; skipping",
+                    "PATH", objPath, "ERROR", e);
+                continue;
+            }
+
+            if (auto eid = extractOptionalEid(props, "StaticEndpointID"))
+            {
+                refreshEidSet.insert(*eid);
+            }
+            // Bridge entries declare a downstream EID pool; refresh the whole
+            // range so bridged devices are covered even before discovery.
+            auto poolStart = extractOptionalEid(props, "BridgePoolStartEid");
+            auto poolEnd = extractOptionalEid(props, "BridgePoolEndEID");
+            if (poolStart && poolEnd && *poolStart <= *poolEnd)
+            {
+                for (mctp_eid_t e = *poolStart; e <= *poolEnd; ++e)
+                {
+                    refreshEidSet.insert(e);
+                }
+            }
         }
     }
 }
@@ -664,18 +665,11 @@ exec::task<void> UpdateManager::processStream(
         }
     }
 
-    // Refresh every discovered endpoint. The EID set is derived from the live
-    // descriptorMap (built from configured_by-resolved discovery).
-    //
-    // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §2.3 / §3.3.2
-    // ("StaticEID — descriptor-refresh seeding only", TEMPORARY WORKAROUND):
-    // union the optional PLDMFirmwareDevice.StaticEID values into the refresh
-    // set so a device whose configured_by is not yet published still gets its
-    // descriptors refreshed before an update. StaticEID is used for THIS
-    // purpose ONLY — it does not affect identity, inventory/Software.Version
-    // creation, or the MCTPTargetName join (those stay configured_by-resolved,
-    // FCM-REQ-11). When no PLDMFirmwareDevice entry carries a StaticEID this is
-    // a no-op and the set equals the descriptorMap keys, as before.
+    // Refresh the COMPLETE set of update-capable endpoints: the union of the
+    // live descriptorMap keys (configured_by-resolved discovery) and every
+    // statically-configured device EID from the MCTP transport config
+    // (StaticEndpointID + bridge pool ranges). Seeding from static config
+    // guarantees a device not yet discovered at update time is still refreshed.
     std::set<mctp_eid_t> refreshEidSet;
     {
         auto keys = descriptorMap | std::views::keys;

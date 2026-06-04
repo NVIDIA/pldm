@@ -479,12 +479,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  `.Name`, which equals the MCTPTargetName cited by every PLDM-* entry for
      *  the same device. This is the canonical, transport-agnostic key.
      *
-     *  StaticEID plays NO part in identity resolution (SADD §3.3.2 Step 2,
-     *  FCM-REQ-11): the optional PLDMFirmwareDevice.StaticEID is used solely to
-     *  seed the pre-FW-update descriptor refresh in UpdateManager::processStream
-     *  (SADD §2.3 / §3.3.2), never to resolve a device's identity, inventory, or
-     *  the MCTPTargetName join. If configured_by is absent the name is empty and
-     *  the endpoint is treated as not (yet) resolvable.
+     *  Identity is configured_by-only (FCM-REQ-11) — the EID is never used as an
+     *  identity key. If configured_by is absent the name is empty and the
+     *  endpoint is treated as not (yet) resolvable.
      *
      *  @param[in] eid - MCTP endpoint
      *  @return the device's target Name, empty if not resolved
