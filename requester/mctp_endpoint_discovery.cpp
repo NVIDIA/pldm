@@ -102,6 +102,12 @@ MctpDiscovery::MctpDiscovery(
         bus,
         interfacesRemovedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
+    mctpReactorConfiguredSignal(
+        bus,
+        interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPReactorService),
+        [this](sdbusplus::message_t& msg) {
+            this->onMctpReactorConfigured(msg);
+        }),
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
 {
@@ -621,6 +627,107 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
     handleMctpEndpoints(addedInfos);
 }
 
+void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
+{
+    // mctpreactor has published the configured_by association for an mctpd
+    // endpoint, so getAssociatedSubTree can now resolve the endpoint's EM
+    // configuration. Read the endpoint back from mctpd, resolve its config and
+    // create its (named) firmware inventory if it was deferred during the boot
+    // race (DGXOPENBMC-25121). No-op if the endpoint is already tracked.
+    sdbusplus::message::object_path objPath;
+    try
+    {
+        // InterfacesAdded payload is (object_path, a{sa{sv}}); we only need the
+        // path, then read the endpoint's properties from mctpd directly.
+        msg.read(objPath);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        error(
+            "Error reading mctpreactor InterfacesAdded message, error - {ERROR}",
+            "ERROR", e);
+        return;
+    }
+
+    // mctpreactor publishes the association on the endpoint object path itself
+    // (.../endpoints/<eid>). Ignore anything that is not a bare endpoint path
+    // (e.g. an ObjectMapper-synthesised .../configured_by child object).
+    const std::string& path = objPath.str;
+    const std::string endpointsTag = "/endpoints/";
+    const auto endpointsPos = path.find(endpointsTag);
+    if (path.compare(0, std::string(MCTPPath).size(), MCTPPath) != 0 ||
+        endpointsPos == std::string::npos)
+    {
+        return;
+    }
+    const auto eidStr = path.substr(endpointsPos + endpointsTag.size());
+    if (eidStr.empty() ||
+        eidStr.find_first_not_of("0123456789") != std::string::npos)
+    {
+        return;
+    }
+
+    try
+    {
+        const std::string service =
+            dbusHandler.getService(path.c_str(), MCTPInterface);
+        const MctpEndpointProps& epProps = getMctpEndpointProps(service, path);
+
+        auto types = std::get<MCTPMsgTypes>(epProps);
+        if (!std::ranges::contains(types, mctpTypePLDM))
+        {
+            return;
+        }
+
+        const UUID& uuid = getEndpointUUIDProp(service, path);
+        const auto& mctpBinding = std::get<4>(epProps);
+        const auto& mctpMedium = std::get<3>(epProps);
+        const auto& mctpLocalEid = std::get<5>(epProps);
+
+        MctpInfo mctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
+                          std::get<NetworkId>(epProps), std::nullopt,
+                          mctpBinding, mctpLocalEid);
+
+        if (std::ranges::contains(existingMctpInfos, mctpInfo))
+        {
+            // Already created (config resolved on the mctpd discovery pass).
+            return;
+        }
+
+        if (!searchConfigurationFor(mctpInfo))
+        {
+            // Association present but not yet resolvable via ObjectMapper; a
+            // subsequent signal will retry.
+            return;
+        }
+
+        // Track this endpoint's Connectivity (availability) changes, matching
+        // the per-endpoint watch the old mctpd-driven path used to register.
+        if (enableMatches.find(path) == enableMatches.end())
+        {
+            enableMatches.emplace(
+                path, sdbusplus::bus::match_t(
+                          bus,
+                          sdbusplus::bus::match::rules::propertiesChanged(
+                              path, MCTPInterfaceCC),
+                          std::bind_front(&MctpDiscovery::refreshEndpoints,
+                                          this)));
+        }
+
+        info(
+            "configured_by published by mctpreactor for EID {EID}; creating named firmware inventory",
+            "EID", static_cast<unsigned>(std::get<pldm::eid>(mctpInfo)));
+        addToExistingMctpInfos(MctpInfos(1, mctpInfo));
+        handleMctpEndpoints(MctpInfos(1, mctpInfo));
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "onMctpReactorConfigured error for path '{PATH}', error - {ERROR}",
+            "PATH", path, "ERROR", e.what());
+    }
+}
+
 void MctpDiscovery::removeEndpoints(sdbusplus::message_t& msg)
 {
     using ObjectPath = sdbusplus::object_path;
@@ -734,7 +841,7 @@ std::string MctpDiscovery::constructMctpReactorObjectPath(
            "/endpoints/" + std::to_string(eid) + "/configured_by";
 }
 
-void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
+bool MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
 {
     const auto mctpReactorObjectPath = constructMctpReactorObjectPath(mctpInfo);
     try
@@ -753,7 +860,7 @@ void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
         {
             warning("No associated subtree found for path {PATH}", "PATH",
                     mctpReactorObjectPath);
-            return;
+            return false;
         }
         // Assume the first entry is the one we want
         auto subTree = response.begin();
@@ -763,7 +870,7 @@ void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
         {
             warning("No associated service found for path {PATH}", "PATH",
                     mctpReactorObjectPath);
-            return;
+            return false;
         }
         // Assume the first entry is the one we want
         auto entry = associatedServiceProp.begin();
@@ -778,25 +885,27 @@ void MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
         {
             error("No associated interface found for path {PATH}", "PATH",
                   mctpReactorObjectPath);
-            return;
+            return false;
         }
         associatedInterface = *associatedInterfaceItr;
         auto mctpTargetProperties = dbusHandler.getDbusPropertiesVariant(
             associatedService.c_str(), associatedObjPath.c_str(),
             associatedInterface.c_str());
         auto name = getNameFromProperties(mctpTargetProperties);
-        if (!name.empty())
+        const bool resolved = !name.empty();
+        if (resolved)
         {
             std::get<std::optional<std::string>>(mctpInfo) = name;
         }
         configurations.emplace(associatedObjPath, mctpInfo);
+        return resolved;
     }
     catch (const std::exception& e)
     {
         error(
             "Error getting associated subtree for path {PATH}, error - {ERROR}",
             "PATH", mctpReactorObjectPath, "ERROR", e);
-        return;
+        return false;
     }
 }
 

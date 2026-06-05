@@ -24,6 +24,7 @@ namespace pldm
 
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 constexpr const char* MCTPService = "au.com.codeconstruct.MCTP1";
+constexpr const char* MCTPReactorService = "xyz.openbmc_project.MCTPReactor";
 constexpr const char* MCTPInterface = MCTPEndpoint::interface;
 constexpr const char* MCTPBindingInterface = "xyz.openbmc_project.MCTP.Binding";
 constexpr const char* EndpointUUID = CommonUUID::interface;
@@ -131,6 +132,12 @@ class MctpDiscovery
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
+    /** @brief Used to watch for mctpreactor publishing the configured_by
+     *         association on an endpoint, so endpoints deferred during the boot
+     *         race (configured_by not yet resolvable) can be (re)resolved and
+     *         get their EM-config names (DGXOPENBMC-25121). */
+    sdbusplus::bus::match_t mctpReactorConfiguredSignal;
+
     /** @brief List of handlers need to notify when new MCTP
      * Endpoint is Added/Removed */
     std::vector<MctpDiscoveryHandlerIntf*> handlers;
@@ -161,6 +168,16 @@ class MctpDiscovery
      *  @param[in] msg - Data associated with subscribed signal
      */
     void discoverEndpoints(sdbusplus::message_t& msg);
+
+    /** @brief Callback when mctpreactor publishes the configured_by association
+     * for an endpoint. Re-resolves the endpoint's configuration and creates its
+     * (named) firmware inventory, closing the boot race where pldm reacts to
+     * mctpd's endpoint-added signal before mctpreactor has published
+     * configured_by. No-op if the endpoint is already tracked.
+     *
+     *  @param[in] msg - Data associated with the subscribed signal
+     */
+    void onMctpReactorConfigured(sdbusplus::message_t& msg);
 
     /** @brief Callback function when MCTP endpoint removedInterface
      * D-Bus signal raised.
@@ -296,7 +313,7 @@ class MctpDiscovery
      *
      *  @param[in] mctpInfo - information of discovered MCTP endpoint
      */
-    void searchConfigurationFor(MctpInfo& mctpInfo);
+    bool searchConfigurationFor(MctpInfo& mctpInfo);
 
     /** @brief Remove configuration associated with the removed MCTP endpoint.
      *
