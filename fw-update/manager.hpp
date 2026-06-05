@@ -460,10 +460,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  step 3e. pldmd creates no inventory objects: the RoT chassis is created
      *  by entity-manager from Configuration.PLDMDeviceInventory. This helper
      *  resolves the device's PLDMDeviceInventory config entry by string-match
-     *  on MCTPTargetName, then writes the dynamic device UUID
-     *  (xyz.openbmc_project.Common.UUID) to CreateInventoryPath and, if set, to
-     *  the optional UpdateInventoryPath. No Decorator.SKU write (ECSKU/APSKU
-     *  descoped).
+     *  on MCTPTargetName, then writes the device identity onto the EM-owned
+     *  objects: Common.UUID + EC-SKU to CreateInventoryPath (the RoT chassis)
+     *  and AP-SKU to the optional UpdateInventoryPath. Writes are applied
+     *  when-ready (immediate Set plus an InterfacesAdded retry) so pldmd remains
+     *  the sole authority for UUID/SKU and never depends on another service
+     *  (e.g. NSM) to populate them — restoring origin/develop behaviour on the
+     *  EM-owned objects.
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - device UUID obtained over MCTP/PLDM
@@ -581,7 +584,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
             CreateComponentIdNameMap emComponents;
             ComponentIdNameMap idNameMap;
-            unpackComponents(props, emComponents, idNameMap);
+            unpackComponents(service, objPath, pldmFwDeviceIntf, emComponents,
+                             idNameMap);
 
             fwInventoryManager.setEmComponentObjects(eid, emComponents);
             if (!idNameMap.empty())
@@ -593,38 +597,58 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         return false;
     }
 
-    /** @brief Unpack the nested Components array (aa{sv}) of a
-     *         Configuration.PLDMFirmwareDevice entry. The EM entity-manager
-     *         publishes nested arrays-of-objects flattened on D-Bus; each
-     *         element carries Name, ComponentIdentifier, optional Manufacturer,
-     *         and optional Associations (Forward/Backward/AbsolutePath triples).
+    /** @brief Read the per-component definitions of a
+     *         Configuration.PLDMFirmwareDevice entry.
      *
-     *  @param[in]  props        - PLDMFirmwareDevice property map
+     *  entity-manager publishes each element of the nested Components array as a
+     *  separate CHILD interface "<baseIntf>.Components<index>" on the same
+     *  object path — NOT as flattened "Components<index><field>" properties on
+     *  the parent interface. Each child interface carries Name,
+     *  ComponentIdentifier and an optional Manufacturer. The doubly-nested
+     *  per-component Associations array is not surfaced by EM's PlatformExposes
+     *  flattening, so it cannot be read here (component Associations stay empty;
+     *  the device-level configured_by association is unaffected).
+     *
+     *  @param[in]  service      - D-Bus service owning the object (entity-manager)
+     *  @param[in]  objPath      - PLDMFirmwareDevice object path
+     *  @param[in]  baseIntf     - Configuration.PLDMFirmwareDevice interface name
      *  @param[out] emComponents - id → {Name, Associations, Manufacturer}
      *  @param[out] idNameMap    - id → Name (for target filtering / fallback)
      */
-    static void unpackComponents(const pldm::utils::PropertyMap& props,
+    static void unpackComponents(const std::string& service,
+                                 const std::string& objPath,
+                                 const std::string& baseIntf,
                                  CreateComponentIdNameMap& emComponents,
                                  ComponentIdNameMap& idNameMap)
     {
-        // entity-manager exposes a nested object array's element count under a
-        // top-level property and each element's fields under indexed keys (the
-        // established EM nested-array encoding, mirroring sensor Thresholds).
-        // We tolerate either an explicit count or scan indexed keys until a gap.
+        // Probe contiguous child interfaces Components0, Components1, ... until
+        // one is absent (GetAll throws), mirroring how EM numbers them.
         for (size_t index = 0;; ++index)
         {
-            const std::string prefix = "Components" + std::to_string(index);
-            auto nameIt = props.find(prefix + "Name");
-            auto idIt = props.find(prefix + "ComponentIdentifier");
-            if (nameIt == props.end() || idIt == props.end())
+            const std::string compIntf =
+                baseIntf + ".Components" + std::to_string(index);
+
+            pldm::utils::PropertyMap cprops;
+            try
             {
-                // No more elements at this index.
-                if (index == 0)
-                {
-                    // Components may be absent entirely (FCM-REQ-16 fallback).
-                    return;
-                }
+                cprops = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    service.c_str(), objPath.c_str(), compIntf.c_str());
+            }
+            catch (const std::exception&)
+            {
+                // No Components<index> child interface — end of the array.
                 break;
+            }
+            if (cprops.empty())
+            {
+                break;
+            }
+
+            auto nameIt = cprops.find("Name");
+            auto idIt = cprops.find("ComponentIdentifier");
+            if (nameIt == cprops.end() || idIt == cprops.end())
+            {
+                continue;
             }
 
             std::string compName;
@@ -648,8 +672,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             }
 
             std::string manufacturer = "NVIDIA";
-            if (auto it = props.find(prefix + "Manufacturer");
-                it != props.end())
+            if (auto it = cprops.find("Manufacturer"); it != cprops.end())
             {
                 try
                 {
@@ -659,30 +682,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 {}
             }
 
-            Associations assocs;
-            for (size_t a = 0;; ++a)
-            {
-                const std::string aprefix =
-                    prefix + "Associations" + std::to_string(a);
-                auto fIt = props.find(aprefix + "Forward");
-                auto bIt = props.find(aprefix + "Backward");
-                auto pIt = props.find(aprefix + "AbsolutePath");
-                if (fIt == props.end() || bIt == props.end() ||
-                    pIt == props.end())
-                {
-                    break;
-                }
-                try
-                {
-                    assocs.emplace_back(std::get<std::string>(fIt->second),
-                                        std::get<std::string>(bIt->second),
-                                        std::get<std::string>(pIt->second));
-                }
-                catch (const std::exception&)
-                {}
-            }
-
-            emComponents[compId] = {compName, assocs, manufacturer};
+            emComponents[compId] = {compName, Associations{}, manufacturer};
             idNameMap[compId] = compName;
         }
     }
@@ -728,6 +728,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         constexpr auto pldmDeviceInventoryIntf =
             "xyz.openbmc_project.Configuration.PLDMDeviceInventory";
         constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
+        constexpr auto skuIntf =
+            "xyz.openbmc_project.Inventory.Decorator.SKU";
 
         pldm::utils::GetSubTreeResponse subtree;
         try
@@ -791,35 +793,194 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 continue;
             }
 
-            // Write the UUID to the EM-created chassis (CreateInventoryPath) and
-            // to the optional pre-existing inventory object (UpdateInventoryPath)
-            for (const auto& path : {createPath, updatePath})
+            // Extract EC-SKU / AP-SKU from the device's vendor-defined PLDM
+            // descriptors (origin/develop parity).
+            std::string ecsku;
+            std::string apsku;
+            if (auto descIt = descriptorMap.find(eid);
+                descIt != descriptorMap.end())
             {
-                if (path.empty())
-                {
-                    continue;
-                }
-                try
-                {
-                    pldm::utils::DBusMapping dbusMapping{path, uuidIntf, "UUID",
-                                                         "string"};
-                    pldm::utils::DBusHandler().setDbusProperty(
-                        dbusMapping, pldm::utils::PropertyValue{uuid});
-                    info(
-                        "writeDeviceInventoryUuid: wrote UUID for EID {EID} to {PATH}",
-                        "EID", eid, "PATH", path);
-                }
-                catch (const std::exception& e)
-                {
-                    error(
-                        "writeDeviceInventoryUuid: failed to set UUID at {PATH} for EID {EID}, error - {ERROR}",
-                        "PATH", path, "EID", eid, "ERROR", e);
-                }
+                std::tie(ecsku, apsku) = extractSkus(descIt->second);
+            }
+
+            // Write the identity onto the EM-owned objects, retrying when each
+            // object/interface appears (never depending on NSM to populate it):
+            //   - RoT chassis (CreateInventoryPath): Common.UUID + EC-SKU
+            //   - update target (UpdateInventoryPath): AP-SKU
+            // Mirrors origin/develop's updateSKUOnMatch "write-when-ready" now
+            // that entity-manager owns the objects.
+            if (!createPath.empty())
+            {
+                writeInventoryPropWhenReady(createPath, uuidIntf, "UUID", uuid);
+                writeInventoryPropWhenReady(createPath, skuIntf, "SKU", ecsku);
+            }
+            if (!updatePath.empty())
+            {
+                writeInventoryPropWhenReady(updatePath, skuIntf, "SKU", apsku);
             }
             // At most one PLDMDeviceInventory entry matches a target.
             break;
         }
     }
+
+    /** @brief A deferred identity write onto an inventory object. */
+    struct PendingInventoryWrite
+    {
+        std::string interface;
+        std::string property;
+        std::string value;
+    };
+
+    /** @brief Parse EC-SKU and AP-SKU from a device's PLDM descriptors
+     *         (vendor-defined "ECSKU"/"APSKU", 4 bytes each, formatted
+     *         0xAABBCCDD). Ported from origin/develop device_inventory.
+     *
+     *  @param[in] descriptors - the device's PLDM descriptors
+     *  @return {ecsku, apsku}; either may be empty if absent
+     */
+    static std::pair<std::string, std::string> extractSkus(
+        const Descriptors& descriptors)
+    {
+        std::string ecsku;
+        std::string apsku;
+        for (const auto& [descType, descValue] : descriptors)
+        {
+            if (descType != PLDM_FWUP_VENDOR_DEFINED)
+            {
+                continue;
+            }
+            const auto& [title, data] =
+                std::get<VendorDefinedDescriptorInfo>(descValue);
+            if (data.size() != 4)
+            {
+                continue;
+            }
+            if (title == "ECSKU")
+            {
+                ecsku = std::format("0x{:02X}{:02X}{:02X}{:02X}", data[0],
+                                    data[1], data[2], data[3]);
+            }
+            else if (title == "APSKU")
+            {
+                apsku = std::format("0x{:02X}{:02X}{:02X}{:02X}", data[0],
+                                    data[1], data[2], data[3]);
+            }
+        }
+        return {ecsku, apsku};
+    }
+
+    /** @brief Write a string property onto an entity-manager-owned inventory
+     *         object, retrying when the object/interface appears.
+     *
+     *  pldmd no longer owns these objects (EM creates the RoT chassis), so a
+     *  one-shot Set races EM/NSM object creation. Mirroring origin/develop's
+     *  updateSKUOnMatch, this tries the Set immediately (covers the already-
+     *  present case) and arms an InterfacesAdded watch on the path so the write
+     *  lands when the object appears with the interface — making pldmd the sole
+     *  authority for the value and never depending on NSM to populate it.
+     *
+     *  @param[in] objPath   - target inventory object path
+     *  @param[in] interface - interface hosting the property
+     *  @param[in] property  - property name
+     *  @param[in] value     - value to write (no-op if empty)
+     */
+    void writeInventoryPropWhenReady(const std::string& objPath,
+                                     const std::string& interface,
+                                     const std::string& property,
+                                     const std::string& value)
+    {
+        if (objPath.empty() || value.empty())
+        {
+            return;
+        }
+        // Record (or refresh) the pending write so onInventoryObjectAdded can
+        // (re)apply it; dedupe so repeated create/update calls don't accumulate.
+        auto& writes = pendingInventoryWrites[objPath];
+        bool updated = false;
+        for (auto& pending : writes)
+        {
+            if (pending.interface == interface && pending.property == property)
+            {
+                pending.value = value;
+                updated = true;
+                break;
+            }
+        }
+        if (!updated)
+        {
+            writes.push_back({interface, property, value});
+        }
+        trySetInventoryProp(objPath, interface, property, value);
+        if (!inventoryAddedMatches.contains(objPath))
+        {
+            inventoryAddedMatches.try_emplace(
+                objPath, pldm::utils::DBusHandler::getBus(),
+                sdbusplus::bus::match::rules::interfacesAdded() +
+                    sdbusplus::bus::match::rules::argNpath(0, objPath),
+                std::bind_front(&Manager::onInventoryObjectAdded, this));
+        }
+    }
+
+    /** @brief Best-effort synchronous Set; failure before the object exists is
+     *         expected and retried by onInventoryObjectAdded. */
+    void trySetInventoryProp(const std::string& objPath,
+                             const std::string& interface,
+                             const std::string& property,
+                             const std::string& value)
+    {
+        try
+        {
+            pldm::utils::DBusMapping dbusMapping{objPath, interface, property,
+                                                 "string"};
+            pldm::utils::DBusHandler().setDbusProperty(
+                dbusMapping, pldm::utils::PropertyValue{value});
+            info("Wrote {PROP} onto inventory object {PATH}", "PROP", property,
+                 "PATH", objPath);
+        }
+        catch (const std::exception& e)
+        {
+            debug("Deferring {PROP} on {PATH} until ready: {ERROR}", "PROP",
+                  property, "PATH", objPath, "ERROR", e);
+        }
+    }
+
+    /** @brief InterfacesAdded handler: (re)apply pending writes for the path
+     *         whose interface is now present. Ported from updateSKUOnMatch. */
+    void onInventoryObjectAdded(sdbusplus::message_t& msg)
+    {
+        sdbusplus::message::object_path objPath;
+        dbus::InterfaceMap interfaces;
+        try
+        {
+            msg.read(objPath, interfaces);
+        }
+        catch (const std::exception&)
+        {
+            return;
+        }
+        auto it = pendingInventoryWrites.find(objPath.str);
+        if (it == pendingInventoryWrites.end())
+        {
+            return;
+        }
+        for (const auto& write : it->second)
+        {
+            if (interfaces.contains(write.interface))
+            {
+                trySetInventoryProp(objPath.str, write.interface,
+                                    write.property, write.value);
+            }
+        }
+    }
+
+    /** @brief Pending identity writes per inventory object path, applied when
+     *         the object appears. */
+    std::unordered_map<std::string, std::vector<PendingInventoryWrite>>
+        pendingInventoryWrites;
+
+    /** @brief InterfacesAdded watches per inventory object path. */
+    std::unordered_map<std::string, sdbusplus::bus::match_t>
+        inventoryAddedMatches;
 };
 
 } // namespace fw_update
