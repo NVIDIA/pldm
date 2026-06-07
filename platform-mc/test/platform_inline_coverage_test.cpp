@@ -501,6 +501,76 @@ TEST_F(PlatformInlineCoverageTest, PlatformManagerPrivateBranchCoverage)
     EXPECT_EQ(std::get<0>(*mappedErrRc), PLDM_ERROR);
 }
 
+TEST_F(PlatformInlineCoverageTest, FetchSinglePdrAndInitTerminusByTid)
+{
+    // initTerminus(tid) for a tid with no registered terminus -> error.
+    auto missingRc = stdexec::sync_wait(platformManager.initTerminus(0x99));
+    ASSERT_TRUE(missingRc.has_value());
+    EXPECT_EQ(std::get<0>(*missingRc), PLDM_ERROR);
+
+    const pldm::tid_t tid = 0x60;
+    std::string uuid("00000000-0000-0000-0000-000000000060");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    terminus->initalized = true; // re-init skips getPDRs
+    terminus->maxBufferSize = 160;
+    termini[tid] = terminus;
+    const pldm::MctpInfo terminusInfo(0x60, uuid, "smbus", 1, std::nullopt,
+                                      "mctp-over-smbus", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(terminusInfo, tid), tid);
+
+    // fetchSinglePdr: single-part transfer (START_AND_END) returns the record.
+    const std::vector<uint8_t> pdrChunk{0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+                                        0x0F, 0x10, 0x11, 0x12, 0x13};
+    auto singleResp =
+        makeGetPdrResp(0, PLDM_SUCCESS, 0, 0, PLDM_START_AND_END, pdrChunk);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(singleResp));
+    std::vector<uint8_t> pdrOut;
+    auto singleRc =
+        stdexec::sync_wait(platformManager.fetchSinglePdr(tid, 1, pdrOut));
+    ASSERT_TRUE(singleRc.has_value());
+    EXPECT_EQ(std::get<0>(*singleRc), PLDM_SUCCESS);
+    EXPECT_EQ(pdrOut, pdrChunk);
+
+    // fetchSinglePdr: multi-part transfer (START then END) concatenates parts.
+    const std::vector<uint8_t> part1{0x1, 0x2, 0x3, 0x4, 0x5,
+                                     0x6, 0x7, 0x8, 0x9, 0xA};
+    const std::vector<uint8_t> part2{0xBB, 0xCC, 0xDD};
+    auto startResp = makeGetPdrResp(0, PLDM_SUCCESS, 0, 5, PLDM_START, part1);
+    auto endResp = makeGetPdrResp(0, PLDM_SUCCESS, 0, 0, PLDM_END, part2);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(startResp));
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(endResp));
+    std::vector<uint8_t> multiOut;
+    auto multiRc =
+        stdexec::sync_wait(platformManager.fetchSinglePdr(tid, 2, multiOut));
+    ASSERT_TRUE(multiRc.has_value());
+    EXPECT_EQ(std::get<0>(*multiRc), PLDM_SUCCESS);
+    std::vector<uint8_t> expected = part1;
+    expected.insert(expected.end(), part2.begin(), part2.end());
+    EXPECT_EQ(multiOut, expected);
+
+    // fetchSinglePdr: a getPDR failure (no queued response) propagates the
+    // error and leaves the output empty.
+    std::vector<uint8_t> errOut{0xFF};
+    auto errRc =
+        stdexec::sync_wait(platformManager.fetchSinglePdr(tid, 3, errOut));
+    ASSERT_TRUE(errRc.has_value());
+    EXPECT_NE(std::get<0>(*errRc), PLDM_SUCCESS);
+    EXPECT_TRUE(errOut.empty());
+
+    // initTerminus(tid) for a registered terminus drives the single-tid re-init
+    // path (already initialized, so getPDRs is skipped).
+    auto bufferResp = makeEventMessageBufferSizeResp(0, PLDM_SUCCESS, 80);
+    auto supportedResp =
+        makeEventMessageSupportedResp(0, PLDM_SUCCESS, 0, {PLDM_SENSOR_EVENT});
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(bufferResp));
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(supportedResp));
+    auto reinitRc = stdexec::sync_wait(platformManager.initTerminus(tid));
+    ASSERT_TRUE(reinitRc.has_value());
+    EXPECT_EQ(std::get<0>(*reinitRc), PLDM_SUCCESS);
+    EXPECT_EQ(terminus->maxBufferSize, 80);
+}
+
 TEST_F(PlatformInlineCoverageTest, ServiceReadyInterfaceCoverageInFreshTu)
 {
     constexpr auto objectPath =

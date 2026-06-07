@@ -29,49 +29,72 @@ exec::task<int> PlatformManager::initTerminus()
 {
     for (auto& [tid, terminus] : termini)
     {
-        if (terminus->doesSupport(PLDM_PLATFORM))
+        co_await initTerminusImpl(tid, terminus);
+    }
+    co_return PLDM_SUCCESS;
+}
+
+exec::task<int> PlatformManager::initTerminus(tid_t tid)
+{
+    // Re-initialize a single terminus. Used by the PDRRepositoryChgEvent
+    // full-rebuild path so a rediscovery for one terminus does NOT re-create
+    // objects for other termini that a concurrent rebuild left
+    // initalized=false (which races on D-Bus object creation → FileExists).
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::error("initTerminus: terminus tid={TID} not found for re-init",
+                   "TID", tid);
+        co_return PLDM_ERROR;
+    }
+    co_return co_await initTerminusImpl(tid, it->second);
+}
+
+exec::task<int> PlatformManager::initTerminusImpl(
+    tid_t tid, std::shared_ptr<Terminus> terminus)
+{
+    if (terminus->doesSupport(PLDM_PLATFORM))
+    {
+        uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
+        auto rc = co_await eventMessageBufferSize(tid, terminus->maxBufferSize,
+                                                  terminusMaxBufferSize);
+        if (!rc)
         {
-            uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
-            auto rc = co_await eventMessageBufferSize(
-                tid, terminus->maxBufferSize, terminusMaxBufferSize);
+            terminus->maxBufferSize =
+                std::min(terminus->maxBufferSize, terminusMaxBufferSize);
+        }
+
+        uint8_t synchronyConfiguration = 0;
+        uint8_t numberEventClassReturned = 0;
+        std::vector<uint8_t> eventClass{};
+        rc = co_await eventMessageSupported(
+            tid, 1, synchronyConfiguration,
+            terminus->synchronyConfigurationSupported, numberEventClassReturned,
+            eventClass);
+        if (rc)
+        {
+            lg2::error("tid={TID} eventMessageSupported failed rc={RC}, "
+                       "setEventReceiver will be skipped.",
+                       "TID", tid, "RC", rc);
+            terminus->synchronyConfigurationSupported.byte = 0;
+        }
+
+        if (!terminus->initalized)
+        {
+            rc = co_await getPDRs(terminus);
             if (!rc)
             {
-                terminus->maxBufferSize =
-                    std::min(terminus->maxBufferSize, terminusMaxBufferSize);
+                terminus->parsePDRs();
+                // look for Platform Configuration PDIs like SensorAuxName
+                // etc.
+                co_await terminus->scanInventories();
+                // update Sensor Objects with information from Platform
+                // Configuration PDIs
+                co_await terminus->updateAssociations();
+                terminus->initalized = true;
             }
-
-            uint8_t synchronyConfiguration = 0;
-            uint8_t numberEventClassReturned = 0;
-            std::vector<uint8_t> eventClass{};
-            rc = co_await eventMessageSupported(
-                tid, 1, synchronyConfiguration,
-                terminus->synchronyConfigurationSupported,
-                numberEventClassReturned, eventClass);
-            if (rc)
-            {
-                lg2::error("tid={TID} eventMessageSupported failed rc={RC}, "
-                           "setEventReceiver will be skipped.",
-                           "TID", tid, "RC", rc);
-                terminus->synchronyConfigurationSupported.byte = 0;
-            }
-
-            if (!terminus->initalized)
-            {
-                rc = co_await getPDRs(terminus);
-                if (!rc)
-                {
-                    terminus->parsePDRs();
-                    // look for Platform Configuration PDIs like SensorAuxName
-                    // etc.
-                    co_await terminus->scanInventories();
-                    // update Sensor Objects with information from Platform
-                    // Configuration PDIs
-                    co_await terminus->updateAssociations();
-                    terminus->initalized = true;
-                }
-            }
-            co_await initEventReceiver(tid);
         }
+        co_await initEventReceiver(tid);
     }
     co_return PLDM_SUCCESS;
 }
@@ -258,6 +281,57 @@ exec::task<int> PlatformManager::getPDR(
         co_return rc;
     }
     co_return completionCode;
+}
+
+exec::task<int> PlatformManager::fetchSinglePdr(
+    tid_t tid, uint32_t recordHandle, std::vector<uint8_t>& pdrOut)
+{
+    pdrOut.clear();
+
+    uint32_t nextRecordHndl = 0;
+    uint32_t nextDataTransferHndl = 0;
+    uint8_t transferFlag = 0;
+    uint16_t responseCnt = 0;
+    constexpr uint16_t recvBufSize = 1024;
+    std::vector<uint8_t> recvBuf(recvBufSize);
+    uint8_t transferCrc = 0;
+
+    auto rc =
+        co_await getPDR(tid, recordHandle, 0, PLDM_GET_FIRSTPART, recvBufSize,
+                        0, nextRecordHndl, nextDataTransferHndl, transferFlag,
+                        responseCnt, recvBuf, transferCrc);
+    if (rc)
+    {
+        co_return rc;
+    }
+
+    pdrOut.insert(pdrOut.end(), recvBuf.begin(), recvBuf.begin() + responseCnt);
+
+    // Multi-part transfer: pull the remaining parts of this single record.
+    if (transferFlag != PLDM_START_AND_END && transferFlag != PLDM_END)
+    {
+        auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(recvBuf.data());
+        uint16_t recordChgNum = le16toh(pdrHdr->record_change_num);
+        while (nextDataTransferHndl != 0)
+        {
+            rc = co_await getPDR(
+                tid, recordHandle, nextDataTransferHndl, PLDM_GET_NEXTPART,
+                recvBufSize, recordChgNum, nextRecordHndl, nextDataTransferHndl,
+                transferFlag, responseCnt, recvBuf, transferCrc);
+            if (rc)
+            {
+                co_return rc;
+            }
+            pdrOut.insert(pdrOut.end(), recvBuf.begin(),
+                          recvBuf.begin() + responseCnt);
+            if (transferFlag == PLDM_END)
+            {
+                break;
+            }
+        }
+    }
+
+    co_return PLDM_SUCCESS;
 }
 
 exec::task<int> PlatformManager::getPDRRepositoryInfo(

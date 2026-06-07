@@ -7851,6 +7851,407 @@ TEST_F(TerminusTest, sensorHeaderInlineCoverageFromTerminusTu)
 }
 #endif
 
+TEST_F(TerminusTest, addNewPdrsAddsOnlyNewObjects)
+{
+    // A terminus that already has one state sensor parsed from its initial PDR
+    // repository, modelling discovery completed at host power-on.
+    std::string uuid("00000000-0000-0000-0000-000000000401");
+    Terminus terminus(0x41, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("AddNewPdrsTerminus");
+
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x401));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x401, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.stateSensors.size());
+    size_t pdrsBefore = terminus.pdrs.size();
+    size_t stateSensorPdrsBefore = terminus.stateSensorPdrs.size();
+
+    // A pldmPDRRepositoryChgEvent reports a late-appearing sensor (e.g. a DRAM
+    // temp sensor after MB2). addNewPdrs must create only the new object and
+    // leave the pre-existing one untouched.
+    std::vector<std::vector<uint8_t>> newPdrs{
+        makeSensorAuxNamePdr(0x402),
+        makeStateSensorPdr(0x402, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    terminus.addNewPdrs(newPdrs);
+
+    EXPECT_EQ(2u, terminus.stateSensors.size());
+    EXPECT_EQ(stateSensorPdrsBefore + 1u, terminus.stateSensorPdrs.size());
+    EXPECT_EQ(pdrsBefore + newPdrs.size(), terminus.pdrs.size());
+}
+
+TEST_F(TerminusTest, addNewPdrsRetainsUnrecognizedRawPdr)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000403");
+    Terminus terminus(0x43, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("AddNewPdrsUnknownTerminus");
+
+    // A PDR whose type is not one platform-mc creates objects for. The raw PDR
+    // must still be retained in the repository, but no sensor/effecter object
+    // is created and parseOnePdrIntoCache reports it as unrecognized.
+    std::vector<uint8_t> unknownPdr{
+        0x0,  0x0, 0x0, 0x5, // record handle = 5
+        0x1,                 // PDRHeaderVersion
+        0xFE,                // PDRType (not handled)
+        0x0,  0x0,           // recordChangeNumber
+        0x2,  0x0,           // dataLength
+        0xAA, 0xBB};         // opaque body
+    EXPECT_FALSE(terminus.parseOnePdrIntoCache(unknownPdr));
+
+    std::vector<std::vector<uint8_t>> newPdrs{unknownPdr};
+    terminus.addNewPdrs(newPdrs);
+
+    EXPECT_EQ(1u, terminus.pdrs.size());
+    EXPECT_TRUE(terminus.stateSensors.empty());
+    EXPECT_TRUE(terminus.numericSensors.empty());
+    EXPECT_TRUE(terminus.numericEffecters.empty());
+    EXPECT_TRUE(terminus.stateEffecters.empty());
+}
+
+static std::vector<uint8_t> makeNumericSensorPdrBytes(uint16_t sensorId)
+{
+    return {
+        0x1,
+        0x0,
+        0x0,
+        0x0, // record handle
+        0x1, // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,
+        0x0,
+        0x0, // recordChangeNumber
+        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
+        0, // dataLength
+        0,
+        0, // PLDMTerminusHandle
+        static_cast<uint8_t>(sensorId & 0xFF),
+        static_cast<uint8_t>((sensorId >> 8) & 0xFF),
+        PLDM_ENTITY_POWER_SUPPLY,
+        0,   // entityType
+        1,
+        0,   // entityInstanceNumber
+        0x1,
+        0x0, // containerID
+        PLDM_NO_INIT,
+        false,
+        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUint
+        1,                          // unitModifier
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        true,
+        PLDM_RANGE_FIELD_FORMAT_SINT8,
+        0,
+        0,
+        0xc0,
+        0x3f, // resolution=1.5
+        0,
+        0,
+        0x80,
+        0x3f, // offset=1.0
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0x80,
+        0x3f,
+        0,
+        0,
+        0x80,
+        0x3f,
+        255,
+        0,
+        PLDM_RANGE_FIELD_FORMAT_UINT8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    };
+}
+
+TEST_F(TerminusTest, pdrTypeConsumedClassifiesTypes)
+{
+    // Types parseOnePdrIntoCache() turns into a cache entry / D-Bus object.
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_SENSOR_AUXILIARY_NAMES_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_NUMERIC_SENSOR_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_NUMERIC_EFFECTER_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_STATE_SENSOR_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_PDR_ENTITY_ASSOCIATION));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_STATE_EFFECTER_PDR));
+    EXPECT_TRUE(Terminus::pdrTypeConsumed(PLDM_OEM_PDR));
+    // Types platform-mc does not consume: no derived object.
+    EXPECT_FALSE(Terminus::pdrTypeConsumed(PLDM_OEM_DEVICE_PDR));
+    EXPECT_FALSE(Terminus::pdrTypeConsumed(0xFE));
+}
+
+TEST_F(TerminusTest, oemPdrSubTypeReportsSubType)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000510");
+    Terminus terminus(0x50, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    // OEM energy-count PDR: sub-type byte == 3.
+    EXPECT_EQ(3, terminus.oemPdrSubType(makeNvidiaEnergyCountOemPdr(0x500)));
+    // Generic OEM PDR: returns its raw sub-type byte (0xCC from makeOemPdr).
+    EXPECT_EQ(0xCC, terminus.oemPdrSubType(makeOemPdr()));
+    // OEM PDR with no vendor data -> cannot classify.
+    EXPECT_EQ(-1, terminus.oemPdrSubType(makeZeroLengthOemPdr()));
+    // Non-OEM PDR -> -1.
+    EXPECT_EQ(-1, terminus.oemPdrSubType(
+                      makeStateSensorPdr(0x501, PLDM_ENTITY_SYS_BOARD,
+                                         PLDM_STATESET_ID_HEALTHSTATE, true)));
+    // Too short to hold a PDR header -> -1.
+    std::vector<uint8_t> tiny{0x1, 0x2};
+    EXPECT_EQ(-1, terminus.oemPdrSubType(tiny));
+}
+
+TEST_F(TerminusTest, isPdrAlreadyAppliedDetectsExistingObjects)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000520");
+    Terminus terminus(0x52, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("IsPdrAppliedTerminus");
+
+    // Seed the terminus with one of each object-owning kind.
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x600));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x600, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    terminus.pdrs.emplace_back(makeNumericSensorPdrBytes(0x601));
+    terminus.pdrs.emplace_back(makeNvidiaEnergyCountOemPdr(0x602));
+    terminus.pdrs.emplace_back(
+        makeAuxNamePdr(0x603, PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    terminus.pdrs.emplace_back(makeNumericEffecterPdr(0x603, true));
+    terminus.pdrs.emplace_back(
+        makeAuxNamePdr(0x604, PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    terminus.pdrs.emplace_back(makeStateEffecterPdr(
+        0x604, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    ASSERT_EQ(1u, terminus.stateEffecters.size());
+
+    // Present objects are detected, keyed by id (found path of each case).
+    EXPECT_TRUE(terminus.isPdrAlreadyApplied(makeStateSensorPdr(
+        0x600, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true)));
+    EXPECT_TRUE(terminus.isPdrAlreadyApplied(makeSensorAuxNamePdr(0x600)));
+    EXPECT_TRUE(terminus.isPdrAlreadyApplied(makeNumericSensorPdrBytes(0x601)));
+    EXPECT_TRUE(
+        terminus.isPdrAlreadyApplied(makeNvidiaEnergyCountOemPdr(0x602)));
+    EXPECT_TRUE(
+        terminus.isPdrAlreadyApplied(makeNumericEffecterPdr(0x603, true)));
+    EXPECT_TRUE(terminus.isPdrAlreadyApplied(
+        makeAuxNamePdr(0x603, PLDM_EFFECTER_AUXILIARY_NAMES_PDR)));
+    EXPECT_TRUE(terminus.isPdrAlreadyApplied(makeStateEffecterPdr(
+        0x604, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE)));
+
+    // Absent ids / every consumed type's not-found path.
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(makeStateSensorPdr(
+        0x6FF, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true)));
+    EXPECT_FALSE(
+        terminus.isPdrAlreadyApplied(makeNumericSensorPdrBytes(0x6FE)));
+    EXPECT_FALSE(
+        terminus.isPdrAlreadyApplied(makeNumericEffecterPdr(0x6FD, true)));
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(makeStateEffecterPdr(
+        0x6FC, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE)));
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(makeSensorAuxNamePdr(0x6FA)));
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(
+        makeAuxNamePdr(0x6FB, PLDM_EFFECTER_AUXILIARY_NAMES_PDR)));
+
+    // Non-energy OEM PDR and a zero-length OEM PDR are not 1:1 objects.
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(makeOemPdr()));
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(makeZeroLengthOemPdr()));
+
+    // A type platform-mc does not consume, and a too-short buffer.
+    std::vector<uint8_t> devicePdr{0x0, 0x0, 0x0, 0x1, 0x1, PLDM_OEM_DEVICE_PDR,
+                                   0x0, 0x0, 0x0, 0x0};
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(devicePdr));
+    std::vector<uint8_t> tiny{0x1, 0x2};
+    EXPECT_FALSE(terminus.isPdrAlreadyApplied(tiny));
+}
+
+TEST_F(TerminusTest, addNewPdrsSkipsAlreadyPresent)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000530");
+    Terminus terminus(0x53, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("AddNewPdrsSkipTerminus");
+
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x701));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x701, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.stateSensors.size());
+    size_t pdrsBefore = terminus.pdrs.size();
+
+    // A terminus re-reports its existing sensor as ADDED across a power-cycle.
+    // Every PDR is already present, so nothing is applied and no duplicate
+    // object/raw PDR is created.
+    std::vector<std::vector<uint8_t>> reAdded{
+        makeSensorAuxNamePdr(0x701),
+        makeStateSensorPdr(0x701, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    EXPECT_EQ(0u, terminus.addNewPdrs(reAdded));
+    EXPECT_EQ(1u, terminus.stateSensors.size());
+    EXPECT_EQ(pdrsBefore, terminus.pdrs.size());
+
+    // A genuinely new sensor in the same batch is still applied.
+    std::vector<std::vector<uint8_t>> mixed{
+        makeSensorAuxNamePdr(0x701), // already present -> skipped
+        makeSensorAuxNamePdr(0x702),
+        makeStateSensorPdr(0x702, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    EXPECT_EQ(2u, terminus.addNewPdrs(mixed));
+    EXPECT_EQ(2u, terminus.stateSensors.size());
+}
+
+TEST_F(TerminusTest, canReplacePdrIncrementallyClassifiesTypes)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000540");
+    Terminus terminus(0x54, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    // PDR types that own exactly one derived object can be replaced in place.
+    EXPECT_TRUE(
+        terminus.canReplacePdrIncrementally(makeNumericSensorPdrBytes(0x800)));
+    EXPECT_TRUE(terminus.canReplacePdrIncrementally(makeStateSensorPdr(
+        0x800, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true)));
+    EXPECT_TRUE(terminus.canReplacePdrIncrementally(
+        makeNumericEffecterPdr(0x800, true)));
+    EXPECT_TRUE(terminus.canReplacePdrIncrementally(makeStateEffecterPdr(
+        0x800, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE)));
+    // Only the OEM energy-count sub-type maps 1:1 to a sensor object.
+    EXPECT_TRUE(terminus.canReplacePdrIncrementally(
+        makeNvidiaEnergyCountOemPdr(0x800)));
+
+    // A generic OEM PDR (non energy-count sub-type) does not map 1:1.
+    EXPECT_FALSE(terminus.canReplacePdrIncrementally(makeOemPdr()));
+    // An OEM PDR too short to hold the sub-type byte.
+    EXPECT_FALSE(terminus.canReplacePdrIncrementally(makeZeroLengthOemPdr()));
+    // A type with no 1:1 object mapping (aux names) falls through to default.
+    EXPECT_FALSE(
+        terminus.canReplacePdrIncrementally(makeSensorAuxNamePdr(0x800)));
+    // Too short to hold a PDR header.
+    std::vector<uint8_t> tiny{0x1, 0x2};
+    EXPECT_FALSE(terminus.canReplacePdrIncrementally(tiny));
+}
+
+TEST_F(TerminusTest, removeModifiedPdrObjectsRemovesEachObjectKind)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000550");
+    Terminus terminus(0x55, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RemoveModifiedTerminus");
+
+    // Seed one of each object-owning kind, mirroring a discovered repository.
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x600));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x600, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    terminus.pdrs.emplace_back(makeNumericSensorPdrBytes(0x601));
+    terminus.pdrs.emplace_back(makeNvidiaEnergyCountOemPdr(0x602));
+    terminus.pdrs.emplace_back(
+        makeAuxNamePdr(0x603, PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    terminus.pdrs.emplace_back(makeNumericEffecterPdr(0x603, true));
+    terminus.pdrs.emplace_back(
+        makeAuxNamePdr(0x604, PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    terminus.pdrs.emplace_back(makeStateEffecterPdr(
+        0x604, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE));
+    ASSERT_TRUE(terminus.parsePDRs());
+    // numericSensors holds both the numeric sensor and the OEM energy sensor.
+    ASSERT_EQ(2u, terminus.numericSensors.size());
+    ASSERT_EQ(1u, terminus.stateSensors.size());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    ASSERT_EQ(1u, terminus.stateEffecters.size());
+
+    // A short raw PDR already in the repository exercises the header-size guard
+    // in the record-handle erase pass without being parsed.
+    terminus.pdrs.emplace_back(std::vector<uint8_t>{0x1, 0x2});
+
+    std::vector<std::vector<uint8_t>> modified{
+        // Too short to hold a PDR header -> skipped.
+        std::vector<uint8_t>{0x1, 0x2},
+        // Each 1:1 object-owning kind -> object and cache entry removed.
+        makeStateSensorPdr(0x600, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true),
+        makeNumericSensorPdrBytes(0x601), makeNvidiaEnergyCountOemPdr(0x602),
+        makeNumericEffecterPdr(0x603, true),
+        makeStateEffecterPdr(0x604, PLDM_ENTITY_SYS_BOARD,
+                             PLDM_STATESET_ID_HEALTHSTATE),
+        // Non energy-count OEM PDR and a zero-length OEM PDR: no 1:1 object.
+        makeOemPdr(), makeZeroLengthOemPdr(),
+        // A type with no 1:1 object mapping routes to full rebuild elsewhere.
+        makeSensorAuxNamePdr(0x600)};
+    terminus.removeModifiedPdrObjects(modified);
+
+    EXPECT_TRUE(terminus.numericSensors.empty());
+    EXPECT_TRUE(terminus.stateSensors.empty());
+    EXPECT_TRUE(terminus.numericEffecters.empty());
+    EXPECT_TRUE(terminus.stateEffecters.empty());
+    EXPECT_TRUE(terminus.numericSensorPdrs.empty());
+    EXPECT_TRUE(terminus.stateSensorPdrs.empty());
+    EXPECT_TRUE(terminus.numericEffecterPdrs.empty());
+    EXPECT_TRUE(terminus.stateEffecterPdrs.empty());
+    EXPECT_TRUE(terminus.oemEnergyCountNumericSensorPdrs.empty());
+}
+
+TEST_F(TerminusTest, clearParsedPdrCachesEmptiesTypedCaches)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000560");
+    Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("ClearCachesTerminus");
+
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x900));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x900, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    terminus.pdrs.emplace_back(makeNumericSensorPdrBytes(0x901));
+    terminus.pdrs.emplace_back(makeNvidiaEnergyCountOemPdr(0x902));
+    terminus.pdrs.emplace_back(makeOemPdr());
+    terminus.pdrs.emplace_back(makeEntityAssociationPdr());
+    terminus.pdrs.emplace_back(
+        makeAuxNamePdr(0x903, PLDM_EFFECTER_AUXILIARY_NAMES_PDR));
+    terminus.pdrs.emplace_back(makeStateEffecterPdr(
+        0x903, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_FALSE(terminus.numericSensorPdrs.empty());
+    ASSERT_FALSE(terminus.stateSensorPdrs.empty());
+    ASSERT_FALSE(terminus.sensorAuxiliaryNamesTbl.empty());
+    ASSERT_FALSE(terminus.effecterAuxiliaryNamesTbl.empty());
+    ASSERT_FALSE(terminus.stateEffecterPdrs.empty());
+    ASSERT_FALSE(terminus.oemPdrs.empty());
+    ASSERT_FALSE(terminus.oemEnergyCountNumericSensorPdrs.empty());
+
+    terminus.clearParsedPdrCaches();
+
+    EXPECT_TRUE(terminus.numericSensorPdrs.empty());
+    EXPECT_TRUE(terminus.stateSensorPdrs.empty());
+    EXPECT_TRUE(terminus.numericEffecterPdrs.empty());
+    EXPECT_TRUE(terminus.stateEffecterPdrs.empty());
+    EXPECT_TRUE(terminus.sensorAuxiliaryNamesTbl.empty());
+    EXPECT_TRUE(terminus.effecterAuxiliaryNamesTbl.empty());
+    EXPECT_TRUE(terminus.oemPdrs.empty());
+    EXPECT_TRUE(terminus.entities.empty());
+    EXPECT_TRUE(terminus.oemEnergyCountNumericSensorPdrs.empty());
+}
+
 // Currently due to async nature of polling this can't be tested.
 // TODO: Test this in a different way.
 

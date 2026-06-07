@@ -168,6 +168,36 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     /**
+     * @brief Handles a pushed PLDM PDRRepositoryChgEvent (DSP0248 Table 24,
+     *        event class 0x04).
+     *
+     * SatMC pushes this event (like the 0xF3 inventory event) when its PDR
+     * repository changes incrementally — e.g. DRAM temp sensors appearing after
+     * the CPU MB2 component comes up. Routes it into the platform-mc
+     * EventManager so the PDR repository and derived D-Bus sensor/inventory
+     * objects are reconciled. Without this registration the event would fall to
+     * the classic libpldmresponder host-PDR handler and platform-mc would never
+     * react.
+     */
+    int handlePdrRepositoryChgEvent(
+        const pldm_msg* request, size_t payloadLength,
+        uint8_t /* formatVersion */, uint8_t tid, size_t eventDataOffset,
+        uint8_t& platformEventStatus)
+    {
+        if (eventDataOffset > payloadLength)
+        {
+            return PLDM_ERROR_INVALID_LENGTH;
+        }
+        auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
+                         eventDataOffset;
+        auto eventDataSize = payloadLength - eventDataOffset;
+        eventManager.handlePlatformEvent(tid, PLDM_PDR_REPOSITORY_CHG_EVENT,
+                                         eventData, eventDataSize,
+                                         platformEventStatus);
+        return PLDM_SUCCESS;
+    }
+
+    /**
      * @brief Handles the Active Firmware Version Change Event.
      *
      * @param request Pointer to the PLDM message.

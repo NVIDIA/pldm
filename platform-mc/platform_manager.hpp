@@ -55,13 +55,48 @@ class PlatformManager
      */
     exec::task<int> initTerminus();
 
+    /** @brief Re-initialize a single terminus (by tid).
+     *
+     *  Scoped variant of initTerminus() used by the PDRRepositoryChgEvent
+     *  full-rebuild path so a rediscovery touches only the target terminus and
+     *  cannot re-create objects for other termini.
+     *
+     *  @param[in] tid - Terminus ID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> initTerminus(tid_t tid);
+
     /** @brief Initialize terminus Event Receiver setting
      *  @param[in] tid - Terminus ID
      *  @return coroutine return_value - PLDM completion code
      */
     exec::task<int> initEventReceiver(tid_t tid);
 
+    /** @brief Fetch a single PDR by record handle into pdrOut.
+     *
+     *  Unlike getPDRs(), this does NOT clear the terminus PDR repository — it
+     *  is used to incrementally pull PDRs that a PDRRepositoryChgEvent reported
+     *  as added/modified. Handles multi-part (PLDM_GET_NEXTPART) transfers.
+     *
+     *  @param[in]  tid - Terminus ID
+     *  @param[in]  recordHandle - PDR record handle to fetch
+     *  @param[out] pdrOut - assembled raw PDR bytes (cleared then filled)
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> fetchSinglePdr(tid_t tid, uint32_t recordHandle,
+                                   std::vector<uint8_t>& pdrOut);
+
   private:
+    /** @brief Initialize a single terminus object (shared body of the two
+     *         public initTerminus() entry points).
+     *
+     *  @param[in] tid - Terminus ID
+     *  @param[in] terminus - The terminus to initialize
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> initTerminusImpl(tid_t tid,
+                                     std::shared_ptr<Terminus> terminus);
+
     /** @brief Fetch all PDRs from terminus.
      *
      *  @param[in] terminus - The terminus object to store fetched PDRs

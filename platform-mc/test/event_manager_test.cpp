@@ -364,14 +364,17 @@ class EventManagerCoverage : public EventManager
   public:
     using EventManager::createSensorThresholdLogEntry;
     using EventManager::EventManager;
+    using EventManager::fetchPdrsByHandles;
     using EventManager::notifyCPERLogger;
     using EventManager::pollForPlatformEventMessage;
     using EventManager::pollForPlatformEventTask;
     using EventManager::processNumericSensorEvent;
+    using EventManager::processPdrRepositoryChgEvent;
     using EventManager::processStateSensorEvent;
     using EventManager::processTelemetryPauseEvent;
     using EventManager::processTelemetryRediscoveryEvent;
     using EventManager::processTelemetryResumeEvent;
+    using EventManager::quiesceSensorPolling;
 };
 
 class EventManagerTest : public testing::Test
@@ -1477,6 +1480,126 @@ TEST_F(EventManagerProtectedTest, protectedPathCoverage)
         EventManager baseEventManager(terminusManager, termini, fwUpdateManager,
                                       platformManager, sensorManager, false);
     }
+}
+
+TEST_F(EventManagerProtectedTest, handlePdrRepositoryChgEventDispatch)
+{
+    constexpr pldm::tid_t tid = 0x41;
+    uint8_t platformEventStatus = 0;
+
+    // 1. refreshAllRecords (eventDataFormat == REFRESH_ENTIRE_REPOSITORY).
+    //    Decode succeeds and a detached rebuild is spawned. With no terminus
+    //    registered for the tid the spawned coroutine returns inline without
+    //    suspending, so the synchronous handler returns PLDM_SUCCESS.
+    std::array<uint8_t, 2> refreshAll{
+        static_cast<uint8_t>(REFRESH_ENTIRE_REPOSITORY), 0x0};
+    EXPECT_EQ(PLDM_SUCCESS,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, refreshAll.data(),
+                  refreshAll.size(), platformEventStatus));
+
+    // 2. recordsAdded (FORMAT_IS_PDR_HANDLES, one change record, one handle).
+    //    Decode succeeds; the lightweight add path is spawned detached.
+    std::array<uint8_t, 8> addedRecord{
+        static_cast<uint8_t>(FORMAT_IS_PDR_HANDLES), // eventDataFormat
+        0x1,                                         // numberOfChangeRecords
+        static_cast<uint8_t>(PLDM_RECORDS_ADDED),    // eventDataOperation
+        0x1,                                         // numberOfChangeEntries
+        0x10,
+        0x00,
+        0x00,
+        0x00}; // pdrRecordHandle = 0x10
+    EXPECT_EQ(PLDM_SUCCESS,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, addedRecord.data(),
+                  addedRecord.size(), platformEventStatus));
+
+    // 3. Unsupported eventDataFormat (FORMAT_IS_PDR_TYPES) is rejected.
+    std::array<uint8_t, 2> typeFormat{static_cast<uint8_t>(FORMAT_IS_PDR_TYPES),
+                                      0x0};
+    EXPECT_EQ(PLDM_ERROR,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, typeFormat.data(),
+                  typeFormat.size(), platformEventStatus));
+
+    // 4. Malformed (too short to decode the event header) is rejected.
+    std::array<uint8_t, 1> tooShort{0x0};
+    EXPECT_EQ(PLDM_ERROR,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, tooShort.data(),
+                  tooShort.size(), platformEventStatus));
+}
+
+TEST_F(EventManagerPollingTest, processPdrRepositoryChgEventIncrementalPaths)
+{
+    constexpr pldm::tid_t tid = 0x62;
+    std::string uuid("00000000-0000-0000-0000-000000000062");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    terminus->setTerminusName("ProcessChgTerminus_62");
+    terminus->initalized = true; // avoid the full-rebuild rediscovery path
+    termini[tid] = terminus;
+
+    // recordsAdded change record carrying no handles: nothing to fetch, so the
+    // incremental path returns success without touching D-Bus.
+    std::vector<std::pair<uint8_t, std::vector<uint32_t>>> noHandles{
+        {PLDM_RECORDS_ADDED, {}}};
+    auto emptyRc = stdexec::sync_wait(
+        eventManager.processPdrRepositoryChgEvent(tid, false, noHandles));
+    ASSERT_TRUE(emptyRc.has_value());
+    EXPECT_EQ(std::get<0>(*emptyRc), PLDM_SUCCESS);
+
+    // recordsAdded with a handle whose fetch fails (no queued GetPDR response):
+    // no PDR is successfully fetched, so the rebuild reports an error before
+    // any object is created.
+    std::vector<std::pair<uint8_t, std::vector<uint32_t>>> addOne{
+        {PLDM_RECORDS_ADDED, {0x10}}};
+    auto fetchFailRc = stdexec::sync_wait(
+        eventManager.processPdrRepositoryChgEvent(tid, false, addOne));
+    ASSERT_TRUE(fetchFailRc.has_value());
+    EXPECT_EQ(std::get<0>(*fetchFailRc), PLDM_ERROR);
+
+    // An event for an unknown terminus is rejected.
+    auto missingRc = stdexec::sync_wait(
+        eventManager.processPdrRepositoryChgEvent(0xF0, false, addOne));
+    ASSERT_TRUE(missingRc.has_value());
+    EXPECT_EQ(std::get<0>(*missingRc), PLDM_ERROR);
+}
+
+TEST_F(EventManagerPollingTest, fetchPdrsByHandlesSkipsFailedFetches)
+{
+    constexpr pldm::tid_t tid = 0x63;
+    std::string uuid("00000000-0000-0000-0000-000000000063");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    // No handles -> empty result, no fetch attempted.
+    auto empty = stdexec::sync_wait(
+        eventManager.fetchPdrsByHandles(tid, std::vector<uint32_t>{}));
+    ASSERT_TRUE(empty.has_value());
+    EXPECT_TRUE(std::get<0>(*empty).empty());
+
+    // Handles whose GetPDR fetch fails (no queued responses) are skipped.
+    auto failed = stdexec::sync_wait(
+        eventManager.fetchPdrsByHandles(tid, std::vector<uint32_t>{0x1, 0x2}));
+    ASSERT_TRUE(failed.has_value());
+    EXPECT_TRUE(std::get<0>(*failed).empty());
+}
+
+TEST_F(EventManagerPollingTest, quiesceSensorPollingReleasesReferences)
+{
+    constexpr pldm::tid_t tid = 0x64;
+    std::string uuid("00000000-0000-0000-0000-000000000064");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    // With no sensors holding extra references, the drain loop exits on its
+    // first iteration and the coroutine completes.
+    auto rc =
+        stdexec::sync_wait(eventManager.quiesceSensorPolling(terminus, tid));
+    EXPECT_TRUE(rc.has_value());
 }
 
 TEST_F(EventManagerProtectedTest, handlePlatformEventAdditionalCoverage)

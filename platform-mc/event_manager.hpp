@@ -26,6 +26,8 @@
 #include "requester/handler.hpp"
 #include "terminus.hpp"
 
+#include <unordered_set>
+
 namespace pldm::fw_update
 {
 class Manager;
@@ -152,6 +154,43 @@ class EventManager
 
     exec::task<int> processTelemetryRediscoveryEvent(tid_t tid);
 
+    /** @brief Apply a decoded PLDM PDRRepositoryChgEvent (DSP0248 Table 24).
+     *
+     *  Spawned detached from handlePlatformEvent (which decodes synchronously
+     *  into owned data). refreshAll, or any modified/deleted record, or an
+     *  event arriving before initial discovery → full rebuild (reuses
+     *  processTelemetryRediscoveryEvent). Pure recordsAdded → lightweight: the
+     *  added PDRs are fetched by handle and only the new D-Bus objects created.
+     *
+     *  @param[in] tid - Terminus ID
+     *  @param[in] refreshAll - eventDataFormat was REFRESH_ENTIRE_REPOSITORY
+     *  @param[in] changeRecords - (eventDataOperation, [pdrRecordHandles]) list
+     */
+    exec::task<int> processPdrRepositoryChgEvent(
+        tid_t tid, bool refreshAll,
+        std::vector<std::pair<uint8_t, std::vector<uint32_t>>> changeRecords);
+
+    /** @brief Fetch a set of PDRs by record handle. A per-handle failure is
+     *         logged and skipped so one bad record does not drop the rest.
+     *
+     *  @param[in] tid - Terminus ID
+     *  @param[in] handles - PDR record handles to fetch
+     *  @return assembled raw PDR bytes for the handles that fetched OK
+     */
+    exec::task<std::vector<std::vector<uint8_t>>> fetchPdrsByHandles(
+        tid_t tid, const std::vector<uint32_t>& handles);
+
+    /** @brief Stop polling for a terminus and release the prioritySensors /
+     *         roundRobinSensors references, waiting until the polling coroutine
+     *         drops its references so a subsequent object teardown destroys the
+     *         objects (and unregisters their D-Bus interfaces) immediately.
+     *
+     *  @param[in] terminus - the terminus to quiesce
+     *  @param[in] tid - Terminus ID
+     */
+    exec::task<void> quiesceSensorPolling(std::shared_ptr<Terminus> terminus,
+                                          tid_t tid);
+
     void processTelemetryResumeEvent(tid_t tid);
 
     virtual void createSensorThresholdLogEntry(
@@ -172,6 +211,14 @@ class EventManager
 
     /** @brief Reference of sensorManager */
     SensorManager& sensorManager;
+
+    /** @brief TIDs with a PDRRepositoryChgEvent rebuild (full or incremental)
+     *         currently in flight. processPdrRepositoryChgEvent is spawned
+     *         detached, so a second event for the same terminus could race the
+     *         first on the shared termini map / D-Bus object lifecycle. An
+     *         entry here means a rebuild is running; a new event for that tid
+     *         is skipped until it clears. */
+    std::unordered_set<tid_t> rebuildInProgress{};
 
     /** @brief verbose tracing flag */
     bool verbose;

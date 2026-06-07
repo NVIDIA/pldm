@@ -526,83 +526,494 @@ bool Terminus::doesSupport(uint8_t type)
     return supportedTypes.test(type);
 }
 
+bool Terminus::isPdrAlreadyApplied(const std::vector<uint8_t>& pdr)
+{
+    if (pdr.size() < sizeof(pldm_pdr_hdr))
+    {
+        return false;
+    }
+    switch (reinterpret_cast<const pldm_pdr_hdr*>(pdr.data())->type)
+    {
+        case PLDM_NUMERIC_SENSOR_PDR:
+        {
+            auto parsed = parseNumericSensorPDR(pdr);
+            if (!parsed)
+            {
+                return false;
+            }
+            uint16_t id = parsed->sensor_id;
+            for (const auto& s : numericSensors)
+            {
+                if (s && s->sensorId == id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case PLDM_STATE_SENSOR_PDR:
+        {
+            std::vector<uint8_t> copy = pdr;
+            uint16_t id = std::get<0>(parseStateSensorPDR(copy));
+            for (const auto& s : stateSensors)
+            {
+                if (s && s->sensorId == id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case PLDM_NUMERIC_EFFECTER_PDR:
+        {
+            auto parsed = parseNumericEffecterPDR(pdr);
+            if (!parsed)
+            {
+                return false;
+            }
+            uint16_t id = parsed->effecter_id;
+            for (const auto& e : numericEffecters)
+            {
+                if (e && e->effecterId == id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case PLDM_STATE_EFFECTER_PDR:
+        {
+            std::vector<uint8_t> copy = pdr;
+            uint16_t id = std::get<0>(parseStateEffecterPDR(copy));
+            for (const auto& e : stateEffecters)
+            {
+                if (e && e->effecterId == id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case PLDM_SENSOR_AUXILIARY_NAMES_PDR:
+        {
+            auto aux = parseSensorAuxiliaryNamesPDR(pdr);
+            if (!aux)
+            {
+                return false;
+            }
+            for (const auto& a : sensorAuxiliaryNamesTbl)
+            {
+                if (a && std::get<0>(*a) == std::get<0>(*aux))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case PLDM_EFFECTER_AUXILIARY_NAMES_PDR:
+        {
+            auto aux = parseEffecterAuxiliaryNamesPDR(pdr);
+            if (!aux)
+            {
+                return false;
+            }
+            for (const auto& a : effecterAuxiliaryNamesTbl)
+            {
+                if (a && std::get<0>(*a) == std::get<0>(*aux))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+#ifdef OEM_NVIDIA
+        case PLDM_OEM_PDR:
+        {
+            // Only the energy-count sub-type owns a NumericSensor (in
+            // numericSensors); other OEM PDRs are let through.
+            auto parsedPdr = parseOemPDR(pdr);
+            const auto& oemData = std::get<2>(parsedPdr);
+            if (oemData.size() <= 2 ||
+                static_cast<nvidia::NvidiaOemPdrType>(oemData[2]) !=
+                    nvidia::NvidiaOemPdrType::
+                        NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+            {
+                return false;
+            }
+            auto parsed = nvidia::parseOEMEnergyCountNumericSensorPDR(oemData);
+            if (!parsed)
+            {
+                return false;
+            }
+            uint16_t id = parsed->sensor_id;
+            for (const auto& s : numericSensors)
+            {
+                if (s && s->sensorId == id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+#endif
+        default:
+            return false;
+    }
+}
+
+bool Terminus::pdrTypeConsumed(uint8_t type)
+{
+    // Keep in sync with parseOnePdrIntoCache().
+    switch (type)
+    {
+        case PLDM_SENSOR_AUXILIARY_NAMES_PDR:
+        case PLDM_EFFECTER_AUXILIARY_NAMES_PDR:
+        case PLDM_NUMERIC_SENSOR_PDR:
+        case PLDM_NUMERIC_EFFECTER_PDR:
+        case PLDM_STATE_SENSOR_PDR:
+        case PLDM_PDR_ENTITY_ASSOCIATION:
+        case PLDM_STATE_EFFECTER_PDR:
+        case PLDM_OEM_PDR:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool Terminus::parseOnePdrIntoCache(std::vector<uint8_t>& pdr)
+{
+    auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
+    if (pdrHdr->type == PLDM_SENSOR_AUXILIARY_NAMES_PDR)
+    {
+        auto sensorAuxiliaryNames = parseSensorAuxiliaryNamesPDR(pdr);
+        if (sensorAuxiliaryNames != nullptr)
+        {
+            sensorAuxiliaryNamesTbl.emplace_back(
+                std::move(sensorAuxiliaryNames));
+        }
+    }
+    else if (pdrHdr->type == PLDM_EFFECTER_AUXILIARY_NAMES_PDR)
+    {
+        auto effecterAuxiliaryNames = parseEffecterAuxiliaryNamesPDR(pdr);
+        if (effecterAuxiliaryNames != nullptr)
+        {
+            effecterAuxiliaryNamesTbl.emplace_back(
+                std::move(effecterAuxiliaryNames));
+        }
+    }
+    else if (pdrHdr->type == PLDM_NUMERIC_SENSOR_PDR)
+    {
+        auto parsedPdr = parseNumericSensorPDR(pdr);
+        if (parsedPdr != nullptr)
+        {
+            numericSensorPdrs.emplace_back(std::move(parsedPdr));
+        }
+    }
+    else if (pdrHdr->type == PLDM_NUMERIC_EFFECTER_PDR)
+    {
+        auto parsedPdr = parseNumericEffecterPDR(pdr);
+        if (parsedPdr != nullptr)
+        {
+            numericEffecterPdrs.emplace_back(std::move(parsedPdr));
+        }
+    }
+    else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
+    {
+        auto parsedPdr = parseStateSensorPDR(pdr);
+        stateSensorPdrs.emplace_back(std::move(parsedPdr));
+    }
+    else if (pdrHdr->type == PLDM_PDR_ENTITY_ASSOCIATION)
+    {
+        parseEntityAssociationPDR(pdr);
+    }
+    else if (pdrHdr->type == PLDM_STATE_EFFECTER_PDR)
+    {
+        auto parsedPdr = parseStateEffecterPDR(pdr);
+        stateEffecterPdrs.emplace_back(std::move(parsedPdr));
+    }
+    else if (pdrHdr->type == PLDM_OEM_PDR)
+    {
+        auto parsedPdr = parseOemPDR(pdr);
+#ifdef OEM_NVIDIA
+        if (static_cast<nvidia::NvidiaOemPdrType>(std::get<2>(parsedPdr)[2]) ==
+            nvidia::NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+        {
+            auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
+                std::get<2>(parsedPdr));
+            oemEnergyCountNumericSensorPdrs.emplace_back(
+                std::move(parsedOEMPdr));
+        }
+        else
+        {
+#endif
+            oemPdrs.emplace_back(std::move(parsedPdr));
+#ifdef OEM_NVIDIA
+        }
+#endif
+    }
+    else
+    {
+        return false;
+    }
+    return true;
+}
+
+size_t Terminus::addNewPdrs(const std::vector<std::vector<uint8_t>>& newPdrs)
+{
+    // Snapshot cache sizes so pass 2 creates D-Bus objects ONLY for the newly
+    // parsed PDRs — never re-adding objects for PDRs already present.
+    size_t numStart = numericSensorPdrs.size();
+    size_t stateStart = stateSensorPdrs.size();
+    size_t numEffStart = numericEffecterPdrs.size();
+    size_t stateEffStart = stateEffecterPdrs.size();
+#ifdef OEM_NVIDIA
+    size_t oemEnergyStart = oemEnergyCountNumericSensorPdrs.size();
+#endif
+
+    // Pass 1: retain each raw PDR and parse it into the typed caches. Auxiliary
+    // name PDRs in the batch are parsed here so the sensor adds below see them.
+    size_t skipped = 0;
+    for (const auto& pdr : newPdrs)
+    {
+        // A terminus that rebuilt its repository re-reports existing sensors as
+        // ADDED (new record handle, same sensor id). Recreating them would
+        // collide on D-Bus (FileExists) and duplicate cache entries, so skip
+        // any PDR whose derived object/entry is already present.
+        if (isPdrAlreadyApplied(pdr))
+        {
+            ++skipped;
+            continue;
+        }
+        pdrs.emplace_back(pdr);
+        if (!parseOnePdrIntoCache(pdrs.back()))
+        {
+            lg2::error(
+                "addNewPdrs: unrecognized PDR type in repository change event, skipping one record");
+        }
+    }
+
+    // Pass 2: create D-Bus objects for the newly appended cache entries only.
+    for (size_t i = numStart; i < numericSensorPdrs.size(); ++i)
+    {
+        addNumericSensor(numericSensorPdrs[i]);
+    }
+#ifdef OEM_NVIDIA
+    for (size_t i = oemEnergyStart; i < oemEnergyCountNumericSensorPdrs.size();
+         ++i)
+    {
+        addOEMEnergyCountNumericSensor(oemEnergyCountNumericSensorPdrs[i]);
+    }
+#endif
+    for (size_t i = numEffStart; i < numericEffecterPdrs.size(); ++i)
+    {
+        addNumericEffecter(numericEffecterPdrs[i]);
+    }
+    for (size_t i = stateStart; i < stateSensorPdrs.size(); ++i)
+    {
+        auto [sensorID, stateSetSensorInfo] = stateSensorPdrs[i];
+        addStateSensor(sensorID, std::move(stateSetSensorInfo));
+    }
+    for (size_t i = stateEffStart; i < stateEffecterPdrs.size(); ++i)
+    {
+        auto [effecterId, stateSetEffecterInfo] = stateEffecterPdrs[i];
+        addStateEffecter(effecterId, std::move(stateSetEffecterInfo));
+    }
+
+    lg2::info(
+        "addNewPdrs: applied {N} new PDR(s), skipped {SK} already-present; +{NS} numeric sensor(s), +{SS} state sensor(s)",
+        "N", newPdrs.size() - skipped, "SK", skipped, "NS",
+        numericSensorPdrs.size() - numStart, "SS",
+        stateSensorPdrs.size() - stateStart);
+
+    return newPdrs.size() - skipped;
+}
+
+void Terminus::removeModifiedPdrObjects(
+    const std::vector<std::vector<uint8_t>>& modifiedPdrs)
+{
+    size_t removed = 0;
+    for (const auto& raw : modifiedPdrs)
+    {
+        if (raw.size() < sizeof(pldm_pdr_hdr))
+        {
+            continue;
+        }
+        auto hdr = reinterpret_cast<const pldm_pdr_hdr*>(raw.data());
+        uint32_t recordHandle = le32toh(hdr->record_handle);
+        uint8_t type = hdr->type;
+
+        if (type == PLDM_NUMERIC_SENSOR_PDR)
+        {
+            auto parsed = parseNumericSensorPDR(raw);
+            if (!parsed)
+            {
+                continue;
+            }
+            uint16_t id = parsed->sensor_id;
+            std::erase_if(numericSensors, [id](const auto& s) {
+                return s && s->sensorId == id;
+            });
+            std::erase_if(numericSensorPdrs, [id](const auto& p) {
+                return p && p->sensor_id == id;
+            });
+        }
+        else if (type == PLDM_STATE_SENSOR_PDR)
+        {
+            std::vector<uint8_t> copy = raw;
+            uint16_t id = std::get<0>(parseStateSensorPDR(copy));
+            std::erase_if(stateSensors, [id](const auto& s) {
+                return s && s->sensorId == id;
+            });
+            std::erase_if(stateSensorPdrs,
+                          [id](const auto& t) { return std::get<0>(t) == id; });
+        }
+        else if (type == PLDM_NUMERIC_EFFECTER_PDR)
+        {
+            auto parsed = parseNumericEffecterPDR(raw);
+            if (!parsed)
+            {
+                continue;
+            }
+            uint16_t id = parsed->effecter_id;
+            std::erase_if(numericEffecters, [id](const auto& e) {
+                return e && e->effecterId == id;
+            });
+            std::erase_if(numericEffecterPdrs, [id](const auto& p) {
+                return p && p->effecter_id == id;
+            });
+        }
+        else if (type == PLDM_STATE_EFFECTER_PDR)
+        {
+            std::vector<uint8_t> copy = raw;
+            uint16_t id = std::get<0>(parseStateEffecterPDR(copy));
+            std::erase_if(stateEffecters, [id](const auto& e) {
+                return e && e->effecterId == id;
+            });
+            std::erase_if(stateEffecterPdrs,
+                          [id](const auto& t) { return std::get<0>(t) == id; });
+        }
+#ifdef OEM_NVIDIA
+        else if (type == PLDM_OEM_PDR)
+        {
+            // Only the OEM energy-count sub-type maps to a single NumericSensor
+            // (kept in numericSensors, cached in
+            // oemEnergyCountNumericSensorPdrs).
+            auto parsedPdr = parseOemPDR(raw);
+            const auto& oemData = std::get<2>(parsedPdr);
+            if (oemData.size() <= 2 ||
+                static_cast<nvidia::NvidiaOemPdrType>(oemData[2]) !=
+                    nvidia::NvidiaOemPdrType::
+                        NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+            {
+                continue;
+            }
+            auto parsed = nvidia::parseOEMEnergyCountNumericSensorPDR(oemData);
+            if (!parsed)
+            {
+                continue;
+            }
+            uint16_t id = parsed->sensor_id;
+            std::erase_if(numericSensors, [id](const auto& s) {
+                return s && s->sensorId == id;
+            });
+            std::erase_if(oemEnergyCountNumericSensorPdrs, [id](const auto& p) {
+                return p && p->sensor_id == id;
+            });
+        }
+#endif
+        else
+        {
+            // PDR type with no 1:1 object mapping: the caller routes these to a
+            // full rebuild, so reaching here means nothing to remove.
+            continue;
+        }
+
+        // Drop the superseded raw PDR (matched by record handle) so the
+        // repository does not accumulate stale copies across repeated modifies.
+        std::erase_if(pdrs, [recordHandle](const std::vector<uint8_t>& p) {
+            if (p.size() < sizeof(pldm_pdr_hdr))
+            {
+                return false;
+            }
+            auto h = reinterpret_cast<const pldm_pdr_hdr*>(p.data());
+            return le32toh(h->record_handle) == recordHandle;
+        });
+        ++removed;
+    }
+
+    lg2::info(
+        "removeModifiedPdrObjects: removed objects for {N} modified PDR(s)",
+        "N", removed);
+}
+
+bool Terminus::canReplacePdrIncrementally(const std::vector<uint8_t>& pdr)
+{
+    if (pdr.size() < sizeof(pldm_pdr_hdr))
+    {
+        return false;
+    }
+    switch (reinterpret_cast<const pldm_pdr_hdr*>(pdr.data())->type)
+    {
+        case PLDM_NUMERIC_SENSOR_PDR:
+        case PLDM_STATE_SENSOR_PDR:
+        case PLDM_NUMERIC_EFFECTER_PDR:
+        case PLDM_STATE_EFFECTER_PDR:
+            return true;
+#ifdef OEM_NVIDIA
+        case PLDM_OEM_PDR:
+        {
+            // Only the OEM energy-count sub-type maps 1:1 to a sensor object.
+            auto parsedPdr = parseOemPDR(pdr);
+            const auto& oemData = std::get<2>(parsedPdr);
+            return oemData.size() > 2 &&
+                   static_cast<nvidia::NvidiaOemPdrType>(oemData[2]) ==
+                       nvidia::NvidiaOemPdrType::
+                           NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT;
+        }
+#endif
+        default:
+            return false;
+    }
+}
+
+int Terminus::oemPdrSubType(const std::vector<uint8_t>& pdr)
+{
+    if (pdr.size() < sizeof(pldm_pdr_hdr) ||
+        reinterpret_cast<const pldm_pdr_hdr*>(pdr.data())->type != PLDM_OEM_PDR)
+    {
+        return -1;
+    }
+    auto parsedPdr = parseOemPDR(pdr);
+    const auto& oemData = std::get<2>(parsedPdr);
+    // oemData = nvidia_oem_pdr: [0..1] terminus_handle, [2] oem_pdr_type.
+    if (oemData.size() <= 2)
+    {
+        return -1;
+    }
+    return oemData[2];
+}
+
+void Terminus::clearParsedPdrCaches()
+{
+    numericSensorPdrs.clear();
+    stateSensorPdrs.clear();
+    numericEffecterPdrs.clear();
+    stateEffecterPdrs.clear();
+    sensorAuxiliaryNamesTbl.clear();
+    effecterAuxiliaryNamesTbl.clear();
+    oemPdrs.clear();
+    entities.clear();
+#ifdef OEM_NVIDIA
+    oemEnergyCountNumericSensorPdrs.clear();
+#endif
+}
+
 bool Terminus::parsePDRs()
 {
     bool rc = true;
     for (auto& pdr : pdrs)
     {
-        auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
-        if (pdrHdr->type == PLDM_SENSOR_AUXILIARY_NAMES_PDR)
-        {
-            auto sensorAuxiliaryNames = parseSensorAuxiliaryNamesPDR(pdr);
-            if (sensorAuxiliaryNames != nullptr)
-            {
-                sensorAuxiliaryNamesTbl.emplace_back(
-                    std::move(sensorAuxiliaryNames));
-            }
-        }
-        else if (pdrHdr->type == PLDM_EFFECTER_AUXILIARY_NAMES_PDR)
-        {
-            auto effecterAuxiliaryNames = parseEffecterAuxiliaryNamesPDR(pdr);
-            if (effecterAuxiliaryNames != nullptr)
-            {
-                effecterAuxiliaryNamesTbl.emplace_back(
-                    std::move(effecterAuxiliaryNames));
-            }
-        }
-        else if (pdrHdr->type == PLDM_NUMERIC_SENSOR_PDR)
-        {
-            auto parsedPdr = parseNumericSensorPDR(pdr);
-            if (parsedPdr != nullptr)
-            {
-                numericSensorPdrs.emplace_back(std::move(parsedPdr));
-            }
-        }
-        else if (pdrHdr->type == PLDM_NUMERIC_EFFECTER_PDR)
-        {
-            auto parsedPdr = parseNumericEffecterPDR(pdr);
-            if (parsedPdr != nullptr)
-            {
-                numericEffecterPdrs.emplace_back(std::move(parsedPdr));
-            }
-        }
-        else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
-        {
-            auto parsedPdr = parseStateSensorPDR(pdr);
-            stateSensorPdrs.emplace_back(std::move(parsedPdr));
-        }
-        else if (pdrHdr->type == PLDM_PDR_ENTITY_ASSOCIATION)
-        {
-            parseEntityAssociationPDR(pdr);
-        }
-        else if (pdrHdr->type == PLDM_STATE_EFFECTER_PDR)
-        {
-            auto parsedPdr = parseStateEffecterPDR(pdr);
-            stateEffecterPdrs.emplace_back(std::move(parsedPdr));
-        }
-        else if (pdrHdr->type == PLDM_OEM_PDR)
-        {
-            auto parsedPdr = parseOemPDR(pdr);
-#ifdef OEM_NVIDIA
-            if (static_cast<nvidia::NvidiaOemPdrType>(
-                    std::get<2>(parsedPdr)[2]) ==
-                nvidia::NvidiaOemPdrType::
-                    NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
-            {
-                auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
-                    std::get<2>(parsedPdr));
-                oemEnergyCountNumericSensorPdrs.emplace_back(
-                    std::move(parsedOEMPdr));
-            }
-            else
-            {
-#endif
-                oemPdrs.emplace_back(std::move(parsedPdr));
-#ifdef OEM_NVIDIA
-            }
-#endif
-        }
-        else
+        if (!parseOnePdrIntoCache(pdr))
         {
             rc = false;
         }
