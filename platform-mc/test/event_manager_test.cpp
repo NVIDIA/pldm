@@ -790,6 +790,54 @@ TEST_F(EventManagerProtectedTest, protectedPathCoverage)
     }
 }
 
+TEST_F(EventManagerProtectedTest, handlePdrRepositoryChgEventDispatch)
+{
+    constexpr pldm::tid_t tid = 0x41;
+    uint8_t platformEventStatus = 0;
+
+    // 1. refreshAllRecords (eventDataFormat == REFRESH_ENTIRE_REPOSITORY).
+    //    Decode succeeds and a detached rebuild is spawned. With no terminus
+    //    registered for the tid the spawned coroutine returns inline without
+    //    suspending, so the synchronous handler returns PLDM_SUCCESS.
+    std::array<uint8_t, 2> refreshAll{
+        static_cast<uint8_t>(REFRESH_ENTIRE_REPOSITORY), 0x0};
+    EXPECT_EQ(PLDM_SUCCESS,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, refreshAll.data(),
+                  refreshAll.size(), platformEventStatus));
+
+    // 2. recordsAdded (FORMAT_IS_PDR_HANDLES, one change record, one handle).
+    //    Decode succeeds; the lightweight add path is spawned detached.
+    std::array<uint8_t, 8> addedRecord{
+        static_cast<uint8_t>(FORMAT_IS_PDR_HANDLES), // eventDataFormat
+        0x1,                                         // numberOfChangeRecords
+        static_cast<uint8_t>(PLDM_RECORDS_ADDED),    // eventDataOperation
+        0x1,                                         // numberOfChangeEntries
+        0x10,
+        0x00,
+        0x00,
+        0x00}; // pdrRecordHandle = 0x10
+    EXPECT_EQ(PLDM_SUCCESS,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, addedRecord.data(),
+                  addedRecord.size(), platformEventStatus));
+
+    // 3. Unsupported eventDataFormat (FORMAT_IS_PDR_TYPES) is rejected.
+    std::array<uint8_t, 2> typeFormat{static_cast<uint8_t>(FORMAT_IS_PDR_TYPES),
+                                      0x0};
+    EXPECT_EQ(PLDM_ERROR,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, typeFormat.data(),
+                  typeFormat.size(), platformEventStatus));
+
+    // 4. Malformed (too short to decode the event header) is rejected.
+    std::array<uint8_t, 1> tooShort{0x0};
+    EXPECT_EQ(PLDM_ERROR,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, tooShort.data(),
+                  tooShort.size(), platformEventStatus));
+}
+
 TEST_F(EventManagerProtectedTest, handlePlatformEventAdditionalCoverage)
 {
     constexpr pldm::tid_t tid = 0x31;

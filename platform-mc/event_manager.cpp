@@ -317,6 +317,86 @@ int EventManager::handlePlatformEvent(
             return PLDM_ERROR;
         }
     }
+    else if (eventClass == PLDM_PDR_REPOSITORY_CHG_EVENT)
+    {
+        // DSP0248 Table 24 pldmPDRRepositoryChgEvent. Decode synchronously into
+        // owned data here (eventData is a borrowed buffer), then hand off to a
+        // detached coroutine for the async PDR fetch + D-Bus reconciliation.
+        uint8_t eventDataFormat = 0;
+        uint8_t numberOfChangeRecords = 0;
+        size_t dataOffset = 0;
+        auto drc = decode_pldm_pdr_repository_chg_event_data(
+            eventData, eventDataSize, &eventDataFormat, &numberOfChangeRecords,
+            &dataOffset);
+        if (drc != PLDM_SUCCESS)
+        {
+            lg2::error(
+                "PDRRepositoryChgEvent: decode failed for tid={TID}, rc={RC}",
+                "TID", tid, "RC", drc);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+            return PLDM_ERROR;
+        }
+
+        bool refreshAll = (eventDataFormat == REFRESH_ENTIRE_REPOSITORY);
+        std::vector<std::pair<uint8_t, std::vector<uint32_t>>> changeRecords;
+
+        if (!refreshAll && eventDataFormat == FORMAT_IS_PDR_HANDLES)
+        {
+            const uint8_t* recData = eventData + dataOffset;
+            size_t recSize = eventDataSize - dataOffset;
+            while (recSize)
+            {
+                uint8_t op = 0;
+                uint8_t numEntries = 0;
+                size_t recOffset = 0;
+                drc = decode_pldm_pdr_repository_change_record_data(
+                    recData, recSize, &op, &numEntries, &recOffset);
+                if (drc != PLDM_SUCCESS)
+                {
+                    lg2::error(
+                        "PDRRepositoryChgEvent: change-record decode failed, rc={RC}",
+                        "RC", drc);
+                    break;
+                }
+                std::vector<uint32_t> handles;
+                auto handlePtr =
+                    reinterpret_cast<const uint32_t*>(recData + recOffset);
+                handles.reserve(numEntries);
+                for (uint8_t i = 0; i < numEntries; ++i)
+                {
+                    handles.push_back(le32toh(handlePtr[i]));
+                }
+                lg2::info(
+                    "PDRRepositoryChgEvent: tid={TID} changeRecord op={OP} numHandles={N}",
+                    "TID", tid, "OP", op, "N", numEntries);
+                changeRecords.emplace_back(op, std::move(handles));
+                size_t advance = recOffset + (numEntries * sizeof(uint32_t));
+                if (advance == 0 || advance > recSize)
+                {
+                    break;
+                }
+                recData += advance;
+                recSize -= advance;
+            }
+        }
+        else if (!refreshAll)
+        {
+            lg2::error(
+                "PDRRepositoryChgEvent: unsupported eventDataFormat={FMT} for tid={TID}, ignoring",
+                "FMT", eventDataFormat, "TID", tid);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+            return PLDM_ERROR;
+        }
+
+        lg2::info(
+            "PDRRepositoryChgEvent: tid={TID}, refreshAll={REFRESH}, changeRecords={N}",
+            "TID", tid, "REFRESH", refreshAll, "N", changeRecords.size());
+
+        stdexec::start_detached(
+            processPdrRepositoryChgEvent(tid, refreshAll,
+                                         std::move(changeRecords)),
+            exec::default_task_context<int>(exec::inline_scheduler{}));
+    }
     else
     {
         lg2::info("unhandled event, event class={EVENTCLASS}", "EVENTCLASS",
@@ -1007,38 +1087,421 @@ exec::task<int> EventManager::processTelemetryRediscoveryEvent(tid_t tid)
 
     auto terminus = it->second;
 
+    // Run the whole teardown + re-discovery under a catch-all: this coroutine
+    // is spawned detached (start_detached), so an escaping exception would hit
+    // std::terminate and abort pldmd instead of just failing the rebuild.
+    try
+    {
+        // Stop polling - the coroutine will exit asynchronously
+        sensorManager.stopPolling(tid);
+
+        // Clear prioritySensors and roundRobinSensors to release sensor refs
+        terminus->prioritySensors.clear();
+
+        // Clear roundRobinSensors queue by manually popping all elements
+        // In coroutines, local variables persist in the coroutine frame, so we
+        // can't use std::swap with a local variable. Manually pop to
+        // immediately release references.
+        size_t queueSize = terminus->roundRobinSensors.size();
+        for (size_t i = 0; i < queueSize; ++i)
+        {
+            terminus->roundRobinSensors.pop();
+        }
+
+        // Wait for the polling coroutine to exit and release all sensor
+        // references. stopPolling() only requests the stop; the coroutine may
+        // still be processing sensors. Both numeric AND state sensors are held
+        // by the priority / round-robin lists, so both must reach use_count==1
+        // (held only by their owning vector) before clear() so destructors —
+        // and the D-Bus unregistration they trigger — run immediately.
+        constexpr int maxRetries = 30;              // Up to 15 seconds
+        constexpr uint64_t retryDelayUsec = 500000; // 500ms per check
+        bool allReferencesReleased = false;
+
+        for (int retry = 0; retry < maxRetries; ++retry)
+        {
+            int sensorsWithExtraRefs = 0;
+
+            for (const auto& sensor : terminus->numericSensors)
+            {
+                if (sensor && sensor.use_count() > 1)
+                {
+                    sensorsWithExtraRefs++;
+                }
+            }
+            for (const auto& sensor : terminus->stateSensors)
+            {
+                if (sensor && sensor.use_count() > 1)
+                {
+                    sensorsWithExtraRefs++;
+                }
+            }
+
+            if (sensorsWithExtraRefs == 0)
+            {
+                allReferencesReleased = true;
+                break;
+            }
+
+            if (retry % 4 == 0)
+            {
+                lg2::info(
+                    "Waiting for polling coroutine to release sensor references: {COUNT} sensor(s) still in use",
+                    "COUNT", sensorsWithExtraRefs);
+            }
+
+            co_await timer::Sleep(terminusManager.getEvent(), retryDelayUsec,
+                                  timer::NonPriority);
+        }
+
+        if (!allReferencesReleased)
+        {
+            lg2::error(
+                "Timed out waiting for sensor references to be released after {TIME}s for tid={TID}",
+                "TIME", maxRetries * 500 / 1000, "TID", tid);
+        }
+
+        // Clear all Type 2 objects - sensors, effecters, raw PDRs.
+        // D-Bus interface cleanup happens automatically in sensor/effecter
+        // destructors.
+        terminus->numericSensors.clear();
+        terminus->stateSensors.clear();
+        terminus->numericEffecters.clear();
+        terminus->stateEffecters.clear();
+        terminus->pdrs.clear();
+
+        // Also reset the PARSED-PDR caches. initTerminus() -> parsePDRs()
+        // re-parses the freshly fetched raw PDRs by APPENDING to these caches
+        // and then creates a D-Bus object for every cache entry. If the stale
+        // entries are left here, every sensor/effecter is created twice on
+        // re-init and the duplicate collides (sd_bus FileExists), leaving the
+        // rebuilt sensors stale. Reset them so re-init starts from empty.
+        terminus->clearParsedPdrCaches();
+
+        // Mark terminus as not initialized so it will be re-initialized
+        terminus->initalized = false;
+        terminus->resumed = false;
+        terminus->initSensorList = true;
+
+        lg2::info("Cleared Type 2 telemetry objects for tid={TID}", "TID", tid);
+
+        // Wait for D-Bus to complete asynchronous unregistration
+        // After destructors are called (during clear() above), D-Bus still
+        // needs time to process the unregistration messages asynchronously. The
+        // D-Bus daemon processes unregister requests asynchronously with no way
+        // to poll for completion, so we use a conservative fixed delay to
+        // ensure all objects are fully unregistered before creating new ones.
+        constexpr uint64_t dbusCleanupDelayUsec = 10000000; // 10 seconds
+
+        co_await timer::Sleep(terminusManager.getEvent(), dbusCleanupDelayUsec,
+                              timer::NonPriority);
+
+        // Re-initialize ONLY this terminus. Using the global initTerminus()
+        // here races concurrent rebuilds of other termini: each rebuild marks
+        // its own terminus initalized=false, so a global re-init re-creates
+        // those objects too — twice when both rebuilds run — causing D-Bus
+        // FileExists. Scoping the re-init to tid removes that cross-terminus
+        // collision.
+        auto rc = co_await platformManager.initTerminus(tid);
+
+        if (rc != PLDM_SUCCESS)
+        {
+            lg2::error(
+                "Failed to reinitialize terminus tid={TID} after rediscovery, rc={RC}",
+                "TID", tid, "RC", rc);
+            sensorManager.startPolling(tid);
+            co_return rc;
+        }
+
+        // Restart sensor polling for this terminus with new PDRs
+        sensorManager.startPolling(tid);
+        terminus->resumed = true;
+
+        lg2::info("Type 2 telemetry rediscovery completed for tid={TID}", "TID",
+                  tid);
+
+        co_return PLDM_SUCCESS;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "processTelemetryRediscoveryEvent: unhandled exception for tid={TID}, {ERROR}",
+            "TID", tid, "ERROR", e);
+        // Best-effort: resume polling so the terminus is not left dark.
+        sensorManager.startPolling(tid);
+        co_return PLDM_ERROR;
+    }
+}
+
+exec::task<int> EventManager::processPdrRepositoryChgEvent(
+    tid_t tid, bool refreshAll,
+    std::vector<std::pair<uint8_t, std::vector<uint32_t>>> changeRecords)
+{
+    auto it = termini.find(tid);
+    if (it == termini.end())
+    {
+        lg2::error("processPdrRepositoryChgEvent: terminus tid={TID} not found",
+                   "TID", tid);
+        co_return PLDM_ERROR;
+    }
+    auto terminus = it->second;
+
+    // Serialize rebuilds per terminus. This coroutine is spawned detached, so a
+    // second PDRRepositoryChgEvent for the same tid (devices burst these during
+    // power-on) could race the first on the shared termini map and the D-Bus
+    // object lifecycle. If a rebuild is already running for this tid, skip.
+    if (rebuildInProgress.contains(tid))
+    {
+        lg2::info(
+            "processPdrRepositoryChgEvent: rebuild already in progress for tid={TID}, skipping this event",
+            "TID", tid);
+        co_return PLDM_SUCCESS;
+    }
+    rebuildInProgress.insert(tid);
+    // Erase the in-progress marker on every exit path (normal co_return or an
+    // exception unwinding the coroutine frame destroys this guard).
+    struct RebuildGuard
+    {
+        std::unordered_set<tid_t>& set;
+        tid_t tid;
+        ~RebuildGuard()
+        {
+            set.erase(tid);
+        }
+    } rebuildGuard{rebuildInProgress, tid};
+
+    // Run under a catch-all: an exception escaping this detached coroutine
+    // would hit std::terminate and abort pldmd instead of just failing the
+    // rebuild.
+    try
+    {
+        // Classify the change records. recordsAdded and recordsModified on an
+        // already-initialized terminus are handled incrementally (fetch the
+        // affected PDRs and create/replace only those objects). refreshAll, any
+        // recordsDeleted, or an event before initial discovery completes need
+        // the full clear + re-discovery teardown so stale objects are removed
+        // and changed PDRs re-parsed consistently.
+        bool needFullRebuild = refreshAll || !terminus->initalized;
+        std::vector<uint32_t> addedHandles;
+        std::vector<uint32_t> modifiedHandles;
+        for (const auto& [op, handles] : changeRecords)
+        {
+            if (op == PLDM_RECORDS_ADDED)
+            {
+                addedHandles.insert(addedHandles.end(), handles.begin(),
+                                    handles.end());
+            }
+            else if (op == PLDM_RECORDS_MODIFIED)
+            {
+                modifiedHandles.insert(modifiedHandles.end(), handles.begin(),
+                                       handles.end());
+            }
+            else if (op == PLDM_RECORDS_DELETED)
+            {
+                // Removing specific objects for deleted handles incrementally
+                // is not supported; a full rebuild drops the stale objects.
+                needFullRebuild = true;
+            }
+        }
+
+        if (needFullRebuild)
+        {
+            lg2::info(
+                "processPdrRepositoryChgEvent: tid={TID} requires full rebuild (refreshAll={REFRESH}, initialized={INIT})",
+                "TID", tid, "REFRESH", refreshAll, "INIT",
+                terminus->initalized);
+            co_return co_await processTelemetryRediscoveryEvent(tid);
+        }
+
+        if (addedHandles.empty() && modifiedHandles.empty())
+        {
+            lg2::info(
+                "processPdrRepositoryChgEvent: tid={TID} no added/modified records to fetch",
+                "TID", tid);
+            co_return PLDM_SUCCESS;
+        }
+
+        lg2::info(
+            "processPdrRepositoryChgEvent: tid={TID} fetching {NA} added + {NM} modified PDR(s)",
+            "TID", tid, "NA", addedHandles.size(), "NM",
+            modifiedHandles.size());
+
+        std::vector<std::vector<uint8_t>> addedPdrs =
+            co_await fetchPdrsByHandles(tid, addedHandles);
+        std::vector<std::vector<uint8_t>> modifiedPdrs =
+            co_await fetchPdrsByHandles(tid, modifiedHandles);
+
+        if (addedPdrs.empty() && modifiedPdrs.empty())
+        {
+            lg2::error(
+                "processPdrRepositoryChgEvent: tid={TID} no PDRs successfully fetched",
+                "TID", tid);
+            co_return PLDM_ERROR;
+        }
+
+        // Drop modified PDRs of a type platform-mc does not consume (no
+        // derived D-Bus object, e.g. PLDM_OEM_DEVICE_PDR). Modifying such a
+        // PDR changes nothing we expose, so it needs neither an incremental
+        // replace nor a full rebuild.
+        std::erase_if(modifiedPdrs, [tid](const std::vector<uint8_t>& pdr) {
+            uint8_t type =
+                pdr.size() >= sizeof(pldm_pdr_hdr)
+                    ? reinterpret_cast<const pldm_pdr_hdr*>(pdr.data())->type
+                    : 0;
+            if (!Terminus::pdrTypeConsumed(type))
+            {
+                lg2::info(
+                    "processPdrRepositoryChgEvent: tid={TID} ignoring modified PDR type={TYPE} (no derived object)",
+                    "TID", tid, "TYPE", type);
+                return true;
+            }
+            return false;
+        });
+
+        if (addedPdrs.empty() && modifiedPdrs.empty())
+        {
+            lg2::info(
+                "processPdrRepositoryChgEvent: tid={TID} no actionable PDRs after filtering, nothing to do",
+                "TID", tid);
+            co_return PLDM_SUCCESS;
+        }
+
+        // A MODIFIED record only maps cleanly to a per-object replace when its
+        // PDR owns a single object (numeric/state sensor or effecter, or the
+        // OEM energy-count sensor). Auxiliary-name, entity-association and
+        // other OEM PDRs are referenced by many objects, so fall back to a full
+        // rebuild if any modified PDR is not 1:1 replaceable.
+        for (const auto& pdr : modifiedPdrs)
+        {
+            if (!terminus->canReplacePdrIncrementally(pdr))
+            {
+                uint8_t type =
+                    pdr.size() >= sizeof(pldm_pdr_hdr)
+                        ? reinterpret_cast<const pldm_pdr_hdr*>(pdr.data())
+                              ->type
+                        : 0;
+                int oemSubType = terminus->oemPdrSubType(pdr);
+                lg2::info(
+                    "processPdrRepositoryChgEvent: tid={TID} modified PDR type={TYPE} oemSubType={SUB} not 1:1 replaceable, falling back to full rebuild",
+                    "TID", tid, "TYPE", type, "SUB", oemSubType);
+                co_return co_await processTelemetryRediscoveryEvent(tid);
+            }
+        }
+
+        // To replace modified objects, the old sensor objects must be fully
+        // released (including the polling priority / round-robin references)
+        // before re-creation, or the lingering D-Bus interface collides
+        // (FileExists). Quiesce polling and drain references, remove the old
+        // objects, then let D-Bus settle the async unregistration.
+        if (!modifiedPdrs.empty())
+        {
+            co_await quiesceSensorPolling(terminus, tid);
+            terminus->removeModifiedPdrObjects(modifiedPdrs);
+
+            constexpr uint64_t dbusCleanupDelayUsec = 10000000; // 10 seconds
+            co_await timer::Sleep(terminusManager.getEvent(),
+                                  dbusCleanupDelayUsec, timer::NonPriority);
+        }
+
+        // Parse + create objects for both the added and (re-added) modified
+        // PDRs. addNewPdrs only creates objects for the newly appended cache
+        // entries, so it never re-adds objects that already exist.
+        std::vector<std::vector<uint8_t>> newPdrs = std::move(addedPdrs);
+        newPdrs.insert(newPdrs.end(), modifiedPdrs.begin(), modifiedPdrs.end());
+        size_t applied = terminus->addNewPdrs(newPdrs);
+
+        // Nothing actually changed (every added PDR was already present and no
+        // modified PDR was replaced), so skip the association/polling refresh.
+        // A terminus re-reports its existing sensors as ADDED on every
+        // power-cycle, so this is the common steady-state path.
+        if (applied == 0 && modifiedPdrs.empty())
+        {
+            lg2::info(
+                "processPdrRepositoryChgEvent: tid={TID} no change ({N} PDR(s) already present), skipping refresh",
+                "TID", tid, "N", newPdrs.size());
+            co_return PLDM_SUCCESS;
+        }
+
+        // Reconcile inventory associations so the new sensors are linked to
+        // their chassis/inventory PDIs.
+        co_await terminus->updateAssociations();
+
+        // Rebuild the polling lists so new/replaced sensors are polled; resume
+        // polling if it was quiesced for a modified replace.
+        terminus->initSensorList = true;
+        if (!modifiedPdrs.empty())
+        {
+            sensorManager.startPolling(tid);
+        }
+
+        lg2::info(
+            "processPdrRepositoryChgEvent: tid={TID} applied {N} new PDR(s) incrementally and reconciled associations",
+            "TID", tid, "N", applied);
+
+        co_return PLDM_SUCCESS;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "processPdrRepositoryChgEvent: unhandled exception for tid={TID}, {ERROR}",
+            "TID", tid, "ERROR", e);
+        co_return PLDM_ERROR;
+    }
+}
+
+exec::task<std::vector<std::vector<uint8_t>>> EventManager::fetchPdrsByHandles(
+    tid_t tid, const std::vector<uint32_t>& handles)
+{
+    std::vector<std::vector<uint8_t>> pdrs;
+    for (uint32_t handle : handles)
+    {
+        std::vector<uint8_t> pdr;
+        auto rc = co_await platformManager.fetchSinglePdr(tid, handle, pdr);
+        if (rc != PLDM_SUCCESS || pdr.empty())
+        {
+            lg2::error(
+                "fetchPdrsByHandles: failed to fetch PDR handle={HANDLE} for tid={TID}, rc={RC}",
+                "HANDLE", handle, "TID", tid, "RC", rc);
+            continue;
+        }
+        pdrs.push_back(std::move(pdr));
+    }
+    co_return pdrs;
+}
+
+exec::task<void> EventManager::quiesceSensorPolling(
+    std::shared_ptr<Terminus> terminus, tid_t tid)
+{
     // Stop polling - the coroutine will exit asynchronously
     sensorManager.stopPolling(tid);
 
-    // Clear prioritySensors and roundRobinSensors to release sensor references
+    // Release the priority / round-robin references to the sensor objects.
     terminus->prioritySensors.clear();
-
-    // Clear roundRobinSensors queue by manually popping all elements
-    // In coroutines, local variables persist in the coroutine frame, so we
-    // can't use std::swap with a local variable. Manually pop to immediately
-    // release references.
     size_t queueSize = terminus->roundRobinSensors.size();
     for (size_t i = 0; i < queueSize; ++i)
     {
         terminus->roundRobinSensors.pop();
     }
 
-    // Wait for polling coroutine to exit and release all sensor references
-    // stopPolling() only requests the stop; the coroutine may still be
-    // processing sensors. We need use_count=1 (only held by numericSensors
-    // vector) before calling clear() to ensure destructors run immediately.
+    // Wait until the polling coroutine drops its in-flight references so that
+    // erasing the objects afterwards runs their destructors (and the D-Bus
+    // unregistration) immediately. Both numeric and state sensors can be held
+    // by the polling lists.
     constexpr int maxRetries = 30;              // Up to 15 seconds
     constexpr uint64_t retryDelayUsec = 500000; // 500ms per check
-    bool allReferencesReleased = false;
-
     for (int retry = 0; retry < maxRetries; ++retry)
     {
         int sensorsWithExtraRefs = 0;
-
-        for (size_t i = 0; i < terminus->numericSensors.size(); ++i)
+        for (const auto& sensor : terminus->numericSensors)
         {
-            if (terminus->numericSensors[i] &&
-                terminus->numericSensors[i].use_count() > 1)
+            if (sensor && sensor.use_count() > 1)
+            {
+                sensorsWithExtraRefs++;
+            }
+        }
+        for (const auto& sensor : terminus->stateSensors)
+        {
+            if (sensor && sensor.use_count() > 1)
             {
                 sensorsWithExtraRefs++;
             }
@@ -1046,77 +1509,21 @@ exec::task<int> EventManager::processTelemetryRediscoveryEvent(tid_t tid)
 
         if (sensorsWithExtraRefs == 0)
         {
-            allReferencesReleased = true;
             break;
         }
 
         if (retry % 4 == 0)
         {
             lg2::info(
-                "Waiting for polling coroutine to release sensor references: {COUNT}/{TOTAL} sensors in use",
-                "COUNT", sensorsWithExtraRefs, "TOTAL",
-                terminus->numericSensors.size());
+                "quiesceSensorPolling: {COUNT} sensor(s) still in use for tid={TID}",
+                "COUNT", sensorsWithExtraRefs, "TID", tid);
         }
 
         co_await timer::Sleep(terminusManager.getEvent(), retryDelayUsec,
                               timer::NonPriority);
     }
 
-    if (!allReferencesReleased)
-    {
-        lg2::error(
-            "Timed out waiting for sensor references to be released after {TIME}s for tid={TID}",
-            "TIME", maxRetries * 500 / 1000, "TID", tid);
-    }
-
-    // Clear all Type 2 objects - sensors, effecters, PDRs
-    // D-Bus interface cleanup happens automatically in sensor/effecter
-    // destructors
-    terminus->numericSensors.clear();
-    terminus->stateSensors.clear();
-    terminus->numericEffecters.clear();
-    terminus->stateEffecters.clear();
-    terminus->pdrs.clear();
-
-    // Mark terminus as not initialized so it will be re-initialized
-    terminus->initalized = false;
-    terminus->resumed = false;
-    terminus->initSensorList = true;
-
-    lg2::info("Cleared Type 2 telemetry objects for tid={TID}", "TID", tid);
-
-    // Wait for D-Bus to complete asynchronous unregistration
-    // After destructors are called (during clear() above), D-Bus still needs
-    // time to process the unregistration messages asynchronously. The D-Bus
-    // daemon processes unregister requests asynchronously with no way to poll
-    // for completion, so we use a conservative fixed delay to ensure all
-    // objects are fully unregistered before creating new ones.
-    constexpr uint64_t dbusCleanupDelayUsec = 10000000; // 10 seconds
-
-    co_await timer::Sleep(terminusManager.getEvent(), dbusCleanupDelayUsec,
-                          timer::NonPriority);
-
-    // Trigger Type 2 reinitialization via platformManager
-    // platformManager.initTerminus() will reinitialize termini with
-    // initalized=false
-    auto rc = co_await platformManager.initTerminus();
-
-    if (rc != PLDM_SUCCESS)
-    {
-        lg2::error(
-            "Failed to reinitialize terminus tid={TID} after rediscovery, rc={RC}",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    // Restart sensor polling for this terminus with new PDRs
-    sensorManager.startPolling(tid);
-    terminus->resumed = true;
-
-    lg2::info("Type 2 telemetry rediscovery completed for tid={TID}", "TID",
-              tid);
-
-    co_return PLDM_SUCCESS;
+    co_return;
 }
 
 void EventManager::processTelemetryResumeEvent(tid_t tid)

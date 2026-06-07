@@ -486,6 +486,15 @@ int main(int argc, char** argv)
              return platformManager->handleSensorEvent(
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
+         }}},
+        {PLDM_PDR_REPOSITORY_CHG_EVENT,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handlePdrRepositoryChgEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
          }}}};
 #endif
 

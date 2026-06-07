@@ -3050,6 +3050,66 @@ TEST_F(TerminusTest, switchBandwidthSensorCoverage)
 }
 #endif
 
+TEST_F(TerminusTest, addNewPdrsAddsOnlyNewObjects)
+{
+    // A terminus that already has one state sensor parsed from its initial PDR
+    // repository, modelling discovery completed at host power-on.
+    std::string uuid("00000000-0000-0000-0000-000000000401");
+    Terminus terminus(0x41, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("AddNewPdrsTerminus");
+
+    terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x401));
+    terminus.pdrs.emplace_back(makeStateSensorPdr(
+        0x401, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE, true));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.stateSensors.size());
+    size_t pdrsBefore = terminus.pdrs.size();
+    size_t stateSensorPdrsBefore = terminus.stateSensorPdrs.size();
+
+    // A pldmPDRRepositoryChgEvent reports a late-appearing sensor (e.g. a DRAM
+    // temp sensor after MB2). addNewPdrs must create only the new object and
+    // leave the pre-existing one untouched.
+    std::vector<std::vector<uint8_t>> newPdrs{
+        makeSensorAuxNamePdr(0x402),
+        makeStateSensorPdr(0x402, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    terminus.addNewPdrs(newPdrs);
+
+    EXPECT_EQ(2u, terminus.stateSensors.size());
+    EXPECT_EQ(stateSensorPdrsBefore + 1u, terminus.stateSensorPdrs.size());
+    EXPECT_EQ(pdrsBefore + newPdrs.size(), terminus.pdrs.size());
+}
+
+TEST_F(TerminusTest, addNewPdrsRetainsUnrecognizedRawPdr)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000403");
+    Terminus terminus(0x43, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("AddNewPdrsUnknownTerminus");
+
+    // A PDR whose type is not one platform-mc creates objects for. The raw PDR
+    // must still be retained in the repository, but no sensor/effecter object
+    // is created and parseOnePdrIntoCache reports it as unrecognized.
+    std::vector<uint8_t> unknownPdr{
+        0x0,  0x0, 0x0, 0x5, // record handle = 5
+        0x1,                 // PDRHeaderVersion
+        0xFE,                // PDRType (not handled)
+        0x0,  0x0,           // recordChangeNumber
+        0x2,  0x0,           // dataLength
+        0xAA, 0xBB};         // opaque body
+    EXPECT_FALSE(terminus.parseOnePdrIntoCache(unknownPdr));
+
+    std::vector<std::vector<uint8_t>> newPdrs{unknownPdr};
+    terminus.addNewPdrs(newPdrs);
+
+    EXPECT_EQ(1u, terminus.pdrs.size());
+    EXPECT_TRUE(terminus.stateSensors.empty());
+    EXPECT_TRUE(terminus.numericSensors.empty());
+    EXPECT_TRUE(terminus.numericEffecters.empty());
+    EXPECT_TRUE(terminus.stateEffecters.empty());
+}
+
 // Currently due to async nature of polling this can't be tested.
 // TODO: Test this in a different way.
 
