@@ -49,13 +49,10 @@ namespace pldm::fw_update
  *  @param[in] jsonPath - Path of firmware update config file
  *  @param[out] fwInventoryInfo - D-Bus firmware inventory config info
  *  @param[out] componentNameMapInfo - Component name info
- *  @param[out] excludedFwUpdateEids - EIDs to skip for PLDM T5 discovery
- *                                     (top-level `excluded_fw_update_eids`)
  *
  */
 void parseConfig(const fs::path& jsonPath,
                  FirmwareInventoryInfo& fwInventoryInfo,
-                 ComponentNameMapInfo& componentNameMapInfo,
-                 ExcludedFwUpdateEids& excludedFwUpdateEids);
+                 ComponentNameMapInfo& componentNameMapInfo);
 
 } // namespace pldm::fw_update

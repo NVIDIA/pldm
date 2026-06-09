@@ -64,13 +64,6 @@ exec::task<int> InventoryManager::discoverFDsTask()
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
                           localEid] : mctpInfos)
         {
-            if (excludedFwUpdateEids.contains(eid))
-            {
-                info(
-                    "EID {EID} excluded from firmware discovery by configuration",
-                    "EID", eid);
-                continue;
-            }
             mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
             // Discovery runs detached; an escaping exception would terminate
             // pldmd, so skip the failing endpoint instead of crashing.
@@ -1283,13 +1276,6 @@ void InventoryManager::logDiscoveryFailedMessage(
 exec::task<int> InventoryManager::refreshSingleEndpoint(
     mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget)
 {
-    if (excludedFwUpdateEids.contains(eid))
-    {
-        info("EID {EID} excluded from firmware discovery by configuration",
-             "EID", eid);
-        co_return PLDM_SUCCESS;
-    }
-
     std::string messageError{};
     // discoveryResolution captures the resolution message from discovery
     // functions (queryDeviceIdentifiers/getFirmwareParameters). It is not

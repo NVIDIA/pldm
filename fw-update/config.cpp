@@ -30,8 +30,7 @@ using Json = nlohmann::json;
 
 void parseConfig(const fs::path& jsonPath,
                  FirmwareInventoryInfo& fwInventoryInfo,
-                 ComponentNameMapInfo& componentNameMapInfo,
-                 ExcludedFwUpdateEids& excludedFwUpdateEids)
+                 ComponentNameMapInfo& componentNameMapInfo)
 {
     if (!fs::exists(jsonPath))
     {
@@ -50,11 +49,6 @@ void parseConfig(const fs::path& jsonPath,
     }
 
     const Json emptyJson{};
-
-    for (const auto& eidJson : data.value("excluded_fw_update_eids", emptyJson))
-    {
-        excludedFwUpdateEids.insert(eidJson.get<mctp_eid_t>());
-    }
 
     auto entries = data.value("entries", emptyJson);
     for (const auto& entry : entries.items())

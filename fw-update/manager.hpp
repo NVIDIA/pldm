@@ -439,9 +439,6 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Config info to create message registry entries for fw update */
     ComponentNameMapInfo componentNameMapInfo;
 
-    /** @brief EIDs excluded from PLDM T5 firmware discovery */
-    ExcludedFwUpdateEids excludedFwUpdateEids;
-
     /** @brief Component information to create message registries */
     ComponentNameMap componentNameMap;
 
