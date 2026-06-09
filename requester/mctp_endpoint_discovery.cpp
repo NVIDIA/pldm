@@ -155,7 +155,8 @@ MctpDiscovery::MctpDiscovery(
 
 bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
 {
-    // Find all implementations of the MCTP Endpoint interface.
+    // Enumerate the endpoints mctpreactor has configured (those exposing its
+    // configured_by association); endpoint properties are read from mctpd.
     //
     // Per unify-mctp_discovery_guidelines.md mandatory item 7, retry on
     // mapper failure with bounded exponential backoff. Schedule is taken
@@ -166,7 +167,8 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         try
         {
             mapperResponse = dbusHandler.getSubtree(
-                MCTPPath, 0, std::vector<std::string>({MCTPInterface}));
+                MCTPPath, 0,
+                std::vector<std::string>({MCTPReactorConfiguredInterface}));
             return true;
         }
         catch (const sdbusplus::exception_t& e)
@@ -175,7 +177,7 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
                 "getMctpInfos: getSubtree threw at path '{PATH}' interface "
                 "'{INTERFACE}', error - {ERROR}",
                 "PATH", std::string(MCTPPath), "INTERFACE",
-                std::string(MCTPEndpoint::interface), "ERROR", e);
+                std::string(MCTPReactorConfiguredInterface), "ERROR", e);
             return false;
         }
     };
@@ -199,48 +201,58 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         return false;
     }
 
-    for (const auto& [path, services] : mapperResponse)
+    for (const auto& mapperEntry : mapperResponse)
     {
-        for (const auto& serviceIter : services)
+        // The subtree is filtered on mctpreactor's configured_by interface, so
+        // every path here is an endpoint mctpreactor has configured. Every
+        // endpoint property is still read from the mctpd object at this path.
+        const std::string& path = mapperEntry.first;
+        std::string service;
+        try
         {
-            const std::string& service = serviceIter.first;
-            const MctpEndpointProps& epProps =
-                getMctpEndpointProps(service, path);
-            const UUID& uuid = getEndpointUUIDProp(service, path);
-            const Availability& availability =
-                getEndpointConnectivityProp(path);
-            auto types = std::get<MCTPMsgTypes>(epProps);
-            if (std::find(types.begin(), types.end(), mctpTypePLDM) !=
-                types.end())
-            {
-                const auto& mctpBinding = std::get<4>(epProps);
-                const auto& mctpMedium = std::get<3>(epProps);
-                const auto& mctpLocalEid = std::get<5>(epProps);
-                auto mctpInfo =
-                    MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
-                             std::get<NetworkId>(epProps), std::nullopt,
-                             mctpBinding, mctpLocalEid);
-                searchConfigurationFor(mctpInfo);
-                mctpInfoMap[std::move(mctpInfo)] = availability;
-            }
-            else
-            {
-                continue;
-            }
-            // Watch for PropertiesChanged signal from
-            // xyz.openbmc_project.Object.Enable PDI
-            if (enableMatches.find(path) == enableMatches.end())
-            {
-                info("register match_t path:{OBJPATH}", "OBJPATH", path);
-                enableMatches.emplace(
-                    path, sdbusplus::bus::match_t(
-                              bus,
-                              sdbusplus::bus::match::rules::propertiesChanged(
-                                  path.c_str(),
-                                  "au.com.codeconstruct.MCTP.Endpoint1"),
-                              std::bind_front(&MctpDiscovery::refreshEndpoints,
-                                              this)));
-            }
+            service = dbusHandler.getService(path.c_str(), MCTPInterface);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            // mctpreactor configured this endpoint but mctpd has not (yet)
+            // published the MCTP.Endpoint object; a later InterfacesAdded
+            // signal will pick it up.
+            error(
+                "getMctpInfos: no mctpd MCTP.Endpoint at path '{PATH}', error - {ERROR}",
+                "PATH", path, "ERROR", e);
+            continue;
+        }
+
+        const MctpEndpointProps& epProps = getMctpEndpointProps(service, path);
+        const UUID& uuid = getEndpointUUIDProp(service, path);
+        const Availability& availability = getEndpointConnectivityProp(path);
+        auto types = std::get<MCTPMsgTypes>(epProps);
+        if (std::find(types.begin(), types.end(), mctpTypePLDM) == types.end())
+        {
+            continue;
+        }
+        const auto& mctpBinding = std::get<4>(epProps);
+        const auto& mctpMedium = std::get<3>(epProps);
+        const auto& mctpLocalEid = std::get<5>(epProps);
+        auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
+                                 std::get<NetworkId>(epProps), std::nullopt,
+                                 mctpBinding, mctpLocalEid);
+        searchConfigurationFor(mctpInfo);
+        mctpInfoMap[std::move(mctpInfo)] = availability;
+
+        // Watch for PropertiesChanged signal from
+        // xyz.openbmc_project.Object.Enable PDI
+        if (enableMatches.find(path) == enableMatches.end())
+        {
+            info("register match_t path:{OBJPATH}", "OBJPATH", path);
+            enableMatches.emplace(
+                path, sdbusplus::bus::match_t(
+                          bus,
+                          sdbusplus::bus::match::rules::propertiesChanged(
+                              path.c_str(),
+                              "au.com.codeconstruct.MCTP.Endpoint1"),
+                          std::bind_front(&MctpDiscovery::refreshEndpoints,
+                                          this)));
         }
     }
     return true;

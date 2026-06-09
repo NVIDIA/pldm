@@ -25,6 +25,10 @@ namespace pldm
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
 constexpr const char* MCTPService = "au.com.codeconstruct.MCTP1";
 constexpr const char* MCTPReactorService = "xyz.openbmc_project.MCTPReactor";
+/** @brief Interface mctpreactor publishes on an endpoint to assert
+ *         configured_by; used to enumerate mctpreactor-configured endpoints. */
+constexpr const char* MCTPReactorConfiguredInterface =
+    "xyz.openbmc_project.Association.Definitions";
 constexpr const char* MCTPInterface = MCTPEndpoint::interface;
 constexpr const char* MCTPBindingInterface = "xyz.openbmc_project.MCTP.Binding";
 constexpr const char* EndpointUUID = CommonUUID::interface;
