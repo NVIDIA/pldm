@@ -194,10 +194,22 @@ void createMctpTransportRedfishEvent(
             }
             argsStr += registry->args[i];
         }
+
+        // Forward the device name and RAS catalog error ID so bmcweb can
+        // populate Oem.Nvidia.Device and Oem.Nvidia.ErrorId on the log entry.
+        std::map<std::string, std::string> extraData;
+        extraData["DEVICE_NAME"] =
+            componentName.value_or(phosphor::logging::mctp::getDeviceNameByEid(
+                static_cast<uint8_t>(eid)));
+        if (!registry->errorId.empty())
+        {
+            extraData["ERROR_ID"] = registry->errorId;
+        }
+
         using Level =
             sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
         createLogEntry(registry->registryId, argsStr, registry->resolution,
-                       logNamespace, Level::Informational);
+                       logNamespace, Level::Informational, extraData);
     }
 }
 
