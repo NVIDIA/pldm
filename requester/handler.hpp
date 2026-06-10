@@ -161,13 +161,13 @@ class Handler
      *  @param[in] numRetries - number of request retries
      *  @param[in] responseTimeOut - time to wait between each retry
      */
-    explicit Handler(
-        PldmTransport* pldmTransport, sdeventplus::Event& event,
-        pldm::InstanceIdDb& instanceIdDb, bool verbose,
-        std::chrono::seconds instanceIdExpiryInterval = std::chrono::seconds(5),
-        uint8_t numRetries = 2,
-        std::chrono::milliseconds responseTimeOut =
-            std::chrono::milliseconds(RESPONSE_TIME_OUT)) :
+    explicit Handler(PldmTransport* pldmTransport, sdeventplus::Event& event,
+                     pldm::InstanceIdDb& instanceIdDb, bool verbose,
+                     std::chrono::seconds instanceIdExpiryInterval =
+                         std::chrono::seconds(INSTANCE_ID_EXPIRATION_INTERVAL),
+                     uint8_t numRetries = NUMBER_OF_REQUEST_RETRIES,
+                     std::chrono::milliseconds responseTimeOut =
+                         std::chrono::milliseconds(RESPONSE_TIME_OUT)) :
         pldmTransport(pldmTransport), event(event), instanceIdDb(instanceIdDb),
         verbose(verbose), instanceIdExpiryInterval(instanceIdExpiryInterval),
         numRetries(numRetries), responseTimeOut(responseTimeOut)
