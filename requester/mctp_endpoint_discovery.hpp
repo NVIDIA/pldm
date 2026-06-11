@@ -117,29 +117,40 @@ class MctpDiscovery
     /** @brief Cached bus-owner service name resolved from
      *         ObjectMapper.GetSubTree(MCTPPath, [MCTPInterface]) at
      *         construction. Used as the `sender=` filter for the
-     *         InterfacesAdded/Removed match rules so the daemon does NOT
+     *         InterfacesRemoved match rule so the daemon does NOT
      *         hardcode `au.com.codeconstruct.MCTP1` (or any future
      *         alternative bus-owner name) in its source.
      *
      *         If the mapper lookup fails or returns no matching service the
      *         fallback is the legacy `MCTPService` constant — see
-     *         resolveBusOwner() in the .cpp. Bounded retry on mapper failure
-     *         is added in a later commit in this series.
+     *         resolveBusOwner() in the .cpp.
      *
      *         Declared BEFORE the match members so it is initialised first
      *         in the constructor initialiser list. */
     const std::string resolvedMctpService;
 
-    /** @brief Used to watch for new MCTP endpoints */
-    sdbusplus::bus::match_t mctpEndpointAddedSignal;
-
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
-    /** @brief Used to watch for mctpreactor publishing the configured_by
-     *         association on an endpoint, so endpoints deferred during the boot
-     *         race (configured_by not yet resolvable) can be (re)resolved and
-     *         get their EM-config names (DGXOPENBMC-25121). */
+    /** @brief Cached service name of the endpoint-identity publisher — the
+     *         owner of the Association.Definitions (configured_by) objects
+     *         under the MCTP subtree (today mctpreactor) — resolved at
+     *         construction via resolveIdentityOwner() in the .cpp; falls
+     *         back to the MCTPReactorService constant when no endpoint is
+     *         configured yet. Used as the `sender=` filter for the discovery
+     *         match below.
+     *
+     *         Declared BEFORE the match member so it is initialised first
+     *         in the constructor initialiser list. */
+    const std::string resolvedIdentityService;
+
+    /** @brief The runtime endpoint-discovery trigger: the identity publisher
+     *         (mctpreactor) adding the configured_by association on an
+     *         endpoint. The association is published only after mctpd's
+     *         endpoint object exists, so when this fires both the endpoint
+     *         properties (read back from mctpd) and the EM identity are
+     *         available — endpoints are never processed before their
+     *         identity exists (DGXOPENBMC-25121). */
     sdbusplus::bus::match_t mctpReactorConfiguredSignal;
 
     /** @brief List of handlers need to notify when new MCTP
@@ -166,18 +177,21 @@ class MctpDiscovery
      */
     std::map<std::string, sdbusplus::bus::match_t> enableMatches;
 
-    /** @brief Callback function when MCTP endpoints addedInterface
-     * D-Bus signal raised.
+    /** @brief Process an mctpd InterfacesAdded payload: parse the endpoint
+     * properties out of the message and register the endpoints. Runtime
+     * discovery is driven by onMctpReactorConfigured (identity-publisher
+     * signal); this entry point processes mctpd-shaped payloads directly
+     * (unit tests, fuzz harness).
      *
-     *  @param[in] msg - Data associated with subscribed signal
+     *  @param[in] msg - mctpd InterfacesAdded message
      */
     void discoverEndpoints(sdbusplus::message_t& msg);
 
-    /** @brief Callback when mctpreactor publishes the configured_by association
-     * for an endpoint. Re-resolves the endpoint's configuration and creates its
-     * (named) firmware inventory, closing the boot race where pldm reacts to
-     * mctpd's endpoint-added signal before mctpreactor has published
-     * configured_by. No-op if the endpoint is already tracked.
+    /** @brief The runtime endpoint-discovery callback: the identity publisher
+     * (mctpreactor) added the configured_by association on an endpoint. Reads
+     * the endpoint properties back from mctpd, resolves the EM configuration
+     * (with bounded retry) and creates the named inventory. No-op when the
+     * endpoint is already tracked (startup enumeration overlap).
      *
      *  @param[in] msg - Data associated with the subscribed signal
      */
@@ -318,6 +332,18 @@ class MctpDiscovery
      *  @param[in] mctpInfo - information of discovered MCTP endpoint
      */
     bool searchConfigurationFor(MctpInfo& mctpInfo);
+
+    /** @brief searchConfigurationFor with bounded retry/backoff.
+     *
+     *  Both production lookup sites query ObjectMapper for an association
+     *  that is known to exist (the startup enumeration is filtered on it;
+     *  the runtime trigger IS its publication signal), so a miss means the
+     *  mapper has not ingested it yet or is too loaded to answer within the
+     *  D-Bus timeout. Retry on the retryBackoff schedule before giving up.
+     *
+     *  @param[in] mctpInfo - information of discovered MCTP endpoint
+     */
+    bool searchConfigurationWithRetry(MctpInfo& mctpInfo);
 
     /** @brief Remove configuration associated with the removed MCTP endpoint.
      *

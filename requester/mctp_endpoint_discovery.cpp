@@ -85,6 +85,47 @@ std::string resolveBusOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
     return pldm::MCTPService;
 }
 
+/** @brief Resolve the service publishing endpoint identity — the
+ *         Association.Definitions (configured_by) objects under the MCTP
+ *         subtree — via ObjectMapper.GetSubTree, mirroring resolveBusOwner.
+ *
+ *  Discovery is driven by the identity publisher's InterfacesAdded signal,
+ *  so the `sender=` filter must name whichever service owns those objects
+ *  (today mctpreactor) rather than hardcode it.
+ *
+ *  At pldmd startup the publisher may not have configured any endpoint yet,
+ *  so an empty mapper response is expected — fall back to the
+ *  MCTPReactorService constant. Sender matching by well-known name applies
+ *  once the name is owned, so the fallback works even when the publisher
+ *  starts later.
+ */
+std::string resolveIdentityOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
+{
+    try
+    {
+        auto resp = dbusHandler.getSubtree(
+            pldm::MCTPPath, /*depth=*/0,
+            std::vector<std::string>({pldm::MCTPReactorConfiguredInterface}));
+        if (!resp.empty() && !resp.begin()->second.empty())
+        {
+            return resp.begin()->second.begin()->first;
+        }
+        info(
+            "resolveIdentityOwner: no configured endpoints published yet; "
+            "falling back to service constant {SERVICE}",
+            "SERVICE", std::string(pldm::MCTPReactorService));
+    }
+    catch (const std::exception& e)
+    {
+        error(
+            "resolveIdentityOwner: lookup failed; falling back to service "
+            "constant {SERVICE}, error - {ERROR}",
+            "SERVICE", std::string(pldm::MCTPReactorService), "ERROR",
+            e.what());
+    }
+    return pldm::MCTPReactorService;
+}
+
 } // namespace
 
 MctpDiscovery::MctpDiscovery(
@@ -94,17 +135,14 @@ MctpDiscovery::MctpDiscovery(
     pldm::utils::DBusHandlerInterface& dbusHandler,
     const std::vector<std::chrono::milliseconds>& retryBackoffOverride) :
     bus(bus), resolvedMctpService(resolveBusOwner(dbusHandler)),
-    mctpEndpointAddedSignal(
-        bus,
-        interfacesAddedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
-        [this](sdbusplus::message_t& msg) { this->discoverEndpoints(msg); }),
     mctpEndpointRemovedSignal(
         bus,
         interfacesRemovedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
+    resolvedIdentityService(resolveIdentityOwner(dbusHandler)),
     mctpReactorConfiguredSignal(
         bus,
-        interfacesAddedAtPath(MCTPNetworksPath) + sender(MCTPReactorService),
+        interfacesAddedAtPath(MCTPNetworksPath) + sender(resolvedIdentityService),
         [this](sdbusplus::message_t& msg) {
             this->onMctpReactorConfigured(msg);
         }),
@@ -237,7 +275,18 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         auto mctpInfo = MctpInfo(std::get<eid>(epProps), uuid, mctpMedium,
                                  std::get<NetworkId>(epProps), std::nullopt,
                                  mctpBinding, mctpLocalEid);
-        searchConfigurationFor(mctpInfo);
+        // Every path in this enumeration carries the configured_by
+        // association (the subtree query above is filtered on it), so a
+        // failed lookup after retries means the mapper is unhealthy — skip
+        // the endpoint rather than create unnamed inventory; it is picked up
+        // on the next daemon start.
+        if (!searchConfigurationWithRetry(mctpInfo))
+        {
+            warning(
+                "getMctpInfos: configuration unresolved for EID {EID} after retries; skipping endpoint",
+                "EID", static_cast<unsigned>(std::get<eid>(epProps)));
+            continue;
+        }
         mctpInfoMap[std::move(mctpInfo)] = availability;
 
         // Watch for PropertiesChanged signal from
@@ -641,11 +690,13 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
 
 void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
 {
-    // mctpreactor has published the configured_by association for an mctpd
-    // endpoint, so getAssociatedSubTree can now resolve the endpoint's EM
-    // configuration. Read the endpoint back from mctpd, resolve its config and
-    // create its (named) firmware inventory if it was deferred during the boot
-    // race (DGXOPENBMC-25121). No-op if the endpoint is already tracked.
+    // The runtime discovery trigger: the identity publisher (mctpreactor) has
+    // added the configured_by association on an mctpd endpoint. The
+    // association is published only after mctpd's endpoint object exists, so
+    // the endpoint properties can be read back from mctpd and the EM
+    // configuration resolved here — an endpoint is never processed before its
+    // identity exists (DGXOPENBMC-25121). No-op if the endpoint was already
+    // created with a resolved name.
     sdbusplus::message::object_path objPath;
     try
     {
@@ -700,16 +751,24 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
                           std::get<NetworkId>(epProps), std::nullopt,
                           mctpBinding, mctpLocalEid);
 
-        if (std::ranges::contains(existingMctpInfos, mctpInfo))
+        // The startup enumeration and this signal can overlap for an endpoint
+        // configured around daemon start, so dedup by endpoint identity
+        // (network + EID, the D-Bus path key). The configured-name field is
+        // deliberately excluded from the comparison: it is filled on the
+        // stored entry but still empty on this probe.
+        const auto probeEid = std::get<pldm::eid>(mctpInfo);
+        const auto probeNet = std::get<NetworkId>(mctpInfo);
+        if (std::ranges::any_of(
+                existingMctpInfos, [probeEid, probeNet](const MctpInfo& info) {
+                    return std::get<pldm::eid>(info) == probeEid &&
+                           std::get<NetworkId>(info) == probeNet;
+                }))
         {
-            // Already created (config resolved on the mctpd discovery pass).
             return;
         }
 
-        if (!searchConfigurationFor(mctpInfo))
+        if (!searchConfigurationWithRetry(mctpInfo))
         {
-            // Association present but not yet resolvable via ObjectMapper; a
-            // subsequent signal will retry.
             return;
         }
 
@@ -851,6 +910,31 @@ std::string MctpDiscovery::constructMctpReactorObjectPath(
     const auto eid = std::get<pldm::eid>(mctpInfo);
     return std::string{MCTPPath} + "/networks/" + std::to_string(networkId) +
            "/endpoints/" + std::to_string(eid) + "/configured_by";
+}
+
+bool MctpDiscovery::searchConfigurationWithRetry(MctpInfo& mctpInfo)
+{
+    // pldmd and ObjectMapper consume the same identity-publication signal, so
+    // the association can be queried here before the mapper has ingested it;
+    // under boot-time load the lookup can also time out outright. Bounded
+    // backoff covers both.
+    if (searchConfigurationFor(mctpInfo))
+    {
+        return true;
+    }
+    for (const auto& delay : retryBackoff)
+    {
+        std::this_thread::sleep_for(delay);
+        if (searchConfigurationFor(mctpInfo))
+        {
+            return true;
+        }
+    }
+    warning(
+        "searchConfigurationWithRetry: configuration unresolved for EID {EID} after {N} retries",
+        "EID", static_cast<unsigned>(std::get<eid>(mctpInfo)), "N",
+        retryBackoff.size());
+    return false;
 }
 
 bool MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
