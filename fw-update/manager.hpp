@@ -33,6 +33,7 @@
 #include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
+#include <algorithm>
 #include <format>
 #include <unordered_map>
 #include <vector>
@@ -601,10 +602,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  separate CHILD interface "<baseIntf>.Components<index>" on the same
      *  object path — NOT as flattened "Components<index><field>" properties on
      *  the parent interface. Each child interface carries Name,
-     *  ComponentIdentifier and an optional Manufacturer. The doubly-nested
-     *  per-component Associations array is not surfaced by EM's PlatformExposes
-     *  flattening, so it cannot be read here (component Associations stay empty;
-     *  the device-level configured_by association is unaffected).
+     *  ComponentIdentifier and an optional Manufacturer. Per-component
+     *  associations are published as three index-aligned string arrays
+     *  (AssociationForward/Backward/Endpoint) on the same child interface —
+     *  flat arrays survive PlatformExposes flattening where a nested object
+     *  array would not — and are zipped here into each component's association
+     *  list so firmware inventory can publish the inventory/activation
+     *  associations the Redfish layer needs.
      *
      *  @param[in]  service      - D-Bus service owning the object (entity-manager)
      *  @param[in]  objPath      - PLDMFirmwareDevice object path
@@ -679,7 +683,38 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 {}
             }
 
-            emComponents[compId] = {compName, Associations{}, manufacturer};
+            // Per-component associations are published by entity-manager as
+            // three index-aligned "as" arrays (AssociationForward/Backward/
+            // Endpoint) — flat arrays survive PlatformExposes flattening onto
+            // the Components<N> child interface, unlike a nested object array.
+            // Zip them into the (forward, reverse, endpoint) tuples firmware
+            // inventory copies onto the Software.Version Association.Definitions.
+            auto readStrList = [&cprops](const std::string& prop) {
+                std::vector<std::string> v;
+                if (auto it = cprops.find(prop); it != cprops.end())
+                {
+                    try
+                    {
+                        v = std::get<std::vector<std::string>>(it->second);
+                    }
+                    catch (const std::exception&)
+                    {}
+                }
+                return v;
+            };
+            const auto fwd = readStrList("AssociationForward");
+            const auto bwd = readStrList("AssociationBackward");
+            const auto endp = readStrList("AssociationEndpoint");
+            Associations compAssocs;
+            const size_t nAssoc =
+                std::min({fwd.size(), bwd.size(), endp.size()});
+            for (size_t i = 0; i < nAssoc; ++i)
+            {
+                compAssocs.emplace_back(fwd[i], bwd[i], endp[i]);
+            }
+
+            emComponents[compId] = {compName, std::move(compAssocs),
+                                    manufacturer};
             idNameMap[compId] = compName;
         }
     }
