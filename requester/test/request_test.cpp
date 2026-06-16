@@ -517,10 +517,9 @@ TEST_F(RequestIntfTest, sendMsgThrowsPropagates)
 
     MockPldmTransport mockTransport;
     EXPECT_CALL(mockTransport, sendMsg(testing::_, testing::_, testing::_))
-        .WillOnce(testing::Invoke(
-            [](pldm_tid_t, const void*, size_t) -> pldm_requester_rc_t {
-                throw std::runtime_error("sendMsg failure");
-            }));
+        .WillOnce([](pldm_tid_t, const void*, size_t) -> pldm_requester_rc_t {
+            throw std::runtime_error("sendMsg failure");
+        });
 
     Request request(&mockTransport, eid, event, std::move(requestMsg), 0,
                     milliseconds(100), false);

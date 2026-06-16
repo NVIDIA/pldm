@@ -88,7 +88,7 @@ TEST(DeviceInventoryInternalThreadTest, updateSKUOnMatchRunsDetachedLambda)
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -144,7 +144,7 @@ TEST(DeviceInventoryInternalThreadTest,
 {
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     DeviceInventoryInfo deviceInventoryInfo{};
@@ -175,7 +175,7 @@ TEST(DeviceInventoryInternalThreadTest,
 {
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     DeviceInventoryInfo deviceInventoryInfo{};
@@ -202,7 +202,7 @@ TEST(DeviceInventoryInternalThreadTest,
 TEST(DeviceInventoryInternalThreadTest, updateEntryAndUpdateSKUEarlyReturnPaths)
 {
     mockedSetSkuShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -240,7 +240,7 @@ TEST(DeviceInventoryInternalThreadTest,
 {
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -284,7 +284,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = false;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -336,7 +336,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -369,7 +369,7 @@ TEST(DeviceInventoryInternalThreadTest,
 {
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -403,7 +403,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -444,7 +444,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -482,7 +482,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -521,7 +521,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -565,7 +565,7 @@ TEST(DeviceInventoryInternalThreadTest,
     mockedSetSkuCallCount = 0;
     mockedSetSkuShouldThrow = false;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     Manager manager(busMock, DeviceInventoryInfo{}, DescriptorMap{});
@@ -578,5 +578,64 @@ TEST(DeviceInventoryInternalThreadTest,
     EXPECT_EQ(manager.skuLookup.size(), 1U);
     EXPECT_EQ(manager.updateSKUMatch.size(), 1U);
     EXPECT_EQ(manager.skuLookup.at(objPath), "0x11223344");
+    mockedSetSkuShouldThrow = true;
+}
+
+// Reproduces the MCU-reset re-discovery path. The device inventory D-Bus object
+// is intentionally preserved across MCTP endpoint removal, so a second
+// createEntry() for the same UUID must reuse the existing object and refresh it
+// in place. Re-registering the same path would make sd_bus_add_object_vtable
+// fail with -EEXIST; the resulting exception escaped the detached discovery
+// coroutine and aborted pldmd ("terminate called without an active exception").
+TEST(DeviceInventoryInternalThreadTest,
+     createEntryIsIdempotentAcrossReDiscovery)
+{
+    mockedSetSkuCallCount = 0;
+    mockedSetSkuShouldThrow = false;
+
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
+
+    DeviceInventoryInfo deviceInventoryInfo(
+        {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
+          {{objPath,
+            {{"parent", "child", "/xyz/openbmc_project/inventory/chassis"}}},
+           {}}}});
+
+    const eid eid1 = 1;
+    const DescriptorMap descriptorMap{
+        {eid1,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}},
+          {PLDM_FWUP_VENDOR_DEFINED,
+           std::make_tuple("ECSKU",
+                           std::vector<uint8_t>{0x49, 0x35, 0x36, 0x81})}}}};
+
+    // The chassis object must be registered exactly once across both calls.
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, deviceInventoryInfo, descriptorMap);
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+
+    // Initial discovery creates the object.
+    ASSERT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
+    ASSERT_EQ(manager.deviceEntryMap.size(), 1U);
+    ASSERT_TRUE(manager.deviceEntryMap.contains(uuid));
+    const Entry* firstEntry = manager.deviceEntryMap.at(uuid).get();
+
+    // Re-discovery must not throw, must not re-register, and must keep the same
+    // underlying object (idempotent refresh, not destroy + recreate).
+    EXPECT_NO_THROW({
+        EXPECT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
+    });
+    EXPECT_EQ(manager.deviceEntryMap.size(), 1U);
+    EXPECT_EQ(manager.deviceEntryMap.at(uuid).get(), firstEntry);
+    EXPECT_EQ(manager.deviceEntryMap.at(uuid)->sku(), "0x49353681");
+
     mockedSetSkuShouldThrow = true;
 }

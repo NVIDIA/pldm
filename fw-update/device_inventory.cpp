@@ -100,15 +100,28 @@ std::optional<sdbusplus::object_path> Manager::createEntry(
         }
         if (!objPath.empty())
         {
-            deviceEntryMap.emplace(
-                uuid,
-                std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
-            deviceObjPath = objPath;
+            // Inventory object is preserved across endpoint removal; refresh
+            // it in place since re-registering the same path throws (-EEXIST).
+            if (auto existing = deviceEntryMap.find(uuid);
+                existing != deviceEntryMap.end())
+            {
+                if (!ecsku.empty())
+                {
+                    existing->second->sku(ecsku);
+                }
+            }
+            else
+            {
+                deviceEntryMap.emplace(
+                    uuid,
+                    std::make_unique<Entry>(bus, objPath, uuid, assocs, ecsku));
 
-            lg2::info(
-                "Created ERoT Chassis D-Bus object: path={PATH}, uuid={UUID}, ecsku={ECSKU}",
-                "PATH", objPath, "UUID", uuid, "ECSKU",
-                ecsku.empty() ? "N/A" : ecsku);
+                lg2::info(
+                    "Created ERoT Chassis D-Bus object: path={PATH}, uuid={UUID}, ecsku={ECSKU}",
+                    "PATH", objPath, "UUID", uuid, "ECSKU",
+                    ecsku.empty() ? "N/A" : ecsku);
+            }
+            deviceObjPath = objPath;
         }
 
         const auto& updateObjPath = std::get<UpdateDeviceInfo>(deviceInfo);

@@ -100,37 +100,55 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
         {
             if ((std::get<0>(fwInfoSearch)).contains(compKey.second))
             {
-                auto componentObject =
-                    (std::get<0>(fwInfoSearch)).find(compKey.second);
-                const auto& [compObjName, compObjAssocs, compObjManufacturer] =
-                    componentObject->second;
-                std::string objPath = swBasePath + "/" + compObjName;
-
-                auto swId = std::format("0x{:04X}", compKey.second);
-                auto entry = std::make_unique<Entry>(
-                    bus, objPath, std::get<CompVersion>(compInfo), swId,
-                    compObjManufacturer);
-                entry->createUpdateableAssociation(swBasePath);
-
-                lg2::info(
-                    "Created software D-Bus object: path={PATH}, component_id={ID}, version={VERSION}",
-                    "PATH", objPath, "ID", swId, "VERSION",
-                    std::get<CompVersion>(compInfo));
-
-                const auto& assocs = compObjAssocs;
-
-                for (auto& assoc : assocs)
+                // Inventory object is preserved across endpoint removal;
+                // refresh it in place since re-registering the path throws
+                // (-EEXIST).
+                if (auto existing = firmwareInventoryMap.find(
+                        std::make_pair(eid, compKey.second));
+                    existing != firmwareInventoryMap.end())
                 {
-                    std::string fwdAssociation = std::get<0>(assoc);
-                    std::string revAssociation = std::get<1>(assoc);
-                    std::string objectPathAssociation = std::get<2>(assoc);
+                    existing->second->setVersion(
+                        std::get<CompVersion>(compInfo));
 
-                    entry->createAssociation(fwdAssociation, revAssociation,
-                                             objectPathAssociation);
+                    lg2::info(
+                        "Refreshed software D-Bus object: component_id={ID}, version={VERSION}",
+                        "ID", std::format("0x{:04X}", compKey.second),
+                        "VERSION", std::get<CompVersion>(compInfo));
                 }
+                else
+                {
+                    auto componentObject =
+                        (std::get<0>(fwInfoSearch)).find(compKey.second);
+                    const auto& [compObjName, compObjAssocs,
+                                 compObjManufacturer] = componentObject->second;
+                    std::string objPath = swBasePath + "/" + compObjName;
 
-                firmwareInventoryMap.emplace(
-                    std::make_pair(eid, compKey.second), std::move(entry));
+                    auto swId = std::format("0x{:04X}", compKey.second);
+                    auto entry = std::make_unique<Entry>(
+                        bus, objPath, std::get<CompVersion>(compInfo), swId,
+                        compObjManufacturer);
+                    entry->createUpdateableAssociation(swBasePath);
+
+                    lg2::info(
+                        "Created software D-Bus object: path={PATH}, component_id={ID}, version={VERSION}",
+                        "PATH", objPath, "ID", swId, "VERSION",
+                        std::get<CompVersion>(compInfo));
+
+                    const auto& assocs = compObjAssocs;
+
+                    for (auto& assoc : assocs)
+                    {
+                        std::string fwdAssociation = std::get<0>(assoc);
+                        std::string revAssociation = std::get<1>(assoc);
+                        std::string objectPathAssociation = std::get<2>(assoc);
+
+                        entry->createAssociation(fwdAssociation, revAssociation,
+                                                 objectPathAssociation);
+                    }
+
+                    firmwareInventoryMap.emplace(
+                        std::make_pair(eid, compKey.second), std::move(entry));
+                }
             }
             if ((std::get<1>(fwInfoSearch)).contains(compKey.second))
             {
@@ -153,6 +171,16 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
         const auto& compIdNameMap = componentNameMap.at(eid);
         for (const auto& [compKey, compInfo] : compInfoSearch->second)
         {
+            // Refresh preserved objects in place; re-registering throws
+            // (-EEXIST). See above.
+            if (auto existing = firmwareInventoryMap.find(
+                    std::make_pair(eid, compKey.second));
+                existing != firmwareInventoryMap.end())
+            {
+                existing->second->setVersion(std::get<1>(compInfo));
+                continue;
+            }
+
             std::string objPath =
                 swBasePath + "/" + compIdNameMap.at(compKey.second);
 

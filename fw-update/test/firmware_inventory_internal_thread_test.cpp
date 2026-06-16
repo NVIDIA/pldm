@@ -88,7 +88,7 @@ TEST(FirmwareInventoryInternalThreadTest, updateSwIdOnSignalRunsDetachedLambda)
     mockedSetSwIdCallCount = 0;
     mockedSetSwIdShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     ComponentInfoMap componentInfoMap{};
@@ -122,7 +122,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 {
     mockedSetSwIdCallCount = 0;
     mockedSetSwIdShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     ComponentInfoMap componentInfoMap{};
@@ -154,7 +154,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 {
     mockedSetSwIdCallCount = 0;
     mockedSetSwIdShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     ComponentInfoMap componentInfoMap{};
@@ -182,7 +182,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 TEST(FirmwareInventoryInternalThreadTest, createEntryAndUpdatePathsEarlyReturns)
 {
     mockedSetSwIdShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     FirmwareInventoryInfo fwInventoryInfo{};
@@ -203,7 +203,7 @@ TEST(FirmwareInventoryInternalThreadTest, createEntryAndUpdatePathsEarlyReturns)
 TEST(FirmwareInventoryInternalThreadTest, updateFWVersionUpdatesExistingEntry)
 {
     mockedSetSwIdShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 1;
@@ -236,7 +236,7 @@ TEST(FirmwareInventoryInternalThreadTest, updateFWVersionUpdatesExistingEntry)
 TEST(FirmwareInventoryInternalThreadTest, updateEntryUpdatesMappedInventory)
 {
     mockedSetSwIdShouldThrow = true;
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 3;
@@ -271,7 +271,7 @@ TEST(FirmwareInventoryInternalThreadTest,
     mockedSetSwIdCallCount = 0;
     mockedSetSwIdShouldThrow = false;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     ComponentInfoMap componentInfoMap{};
@@ -306,7 +306,7 @@ TEST(FirmwareInventoryInternalThreadTest,
     mockedSetSwIdCallCount = 0;
     mockedSetSwIdShouldThrow = false;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 11;
@@ -343,7 +343,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 {
     mockedSetSwIdShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 12;
@@ -379,7 +379,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 {
     mockedSetSwIdShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 13;
@@ -404,7 +404,7 @@ TEST(FirmwareInventoryInternalThreadTest,
 {
     mockedSetSwIdShouldThrow = true;
 
-    sdbusplus::SdBusMock sdbusMock;
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
 
     const eid eid1 = 14;
@@ -415,4 +415,66 @@ TEST(FirmwareInventoryInternalThreadTest,
                     componentNameMap);
 
     EXPECT_NO_THROW({ manager.updateFWVersion(eid1); });
+}
+
+// Reproduces the MCU-reset re-discovery path. The software D-Bus objects are
+// intentionally preserved across MCTP endpoint removal, so a second
+// createEntry() while the object is still registered must refresh the version
+// in place rather than re-registering the same path. Re-registering would make
+// sd_bus_add_object_vtable fail with -EEXIST; the resulting exception escaped
+// the detached discovery coroutine and aborted pldmd.
+TEST(FirmwareInventoryInternalThreadTest,
+     createEntryIsIdempotentAcrossReDiscovery)
+{
+    mockedSetSwIdShouldThrow = true;
+
+    testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    const eid eid1 = 15;
+    const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
+    constexpr uint16_t compClassification = 2;
+    constexpr uint16_t compIdentifier = 0x4321;
+    const std::string generatedName{"GeneratedComp"};
+
+    ComponentInfoMap componentInfoMap{
+        {eid1,
+         {{std::make_pair(compClassification, compIdentifier),
+           std::make_tuple(static_cast<uint8_t>(1), std::string("v2"),
+                           static_cast<uint16_t>(0))}}}};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    ComponentNameMap componentNameMap{
+        {eid1, {{compIdentifier, generatedName}}}};
+
+    const std::string objPath =
+        std::string("/xyz/openbmc_project/software/") + generatedName;
+    // The software object must be registered exactly once across both calls.
+    EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
+        .Times(1);
+
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap);
+    dbus::MctpInterfaces mctpInterfaces{
+        {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
+
+    const auto invKey = std::make_pair(eid1, compIdentifier);
+    const auto compKey = std::make_pair(compClassification, compIdentifier);
+
+    // Initial discovery creates the object at version v2.
+    ASSERT_NO_THROW({ manager.createEntry(eid1, uuid, mctpInterfaces); });
+    ASSERT_EQ(manager.firmwareInventoryMap.size(), 1U);
+    ASSERT_TRUE(manager.firmwareInventoryMap.contains(invKey));
+    EXPECT_EQ(manager.firmwareInventoryMap.at(invKey)->version(), "v2");
+    const Entry* firstEntry = manager.firmwareInventoryMap.at(invKey).get();
+
+    // Device reports a new active version after the reset (componentInfoMap is
+    // held by reference, so mutating it is observed by the manager).
+    componentInfoMap.at(eid1).at(compKey) = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v3"), static_cast<uint16_t>(0));
+
+    // Re-discovery: no throw, no duplicate registration, version refreshed.
+    EXPECT_NO_THROW({ manager.createEntry(eid1, uuid, mctpInterfaces); });
+    EXPECT_EQ(manager.firmwareInventoryMap.size(), 1U);
+    EXPECT_EQ(manager.firmwareInventoryMap.at(invKey).get(), firstEntry);
+    EXPECT_EQ(manager.firmwareInventoryMap.at(invKey)->version(), "v3");
 }

@@ -1888,6 +1888,15 @@ TEST_F(DBusAsyncUtilsTest, coGetSubTreeCtorAndAwaitCoverage)
 
 // Death tests intentionally abort under injected allocation failures; the
 // runtime test pass covers them and the analyzer cannot reason about them.
+//
+// The awaiters are noexcept, so a std::bad_alloc raised while copying the
+// result terminates the process. Whether libstdc++ reports the exception type
+// ("terminate called after throwing ... std::bad_alloc") or "terminate called
+// without an active exception" depends on the optimizer: when the noexcept
+// landing pad has to run destructors it calls std::terminate directly, before
+// __cxa_begin_catch records the active exception. Match the stable "terminate
+// called" prefix rather than the exception type so the expectation holds
+// across optimization levels.
 #ifndef __clang_analyzer__
 TEST_F(DBusAsyncUtilsTest, coGetServiceMapAwaitSuspendDiesOnBadAllocDuringCopy)
 {
@@ -1913,7 +1922,7 @@ TEST_F(DBusAsyncUtilsTest, coGetServiceMapAwaitSuspendDiesOnBadAllocDuringCopy)
             async_utils_test::ScopedAllocationFailure failure(1);
             (void)op.await_suspend(std::noop_coroutine());
         },
-        "bad_alloc");
+        "terminate called");
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetSubTreeAwaitSuspendDiesOnBadAllocDuringCopy)
@@ -1943,7 +1952,7 @@ TEST_F(DBusAsyncUtilsTest, coGetSubTreeAwaitSuspendDiesOnBadAllocDuringCopy)
             async_utils_test::ScopedAllocationFailure failure(1);
             (void)op.await_suspend(std::noop_coroutine());
         },
-        "bad_alloc");
+        "terminate called");
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetServiceMapAwaitResumeDiesOnBadAllocOnCopy)
@@ -1972,7 +1981,7 @@ TEST_F(DBusAsyncUtilsTest, coGetServiceMapAwaitResumeDiesOnBadAllocOnCopy)
             auto copy = op.await_resume();
             (void)copy;
         },
-        "bad_alloc");
+        "terminate called");
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetSubTreeAwaitResumeDiesOnBadAllocOnCopy)
@@ -2004,7 +2013,7 @@ TEST_F(DBusAsyncUtilsTest, coGetSubTreeAwaitResumeDiesOnBadAllocOnCopy)
             auto copy = op.await_resume();
             (void)copy;
         },
-        "bad_alloc");
+        "terminate called");
 }
 #endif
 

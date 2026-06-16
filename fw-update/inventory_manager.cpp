@@ -72,7 +72,18 @@ exec::task<int> InventoryManager::discoverFDsTask()
                 continue;
             }
             mctpEidMap[eid] = std::make_tuple(uuid, mediumType, bindingType);
-            co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
+            // Discovery runs detached; an escaping exception would terminate
+            // pldmd, so skip the failing endpoint instead of crashing.
+            try
+            {
+                co_await startFirmwareDiscoveryFlow(eid, mctpInterfaces);
+            }
+            catch (const std::exception& e)
+            {
+                error(
+                    "Firmware discovery failed for EID {EID}, skipping: {ERROR}",
+                    "EID", eid, "ERROR", e.what());
+            }
         }
         queuedMctpInfos.pop();
     }

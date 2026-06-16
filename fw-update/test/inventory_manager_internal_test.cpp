@@ -424,6 +424,44 @@ TEST_F(InventoryManagerInternalTest, discoverFDsTaskSkipsExcludedEids)
     EXPECT_FALSE(descriptorMap.contains(excludedEid));
 }
 
+// An exception thrown while discovering an endpoint (here forced via
+// instance-id exhaustion, but representative of e.g. an inventory callback
+// re-registering a preserved D-Bus object) must be contained by
+// discoverFDsTask. Without containment the exception reaches the stdexec
+// start_detached receiver, which calls std::terminate() and aborts pldmd
+// ("terminate called without an active exception"). The failing batch must
+// still be drained so discovery can make progress on the next signal.
+TEST_F(InventoryManagerInternalTest, discoverFDsTaskContainsDiscoveryExceptions)
+{
+    const pldm::eid eid = 9;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, descriptorMap, downstreamDescriptorMap,
+                             componentInfoMap, deviceInventoryInfo,
+                             excludedFwUpdateEids);
+
+    // Exhaust every instance ID for this EID so the first PLDM request issued
+    // by startFirmwareDiscoveryFlow throws pldm::InstanceIdError.
+    for (uintmax_t i = 0; i < pldmMaxInstanceIds; ++i)
+    {
+        auto id = instanceIdDb.next(eid);
+        ASSERT_TRUE(id.has_value());
+    }
+
+    MctpInfos mctpInfos{MctpInfo{eid, uuid, medium, NetworkId{1},
+                                 MctpInfoName{}, binding, LocalEid{}}};
+    manager.queuedMctpInfos.emplace(mctpInfos, dbus::MctpInterfaces{});
+
+    // Must not propagate (no std::terminate), and the batch must be drained.
+    EXPECT_NO_THROW(stdexec::sync_wait(manager.discoverFDsTask()));
+    EXPECT_TRUE(manager.queuedMctpInfos.empty());
+}
+
 TEST_F(InventoryManagerInternalTest, refreshSingleEndpointSkipsExcludedEid)
 {
     const pldm::eid excludedEid = 42;
