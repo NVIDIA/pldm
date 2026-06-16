@@ -100,10 +100,11 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
             std::string compObjName;
             Associations compObjAssocs;
             std::string compObjManufacturer = "NVIDIA";
+            bool compUpdateOnly = false;
             if (compObjIt != emComponents.end())
             {
-                std::tie(compObjName, compObjAssocs, compObjManufacturer) =
-                    compObjIt->second;
+                std::tie(compObjName, compObjAssocs, compObjManufacturer,
+                         compUpdateOnly) = compObjIt->second;
             }
             else if (componentNameMap.contains(eid) &&
                      componentNameMap.at(eid).contains(compKey.second))
@@ -119,6 +120,21 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
 
             std::string objPath = swBasePath + "/" + compObjName;
             auto swId = std::format("0x{:04X}", compKey.second);
+
+            if (compUpdateOnly)
+            {
+                // The Software.Version object at objPath is owned by another
+                // service (e.g. BMC firmware, component 16 -> BMC.Inventory).
+                // Only stamp SoftwareId on it; do NOT create a competing
+                // pldm-owned object (which would carry Purpose=Other and shadow
+                // the real inventory entry).
+                updateSwId(objPath, swId);
+                lg2::info(
+                    "Updated software ID for existing D-Bus object (EM config, update-only): path={PATH}, component_id={ID}",
+                    "PATH", objPath, "ID", swId);
+                continue;
+            }
+
             auto entry = std::make_unique<Entry>(
                 bus, objPath, std::get<CompVersion>(compInfo), swId,
                 compObjManufacturer);
@@ -177,10 +193,22 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                     auto componentObject =
                         (std::get<0>(fwInfoSearch)).find(compKey.second);
                     const auto& [compObjName, compObjAssocs,
-                                 compObjManufacturer] = componentObject->second;
+                                 compObjManufacturer, compUpdateOnly] =
+                        componentObject->second;
                     std::string objPath = swBasePath + "/" + compObjName;
-
                     auto swId = std::format("0x{:04X}", compKey.second);
+
+                    if (compUpdateOnly)
+                    {
+                        // Owned by another service: stamp SoftwareId only, no
+                        // competing object.
+                        updateSwId(objPath, swId);
+                        lg2::info(
+                            "Updated software ID for existing D-Bus object (update-only): path={PATH}, component_id={ID}",
+                            "PATH", objPath, "ID", swId);
+                        continue;
+                    }
+
                     auto entry = std::make_unique<Entry>(
                         bus, objPath, std::get<CompVersion>(compInfo), swId,
                         compObjManufacturer);

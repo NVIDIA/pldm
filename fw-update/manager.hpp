@@ -713,8 +713,23 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 compAssocs.emplace_back(fwd[i], bwd[i], endp[i]);
             }
 
+            // UpdateOnly: the component's Software.Version object is owned by
+            // another service (e.g. BMC firmware, component 16, owned by
+            // BMC.Inventory). firmware inventory must only stamp SoftwareId on
+            // it, never create a competing Purpose=Other object.
+            bool updateOnly = false;
+            if (auto it = cprops.find("UpdateOnly"); it != cprops.end())
+            {
+                try
+                {
+                    updateOnly = std::get<bool>(it->second);
+                }
+                catch (const std::exception&)
+                {}
+            }
+
             emComponents[compId] = {compName, std::move(compAssocs),
-                                    manufacturer};
+                                    manufacturer, updateOnly};
             idNameMap[compId] = compName;
         }
     }

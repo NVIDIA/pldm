@@ -215,7 +215,13 @@ using DBusIntfMatch = std::pair<dbus::Interface, dbus::PropertyMap>;
 using ComponentName = std::string;
 using Manufacturer = std::string;
 using ComponentIdNameMap = std::unordered_map<CompIdentifier, ComponentName>;
-using ComponentObject = std::tuple<ComponentName, Associations, Manufacturer>;
+// UpdateOnly marks a component whose Software.Version object is owned by
+// another service (e.g. BMC firmware component 16, owned by BMC.Inventory).
+// firmware inventory only stamps SoftwareId on it via updateSwId() and does
+// not create a competing object.
+using UpdateOnly = bool;
+using ComponentObject =
+    std::tuple<ComponentName, Associations, Manufacturer, UpdateOnly>;
 using CreateComponentIdNameMap =
     std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;

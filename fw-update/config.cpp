@@ -131,7 +131,7 @@ void parseConfig(const fs::path& jsonPath,
                                         .get<std::string>();
                             }
                             createcomponentIdNameMap[componentID] = {
-                                componentName, assocs, manufacturer};
+                                componentName, assocs, manufacturer, false};
                         }
                     }
                 }
