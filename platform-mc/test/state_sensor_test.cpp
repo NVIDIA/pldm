@@ -674,6 +674,20 @@ TEST(TestOemStateSensor, memorySpareChannelPresence)
         stateSetMemorySpareChannel->ValueIntf->memorySpareChannelPresence());
 }
 
+#ifdef OEM_NVIDIA
+TEST(StateSensorEventId, synthesizeEventId)
+{
+    EXPECT_EQ(
+        "CPU_0_PERFORMANCE_THROTTLED",
+        StateSensor::synthesizeEventId("CPU_0", "Performance", "Throttled"));
+    EXPECT_EQ("HGX_CPU_0_EDP_VIOLATION_STATE_CURRENT_INPUT_OUT_OF_RANGE",
+              StateSensor::synthesizeEventId("HGX_CPU_0", "EDP Violation State",
+                                             "Current Input out of Range"));
+    EXPECT_EQ("DEV_1_PCIE_LINKDOWN",
+              StateSensor::synthesizeEventId("Dev-1", "PCIe", "LinkDown"));
+}
+#endif
+
 TEST_F(StateSensorCoverage, healthStateCoverage)
 {
     const uint16_t sensorId = 2;
@@ -711,6 +725,8 @@ TEST_F(StateSensorCoverage, healthStateCoverage)
     auto [msgWarn, argWarn, levelWarn, eventWarn,
           impactedWarn] = health->getEventData(nullptr);
     EXPECT_EQ("Warning", argWarn);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", msgWarn);
+    EXPECT_EQ(Level::Warning, levelWarn);
     EXPECT_TRUE(eventWarn.empty());
     EXPECT_TRUE(impactedWarn.empty());
 
@@ -760,6 +776,8 @@ TEST_F(StateSensorCoverage, stateSetCoverageMatrix)
         auto [msgWarn, argWarn, levelWarn, eventWarn,
               impactedWarn] = stateSet->getEventData(nullptr);
         EXPECT_EQ("Throttled", argWarn);
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", msgWarn);
+        EXPECT_EQ(Level::Warning, levelWarn);
         sensor->updateReading(true, true, 0, 0xFF);
         stateSet->updateSensorName("unused");
         EXPECT_EQ("Performance", stateSet->getStringStateType());
@@ -788,6 +806,8 @@ TEST_F(StateSensorCoverage, stateSetCoverageMatrix)
         auto [msgWarn, argWarn, levelWarn, eventWarn,
               impactedWarn] = stateSet->getEventData(nullptr);
         EXPECT_EQ("Current Input out of Range", argWarn);
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", msgWarn);
+        EXPECT_EQ(Level::Warning, levelWarn);
         sensor->updateReading(true, true, 0, 0xFF);
         stateSet->updateSensorName("unused");
         EXPECT_EQ("EDP Violation State", stateSet->getStringStateType());
@@ -817,10 +837,14 @@ TEST_F(StateSensorCoverage, stateSetCoverageMatrix)
         auto [msgDown, argDown, levelDown, eventDown,
               impactedDown] = stateSet->getEventData(nullptr);
         EXPECT_EQ("Inactive", argDown);
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", msgDown);
+        EXPECT_EQ(Level::Informational, levelDown);
         sensor->updateReading(true, true, 0, 0xFF);
         auto [msgUnknown, argUnknown, levelUnknown, eventUnknown,
               impactedUnknown] = stateSet->getEventData(nullptr);
         EXPECT_EQ("Unknown", argUnknown);
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", msgUnknown);
+        EXPECT_EQ(Level::Warning, levelUnknown);
         stateSet->updateSensorName("unused");
         EXPECT_EQ("PCIe", stateSet->getStringStateType());
     }
@@ -856,11 +880,16 @@ TEST_F(StateSensorCoverage, stateSetCoverageMatrix)
         EXPECT_EQ("LinkDown", argDown);
         EXPECT_EQ("ResourceEvent.1.0.LinkDown", eventDown);
         EXPECT_EQ("Switch0", impactedDown);
+        // LinkDown is Critical (ResourceErrorsDetected + Alert)
+        EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", msgDown);
+        EXPECT_EQ(Level::Alert, levelDown);
 
         sensor->updateReading(true, true, 0, 0xFF);
         auto [msgUnknown, argUnknown, levelUnknown, eventUnknown,
               impactedUnknown] = stateSet->getEventData(nullptr);
         EXPECT_EQ("Unknown", argUnknown);
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", msgUnknown);
+        EXPECT_EQ(Level::Warning, levelUnknown);
 
         stateSet->setPortTypeValue(PortType::UpstreamPort);
         stateSet->setPortProtocolValue(PortProtocol::Ethernet);
@@ -2146,8 +2175,11 @@ TEST_F(StateSensorDbusMockTest,
     expectAppendString("OpenBMC.0.1.CustomNotice");
     expectAppendString(severity.c_str());
     expectStringMap({
+        {"DEVICE_NAME", "cpu0"},
+        {"ERROR_ID", "CPU0_HEALTH_RECOVERED"},
         {"REDFISH_MESSAGE_ARGS", "cpu0 Health,Recovered"},
         {"REDFISH_MESSAGE_ID", "OpenBMC.0.1.CustomNotice"},
+        {"xyz.openbmc_project.Logging.Entry.EventId", "CPU0_HEALTH_RECOVERED"},
         {"xyz.openbmc_project.Logging.Entry.Resolution", "None"},
     });
     expectBusCallNoReply();
@@ -2181,8 +2213,11 @@ TEST_F(StateSensorDbusMockTest,
     expectAppendString("OpenBMC.0.1.CustomCritical");
     expectAppendString(severity.c_str());
     expectStringMap({
+        {"DEVICE_NAME", "cpu0"},
+        {"ERROR_ID", "CPU0_HEALTH_CRITICAL"},
         {"REDFISH_MESSAGE_ARGS", "cpu0 Health,Critical"},
         {"REDFISH_MESSAGE_ID", "OpenBMC.0.1.CustomCritical"},
+        {"xyz.openbmc_project.Logging.Entry.EventId", "CPU0_HEALTH_CRITICAL"},
         {"xyz.openbmc_project.Logging.Entry.Resolution", "None"},
     });
     expectBusCallNoReply();
@@ -2318,6 +2353,7 @@ TEST_F(StateSensorDbusMockTest, createLogEntryAdditionalOemArgsSuccessCoverage)
     expectAppendString("xyz.openbmc_project.Logging.Entry.Level.Critical");
     expectStringMap({
         {"DEVICE_NAME", impactedComponent},
+        {"ERROR_ID", eventId},
         {"REDFISH_MESSAGE_ARGS", "CPU1 Presence,Critical"},
         {"REDFISH_MESSAGE_ID", messageId},
         {"xyz.openbmc_project.Logging.Entry.EventId", eventId},
@@ -2391,6 +2427,7 @@ TEST_F(StateSensorDbusMockTest, createLogEntryAdditionalOemArgsFailureCoverage)
     expectAppendString("xyz.openbmc_project.Logging.Entry.Level.Critical");
     expectStringMap({
         {"DEVICE_NAME", impactedComponent},
+        {"ERROR_ID", eventId},
         {"REDFISH_MESSAGE_ARGS", "CPU3 Health,Critical"},
         {"REDFISH_MESSAGE_ID", messageId},
         {"xyz.openbmc_project.Logging.Entry.EventId", eventId},
@@ -2473,6 +2510,7 @@ TEST_F(StateSensorDbusMockTest,
     expectAppendString(messageId.c_str());
     expectAppendString("xyz.openbmc_project.Logging.Entry.Level.Critical");
     expectStringMap({
+        {"ERROR_ID", eventId},
         {"REDFISH_MESSAGE_ARGS", "CPU5 Health,Critical"},
         {"REDFISH_MESSAGE_ID", messageId},
         {"xyz.openbmc_project.Logging.Entry.EventId", eventId},

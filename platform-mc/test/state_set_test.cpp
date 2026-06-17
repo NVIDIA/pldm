@@ -1281,7 +1281,7 @@ TEST_F(StateSetCoverageTest,
           impacted] = performance.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", messageId);
     EXPECT_EQ("Throttled", state);
-    EXPECT_EQ(Level::Informational, level);
+    EXPECT_EQ(Level::Warning, level);
     EXPECT_TRUE(eventId.empty());
     EXPECT_TRUE(impacted.empty());
 }
@@ -1312,7 +1312,7 @@ TEST_F(StateSetCoverageTest,
           impacted] = powerSupply.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", messageId);
     EXPECT_EQ("Current Input out of Range", state);
-    EXPECT_EQ(Level::Informational, level);
+    EXPECT_EQ(Level::Warning, level);
     EXPECT_TRUE(eventId.empty());
     EXPECT_TRUE(impacted.empty());
 }
@@ -1348,7 +1348,7 @@ TEST_F(StateSetCoverageTest, pcieTelemetryErrorAndDefaultCoverage)
           impacted] = pcieState.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedCritical", messageId);
     EXPECT_EQ("Error", state);
-    EXPECT_EQ(Level::Informational, level);
+    EXPECT_EQ(Level::Critical, level);
     EXPECT_TRUE(eventId.empty());
     EXPECT_TRUE(impacted.empty());
 }
@@ -1885,7 +1885,7 @@ TEST_F(StateSetCoverageTest, nvlinkManualEventAndTelemetryGuardCoverage)
     stateSet.ValuePortStateIntf->linkState(PortLinkStates::Disabled);
     auto [warningMessage, warningArg, warningLevel, warningEventId,
           warningImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", warningMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", warningMessage);
     EXPECT_EQ("LinkDown", warningArg);
     EXPECT_EQ(Level::Informational, warningLevel);
     EXPECT_TRUE(warningEventId.empty());
@@ -1898,7 +1898,7 @@ TEST_F(StateSetCoverageTest, nvlinkManualEventAndTelemetryGuardCoverage)
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedCritical",
               criticalMessage);
     EXPECT_EQ("Error", criticalArg);
-    EXPECT_EQ(Level::Informational, criticalLevel);
+    EXPECT_EQ(Level::Critical, criticalLevel);
     EXPECT_TRUE(criticalEventId.empty());
     EXPECT_TRUE(criticalImpacted.empty());
 

@@ -23,6 +23,8 @@
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <regex>
@@ -33,6 +35,19 @@ namespace platform_mc
 {
 
 using namespace sdbusplus::xyz::openbmc_project::Logging::server;
+
+#ifdef OEM_NVIDIA
+std::string StateSensor::synthesizeEventId(const std::string& entityName,
+                                           const std::string& sensorName,
+                                           const std::string& targetState)
+{
+    std::string raw = entityName + "_" + sensorName + "_" + targetState;
+    std::string s = std::regex_replace(raw, std::regex("[^a-zA-Z0-9_]+"), "_");
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    return s;
+}
+#endif
 
 StateSensor::StateSensor(
     const uint8_t tid, const bool sensorDisabled, const uint16_t sensorId,
@@ -182,6 +197,17 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
 
             std::string resolution = "None";
 #ifdef OEM_NVIDIA
+            if (level != Level::Informational)
+            {
+                if (impactedComponent.empty())
+                {
+                    impactedComponent = entityName;
+                }
+                if (eventId.empty())
+                {
+                    eventId = synthesizeEventId(entityName, sensorName, arg2);
+                }
+            }
             createLogEntryAdditionalOEMArgs(messageID, arg1, arg2, resolution,
                                             eventId, impactedComponent, level);
 #else
@@ -266,6 +292,11 @@ void StateSensor::createLogEntryAdditionalOEMArgs(
     if (!eventId.empty())
     {
         addData["xyz.openbmc_project.Logging.Entry.EventId"] = eventId;
+        // Also expose via ERROR_ID AdditionalData so bmcweb surfaces it as
+        // Oem.Nvidia.ErrorId on the Redfish EventLog entry (the Entry.EventId
+        // property alone only surfaces on the SEL service). Same handling as
+        // the existing CX LinkDown EventId path. (nvbug 6130100)
+        addData["ERROR_ID"] = eventId;
     }
     if (!impactedComponent.empty())
     {

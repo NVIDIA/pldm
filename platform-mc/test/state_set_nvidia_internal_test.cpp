@@ -1046,7 +1046,7 @@ TEST_F(StateSetNvlinkInternalTest,
     auto [message, arg, level, eventId,
           impacted] = stateSet.getEventData(&sensorEventInfo);
 
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", message);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", message);
     EXPECT_EQ("LinkDown", arg);
     EXPECT_EQ(Level::Informational, level);
     EXPECT_TRUE(eventId.empty());
@@ -1072,7 +1072,7 @@ TEST_F(StateSetNvlinkInternalTest,
     EXPECT_NO_THROW(stateSet.setValue(PLDM_STATE_SET_NVLINK_ACTIVE));
     auto [upMessage, upArg, upLevel, upEventId,
           upImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChanged", upMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", upMessage);
     EXPECT_EQ("LinkUp", upArg);
     EXPECT_EQ(Level::Informational, upLevel);
     EXPECT_TRUE(upEventId.empty());
@@ -1083,16 +1083,16 @@ TEST_F(StateSetNvlinkInternalTest,
           errorImpacted] = stateSet.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedCritical", errorMessage);
     EXPECT_EQ("Error", errorArg);
-    EXPECT_EQ(Level::Informational, errorLevel);
+    EXPECT_EQ(Level::Critical, errorLevel);
     EXPECT_TRUE(errorEventId.empty());
     EXPECT_TRUE(errorImpacted.empty());
 
     EXPECT_NO_THROW(stateSet.setValue(0xFF));
     auto [unknownMessage, unknownArg, unknownLevel, unknownEventId,
           unknownImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChanged", unknownMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", unknownMessage);
     EXPECT_EQ("Unknown", unknownArg);
-    EXPECT_EQ(Level::Informational, unknownLevel);
+    EXPECT_EQ(Level::Warning, unknownLevel);
     EXPECT_TRUE(unknownEventId.empty());
     EXPECT_TRUE(unknownImpacted.empty());
 }
@@ -1123,7 +1123,7 @@ TEST_F(StateSetNvlinkInternalTest,
     auto [message, arg, level, eventId,
           impacted] = stateSet.getEventData(&sensorEventInfo);
 
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", message);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", message);
     EXPECT_EQ("LinkDown", arg);
     EXPECT_EQ(Level::Informational, level);
     EXPECT_EQ("ResourceEvent.1.0.LinkDown", eventId);
@@ -1150,7 +1150,7 @@ TEST_F(StateSetNvlinkInternalTest,
     auto [message, arg, level, eventId,
           impacted] = stateSet.getEventData(nullptr);
 
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChanged", message);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", message);
     EXPECT_EQ("LinkUp", arg);
     EXPECT_EQ(Level::Informational, level);
     EXPECT_TRUE(eventId.empty());
@@ -1268,7 +1268,7 @@ TEST_F(StateSetNvlinkInternalTest,
 }
 
 TEST_F(StateSetNvlinkInternalTest,
-       getEventDataReturnsWarningWhenLinkDownHasNoSensorInfo)
+       getEventDataReturnsOkWhenLinkDownHasNoSensorInfo)
 {
     auto sensor = makeStateSensor(
         17, 0x1517, PLDM_ENTITY_SYS_BUS, 17, PLDM_NVIDIA_OEM_STATE_SET_NVLINK,
@@ -1284,7 +1284,7 @@ TEST_F(StateSetNvlinkInternalTest,
     auto [message, arg, level, eventId,
           impacted] = stateSet.getEventData(nullptr);
 
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", message);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", message);
     EXPECT_EQ("LinkDown", arg);
     EXPECT_EQ(Level::Informational, level);
     EXPECT_TRUE(eventId.empty());
@@ -1482,7 +1482,7 @@ TEST_F(StateSetNvlinkInternalTest,
           defaultImpacted] = stateSet.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", defaultMessage);
     EXPECT_EQ("Throttled", defaultArg);
-    EXPECT_EQ(Level::Informational, defaultLevel);
+    EXPECT_EQ(Level::Warning, defaultLevel);
     EXPECT_TRUE(defaultEventId.empty());
     EXPECT_TRUE(defaultImpacted.empty());
 
@@ -1501,7 +1501,7 @@ TEST_F(StateSetNvlinkInternalTest,
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning",
               throttledMessage);
     EXPECT_EQ("Throttled", throttledArg);
-    EXPECT_EQ(Level::Informational, throttledLevel);
+    EXPECT_EQ(Level::Warning, throttledLevel);
     EXPECT_TRUE(throttledEventId.empty());
     EXPECT_TRUE(throttledImpacted.empty());
 
@@ -1510,7 +1510,7 @@ TEST_F(StateSetNvlinkInternalTest,
           unknownImpacted] = stateSet.getEventData(nullptr);
     EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", unknownMessage);
     EXPECT_EQ("Throttled", unknownArg);
-    EXPECT_EQ(Level::Informational, unknownLevel);
+    EXPECT_EQ(Level::Warning, unknownLevel);
     EXPECT_TRUE(unknownEventId.empty());
     EXPECT_TRUE(unknownImpacted.empty());
 }
@@ -1531,18 +1531,18 @@ TEST_F(StateSetNvlinkInternalTest, nvlinkDefaultValueAndStateTypeCoverage)
 
     auto [defaultMessage, defaultArg, defaultLevel, defaultEventId,
           defaultImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChanged", defaultMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", defaultMessage);
     EXPECT_EQ("Unknown", defaultArg);
-    EXPECT_EQ(Level::Informational, defaultLevel);
+    EXPECT_EQ(Level::Warning, defaultLevel);
     EXPECT_TRUE(defaultEventId.empty());
     EXPECT_TRUE(defaultImpacted.empty());
 
     EXPECT_NO_THROW(stateSet.setValue(0xFE));
     auto [unknownMessage, unknownArg, unknownLevel, unknownEventId,
           unknownImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChanged", unknownMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", unknownMessage);
     EXPECT_EQ("Unknown", unknownArg);
-    EXPECT_EQ(Level::Informational, unknownLevel);
+    EXPECT_EQ(Level::Warning, unknownLevel);
     EXPECT_TRUE(unknownEventId.empty());
     EXPECT_TRUE(unknownImpacted.empty());
 }

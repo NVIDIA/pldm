@@ -152,9 +152,8 @@ class StateSetPciePortLinkState : public StateSet
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
-            return {
-                std::string("ResourceEvent.1.0.ResourceStatusChangedCritical"),
-                std::string("Inactive"), Level::Critical, "", ""};
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
+                    std::string("Inactive"), Level::Informational, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
