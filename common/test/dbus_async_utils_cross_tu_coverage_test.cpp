@@ -318,7 +318,7 @@ namespace
 
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
-using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+using ObjectPaths = std::vector<sdbusplus::object_path>;
 
 class DBusAsyncUtilsCrossTuTest : public testing::Test
 {
@@ -432,8 +432,8 @@ TEST_F(DBusAsyncUtilsCrossTuTest, PropertyAwaitableCoversSupportedTypesInNewTu)
     EXPECT_EQ(countersProp.await_resume(), counters);
 
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     conn.nextPropertyValue = objectPaths;
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
         path, "ObjectPaths", iface);
@@ -621,8 +621,8 @@ TEST_F(DBusAsyncUtilsCrossTuTest,
         {"chassis", "all_sensors", "/xyz/openbmc_project/inventory/chassis0"},
         {"chassis", "all_sensors", "/xyz/openbmc_project/inventory/chassis1"}};
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     const std::vector<uint64_t> counters{7, 8, 9};
     const std::vector<uint8_t> rawBytes{0x10, 0x20, 0x30};
 

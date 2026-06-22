@@ -225,7 +225,7 @@ using PropertyValue =
                  uint64_t, double, std::string, std::vector<uint8_t>,
                  std::vector<uint64_t>, std::vector<std::string>,
                  std::vector<std::tuple<std::string, std::string, std::string>>,
-                 std::vector<sdbusplus::message::object_path>>;
+                 std::vector<sdbusplus::object_path>>;
 using DbusProp = std::string;
 using DbusChangedProps = std::map<DbusProp, PropertyValue>;
 using DBusInterfaceAdded = std::vector<
@@ -251,7 +251,7 @@ using GetAncestorsResponse =
     std::vector<std::pair<ObjectPath, MapperServiceMap>>;
 using PropertyMap = std::map<std::string, PropertyValue>;
 using InterfaceMap = std::map<std::string, PropertyMap>;
-using ObjectValueTree = std::map<sdbusplus::message::object_path, InterfaceMap>;
+using ObjectValueTree = std::map<sdbusplus::object_path, InterfaceMap>;
 using AttributeName = std::string;
 using AttributeType = std::string;
 using AttributeValue = std::variant<std::string, int64_t>;
@@ -300,8 +300,8 @@ class DBusHandlerInterface
         const char* dbusInterface) const = 0;
 
     virtual GetAssociatedSubTreeResponse getAssociatedSubTree(
-        const sdbusplus::message::object_path& objectPath,
-        const sdbusplus::message::object_path& subtree, int depth,
+        const sdbusplus::object_path& objectPath,
+        const sdbusplus::object_path& subtree, int depth,
         const std::vector<std::string>& ifaceList) const = 0;
 };
 
@@ -451,8 +451,8 @@ class DBusHandler : public DBusHandlerInterface
      * @return GetAssociatedSubtreeResponse - The associated subtree
      */
     GetAssociatedSubTreeResponse getAssociatedSubTree(
-        const sdbusplus::message::object_path& objectPath,
-        const sdbusplus::message::object_path& subtree, int depth,
+        const sdbusplus::object_path& objectPath,
+        const sdbusplus::object_path& subtree, int depth,
         const std::vector<std::string>& ifaceList) const override;
 
     /** @brief Set Dbus property

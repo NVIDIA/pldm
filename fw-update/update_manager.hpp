@@ -136,7 +136,7 @@ class UpdateManager
      */
     exec::task<void> processStream(
         std::istream& packageStream, uintmax_t packageSize,
-        std::vector<sdbusplus::message::object_path> targets = {});
+        std::vector<sdbusplus::object_path> targets = {});
 
     /** @brief Defers processing of the package stream to the event loop
      *
@@ -155,9 +155,9 @@ class UpdateManager
      *
      *  @return D-Bus object path of the created Software update object
      */
-    std::string processStreamDefer(
-        std::istream& packageStream, uintmax_t packageSize, bool forceUpdate,
-        std::vector<sdbusplus::message::object_path> targets);
+    std::string processStreamDefer(std::istream& packageStream,
+                                   uintmax_t packageSize, bool forceUpdate,
+                                   std::vector<sdbusplus::object_path> targets);
 
     /** @brief Set the RequestedApplyTime for the current update session
      *
@@ -211,7 +211,7 @@ class UpdateManager
      */
     ComponentTargetList getComponentTargetList(
         const ComponentNameMap& componentNameMap,
-        const std::vector<sdbusplus::message::object_path>& objectPaths);
+        const std::vector<sdbusplus::object_path>& objectPaths);
 
     /** @brief Associate firmware update package to devices and components that
      *         will be updated
@@ -221,7 +221,7 @@ class UpdateManager
         const DescriptorMap& descriptorMap,
         const ComponentImageInfos& compImageInfos,
         const ComponentTargetList& compTargetList,
-        const std::vector<sdbusplus::message::object_path>& objectPaths,
+        const std::vector<sdbusplus::object_path>& objectPaths,
         FirmwareDeviceIDRecords& outFwDeviceIDRecords,
         TotalComponentUpdates& totalNumComponentUpdates);
 

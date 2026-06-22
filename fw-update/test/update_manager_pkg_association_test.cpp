@@ -92,7 +92,7 @@ class PackageAssociationEmptyTargetFiltering : public testing::Test
         {10, compIdentifer2, 0xFFFFFFFF, 0, 1, 353, 27, "VersionString4"},
         {10, compIdentifer3, 0xFFFFFFFF, 1, 12, 380, 27, "VersionString5"}};
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
 };
 
 TEST_F(PackageAssociationEmptyTargetFiltering, MatchingDescriptors)
@@ -326,8 +326,8 @@ TEST_F(PackageAssociationTargetFiltering, MatchingTwoComponents)
         "/xyz/openbmc_project/software/ERoT_FPGA_Firmware";
     const std::string erotHMCFirmware =
         "/xyz/openbmc_project/software/ERoT_HMC_Firmware";
-    std::vector<sdbusplus::message::object_path> targets{erotFPGAFirmware,
-                                                         erotHMCFirmware};
+    std::vector<sdbusplus::object_path> targets{erotFPGAFirmware,
+                                                erotHMCFirmware};
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
@@ -363,7 +363,7 @@ TEST_F(PackageAssociationTargetFiltering, MatchingOneComponent)
 {
     const std::string erotHMCFirmware =
         "/xyz/openbmc_project/software/ERoT_HMC_Firmware";
-    std::vector<sdbusplus::message::object_path> targets{erotHMCFirmware};
+    std::vector<sdbusplus::object_path> targets{erotHMCFirmware};
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
@@ -446,7 +446,7 @@ class PackageAssociationMultipleDescSameType : public testing::Test
         {10, compIdentifer2, 0xFFFFFFFF, 0, 1, 353, 27, "VersionString4"},
         {10, compIdentifer3, 0xFFFFFFFF, 1, 12, 380, 27, "VersionString5"}};
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
 };
 
 TEST_F(PackageAssociationMultipleDescSameType, MultipleDescriptorsMatch)
@@ -693,7 +693,7 @@ class PackageAssociationDuplicateRecordMatch : public testing::Test
         {10, compIdentifier2, 0xFFFFFFFF, 0, 1, 353, 27, "VersionString4"},
         {10, compIdentifier3, 0xFFFFFFFF, 1, 12, 380, 27, "VersionString5"}};
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
 };
 
 // Two package records share identical UUID+IANA descriptors so both match
@@ -827,9 +827,8 @@ TEST_F(PackageAssociationDuplicateRecordMatch,
 TEST_F(PackageAssociationTargetFiltering,
        NonMatchingTargetsSkipOtherwiseMatchingDescriptors)
 {
-    std::vector<sdbusplus::message::object_path> invalidTargets{
-        sdbusplus::message::object_path(
-            "/xyz/openbmc_project/software/NotAMappedComponent")};
+    std::vector<sdbusplus::object_path> invalidTargets{sdbusplus::object_path(
+        "/xyz/openbmc_project/software/NotAMappedComponent")};
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
@@ -857,9 +856,8 @@ TEST_F(PackageAssociationTargetFiltering,
            std::vector<uint8_t>{0x47, 0x16, 0x00, 0x00}}},
          {}},
     };
-    std::vector<sdbusplus::message::object_path> targets{
-        sdbusplus::message::object_path(
-            "/xyz/openbmc_project/software/FPGAFirmware")};
+    std::vector<sdbusplus::object_path> targets{
+        sdbusplus::object_path("/xyz/openbmc_project/software/FPGAFirmware")};
     FirmwareDeviceIDRecords outFwDeviceIDRecords{};
     TotalComponentUpdates totalNumComponentUpdates = 0;
 

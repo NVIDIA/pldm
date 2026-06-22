@@ -79,7 +79,7 @@ static int processPackageStream(UpdateManager& updateManager,
             updateManager.otherDeviceUpdateManager =
                 std::make_unique<OtherDeviceUpdateManager>(
                     pldm::utils::DBusHandler::getBus(), &updateManager,
-                    std::vector<sdbusplus::message::object_path>{});
+                    std::vector<sdbusplus::object_path>{});
         }
 
         auto task =
@@ -150,7 +150,7 @@ class ActivationRealUpdateManagerTest : public testing::Test
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
-    sdbusplus::bus::bus busMock;
+    sdbusplus::bus_t busMock;
     sdeventplus::Event event;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
@@ -199,7 +199,7 @@ TEST_F(ActivationRealUpdateManagerTest,
 
     if (!updateManager.otherDeviceUpdateManager)
     {
-        std::vector<sdbusplus::message::object_path> targets;
+        std::vector<sdbusplus::object_path> targets;
         updateManager.otherDeviceUpdateManager =
             std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                        targets);
@@ -237,7 +237,7 @@ TEST_F(ActivationRealUpdateManagerTest,
 
     if (!updateManager.otherDeviceUpdateManager)
     {
-        std::vector<sdbusplus::message::object_path> targets;
+        std::vector<sdbusplus::object_path> targets;
         updateManager.otherDeviceUpdateManager =
             std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                        targets);
@@ -271,7 +271,7 @@ TEST_F(ActivationRealUpdateManagerTest,
 
     if (!updateManager.otherDeviceUpdateManager)
     {
-        std::vector<sdbusplus::message::object_path> targets;
+        std::vector<sdbusplus::object_path> targets;
         updateManager.otherDeviceUpdateManager =
             std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                        targets);

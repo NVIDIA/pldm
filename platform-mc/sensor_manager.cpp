@@ -21,6 +21,8 @@
 #include "manager.hpp"
 #include "terminus_manager.hpp"
 
+#include <exec/start_detached.hpp>
+
 namespace pldm
 {
 namespace platform_mc
@@ -166,7 +168,7 @@ void SensorManager::doSensorPolling(tid_t tid)
     }
 
     terminus->sensorPollingTaskRc.reset();
-    stdexec::start_detached(stdexec::on(
+    exec::start_detached(stdexec::on(
         stdexec::inline_scheduler{},
         doSensorPollingTask(tid) | stdexec::then([terminus](int rc) {
             if (terminus)

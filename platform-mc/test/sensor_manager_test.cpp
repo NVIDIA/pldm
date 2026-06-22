@@ -64,7 +64,7 @@ class SensorManagerTest : public testing::Test
         } while (elapsed < usec);
     }
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;

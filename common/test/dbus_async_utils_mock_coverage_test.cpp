@@ -211,7 +211,7 @@ namespace
 
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
-using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+using ObjectPaths = std::vector<sdbusplus::object_path>;
 
 template <typename T>
 void expectMockPropertyExhaustiveBadAlloc(
@@ -461,8 +461,8 @@ TEST(DBusAsyncUtilsMockCoverage,
         objectPath, "Counters", interface, service, {1, 10, 100});
     expectMockPropertyCtorRetainsCustomService<ObjectPaths>(
         objectPath, "Paths", interface, service,
-        {sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-         sdbusplus::message::object_path("/xyz/openbmc_project/object1")});
+        {sdbusplus::object_path("/xyz/openbmc_project/object0"),
+         sdbusplus::object_path("/xyz/openbmc_project/object1")});
 }
 
 TEST(DBusAsyncUtilsMockCoverage,
@@ -484,8 +484,7 @@ TEST(DBusAsyncUtilsMockCoverage,
         objectPath, "Counters", interface, service, {1, 2});
     expectMockPropertyCtorRetainsCustomService<ObjectPaths>(
         objectPath, "Paths", interface, service,
-        {sdbusplus::message::object_path("/p0"),
-         sdbusplus::message::object_path("/p1")});
+        {sdbusplus::object_path("/p0"), sdbusplus::object_path("/p1")});
 }
 
 TEST(DBusAsyncUtilsMockCoverage,
@@ -525,14 +524,13 @@ TEST(DBusAsyncUtilsMockCoverage,
     pldm::utils::MockCoverageCoGetDbusProperty<ObjectPaths> objectPathsProp(
         objectPath, "Paths", interface);
     objectPathsProp.ret = {
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     EXPECT_EQ(objectPathsProp.service, pldm::utils::entityManagerService);
     EXPECT_EQ(
         objectPathsProp.await_resume(),
-        (ObjectPaths{
-            sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-            sdbusplus::message::object_path("/xyz/openbmc_project/object1")}));
+        (ObjectPaths{sdbusplus::object_path("/xyz/openbmc_project/object0"),
+                     sdbusplus::object_path("/xyz/openbmc_project/object1")}));
 }
 
 TEST(DBusAsyncUtilsMockCoverage,
@@ -661,9 +659,9 @@ TEST(DBusAsyncUtilsMockCoverage,
         {1, 10, 100, 1000, 10000, 100000});
     expectMockPropertyExhaustiveBadAlloc<ObjectPaths>(
         objectPath, property + "Paths", interface, service,
-        {sdbusplus::message::object_path(
+        {sdbusplus::object_path(
              "/xyz/openbmc_project/object/" + std::string(52, 'x')),
-         sdbusplus::message::object_path(
+         sdbusplus::object_path(
              "/xyz/openbmc_project/object/" + std::string(56, 'y'))});
 }
 
@@ -889,9 +887,9 @@ TEST(DBusAsyncUtilsMockCoverage,
         2048);
     expectMockPropertyExhaustiveBadAlloc<ObjectPaths>(
         objectPath, property + "Paths", interface, service,
-        {sdbusplus::message::object_path(
+        {sdbusplus::object_path(
              "/xyz/openbmc_project/object/" + std::string(120, 'x')),
-         sdbusplus::message::object_path(
+         sdbusplus::object_path(
              "/xyz/openbmc_project/object/" + std::string(128, 'y'))},
         2048);
 }

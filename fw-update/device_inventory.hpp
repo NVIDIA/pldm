@@ -85,8 +85,7 @@ class Entry : public Ifaces
      *  @param[in] assocs - D-Bus associations
      *  @param[in] sku - SKU
      */
-    explicit Entry(sdbusplus::bus::bus& bus,
-                   const pldm::dbus::ObjectPath& objPath,
+    explicit Entry(sdbusplus::bus_t& bus, const pldm::dbus::ObjectPath& objPath,
                    const pldm::UUID& uuid, const Associations& assocs,
                    const std::string& sku);
 };
@@ -111,7 +110,7 @@ class Manager
      *  @param[in] deviceInventoryInfo - Config info for device inventory
      *  @param[in] descriptorMap - Descriptor info of MCTP endpoints
      */
-    explicit Manager(sdbusplus::bus::bus& bus,
+    explicit Manager(sdbusplus::bus_t& bus,
                      const DeviceInventoryInfo& deviceInventoryInfo,
                      const DescriptorMap& descriptorMap);
 
@@ -123,7 +122,7 @@ class Manager
      *  @return Object path of the device inventory object, std::nullopt if
      * object path is empty
      */
-    std::optional<sdbusplus::message::object_path> createEntry(
+    std::optional<sdbusplus::object_path> createEntry(
         pldm::eid eid, const pldm::UUID& uuid,
         dbus::MctpInterfaces& mctpInterfaces);
 
@@ -136,12 +135,12 @@ class Manager
      *  @return Object path of the device inventory object, std::nullopt if
      * object path is empty
      */
-    std::optional<sdbusplus::message::object_path> updateEntry(
+    std::optional<sdbusplus::object_path> updateEntry(
         pldm::eid eid, const pldm::UUID& uuid,
         dbus::MctpInterfaces& mctpInterfaces);
 
   private:
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
 
     sdbusplus::server::manager::manager objectManager;
 

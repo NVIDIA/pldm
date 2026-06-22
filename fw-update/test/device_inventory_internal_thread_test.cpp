@@ -122,7 +122,7 @@ TEST(DeviceInventoryInternalThreadTest, updateSKUOnMatchRunsDetachedLambda)
     ASSERT_EQ(manager.createEntry(eid1, uuid, mctpInterfaces), objPath);
     ASSERT_TRUE(manager.skuLookup.contains(objPath));
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap validInterfaces{
         {"xyz.openbmc_project.Inventory.Decorator.SKU",
          {{"SKU", std::string("0x11223344")}}}};
@@ -154,7 +154,7 @@ TEST(DeviceInventoryInternalThreadTest,
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
     manager.skuLookup.emplace(objPath, "0x11223344");
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap interfaces{
         {"xyz.openbmc_project.Inventory.Decorator.Asset",
          {{"Model", std::string("X")}}}};
@@ -183,7 +183,7 @@ TEST(DeviceInventoryInternalThreadTest,
     Manager manager(busMock, deviceInventoryInfo, descriptorMap);
 
     const std::string objPath{"/xyz/openbmc_project/inventory/chassis/bmc"};
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap interfaces{
         {"xyz.openbmc_project.Inventory.Decorator.SKU",
          {{"SKU", std::string("0x11223344")}}}};
@@ -313,7 +313,7 @@ TEST(DeviceInventoryInternalThreadTest,
     ASSERT_TRUE(manager.createEntry(eid1, uuid, mctpInterfaces).has_value());
     waitForSkuCallCount(1);
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap validInterfaces{
         {"xyz.openbmc_project.Inventory.Decorator.SKU",
          {{"SKU", std::string("0x11223344")}}}};

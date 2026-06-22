@@ -97,8 +97,8 @@ class OtherDeviceUpdateManagerTest : public testing::Test
     }
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
-    sdbusplus::bus::bus busMock;
-    std::vector<sdbusplus::message::object_path> updatePolicyTargets;
+    sdbusplus::bus_t busMock;
+    std::vector<sdbusplus::object_path> updatePolicyTargets;
     std::optional<sdbusplus::bus_t> savedStaticBus;
     bool staticBusSwapped = false;
     sdeventplus::Event event;
@@ -538,7 +538,7 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedAddsTrackedOtherDevice)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -570,7 +570,7 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedSkipsExistingTrackedDevice)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -701,7 +701,7 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedReturnsWhenWatchNotStarted)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -727,7 +727,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -1070,7 +1070,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -1120,7 +1120,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -1171,7 +1171,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
@@ -1358,9 +1358,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
 TEST_F(OtherDeviceUpdateManagerTest,
        onActivationChangedMsgActiveWithTargetMismatchOmitsComponentName)
 {
-    std::vector<sdbusplus::message::object_path> targets{
-        sdbusplus::message::object_path(
-            "/xyz/openbmc_project/software/other/not_matching_target")};
+    std::vector<sdbusplus::object_path> targets{sdbusplus::object_path(
+        "/xyz/openbmc_project/software/other/not_matching_target")};
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       targets);
     const std::string objPath = "/xyz/openbmc_project/software/other/entry6";
@@ -1453,7 +1452,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sealAndRewind(msg);
 
     otherDeviceUpdateManager.interfaceAdded(msg);
@@ -1771,9 +1770,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
 TEST_F(OtherDeviceUpdateManagerTest,
        onActivationChangedMsgActiveWithMatchingTargetIncludesComponentName)
 {
-    std::vector<sdbusplus::message::object_path> targets{
-        sdbusplus::message::object_path(
-            "/xyz/openbmc_project/software/other/entry_match_suffix")};
+    std::vector<sdbusplus::object_path> targets{sdbusplus::object_path(
+        "/xyz/openbmc_project/software/other/entry_match_suffix")};
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       targets);
     const std::string objPath =
@@ -1859,7 +1857,7 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedThrowsForNonStringUuidValue)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/software/other/invalid_uuid_type"),
                interfaces);
     sealAndRewind(msg);
@@ -1888,7 +1886,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/software/other",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/software/other/no_uuid_intf"),
                interfaces);
     sealAndRewind(msg);

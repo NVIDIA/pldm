@@ -41,7 +41,7 @@ class PldmServiceReadyIntf
     }
 
     // Initialization method to create and setup the singleton instance
-    static void initialize(sdbusplus::bus::bus& bus, const char* path)
+    static void initialize(sdbusplus::bus_t& bus, const char* path)
     {
         if (instance)
         {
@@ -69,7 +69,7 @@ class PldmServiceReadyIntf
 
   private:
     // Private constructor to prevent direct instantiation
-    PldmServiceReadyIntf(sdbusplus::bus::bus& bus, const char* path)
+    PldmServiceReadyIntf(sdbusplus::bus_t& bus, const char* path)
     {
         serviceIntf = std::make_unique<ServiceReadyIntf>(bus, path);
         serviceIntf->state(ServiceReadyIntf::States::Starting);

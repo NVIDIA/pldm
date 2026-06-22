@@ -31,6 +31,7 @@
 
 #include <libpldm/pldm.h>
 
+#include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
 #include <format>
@@ -222,7 +223,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 [this](uint8_t eid) {
                     this->fwInventoryManager.updateFWVersion(eid);
                 };
-            stdexec::start_detached(stdexec::on(
+            exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
                 inventoryMgr.initiateGetActiveFirmwareVersion(
                     eid, updateFWVersionCallback) |

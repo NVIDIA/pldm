@@ -230,7 +230,7 @@ void OtherDeviceUpdateManager::setUpdatePolicy(const std::string& path,
 
 void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
 {
-    sdbusplus::message::object_path objPath;
+    sdbusplus::object_path objPath;
     pldm::dbus::InterfaceMap interfaces;
     m.read(objPath, interfaces);
 

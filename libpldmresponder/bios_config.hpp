@@ -172,7 +172,7 @@ class BIOSConfig
     using DbusChObjProperties = std::map<propName, pldm::utils::PropertyValue>;
 
     // vector to catch the D-Bus property change signals for BIOS attributes
-    std::vector<std::unique_ptr<sdbusplus::bus::match::match>> biosAttrMatch;
+    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> biosAttrMatch;
 
     /** @brief Method to update a BIOS attribute when the corresponding Dbus
      *  property is changed
@@ -201,7 +201,7 @@ class BIOSConfig
             {
                 using namespace sdbusplus::bus::match::rules;
                 biosAttrMatch.push_back(
-                    std::make_unique<sdbusplus::bus::match::match>(
+                    std::make_unique<sdbusplus::bus::match_t>(
                         pldm::utils::DBusHandler::getBus(),
                         propertiesChanged(dBusMap->objectPath,
                                           dBusMap->interface),

@@ -14,6 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <exec/start_detached.hpp>
+
 #include <filesystem>
 #include <format>
 
@@ -53,7 +55,7 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         return;
     }
 
-    sdbusplus::message::object_path objPath;
+    sdbusplus::object_path objPath;
     pldm::dbus::InterfaceMap interfaces;
     m.read(objPath, interfaces);
 
@@ -2069,7 +2071,7 @@ void Terminus::refreshAssociations()
         refreshAssociationsTaskHandle.reset();
     }
     auto& [scope, rcOpt] = refreshAssociationsTaskHandle.emplace();
-    stdexec::start_detached(
+    exec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
                     refreshAssociationsTask() |
                         stdexec::then([&](int rc) { rcOpt.emplace(rc); })));

@@ -93,7 +93,7 @@ int processPackageStream(UpdateManager& updateManager,
             updateManager.otherDeviceUpdateManager =
                 std::make_unique<OtherDeviceUpdateManager>(
                     pldm::utils::DBusHandler::getBus(), &updateManager,
-                    std::vector<sdbusplus::message::object_path>{});
+                    std::vector<sdbusplus::object_path>{});
         }
 
         auto task =

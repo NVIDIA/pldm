@@ -101,7 +101,7 @@ TEST(FirmwareInventoryInternalThreadTest, updateSwIdOnSignalRunsDetachedLambda)
     manager.updateSwId(objPath, "0x0123");
     ASSERT_TRUE(manager.compIdentifierLookup.contains(objPath));
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap validInterfaces{{"xyz.openbmc_project.Software.Version",
                                         {{"Version", std::string("1.0")}}}};
     auto rawBus = sdbusplus::bus::new_default();
@@ -134,7 +134,7 @@ TEST(FirmwareInventoryInternalThreadTest,
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     manager.compIdentifierLookup.emplace(objPath, "0x0123");
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap interfaces{
         {"xyz.openbmc_project.Inventory.Item", {{"Present", true}}}};
     auto rawBus = sdbusplus::bus::new_default();
@@ -164,7 +164,7 @@ TEST(FirmwareInventoryInternalThreadTest,
                     componentNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap interfaces{{"xyz.openbmc_project.Software.Version",
                                    {{"Version", std::string("1.0.0")}}}};
     auto rawBus = sdbusplus::bus::new_default();
@@ -285,7 +285,7 @@ TEST(FirmwareInventoryInternalThreadTest,
     waitForSwIdCallCount(1);
     ASSERT_GE(mockedSetSwIdCallCount.load(), 1);
 
-    sdbusplus::message::object_path signalPath{objPath};
+    sdbusplus::object_path signalPath{objPath};
     dbus::InterfaceMap validInterfaces{{"xyz.openbmc_project.Software.Version",
                                         {{"Version", std::string("2.0.0")}}}};
     auto rawBus = sdbusplus::bus::new_default();

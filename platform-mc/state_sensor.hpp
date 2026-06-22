@@ -105,8 +105,7 @@ class StateSensor
 
             if (!defaultInventoryAssociated)
             {
-                sdbusplus::message::object_path entityPath(
-                    associatedEntityPath);
+                sdbusplus::object_path entityPath(associatedEntityPath);
                 associationEntityId = entityPath.filename();
             }
         }

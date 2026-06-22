@@ -19,6 +19,7 @@
 #include "platform-mc/state_effecter.hpp"
 #include "platform-mc/state_set.hpp"
 
+#include <exec/start_detached.hpp>
 #include <xyz/openbmc_project/Control/Trigger/server.hpp>
 
 namespace pldm
@@ -57,7 +58,7 @@ using TriggerIntf = sdbusplus::server::object_t<
 class CpuDiagnosticsRefreshStateIntf : public TriggerIntf
 {
   public:
-    CpuDiagnosticsRefreshStateIntf(sdbusplus::bus::bus& bus, const char* path,
+    CpuDiagnosticsRefreshStateIntf(sdbusplus::bus_t& bus, const char* path,
                                    uint8_t compId) :
         TriggerIntf(bus, path), compId(compId)
     {}
@@ -80,9 +81,8 @@ class CpuDiagnosticsRefreshStateIntf : public TriggerIntf
 class CpuDiagnosticsRefreshEffecterIntf : public CpuDiagnosticsRefreshStateIntf
 {
   public:
-    CpuDiagnosticsRefreshEffecterIntf(sdbusplus::bus::bus& bus,
-                                      const char* path, uint8_t compId,
-                                      StateEffecter& effecter) :
+    CpuDiagnosticsRefreshEffecterIntf(sdbusplus::bus_t& bus, const char* path,
+                                      uint8_t compId, StateEffecter& effecter) :
         CpuDiagnosticsRefreshStateIntf(bus, path, compId), effecter(effecter)
     {}
 
@@ -102,7 +102,7 @@ class CpuDiagnosticsRefreshEffecterIntf : public CpuDiagnosticsRefreshStateIntf
         if (value)
         {
             // Trigger the effecter to request data collection
-            stdexec::start_detached(stdexec::on(
+            exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
                 effecter.setStateEffecterStates(
                     compId, PLDM_STATE_SET_CPU_DIAG_REFRESH_REQUESTED)));

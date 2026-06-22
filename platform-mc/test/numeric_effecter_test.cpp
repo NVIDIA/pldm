@@ -55,7 +55,7 @@ class TestNumericEffecter : public ::testing::Test
         terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr)
     {}
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;

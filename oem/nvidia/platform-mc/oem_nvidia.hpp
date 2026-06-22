@@ -96,7 +96,7 @@ using SecureStateIntf = sdbusplus::server::object_t<
 class OemPersistenceIntf : public OemIntf, public PersistenceIntf
 {
   public:
-    OemPersistenceIntf(bus::bus& bus, const char* path) :
+    OemPersistenceIntf(sdbusplus::bus_t& bus, const char* path) :
         PersistenceIntf(bus, path)
     {}
 };
@@ -104,7 +104,8 @@ class OemPersistenceIntf : public OemIntf, public PersistenceIntf
 class OemStorageIntf : public OemIntf, public SecureStateIntf
 {
   public:
-    OemStorageIntf(bus::bus& bus, const char* path) : SecureStateIntf(bus, path)
+    OemStorageIntf(sdbusplus::bus_t& bus, const char* path) :
+        SecureStateIntf(bus, path)
     {}
 };
 

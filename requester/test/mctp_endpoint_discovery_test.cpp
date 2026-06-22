@@ -243,7 +243,7 @@ static sdbusplus::message_t makeInterfacesRemovedMessage(
     auto bus = sdbusplus::bus::new_default();
     auto msg = bus.new_method_call("org.test", "/test", "org.test", "Method");
 
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sd_bus_message_set_sender(msg.get(), "org.test.Sender");
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
@@ -259,7 +259,7 @@ static sdbusplus::message_t makeInterfacesAddedMessage(
     auto msg =
         bus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
     return msg;
@@ -509,9 +509,8 @@ class ScopedMctpDbusEnvironment
 
             mapperIface->register_method(
                 "GetAssociatedSubTree",
-                [](const sdbusplus::message::object_path&,
-                   const sdbusplus::message::object_path&, int,
-                   const std::vector<std::string>&) {
+                [](const sdbusplus::object_path&, const sdbusplus::object_path&,
+                   int, const std::vector<std::string>&) {
                     return pldm::utils::GetAssociatedSubTreeResponse{};
                 });
 
@@ -1857,7 +1856,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosValidMsgGetServiceFails)
     auto msg = rawBus.new_method_call("org.test", "/test", "org.test.Interface",
                                       "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/10");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -2848,7 +2847,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosFullPath)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/15");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -2905,7 +2904,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosNonPldmType)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/25");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -2945,7 +2944,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosDegradedConnectivity)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/2/endpoints/35");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -2992,7 +2991,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosSkipsUnknownInterface)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/45");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3021,7 +3020,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingRequiredProperties)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/55");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3055,7 +3054,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingNetworkId)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/56");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3089,7 +3088,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingEid)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/561");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3123,7 +3122,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosOnlyNetworkIdPresent)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/566");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3155,7 +3154,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosNetworkAndEidOnly)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/567");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3188,7 +3187,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingSupportedTypes)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/57");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3251,7 +3250,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadVariantSkipsEndpoint)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/562");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3286,7 +3285,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadNetworkVariantSkipsEndpoint)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/563");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3321,7 +3320,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadTypesVariantSkipsEndpoint)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/564");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3356,7 +3355,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBadMediumVariantSkipsEndpoint)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/565");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3391,7 +3390,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosBindingTypeException)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/58");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;
@@ -3426,7 +3425,7 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosDuplicatePathNoDuplicateMatch)
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
 
-    sdbusplus::message::object_path objPath(
+    sdbusplus::object_path objPath(
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/65");
 
     using PropertyMap = std::map<std::string, pldm::dbus::Value>;

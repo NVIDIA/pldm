@@ -91,7 +91,7 @@ static int processPackageStream(UpdateManager& updateManager,
             updateManager.otherDeviceUpdateManager =
                 std::make_unique<OtherDeviceUpdateManager>(
                     pldm::utils::DBusHandler::getBus(), &updateManager,
-                    std::vector<sdbusplus::message::object_path>{});
+                    std::vector<sdbusplus::object_path>{});
         }
 
         auto task =
@@ -140,7 +140,7 @@ class UpdateManagerTest : public testing::Test
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
-    sdbusplus::bus::bus busMock;
+    sdbusplus::bus_t busMock;
     sdeventplus::Event event;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
@@ -1582,7 +1582,7 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateWithPLDMDeviceReturnsActivating)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -1812,7 +1812,7 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateReturnsFailedWhenNoDevicesOrImages)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -1832,7 +1832,7 @@ TEST_F(UpdateManagerTest,
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -2031,9 +2031,9 @@ TEST_F(UpdateManagerTest, getComponentTargetListMergesComponentsForSameEid)
     ComponentNameMap names{
         {1, {{10, "CompA"}, {11, "CompB"}}},
     };
-    std::vector<sdbusplus::message::object_path> targets{
-        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompA"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompB")};
+    std::vector<sdbusplus::object_path> targets{
+        sdbusplus::object_path("/xyz/openbmc_project/software/CompA"),
+        sdbusplus::object_path("/xyz/openbmc_project/software/CompB")};
 
     auto compTargetList = updateManager.getComponentTargetList(names, targets);
     ASSERT_TRUE(compTargetList.contains(1));
@@ -2167,9 +2167,9 @@ TEST_F(UpdateManagerTest, getComponentTargetListSkipsNonSoftwareTargetPaths)
     ComponentNameMap names{
         {1, {{10, "CompA"}}},
     };
-    std::vector<sdbusplus::message::object_path> targets{
-        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompA"),
-        sdbusplus::message::object_path(
+    std::vector<sdbusplus::object_path> targets{
+        sdbusplus::object_path("/xyz/openbmc_project/software/CompA"),
+        sdbusplus::object_path(
             "/xyz/openbmc_project/inventory/system/chassis/chassis0")};
 
     auto compTargetList = updateManager.getComponentTargetList(names, targets);
@@ -2229,8 +2229,8 @@ TEST_F(UpdateManagerTest, associatePkgToDevicesFiltersRequestedComponents)
     ComponentImageInfos compImageInfos{{10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "V1"},
                                        {10, 101, 0xFFFFFFFF, 0, 0, 4, 4, "V2"}};
     ComponentTargetList compTargetList{{9, {101}}};
-    std::vector<sdbusplus::message::object_path> objectPaths{
-        sdbusplus::message::object_path("/xyz/openbmc_project/software/CompB")};
+    std::vector<sdbusplus::object_path> objectPaths{
+        sdbusplus::object_path("/xyz/openbmc_project/software/CompB")};
     FirmwareDeviceIDRecords outRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
@@ -2264,9 +2264,8 @@ TEST_F(UpdateManagerTest, associatePkgToDevicesSkipsEmptyFilteredComponentLists)
     ComponentImageInfos compImageInfos{{10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "V1"},
                                        {10, 101, 0xFFFFFFFF, 0, 0, 4, 4, "V2"}};
     ComponentTargetList compTargetList{{9, {999}}};
-    std::vector<sdbusplus::message::object_path> objectPaths{
-        sdbusplus::message::object_path(
-            "/xyz/openbmc_project/software/NoMatchingComponent")};
+    std::vector<sdbusplus::object_path> objectPaths{sdbusplus::object_path(
+        "/xyz/openbmc_project/software/NoMatchingComponent")};
     FirmwareDeviceIDRecords outRecords;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
@@ -2316,7 +2315,7 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateNoDevicesUsesExistingProgressObject)
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -2356,7 +2355,7 @@ TEST_F(UpdateManagerTest,
                                 nullptr);
     updateManager.objPath = "/xyz/openbmc_project/software/non_pldm_activating";
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets, dbusHandler);
@@ -2562,8 +2561,7 @@ TEST_F(UpdateManagerTest,
 
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(
-            busMock, &updateManager,
-            std::vector<sdbusplus::message::object_path>{});
+            busMock, &updateManager, std::vector<sdbusplus::object_path>{});
     const uint64_t withMgr = updateManager.computeEffectiveTimeoutSec();
 
     // Empty otherDevices -> max == 0 -> result is the default in both
@@ -2589,8 +2587,7 @@ TEST_F(UpdateManagerTest, clearActivationInfoResetsAllTrackedMembers)
                                                      updateManager.objPath);
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(
-            busMock, &updateManager,
-            std::vector<sdbusplus::message::object_path>{});
+            busMock, &updateManager, std::vector<sdbusplus::object_path>{});
     updateManager.parser = std::make_unique<PackageParser>(
         static_cast<PackageHeaderSize>(1), std::string{},
         static_cast<ComponentBitmapBitLength>(8), 1);
@@ -2676,7 +2673,7 @@ TEST_F(UpdateManagerTest,
     updateManager.objPath =
         "/xyz/openbmc_project/software/activate_non_pldm_in_progress";
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets, dbusHandler);

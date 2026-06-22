@@ -23,6 +23,7 @@
 
 #include <libpldm/firmware_update.h>
 
+#include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
 #include <chrono>
@@ -70,7 +71,7 @@ void DeviceUpdater::deviceUpdaterHandler()
         deviceUpdaterHandle.reset();
     }
     auto& [scope, rcOpt] = deviceUpdaterHandle.emplace();
-    stdexec::start_detached(
+    exec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
                     startDeviceUpdate() |
                         stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
@@ -1326,7 +1327,7 @@ void DeviceUpdater::handleUpdateTimeout()
         }
     }
 
-    stdexec::start_detached(
+    exec::start_detached(
         stdexec::on(stdexec::inline_scheduler{}, cancelUpdateAfterTimeout()));
 }
 

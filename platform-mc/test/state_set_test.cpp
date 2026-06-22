@@ -252,7 +252,7 @@ class NvlinkObjectMapper :
         sdbusplus::xyz::openbmc_project::server::ObjectMapper>
 {
   public:
-    NvlinkObjectMapper(sdbusplus::bus::bus& bus, const char* path,
+    NvlinkObjectMapper(sdbusplus::bus_t& bus, const char* path,
                        std::string serviceName, std::string chassisPath) :
         sdbusplus::server::object_t<
             sdbusplus::xyz::openbmc_project::server::ObjectMapper>(bus, path),
@@ -329,9 +329,8 @@ class NvlinkObjectMapper :
     }
 
     std::map<std::string, std::map<std::string, std::vector<std::string>>>
-        getAssociatedSubTree(sdbusplus::message::object_path,
-                             sdbusplus::message::object_path, int32_t,
-                             std::vector<std::string>) override
+        getAssociatedSubTree(sdbusplus::object_path, sdbusplus::object_path,
+                             int32_t, std::vector<std::string>) override
     {
         return {};
     }
@@ -605,10 +604,10 @@ class BaseStateSetCoverage : public StateSet
 class StateSetCoverageTest : public testing::Test
 {
   protected:
-    sdbusplus::bus::bus& bus = pldm::utils::DBusHandler::getBus();
+    sdbusplus::bus_t& bus = pldm::utils::DBusHandler::getBus();
 };
 
-void ensureMapperServiceRequested(sdbusplus::bus::bus& bus)
+void ensureMapperServiceRequested(sdbusplus::bus_t& bus)
 {
     try
     {

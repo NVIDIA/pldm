@@ -23,6 +23,7 @@
 #include "platform-mc/oem_base.hpp"
 
 #include <com/nvidia/StaticPowerHint/server.hpp>
+#include <exec/start_detached.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 
@@ -53,7 +54,7 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
      *  @param[in] effecterPowerEstimation - static power hint effecter.
      */
     OemStaticPowerHintInft(
-        bus::bus& bus, const char* path,
+        sdbusplus::bus_t& bus, const char* path,
         std::shared_ptr<NumericEffecter> effecterCpuClockFrequency,
         std::shared_ptr<NumericEffecter> effecterTemperature,
         std::shared_ptr<NumericEffecter> effecterWorkloadFactor,
@@ -210,7 +211,7 @@ class OemStaticPowerHintInft : public OemIntf, StaticPowerHintInft
         StaticPowerHintInft::stateOfLastEstimatePower(
             StateOfEstimatePower::InProgress);
         auto& [scope, rcOpt] = estimationTaskHandle.emplace();
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         estimationTask(cpuClockFrequency, workloadFactor,
                                        temperature, numberOfCores) |

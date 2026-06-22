@@ -69,7 +69,7 @@ class Entry : public Ifaces
      *  @param[in] swId - Software ID
      *  @param[in] manufacturer - Manufacturer string
      */
-    explicit Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
+    explicit Entry(sdbusplus::bus_t& bus, const std::string& objPath,
                    const std::string& versionStr, const std::string& swId,
                    const std::string& manufacturer);
 
@@ -118,7 +118,7 @@ class Manager
      *  @param[in] componentInfoMap - Component information of managed FDs
      *  @param[in] componentNameMap - Component name map for D-Bus paths
      */
-    explicit Manager(sdbusplus::bus::bus& bus,
+    explicit Manager(sdbusplus::bus_t& bus,
                      const FirmwareInventoryInfo& firmwareInventoryInfo,
                      const ComponentInfoMap& componentInfoMap,
                      const ComponentNameMap& componentNameMap);
@@ -150,7 +150,7 @@ class Manager
     const std::string swBasePath = "/xyz/openbmc_project/software";
 
   private:
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
 
     /** @brief Config info for firmware inventory */
     const FirmwareInventoryInfo& firmwareInventoryInfo;

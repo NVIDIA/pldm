@@ -128,8 +128,7 @@ class HostEffecterParser
     [[maybe_unused]] int sockFd;
     const pldm_pdr* pdrRepo;
     std::vector<EffecterInfo> hostEffecterInfo;
-    std::vector<std::unique_ptr<sdbusplus::bus::match::match>>
-        effecterInfoMatch;
+    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> effecterInfoMatch;
     const pldm::utils::DBusHandler* dbusHandler;
     pldm::requester::Handler<pldm::requester::Request>* handler;
     pldm::platform_mc::Manager* platformManager;

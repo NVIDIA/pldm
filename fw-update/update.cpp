@@ -16,10 +16,10 @@ namespace pldm
 namespace fw_update
 {
 
-sdbusplus::message::object_path Update::startUpdate(
+sdbusplus::object_path Update::startUpdate(
     sdbusplus::message::unix_fd image,
     ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-    std::vector<sdbusplus::message::object_path> targets)
+    std::vector<sdbusplus::object_path> targets)
 {
     updateManager->clearExistingActivation();
     updateManager->setRequestedApplyTime(applyTime);
@@ -49,7 +49,7 @@ sdbusplus::message::object_path Update::startUpdate(
 
     auto packageSize = mmapFile.size();
 
-    return sdbusplus::message::object_path(updateManager->processStreamDefer(
+    return sdbusplus::object_path(updateManager->processStreamDefer(
         *mmapStream, packageSize, forceUpdate, targets));
 }
 

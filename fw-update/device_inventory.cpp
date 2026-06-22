@@ -25,7 +25,7 @@
 namespace pldm::fw_update::device_inventory
 {
 
-Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
+Entry::Entry(sdbusplus::bus_t& bus, const pldm::dbus::ObjectPath& objPath,
              const pldm::UUID& mctpUUID, const Associations& assocs,
              const std::string& sku) :
     Ifaces(bus, objPath.c_str(), action::defer_emit)
@@ -43,17 +43,17 @@ Entry::Entry(sdbusplus::bus::bus& bus, const pldm::dbus::ObjectPath& objPath,
     Ifaces::health(HealthType::OK);
 }
 
-Manager::Manager(sdbusplus::bus::bus& bus,
+Manager::Manager(sdbusplus::bus_t& bus,
                  const DeviceInventoryInfo& deviceInventoryInfo,
                  const DescriptorMap& descriptorMap) :
     bus(bus), objectManager(bus, "/"), deviceInventoryInfo(deviceInventoryInfo),
     descriptorMap(descriptorMap)
 {}
 
-std::optional<sdbusplus::message::object_path> Manager::createEntry(
+std::optional<sdbusplus::object_path> Manager::createEntry(
     pldm::eid eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
 {
-    std::optional<sdbusplus::message::object_path> deviceObjPath{};
+    std::optional<sdbusplus::object_path> deviceObjPath{};
 
     auto descIt = descriptorMap.find(eid);
     if (descIt == descriptorMap.end())
@@ -129,7 +129,7 @@ std::optional<sdbusplus::message::object_path> Manager::createEntry(
     return deviceObjPath;
 }
 
-std::optional<sdbusplus::message::object_path> Manager::updateEntry(
+std::optional<sdbusplus::object_path> Manager::updateEntry(
     pldm::eid eid, const pldm::UUID& uuid, dbus::MctpInterfaces& mctpInterfaces)
 {
     if (auto deviceEntry = deviceEntryMap.find(uuid);
@@ -232,7 +232,7 @@ void Manager::updateSKU(const dbus::ObjectPath& objPath, const std::string& sku)
 
 void Manager::updateSKUOnMatch(sdbusplus::message::message& msg)
 {
-    sdbusplus::message::object_path objPath;
+    sdbusplus::object_path objPath;
     dbus::InterfaceMap interfaces;
     msg.read(objPath, interfaces);
 

@@ -98,7 +98,7 @@ class UpdateAndUtilityTest : public testing::Test
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
-    sdbusplus::bus::bus busMock;
+    sdbusplus::bus_t busMock;
     sdeventplus::Event event;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;

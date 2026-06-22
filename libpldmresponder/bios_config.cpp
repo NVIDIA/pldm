@@ -982,7 +982,7 @@ void BIOSConfig::constructPendingAttribute(
 void BIOSConfig::listenPendingAttributes()
 {
     using namespace sdbusplus::bus::match::rules;
-    auto updateBIOSMatch = std::make_unique<sdbusplus::bus::match::match>(
+    auto updateBIOSMatch = std::make_unique<sdbusplus::bus::match_t>(
         pldm::utils::DBusHandler::getBus(),
         propertiesChanged(biosConfigPath, BIOSConfigManager::interface),
         [this](sdbusplus::message_t& msg) {

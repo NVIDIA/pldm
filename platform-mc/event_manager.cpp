@@ -27,6 +27,7 @@
 
 #include <libpldm/edac.h>
 
+#include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Dump/Create/common.hpp>
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
@@ -299,7 +300,7 @@ int EventManager::handlePlatformEvent(
                 "TID", tid);
 
             // Trigger async rediscovery task
-            stdexec::start_detached(
+            exec::start_detached(
                 stdexec::on(stdexec::inline_scheduler{},
                             processTelemetryRediscoveryEvent(tid)));
         }

@@ -68,7 +68,7 @@ const std::string firmwareInRecovery{"NvidiaUpdate.1.0.FirmwareInRecovery"};
  * @param[in] interface
  * @return std::string
  */
-inline std::string getService(sdbusplus::bus::bus& bus, const char* path,
+inline std::string getService(sdbusplus::bus_t& bus, const char* path,
                               const char* interface)
 {
     using DbusInterfaceList = std::vector<std::string>;

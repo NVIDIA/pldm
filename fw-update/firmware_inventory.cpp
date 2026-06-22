@@ -26,7 +26,7 @@
 namespace pldm::fw_update::fw_inventory
 {
 
-Entry::Entry(sdbusplus::bus::bus& bus, const std::string& objPath,
+Entry::Entry(sdbusplus::bus_t& bus, const std::string& objPath,
              const std::string& versionStr, const std::string& swId,
              const std::string& manufacturer) :
     Ifaces(bus, objPath.c_str(), action::defer_emit)
@@ -62,7 +62,7 @@ void Entry::setVersion(const std::string& versionStr)
     Ifaces::version(versionStr, false);
 }
 
-Manager::Manager(sdbusplus::bus::bus& bus,
+Manager::Manager(sdbusplus::bus_t& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
                  const ComponentInfoMap& componentInfoMap,
                  const ComponentNameMap& componentNameMap) :
@@ -254,7 +254,7 @@ void Manager::updateSwId(const dbus::ObjectPath& objPath,
 
 void Manager::updateSwIdOnSignal(sdbusplus::message::message& msg)
 {
-    sdbusplus::message::object_path objPath;
+    sdbusplus::object_path objPath;
     dbus::InterfaceMap interfaces;
     msg.read(objPath, interfaces);
 

@@ -68,9 +68,9 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
     }
 
   private:
-    static sdbusplus::bus::bus*& testBus()
+    static sdbusplus::bus_t*& testBus()
     {
-        static sdbusplus::bus::bus* bus = nullptr;
+        static sdbusplus::bus_t* bus = nullptr;
         return bus;
     }
 

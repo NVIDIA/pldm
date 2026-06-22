@@ -73,7 +73,7 @@ using sensorMap = std::map<
     std::string,
     std::tuple<std::variant<std::string, int, int16_t, int64_t, uint16_t,
                             uint32_t, uint64_t, double, bool>,
-               uint64_t, sdbusplus::message::object_path>>;
+               uint64_t, sdbusplus::object_path>>;
 
 enum polling_method_indicator
 {

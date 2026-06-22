@@ -23,6 +23,7 @@
 #include "fw_update_utility.hpp"
 #include "update_manager.hpp"
 
+#include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
 #include <format>
@@ -509,7 +510,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
                 "EID", eid);
             componentUpdaterState.set(
                 ComponentUpdaterSequence::CancelUpdateComponent);
-            stdexec::start_detached(
+            exec::start_detached(
                 stdexec::on(stdexec::inline_scheduler{},
                             sendcancelUpdateComponentRequest()));
             return sendCommandNotExpectedResponse(request, payloadLength);
@@ -798,7 +799,7 @@ void ComponentUpdater::completeFailedStatusHandler(
         discoverMctpTerminusTaskHandle.reset();
     }
     auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-    stdexec::start_detached(
+    exec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
                     sendcancelUpdateComponentRequest() |
                         stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
@@ -1051,13 +1052,13 @@ void ComponentUpdater::createRequestFwDataTimer()
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(stdexec::on(
+            exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{}, queryAndCancelTask()));
     });
 }
@@ -1143,13 +1144,13 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
                 discoverMctpTerminusTaskHandle.reset();
             }
             auto& [scope, rcOpt] = discoverMctpTerminusTaskHandle.emplace();
-            stdexec::start_detached(stdexec::on(
+            exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
                 sendcancelUpdateComponentRequest() |
                     stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
         };
 
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{}, queryAndCancelTask()));
     });
 }
@@ -1270,7 +1271,7 @@ void ComponentUpdater::updateComponentComplete(ComponentUpdateStatus status)
         updateCompletionCoHandle.reset();
     }
     auto& [scope, rcOpt] = updateCompletionCoHandle.emplace();
-    stdexec::start_detached(stdexec::on(
+    exec::start_detached(stdexec::on(
         stdexec::inline_scheduler{},
         deviceUpdater->updateComponentCompletion(componentIndex, status) |
             stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
@@ -1290,7 +1291,7 @@ void ComponentUpdater::GetStatus(std::function<void(uint8_t)> getStatusCallback)
     }
 
     auto& [scope, rcOpt] = getStatusTaskHandle.emplace();
-    stdexec::start_detached(
+    exec::start_detached(
         stdexec::on(stdexec::inline_scheduler{},
                     sendGetStatusRequest(getStatusCallback) |
                         stdexec::then([&](int rc) { rcOpt.emplace(rc); })));

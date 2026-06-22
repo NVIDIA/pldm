@@ -18,6 +18,7 @@
 
 #include "../state_set.hpp"
 
+#include <exec/start_detached.hpp>
 #include <xyz/openbmc_project/Control/Boot/ClearNonVolatileVariables/server.hpp>
 
 namespace pldm
@@ -32,7 +33,7 @@ using ClearNonVolatileVariablesIntf =
 class ClearNonVolatileVariablesStateIntf : public ClearNonVolatileVariablesIntf
 {
   public:
-    ClearNonVolatileVariablesStateIntf(bus::bus& bus, const char* path,
+    ClearNonVolatileVariablesStateIntf(sdbusplus::bus_t& bus, const char* path,
                                        uint8_t compId) :
         ClearNonVolatileVariablesIntf(bus, path), compId(compId)
     {}
@@ -50,8 +51,8 @@ class ClearNonVolatileVariablesEffecterIntf :
     public ClearNonVolatileVariablesStateIntf
 {
   public:
-    ClearNonVolatileVariablesEffecterIntf(bus::bus& bus, const char* path,
-                                          uint8_t compId,
+    ClearNonVolatileVariablesEffecterIntf(sdbusplus::bus_t& bus,
+                                          const char* path, uint8_t compId,
                                           StateEffecter& effecter) :
         ClearNonVolatileVariablesStateIntf(bus, path, compId),
         effecter(effecter)
@@ -74,7 +75,7 @@ class ClearNonVolatileVariablesEffecterIntf :
             requestState = PLDM_STATESET_BOOT_REQUEST_NORMAL;
         }
 
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         effecter.setStateEffecterStates(compId, requestState)));
         return value;

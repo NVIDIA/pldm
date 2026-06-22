@@ -24,6 +24,9 @@
 #include "package_parser.hpp"
 #include "package_signature.hpp"
 
+#include <exec/async_scope.hpp>
+#include <exec/start_detached.hpp>
+#include <exec/task.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
@@ -49,7 +52,7 @@ namespace fw_update
  *  /xyz/openbmc_project/software/, or nullopt for any other path.
  */
 static std::optional<std::string> extractTargetName(
-    const sdbusplus::message::object_path& path)
+    const sdbusplus::object_path& path)
 {
     std::string pathStr = path;
     if (!pathStr.starts_with("/xyz/openbmc_project/software/"))
@@ -149,7 +152,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
         pldm::utils::DBusHandler::getBus(), this,
-        std::vector<sdbusplus::message::object_path>{});
+        std::vector<sdbusplus::object_path>{});
 
     activation = std::make_unique<Activation>(
         pldm::utils::DBusHandler::getBus(), objPath,
@@ -353,7 +356,7 @@ void UpdateManager::handleDuplicateDescriptorMatch(
 
 std::string UpdateManager::processStreamDefer(
     std::istream& package, uintmax_t packageSize, bool forceUpdateFlag,
-    std::vector<sdbusplus::message::object_path> targets)
+    std::vector<sdbusplus::object_path> targets)
 {
     auto swId = getSwId();
     objPath = swRootPath + swId;
@@ -401,7 +404,7 @@ std::string UpdateManager::processStreamDefer(
         event, [this, packageStream, packageSize,
                 targets](sdeventplus::source::EventBase&) {
             // Start processStream coroutine in detached mode
-            stdexec::start_detached(stdexec::on(
+            exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
                 this->processStream(*packageStream, packageSize, targets)));
         });
@@ -411,7 +414,7 @@ std::string UpdateManager::processStreamDefer(
 
 exec::task<void> UpdateManager::processStream(
     std::istream& package, uintmax_t packageSize,
-    std::vector<sdbusplus::message::object_path> targets)
+    std::vector<sdbusplus::object_path> targets)
 {
     startTime = std::chrono::steady_clock::now();
     unavailableTargetEids.clear();
@@ -572,11 +575,11 @@ exec::task<void> UpdateManager::processStream(
             bool isTarget = compTargetList.contains(eid) ||
                             configTargetEids.contains(eid);
             refreshScope.spawn(
-                stdexec::just() |
-                stdexec::let_value([this, eid, isTarget]() -> exec::task<void> {
+                [this, eid, isTarget]() -> exec::task<void> {
                     [[maybe_unused]] auto rc =
                         co_await refreshSingleEndpointCallback(eid, isTarget);
-                }));
+                }(),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
         }
         co_await refreshScope.on_empty();
 
@@ -936,7 +939,7 @@ void UpdateManager::verifyPackageAsync(
 
 ComponentTargetList UpdateManager::getComponentTargetList(
     const ComponentNameMap& componentNameMap,
-    const std::vector<sdbusplus::message::object_path>& objectPaths)
+    const std::vector<sdbusplus::object_path>& objectPaths)
 {
     ComponentTargetList compTargetList{};
 
@@ -985,7 +988,7 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     const DescriptorMap& descriptorMap,
     const ComponentImageInfos& compImageInfos,
     const ComponentTargetList& compTargetList,
-    const std::vector<sdbusplus::message::object_path>& objectPaths,
+    const std::vector<sdbusplus::object_path>& objectPaths,
     FirmwareDeviceIDRecords& outFwDeviceIDRecords,
     TotalComponentUpdates& totalNumComponentUpdates)
 {

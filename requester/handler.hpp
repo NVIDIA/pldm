@@ -838,3 +838,17 @@ stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto
 } // namespace requester
 
 } // namespace pldm
+
+// Opt SendRecvMsgSender out of stdexec's structured-binding decomposition.
+// Under clang, stdexec uses __builtin_structured_binding_size() to detect
+// __sexpr-style senders; this custom sender has data members and would be
+// misclassified as decomposable, breaking sender introspection
+// (__desc_of/__structured_apply). stdexec does the same opt-out for its own
+// senders (see stdexec/__detail/__sequence.hpp). gcc lacks the builtin so it
+// is unaffected; this keeps both compilers consistent.
+namespace stdexec
+{
+template <class RequestInterface>
+inline constexpr int __structured_binding_size_v<
+    pldm::requester::SendRecvMsgSender<RequestInterface>> = -1;
+} // namespace stdexec

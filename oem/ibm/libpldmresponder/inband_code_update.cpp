@@ -328,7 +328,7 @@ void CodeUpdate::setVersions()
 
     using namespace sdbusplus::bus::match::rules;
     captureNextBootSideChange.push_back(
-        std::make_unique<sdbusplus::bus::match::match>(
+        std::make_unique<sdbusplus::bus::match_t>(
             pldm::utils::DBusHandler::getBus(),
             propertiesChanged(runningVersion, redundancyIntf),
             [this](sdbusplus::message::message& msg) {
@@ -337,7 +337,7 @@ void CodeUpdate::setVersions()
                 msg.read(iface, props);
                 processPriorityChangeNotification(props);
             }));
-    fwUpdateMatcher.push_back(std::make_unique<sdbusplus::bus::match::match>(
+    fwUpdateMatcher.push_back(std::make_unique<sdbusplus::bus::match_t>(
         pldm::utils::DBusHandler::getBus(),
         "interface='org.freedesktop.DBus.ObjectManager',type='signal',"
         "member='InterfacesAdded',path='/xyz/openbmc_project/software'",
@@ -365,7 +365,7 @@ void CodeUpdate::setVersions()
                             if (!imageActivationMatch)
                             {
                                 imageActivationMatch = std::make_unique<
-                                    sdbusplus::bus::match::match>(
+                                    sdbusplus::bus::match_t>(
                                     pldm::utils::DBusHandler::getBus(),
                                     propertiesChanged(newImageId,
                                                       "xyz.openbmc_project."

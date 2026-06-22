@@ -22,6 +22,7 @@
 #include "platform-mc/errors.hpp"
 #include "platform-mc/numeric_effecter_base_unit.hpp"
 
+#include <exec/start_detached.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Control/Power/Cap/server.hpp>
 
@@ -42,7 +43,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
      *  @param[in] bus - Bus to attach to.
      *  @param[in] path - Path to attach at.
      */
-    NumericEffecterWattInft(NumericEffecter& effecter, bus::bus& bus,
+    NumericEffecterWattInft(NumericEffecter& effecter, sdbusplus::bus_t& bus,
                             const char* path) :
         NumericEffecterBaseUnit(effecter), PowerCapInft(bus, path)
     {}
@@ -104,7 +105,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         }
 
         double newValue = value;
-        stdexec::start_detached(stdexec::on(
+        exec::start_detached(stdexec::on(
             stdexec::inline_scheduler{},
             effecter.setNumericEffecterValue(effecter.baseToRaw(newValue))));
         return PowerCapInft::powerCap();
@@ -124,7 +125,7 @@ class NumericEffecterWattInft : public NumericEffecterBaseUnit, PowerCapInft
         {
             newState = EFFECTER_OPER_STATE_DISABLED;
         }
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         effecter.setNumericEffecterEnable(newState)));
         return PowerCapInft::powerCapEnable();

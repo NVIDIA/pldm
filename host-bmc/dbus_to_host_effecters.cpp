@@ -320,18 +320,17 @@ void HostEffecterParser::createHostEffecterMatch(
     size_t effecterInfoIndex, size_t dbusInfoIndex, uint16_t effecterId)
 {
     using namespace sdbusplus::bus::match::rules;
-    effecterInfoMatch.emplace_back(
-        std::make_unique<sdbusplus::bus::match::match>(
-            pldm::utils::DBusHandler::getBus(),
-            propertiesChanged(objectPath, interface),
-            [this, effecterInfoIndex, dbusInfoIndex,
-             effecterId](sdbusplus::message::message& msg) {
-                DbusChgHostEffecterProps props;
-                std::string iface;
-                msg.read(iface, props);
-                processHostEffecterChangeNotification(
-                    props, effecterInfoIndex, dbusInfoIndex, effecterId);
-            }));
+    effecterInfoMatch.emplace_back(std::make_unique<sdbusplus::bus::match_t>(
+        pldm::utils::DBusHandler::getBus(),
+        propertiesChanged(objectPath, interface),
+        [this, effecterInfoIndex, dbusInfoIndex,
+         effecterId](sdbusplus::message::message& msg) {
+            DbusChgHostEffecterProps props;
+            std::string iface;
+            msg.read(iface, props);
+            processHostEffecterChangeNotification(props, effecterInfoIndex,
+                                                  dbusInfoIndex, effecterId);
+        }));
 }
 
 } // namespace host_effecters

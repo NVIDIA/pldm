@@ -39,7 +39,7 @@ class DBusInterfaceFuzzTest
     }
 
   private:
-    sdbusplus::bus::bus bus;
+    sdbusplus::bus_t bus;
     dbus_api::Requester dbusImpl;
 };
 

@@ -391,7 +391,7 @@ class EventManagerTest : public testing::Test
                      sensorManager, false)
     {}
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
@@ -414,7 +414,7 @@ class PlatformMcManagerTest : public testing::Test
         fwUpdateManager(nullptr, event, reqHandler, instanceIdDb, "", false)
     {}
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
@@ -438,7 +438,7 @@ class EventManagerProtectedTest : public testing::Test
                      sensorManager, false)
     {}
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;

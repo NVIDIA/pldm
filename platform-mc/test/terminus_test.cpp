@@ -586,7 +586,7 @@ class TerminusTest : public testing::Test
         EXPECT_EQ(rc, PLDM_SUCCESS);
     }
 
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     pldm::requester::Handler<pldm::requester::Request> reqHandler;
@@ -3477,9 +3477,8 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/inventory/test",
                                       "org.test.Interface", "Method");
-    msg.append(
-        sdbusplus::message::object_path("/xyz/openbmc_project/inventory/test"),
-        interfaces);
+    msg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/test"),
+               interfaces);
     sealAndRewind(msg);
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
@@ -6768,9 +6767,8 @@ TEST_F(TerminusTest, interfaceAddedEntityAndAssociationConflictCoverage)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/inventory/test",
                                       "org.test.Interface", "Method");
-    msg.append(
-        sdbusplus::message::object_path("/xyz/openbmc_project/inventory/test"),
-        interfaces);
+    msg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/test"),
+               interfaces);
     sealAndRewind(msg);
     terminus.refreshAssociationsTaskHandle.reset();
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
@@ -6782,9 +6780,8 @@ TEST_F(TerminusTest, interfaceAddedEntityAndAssociationConflictCoverage)
     auto nsmMsg =
         rawBus.new_method_call("org.test", "/xyz/openbmc_project/inventory/nsm",
                                "org.test.Interface", "Method");
-    nsmMsg.append(
-        sdbusplus::message::object_path("/xyz/openbmc_project/inventory/nsm"),
-        interfaces);
+    nsmMsg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/nsm"),
+                  interfaces);
     sealAndRewind(nsmMsg);
     EXPECT_NO_THROW(terminus.interfaceAdded(nsmMsg));
 
@@ -7422,8 +7419,7 @@ TEST_F(TerminusTest, interfaceAddedBreakAndEmptyOfflineCoverage)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/inventory/system",
                                       "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
-                   "/xyz/openbmc_project/inventory/system"),
+    msg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/system"),
                interfaces);
     sealAndRewind(msg);
 
@@ -7453,7 +7449,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceCoverage)
     auto msg = rawBus.new_method_call(
         "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis79",
         "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/inventory/system/chassis/chassis79"),
                interfaces);
     sealAndRewind(msg);
@@ -7480,7 +7476,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceCompletedHandleCoverage)
     auto msg = rawBus.new_method_call(
         "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7A",
         "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/inventory/system/chassis/chassis7A"),
                interfaces);
     sealAndRewind(msg);
@@ -7506,7 +7502,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceInProgressHandleCoverage)
     auto msg = rawBus.new_method_call(
         "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7B",
         "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/inventory/system/chassis/chassis7B"),
                interfaces);
     sealAndRewind(msg);
@@ -7531,7 +7527,7 @@ TEST_F(TerminusTest, interfaceAddedNsmAssociationCoverage)
     auto msg = rawBus.new_method_call(
         "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis73",
         "org.test.Interface", "Method");
-    msg.append(sdbusplus::message::object_path(
+    msg.append(sdbusplus::object_path(
                    "/xyz/openbmc_project/inventory/system/chassis/chassis73"),
                interfaces);
     sealAndRewind(msg);
@@ -7621,9 +7617,8 @@ TEST_F(TerminusTest, refreshAssociationsGuardCoverage)
     auto msg = rawBus.new_method_call("org.test",
                                       "/xyz/openbmc_project/inventory/empty",
                                       "org.test.Interface", "Method");
-    msg.append(
-        sdbusplus::message::object_path("/xyz/openbmc_project/inventory/empty"),
-        emptyInterfaces);
+    msg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/empty"),
+               emptyInterfaces);
     sealAndRewind(msg);
 
     terminus.interfaceAdded(msg);

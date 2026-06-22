@@ -420,8 +420,8 @@ void DBusHandler::setDbusProperty(const DBusMapping& dBusMap,
     }
     else if (dBusMap.propertyType == "array[object_path]")
     {
-        std::variant<std::vector<sdbusplus::message::object_path>> v =
-            std::get<std::vector<sdbusplus::message::object_path>>(value);
+        std::variant<std::vector<sdbusplus::object_path>> v =
+            std::get<std::vector<sdbusplus::object_path>>(value);
         setDbusValue(v);
     }
     else
@@ -444,8 +444,8 @@ PropertyValue DBusHandler::getDbusPropertyVariant(
 }
 
 GetAssociatedSubTreeResponse DBusHandler::getAssociatedSubTree(
-    const sdbusplus::message::object_path& objectPath,
-    const sdbusplus::message::object_path& subtree, int depth,
+    const sdbusplus::object_path& objectPath,
+    const sdbusplus::object_path& subtree, int depth,
     const std::vector<std::string>& ifaceList) const
 {
     auto& bus = DBusHandler::getBus();

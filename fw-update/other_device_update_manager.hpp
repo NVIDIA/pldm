@@ -119,8 +119,8 @@ class OtherDeviceUpdateManager
      * @param createActivationObjectCallback call back to create the object
      */
     explicit OtherDeviceUpdateManager(
-        sdbusplus::bus::bus& bus, UpdateManager* upMan,
-        std::vector<sdbusplus::message::object_path> targets,
+        sdbusplus::bus_t& bus, UpdateManager* upMan,
+        std::vector<sdbusplus::object_path> targets,
         pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler()) :
         updateManager(upMan), dbusHandler(dbusHandler), validTargetCount(0),
         bus(bus), timer(nullptr), targets(targets)
@@ -330,7 +330,7 @@ class OtherDeviceUpdateManager
      * @brief D-Bus object referance
      *
      */
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
 
     /**
      * @brief Map conatining sw dbus object state
@@ -385,7 +385,7 @@ class OtherDeviceUpdateManager
      *
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
 
     /** @brief Liveness sentinel for async callbacks. Captured as weak_ptr;
      *  expires when this object is destroyed, gating safe use of `this`.

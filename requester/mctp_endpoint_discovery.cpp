@@ -553,7 +553,7 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
 
 void MctpDiscovery::removeEndpoints(sdbusplus::message_t& msg)
 {
-    using ObjectPath = sdbusplus::message::object_path;
+    using ObjectPath = sdbusplus::object_path;
     ObjectPath objPath;
     std::vector<std::string> interfaces;
 

@@ -372,7 +372,7 @@ namespace
 
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;
-using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+using ObjectPaths = std::vector<sdbusplus::object_path>;
 
 class DBusAsyncUtilsTest : public testing::Test
 {
@@ -506,8 +506,8 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyCoversSupportedTypes)
     EXPECT_EQ(countersProp.await_resume(), counters);
 
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     conn.nextPropertyValue = objectPaths;
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
         path, "ObjectPaths", iface);
@@ -1154,9 +1154,9 @@ TEST_F(DBusAsyncUtilsTest,
     EXPECT_EQ(countersProp.await_resume(), longCounters);
 
     const ObjectPaths longObjectPaths{
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(44, 'x')),
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(46, 'y'))};
     conn.nextPropertyValue = longObjectPaths;
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
@@ -1296,8 +1296,8 @@ TEST_F(DBusAsyncUtilsTest,
     EXPECT_TRUE(countersProp.await_suspend(std::noop_coroutine()));
     EXPECT_EQ(countersProp.await_resume(), counters);
 
-    const ObjectPaths objectPaths{sdbusplus::message::object_path("/p0"),
-                                  sdbusplus::message::object_path("/p1")};
+    const ObjectPaths objectPaths{sdbusplus::object_path("/p0"),
+                                  sdbusplus::object_path("/p1")};
     conn.nextPropertyValue = objectPaths;
     pldm::utils::coGetDbusProperty<ObjectPaths> objectPathsProp(
         path, "ObjectPaths", iface, service);
@@ -1605,9 +1605,9 @@ TEST_F(DBusAsyncUtilsTest,
     }));
 
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(40, 'x')),
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(44, 'y'))};
     conn.nextPropertyValue = objectPaths;
     EXPECT_TRUE(async_utils_test::exerciseBadAlloc([&] {
@@ -1661,9 +1661,9 @@ TEST_F(DBusAsyncUtilsTest,
                                               iface, service, counters);
 
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(72, 'x')),
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(76, 'y'))};
     expectPropertyLifecycleExhaustiveBadAlloc(path, property + "ObjectPaths",
                                               iface, service, objectPaths);
@@ -2296,11 +2296,10 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyLifecycleDeepBadAllocCoverage)
         2048);
     expectPropertyLifecycleExhaustiveBadAlloc(
         path, property + "ObjectPaths", iface, service,
-        ObjectPaths{
-            sdbusplus::message::object_path(
-                "/xyz/openbmc_project/object/" + std::string(116, 'x')),
-            sdbusplus::message::object_path(
-                "/xyz/openbmc_project/object/" + std::string(124, 'y'))},
+        ObjectPaths{sdbusplus::object_path(
+                        "/xyz/openbmc_project/object/" + std::string(116, 'x')),
+                    sdbusplus::object_path("/xyz/openbmc_project/object/" +
+                                           std::string(124, 'y'))},
         2048);
 }
 

@@ -104,7 +104,7 @@ std::string logPath = "";
 
 struct ActivationMock : public ActivationIntf
 {
-    ActivationMock(sdbusplus::bus::bus& bus, const char* path) :
+    ActivationMock(sdbusplus::bus_t& bus, const char* path) :
         ActivationIntf(bus, path)
     {}
 
@@ -118,7 +118,7 @@ struct ActivationMock : public ActivationIntf
 
 struct MockObjectMapper : public ObjectMapper_inherit
 {
-    MockObjectMapper(sdbusplus::bus::bus& bus, const char* path) :
+    MockObjectMapper(sdbusplus::bus_t& bus, const char* path) :
         ObjectMapper_inherit(bus, path)
     {}
 
@@ -152,8 +152,8 @@ struct MockObjectMapper : public ObjectMapper_inherit
     }
 
     std::map<std::string, std::map<std::string, std::vector<std::string>>>
-        getAssociatedSubTree(sdbusplus::message::object_path path,
-                             sdbusplus::message::object_path associationPath,
+        getAssociatedSubTree(sdbusplus::object_path path,
+                             sdbusplus::object_path associationPath,
                              int32_t depth,
                              std::vector<std::string> interfaces) override
     {
@@ -171,7 +171,7 @@ struct MockObjectMapper : public ObjectMapper_inherit
 class MockMctpEndpoint : public Endpoint_inherit
 {
   public:
-    MockMctpEndpoint(sdbusplus::bus::bus& bus, const char* path, int eid) :
+    MockMctpEndpoint(sdbusplus::bus_t& bus, const char* path, int eid) :
         Endpoint_inherit(
             bus,
             (std::string(MCTP_CTRL_NW_OBJ_PATH) + std::to_string(eid)).c_str()),
@@ -905,7 +905,7 @@ void* runPldmdMock(void*)
         bus,
         std::string("/xyz/openbmc_project/software/ComponentName1").c_str());
 
-    policy.targets({sdbusplus::message::object_path(
+    policy.targets({sdbusplus::object_path(
         "/xyz/openbmc_project/inventory/chassis/DeviceName1")});
 
     DBusHandler dbusHandler;

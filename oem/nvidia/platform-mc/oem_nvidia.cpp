@@ -558,7 +558,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
                     for (const auto& [objPath, mapperServiceMap] :
                          getSubTreeResponse)
                     {
-                        sdbusplus::message::object_path path(objPath);
+                        sdbusplus::object_path path(objPath);
                         std::string filename = path.filename();
                         if (filename.starts_with(prefix))
                         {
@@ -671,7 +671,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
             continue;
         }
 
-        sdbusplus::message::object_path effecterObjPath(effecter->path);
+        sdbusplus::object_path effecterObjPath(effecter->path);
         if (effecterObjPath.filename().find(cpuPrimaryPowerControl) ==
             std::string::npos)
         {

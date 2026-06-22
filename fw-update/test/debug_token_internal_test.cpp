@@ -52,7 +52,7 @@ class DebugTokenInternalTest : public testing::Test
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
-    sdbusplus::bus::bus busMock;
+    sdbusplus::bus_t busMock;
     sdeventplus::Event event;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
@@ -93,10 +93,10 @@ static void sealAndRewind(sdbusplus::message::message& msg)
  *  startUpdate() without null deref (otherDeviceUpdateManager, progress timer,
  *  and OEM_NVIDIA debugToken). */
 static void wireUpdateManagerForActivateAsyncFailure(UpdateManager& um,
-                                                     sdbusplus::bus::bus& bus)
+                                                     sdbusplus::bus_t& bus)
 {
     um.otherDeviceUpdateManager = std::make_unique<OtherDeviceUpdateManager>(
-        bus, &um, std::vector<sdbusplus::message::object_path>{});
+        bus, &um, std::vector<sdbusplus::object_path>{});
     um.deviceUpdaterMap.clear();
     um.objPath = "/xyz/openbmc_project/software/debug_token_test";
     um.createProgressUpdateTimer();
@@ -220,7 +220,7 @@ TEST_F(DebugTokenInternalTest, startTimerReturnsWhenTokenAlreadyCompleted)
 
 TEST_F(DebugTokenInternalTest, startTimerTimeoutForErasePathTriggersUpdate)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -245,7 +245,7 @@ TEST_F(DebugTokenInternalTest, startTimerTimeoutForErasePathTriggersUpdate)
 
 TEST_F(DebugTokenInternalTest, startTimerTimeoutForInstallPathTriggersUpdate)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -270,7 +270,7 @@ TEST_F(DebugTokenInternalTest, startTimerTimeoutForInstallPathTriggersUpdate)
 TEST_F(DebugTokenInternalTest, updateDebugTokenFallsBackToEraseTokenPath)
 {
     DebugToken debugToken(busMock, &updateManager);
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -294,7 +294,7 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenFallsBackToEraseTokenPath)
 
 TEST_F(DebugTokenInternalTest, startUpdateHandlesFailedNonPldmActivation)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -320,7 +320,7 @@ TEST_F(DebugTokenInternalTest, activateDoesNotThrowForInstallToken)
 
 TEST_F(DebugTokenInternalTest, onActivationChangedMsgActiveSetsTokenStatus)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -351,7 +351,7 @@ TEST_F(DebugTokenInternalTest, onActivationChangedMsgActiveSetsTokenStatus)
 
 TEST_F(DebugTokenInternalTest, onActivationChangedMsgFailedSetsTokenStatus)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -424,7 +424,7 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenInstallUuidWithEmptyApplicableComponents)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -456,7 +456,7 @@ TEST_F(DebugTokenInternalTest,
 
 TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonMatchingUuid)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -489,7 +489,7 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonMatchingUuid)
 
 TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonDeadInstallComponent)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -524,7 +524,7 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonDeadInstallComponent)
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenInstallUuidDeadComponentWithMissingPath)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -980,7 +980,7 @@ TEST_F(DebugTokenInternalTest,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{}));
 
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets, dbusHandler);
@@ -1055,7 +1055,7 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenFirstActivationMatchFailureCoverage)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -1118,7 +1118,7 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenSecondActivationMatchFailureCoverage)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -1186,7 +1186,7 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenContinuesPastEmptyApplicableComponents)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);
@@ -1261,7 +1261,7 @@ TEST_F(DebugTokenInternalTest,
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenContinuesPastNonDeadMatchingComponent)
 {
-    std::vector<sdbusplus::message::object_path> targets;
+    std::vector<sdbusplus::object_path> targets;
     updateManager.otherDeviceUpdateManager =
         std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
                                                    targets);

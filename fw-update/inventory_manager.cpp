@@ -22,6 +22,7 @@
 #include "requester/handler.hpp"
 #include "xyz/openbmc_project/Software/Version/server.hpp"
 
+#include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
 #include <chrono>
@@ -51,7 +52,7 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos,
     }
 
     auto& [scope, rcOpt] = discoverFDsTaskHandle.emplace();
-    stdexec::start_detached(stdexec::on(
+    exec::start_detached(stdexec::on(
         stdexec::inline_scheduler{},
         discoverFDsTask() | stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }

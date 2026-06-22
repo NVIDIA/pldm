@@ -23,6 +23,7 @@
 #include "platform-mc/state_effecter.hpp"
 #include "platform-mc/state_sensor.hpp"
 
+#include <exec/start_detached.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Control/Processor/RemoteDebug/server.hpp>
 
@@ -125,7 +126,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     };
 
   public:
-    OemRemoteDebugIntf(bus::bus& bus, const char* path,
+    OemRemoteDebugIntf(sdbusplus::bus_t& bus, const char* path,
                        std::shared_ptr<StateEffecter> stateEffecter,
                        std::shared_ptr<NumericEffecter> numericEffecter,
                        std::shared_ptr<StateSensor> stateSensor) :
@@ -165,7 +166,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     uint32_t timeout(uint32_t value, bool skipSignal) override
     {
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         numericEffecter.setNumericEffecterValue(
                             numericEffecter.baseToRaw(value))));
@@ -174,7 +175,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     uint32_t timeout() const override
     {
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         numericEffecter.getNumericEffecterValue()));
         return numericEffecter.rawToBase(numericEffecter.getValue());
@@ -204,7 +205,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_ENABLED};
         }
 
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         stateEffecter.setStateEffecterStates(stateField)));
     }
@@ -234,7 +235,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                                   PLDM_STATE_SET_DEBUG_STATE_DISABLED};
         }
 
-        stdexec::start_detached(
+        exec::start_detached(
             stdexec::on(stdexec::inline_scheduler{},
                         stateEffecter.setStateEffecterStates(stateField)));
     }

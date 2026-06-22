@@ -176,8 +176,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
      * @param bus
      * @param path
      */
-    ActivationBlocksTransition(sdbusplus::bus::bus& bus,
-                               const std::string& path) :
+    ActivationBlocksTransition(sdbusplus::bus_t& bus, const std::string& path) :
         ActivationBlocksTransitionInherit(bus, path.c_str(),
                                           action::emit_interface_added),
         bus(bus)
@@ -195,7 +194,7 @@ class ActivationBlocksTransition : public ActivationBlocksTransitionInherit
     }
 
   private:
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
 
     /**
      * @brief Enable rebootguard

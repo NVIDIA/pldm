@@ -105,8 +105,8 @@ class StubDbusHandlerInterface : public pldm::utils::DBusHandlerInterface
     }
 
     GetAssociatedSubTreeResponse getAssociatedSubTree(
-        const sdbusplus::message::object_path& /*objectPath*/,
-        const sdbusplus::message::object_path& /*subtree*/, int /*depth*/,
+        const sdbusplus::object_path& /*objectPath*/,
+        const sdbusplus::object_path& /*subtree*/, int /*depth*/,
         const std::vector<std::string>& /*ifaceList*/) const override
     {
         return {};
@@ -221,8 +221,8 @@ class MockBusDBusHandler : public pldm::utils::DBusHandler
         }
         else if (dBusMap.propertyType == "array[object_path]")
         {
-            doSet(std::variant<std::vector<sdbusplus::message::object_path>>(
-                std::get<std::vector<sdbusplus::message::object_path>>(value)));
+            doSet(std::variant<std::vector<sdbusplus::object_path>>(
+                std::get<std::vector<sdbusplus::object_path>>(value)));
         }
         else
         {
@@ -231,8 +231,8 @@ class MockBusDBusHandler : public pldm::utils::DBusHandler
     }
 
     GetAssociatedSubTreeResponse getAssociatedSubTree(
-        const sdbusplus::message::object_path& objectPath,
-        const sdbusplus::message::object_path& subtree, int depth,
+        const sdbusplus::object_path& objectPath,
+        const sdbusplus::object_path& subtree, int depth,
         const std::vector<std::string>& ifaceList) const override
     {
         return mapperCall<GetAssociatedSubTreeResponse>(
@@ -1648,7 +1648,7 @@ TEST(DBusHandlerTemplate, getDbusPropertyCoversAdditionalCollectionTypes)
 {
     using Associations =
         std::vector<std::tuple<std::string, std::string, std::string>>;
-    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+    using ObjectPaths = std::vector<sdbusplus::object_path>;
     MockdBusHandler handler;
 
     const std::vector<uint64_t> counters{9, 99};
@@ -1662,8 +1662,8 @@ TEST(DBusHandlerTemplate, getDbusPropertyCoversAdditionalCollectionTypes)
               counters);
 
     const ObjectPaths objectPaths{
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
                                                 "ObjectPaths",
                                                 "xyz.openbmc_project.Example"))
@@ -1982,8 +1982,8 @@ TEST_F(DBusHandlerBusMockTest, getAssociatedSubTreeParsesEmptyReply)
     expectReadEmptyMapLikeContainer();
 
     auto response = handler.getAssociatedSubTree(
-        sdbusplus::message::object_path(objectPath),
-        sdbusplus::message::object_path(subtreePath), depth, {});
+        sdbusplus::object_path(objectPath), sdbusplus::object_path(subtreePath),
+        depth, {});
     EXPECT_TRUE(response.empty());
 }
 
@@ -2278,10 +2278,10 @@ TEST_F(DBusHandlerBusMockTest,
 
     DBusMapping mapping{objectPath, interface, propertyName,
                         "array[object_path]"};
-    handler.setDbusProperty(
-        mapping, PropertyValue{std::vector<sdbusplus::message::object_path>{
-                     sdbusplus::message::object_path("/test/a"),
-                     sdbusplus::message::object_path("/test/b")}});
+    handler.setDbusProperty(mapping,
+                            PropertyValue{std::vector<sdbusplus::object_path>{
+                                sdbusplus::object_path("/test/a"),
+                                sdbusplus::object_path("/test/b")}});
 }
 
 TEST_F(DBusHandlerBusMockTest, setDbusPropertyUnsupportedTypeThrows)
@@ -2565,9 +2565,9 @@ TEST_F(DBusHandlerDirectTest, arrayObjectPath)
     DBusMapping mapping{objectPath, interface, propertyName,
                         "array[object_path]"};
     directHandler.setDbusProperty(
-        mapping, PropertyValue{std::vector<sdbusplus::message::object_path>{
-                     sdbusplus::message::object_path("/obj/a"),
-                     sdbusplus::message::object_path("/obj/b")}});
+        mapping, PropertyValue{std::vector<sdbusplus::object_path>{
+                     sdbusplus::object_path("/obj/a"),
+                     sdbusplus::object_path("/obj/b")}});
 }
 
 TEST_F(DBusHandlerDirectTest, unsupportedTypeThrows)
@@ -2754,8 +2754,8 @@ TEST_F(DBusHandlerDirectTest, getAssociatedSubTreeReturnsEmpty)
     expectReadEmptyMapLikeContainer();
 
     auto response = directHandler.getAssociatedSubTree(
-        sdbusplus::message::object_path(objectPath),
-        sdbusplus::message::object_path(subtreePath), depth, {});
+        sdbusplus::object_path(objectPath), sdbusplus::object_path(subtreePath),
+        depth, {});
     EXPECT_TRUE(response.empty());
 }
 
@@ -2779,8 +2779,8 @@ TEST_F(DBusHandlerDirectTest, getAssociatedSubTreeThrowsOnMapperCallFailure)
         .WillOnce(testing::Return(-EINVAL));
 
     EXPECT_THROW(directHandler.getAssociatedSubTree(
-                     sdbusplus::message::object_path(objectPath),
-                     sdbusplus::message::object_path(subtreePath), depth, {}),
+                     sdbusplus::object_path(objectPath),
+                     sdbusplus::object_path(subtreePath), depth, {}),
                  sdbusplus::exception::SdBusError);
 }
 
@@ -3289,12 +3289,12 @@ TEST(GetDbusPropertyDirect, vectorUint64)
 
 TEST(GetDbusPropertyDirect, objectPaths)
 {
-    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+    using ObjectPaths = std::vector<sdbusplus::object_path>;
 
     GetDbusPropertyTestHandler handler;
     const ObjectPaths expected{
-        sdbusplus::message::object_path("/xyz/openbmc_project/object0"),
-        sdbusplus::message::object_path("/xyz/openbmc_project/object1")};
+        sdbusplus::object_path("/xyz/openbmc_project/object0"),
+        sdbusplus::object_path("/xyz/openbmc_project/object1")};
     handler.returnValue = expected;
     auto result =
         handler.getDbusProperty<ObjectPaths>("/path", "prop", "iface");
@@ -3322,7 +3322,7 @@ TEST(GetDbusPropertyDirect, throwsOnVariantMismatchAcrossAdditionalTypes)
 {
     using Associations =
         std::vector<std::tuple<std::string, std::string, std::string>>;
-    using ObjectPaths = std::vector<sdbusplus::message::object_path>;
+    using ObjectPaths = std::vector<sdbusplus::object_path>;
 
     GetDbusPropertyTestHandler handler;
 
@@ -6545,9 +6545,9 @@ struct FlakyManagedObject
         }
 
         ObjectValueTree objects;
-        objects.emplace(sdbusplus::message::object_path(
-                            "/xyz/openbmc_project/inventory/flaky0"),
-                        InterfaceMap{});
+        objects.emplace(
+            sdbusplus::object_path("/xyz/openbmc_project/inventory/flaky0"),
+            InterfaceMap{});
         return objects;
     }
 
@@ -6628,20 +6628,19 @@ TEST(DBusHandlerTemplate, getDbusPropertyHeapBackedValuesCoverage)
                   "xyz.openbmc_project.Example"),
               longStrings);
 
-    const std::vector<sdbusplus::message::object_path> objectPaths{
-        sdbusplus::message::object_path(
+    const std::vector<sdbusplus::object_path> objectPaths{
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(44, 'x')),
-        sdbusplus::message::object_path(
+        sdbusplus::object_path(
             "/xyz/openbmc_project/object/" + std::string(46, 'y'))};
     EXPECT_CALL(handler, getDbusPropertyVariant("/xyz/openbmc_project/example",
                                                 "ObjectPaths",
                                                 "xyz.openbmc_project.Example"))
         .WillOnce(::testing::Return(pldm::utils::PropertyValue{objectPaths}));
-    EXPECT_EQ(
-        handler.getDbusProperty<std::vector<sdbusplus::message::object_path>>(
-            "/xyz/openbmc_project/example", "ObjectPaths",
-            "xyz.openbmc_project.Example"),
-        objectPaths);
+    EXPECT_EQ(handler.getDbusProperty<std::vector<sdbusplus::object_path>>(
+                  "/xyz/openbmc_project/example", "ObjectPaths",
+                  "xyz.openbmc_project.Example"),
+              objectPaths);
 }
 
 TEST(Split, skipsEmptyTokensFromConsecutiveDelimiters)

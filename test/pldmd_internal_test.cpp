@@ -458,7 +458,7 @@ class TemporaryDbusNameOwner
     }
 
   private:
-    sdbusplus::bus::bus bus;
+    sdbusplus::bus_t bus;
 };
 
 class TemporaryHostEidFile

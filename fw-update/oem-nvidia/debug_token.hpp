@@ -80,7 +80,7 @@ class DebugToken
      * @param[in] updateManager - update manager reference
      */
     explicit DebugToken(
-        sdbusplus::bus::bus& bus, UpdateManager* updateManager,
+        sdbusplus::bus_t& bus, UpdateManager* updateManager,
         pldm::utils::DBusHandlerInterface& dbusHandler = defaultDbusHandler()) :
         updateManager(updateManager), bus(bus), dbusHandler(dbusHandler),
         timer(nullptr), tokenStatus(false)
@@ -156,7 +156,7 @@ class DebugToken
      * @brief Dbus object referance
      *
      */
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
     pldm::utils::DBusHandlerInterface& dbusHandler;
 
     /**

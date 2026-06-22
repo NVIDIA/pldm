@@ -35,7 +35,7 @@ class Update : public UpdateIntf
      *  @param[in] objPath - D-Bus object path
      *  @param[in] updateManager - Reference to FW update manager
      */
-    Update(sdbusplus::bus::bus& bus, const std::string& path,
+    Update(sdbusplus::bus_t& bus, const std::string& path,
            UpdateManager* updateManager) :
         UpdateIntf(bus, path.c_str()), updateManager(updateManager),
         objPath(path)
@@ -44,10 +44,10 @@ class Update : public UpdateIntf
         allowedTargets(true);
     }
 
-    virtual sdbusplus::message::object_path startUpdate(
+    virtual sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-        std::vector<sdbusplus::message::object_path> targets) override;
+        std::vector<sdbusplus::object_path> targets) override;
 
     /** @brief Close the image stream and release the mmap
      *

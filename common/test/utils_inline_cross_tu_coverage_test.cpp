@@ -36,8 +36,7 @@ struct GetManagedObject
     {
         ObjectValueTree objects;
         objects.emplace(
-            sdbusplus::message::object_path(
-                "/xyz/openbmc_project/inventory/fresh-tu"),
+            sdbusplus::object_path("/xyz/openbmc_project/inventory/fresh-tu"),
             InterfaceMap{
                 {"xyz.openbmc_project.Inventory.Item",
                  PropertyMap{{"PrettyName", std::string("fresh-tu")}}}});
@@ -68,7 +67,7 @@ struct FlakyManagedObject
         }
 
         ObjectValueTree objects;
-        objects.emplace(sdbusplus::message::object_path(
+        objects.emplace(sdbusplus::object_path(
                             "/xyz/openbmc_project/inventory/flaky-fresh-tu"),
                         InterfaceMap{});
         return objects;
