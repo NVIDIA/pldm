@@ -280,6 +280,31 @@ class MctpDiscovery
      */
     void loadStaticEndpoints(MctpInfos& mctpInfos);
 
+    /** @brief EID-keyed identity for statically-assigned, bridge-routed
+     *         endpoints that never receive a per-device configured_by
+     *         association.
+     *
+     *  PLDM FW Update Config Migration (DGXOPENBMC-25121). The primary identity
+     *  path is configured_by (searchConfigurationFor). Some platforms assign a
+     *  device's MCTP EID out of band and route it through a bridge that is set
+     *  up by a codeconstruct MCTP interface rather than a per-device
+     *  entity-manager transport config (e.g. the GB200 HMC, whose FPGA-bridged
+     *  ERoT/GPU/CPU endpoints get fixed EIDs from device_mctp_eid.csv). Such
+     *  endpoints carry no configured_by, so configured_by resolution leaves
+     *  them nameless and they are dropped.
+     *
+     *  For each Configuration.PLDMFirmwareDevice that declares a StaticEID,
+     *  bind the live mctpd endpoint at that EID to the entry's MCTPTargetName,
+     *  populating both the configurations map (the EID->Name resolution
+     *  consumed by getTargetNameForEid) and mctpInfoMap (so the endpoint is
+     *  processed). An EID already resolved via configured_by is left untouched
+     *  — configured_by remains authoritative.
+     *
+     *  @param[in,out] mctpInfoMap - discovered endpoint -> availability map
+     */
+    void bindStaticEidConfigurations(
+        std::map<MctpInfo, Availability>& mctpInfoMap);
+
     friend class ::TestMctpDiscovery;
 
   private:

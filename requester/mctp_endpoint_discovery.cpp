@@ -304,7 +304,188 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
                                           this)));
         }
     }
+
+    // configured_by is primary; bind any remaining StaticEID-declared devices
+    // (statically-assigned, bridge-routed endpoints with no configured_by).
+    bindStaticEidConfigurations(mctpInfoMap);
     return true;
+}
+
+namespace
+{
+/** @brief Read an optional EID-valued property from a Configuration property
+ *         map, tolerating the integral and string variant alternatives
+ *         entity-manager may publish. Returns std::nullopt when absent or
+ *         unparseable. Never throws.
+ */
+std::optional<uint8_t> readOptionalEidProp(
+    const pldm::utils::PropertyMap& props, const std::string& key)
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return std::nullopt;
+    }
+    const auto& v = it->second;
+    if (auto p = std::get_if<uint8_t>(&v))
+    {
+        return *p;
+    }
+    if (auto p = std::get_if<uint16_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<uint32_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<uint64_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<int64_t>(&v))
+    {
+        return static_cast<uint8_t>(*p);
+    }
+    if (auto p = std::get_if<std::string>(&v))
+    {
+        try
+        {
+            return static_cast<uint8_t>(std::stoul(*p));
+        }
+        catch (const std::exception&)
+        {
+            return std::nullopt;
+        }
+    }
+    return std::nullopt;
+}
+} // namespace
+
+void MctpDiscovery::bindStaticEidConfigurations(
+    std::map<MctpInfo, Availability>& mctpInfoMap)
+{
+    constexpr auto pldmFwDeviceIntf =
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+    // 1. Collect StaticEID -> (MCTPTargetName, config object path) from EM.
+    std::map<eid, std::pair<std::string, std::string>> staticEidToName;
+    pldm::utils::GetSubTreeResponse fwSubtree;
+    try
+    {
+        fwSubtree = dbusHandler.getSubtree("/xyz/openbmc_project/inventory", 0,
+                                           {pldmFwDeviceIntf});
+    }
+    catch (const std::exception& e)
+    {
+        // No PLDMFirmwareDevice configs published; nothing to bind.
+        return;
+    }
+    for (const auto& [objPath, serviceMap] : fwSubtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const std::string service = serviceMap.begin()->first;
+        pldm::utils::PropertyMap props;
+        try
+        {
+            props = dbusHandler.getDbusPropertiesVariant(
+                service.c_str(), objPath.c_str(), pldmFwDeviceIntf);
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "bindStaticEidConfigurations: reading props at {PATH} failed, error - {ERROR}; skipping",
+                "PATH", objPath, "ERROR", e);
+            continue;
+        }
+        auto staticEid = readOptionalEidProp(props, "StaticEID");
+        if (!staticEid)
+        {
+            continue; // device relies on configured_by
+        }
+        auto nameIt = props.find("MCTPTargetName");
+        if (nameIt == props.end())
+        {
+            continue;
+        }
+        staticEidToName.emplace(
+            *staticEid,
+            std::make_pair(std::get<std::string>(nameIt->second), objPath));
+    }
+    if (staticEidToName.empty())
+    {
+        return;
+    }
+
+    // 2. Enumerate live mctpd endpoints; bind any whose EID matches a StaticEID
+    //    and is not already resolved via configured_by.
+    pldm::utils::GetSubTreeResponse epSubtree;
+    try
+    {
+        epSubtree =
+            dbusHandler.getSubtree(MCTPPath, 0, {std::string(MCTPInterface)});
+    }
+    catch (const std::exception& e)
+    {
+        warning(
+            "bindStaticEidConfigurations: enumerating MCTP endpoints failed, error - {ERROR}",
+            "ERROR", e);
+        return;
+    }
+    for (const auto& [path, serviceMap] : epSubtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const std::string service = serviceMap.begin()->first;
+        MctpEndpointProps epProps;
+        try
+        {
+            epProps = getMctpEndpointProps(service, path);
+        }
+        catch (const std::exception&)
+        {
+            continue;
+        }
+        const auto types = std::get<MCTPMsgTypes>(epProps);
+        if (std::find(types.begin(), types.end(), mctpTypePLDM) == types.end())
+        {
+            continue;
+        }
+        const auto epEid = std::get<eid>(epProps);
+        auto bind = staticEidToName.find(epEid);
+        if (bind == staticEidToName.end())
+        {
+            continue;
+        }
+        // configured_by is authoritative: skip if already resolved.
+        const bool alreadyResolved = std::ranges::any_of(
+            mctpInfoMap, [epEid](const auto& kv) {
+                return std::get<pldm::eid>(kv.first) == epEid;
+            });
+        if (alreadyResolved)
+        {
+            continue;
+        }
+        const UUID& uuid = getEndpointUUIDProp(service, path);
+        const Availability& availability = getEndpointConnectivityProp(path);
+        const auto& mctpBinding = std::get<4>(epProps);
+        const auto& mctpMedium = std::get<3>(epProps);
+        const auto& mctpLocalEid = std::get<5>(epProps);
+        MctpInfo mctpInfo(epEid, uuid, mctpMedium, std::get<NetworkId>(epProps),
+                          bind->second.first, mctpBinding, mctpLocalEid);
+        // Key the configurations map on the EM config path (as the
+        // configured_by path does) so getTargetNameForEid resolves the name.
+        configurations.emplace(bind->second.second, mctpInfo);
+        mctpInfoMap[std::move(mctpInfo)] = availability;
+        info(
+            "bindStaticEidConfigurations: bound EID {EID} to '{NAME}' via StaticEID",
+            "EID", static_cast<unsigned>(epEid), "NAME", bind->second.first);
+    }
 }
 
 MctpEndpointProps MctpDiscovery::getMctpEndpointProps(
