@@ -81,12 +81,30 @@ void SwitchBandwidthSensor::setDefaultValue()
 void SwitchBandwidthSensor::updateCurrentBandwidth(double oldValue,
                                                    double newValue)
 {
+    // Reject values that are non-finite, negative, or exceeds calculated max
+    // bandwidth. This catches both NaN sentinels and finite garbage from
+    // pre-poll reads on PLDM_SENSOR_UNIT_BITS sensors. When maxBandwidth()
+    // is 0 (not yet accumulated), the upper-bound check is skipped and
+    // isfinite + non-negative alone applies.
+    const double switchMax = switchIntf->maxBandwidth();
+    auto isValid = [switchMax](double v) -> bool {
+        return std::isfinite(v) && v >= 0.0 &&
+               (switchMax <= 0.0 || v <= switchMax);
+    };
+
+    // In the event that newValue is not valid, the currentBandwidth
+    // drops reading for the associated sensor. If oldValue is not valid,
+    // we had not added the reading to the currentBandwidth in the previous
+    // update,
+    //  proceed with the new value.
+    // If both oldValue and newValue are not valid, the currentBandwidth
+    // is not updated.
     auto curBandwidthOnSwitch = switchIntf->currentBandwidth();
-    if (!std::isnan(oldValue))
+    if (isValid(oldValue))
     {
         curBandwidthOnSwitch -= oldValue;
     }
-    if (!std::isnan(newValue))
+    if (isValid(newValue))
     {
         curBandwidthOnSwitch += newValue;
     }

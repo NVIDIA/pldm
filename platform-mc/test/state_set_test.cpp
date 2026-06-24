@@ -2772,6 +2772,71 @@ TEST_F(StateSetCoverageTest, ethIbPortLinkStateGuardCoverage)
     EXPECT_EQ("Ethernet Port 7 Renamed", stateSet.objectName);
 }
 
+// Regression for NVBug 5911562: when StateSetEthIBPortLinkState::setValue()
+// runs before the associated link-speed NumericSensor has been polled, the
+// pre-poll read must not propagate uninitialised rawValue into the derived
+// SwitchBandwidthSensor::CurrentBandwidthGbps. Exercises the combined
+// guard set: operationalStatusIntf->functional() check in setValue(), the
+// zero-init of NumericSensor::rawValue, and the finite/range guard in
+// SwitchBandwidthSensor::updateCurrentBandwidth().
+TEST_F(StateSetCoverageTest, ethIbPortLinkStatePrePollBandwidthSafe)
+{
+    std::string path = "/xyz/openbmc_project/state/coverage/eth_port_prepoll";
+    auto association = makeAssociation(
+        "chassis", "all_states",
+        "/xyz/openbmc_project/inventory/system/network/eth_prepoll");
+    StateSetEthIBPortLinkState stateSet(PLDM_STATESET_ID_LINKSTATE, 0, path,
+                                        association, 19);
+
+    // BITS unit falls into the default: branch of NumericSensor's ctor —
+    // no valueIntf, no metricIntf — so getReading() returns rawValue
+    // directly. Deliberately skip updateReading() to simulate the startup
+    // race where the state sensor is polled before the numeric sensor.
+    auto linkSpeedSensor =
+        makeNumericSensor(19, 0x1819, PLDM_ENTITY_ETHERNET, 19,
+                          PLDM_SENSOR_UNIT_BITS, "bits_prepoll_port");
+    std::vector<std::shared_ptr<NumericSensor>> sensors{linkSpeedSensor};
+    stateSet.associateNumericSensor(EntityInfo{1, PLDM_ENTITY_ETHERNET, 19},
+                                    sensors);
+    ASSERT_NE(nullptr, stateSet.linkSpeedSensor);
+
+    std::string switchType{
+        "xyz.openbmc_project.Inventory.Item.Switch.SwitchType.Ethernet"};
+    std::vector<std::string> switchProtocols{switchType};
+    std::vector<pldm::dbus::PathAssociation> switchAssociations{association};
+    auto switchBandwidthSensor =
+        std::make_shared<oem_nvidia::SwitchBandwidthSensor>(
+            19, "switch_bw_prepoll", switchType, switchProtocols,
+            switchAssociations);
+    stateSet.associateDerivedSensor(switchBandwidthSensor);
+
+    // Pre-poll: numeric sensor is functional() but rawValue has never been
+    // assigned a polled reading. The combined fixes must keep aggregate
+    // bandwidth at 0.0 instead of leaking uninitialised memory.
+    stateSet.setValue(PLDM_STATESET_LINK_STATE_CONNECTED);
+    EXPECT_DOUBLE_EQ(0.0,
+                     switchBandwidthSensor->switchIntf->currentBandwidth());
+
+    // Defence-in-depth: even if the per-port value is wildly out of range
+    // (e.g. simulated 1e+200 Gbps), the range guard in
+    // updateCurrentBandwidth() must drop it without corrupting the aggregate.
+    // Set a realistic switch max first — the guard uses
+    // switchIntf->maxBandwidth() rather than a hardcoded constant, so it only
+    // applies once the switch has accumulated its declared maximum from port
+    // PDRs.
+    switchBandwidthSensor->updateMaxBandwidth(29600.0);
+    switchBandwidthSensor->updateCurrentBandwidth(0.0, 1.0e+200);
+    EXPECT_DOUBLE_EQ(0.0,
+                     switchBandwidthSensor->switchIntf->currentBandwidth());
+
+    // After a real poll, a physically-valid speed must be accepted.
+    linkSpeedSensor->updateReading(true, true, 40000000000.0);
+    stateSet.setValue(PLDM_STATESET_LINK_STATE_CONNECTED);
+    EXPECT_DOUBLE_EQ(40.0, stateSet.ValuePortInfoIntf->currentSpeed());
+    EXPECT_DOUBLE_EQ(40.0,
+                     switchBandwidthSensor->switchIntf->currentBandwidth());
+}
+
 TEST_F(StateSetCoverageTest, ethIbPortLinkStateInfinibandAssociationCoverage)
 {
     std::string path = "/xyz/openbmc_project/state/coverage/ib_port_12";

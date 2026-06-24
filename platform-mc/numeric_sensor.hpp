@@ -399,7 +399,7 @@ class NumericSensor
     uint8_t baseUnit;
 
     /** @brief raw value of numeric sensor */
-    double rawValue;
+    double rawValue = 0.0;
 
     /** @brief indicates if we are using PLDM Type-2 command or PLDM OEM Type
      * command for polling */
