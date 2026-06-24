@@ -118,7 +118,24 @@ int EventManager::handlePlatformEvent(
         auto it = termini.find(tid);
         if (it != termini.end())
         {
-            termini[tid]->pollEvent = true;
+            // Capture the dataTransferHandle advertised by the poll event so
+            // the first PollForPlatformEventMessage starts from it rather than
+            // from handle 0.
+            pldm_message_poll_event pollEventData{};
+            auto drc = decode_pldm_message_poll_event_data(
+                eventData, eventDataSize, &pollEventData);
+            if (drc == PLDM_SUCCESS)
+            {
+                it->second->pollDataTransferHandle =
+                    pollEventData.data_transfer_handle;
+            }
+            else
+            {
+                lg2::error(
+                    "Failed to decode message poll event data, tid={TID} rc={RC}",
+                    "TID", tid, "RC", drc);
+            }
+            it->second->pollEvent = true;
         }
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_0xFB)
@@ -410,12 +427,13 @@ int EventManager::handlePlatformEvent(
     return PLDM_SUCCESS;
 }
 
-exec::task<int> EventManager::pollForPlatformEventTask(tid_t tid,
-                                                       uint16_t maxBufferSize)
+exec::task<int> EventManager::pollForPlatformEventTask(
+    tid_t tid, uint16_t maxBufferSize, uint32_t dataTransferHandle)
 {
     uint8_t rc = 0;
     uint8_t transferOperationFlag = PLDM_GET_FIRSTPART;
-    uint32_t dataTransferHandle = 0;
+    // dataTransferHandle is seeded by the caller from the terminus' poll event
+    // (0 when none was advertised) and then driven by the response handles.
     uint32_t eventIdToAcknowledge = 0;
 
     uint8_t completionCode = 0;

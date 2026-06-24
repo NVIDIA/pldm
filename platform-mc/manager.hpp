@@ -397,7 +397,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             auto& terminus = it->second;
             co_await eventManager.pollForPlatformEventTask(
-                tid, terminus->maxBufferSize);
+                tid, terminus->maxBufferSize, terminus->pollDataTransferHandle);
             terminus->pollEvent = false;
         }
         co_return PLDM_SUCCESS;

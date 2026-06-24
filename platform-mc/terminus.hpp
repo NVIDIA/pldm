@@ -406,6 +406,12 @@ class Terminus
      * PollForPlatformEvent command */
     bool pollEvent;
 
+    /** @brief dataTransferHandle advertised by the most recent
+     * pldmMessagePollEvent. Used as the starting dataTransferHandle for the
+     * first PollForPlatformEventMessage request (the FIFO does not necessarily
+     * start at handle 0). */
+    uint32_t pollDataTransferHandle;
+
     /** @brief The flag indicates that the terminus is ready ( i.e All of it's
      * round robin sensors were checked at least once ) */
     bool ready;

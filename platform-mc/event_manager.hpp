@@ -106,9 +106,13 @@ class EventManager
 
     /** @brief A Coroutine to poll all events from terminus
      *
-     *  @param[in] dstTid - the destination TID
+     *  @param[in] tid - the destination TID
+     *  @param[in] maxBufferSize - terminus max event buffer size
+     *  @param[in] dataTransferHandle - starting dataTransferHandle for the
+     *             first request (from the terminus' poll event); defaults to 0
      */
-    exec::task<int> pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize);
+    exec::task<int> pollForPlatformEventTask(tid_t tid, uint16_t maxBufferSize,
+                                             uint32_t dataTransferHandle = 0);
 
   protected:
     /** @brief Send pollForPlatformEventMessage and return response
