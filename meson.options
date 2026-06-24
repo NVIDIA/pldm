@@ -137,6 +137,20 @@ option(
                     message in milliseconds''',
 )
 
+# Maximum event message buffer size (DSP0248 16.9, eventMessageBufferSize)
+# used for PollForPlatformEventMessage transfers. Defaults to the PLDM
+# minimum of 256 bytes; platforms whose terminus advertises a larger buffer
+# can raise this via the meta-layer.
+option(
+    'event-message-buffer-size-max',
+    type: 'integer',
+    min: 256,
+    max: 8192,
+    value: 256,
+    description: '''The maximum event message buffer size in bytes used when
+                    polling platform event messages from a terminus
+                    (DSP0248 16.9 eventMessageBufferSize)''',
+)
 # Bios Attributes option
 option(
     'system-specific-bios-json',

@@ -44,7 +44,7 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
 {
     // default system inventory object path
     systemInventoryPath = PLATFORM_CHASSIS_PATH;
-    maxBufferSize = 256;
+    maxBufferSize = EVENT_MESSAGE_BUFFER_SIZE_MAX;
     needRefresh = false;
 }
 
