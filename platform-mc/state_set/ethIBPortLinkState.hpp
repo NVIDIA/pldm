@@ -126,13 +126,10 @@ class StateSetEthIBPortLinkState : public StateSet
 
     void setDefaultValue() override
     {
-        ValuePortInfoIntf->type(PortType::BidirectionalPort);
-        ValuePortInfoIntf->protocol(PortProtocol::Ethernet);
         ValuePortStateIntf->linkState(PortLinkStates::Unknown);
         ValuePortStateIntf->linkStatus(PortLinkStatus::NoLink);
 
         ValuePortInfoIntf->currentSpeed(0.0);
-        ValuePortInfoIntf->maxSpeed(0.0);
     }
 
     std::tuple<std::string, std::string, Level, std::string, std::string>
