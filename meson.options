@@ -431,6 +431,13 @@ option(
 )
 
 option(
+    'cpu-primary-cpupower-sensor',
+    type: 'string',
+    description: 'Sensor name substring identifying the CPU sensor whose reading should populate Redfish PowerWatts.DataSourceUri (chassis/primary_cpupower_sensor association).',
+    value: 'CpuPower',
+)
+
+option(
     'nvidia-disable-edpp-effecters',
     type: 'feature',
     description: 'Disable the creation of EDPp effecters and their association with CPU power controls',

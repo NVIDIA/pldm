@@ -274,6 +274,10 @@ conf_data.set_quoted(
     'CPU_PRIMARY_POWER_SENSOR',
     get_option('cpu-primary-power-sensor'),
 )
+conf_data.set_quoted(
+    'CPU_PRIMARY_CPUPOWER_SENSOR',
+    get_option('cpu-primary-cpupower-sensor'),
+)
 if get_option('nvidia-disable-edpp-effecters').enabled()
     conf_data.set('NVIDIA_DISABLE_EDPP_EFFECTERS', 1)
 endif

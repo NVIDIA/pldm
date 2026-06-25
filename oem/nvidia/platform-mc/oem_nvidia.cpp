@@ -662,6 +662,50 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
+    // Add primary_cpupower_sensor association for the CPU power-reading
+    // numeric sensor (default: CpuPower). Mirror the chassis/all_sensors
+    // tuples already present on the matching sensor so the reverse
+    // association resolves from every chassis that already lists the
+    // sensor. bmcweb consumes chassisPath/primary_cpupower_sensor to
+    // pick the DataSourceUri for Redfish PowerWatts under
+    // /Systems/.../Processors/CPU_x/EnvironmentMetrics, the same way
+    // primary_temperature_sensor drives TemperatureCelsius.
+    constexpr std::string_view cpuPrimaryCpupowerSensor(
+        CPU_PRIMARY_CPUPOWER_SENSOR);
+    for (auto sensor : terminus.numericSensors)
+    {
+        if (cpuPrimaryCpupowerSensor.empty() ||
+            sensor->getSensorName().find(cpuPrimaryCpupowerSensor) ==
+                std::string::npos ||
+            !sensor->associationDefinitionsIntf)
+        {
+            continue;
+        }
+
+        auto assocs = sensor->associationDefinitionsIntf->associations();
+        bool updateRequired = false;
+        const auto count = assocs.size();
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& [fwd, rev, path] = assocs[i];
+            if (fwd == "chassis" && rev == "all_sensors")
+            {
+                std::tuple<std::string, std::string, std::string> newAssoc{
+                    "chassis", "primary_cpupower_sensor", path};
+                if (std::find(assocs.begin(), assocs.end(), newAssoc) ==
+                    assocs.end())
+                {
+                    assocs.emplace_back(std::move(newAssoc));
+                    updateRequired = true;
+                }
+            }
+        }
+        if (updateRequired)
+        {
+            sensor->associationDefinitionsIntf->associations(assocs);
+        }
+    }
+
     constexpr std::string_view cpuPrimaryPowerControl(
         CPU_PRIMARY_POWER_CONTROL);
     for (auto effecter : terminus.numericEffecters)
