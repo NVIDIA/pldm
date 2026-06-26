@@ -1368,16 +1368,16 @@ TEST_F(StateSetNvlinkInternalTest,
 
     auto [defaultMessage, defaultArg, defaultLevel, defaultEventId,
           defaultImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", defaultMessage);
-    EXPECT_EQ("PerformanceDegraded due to high temperature", defaultArg);
-    EXPECT_EQ(Level::Error, defaultLevel);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", defaultMessage);
+    EXPECT_EQ("Throttled (performance degraded)", defaultArg);
+    EXPECT_EQ(Level::Warning, defaultLevel);
     EXPECT_TRUE(defaultEventId.empty());
     EXPECT_TRUE(defaultImpacted.empty());
 
     EXPECT_NO_THROW(stateSet.setValue(PLDM_STATESET_PERFORMANCE_NORMAL));
     auto [normalMessage, normalArg, normalLevel, normalEventId,
           normalImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsCorrected", normalMessage);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", normalMessage);
     EXPECT_EQ("Normal", normalArg);
     EXPECT_EQ(Level::Informational, normalLevel);
     EXPECT_TRUE(normalEventId.empty());
@@ -1386,18 +1386,19 @@ TEST_F(StateSetNvlinkInternalTest,
     EXPECT_NO_THROW(stateSet.setValue(PLDM_STATESET_PERFORMANCE_THROTTLED));
     auto [throttledMessage, throttledArg, throttledLevel, throttledEventId,
           throttledImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", throttledMessage);
-    EXPECT_EQ("PerformanceDegraded due to high temperature", throttledArg);
-    EXPECT_EQ(Level::Error, throttledLevel);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning",
+              throttledMessage);
+    EXPECT_EQ("Throttled (performance degraded)", throttledArg);
+    EXPECT_EQ(Level::Warning, throttledLevel);
     EXPECT_TRUE(throttledEventId.empty());
     EXPECT_TRUE(throttledImpacted.empty());
 
     EXPECT_NO_THROW(stateSet.setValue(0xFF));
     auto [unknownMessage, unknownArg, unknownLevel, unknownEventId,
           unknownImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", unknownMessage);
-    EXPECT_EQ("PerformanceDegraded due to high temperature", unknownArg);
-    EXPECT_EQ(Level::Error, unknownLevel);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", unknownMessage);
+    EXPECT_EQ("Throttled (performance degraded)", unknownArg);
+    EXPECT_EQ(Level::Warning, unknownLevel);
     EXPECT_TRUE(unknownEventId.empty());
     EXPECT_TRUE(unknownImpacted.empty());
 }

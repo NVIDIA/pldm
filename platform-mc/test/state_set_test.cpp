@@ -1763,7 +1763,7 @@ TEST_F(StateSetCoverageTest, oemStateSetCoverage)
     auto [memoryPerfWarnMessage, memoryPerfWarnArg, memoryPerfWarnLevel,
           memoryPerfWarnEventId,
           memoryPerfWarnImpacted] = memoryPerformance.getEventData(nullptr);
-    EXPECT_EQ("PerformanceDegraded due to high temperature", memoryPerfWarnArg);
+    EXPECT_EQ("Throttled (performance degraded)", memoryPerfWarnArg);
     EXPECT_TRUE(memoryPerfWarnEventId.empty());
     EXPECT_TRUE(memoryPerfWarnImpacted.empty());
     memoryPerformance.setValue(0xFF);
