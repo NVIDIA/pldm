@@ -155,14 +155,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
-    /** @brief Create firmware inventory and write the device UUID to the
-     *         entity-manager-owned RoT chassis (PLDM FW Update Config
+    /** @brief Create firmware inventory and write the device UUID + EC-SKU/AP-SKU
+     *         to the entity-manager-owned RoT chassis (PLDM FW Update Config
      *         Migration, DGXOPENBMC-25121).
      *
      *  RoT chassis objects are no longer created by pldmd; entity-manager owns
      *  them via Configuration.PLDMDeviceInventory.CreateInventoryPath. pldmd
-     *  writes only the dynamic Common.UUID to that EM-created object (and to the
-     *  optional UpdateInventoryPath if declared).
+     *  writes the dynamic Common.UUID + SKU decorator to that EM-created object
+     *  (and the AP-SKU to the optional UpdateInventoryPath if declared). This is
+     *  the inventory-creation path, so the UUID is written here; updateInventory
+     *  (the refresh path) deliberately does not re-write it — see
+     *  writeDeviceInventoryIdentity().
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
@@ -170,7 +173,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void createInventory(eid eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
-        writeDeviceInventoryUuid(eid, uuid);
+        writeDeviceInventoryIdentity(eid, uuid, /*writeUuid=*/true);
         if (componentInfoMap.contains(eid))
         {
             // FCM-REQ-16: ensure EVERY component the device reports has a name,
@@ -205,17 +208,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     /** @brief Update firmware inventory based on refreshed descriptor and
-     *         firmware parameter information, and re-write the device UUID to
-     *         the entity-manager-owned RoT chassis.
+     *         firmware parameter information, and re-write the device
+     *         EC-SKU/AP-SKU to the entity-manager-owned RoT chassis.
      *
      *  @param[in] eid - MCTP endpoint
-     *  @param[in] uuid - MCTP UUID
+     *  @param[in] uuid - MCTP UUID (used for the firmware inventory entry)
      *  @param[in] mctpInterfaces - MCTP interface information
      */
     void updateInventory(eid eid, UUID uuid,
                          dbus::MctpInterfaces& mctpInterfaces)
     {
-        writeDeviceInventoryUuid(eid, uuid);
+        writeDeviceInventoryIdentity(eid, uuid, /*writeUuid=*/false);
         if (componentInfoMap.contains(eid))
         {
             fwInventoryManager.updateEntry(eid, uuid, mctpInterfaces);
@@ -452,22 +455,28 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Firmware inventory D-Bus object manager */
     fw_inventory::Manager fwInventoryManager;
 
-    /** @brief Write the device UUID to the entity-manager-owned RoT chassis.
+    /** @brief Write the device identity (UUID + EC-SKU/AP-SKU) to the
+     *         entity-manager-owned RoT chassis.
      *
      *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.2.2/§3.3.2
      *  step 3e. pldmd creates no inventory objects: the RoT chassis is created
      *  by entity-manager from Configuration.PLDMDeviceInventory. This helper
      *  resolves the device's PLDMDeviceInventory config entry by string-match
      *  on MCTPTargetName, then writes the device identity onto the EM-owned
-     *  objects: Common.UUID + EC-SKU to CreateInventoryPath (the RoT chassis)
-     *  and AP-SKU to the optional UpdateInventoryPath. Writes are applied
-     *  when-ready (immediate Set plus an InterfacesAdded retry) so pldmd remains
-     *  the sole authority for UUID/SKU and never depends on another service
-     *  (e.g. NSM) to populate them — restoring origin/develop behaviour on the
-     *  EM-owned objects.
+     *  objects: Common.UUID (only when @p writeUuid) + EC-SKU to
+     *  CreateInventoryPath (the RoT chassis) and AP-SKU to the optional
+     *  UpdateInventoryPath. Writes are applied when-ready (immediate Set plus an
+     *  InterfacesAdded retry).
+     *
+     *  @p writeUuid is true only on inventory creation (createInventory). On a
+     *  refresh (updateInventory) it is false: the UUID is static, and the
+     *  blocking per-write ObjectMapper lookup it incurred during the periodic
+     *  firmware refresh serialised ~1s per object, stalling the event loop long
+     *  enough to drop in-flight PLDM responses.
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - device UUID obtained over MCTP/PLDM
+     *  @param[in] writeUuid - write Common.UUID (creation path only)
      */
     /** @brief Resolve a device's friendly Name (the MCTPTargetName join key)
      *         for a discovered endpoint.
@@ -762,7 +771,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         throw std::bad_variant_access();
     }
 
-    void writeDeviceInventoryUuid(eid eid, const UUID& uuid)
+    void writeDeviceInventoryIdentity(eid eid, const UUID& uuid, bool writeUuid)
     {
         const std::string targetName = getTargetNameForEid(eid);
         if (targetName.empty())
@@ -788,7 +797,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         catch (const std::exception& e)
         {
             error(
-                "writeDeviceInventoryUuid: GetSubTree for PLDMDeviceInventory failed for EID {EID}, error - {ERROR}",
+                "writeDeviceInventoryIdentity: GetSubTree for PLDMDeviceInventory failed for EID {EID}, error - {ERROR}",
                 "EID", eid, "ERROR", e);
             return;
         }
@@ -830,7 +839,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             catch (const std::exception& e)
             {
                 error(
-                    "writeDeviceInventoryUuid: failed reading PLDMDeviceInventory props at {PATH}, error - {ERROR}",
+                    "writeDeviceInventoryIdentity: failed reading PLDMDeviceInventory props at {PATH}, error - {ERROR}",
                     "PATH", objPath, "ERROR", e);
                 continue;
             }
@@ -850,15 +859,23 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 std::tie(ecsku, apsku) = extractSkus(descIt->second);
             }
 
-            // Write the identity onto the EM-owned objects, retrying when each
-            // object/interface appears (never depending on NSM to populate it):
-            //   - RoT chassis (CreateInventoryPath): Common.UUID + EC-SKU
+            // Write the device identity onto the EM-owned objects, retrying
+            // when each object/interface appears (never depending on NSM):
+            //   - RoT chassis (CreateInventoryPath): Common.UUID (on inventory
+            //     creation only) + EC-SKU
             //   - update target (UpdateInventoryPath): AP-SKU
-            // Mirrors origin/develop's updateSKUOnMatch "write-when-ready" now
-            // that entity-manager owns the objects.
+            // The UUID is written once, when the inventory is created
+            // (writeUuid), never on a refresh: the blocking per-write
+            // ObjectMapper lookup during the periodic firmware refresh
+            // serialised ~1s per object and stalled the event loop long enough
+            // to drop in-flight PLDM responses.
             if (!createPath.empty())
             {
-                writeInventoryPropWhenReady(createPath, uuidIntf, "UUID", uuid);
+                if (writeUuid)
+                {
+                    writeInventoryPropWhenReady(createPath, uuidIntf, "UUID",
+                                                uuid);
+                }
                 writeInventoryPropWhenReady(createPath, skuIntf, "SKU", ecsku);
             }
             if (!updatePath.empty())
