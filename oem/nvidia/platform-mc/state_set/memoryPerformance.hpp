@@ -124,14 +124,15 @@ class StateSetMemoryPerformance : public StateSet
     {
         if (ValueIntf->value() == MemoryPerformanceStates::Normal)
         {
-            return {std::string("ResourceEvent.1.0.ResourceErrorsCorrected"),
+            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
                     std::string("Normal"), Level::Informational, "", ""};
         }
         else
         {
-            std::string arg = "PerformanceDegraded due to high temperature";
-            return {std::string("ResourceEvent.1.0.ResourceErrorsDetected"),
-                    arg, Level::Error, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("Throttled (performance degraded)"), Level::Warning,
+                "", ""};
         }
     }
 

@@ -556,7 +556,7 @@ TEST_F(StateSensorCoverage, oemStateSetMethodCoverage)
         stateSet->setValue(PLDM_STATESET_PERFORMANCE_THROTTLED);
         auto [msgThrottled, argThrottled, levelThrottled, eventThrottled,
               impactedThrottled] = stateSet->getEventData(nullptr);
-        EXPECT_EQ("PerformanceDegraded due to high temperature", argThrottled);
+        EXPECT_EQ("Throttled (performance degraded)", argThrottled);
 
         stateSet->setValue(0xFF);
         stateSet->updateShmemReading("Value");
