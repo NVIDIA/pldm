@@ -865,10 +865,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             //     creation only) + EC-SKU
             //   - update target (UpdateInventoryPath): AP-SKU
             // The UUID is written once, when the inventory is created
-            // (writeUuid), never on a refresh: the blocking per-write
-            // ObjectMapper lookup during the periodic firmware refresh
-            // serialised ~1s per object and stalled the event loop long enough
-            // to drop in-flight PLDM responses.
+            // (writeUuid), never on a refresh. The SKUs are written only when
+            // they differ from the last value written for this EID: pldmd is
+            // the sole authority for them, so an unchanged refresh would
+            // otherwise re-issue an identical blocking D-Bus Set (with its
+            // synchronous ObjectMapper lookup) per object every cycle and stall
+            // the event loop long enough to drop in-flight PLDM responses. A
+            // real SKU change (post-update) differs and still writes;
+            // onInventoryObjectAdded repopulates a re-created object regardless.
+            auto& lastSku = lastWrittenSkus[eid];
             if (!createPath.empty())
             {
                 if (writeUuid)
@@ -876,11 +881,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                     writeInventoryPropWhenReady(createPath, uuidIntf, "UUID",
                                                 uuid);
                 }
-                writeInventoryPropWhenReady(createPath, skuIntf, "SKU", ecsku);
+                if (ecsku != lastSku.ecsku)
+                {
+                    writeInventoryPropWhenReady(createPath, skuIntf, "SKU",
+                                                ecsku);
+                    lastSku.ecsku = ecsku;
+                }
             }
-            if (!updatePath.empty())
+            if (!updatePath.empty() && apsku != lastSku.apsku)
             {
                 writeInventoryPropWhenReady(updatePath, skuIntf, "SKU", apsku);
+                lastSku.apsku = apsku;
             }
             // At most one PLDMDeviceInventory entry matches a target.
             break;
@@ -1045,6 +1056,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief InterfacesAdded watches per inventory object path. */
     std::unordered_map<std::string, sdbusplus::bus::match_t>
         inventoryAddedMatches;
+
+    /** @brief Last EC-SKU/AP-SKU written per EID. writeDeviceInventoryIdentity
+     *         skips an unchanged SKU on refresh so it doesn't re-issue an
+     *         identical blocking D-Bus Set every cycle. pldmd is the sole
+     *         authority for these values, so the in-memory record is
+     *         authoritative (no D-Bus read-back needed). */
+    struct WrittenSkus
+    {
+        std::string ecsku;
+        std::string apsku;
+    };
+    std::unordered_map<eid, WrittenSkus> lastWrittenSkus;
 };
 
 } // namespace fw_update
