@@ -673,10 +673,10 @@ TEST_F(StateSensorCoverage, oemStateSetMethodCoverage)
         EXPECT_EQ("ResourceEvent.1.0.LinkDown", eventDown);
         EXPECT_EQ("CPU13", impactedDown);
 
-        stateSet->setValue(PLDM_STATE_SET_NVLINK_ERROR);
+        stateSet->setValue(PLDM_STATE_SET_NVLINK_INVALID_FREQ);
         auto [msgError, argError, levelError, eventError,
               impactedError] = stateSet->getEventData(nullptr);
-        EXPECT_EQ("Error", argError);
+        EXPECT_EQ("LinkDown", argError);
 
         stateSet->setValue(0xFF);
         auto [msgUnknown, argUnknown, levelUnknown, eventUnknown,
