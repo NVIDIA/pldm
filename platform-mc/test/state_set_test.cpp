@@ -1800,10 +1800,10 @@ TEST_F(StateSetCoverageTest, nvlinkCoverage)
     EXPECT_EQ("OpenBMC.0.1.NvlinkDown", inactiveEventId);
     EXPECT_EQ("NVLink_5", inactiveImpacted);
 
-    stateSet.setValue(PLDM_STATE_SET_NVLINK_ERROR);
+    stateSet.setValue(PLDM_STATE_SET_NVLINK_INVALID_FREQ);
     auto [errorMessage, errorArg, errorLevel, errorEventId,
           errorImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("Error", errorArg);
+    EXPECT_EQ("LinkDown", errorArg);
     EXPECT_TRUE(errorEventId.empty());
     EXPECT_TRUE(errorImpacted.empty());
 

@@ -39,11 +39,6 @@ namespace platform_mc
 namespace oem_nvidia
 {
 
-/** @brief NVIDIA OEM State Set ID for CPU-to-CPU (CLink) link state.
- *  Reported by SatMC for system-bus CLink
- */
-constexpr uint16_t PLDM_NVIDIA_OEM_STATE_SET_CLINK = 0x8003;
-
 using EndpointIntf = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Inventory::Item::server::Endpoint>;
 using InstanceIntf = sdbusplus::server::object_t<
@@ -162,25 +157,107 @@ class StateSetNvlink : public StateSet
 #endif
     void setValue(uint8_t value) override
     {
+        // SatMC-emitted OEM state-set values (see libpldm
+        // nvidia_oem_pldm_state_set_{nvlink,clink}_values):
+        //
+        //   NVLink (0x8000):
+        //     PLDM_STATE_SET_NVLINK_INACTIVE (1)
+        //     2..16 = training / PLL / BIST / calibration failure modes
+        //     PLDM_STATE_SET_NVLINK_ACTIVE   (17)
+        //
+        //   CLink (0x8003):
+        //     PLDM_STATE_SET_CLINK_INACTIVE       (1)
+        //     PLDM_STATE_SET_CLINK_FAIL_INTR      (2)
+        //     PLDM_STATE_SET_CLINK_FAIL_EXCEPTION (3)
+        //     PLDM_STATE_SET_CLINK_ACTIVE         (4)
+        //
+        // Dispatch on the OEM state-set id because the two enums do not
+        // share numeric values for ACTIVE; treating a CLink 4 as the
+        // NVLink enum (or vice versa) would misrepresent link health.
+
         PortLinkStates newLinkState = PortLinkStates::Unknown;
         PortLinkStatus newLinkStatus = PortLinkStatus::NoLink;
 
-        switch (value)
+        if (id == PLDM_NVIDIA_OEM_STATE_SET_CLINK)
         {
-            case PLDM_STATE_SET_NVLINK_INACTIVE:
-                newLinkState = PortLinkStates::Disabled;
-                newLinkStatus = PortLinkStatus::LinkDown;
-                break;
-            case PLDM_STATE_SET_NVLINK_ACTIVE:
-                newLinkState = PortLinkStates::Enabled;
-                newLinkStatus = PortLinkStatus::LinkUp;
-                break;
-            case PLDM_STATE_SET_NVLINK_ERROR:
-                newLinkState = PortLinkStates::Error;
-                newLinkStatus = PortLinkStatus::NoLink;
-                break;
-            default:
-                break;
+            switch (value)
+            {
+                case PLDM_STATE_SET_CLINK_INACTIVE:
+                    newLinkState = PortLinkStates::Disabled;
+                    newLinkStatus = PortLinkStatus::LinkDown;
+                    break;
+                case PLDM_STATE_SET_CLINK_ACTIVE:
+                    newLinkState = PortLinkStates::Enabled;
+                    newLinkStatus = PortLinkStatus::LinkUp;
+                    break;
+                case PLDM_STATE_SET_CLINK_FAIL_INTR:
+                case PLDM_STATE_SET_CLINK_FAIL_EXCEPTION:
+                    newLinkState = PortLinkStates::Error;
+                    newLinkStatus = PortLinkStatus::LinkDown;
+                    lg2::error(
+                        "Device reported CLink port state as {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
+                        "VAL", value, "PATH", objPath);
+                    break;
+                default:
+                    newLinkState = PortLinkStates::Unknown;
+                    newLinkStatus = PortLinkStatus::NoLink;
+                    lg2::warning(
+                        "Device reported invalid State value {VAL} for {PATH}; So setting default LinkStatus Unknown and LinkState as NoLink",
+                        "VAL", value, "PATH", objPath);
+                    break;
+            }
+        }
+        else if (id == PLDM_NVIDIA_OEM_STATE_SET_NVLINK)
+        {
+            // NVLink OEM state-set id (0x8000).
+            switch (value)
+            {
+                case PLDM_STATE_SET_NVLINK_INACTIVE:
+                    newLinkState = PortLinkStates::Disabled;
+                    newLinkStatus = PortLinkStatus::LinkDown;
+                    break;
+                case PLDM_STATE_SET_NVLINK_ACTIVE:
+                    newLinkState = PortLinkStates::Enabled;
+                    newLinkStatus = PortLinkStatus::LinkUp;
+                    break;
+                // 15 distinct training/PLL/calibration failure codes;
+                // collapse to a single Error state on the D-Bus interface.
+                case PLDM_STATE_SET_NVLINK_INVALID_SPEEDO_CODE:
+                case PLDM_STATE_SET_NVLINK_INVALID_FREQ:
+                case PLDM_STATE_SET_NVLINK_INVALID_LINK:
+                case PLDM_STATE_SET_NVLINK_C2C0_TR_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C1_TR_FAIL:
+                case PLDM_STATE_SET_NVLINK_1D_PR_FAIL:
+                case PLDM_STATE_SET_NVLINK_2D_VOS_FAIL:
+                case PLDM_STATE_SET_NVLINK_PR_REMOTE_FAIL:
+                case PLDM_STATE_SET_NVLINK_IOBIST_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C0_REFPLL_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C1_REFPLL_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C0_PLLCAL_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C1_PLLCAL_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C0_CLKDET_FAIL:
+                case PLDM_STATE_SET_NVLINK_C2C1_CLKDET_FAIL:
+                    newLinkState = PortLinkStates::Error;
+                    newLinkStatus = PortLinkStatus::LinkDown;
+                    lg2::error(
+                        "Device reported NVLink port state as {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
+                        "VAL", value, "PATH", objPath);
+                    break;
+                default:
+                    newLinkState = PortLinkStates::Unknown;
+                    newLinkStatus = PortLinkStatus::NoLink;
+                    lg2::warning(
+                        "Device reported invalid State value {VAL} for {PATH}; So setting default LinkStatus Unknown and LinkState as NoLink",
+                        "VAL", value, "PATH", objPath);
+                    break;
+            }
+        }
+        else
+        {
+            lg2::warning(
+                "Device reported unrecognized state set ID as {ID} for {PATH}",
+                "ID", id, "PATH", objPath);
+            return;
         }
 
         ValuePortStateIntf->linkState(newLinkState);

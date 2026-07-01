@@ -1078,12 +1078,12 @@ TEST_F(StateSetNvlinkInternalTest,
     EXPECT_TRUE(upEventId.empty());
     EXPECT_TRUE(upImpacted.empty());
 
-    EXPECT_NO_THROW(stateSet.setValue(PLDM_STATE_SET_NVLINK_ERROR));
+    EXPECT_NO_THROW(stateSet.setValue(PLDM_STATE_SET_NVLINK_INVALID_FREQ));
     auto [errorMessage, errorArg, errorLevel, errorEventId,
           errorImpacted] = stateSet.getEventData(nullptr);
-    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedCritical", errorMessage);
-    EXPECT_EQ("Error", errorArg);
-    EXPECT_EQ(Level::Critical, errorLevel);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", errorMessage);
+    EXPECT_EQ("LinkDown", errorArg);
+    EXPECT_EQ(Level::Informational, errorLevel);
     EXPECT_TRUE(errorEventId.empty());
     EXPECT_TRUE(errorImpacted.empty());
 
