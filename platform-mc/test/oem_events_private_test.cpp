@@ -303,14 +303,13 @@ TEST_F(OemEventsPrivateTest, pcieEventWriteCoverage)
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0xAB});
     const auto eventDir = eventRoot() / "Processor_Module_0";
 
-    EXPECT_TRUE(handlePcieLtssmEvent("Processor/Module\\0", ltssmPayload.data(),
-                                     ltssmPayload.size()));
+    EXPECT_TRUE(handleMftDumpEvent("Processor/Module\\0", ltssmPayload.data(),
+                                   ltssmPayload.size()));
     EXPECT_TRUE(
         handlePcieTelemetryEvent("Processor/Module\\0", telemetryPayload.data(),
                                  telemetryPayload.size()));
 
-    EXPECT_EQ(std::vector<uint8_t>({0x10, 0x20}),
-              readBytes(eventDir / PCIE_LTSSM_FILE));
+    EXPECT_EQ(ltssmPayload, readBytes(eventDir / MFTDUMP_FILE));
     EXPECT_EQ(std::vector<uint8_t>({0xAB}),
               readBytes(eventDir / PCIE_TELEMETRY_FILE));
 }

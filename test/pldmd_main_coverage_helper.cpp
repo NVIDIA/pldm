@@ -353,11 +353,10 @@ void configureFakeTransportFromEnv()
     }
     else if (activeScenario == "host_eid_pcie_ltssm")
     {
-        state.recvActions = {
-            recvSuccess(makePlatformEventMessage(
-                pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM,
-                {0x02, 0x01, 0x01, 0x00, 0x5A})),
-            recvFail};
+        state.recvActions = {recvSuccess(makePlatformEventMessage(
+                                 pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+                                 {0x02, 0x01, 0x01, 0x00, 0x5A})),
+                             recvFail};
     }
     else if (activeScenario == "epollerr_with_input_fwup_request")
     {
@@ -445,11 +444,10 @@ void configureFakeTransportFromEnv()
     }
     else if (activeScenario == "pcie_ltssm")
     {
-        state.recvActions = {
-            recvSuccess(makePlatformEventMessage(
-                pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM,
-                {0x02, 0x01, 0x01, 0x00, 0x5A})),
-            recvFail};
+        state.recvActions = {recvSuccess(makePlatformEventMessage(
+                                 pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+                                 {0x02, 0x01, 0x01, 0x00, 0x5A})),
+                             recvFail};
     }
     else if (activeScenario == "epollerr_followed_by_hangup")
     {

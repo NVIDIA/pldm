@@ -116,65 +116,80 @@ static std::string getEventDir(const std::string& terminus)
  *   uint16 payloadSize: Size of the payload
  *   uint8  payload[]: Event payload starts here
  *
- * Only the payload is written to file (header is stripped).
+ * By default the 4-byte header is parsed and only the payload is written to
+ * file. Some event classes (e.g. the 0xF2 MFTDump event) do not follow
+ * this layout; for those pass skipHeader=true to write the complete event
+ * buffer (totalSize) to file without parsing or stripping any header.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
  * @param[in] fileName      Event file name
  * @param[in] eventData     Pointer to event data (including header)
  * @param[in] eventDataSize Size of event data in bytes (including header)
+ * @param[in] skipHeader    Write the whole buffer verbatim, no header parsing
  * @return true on success, false on failure
  */
 static bool saveEventData(const std::string& terminus,
                           const std::string& fileName, const uint8_t* eventData,
-                          size_t eventDataSize)
+                          size_t eventDataSize, bool skipHeader = false)
 {
-    // Validate minimum size for header
-    if (eventDataSize < OEM_EVENT_HEADER_SIZE)
+    // Data to write to file: either the payload after the header, or the
+    // complete event buffer when skipHeader is set.
+    const uint8_t* writeData = eventData;
+    size_t writeSize = eventDataSize;
+
+    if (!skipHeader)
     {
-        lg2::error("OEM event data too small: size={SIZE}, minimum={MIN}",
-                   "SIZE", eventDataSize, "MIN", OEM_EVENT_HEADER_SIZE);
-        return false;
+        // Validate minimum size for header
+        if (eventDataSize < OEM_EVENT_HEADER_SIZE)
+        {
+            lg2::error("OEM event data too small: size={SIZE}, minimum={MIN}",
+                       "SIZE", eventDataSize, "MIN", OEM_EVENT_HEADER_SIZE);
+            return false;
+        }
+
+        // Parse the header
+        const auto* header = reinterpret_cast<const OemEventHeader*>(eventData);
+        uint8_t formatVersion = header->formatVersion;
+        uint8_t formatType = header->formatType;
+        uint16_t payloadSize = le16toh(header->payloadSize);
+
+        // Log header information
+        lg2::info("OEM event header: formatVersion={VER}, formatType={TYPE}, "
+                  "payloadSize={PSIZE}, totalSize={TSIZE}",
+                  "VER", lg2::hex, formatVersion, "TYPE", lg2::hex, formatType,
+                  "PSIZE", payloadSize, "TSIZE", eventDataSize);
+
+        // Validate header values
+        if (formatVersion != OEM_EVENT_FORMAT_VERSION)
+        {
+            lg2::warning(
+                "OEM event unexpected format version: {VER}, expected {EXP}",
+                "VER", lg2::hex, formatVersion, "EXP", lg2::hex,
+                OEM_EVENT_FORMAT_VERSION);
+        }
+
+        if (formatType != OEM_EVENT_FORMAT_TYPE_FULL)
+        {
+            lg2::warning("OEM event non-zero format type: {TYPE} (reserved)",
+                         "TYPE", lg2::hex, formatType);
+        }
+
+        // Validate payload size matches
+        size_t expectedTotal = OEM_EVENT_HEADER_SIZE + payloadSize;
+        if (eventDataSize < expectedTotal)
+        {
+            lg2::error(
+                "OEM event data size mismatch: got={GOT}, expected={EXP} "
+                "(header={HDR} + payload={PAY})",
+                "GOT", eventDataSize, "EXP", expectedTotal, "HDR",
+                OEM_EVENT_HEADER_SIZE, "PAY", payloadSize);
+            return false;
+        }
+
+        // Write only the payload (after the header)
+        writeData = eventData + OEM_EVENT_HEADER_SIZE;
+        writeSize = payloadSize;
     }
-
-    // Parse the header
-    const auto* header = reinterpret_cast<const OemEventHeader*>(eventData);
-    uint8_t formatVersion = header->formatVersion;
-    uint8_t formatType = header->formatType;
-    uint16_t payloadSize = le16toh(header->payloadSize);
-
-    // Log header information
-    lg2::info("OEM event header: formatVersion={VER:#x}, formatType={TYPE:#x}, "
-              "payloadSize={PSIZE}, totalSize={TSIZE}",
-              "VER", formatVersion, "TYPE", formatType, "PSIZE", payloadSize,
-              "TSIZE", eventDataSize);
-
-    // Validate header values
-    if (formatVersion != OEM_EVENT_FORMAT_VERSION)
-    {
-        lg2::warning(
-            "OEM event unexpected format version: {VER:#x}, expected {EXP:#x}",
-            "VER", formatVersion, "EXP", OEM_EVENT_FORMAT_VERSION);
-    }
-
-    if (formatType != OEM_EVENT_FORMAT_TYPE_FULL)
-    {
-        lg2::warning("OEM event non-zero format type: {TYPE:#x} (reserved)",
-                     "TYPE", formatType);
-    }
-
-    // Validate payload size matches
-    size_t expectedTotal = OEM_EVENT_HEADER_SIZE + payloadSize;
-    if (eventDataSize < expectedTotal)
-    {
-        lg2::error("OEM event data size mismatch: got={GOT}, expected={EXP} "
-                   "(header={HDR} + payload={PAY})",
-                   "GOT", eventDataSize, "EXP", expectedTotal, "HDR",
-                   OEM_EVENT_HEADER_SIZE, "PAY", payloadSize);
-        return false;
-    }
-
-    // Get pointer to payload (after header)
-    const uint8_t* payload = eventData + OEM_EVENT_HEADER_SIZE;
 
     // Ensure the terminus-specific directory exists
     std::string eventDir = getEventDir(terminus);
@@ -196,8 +211,8 @@ static bool saveEventData(const std::string& terminus,
 
     std::string filePath = std::format("{}/{}", eventDir, fileName);
 
-    // Write payload only to staging file (header is stripped)
-    // Use a temp file and rename for atomic write operation
+    // Write event data to staging file (payload only, or whole buffer when
+    // skipHeader is set). Use a temp file and rename for atomic write.
     std::string tempPath = std::format("{}.tmp", filePath);
 
     try
@@ -210,9 +225,8 @@ static bool saveEventData(const std::string& terminus,
             return false;
         }
 
-        // Write only the payload, not the header
-        outFile.write(reinterpret_cast<const char*>(payload),
-                      static_cast<std::streamsize>(payloadSize));
+        outFile.write(reinterpret_cast<const char*>(writeData),
+                      static_cast<std::streamsize>(writeSize));
 
         if (!outFile)
         {
@@ -236,7 +250,7 @@ static bool saveEventData(const std::string& terminus,
         fs::rename(tempPath, filePath);
 
         lg2::info("Saved OEM event payload: size={SIZE}, path={PATH}", "SIZE",
-                  payloadSize, "PATH", filePath);
+                  writeSize, "PATH", filePath);
 
         return true;
     }
@@ -265,14 +279,16 @@ bool handleCperErrorCountEvent(const std::string& terminus,
                          eventDataSize);
 }
 
-bool handlePcieLtssmEvent(const std::string& terminus, const uint8_t* eventData,
-                          size_t eventDataSize)
+bool handleMftDumpEvent(const std::string& terminus, const uint8_t* eventData,
+                        size_t eventDataSize)
 {
-    lg2::info(
-        "Processing PCIe LTSSM Event (0xF2), terminus={TERM}, size={SIZE}",
-        "TERM", terminus, "SIZE", eventDataSize);
+    lg2::info("Processing MFTDump Event (0xF2), terminus={TERM}, size={SIZE}",
+              "TERM", terminus, "SIZE", eventDataSize);
 
-    return saveEventData(terminus, PCIE_LTSSM_FILE, eventData, eventDataSize);
+    // The 0xF2 event does not follow the OEM header layout, so save the
+    // complete event buffer to file without parsing or stripping a header.
+    return saveEventData(terminus, MFTDUMP_FILE, eventData, eventDataSize,
+                         /*skipHeader=*/true);
 }
 
 bool handlePcieTelemetryEvent(const std::string& terminus,

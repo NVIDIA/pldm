@@ -19,7 +19,7 @@ TEST(OemEventsCoverage, oemEventValidationCoverage)
                                            tooSmall.size()));
 
     const std::array<uint8_t, 4> truncatedPayload{{0x01, 0x00, 0x08, 0x00}};
-    EXPECT_FALSE(handlePcieLtssmEvent(
+    EXPECT_FALSE(handleMftDumpEvent(
         "ProcessorModule_1", truncatedPayload.data(), truncatedPayload.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
         "ProcessorModule_2", truncatedPayload.data(), truncatedPayload.size()));
@@ -76,7 +76,7 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
         {0x01, 0x00, 0x02, 0x00, 0xAA, 0x55}};
     EXPECT_FALSE(handleCperErrorCountEvent(
         "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-    EXPECT_FALSE(handlePcieLtssmEvent(
+    EXPECT_FALSE(handleMftDumpEvent(
         "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
         "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
@@ -107,8 +107,8 @@ TEST(OemEventsCoverage, sanitizeUnknownAndWarningHeaderCoverage)
     EXPECT_FALSE(
         handleCperErrorCountEvent("..", validPayloadWithWarnings.data(),
                                   validPayloadWithWarnings.size()));
-    EXPECT_FALSE(handlePcieLtssmEvent("..", validPayloadWithWarnings.data(),
-                                      validPayloadWithWarnings.size()));
+    EXPECT_FALSE(handleMftDumpEvent("..", validPayloadWithWarnings.data(),
+                                    validPayloadWithWarnings.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent("..", validPayloadWithWarnings.data(),
                                           validPayloadWithWarnings.size()));
 
