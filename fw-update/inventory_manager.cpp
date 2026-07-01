@@ -1285,6 +1285,32 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     std::string resolution{
         "Retry firmware update operation, if problem persists, follow FW upgrade recovery flow."};
 
+    // If this endpoint was deduplicated out by the fastest-path policy
+    // (another EID with the same device UUID is the chosen update path), do not
+    // refresh it. refreshSingleEndpoint re-populates descriptorMap and
+    // componentInfoMap and passes refreshFWVersionOnly=true to
+    // getFirmwareParameters, which skips the fastest-path collapse — so
+    // refreshing a non-selected duplicate would re-add it as an update target
+    // and the device would be updated over both EIDs. The update-time refresh
+    // set is seeded from the MCTP static config (seedRefreshEidsFromStaticConfig),
+    // which can include such a duplicate, so guard it here.
+    if (mctpEidMap.contains(eid))
+    {
+        const auto& uuid = std::get<0>(mctpEidMap[eid]);
+        auto it = mctpInfoMap.find(uuid);
+        if (it != mctpInfoMap.end() && !it->second.empty() &&
+            it->second.top().eid != eid)
+        {
+            info(
+                "Skipping refresh for EID {EID}: fastest path for UUID {UUID} is EID {FASTEST}; not refreshing the non-selected endpoint",
+                "EID", eid, "UUID", uuid, "FASTEST",
+                static_cast<unsigned>(it->second.top().eid));
+            descriptorMap.erase(eid);
+            componentInfoMap.erase(eid);
+            co_return PLDM_SUCCESS;
+        }
+    }
+
     info("Refreshing descriptors for endpoint ID {EID}", "EID", eid);
 
     auto rc =
