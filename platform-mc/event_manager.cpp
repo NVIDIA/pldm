@@ -44,7 +44,7 @@ namespace fs = std::filesystem;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
-using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
 using pldm::platform::PLDM_TELEMETRY_PAUSE;
 using pldm::platform::PLDM_TELEMETRY_REDISCOVER;
@@ -59,9 +59,8 @@ int EventManager::handlePlatformEvent(
 {
     platformEventStatus = PLDM_EVENT_NO_LOGGING;
 
-    lg2::debug(
-        "handlePlatformEvent: tid={TID}, eventClass={EC:#x}, size={SIZE}",
-        "TID", tid, "EC", eventClass, "SIZE", eventDataSize);
+    lg2::debug("handlePlatformEvent: tid={TID}, eventClass={EC}, size={SIZE}",
+               "TID", tid, "EC", lg2::hex, eventClass, "SIZE", eventDataSize);
 
     if (eventClass == PLDM_SENSOR_EVENT)
     {
@@ -210,7 +209,7 @@ int EventManager::handlePlatformEvent(
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_ERROR_COUNTER ||
              eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
-             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_LTSSM)
+             eventClass == PLDM_OEM_EVENT_CLASS_MFTDUMP)
     {
         // Helper to get terminus name from tid
         auto getTerminusName = [this](tid_t tid) -> std::string {
@@ -234,26 +233,25 @@ int EventManager::handlePlatformEvent(
             case PLDM_OEM_EVENT_CLASS_ERROR_COUNTER:
                 // CPER Error Counter Event (0xF0)
                 lg2::info(
-                    "Received CPER Error Counter Event ({EC:#x}) from tid={TID}",
-                    "EC", eventClass, "TID", tid);
+                    "Received CPER Error Counter Event ({EC}) from tid={TID}",
+                    "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handleCperErrorCountEvent(
                     terminusName, eventData, eventDataSize);
                 break;
 
             case PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY:
                 // PCIe Telemetry Event (0xF1)
-                lg2::info(
-                    "Received PCIe Telemetry Event ({EC:#x}) from tid={TID}",
-                    "EC", eventClass, "TID", tid);
+                lg2::info("Received PCIe Telemetry Event ({EC}) from tid={TID}",
+                          "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handlePcieTelemetryEvent(
                     terminusName, eventData, eventDataSize);
                 break;
 
-            case PLDM_OEM_EVENT_CLASS_PCIE_LTSSM:
-                // PCIe LTSSM Event (0xF2)
-                lg2::info("Received PCIe LTSSM Event ({EC:#x}) from tid={TID}",
-                          "EC", eventClass, "TID", tid);
-                success = oem_events::handlePcieLtssmEvent(
+            case PLDM_OEM_EVENT_CLASS_MFTDUMP:
+                // MFTDump Event (0xF2)
+                lg2::info("Received MFTDump Event ({EC}) from tid={TID}", "EC",
+                          lg2::hex, eventClass, "TID", tid);
+                success = oem_events::handleMftDumpEvent(
                     terminusName, eventData, eventDataSize);
                 break;
 
@@ -264,7 +262,8 @@ int EventManager::handlePlatformEvent(
 
         if (!success)
         {
-            lg2::error("Failed to handle OEM event {EC:#x}", "EC", eventClass);
+            lg2::error("Failed to handle OEM event {EC}", "EC", lg2::hex,
+                       eventClass);
             platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;
         }

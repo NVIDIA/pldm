@@ -40,7 +40,7 @@ constexpr const char* PLDM_EVENT_DIR = "/var/lib/pldm_events";
  * Must match names expected by pldm-event-dump tool in PDC
  */
 constexpr const char* CPER_ERROR_COUNT_FILE = "CPERErrorCount_0_0.bin";
-constexpr const char* PCIE_LTSSM_FILE = "PCIeLTSSM_0_0.bin";
+constexpr const char* MFTDUMP_FILE = "MFTDump_0_0.bin";
 constexpr const char* PCIE_TELEMETRY_FILE = "PCIeTelemetry_0_0.bin";
 
 /**
@@ -71,9 +71,9 @@ bool handleCperErrorCountEvent(const std::string& terminus,
                                const uint8_t* eventData, size_t eventDataSize);
 
 /**
- * @brief Handle PCIe LTSSM Event (0xF0)
+ * @brief Handle MFTDump Event (0xF2)
  *
- * Writes the event payload to the PCIe LTSSM staging file.
+ * Writes the complete event buffer to the MFTDump staging file.
  * The pldm-event-dump tool monitors this file via inotify.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
@@ -81,8 +81,8 @@ bool handleCperErrorCountEvent(const std::string& terminus,
  * @param[in] eventDataSize Size of event data payload in bytes
  * @return true on success, false on failure
  */
-bool handlePcieLtssmEvent(const std::string& terminus, const uint8_t* eventData,
-                          size_t eventDataSize);
+bool handleMftDumpEvent(const std::string& terminus, const uint8_t* eventData,
+                        size_t eventDataSize);
 
 /**
  * @brief Handle PCIe Telemetry Event (0xF2)

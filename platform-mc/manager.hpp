@@ -36,7 +36,7 @@ using namespace pldm::pdr;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
-using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_LTSSM;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
 
 /**
@@ -368,14 +368,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     /**
-     * @brief Handles the PCIe LTSSM Event (0xF2).
+     * @brief Handles the MFTDump Event (0xF2).
      *
-     * This event is sent by SatMC containing PCIe LTSSM history data.
+     * This event is sent by SatMC containing MFTDump data.
      */
-    int handlePcieLtssmEvent(const pldm_msg* request, size_t payloadLength,
-                             uint8_t /* formatVersion */, uint8_t tid,
-                             size_t eventDataOffset,
-                             uint8_t& platformEventStatus)
+    int handleMftDumpEvent(const pldm_msg* request, size_t payloadLength,
+                           uint8_t /* formatVersion */, uint8_t tid,
+                           size_t eventDataOffset, uint8_t& platformEventStatus)
     {
         if (eventDataOffset > payloadLength)
         {
@@ -384,7 +383,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
-        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_PCIE_LTSSM,
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_MFTDUMP,
                                          eventData, eventDataSize,
                                          platformEventStatus);
         return PLDM_SUCCESS;

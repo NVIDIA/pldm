@@ -409,10 +409,10 @@ TEST_F(PlatformMcManagerTest, managerEventHandlersCoverage)
                                                platformEventStatus),
               PLDM_SUCCESS);
     EXPECT_EQ(
-        manager.handlePcieLtssmEvent(msg, 64, 1, tid, 65, platformEventStatus),
+        manager.handleMftDumpEvent(msg, 64, 1, tid, 65, platformEventStatus),
         PLDM_ERROR_INVALID_LENGTH);
     EXPECT_EQ(
-        manager.handlePcieLtssmEvent(msg, 64, 1, tid, 0, platformEventStatus),
+        manager.handleMftDumpEvent(msg, 64, 1, tid, 0, platformEventStatus),
         PLDM_SUCCESS);
 
     EXPECT_EQ(manager.handlePldmMessagePollEvent(msg, 64, 1, tid, 64,
@@ -1007,6 +1007,6 @@ TEST(OemEventsCoverage, validationPaths)
         0x01, 0x00, 0x01, 0x00, // version, type, payload size (1)
         0x5A                    // payload
     };
-    (void)pldm::oem_events::handlePcieLtssmEvent(
+    (void)pldm::oem_events::handleMftDumpEvent(
         "ProcessorModule_0", sizeMatchedData.data(), sizeMatchedData.size());
 }
