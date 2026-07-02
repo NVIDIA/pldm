@@ -1,3 +1,89 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 inheritance: true
+
+reviews:
+    path_instructions:
+        - path: "**/*.{cpp,hpp,c,h}"
+          instructions: |
+              ## OpenBMC Anti-patterns (flag any match in new or modified code)
+
+              **AP1 – Custom ArgumentParser**
+              Flag any hand-rolled ArgumentParser class. Resolution: use CLI11.
+
+              **AP8 – Oversized lambda callbacks**
+              Flag inline lambdas passed to `sdbusplus::asio::`,
+              `boost::asio::`, `crow::` route handlers
+              (`.methods(...)(handler)`), or any `*_async()` call that
+              exceed more than 10 lines.
+              Resolution: extract to a named static/free function and pass
+              via `std::bind_front`.
+
+              **AP5 – Swallowed unexpected exceptions**
+              Flag `catch(...)` or `catch(std::exception&)` blocks that call
+              `commit<>()` or `log()` without a rethrow or `std::terminate`.
+              Resolution: let unexpected exceptions propagate or crash so the
+              system can recover via systemd restart.
+
+              **AP6 – Non-standard debug flags**
+              Flag any CLI flag other than `-v` / `--verbose` used to enable
+              verbose logging. Flag use of `std::cout` / `printf` for debug
+              output instead of `journald` debug level.
+
+              **AP7 – Inline D-Bus interface registration**
+              Flag if the same file both registers a sdbusplus server interface
+              and calls hardware APIs (gpiod, i2c, spi, etc.). Interface
+              definitions belong in phosphor-dbus-interfaces, not inline in
+              application code alongside hardware calls.
+
+              **AP11 – Blocking call in single-threaded daemon**
+              Flag any call to `sleep()`, `usleep()`,
+              `std::this_thread::sleep_for()`,
+              `std::this_thread::sleep_until()`, `getaddrinfo()`,
+              or blocking `read()`/`write()` without `O_NONBLOCK`
+              inside a completion handler, coroutine, or any
+              function reachable from an sdbusplus, sd-event, or
+              boost::asio event loop.
+              All OpenBMC daemons run a single-threaded event loop;
+              a blocking call freezes the entire daemon until it
+              returns. Resolution: use `boost::asio::steady_timer`
+              for delays, async resolver for DNS, and async I/O
+              for file descriptors.
+
+              **AP10 – Ill-structured lg2 messages**
+              Flag ad-hoc metadata encoding inside the MESSAGE string
+              (e.g. `"PATH={X} INTF={Y}"`). Resolution: pass each datum as a
+              structured key-value argument to lg2; interpolate into MESSAGE
+              only for human readability.
+
+              **AP9 – Internal headers in a parallel subtree**
+              Flag any `.hpp` file placed under a separate `include/`
+              directory when it is not part of a public API — i.e. when
+              no installed target or external consumer depends on it.
+              Internal headers have no reason to be separated from their
+              corresponding `.cpp` implementation.
+              Resolution: move the header alongside its `.cpp` source file.
+
+        - path: "**/*.service"
+          instructions: |
+              ## OpenBMC Anti-patterns – systemd units
+
+              **AP3 – /usr/bin/env in ExecStart**
+              Flag `ExecStart=/usr/bin/env <app>`. Resolution: use the fully
+              qualified path (e.g. `/usr/bin/<app>` or `/usr/libexec/<pkg>/<app>`).
+
+              **AP4 – Wrong executable location**
+              If a binary has a corresponding `.service` file it is a daemon
+              and must use `/usr/libexec/<package>/` in `ExecStart`.
+              Flag `ExecStart` pointing to `/usr/bin/` or `/usr/sbin/` for
+              such binaries. Never use `/usr/sbin/`.
+
+        - path: "**/*.bb"
+          instructions: |
+              ## OpenBMC Anti-patterns – bitbake recipes
+
+              **AP2 – Explicit shared-library RDEPENDS**
+              Flag explicit listing of shared library packages in `RDEPENDS`
+              (e.g. `RDEPENDS_${PN} += "libsystemd"`). Bitbake adds these
+              automatically; explicit entries become stale and install unnecessary
+              packages. Resolution: remove them and let bitbake auto-detect.
