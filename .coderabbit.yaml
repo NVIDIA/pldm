@@ -6,6 +6,53 @@ reviews:
     path_instructions:
         - path: "**/*.{cpp,hpp,c,h}"
           instructions: |
+              ## OpenBMC Contributing Guidelines (flag any match in new or modified code)
+
+              **CG1 – SPDX headers**
+              Every new file must have exactly these two lines at the top:
+              `// SPDX-License-Identifier: Apache-2.0`
+              `// SPDX-FileCopyrightText: Copyright OpenBMC Authors`
+              Flag missing, incorrect, or non-SPDX copyright blocks.
+
+              **CG3a – Use `size_t`/`ssize_t` for sizes and counts**
+              Flag `uint32_t`, `uint64_t`, `int`, `long` etc. used for
+              variables or fields whose name indicates a size, count, length,
+              or index (`size`, `count`, `len`, `length`, `num`, `index`,
+              `idx`, `offset`, `stride`). These must use `size_t` or
+              `ssize_t` — not a fixed-width or plain type.
+
+              **CG3b – Fixed-width types only at hardware/ABI boundaries**
+              Flag `uint8_t`, `uint16_t`, `uint32_t`, `int64_t` etc. used
+              in general-purpose logic where no hardware register, wire
+              protocol, syscall, or external library ABI is involved.
+              Prefer `int` or `size_t` for ordinary variables. A strong
+              rationale is required to use a sized type where `size_t` or
+              `int` would do.
+
+              **CG4 – `static` for internal-only functions**
+              Flag free functions defined in a `.cpp` file that do not appear
+              in any `.hpp` file and are missing the `static` keyword.
+
+              **CG6 – No references to non-public resources**
+              Flag any URLs, bug IDs, or document references that point to
+              internal systems (internal Jira, internal wikis, private repos).
+              Code must build from publicly available sources only.
+
+              **CG7 – D-Bus interface definitions in application code**
+              Flag new D-Bus interface definitions added inside application
+              code — they belong in the phosphor-dbus-interfaces repository.
+              String-type-for-numeric checks are enforced at the definition
+              layer via PDI-CG1 in phosphor-dbus-interfaces.
+
+              **CG8 – Unit tests required with testable changes**
+              Flag if the MR modifies logic files (under `src/`, `lib/`, or
+              alongside existing test files) by more than 20 lines but adds
+              no new test files anywhere in the repo.
+
+              **CG11 – Endianness**
+              Flag reads or writes to/from C types across wire or storage
+              boundaries that lack explicit endian conversion.
+
               ## OpenBMC Anti-patterns (flag any match in new or modified code)
 
               **AP1 – Custom ArgumentParser**
@@ -77,6 +124,10 @@ reviews:
               and must use `/usr/libexec/<package>/` in `ExecStart`.
               Flag `ExecStart` pointing to `/usr/bin/` or `/usr/sbin/` for
               such binaries. Never use `/usr/sbin/`.
+
+              **CG9 – Missing Wants/After dependencies**
+              Flag systemd units that start services with D-Bus or filesystem
+              dependencies but omit `Wants=` / `After=` ordering for them.
 
         - path: "**/*.bb"
           instructions: |
