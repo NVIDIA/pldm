@@ -813,7 +813,7 @@ TEST_F(ManagerInternalTest, getMctpInterfacesDeduplicatesRepeatedServices)
     EXPECT_TRUE(mctpInterfaces.contains(uuid2));
 }
 
-TEST_F(ManagerInternalTest, getMctpInterfacesThrowsWhenUuidPropertyIsMissing)
+TEST_F(ManagerInternalTest, getMctpInterfacesSkipsWhenUuidPropertyIsMissing)
 {
     constexpr auto* endpointPath =
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/14";
@@ -839,10 +839,13 @@ TEST_F(ManagerInternalTest, getMctpInterfacesThrowsWhenUuidPropertyIsMissing)
     Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     dbus::MctpInterfaces mctpInterfaces;
-    EXPECT_THROW(manager.getMctpInterfaces(mctpInterfaces), std::out_of_range);
+    // Post-migration getMctpInterfaces() skips endpoints whose UUID property is
+    // absent (typed accessor) instead of throwing; the endpoint is dropped.
+    EXPECT_NO_THROW(manager.getMctpInterfaces(mctpInterfaces));
+    EXPECT_TRUE(mctpInterfaces.empty());
 }
 
-TEST_F(ManagerInternalTest, getMctpInterfacesThrowsWhenUuidPropertyHasWrongType)
+TEST_F(ManagerInternalTest, getMctpInterfacesSkipsWhenUuidPropertyHasWrongType)
 {
     constexpr auto* endpointPath =
         "/au/com/codeconstruct/mctp1/networks/1/endpoints/15";
@@ -869,8 +872,10 @@ TEST_F(ManagerInternalTest, getMctpInterfacesThrowsWhenUuidPropertyHasWrongType)
     Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     dbus::MctpInterfaces mctpInterfaces;
-    EXPECT_THROW(manager.getMctpInterfaces(mctpInterfaces),
-                 std::bad_variant_access);
+    // Post-migration getMctpInterfaces() skips endpoints whose UUID property is
+    // not a string (typed accessor returns nullptr) instead of throwing.
+    EXPECT_NO_THROW(manager.getMctpInterfaces(mctpInterfaces));
+    EXPECT_TRUE(mctpInterfaces.empty());
 }
 
 TEST_F(ManagerInternalTest, getMctpInterfacesSkipsManagedObjectsWithoutUuid)

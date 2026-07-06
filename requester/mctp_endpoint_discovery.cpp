@@ -1,10 +1,10 @@
 #include "config.h"
 
 #include "mctp_endpoint_discovery.hpp"
-#include "mctp_endpoint_discovery_typed_accessors.hpp"
 
 #include "common/types.hpp"
 #include "common/utils.hpp"
+#include "mctp_endpoint_discovery_typed_accessors.hpp"
 
 #include <linux/mctp.h>
 
@@ -63,24 +63,21 @@ std::string resolveBusOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
         {
             return resp.begin()->second.begin()->first;
         }
-        info(
-            "resolveBusOwner: mapper returned no service for MCTP subtree; "
-            "falling back to legacy service constant {SERVICE}",
-            "SERVICE", std::string(pldm::MCTPService));
+        info("resolveBusOwner: mapper returned no service for MCTP subtree; "
+             "falling back to legacy service constant {SERVICE}",
+             "SERVICE", std::string(pldm::MCTPService));
     }
     catch (const sdbusplus::exception_t& e)
     {
-        error(
-            "resolveBusOwner: getSubtree threw; falling back to legacy "
-            "service constant {SERVICE}, error - {ERROR}",
-            "SERVICE", std::string(pldm::MCTPService), "ERROR", e);
+        error("resolveBusOwner: getSubtree threw; falling back to legacy "
+              "service constant {SERVICE}, error - {ERROR}",
+              "SERVICE", std::string(pldm::MCTPService), "ERROR", e);
     }
     catch (const std::exception& e)
     {
-        error(
-            "resolveBusOwner: unexpected error; falling back to legacy "
-            "service constant {SERVICE}, error - {ERROR}",
-            "SERVICE", std::string(pldm::MCTPService), "ERROR", e.what());
+        error("resolveBusOwner: unexpected error; falling back to legacy "
+              "service constant {SERVICE}, error - {ERROR}",
+              "SERVICE", std::string(pldm::MCTPService), "ERROR", e.what());
     }
     return pldm::MCTPService;
 }
@@ -110,18 +107,16 @@ std::string resolveIdentityOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
         {
             return resp.begin()->second.begin()->first;
         }
-        info(
-            "resolveIdentityOwner: no configured endpoints published yet; "
-            "falling back to service constant {SERVICE}",
-            "SERVICE", std::string(pldm::MCTPReactorService));
+        info("resolveIdentityOwner: no configured endpoints published yet; "
+             "falling back to service constant {SERVICE}",
+             "SERVICE", std::string(pldm::MCTPReactorService));
     }
     catch (const std::exception& e)
     {
-        error(
-            "resolveIdentityOwner: lookup failed; falling back to service "
-            "constant {SERVICE}, error - {ERROR}",
-            "SERVICE", std::string(pldm::MCTPReactorService), "ERROR",
-            e.what());
+        error("resolveIdentityOwner: lookup failed; falling back to service "
+              "constant {SERVICE}, error - {ERROR}",
+              "SERVICE", std::string(pldm::MCTPReactorService), "ERROR",
+              e.what());
     }
     return pldm::MCTPReactorService;
 }
@@ -140,12 +135,12 @@ MctpDiscovery::MctpDiscovery(
         interfacesRemovedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
     resolvedIdentityService(resolveIdentityOwner(dbusHandler)),
-    mctpReactorConfiguredSignal(
-        bus,
-        interfacesAddedAtPath(MCTPNetworksPath) + sender(resolvedIdentityService),
-        [this](sdbusplus::message_t& msg) {
-            this->onMctpReactorConfigured(msg);
-        }),
+    mctpReactorConfiguredSignal(bus,
+                                interfacesAddedAtPath(MCTPNetworksPath) +
+                                    sender(resolvedIdentityService),
+                                [this](sdbusplus::message_t& msg) {
+                                    this->onMctpReactorConfigured(msg);
+                                }),
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
 {
@@ -184,10 +179,9 @@ MctpDiscovery::MctpDiscovery(
     }
     else
     {
-        warning(
-            "MctpDiscovery: mapper unhealthy at boot after bounded retry; "
-            "deferring inventory publication until first successful "
-            "InterfacesAdded signal");
+        warning("MctpDiscovery: mapper unhealthy at boot after bounded retry; "
+                "deferring inventory publication until first successful "
+                "InterfacesAdded signal");
     }
 }
 
@@ -211,11 +205,10 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         }
         catch (const sdbusplus::exception_t& e)
         {
-            error(
-                "getMctpInfos: getSubtree threw at path '{PATH}' interface "
-                "'{INTERFACE}', error - {ERROR}",
-                "PATH", std::string(MCTPPath), "INTERFACE",
-                std::string(MCTPReactorConfiguredInterface), "ERROR", e);
+            error("getMctpInfos: getSubtree threw at path '{PATH}' interface "
+                  "'{INTERFACE}', error - {ERROR}",
+                  "PATH", std::string(MCTPPath), "INTERFACE",
+                  std::string(MCTPReactorConfiguredInterface), "ERROR", e);
             return false;
         }
     };
@@ -223,19 +216,17 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
     bool ok = attempt();
     for (size_t i = 0; !ok && i < retryBackoff.size(); ++i)
     {
-        info(
-            "getMctpInfos: mapper retry {ATTEMPT} in {DELAY_MS}ms",
-            "ATTEMPT", static_cast<unsigned>(i + 1), "DELAY_MS",
-            static_cast<unsigned long long>(retryBackoff[i].count()));
+        info("getMctpInfos: mapper retry {ATTEMPT} in {DELAY_MS}ms", "ATTEMPT",
+             static_cast<unsigned>(i + 1), "DELAY_MS",
+             static_cast<unsigned long long>(retryBackoff[i].count()));
         std::this_thread::sleep_for(retryBackoff[i]);
         ok = attempt();
     }
     if (!ok)
     {
-        error(
-            "getMctpInfos: mapper unhealthy after {N} retries; deferring "
-            "inventory publication",
-            "N", static_cast<unsigned>(retryBackoff.size()));
+        error("getMctpInfos: mapper unhealthy after {N} retries; deferring "
+              "inventory publication",
+              "N", static_cast<unsigned>(retryBackoff.size()));
         return false;
     }
 
@@ -295,13 +286,12 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         {
             info("register match_t path:{OBJPATH}", "OBJPATH", path);
             enableMatches.emplace(
-                path, sdbusplus::bus::match_t(
-                          bus,
-                          sdbusplus::bus::match::rules::propertiesChanged(
-                              path.c_str(),
-                              "au.com.codeconstruct.MCTP.Endpoint1"),
-                          std::bind_front(&MctpDiscovery::refreshEndpoints,
-                                          this)));
+                path,
+                sdbusplus::bus::match_t(
+                    bus,
+                    sdbusplus::bus::match::rules::propertiesChanged(
+                        path.c_str(), "au.com.codeconstruct.MCTP.Endpoint1"),
+                    std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
         }
     }
 
@@ -463,8 +453,8 @@ void MctpDiscovery::bindStaticEidConfigurations(
             continue;
         }
         // configured_by is authoritative: skip if already resolved.
-        const bool alreadyResolved = std::ranges::any_of(
-            mctpInfoMap, [epEid](const auto& kv) {
+        const bool alreadyResolved =
+            std::ranges::any_of(mctpInfoMap, [epEid](const auto& kv) {
                 return std::get<pldm::eid>(kv.first) == epEid;
             });
         if (alreadyResolved)
@@ -585,8 +575,8 @@ Availability MctpDiscovery::getEndpointConnectivityProp(const std::string& path)
         // Typed accessor: returns nullopt instead of throwing if the
         // variant holds a non-string alternative. Same observable
         // behaviour as the old throw-and-catch path (return false).
-        const auto conn = pldm::dbus_accessors::tryGet<std::string>(
-            propertyValue);
+        const auto conn =
+            pldm::dbus_accessors::tryGet<std::string>(propertyValue);
         if (conn && *conn == "Available")
         {
             available = true;
@@ -878,7 +868,7 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
     // configuration resolved here — an endpoint is never processed before its
     // identity exists (DGXOPENBMC-25121). No-op if the endpoint was already
     // created with a resolved name.
-    sdbusplus::message::object_path objPath;
+    sdbusplus::object_path objPath;
     try
     {
         // InterfacesAdded payload is (object_path, a{sa{sv}}); we only need the
@@ -958,12 +948,12 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
         if (enableMatches.find(path) == enableMatches.end())
         {
             enableMatches.emplace(
-                path, sdbusplus::bus::match_t(
-                          bus,
-                          sdbusplus::bus::match::rules::propertiesChanged(
-                              path, MCTPInterfaceCC),
-                          std::bind_front(&MctpDiscovery::refreshEndpoints,
-                                          this)));
+                path,
+                sdbusplus::bus::match_t(
+                    bus,
+                    sdbusplus::bus::match::rules::propertiesChanged(
+                        path, MCTPInterfaceCC),
+                    std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
         }
 
         info(

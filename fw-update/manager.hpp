@@ -140,9 +140,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2
             // step 3b/3d: source per-component naming/Associations/Manufacturer
-            // from the entity-manager Configuration.PLDMFirmwareDevice.Components
-            // array (joined by MCTPTargetName). Falls back to the legacy
-            // JSON-parsed componentNameMapInfo only if no EM entry is present.
+            // from the entity-manager
+            // Configuration.PLDMFirmwareDevice.Components array (joined by
+            // MCTPTargetName). Falls back to the legacy JSON-parsed
+            // componentNameMapInfo only if no EM entry is present.
             if (!populateComponentInfoFromEM(eid))
             {
                 ComponentIdNameMap componentIdNameMap;
@@ -155,17 +156,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
-    /** @brief Create firmware inventory and write the device UUID + EC-SKU/AP-SKU
-     *         to the entity-manager-owned RoT chassis (PLDM FW Update Config
-     *         Migration, DGXOPENBMC-25121).
+    /** @brief Create firmware inventory and write the device UUID +
+     * EC-SKU/AP-SKU to the entity-manager-owned RoT chassis (PLDM FW Update
+     * Config Migration, DGXOPENBMC-25121).
      *
      *  RoT chassis objects are no longer created by pldmd; entity-manager owns
      *  them via Configuration.PLDMDeviceInventory.CreateInventoryPath. pldmd
      *  writes the dynamic Common.UUID + SKU decorator to that EM-created object
-     *  (and the AP-SKU to the optional UpdateInventoryPath if declared). This is
-     *  the inventory-creation path, so the UUID is written here; updateInventory
-     *  (the refresh path) deliberately does not re-write it — see
-     *  writeDeviceInventoryIdentity().
+     *  (and the AP-SKU to the optional UpdateInventoryPath if declared). This
+     * is the inventory-creation path, so the UUID is written here;
+     * updateInventory (the refresh path) deliberately does not re-write it —
+     * see writeDeviceInventoryIdentity().
      *
      *  @param[in] eid - MCTP endpoint
      *  @param[in] uuid - MCTP UUID
@@ -180,8 +181,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // even those absent from the EM Components array. EM-declared names
             // (from populateComponentInfoFromEM) are kept; any device-reported
             // component without one gets the SADD fallback
-            // "<targetName>_C<ComponentIdentifier>" (or a generated name when no
-            // configured_by target name is available).
+            // "<targetName>_C<ComponentIdentifier>" (or a generated name when
+            // no configured_by target name is available).
             const std::string targetName = getTargetNameForEid(eid);
             auto& componentIdNameMap = componentNameMap[eid];
             for (const auto& [compKey, compInfo] : componentInfoMap[eid])
@@ -192,8 +193,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 }
                 if (!targetName.empty())
                 {
-                    componentIdNameMap[compKey.second] = std::format(
-                        "{}_C{}", targetName, compKey.second);
+                    componentIdNameMap[compKey.second] =
+                        std::format("{}_C{}", targetName, compKey.second);
                 }
                 else
                 {
@@ -465,8 +466,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  on MCTPTargetName, then writes the device identity onto the EM-owned
      *  objects: Common.UUID (only when @p writeUuid) + EC-SKU to
      *  CreateInventoryPath (the RoT chassis) and AP-SKU to the optional
-     *  UpdateInventoryPath. Writes are applied when-ready (immediate Set plus an
-     *  InterfacesAdded retry).
+     *  UpdateInventoryPath. Writes are applied when-ready (immediate Set plus
+     * an InterfacesAdded retry).
      *
      *  @p writeUuid is true only on inventory creation (createInventory). On a
      *  refresh (updateInventory) it is false: the UUID is static, and the
@@ -484,13 +485,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 Step 2.
      *
      *  Identity is resolved via configured_by ONLY: the configurations map is
-     *  keyed by the entity-manager config path that the endpoint's configured_by
-     *  association resolves to; the stored name is the transport object's
+     *  keyed by the entity-manager config path that the endpoint's
+     * configured_by association resolves to; the stored name is the transport
+     * object's
      *  `.Name`, which equals the MCTPTargetName cited by every PLDM-* entry for
      *  the same device. This is the canonical, transport-agnostic key.
      *
-     *  Identity is configured_by-only (FCM-REQ-11) — the EID is never used as an
-     *  identity key. If configured_by is absent the name is empty and the
+     *  Identity is configured_by-only (FCM-REQ-11) — the EID is never used as
+     * an identity key. If configured_by is absent the name is empty and the
      *  endpoint is treated as not (yet) resolvable.
      *
      *  @param[in] eid - MCTP endpoint
@@ -533,7 +535,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  FCM-REQ-16 fallback.
      *
      *  @param[in] eid - MCTP endpoint
-     *  @return true if a matching PLDMFirmwareDevice entry was found and applied
+     *  @return true if a matching PLDMFirmwareDevice entry was found and
+     * applied
      */
     bool populateComponentInfoFromEM(eid eid)
     {
@@ -607,8 +610,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Read the per-component definitions of a
      *         Configuration.PLDMFirmwareDevice entry.
      *
-     *  entity-manager publishes each element of the nested Components array as a
-     *  separate CHILD interface "<baseIntf>.Components<index>" on the same
+     *  entity-manager publishes each element of the nested Components array as
+     * a separate CHILD interface "<baseIntf>.Components<index>" on the same
      *  object path — NOT as flattened "Components<index><field>" properties on
      *  the parent interface. Each child interface carries Name,
      *  ComponentIdentifier and an optional Manufacturer. Per-component
@@ -619,17 +622,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  list so firmware inventory can publish the inventory/activation
      *  associations the Redfish layer needs.
      *
-     *  @param[in]  service      - D-Bus service owning the object (entity-manager)
+     *  @param[in]  service      - D-Bus service owning the object
+     * (entity-manager)
      *  @param[in]  objPath      - PLDMFirmwareDevice object path
-     *  @param[in]  baseIntf     - Configuration.PLDMFirmwareDevice interface name
+     *  @param[in]  baseIntf     - Configuration.PLDMFirmwareDevice interface
+     * name
      *  @param[out] emComponents - id → {Name, Associations, Manufacturer}
      *  @param[out] idNameMap    - id → Name (for target filtering / fallback)
      */
-    static void unpackComponents(const std::string& service,
-                                 const std::string& objPath,
-                                 const std::string& baseIntf,
-                                 CreateComponentIdNameMap& emComponents,
-                                 ComponentIdNameMap& idNameMap)
+    static void unpackComponents(
+        const std::string& service, const std::string& objPath,
+        const std::string& baseIntf, CreateComponentIdNameMap& emComponents,
+        ComponentIdNameMap& idNameMap)
     {
         // Probe contiguous child interfaces Components0, Components1, ... until
         // one is absent (GetAll throws), mirroring how EM numbers them.
@@ -697,7 +701,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // Endpoint) — flat arrays survive PlatformExposes flattening onto
             // the Components<N> child interface, unlike a nested object array.
             // Zip them into the (forward, reverse, endpoint) tuples firmware
-            // inventory copies onto the Software.Version Association.Definitions.
+            // inventory copies onto the Software.Version
+            // Association.Definitions.
             auto readStrList = [&cprops](const std::string& prop) {
                 std::vector<std::string> v;
                 if (auto it = cprops.find(prop); it != cprops.end())
@@ -776,23 +781,22 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         const std::string targetName = getTargetNameForEid(eid);
         if (targetName.empty())
         {
-            // No configured_by-resolved name: cannot match a PLDMDeviceInventory
-            // entry. Nothing to write (device may simply have no RoT chassis).
+            // No configured_by-resolved name: cannot match a
+            // PLDMDeviceInventory entry. Nothing to write (device may simply
+            // have no RoT chassis).
             return;
         }
 
         constexpr auto pldmDeviceInventoryIntf =
             "xyz.openbmc_project.Configuration.PLDMDeviceInventory";
         constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
-        constexpr auto skuIntf =
-            "xyz.openbmc_project.Inventory.Decorator.SKU";
+        constexpr auto skuIntf = "xyz.openbmc_project.Inventory.Decorator.SKU";
 
         pldm::utils::GetSubTreeResponse subtree;
         try
         {
             subtree = pldm::utils::DBusHandler().getSubtree(
-                "/xyz/openbmc_project/inventory", 0,
-                {pldmDeviceInventoryIntf});
+                "/xyz/openbmc_project/inventory", 0, {pldmDeviceInventoryIntf});
         }
         catch (const std::exception& e)
         {
@@ -819,8 +823,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             std::string updatePath;
             try
             {
-                auto props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
-                    service.c_str(), objPath.c_str(), pldmDeviceInventoryIntf);
+                auto props =
+                    pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                        service.c_str(), objPath.c_str(),
+                        pldmDeviceInventoryIntf);
                 if (auto it = props.find("MCTPTargetName"); it != props.end())
                 {
                     entryTargetName = std::get<std::string>(it->second);
@@ -872,7 +878,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // synchronous ObjectMapper lookup) per object every cycle and stall
             // the event loop long enough to drop in-flight PLDM responses. A
             // real SKU change (post-update) differs and still writes;
-            // onInventoryObjectAdded repopulates a re-created object regardless.
+            // onInventoryObjectAdded repopulates a re-created object
+            // regardless.
             auto& lastSku = lastWrittenSkus[eid];
             if (!createPath.empty())
             {
@@ -959,17 +966,17 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  @param[in] property  - property name
      *  @param[in] value     - value to write (no-op if empty)
      */
-    void writeInventoryPropWhenReady(const std::string& objPath,
-                                     const std::string& interface,
-                                     const std::string& property,
-                                     const std::string& value)
+    void writeInventoryPropWhenReady(
+        const std::string& objPath, const std::string& interface,
+        const std::string& property, const std::string& value)
     {
         if (objPath.empty() || value.empty())
         {
             return;
         }
         // Record (or refresh) the pending write so onInventoryObjectAdded can
-        // (re)apply it; dedupe so repeated create/update calls don't accumulate.
+        // (re)apply it; dedupe so repeated create/update calls don't
+        // accumulate.
         auto& writes = pendingInventoryWrites[objPath];
         bool updated = false;
         for (auto& pending : writes)
@@ -1023,7 +1030,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         whose interface is now present. Ported from updateSKUOnMatch. */
     void onInventoryObjectAdded(sdbusplus::message_t& msg)
     {
-        sdbusplus::message::object_path objPath;
+        sdbusplus::object_path objPath;
         dbus::InterfaceMap interfaces;
         try
         {

@@ -193,8 +193,8 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                     auto componentObject =
                         (std::get<0>(fwInfoSearch)).find(compKey.second);
                     const auto& [compObjName, compObjAssocs,
-                                 compObjManufacturer, compUpdateOnly] =
-                        componentObject->second;
+                                 compObjManufacturer,
+                                 compUpdateOnly] = componentObject->second;
                     std::string objPath = swBasePath + "/" + compObjName;
                     auto swId = std::format("0x{:04X}", compKey.second);
 

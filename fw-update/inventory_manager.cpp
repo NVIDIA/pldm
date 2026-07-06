@@ -1292,8 +1292,9 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     // getFirmwareParameters, which skips the fastest-path collapse — so
     // refreshing a non-selected duplicate would re-add it as an update target
     // and the device would be updated over both EIDs. The update-time refresh
-    // set is seeded from the MCTP static config (seedRefreshEidsFromStaticConfig),
-    // which can include such a duplicate, so guard it here.
+    // set is seeded from the MCTP static config
+    // (seedRefreshEidsFromStaticConfig), which can include such a duplicate, so
+    // guard it here.
     if (mctpEidMap.contains(eid))
     {
         const auto& uuid = std::get<0>(mctpEidMap[eid]);

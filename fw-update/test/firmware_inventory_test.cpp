@@ -122,7 +122,8 @@ TEST(Manager, SingleMatch)
     const std::string compName1{"CompName1"};
     const Associations associations = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
-    const ComponentObject componentObject = {compName1, associations, "NVIDIA"};
+    const ComponentObject componentObject = {compName1, associations, "NVIDIA",
+                                             false};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
@@ -180,13 +181,13 @@ TEST(Manager, SingleMatchTwoComponents)
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
     DBusIntfMatch m;
 
     FirmwareInventoryInfo fwInventoryInfo(
@@ -244,19 +245,19 @@ TEST(Manager, MulipleMatch)
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     const std::string compName3{"CompName3"};
     const Associations associations3 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName3"}};
     const ComponentObject componentObject3 = {compName3, associations3,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}},
@@ -349,13 +350,13 @@ TEST(Manager, test_private_method_updateSwId)
     const Associations associations1 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName1"}};
     const ComponentObject componentObject1 = {compName1, associations1,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     const std::string compName2{"CompName2"};
     const Associations associations2 = {
         {"inventory", "activation", "/xyz/openbmc_project/software/CompName2"}};
     const ComponentObject componentObject2 = {compName2, associations2,
-                                              "NVIDIA"};
+                                              "NVIDIA", false};
 
     FirmwareInventoryInfo fwInventoryInfo(
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},

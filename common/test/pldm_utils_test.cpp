@@ -5436,14 +5436,13 @@ TEST(ExtractPldmType, pldmPlatform)
 /*****************************************************************************
  * MatchEntryInfo tests
  *
- * Use the concrete DeviceInventoryInfo alias
- *   = MatchEntryInfo<MatchDeviceInfo, DeviceInfo>
+ * Use the concrete FirmwareInventoryInfo alias
+ *   = MatchEntryInfo<MatchFirmwareInfo, FirmwareInfo>
  * where
- *   MatchDeviceInfo  = std::vector<std::tuple<DBusIntfMatch, DeviceInfo>>
- *   DBusIntfMatch    = std::pair<dbus::Interface, dbus::PropertyMap>
- *   DeviceInfo       = std::tuple<CreateDeviceInfo, UpdateDeviceInfo>
- *   CreateDeviceInfo = std::tuple<DeviceObjPath, Associations>
- *   UpdateDeviceInfo = DeviceObjPath
+ *   MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>
+ *   DBusIntfMatch     = std::pair<dbus::Interface, dbus::PropertyMap>
+ *   FirmwareInfo      = std::tuple<CreateComponentIdNameMap,
+ *                                  UpdateComponentIdNameMap>
  ****************************************************************************/
 
 using namespace pldm::fw_update;
@@ -5452,7 +5451,6 @@ using namespace pldm::fw_update;
 // pldm::utils::{PropertyMap,InterfaceMap}
 namespace dbus = pldm::dbus;
 
-static DeviceInfo makeDeviceInfo(const std::string& objPath);
 static FirmwareInfo makeFirmwareInfo();
 
 // ---------------------------------------------------------------------------
@@ -5468,43 +5466,44 @@ TEST(MatchEntryInfoTest, compareValuesSameTypeArithmetic)
 {
     // Same type, same value
     EXPECT_TRUE(
-        (DeviceInventoryInfo::compareValues(uint32_t(42), uint32_t(42))));
+        (FirmwareInventoryInfo::compareValues(uint32_t(42), uint32_t(42))));
 
     // Same type, different value
     EXPECT_FALSE(
-        (DeviceInventoryInfo::compareValues(uint32_t(1), uint32_t(2))));
+        (FirmwareInventoryInfo::compareValues(uint32_t(1), uint32_t(2))));
 }
 
 TEST(MatchEntryInfoTest, compareValuesCrossTypeArithmetic)
 {
     // Different arithmetic types, same numeric value
     EXPECT_TRUE(
-        (DeviceInventoryInfo::compareValues(uint32_t(42), int64_t(42))));
+        (FirmwareInventoryInfo::compareValues(uint32_t(42), int64_t(42))));
 
-    EXPECT_TRUE((DeviceInventoryInfo::compareValues(uint16_t(5), uint32_t(5))));
+    EXPECT_TRUE(
+        (FirmwareInventoryInfo::compareValues(uint16_t(5), uint32_t(5))));
 }
 
 TEST(MatchEntryInfoTest, compareValuesSameTypeString)
 {
     using std::string;
 
-    EXPECT_TRUE(
-        (DeviceInventoryInfo::compareValues(string("hello"), string("hello"))));
+    EXPECT_TRUE((FirmwareInventoryInfo::compareValues(string("hello"),
+                                                      string("hello"))));
 
     EXPECT_FALSE(
-        (DeviceInventoryInfo::compareValues(string("a"), string("b"))));
+        (FirmwareInventoryInfo::compareValues(string("a"), string("b"))));
 }
 
 TEST(MatchEntryInfoTest, compareValuesIncompatibleTypes)
 {
     // string vs uint32_t -- incompatible, must return false
-    EXPECT_FALSE(
-        (DeviceInventoryInfo::compareValues(std::string("42"), uint32_t(42))));
+    EXPECT_FALSE((
+        FirmwareInventoryInfo::compareValues(std::string("42"), uint32_t(42))));
 }
 
 TEST(MatchEntryInfoTest, DefaultCtorAndDtorCoveredForAllAliases)
 {
-    DeviceInventoryInfo deviceInventoryInfo{};
+    FirmwareInventoryInfo deviceInventoryInfo{};
     FirmwareInventoryInfo firmwareInventoryInfo{};
     ComponentNameMapInfo componentNameMapInfo{};
 
@@ -5608,11 +5607,11 @@ TEST(MatchEntryInfoTest, compareValuesAllValueTypePairsForAllAliases)
             const bool expectedResult =
                 expectedCompareResult(expectedVal, actualVal);
 
-            EXPECT_EQ(invokeCompareValuesNoInline<DeviceInventoryInfo>(
+            EXPECT_EQ(invokeCompareValuesNoInline<FirmwareInventoryInfo>(
                           expectedVal, actualVal),
                       expectedResult)
-                << "DeviceInventoryInfo pair mismatch (" << expectedIdx << ", "
-                << actualIdx << ")";
+                << "FirmwareInventoryInfo pair mismatch (" << expectedIdx
+                << ", " << actualIdx << ")";
             EXPECT_EQ(invokeCompareValuesNoInline<FirmwareInventoryInfo>(
                           expectedVal, actualVal),
                       expectedResult)
@@ -5650,14 +5649,14 @@ TEST(MatchEntryInfoTest, isPropertyMatchAllValueTypePairs)
             dbus::PropertyMap cfgPropMap = {cfgProp};
 
             {
-                MatchDeviceInfo matchInfos;
-                matchInfos.push_back({DBusIntfMatch{interface, cfgPropMap},
-                                      makeDeviceInfo("/inventory/dev0")});
-                DeviceInventoryInfo inv(matchInfos);
+                MatchFirmwareInfo matchInfos;
+                matchInfos.push_back(
+                    {DBusIntfMatch{interface, cfgPropMap}, makeFirmwareInfo()});
+                FirmwareInventoryInfo inv(matchInfos);
                 EXPECT_EQ(inv.isPropertyMatch(ifaceMap, cfgProp, interface),
                           expectedResult)
-                    << "DeviceInventoryInfo mismatch for pair (" << expectedIdx
-                    << ", " << actualIdx << ")";
+                    << "FirmwareInventoryInfo mismatch for pair ("
+                    << expectedIdx << ", " << actualIdx << ")";
             }
 
             {
@@ -5697,10 +5696,10 @@ TEST(MatchEntryInfoTest, isPropertyMatchAllValueTypesNoInlineDispatch)
         std::pair<dbus::Property, dbus::Value> cfgProp{property, value};
 
         {
-            MatchDeviceInfo matchInfos;
-            matchInfos.push_back({DBusIntfMatch{interface, cfgProps},
-                                  makeDeviceInfo("/inventory/dev0")});
-            DeviceInventoryInfo inv(matchInfos);
+            MatchFirmwareInfo matchInfos;
+            matchInfos.push_back(
+                {DBusIntfMatch{interface, cfgProps}, makeFirmwareInfo()});
+            FirmwareInventoryInfo inv(matchInfos);
             EXPECT_TRUE(invokeIsPropertyMatchNoInline(inv, ifaceMap, cfgProp,
                                                       interface));
         }
@@ -5734,13 +5733,13 @@ TEST(MatchEntryInfoTest, matchInventoryEntryPropertyPathNoInlineDispatch)
             {"Name", dbus::Value{std::string("GPU0")}},
             {"Extra", dbus::Value{uint32_t(99)}}};
         dbus::InterfaceMap ifaceMap = {{"com.example.Device", dbusProps}};
-        DeviceInfo expected = makeDeviceInfo("/inventory/gpu0");
+        FirmwareInfo expected = makeFirmwareInfo();
 
-        MatchDeviceInfo matchInfos;
+        MatchFirmwareInfo matchInfos;
         matchInfos.push_back(
             {DBusIntfMatch{"com.example.Device", cfgProps}, expected});
-        DeviceInventoryInfo inv(matchInfos);
-        DeviceInfo result{};
+        FirmwareInventoryInfo inv(matchInfos);
+        FirmwareInfo result{};
 
         EXPECT_TRUE(invokeMatchInventoryEntryNoInline(inv, ifaceMap, result));
         EXPECT_EQ(result, expected);
@@ -5786,16 +5785,6 @@ TEST(MatchEntryInfoTest, matchInventoryEntryPropertyPathNoInlineDispatch)
 }
 
 // ---------------------------------------------------------------------------
-// Helper to build a minimal DeviceInfo value for match-output tests.
-// ---------------------------------------------------------------------------
-static DeviceInfo makeDeviceInfo(const std::string& objPath)
-{
-    CreateDeviceInfo create{objPath, {}};
-    UpdateDeviceInfo update{objPath};
-    return DeviceInfo{create, update};
-}
-
-// ---------------------------------------------------------------------------
 // isDirectMatch tests
 // ---------------------------------------------------------------------------
 
@@ -5805,13 +5794,13 @@ TEST(MatchEntryInfoTest, isDirectMatchSuccess)
     dbus::PropertyMap cfgProps = {{"Name", dbus::Value{std::string("GPU0")}}};
     dbus::InterfaceMap ifaceMap = {{"com.example.Device", cfgProps}};
 
-    // Construct a DeviceInventoryInfo with one entry.
-    MatchDeviceInfo matchInfos;
+    // Construct a FirmwareInventoryInfo with one entry.
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgProps);
-    matchInfos.push_back(std::make_tuple(match, makeDeviceInfo("/d/0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_TRUE(inv.isDirectMatch(ifaceMap, "com.example.Device", cfgProps));
 }
@@ -5823,12 +5812,12 @@ TEST(MatchEntryInfoTest, isDirectMatchFail)
     dbus::InterfaceMap ifaceMap = {{"com.example.Device", dbusProps}};
 
     dbus::PropertyMap cfgProps = {{"Name", dbus::Value{std::string("GPU0")}}};
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgProps);
-    matchInfos.push_back(std::make_tuple(match, makeDeviceInfo("/d/0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_FALSE(inv.isDirectMatch(ifaceMap, "com.example.Device", cfgProps));
 }
@@ -5840,12 +5829,12 @@ TEST(MatchEntryInfoTest, isDirectMatchMissingInterface)
     dbus::InterfaceMap ifaceMap = {{"com.example.Other", dbusProps}};
 
     dbus::PropertyMap cfgProps = {{"Name", dbus::Value{std::string("GPU0")}}};
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgProps);
-    matchInfos.push_back(std::make_tuple(match, makeDeviceInfo("/d/0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_FALSE(inv.isDirectMatch(ifaceMap, "com.example.Device", cfgProps));
 }
@@ -5865,12 +5854,12 @@ TEST(MatchEntryInfoTest, isPropertyMatchSuccess)
                                                    dbus::Value{uint32_t(7)}};
 
     dbus::PropertyMap cfgPropMap = {cfgProp};
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgPropMap);
-    matchInfos.push_back(std::make_tuple(match, makeDeviceInfo("/d/0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_TRUE(inv.isPropertyMatch(ifaceMap, cfgProp, "com.example.Device"));
 }
@@ -5885,12 +5874,12 @@ TEST(MatchEntryInfoTest, isPropertyMatchMissingProperty)
                                                    dbus::Value{uint32_t(1)}};
 
     dbus::PropertyMap cfgPropMap = {cfgProp};
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgPropMap);
-    matchInfos.push_back(std::make_tuple(match, makeDeviceInfo("/d/0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_FALSE(inv.isPropertyMatch(ifaceMap, cfgProp, "com.example.Device"));
 }
@@ -5898,18 +5887,19 @@ TEST(MatchEntryInfoTest, isPropertyMatchMissingProperty)
 TEST(MatchEntryInfoTest, isPropertyMatchAllValueTypes)
 {
     // Exercise the visitor lambda (line 327) for every dbus::Value alternative
-    // across both DeviceInventoryInfo and FirmwareInventoryInfo instantiations.
+    // across both FirmwareInventoryInfo and FirmwareInventoryInfo
+    // instantiations.
     auto testWithDevice = [](const char* name, dbus::Value val) {
         dbus::PropertyMap dbusProps = {{name, val}};
         dbus::InterfaceMap ifaceMap = {{"com.example.Dev", dbusProps}};
         std::pair<dbus::Property, dbus::Value> cfgProp{name, val};
         dbus::PropertyMap cfgPropMap = {cfgProp};
-        MatchDeviceInfo mi;
-        mi.push_back({DBusIntfMatch{"com.example.Dev", cfgPropMap},
-                      makeDeviceInfo("/d/0")});
-        DeviceInventoryInfo inv(mi);
+        MatchFirmwareInfo mi;
+        mi.push_back(
+            {DBusIntfMatch{"com.example.Dev", cfgPropMap}, makeFirmwareInfo()});
+        FirmwareInventoryInfo inv(mi);
         EXPECT_TRUE(inv.isPropertyMatch(ifaceMap, cfgProp, "com.example.Dev"))
-            << "DeviceInventoryInfo failed for: " << name;
+            << "FirmwareInventoryInfo failed for: " << name;
     };
 
     auto testWithFirmware = [](const char* name, dbus::Value val) {
@@ -5960,15 +5950,15 @@ TEST(MatchEntryInfoTest, matchInventoryEntryDirectMatch)
                                   {"Id", dbus::Value{uint32_t(7)}}};
     dbus::InterfaceMap ifaceMap = {{"com.example.Device", cfgProps}};
 
-    DeviceInfo expected = makeDeviceInfo("/inventory/gpu0");
+    FirmwareInfo expected = makeFirmwareInfo();
 
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgProps);
     matchInfos.push_back(std::make_tuple(match, expected));
 
-    DeviceInventoryInfo inv(matchInfos);
-    DeviceInfo result{};
+    FirmwareInventoryInfo inv(matchInfos);
+    FirmwareInfo result{};
 
     EXPECT_TRUE(inv.matchInventoryEntry(ifaceMap, result));
     EXPECT_EQ(result, expected);
@@ -5981,14 +5971,13 @@ TEST(MatchEntryInfoTest, matchInventoryEntryNoMatch)
     dbus::InterfaceMap ifaceMap = {{"com.example.NIC", dbusProps}};
 
     dbus::PropertyMap cfgProps = {{"Name", dbus::Value{std::string("GPU0")}}};
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     DBusIntfMatch match =
         std::make_pair(std::string("com.example.Device"), cfgProps);
-    matchInfos.push_back(
-        std::make_tuple(match, makeDeviceInfo("/inventory/gpu0")));
+    matchInfos.push_back(std::make_tuple(match, makeFirmwareInfo()));
 
-    DeviceInventoryInfo inv(matchInfos);
-    DeviceInfo result{};
+    FirmwareInventoryInfo inv(matchInfos);
+    FirmwareInfo result{};
 
     EXPECT_FALSE(inv.matchInventoryEntry(ifaceMap, result));
 }
@@ -6014,11 +6003,11 @@ TEST(MatchEntryInfoTest, isPropertyMatchMissingInterface)
     std::pair<dbus::Property, dbus::Value> cfgProp{
         "Name", dbus::Value{std::string("GPU0")}};
     dbus::PropertyMap cfgPropMap = {cfgProp};
-    MatchDeviceInfo matchInfos;
-    matchInfos.push_back({DBusIntfMatch{"com.example.Device", cfgPropMap},
-                          makeDeviceInfo("/d/0")});
+    MatchFirmwareInfo matchInfos;
+    matchInfos.push_back(
+        {DBusIntfMatch{"com.example.Device", cfgPropMap}, makeFirmwareInfo()});
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_FALSE(inv.isPropertyMatch(ifaceMap, cfgProp, "com.example.Device"));
 }
@@ -6032,11 +6021,11 @@ TEST(MatchEntryInfoTest, isPropertyMatchValueMismatch)
     std::pair<dbus::Property, dbus::Value> cfgProp{"Id",
                                                    dbus::Value{uint32_t(7)}};
     dbus::PropertyMap cfgPropMap = {cfgProp};
-    MatchDeviceInfo matchInfos;
-    matchInfos.push_back({DBusIntfMatch{"com.example.Device", cfgPropMap},
-                          makeDeviceInfo("/d/0")});
+    MatchFirmwareInfo matchInfos;
+    matchInfos.push_back(
+        {DBusIntfMatch{"com.example.Device", cfgPropMap}, makeFirmwareInfo()});
 
-    DeviceInventoryInfo inv(matchInfos);
+    FirmwareInventoryInfo inv(matchInfos);
 
     EXPECT_FALSE(inv.isPropertyMatch(ifaceMap, cfgProp, "com.example.Device"));
 }
@@ -6162,14 +6151,14 @@ TEST(MatchEntryInfoTest, matchInventoryEntryPropertyMatch)
                                    {"Extra", dbus::Value{uint32_t(99)}}};
     dbus::InterfaceMap ifaceMap = {{"com.example.Device", dbusProps}};
 
-    DeviceInfo expected = makeDeviceInfo("/inventory/gpu0");
+    FirmwareInfo expected = makeFirmwareInfo();
 
-    MatchDeviceInfo matchInfos;
+    MatchFirmwareInfo matchInfos;
     matchInfos.push_back(
         {DBusIntfMatch{"com.example.Device", cfgProps}, expected});
 
-    DeviceInventoryInfo inv(matchInfos);
-    DeviceInfo result{};
+    FirmwareInventoryInfo inv(matchInfos);
+    FirmwareInfo result{};
 
     EXPECT_TRUE(inv.matchInventoryEntry(ifaceMap, result));
     EXPECT_EQ(result, expected);
@@ -6186,12 +6175,12 @@ TEST(MatchEntryInfoTest, matchInventoryEntryPropertyMatchPartialFail)
                                    {"Extra", dbus::Value{uint32_t(1)}}};
     dbus::InterfaceMap ifaceMap = {{"com.example.Device", dbusProps}};
 
-    MatchDeviceInfo matchInfos;
-    matchInfos.push_back({DBusIntfMatch{"com.example.Device", cfgProps},
-                          makeDeviceInfo("/d/0")});
+    MatchFirmwareInfo matchInfos;
+    matchInfos.push_back(
+        {DBusIntfMatch{"com.example.Device", cfgProps}, makeFirmwareInfo()});
 
-    DeviceInventoryInfo inv(matchInfos);
-    DeviceInfo result{};
+    FirmwareInventoryInfo inv(matchInfos);
+    FirmwareInfo result{};
 
     EXPECT_FALSE(inv.matchInventoryEntry(ifaceMap, result));
 }

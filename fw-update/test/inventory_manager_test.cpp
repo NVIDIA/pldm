@@ -37,8 +37,7 @@ class InventoryManagerTest : public testing::Test
                    milliseconds(100)),
         inventoryManager(&dBusHandler, reqHandler, instanceIdDb, nullptr,
                          nullptr, outDescriptorMap, outDownstreamDescriptorMap,
-                         outComponentInfoMap, deviceInventoryInfo,
-                         excludedFwUpdateEids)
+                         outComponentInfoMap)
     {}
 
     int fd = -1;
@@ -46,12 +45,10 @@ class InventoryManagerTest : public testing::Test
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
-    ExcludedFwUpdateEids excludedFwUpdateEids{};
     InventoryManager inventoryManager;
     DescriptorMap outDescriptorMap{};
     DownstreamDescriptorMap outDownstreamDescriptorMap{};
     ComponentInfoMap outComponentInfoMap{};
-    DeviceInventoryInfo deviceInventoryInfo{};
     std::string messageError;
     std::string resolution;
 };

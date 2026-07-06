@@ -66,8 +66,9 @@ static std::optional<std::string> extractTargetName(
  *         Configuration property map.
  *
  *  Tolerates the integral and string variant alternatives entity-manager may
- *  publish (the migrated config writes StaticEndpointID / BridgePool* as decimal
- *  strings). Returns std::nullopt when absent or unparseable. Never throws.
+ *  publish (the migrated config writes StaticEndpointID / BridgePool* as
+ * decimal strings). Returns std::nullopt when absent or unparseable. Never
+ * throws.
  */
 static std::optional<uint8_t> extractOptionalEid(
     const pldm::utils::PropertyMap& props, const std::string& key)
@@ -119,8 +120,8 @@ static std::optional<uint8_t> extractOptionalEid(
  *  refresh-EID set otherwise derives from the live descriptorMap keys
  *  (configured_by-resolved discovery), which can omit a device not yet
  *  discovered at update time. To guarantee the COMPLETE device set is refreshed
- *  before an update, union every statically-assigned EID from the MCTP transport
- *  config: each entry's StaticEndpointID, plus the full
+ *  before an update, union every statically-assigned EID from the MCTP
+ * transport config: each entry's StaticEndpointID, plus the full
  *  [BridgePoolStartEid, BridgePoolEndEID] range on bridge entries (covering the
  *  bridged downstream devices). std::set dedups against the live keys. This
  *  influences ONLY the refresh set — never device identity, inventory, or the
@@ -131,10 +132,9 @@ static std::optional<uint8_t> extractOptionalEid(
  */
 static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
 {
-    for (const char* intf :
-         {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
-          "xyz.openbmc_project.Configuration.MCTPI2CTarget",
-          "xyz.openbmc_project.Configuration.MCTPSPIDevice"})
+    for (const char* intf : {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
+                             "xyz.openbmc_project.Configuration.MCTPI2CTarget",
+                             "xyz.openbmc_project.Configuration.MCTPSPIDevice"})
     {
         pldm::utils::GetSubTreeResponse subtree;
         try

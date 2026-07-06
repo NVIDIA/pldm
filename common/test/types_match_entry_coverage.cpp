@@ -82,25 +82,13 @@ __attribute__((noinline)) bool invokeMatchInventoryEntryNoInline(
     return (inv.*fn)(interfaceMap, entry);
 }
 
-MatchDeviceInfo makeDeviceMatchInfos(const dbus::Interface& interface,
-                                     const dbus::PropertyMap& cfgProps)
-{
-    MatchDeviceInfo deviceMatchInfos;
-    deviceMatchInfos.push_back(
-        {DBusIntfMatch{interface, cfgProps},
-         DeviceInfo{
-             CreateDeviceInfo{"/xyz/openbmc_project/inventory/device", {}},
-             UpdateDeviceInfo{"/xyz/openbmc_project/inventory/device"}}});
-    return deviceMatchInfos;
-}
-
 MatchFirmwareInfo makeFirmwareMatchInfos(const dbus::Interface& interface,
                                          const dbus::PropertyMap& cfgProps)
 {
     MatchFirmwareInfo firmwareMatchInfos;
     CreateComponentIdNameMap createMap{
         {1, ComponentObject{std::string("ComponentOne"), Associations{},
-                            std::string{}}}};
+                            std::string{}, false}}};
     UpdateComponentIdNameMap updateMap{{1, "ComponentOne"}};
     firmwareMatchInfos.push_back(
         {DBusIntfMatch{interface, cfgProps},
@@ -151,18 +139,6 @@ TEST(MatchEntryInfoCoverage, DeviceAndFirmwareAllValueTypePairs)
                   {"Extra", dbus::Value{uint32_t(1)}}}}};
             std::pair<dbus::Property, dbus::Value> cfgProp{property,
                                                            expectedVal};
-
-            MatchDeviceInfo deviceMatchInfos;
-            deviceMatchInfos.push_back(
-                {DBusIntfMatch{interface, cfgProps},
-                 DeviceInfo{CreateDeviceInfo{
-                                "/xyz/openbmc_project/inventory/coverage", {}},
-                            UpdateDeviceInfo{}}});
-            DeviceInventoryInfo deviceInventoryInfo(deviceMatchInfos);
-            EXPECT_EQ(
-                invokeIsPropertyMatchNoInline(deviceInventoryInfo, interfaceMap,
-                                              cfgProp, interface),
-                expectedMatch);
 
             MatchFirmwareInfo firmwareMatchInfos;
             firmwareMatchInfos.push_back(
@@ -224,17 +200,6 @@ TEST(MatchEntryInfoCoverage, MatchInventoryEntryCoversAllAliases)
         {interface, {{"Name", dbus::Value{std::string("GPU0")}}}}};
     dbus::InterfaceMap missingInterfaceMap = {
         {"xyz.openbmc_project.Other.Interface", cfgProps}};
-
-    DeviceInventoryInfo deviceInfo(makeDeviceMatchInfos(interface, cfgProps));
-    DeviceInfo deviceEntry;
-    EXPECT_TRUE(invokeMatchInventoryEntryNoInline(deviceInfo, directMatchMap,
-                                                  deviceEntry));
-    EXPECT_TRUE(invokeMatchInventoryEntryNoInline(deviceInfo, propertyMatchMap,
-                                                  deviceEntry));
-    EXPECT_FALSE(invokeMatchInventoryEntryNoInline(
-        deviceInfo, missingPropertyMap, deviceEntry));
-    EXPECT_FALSE(invokeMatchInventoryEntryNoInline(
-        deviceInfo, missingInterfaceMap, deviceEntry));
 
     FirmwareInventoryInfo firmwareInfo(
         makeFirmwareMatchInfos(interface, cfgProps));
@@ -332,11 +297,6 @@ TEST(MatchEntryInfoCoverage, DefaultConstructedMatchersReturnFalse)
     dbus::InterfaceMap interfaceMap = {
         {interface, {{"Value", dbus::Value{uint8_t(1)}}}}};
 
-    DeviceInventoryInfo deviceInfo;
-    DeviceInfo deviceEntry{};
-    EXPECT_FALSE(invokeMatchInventoryEntryNoInline(deviceInfo, interfaceMap,
-                                                   deviceEntry));
-
     FirmwareInventoryInfo firmwareInfo;
     FirmwareInfo firmwareEntry{};
     EXPECT_FALSE(invokeMatchInventoryEntryNoInline(firmwareInfo, interfaceMap,
@@ -366,34 +326,17 @@ TEST(MatchEntryInfoCoverage, MatchInventoryEntryUsesSecondCandidate)
           {"Enabled", dbus::Value{true}},
           {"Extra", dbus::Value{uint32_t(9)}}}}};
 
-    MatchDeviceInfo deviceInfos;
-    deviceInfos.push_back(
-        {DBusIntfMatch{interface, firstProps},
-         DeviceInfo{
-             CreateDeviceInfo{"/xyz/openbmc_project/inventory/device0", {}},
-             UpdateDeviceInfo{"/xyz/openbmc_project/inventory/device0"}}});
-    deviceInfos.push_back(
-        {DBusIntfMatch{interface, secondProps},
-         DeviceInfo{
-             CreateDeviceInfo{"/xyz/openbmc_project/inventory/device1", {}},
-             UpdateDeviceInfo{"/xyz/openbmc_project/inventory/device1"}}});
-    DeviceInventoryInfo deviceMatcher(deviceInfos);
-    DeviceInfo deviceEntry{};
-    EXPECT_TRUE(invokeMatchInventoryEntryNoInline(deviceMatcher, interfaceMap,
-                                                  deviceEntry));
-    EXPECT_EQ(std::get<UpdateDeviceInfo>(deviceEntry),
-              "/xyz/openbmc_project/inventory/device1");
-
     MatchFirmwareInfo firmwareInfos;
     firmwareInfos.push_back(
         {DBusIntfMatch{interface, firstProps},
          FirmwareInfo{CreateComponentIdNameMap{}, UpdateComponentIdNameMap{}}});
     firmwareInfos.push_back(
         {DBusIntfMatch{interface, secondProps},
-         FirmwareInfo{CreateComponentIdNameMap{
-                          {2, ComponentObject{std::string("ComponentTwo"),
-                                              Associations{}, std::string{}}}},
-                      UpdateComponentIdNameMap{{2, "ComponentTwo"}}}});
+         FirmwareInfo{
+             CreateComponentIdNameMap{
+                 {2, ComponentObject{std::string("ComponentTwo"),
+                                     Associations{}, std::string{}, false}}},
+             UpdateComponentIdNameMap{{2, "ComponentTwo"}}}});
     FirmwareInventoryInfo firmwareMatcher(firmwareInfos);
     FirmwareInfo firmwareEntry{};
     EXPECT_TRUE(invokeMatchInventoryEntryNoInline(firmwareMatcher, interfaceMap,
@@ -427,12 +370,6 @@ TEST(MatchEntryInfoCoverage, EmptyConfiguredPropertiesMatchPresentInterface)
     dbus::InterfaceMap interfaceMap = {
         {interface, {{"Name", dbus::Value{std::string("GPU0")}}}}};
     dbus::PropertyMap emptyProps{};
-
-    DeviceInventoryInfo deviceMatcher(
-        makeDeviceMatchInfos(interface, emptyProps));
-    DeviceInfo deviceEntry{};
-    EXPECT_TRUE(invokeMatchInventoryEntryNoInline(deviceMatcher, interfaceMap,
-                                                  deviceEntry));
 
     FirmwareInventoryInfo firmwareMatcher(
         makeFirmwareMatchInfos(interface, emptyProps));

@@ -10,7 +10,6 @@ fw_update_test_sources = [
     '../update_manager.cpp',
     '../update.cpp',
     '../config.cpp',
-    '../device_inventory.cpp',
     '../firmware_inventory.cpp',
     '../package_signature.cpp',
     '../../common/utils.cpp',
@@ -21,15 +20,11 @@ fw_update_test_sources = [
 ]
 
 fw_update_test_sources_no_config = []
-fw_update_test_sources_no_device_inventory = []
 fw_update_test_sources_no_firmware_inventory = []
 fw_update_test_sources_no_activation = []
 foreach src : fw_update_test_sources
     if src != '../config.cpp'
         fw_update_test_sources_no_config += src
-    endif
-    if src != '../device_inventory.cpp'
-        fw_update_test_sources_no_device_inventory += src
     endif
     if src != '../firmware_inventory.cpp'
         fw_update_test_sources_no_firmware_inventory += src
@@ -42,9 +37,6 @@ endforeach
 fw_update_test_src = declare_dependency(sources: fw_update_test_sources)
 fw_update_test_src_no_config = declare_dependency(
     sources: fw_update_test_sources_no_config,
-)
-fw_update_test_src_no_device_inventory = declare_dependency(
-    sources: fw_update_test_sources_no_device_inventory,
 )
 fw_update_test_src_no_firmware_inventory = declare_dependency(
     sources: fw_update_test_sources_no_firmware_inventory,
@@ -61,8 +53,6 @@ tests = [
     'config_test',
     'dbusutil_internal_test',
     'debug_token_internal_test',
-    'device_inventory_internal_thread_test',
-    'device_inventory_test',
     'device_updater_firmware_update_test',
     'device_updater_test',
     'error_handling_test',
@@ -99,8 +89,6 @@ foreach t : tests
         test_fw_update_src = fw_update_test_src_no_config
     elif t == 'activation_test'
         test_fw_update_src = fw_update_test_src_no_activation
-    elif t == 'device_inventory_internal_thread_test'
-        test_fw_update_src = fw_update_test_src_no_device_inventory
     elif t == 'firmware_inventory_internal_thread_test'
         test_fw_update_src = fw_update_test_src_no_firmware_inventory
     elif t == 'debug_token_internal_test' or t == 'other_device_update_manager_test'

@@ -76,9 +76,8 @@ class TestMctpDiscovery : public ::testing::Test
      *  the retry loop adds <10ms to test runtime. */
     static void setFastRetryBackoff(pldm::MctpDiscovery& d)
     {
-        d.retryBackoff =
-            std::vector<std::chrono::milliseconds>(5,
-                                                   std::chrono::milliseconds(1));
+        d.retryBackoff = std::vector<std::chrono::milliseconds>(
+            5, std::chrono::milliseconds(1));
     }
     /** @brief Disable mapper retry entirely (empty schedule). Useful for
      *  tests that want a single getSubtree call. */
@@ -2252,7 +2251,8 @@ TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropDegraded)
     EXPECT_FALSE(result);
 }
 
-TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropBadVariantReturnsFalse)
+TEST(MctpEndpointDiscoveryTest,
+     getEndpointConnectivityPropBadVariantReturnsFalse)
 {
     MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
@@ -2339,11 +2339,11 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosSubtreeException)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly([](const std::string&, int,
-                           const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
-        });
+        .WillRepeatedly(
+            [](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+            });
 
     std::map<pldm::MctpInfo, pldm::Availability> mctpInfoMap;
     TestMctpDiscovery::getMctpInfos(*disc, mctpInfoMap);
@@ -3131,7 +3131,7 @@ sdbusplus::message_t makeInterfacesAddedMsgFull(
     auto rawBus = sdbusplus::bus::new_default();
     auto msg =
         rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
-    msg.append(sdbusplus::message::object_path(objPath), interfaces);
+    msg.append(sdbusplus::object_path(objPath), interfaces);
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
     return msg;
@@ -3478,13 +3478,11 @@ TEST(UnifyMctpRegression, InterfacesRemoved_KnownEndpoint_HandlerCalled)
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
-    const pldm::MctpInfo endpoint{40,
-                                  "deadbeef-1111-2222-3333-444455556666",
-                                  "SMBus",
-                                  uint32_t(4),
-                                  std::nullopt,
-                                  "MctpOverSMBus",
-                                  std::nullopt};
+    const pldm::MctpInfo endpoint{
+        40,           "deadbeef-1111-2222-3333-444455556666",
+        "SMBus",      uint32_t(4),
+        std::nullopt, "MctpOverSMBus",
+        std::nullopt};
     disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
 
     const std::string objPath =
@@ -3506,13 +3504,11 @@ TEST(UnifyMctpRegression, InterfacesRemoved_UnknownPath_NoOp)
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
-    const pldm::MctpInfo endpoint{40,
-                                  "deadbeef-1111-2222-3333-444455556666",
-                                  "SMBus",
-                                  uint32_t(4),
-                                  std::nullopt,
-                                  "MctpOverSMBus",
-                                  std::nullopt};
+    const pldm::MctpInfo endpoint{
+        40,           "deadbeef-1111-2222-3333-444455556666",
+        "SMBus",      uint32_t(4),
+        std::nullopt, "MctpOverSMBus",
+        std::nullopt};
     disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
 
     const std::string unknownPath =
@@ -3533,13 +3529,11 @@ TEST(UnifyMctpRegression, InterfacesRemoved_NonMCTPInterface_Ignored)
     TrackingMctpHandler handler;
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
-    const pldm::MctpInfo endpoint{41,
-                                  "deadbeef-1111-2222-3333-444455556667",
-                                  "SMBus",
-                                  uint32_t(4),
-                                  std::nullopt,
-                                  "MctpOverSMBus",
-                                  std::nullopt};
+    const pldm::MctpInfo endpoint{
+        41,           "deadbeef-1111-2222-3333-444455556667",
+        "SMBus",      uint32_t(4),
+        std::nullopt, "MctpOverSMBus",
+        std::nullopt};
     disc->addToExistingMctpInfos(pldm::MctpInfos{endpoint});
 
     const std::string objPath =
@@ -3555,8 +3549,9 @@ TEST(UnifyMctpRegression, InterfacesRemoved_NonMCTPInterface_Ignored)
 // Tests 13 + 14 — REMOVED by Commit 1 (P5).
 // The top-level propertiesChangedNamespace subscription was redundant with
 // the per-endpoint matches in `enableMatches`. After Commit 1 these tests
-// no longer apply; replaced by `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`
-// below, which asserts the subscription is gone.
+// no longer apply; replaced by
+// `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel` below, which asserts the
+// subscription is gone.
 
 // Test 13 (post-Commit 1) — `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`
 // Asserts that after Commit 1 the discovery object no longer installs the
@@ -3591,20 +3586,19 @@ TEST(UnifyMctpRegression, PerEndpoint_ConnectivityChange_CallsRefreshEndpoints)
 
     // refreshEndpoints reads UUID + EID from D-Bus per handler.
     EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{std::string(
-            "60606060-1111-2222-3333-444455556666")}))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{
+            std::string("60606060-1111-2222-3333-444455556666")}))
         .WillOnce(testing::Return(pldm::utils::PropertyValue{uint8_t(60)}));
 
     disc->refreshEndpoints(onlineMsg);
     EXPECT_EQ(handler.onlineCalls, 1);
     EXPECT_EQ(handler.lastOnlineEid, 60);
-    EXPECT_EQ(handler.lastOnlineUuid,
-              "60606060-1111-2222-3333-444455556666");
+    EXPECT_EQ(handler.lastOnlineUuid, "60606060-1111-2222-3333-444455556666");
 
     auto offlineMsg = makeRefreshEndpointsMessage(objPath, "Degraded");
     EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{std::string(
-            "60606060-1111-2222-3333-444455556666")}))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{
+            std::string("60606060-1111-2222-3333-444455556666")}))
         .WillOnce(testing::Return(pldm::utils::PropertyValue{uint8_t(60)}));
 
     disc->refreshEndpoints(offlineMsg);
@@ -3626,11 +3620,11 @@ TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsFalse)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly([](const std::string&, int,
-                           const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
-        });
+        .WillRepeatedly(
+            [](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
+            });
 
     std::map<pldm::MctpInfo, pldm::Availability> infoMap;
     const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
@@ -3740,7 +3734,8 @@ TEST(UnifyMctpRegression,
 // `BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant`:
 // Mapper throws; resolveBusOwner returns the legacy MCTPService constant
 // so the constructor's match-rule initialisers can still proceed.
-TEST(UnifyMctpRegression, BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant)
+TEST(UnifyMctpRegression,
+     BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant)
 {
     MockdBusHandler mockedDbusHandler;
     TrackingMctpHandler handler;
@@ -3750,11 +3745,11 @@ TEST(UnifyMctpRegression, BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant
     // throws — also tolerated by existing getMctpInfos try-catch.
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(2)
-        .WillRepeatedly([](const std::string&, int,
-                           const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
-        });
+        .WillRepeatedly(
+            [](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                throw sdbusplus::exception::SdBusError(EINVAL, "mapper-failed");
+            });
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
@@ -3791,21 +3786,21 @@ TEST(UnifyMctpRegression,
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
     TestMctpDiscovery::setFastRetryBackoff(*disc);
 
-    pldm::utils::GetSubTreeResponse subtree{};  // empty, but healthy
+    pldm::utils::GetSubTreeResponse subtree{}; // empty, but healthy
 
     int callCount = 0;
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(testing::AtLeast(2))
-        .WillRepeatedly([&](const std::string&, int,
-                            const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            ++callCount;
-            if (callCount == 1)
-            {
-                throw sdbusplus::exception::SdBusError(EINVAL, "mock-once");
-            }
-            return subtree;
-        });
+        .WillRepeatedly(
+            [&](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                ++callCount;
+                if (callCount == 1)
+                {
+                    throw sdbusplus::exception::SdBusError(EINVAL, "mock-once");
+                }
+                return subtree;
+            });
 
     std::map<pldm::MctpInfo, pldm::Availability> infoMap;
     const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
@@ -3826,11 +3821,11 @@ TEST(UnifyMctpRegression, GetMctpInfos_MapperFailsAllRetries_ReturnsFalse)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly([](const std::string&, int,
-                           const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            throw sdbusplus::exception::SdBusError(EINVAL, "always-fail");
-        });
+        .WillRepeatedly(
+            [](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                throw sdbusplus::exception::SdBusError(EINVAL, "always-fail");
+            });
 
     std::map<pldm::MctpInfo, pldm::Availability> infoMap;
     const bool ok = TestMctpDiscovery::getMctpInfos(*disc, infoMap);
@@ -3880,11 +3875,11 @@ TEST(UnifyMctpRegression, Constructor_MapperFailed_DoesNotPublishEmpty)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly([](const std::string&, int,
-                           const std::vector<std::string>&)
-                            -> pldm::utils::GetSubTreeResponse {
-            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
-        });
+        .WillRepeatedly(
+            [](const std::string&, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+            });
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
@@ -3947,7 +3942,8 @@ TEST(UnifyMctpRegression, RefreshEndpoints_BadUUIDVariant_DoesNotThrow)
     // Return UUID variant holding a uint64_t — refreshEndpoints does
     // std::get<std::string>(UUID), which throws.
     EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(pldm::utils::PropertyValue{uint64_t(0xDEAD)}));
+        .WillOnce(
+            testing::Return(pldm::utils::PropertyValue{uint64_t(0xDEAD)}));
 
     EXPECT_NO_THROW(disc->refreshEndpoints(msg));
     EXPECT_EQ(handler.onlineCalls, 0);

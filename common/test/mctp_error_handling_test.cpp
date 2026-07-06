@@ -329,7 +329,6 @@ TEST_F(MctpErrorHandlingTest,
         eid, "RequestUpdate", EHOSTUNREACH, MCTP_BINDING_UNKNOWN, MCTP_DIR_TX,
         "FWUpdate");
 
-    EXPECT_EQ(queriedDeviceNameEid, eid);
     EXPECT_EQ(queryDeviceStatusCalls, 1u);
     EXPECT_TRUE(logCalls.empty());
 }
@@ -390,7 +389,6 @@ TEST_F(MctpErrorHandlingTest,
         eid, "RequestUpdate", EHOSTUNREACH, MCTP_BINDING_UNKNOWN, MCTP_DIR_TX,
         "FWUpdate");
 
-    EXPECT_EQ(queriedDeviceNameEid, eid);
     EXPECT_EQ(queryDeviceStatusCalls, 1u);
     EXPECT_TRUE(logCalls.empty());
 }

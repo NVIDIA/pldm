@@ -148,12 +148,13 @@ class Manager
     void updateFWVersion(pldm::eid eid);
 
     /** @brief Provide per-component metadata sourced from the entity-manager
-     *         Configuration.PLDMFirmwareDevice.Components array for an endpoint.
+     *         Configuration.PLDMFirmwareDevice.Components array for an
+     * endpoint.
      *
      *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step
-     *  3b/3d. When present for an EID, createEntry() prefers this EM-sourced map
-     *  (component Name, Associations → RelatedItem, optional Manufacturer) over
-     *  the legacy JSON-parsed firmwareInventoryInfo. Match is by
+     *  3b/3d. When present for an EID, createEntry() prefers this EM-sourced
+     * map (component Name, Associations → RelatedItem, optional Manufacturer)
+     * over the legacy JSON-parsed firmwareInventoryInfo. Match is by
      *  ComponentIdentifier against the PLDM GetFirmwareParameters response.
      *
      *  @param[in] eid - MCTP endpointID

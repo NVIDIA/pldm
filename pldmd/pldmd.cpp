@@ -303,8 +303,8 @@ int main(int argc, char** argv)
         bus, "/xyz/openbmc_project/metric");
     sdbusplus::server::manager_t controlObjManager(
         bus, "/xyz/openbmc_project/control");
-    sdbusplus::server::manager_t stateObjManager(
-        bus, "/xyz/openbmc_project/state");
+    sdbusplus::server::manager_t stateObjManager(bus,
+                                                 "/xyz/openbmc_project/state");
 
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
 

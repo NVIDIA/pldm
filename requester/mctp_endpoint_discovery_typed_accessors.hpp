@@ -47,8 +47,8 @@ template <typename T, typename Variant>
  *  or wrong-typed variant.
  */
 template <typename T, typename PropertyMap>
-[[nodiscard]] std::optional<T> tryGetProp(
-    const PropertyMap& props, const std::string& key) noexcept
+[[nodiscard]] std::optional<T> tryGetProp(const PropertyMap& props,
+                                          const std::string& key) noexcept
 {
     const auto it = props.find(key);
     if (it == props.end())
