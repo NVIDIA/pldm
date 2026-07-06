@@ -351,9 +351,15 @@ void MctpDiscovery::bindStaticEidConfigurations(
         {
             continue;
         }
-        staticEidToName.emplace(
-            *staticEid,
-            std::make_pair(std::get<std::string>(nameIt->second), objPath));
+        const auto* namePtr = std::get_if<std::string>(&nameIt->second);
+        if (namePtr == nullptr)
+        {
+            warning(
+                "bindStaticEidConfigurations: MCTPTargetName at {PATH} is not a string; skipping",
+                "PATH", objPath);
+            continue;
+        }
+        staticEidToName.emplace(*staticEid, std::make_pair(*namePtr, objPath));
     }
     if (staticEidToName.empty())
     {
@@ -419,7 +425,8 @@ void MctpDiscovery::bindStaticEidConfigurations(
         MctpInfo mctpInfo(epEid, uuid, mctpMedium, std::get<NetworkId>(epProps),
                           bind->second.first, mctpBinding, mctpLocalEid);
         // Key the configurations map on the EM config path (as the
-        // configured_by path does) so getTargetNameForEid resolves the name.
+        // configured_by path does) so em_config::targetNameForEid resolves
+        // the name.
         configurations.emplace(bind->second.second, mctpInfo);
         mctpInfoMap[std::move(mctpInfo)] = availability;
         info(

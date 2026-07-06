@@ -17,6 +17,7 @@ dep_src_files = [
     '../../test/test_instance_id.hpp',
     '../../fw-update/component_updater.cpp',
     '../../fw-update/device_updater.cpp',
+    '../../fw-update/em_config.cpp',
     '../../fw-update/other_device_update_manager.cpp',
     '../../fw-update/update_manager.cpp',
     '../../fw-update/update.cpp',
