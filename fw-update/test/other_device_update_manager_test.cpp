@@ -41,6 +41,7 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -62,6 +63,22 @@ fs::path otherDeviceTempRoot()
 std::string otherDeviceTempPathString(std::string_view relativePath)
 {
     return (otherDeviceTempRoot() / relativePath).string();
+}
+
+size_t syncExtractOtherDevicePkgs(
+    OtherDeviceUpdateManager& otherDeviceUpdateManager,
+    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    const ComponentImageInfos& compImageInfos, std::istream& package)
+{
+    auto task = otherDeviceUpdateManager.extractOtherDevicePkgs(
+        fwDeviceIDRecords, compImageInfos, package);
+    auto result = stdexec::sync_wait(std::move(task));
+    if (!result.has_value())
+    {
+        ADD_FAILURE() << "extractOtherDevicePkgs did not complete";
+        return 0;
+    }
+    return std::get<0>(result.value());
 }
 
 } // namespace
@@ -219,14 +236,9 @@ TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
 
     std::istringstream dummyStream("10 20 30 40");
 
-    size_t result = 0;
-    exec::async_scope scope;
-    scope.spawn(
-        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-            result = co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                fwDeviceIDRecords, compImageInfos, dummyStream);
-        }));
-    stdexec::sync_wait(scope.on_empty());
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, dummyStream);
 
     EXPECT_EQ(result, expectedResult);
 }
@@ -1234,17 +1246,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
     std::istringstream package("ABCD1234");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
@@ -1339,17 +1342,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
     std::istringstream package("ABCD1234");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
     std::filesystem::remove_all(otherDeviceTempRoot() / "match2");
@@ -1514,17 +1508,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "DeadVersion"}};
     std::istringstream package("ABCD1234");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.empty());
@@ -1680,17 +1665,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, 200, 0xFFFFFFFF, 0, 0, 0, 4, "LiveVersion"}};
     std::istringstream package("ABCD1234");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.uuidMappings.contains(uuid));
@@ -1756,17 +1732,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, 301, 0xFFFFFFFF, 0, 0, 4, 4, "VersionB"}};
     std::istringstream package("ABCDEFGH");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
@@ -1998,17 +1965,8 @@ TEST_F(OtherDeviceUpdateManagerTest,
         {10, 100, 0xFFFFFFFF, 0, 0, 32, 64, "VersionString2"}};
     std::istringstream package("ABCD");
 
-    size_t result = 0;
-    {
-        exec::async_scope _scope;
-        _scope.spawn(
-            stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                result =
-                    co_await otherDeviceUpdateManager.extractOtherDevicePkgs(
-                        fwDeviceIDRecords, compImageInfos, package);
-            }));
-        stdexec::sync_wait(_scope.on_empty());
-    }
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
     std::filesystem::remove_all(otherDeviceTempRoot() / "single_fail");

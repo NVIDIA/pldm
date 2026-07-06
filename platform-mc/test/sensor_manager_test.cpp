@@ -1228,6 +1228,7 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
     ASSERT_TRUE(termini[tid]->parsePDRs());
     ASSERT_EQ(1u, termini[tid]->stateSensors.size());
     auto stateSensor = termini[tid]->stateSensors.front();
+    stateSensor->needUpdate = false;
 
     uint64_t now = 0;
     sd_event_now(event.get(), CLOCK_MONOTONIC, &now);

@@ -21,11 +21,15 @@ fw_update_test_sources = [
 ]
 
 fw_update_test_sources_no_config = []
+fw_update_test_sources_no_em_config = []
 fw_update_test_sources_no_firmware_inventory = []
 fw_update_test_sources_no_activation = []
 foreach src : fw_update_test_sources
     if src != '../config.cpp'
         fw_update_test_sources_no_config += src
+    endif
+    if src != '../em_config.cpp'
+        fw_update_test_sources_no_em_config += src
     endif
     if src != '../firmware_inventory.cpp'
         fw_update_test_sources_no_firmware_inventory += src
@@ -38,6 +42,9 @@ endforeach
 fw_update_test_src = declare_dependency(sources: fw_update_test_sources)
 fw_update_test_src_no_config = declare_dependency(
     sources: fw_update_test_sources_no_config,
+)
+fw_update_test_src_no_em_config = declare_dependency(
+    sources: fw_update_test_sources_no_em_config,
 )
 fw_update_test_src_no_firmware_inventory = declare_dependency(
     sources: fw_update_test_sources_no_firmware_inventory,
@@ -56,6 +63,7 @@ tests = [
     'debug_token_internal_test',
     'device_updater_firmware_update_test',
     'device_updater_test',
+    'em_config_internal_test',
     'error_handling_test',
     'firmware_inventory_internal_thread_test',
     'firmware_inventory_manager_test',
@@ -63,11 +71,7 @@ tests = [
     'inventory_manager_internal_test',
     'inventory_manager_test',
     'manager_internal_test',
-    # TEMP: disabled -- stdexec 8c5eedd0 rejects this test's inline
-    # 'just() | let_value(->exec::task<void>)' spawn pattern under the
-    # ASan/UBSan build (dependent_sender_error). Pre-existing develop issue,
-    # unrelated to the sdbusplus rename. Re-enable once the pattern is fixed.
-    # 'other_device_update_manager_test',
+    'other_device_update_manager_test',
     'package_parser_stub_error_test',
     'package_parser_test',
     'package_signature_test',
@@ -88,6 +92,8 @@ foreach t : tests
     test_link_args = []
     if t == 'config_internal_test'
         test_fw_update_src = fw_update_test_src_no_config
+    elif t == 'em_config_internal_test'
+        test_fw_update_src = fw_update_test_src_no_em_config
     elif t == 'activation_test'
         test_fw_update_src = fw_update_test_src_no_activation
     elif t == 'firmware_inventory_internal_thread_test'

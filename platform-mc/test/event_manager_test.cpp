@@ -22,7 +22,6 @@
 #include "common/types.hpp"
 #include "fw-update/component_updater.hpp"
 #include "fw-update/config.hpp"
-#include "fw-update/device_inventory.hpp"
 #include "fw-update/device_updater.hpp"
 #include "fw-update/firmware_inventory.hpp"
 #include "fw-update/inventory_manager.hpp"

@@ -63,15 +63,18 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <future>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
+#include <utility>
 
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
@@ -219,6 +222,13 @@ class AsyncEntityManagerServer
 
     ~AsyncEntityManagerServer()
     {
+        if (connection)
+        {
+            runOnIoThread([this] { connection->close(); },
+                          "closing AsyncEntityManagerServer connection");
+            waitUntilIoDrained();
+        }
+
         io.stop();
         if (ioThread.joinable())
         {

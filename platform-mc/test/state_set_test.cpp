@@ -30,6 +30,7 @@
 #include "oem/nvidia/platform-mc/state_set/nvlink.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
 #include "platform-mc/state_set/pciePortLinkState.hpp"
+#include "platform-mc/state_set/processorOsStates.hpp"
 #undef protected
 #undef private
 #ifdef __clang__
@@ -504,6 +505,22 @@ class StateSetPciePortLinkStateCoverage : public StateSetPciePortLinkState
     }
 };
 
+class StateSetProcessorOsStatesCoverage : public StateSetProcessorOsStates
+{
+  public:
+    using StateSetProcessorOsStates::StateSetProcessorOsStates;
+
+    Associations getAssociations() const
+    {
+        return associationDefinitionsIntf->associations();
+    }
+
+    void resetAssociationDefinitionsIntf()
+    {
+        associationDefinitionsIntf.reset();
+    }
+};
+
 class StateSetHealthStateCoverage : public StateSetHealthState
 {
   public:
@@ -645,6 +662,8 @@ TEST_F(StateSetCoverageTest, stateSetCreatorSensorMatrixCoverage)
         std::string("/xyz/openbmc_project/state/coverage/creator/powersupply");
     auto pciePath =
         std::string("/xyz/openbmc_project/state/coverage/creator/pcie");
+    auto processorOsPath =
+        std::string("/xyz/openbmc_project/state/coverage/creator/processor_os");
     auto bootPath =
         std::string("/xyz/openbmc_project/state/coverage/creator/boot");
     auto ethPath =
@@ -731,6 +750,16 @@ TEST_F(StateSetCoverageTest, stateSetCreatorSensorMatrixCoverage)
         PLDM_STATESET_ID_LINKSTATE, 7, pciePath, association, pcieSensor.get());
     EXPECT_NE(nullptr,
               dynamic_cast<StateSetPciePortLinkState*>(pcieState.get()));
+
+    auto processorOsSensor =
+        makeStateSensor(1, 0x100A, PLDM_ENTITY_SYS_BOARD, 8,
+                        PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES,
+                        "/xyz/openbmc_project/inventory/system/board/board_os");
+    auto processorOsState = StateSetCreator::createSensor(
+        PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES, 8, processorOsPath,
+        association, processorOsSensor.get());
+    EXPECT_NE(nullptr,
+              dynamic_cast<StateSetProcessorOsStates*>(processorOsState.get()));
 
     auto bootSensor = makeStateSensor(
         1, 0x1007, PLDM_ENTITY_SYS_BOARD, 8, PLDM_STATESET_ID_BOOT_REQUEST,
@@ -935,6 +964,121 @@ TEST_F(StateSetCoverageTest, clearNonVolatileVariableStateCoverage)
     stateSet.setValue(PLDM_STATESET_BOOT_REQUEST_NORMAL);
     EXPECT_EQ(PLDM_STATESET_BOOT_REQUEST_NORMAL, stateSet.getValue());
     EXPECT_EQ("ClearNonvolatileVariable", stateSet.getStringStateType());
+}
+
+TEST_F(StateSetCoverageTest, processorOsStatesValueAndEventMatrixCoverage)
+{
+    std::string path = "/xyz/openbmc_project/state/coverage/processor_os_0";
+    auto association = makeAssociation(
+        "chassis", "all_states",
+        "/xyz/openbmc_project/inventory/system/processor/cpu_os0");
+    StateSetProcessorOsStatesCoverage stateSet(
+        PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES, 0, path, association);
+
+    struct BootCase
+    {
+        uint8_t state;
+        BootProgressStages progress;
+        const char* eventState;
+        Level level;
+    };
+
+    const std::array<BootCase, 14> cases{{
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM,
+         BootProgressStages::ResetBootROM, "Booting", Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE1,
+         BootProgressStages::PrimaryProcInit, "Booting", Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_BOOT_STAGE2,
+         BootProgressStages::MotherboardInit, "Booting", Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_PRE_OS,
+         BootProgressStages::SystemInitComplete, "Booting",
+         Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_BOOTING, BootProgressStages::OSStart,
+         "Booting", Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RUNNING, BootProgressStages::OSRunning,
+         "OSRunning", Level::Informational},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_QUIESCED,
+         BootProgressStages::OSQuiesced, "OSQuiesced", Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_UPDATE_IN_PROGRESS,
+         BootProgressStages::FWUpdateInProgress, "FWUpdateInProgress",
+         Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_IN_PROGRESS,
+         BootProgressStages::OSCrashDumpInProgress, "OSCrashDumpInProgress",
+         Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_CRASH_DUMP_COMPLETED,
+         BootProgressStages::OSCrashDumpCompleted, "OSCrashDumpCompleted",
+         Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_IN_PROGRESS,
+         BootProgressStages::FWFaultInProgress, "FWFaultInProgress",
+         Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_FW_FAULT_COMPLETED,
+         BootProgressStages::FWFaultCompleted, "FWFaultCompleted",
+         Level::Warning},
+        {PLDM_STATE_SET_EMBEDDED_PROC_OS_RESET_BOOT_ROM_2,
+         BootProgressStages::ResetBootROM, "Booting", Level::Informational},
+        {0xFF, BootProgressStages::Unspecified, "Booting",
+         Level::Informational},
+    }};
+
+    for (const auto& testCase : cases)
+    {
+        stateSet.setValue(testCase.state);
+        EXPECT_EQ(testCase.progress, stateSet.bootProgressIntf->bootProgress());
+        auto [message, state, level, eventId,
+              impacted] = stateSet.getEventData(nullptr);
+        EXPECT_EQ(testCase.eventState, state);
+        EXPECT_EQ(testCase.level, level);
+        EXPECT_TRUE(eventId.empty());
+        EXPECT_TRUE(impacted.empty());
+    }
+
+    stateSet.bootProgressIntf->bootProgress(BootProgressStages::OEM);
+    auto [message, state, level, eventId,
+          impacted] = stateSet.getEventData(nullptr);
+    EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedWarning", message);
+    EXPECT_EQ("OEM", state);
+    EXPECT_EQ(Level::Warning, level);
+    EXPECT_TRUE(eventId.empty());
+    EXPECT_TRUE(impacted.empty());
+    EXPECT_EQ("ProcessorOSState", stateSet.getStringStateType());
+}
+
+TEST_F(StateSetCoverageTest, processorOsStatesAssociationAndRenameCoverage)
+{
+    std::string path =
+        "/xyz/openbmc_project/state/coverage/processor_os_1/Boot_0";
+    auto association = makeAssociation(
+        "chassis", "all_states",
+        "/xyz/openbmc_project/inventory/system/processor/cpu_os1");
+    StateSetProcessorOsStatesCoverage stateSet(
+        PLDM_STATE_SET_EMBEDDED_PROCESSOR_OS_STATES, 1, path, association);
+
+    std::vector<pldm::dbus::PathAssociation> associations{
+        association,
+        makeAssociation("sensors", "all_sensors",
+                        "/xyz/openbmc_project/sensors/processor/os1")};
+    stateSet.setAssociation(associations);
+
+    auto stored = stateSet.getAssociations();
+    ASSERT_EQ(3u, stored.size());
+    EXPECT_EQ("chassis", std::get<0>(stored[0]));
+    EXPECT_EQ("os_states", std::get<1>(stored[1]));
+    EXPECT_EQ("/xyz/openbmc_project/inventory/system/processor/cpu_os1",
+              std::get<2>(stored[1]));
+    EXPECT_EQ("sensors", std::get<0>(stored[2]));
+
+    auto originalPath = stateSet.objectPath;
+    stateSet.updateSensorName("Boot_0");
+    EXPECT_EQ(originalPath, stateSet.objectPath);
+
+    stateSet.updateSensorName("Processor OS+Boot#1");
+    EXPECT_EQ("Processor OS+Boot#1", stateSet.objectName);
+    EXPECT_EQ("Processor OS+Boot#1", stateSet.objectPath.filename().string());
+    EXPECT_EQ(BootProgressStages::ResetBootROM,
+              stateSet.bootProgressIntf->bootProgress());
+
+    stateSet.resetAssociationDefinitionsIntf();
+    EXPECT_NO_THROW(stateSet.setAssociation(associations));
 }
 
 TEST_F(StateSetCoverageTest, ethIbPortLinkStateCoverage)

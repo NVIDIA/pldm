@@ -29,13 +29,13 @@ tests = [
     # 'handler_test',
     'handler_coverage_test',
     'request_test',
-    # TEMP: disabled -- this suite drives MctpDiscovery against the shared
-    # singleton real D-Bus (pldm::utils::DBusHandler::getBus()); state leaks
-    # between cases and real-bus reads block in the unit-test bus (no
-    # ObjectMapper), so the binary fails non-deterministically and/or exceeds
-    # the CI 30s timeout. Pre-existing (reproduces on the un-rebased branch);
-    # re-enable once the cases are isolated onto a mocked/dedicated bus.
-    # 'mctp_endpoint_discovery_test',
+    # The cases that drove MctpDiscovery against the shared singleton real
+    # D-Bus (no ObjectMapper on the unit-test bus, so each constructor sat
+    # through the full production mapper-retry backoff and the binary
+    # exceeded the CI timeout) carry a gtest DISABLED_ prefix in the source;
+    # the mock-driven cases run. Re-enable the DISABLED_ cases once they are
+    # isolated onto a mocked/dedicated bus.
+    'mctp_endpoint_discovery_test',
 ]
 
 openssl = dependency('openssl', required: true)
@@ -62,7 +62,7 @@ foreach t : tests
             ],
         ),
         workdir: meson.current_source_dir(),
-        timeout: t == 'handler_test' ? 90 : 30,
+        timeout: (t == 'handler_test' or t == 'mctp_endpoint_discovery_test') ? 90 : 30,
         suite: non_valgrind_test_suites,
     )
 endforeach
