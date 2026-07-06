@@ -70,7 +70,8 @@ class NumericEffecter
   public:
     NumericEffecter(const tid_t tid, const bool effecterDisabled,
                     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
-                    std::string& effecterName, std::string& associationPath,
+                    const std::string& effecterName,
+                    const std::string& associationPath,
                     TerminusManager& terminusManager);
     ~NumericEffecter() {};
 
@@ -267,6 +268,9 @@ class NumericEffecter
     /** @brief  The DBus path of effecter */
     std::string path;
 
+    /** @brief  effecterName */
+    std::string effecterName;
+
     /** @brief  A container to store OemIntf, it allows us to add additional OEM
      * sdbusplus object as extra attribute */
     std::vector<std::shared_ptr<platform_mc::OemIntf>> oemIntfs;
@@ -278,7 +282,17 @@ class NumericEffecter
     /** @brief flag to update the value once */
     bool needUpdate;
 
+    /** @brief flag to keep re-reading the effecter until its operational
+     * state settles */
+    bool trackOperationalState = false;
+
   private:
+    /** @brief Disarm operational-state tracking for an effecter that reached
+     * a terminal state. Counterpart of Terminus::rearmTrackedEffecters().
+     * No-op for untracked effecters and for ones already disarmed.
+     */
+    void disarmOperationalStateTracking();
+
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;
     std::unique_ptr<OperationalStatusIntf> operationalStatusIntf = nullptr;
     std::unique_ptr<AssociationDefinitionsInft> associationDefinitionsIntf =

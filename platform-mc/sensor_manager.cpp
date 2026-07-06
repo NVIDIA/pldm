@@ -258,7 +258,13 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 {
                     co_return PLDM_ERROR;
                 }
-                effector->needUpdate = false;
+                // State-tracked effecters stay armed and are re-read every
+                // round; getNumericEffecterValue clears needUpdate for them
+                // once a terminal operational state is observed.
+                if (!effector->trackOperationalState)
+                {
+                    effector->needUpdate = false;
+                }
             }
         }
 

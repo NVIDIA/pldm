@@ -326,27 +326,44 @@ static std::vector<uint8_t> makeEntityAssociationPdr()
     return pdr;
 }
 
-static std::vector<uint8_t> makeAuxNamePdr(uint16_t effecterId, uint8_t pdrType)
+/* Build an effecter aux-name PDR carrying a caller-supplied "en" name, so a
+ * test can drive the aux-name-based unit dispatch in NumericEffecter's ctor.
+ * Multibyte fields are written in protocol (little-endian) order rather than
+ * host order, so the bytes are the same on any build host. */
+static std::vector<uint8_t> makeNamedAuxNamePdr(
+    uint16_t effecterId, uint8_t pdrType, std::string_view name)
 {
     std::vector<uint8_t> names{
-        1,                     // nameStringCount
-        'e',  'n',  0x00,      // name language tag: "en"
-        0x00, 0x41, 0x00, 0x00 // UTF16-BE "A"
+        1,             // nameStringCount
+        'e', 'n', 0x00 // name language tag: "en"
     };
+    for (char ch : name)
+    {
+        names.push_back(0x00); // UTF16-BE high byte
+        names.push_back(static_cast<uint8_t>(ch));
+    }
+    names.push_back(0x00); // UTF16-BE NUL terminator
+    names.push_back(0x00);
 
     std::vector<uint8_t> pdr(
         sizeof(pldm_effecter_aux_name_pdr) + names.size() - 1, 0);
     auto* aux = reinterpret_cast<pldm_effecter_aux_name_pdr*>(pdr.data());
-    aux->hdr.record_handle = 6;
+    aux->hdr.record_handle = htole32(6);
     aux->hdr.version = 1;
     aux->hdr.type = pdrType;
-    aux->hdr.record_change_num = 0;
-    aux->hdr.length = pdr.size() - sizeof(pldm_pdr_hdr);
-    aux->terminus_handle = 1;
-    aux->effecter_id = effecterId;
+    aux->hdr.record_change_num = htole16(0);
+    aux->hdr.length =
+        htole16(static_cast<uint16_t>(pdr.size() - sizeof(pldm_pdr_hdr)));
+    aux->terminus_handle = htole16(1);
+    aux->effecter_id = htole16(effecterId);
     aux->effecter_count = 1;
     memcpy(aux->effecter_names, names.data(), names.size());
     return pdr;
+}
+
+static std::vector<uint8_t> makeAuxNamePdr(uint16_t effecterId, uint8_t pdrType)
+{
+    return makeNamedAuxNamePdr(effecterId, pdrType, "A");
 }
 
 /* Build a compact (wire-format) numeric effecter PDR byte vector.
@@ -537,6 +554,42 @@ static std::vector<uint8_t> makeNumericEffecterPdr(uint16_t effecterId,
     pdr.normal_min.value_u8 = 40;
     pdr.rated_max.value_u8 = 70;
     pdr.rated_min.value_u8 = 30;
+    return serializeNumericEffecterPdr(pdr);
+}
+
+static constexpr float pcieLinkMaskTransitionIntervalSec = 0.05f;
+/* 48 significant bits: SegmentCtlrId * 8 + RpId. */
+static constexpr uint64_t pcieLinkMaskSupportedMask = 0x0000FFFFFFFFFFFFULL;
+
+/* SatMC PCIe root-port link-enable mask effecter: base unit Bits + entity
+ * PCI Express Bus + an aux name containing "PCIeRPLinkCtrl" is what makes
+ * NumericEffecter's ctor set trackOperationalState. */
+static std::vector<uint8_t> makePcieLinkMaskEffecterPdr(uint16_t effecterId)
+{
+    pldm_numeric_effecter_value_pdr pdr{};
+    pdr.hdr.record_handle = effecterId;
+    pdr.hdr.version = 1;
+    pdr.hdr.type = PLDM_NUMERIC_EFFECTER_PDR;
+    pdr.hdr.record_change_num = 0;
+    pdr.terminus_handle = 1;
+    pdr.effecter_id = effecterId;
+    pdr.entity_type = PLDM_ENTITY_PCI_EXPRESS_BUS;
+    pdr.entity_instance = 0;
+    pdr.container_id = 3;
+    pdr.effecter_semantic_id = 0;
+    pdr.effecter_init = PLDM_NO_INIT;
+    pdr.effecter_auxiliary_names = true;
+    pdr.base_unit = PLDM_SENSOR_UNIT_BITS;
+    pdr.unit_modifier = 0;
+    pdr.is_linear = true;
+    pdr.effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT64;
+    pdr.resolution = 1.0f;
+    pdr.offset = 0.0f;
+    pdr.transition_interval = pcieLinkMaskTransitionIntervalSec;
+    pdr.max_settable.value_u64 = pcieLinkMaskSupportedMask;
+    pdr.min_settable.value_u64 = 0;
+    pdr.range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT64;
+    pdr.range_field_support.byte = 0x00;
     return serializeNumericEffecterPdr(pdr);
 }
 
@@ -3414,6 +3467,99 @@ TEST_F(TerminusTest, addNewPdrsRetainsUnrecognizedRawPdr)
     EXPECT_TRUE(terminus.numericSensors.empty());
     EXPECT_TRUE(terminus.numericEffecters.empty());
     EXPECT_TRUE(terminus.stateEffecters.empty());
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterOnPdrReapply)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000531");
+    Terminus terminus(0x55, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmReapplyTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    auto tracked = terminus.numericEffecters[0];
+    ASSERT_TRUE(tracked->trackOperationalState);
+
+    // The device closed its write window: updateValue() observed a terminal
+    // operational state and disarmed tracking.
+    tracked->needUpdate = false;
+
+    // SatMC re-reports the same PDRs as ADDED on the next power cycle. Nothing
+    // is applied, but the effecter must be re-armed so the new window is seen.
+    std::vector<std::vector<uint8_t>> reAdded{
+        makeNamedAuxNamePdr(0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR,
+                            "PCIeRPLinkCtrl_0"),
+        makePcieLinkMaskEffecterPdr(0x0845)};
+    EXPECT_EQ(0u, terminus.addNewPdrs(reAdded));
+    EXPECT_EQ(1u, terminus.numericEffecters.size());
+    EXPECT_TRUE(tracked->needUpdate);
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterOnPdrApplyNewRecord)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000532");
+    Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmNewRecordTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    auto tracked = terminus.numericEffecters[0];
+    ASSERT_TRUE(tracked->trackOperationalState);
+    tracked->needUpdate = false;
+
+    // A batch carrying a genuinely new, unrelated PDR still re-arms the tracked
+    // effecter: the sweep is driven by "this terminus refreshed its
+    // repository", not by whether the effecter's own record handle was listed.
+    std::vector<std::vector<uint8_t>> mixed{
+        makeSensorAuxNamePdr(0x701),
+        makeStateSensorPdr(0x701, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    EXPECT_EQ(2u, terminus.addNewPdrs(mixed));
+    EXPECT_TRUE(tracked->needUpdate);
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterLeavesOrdinaryEffectersAlone)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000533");
+    Terminus terminus(0x57, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmScopeTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    terminus.pdrs.emplace_back(makeNumericEffecterPdr(0x0846, false));
+    terminus.pdrs.emplace_back(makeStateEffecterPdr(
+        0x0847, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(2u, terminus.numericEffecters.size());
+    ASSERT_EQ(1u, terminus.stateEffecters.size());
+
+    for (auto& effecter : terminus.numericEffecters)
+    {
+        effecter->needUpdate = false;
+    }
+    terminus.stateEffecters[0]->needUpdate = false;
+
+    // Only the tracked effecter is re-armed. Ordinary numeric effecters keep
+    // their one-shot read semantics, and state effecters are out of scope.
+    EXPECT_EQ(1u, terminus.rearmTrackedEffecters());
+    for (auto& effecter : terminus.numericEffecters)
+    {
+        EXPECT_EQ(effecter->trackOperationalState, effecter->needUpdate);
+    }
+    EXPECT_FALSE(terminus.stateEffecters[0]->needUpdate);
+
+    // Idempotent: an already-armed effecter is not counted twice.
+    EXPECT_EQ(0u, terminus.rearmTrackedEffecters());
 }
 
 // Currently due to async nature of polling this can't be tested.
