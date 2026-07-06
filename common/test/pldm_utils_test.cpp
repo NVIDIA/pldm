@@ -1570,6 +1570,75 @@ TEST(ValidEID, allTestCases)
     EXPECT_EQ(rc, true);
 }
 
+TEST(ReadOptionalEidProperty, absentKeyReturnsNullopt)
+{
+    pldm::utils::PropertyMap props;
+    EXPECT_EQ(readOptionalEidProperty(props, "StaticEID"), std::nullopt);
+}
+
+TEST(ReadOptionalEidProperty, acceptsInRangeIntegralAlternatives)
+{
+    pldm::utils::PropertyMap props{
+        {"u8", uint8_t{12}},   {"u16", uint16_t{34}}, {"u32", uint32_t{56}},
+        {"u64", uint64_t{78}}, {"i16", int16_t{90}},  {"i32", int32_t{123}},
+        {"i64", int64_t{254}}, {"zero", uint8_t{0}},  {"max", uint16_t{255}},
+    };
+    EXPECT_EQ(readOptionalEidProperty(props, "u8"), uint8_t{12});
+    EXPECT_EQ(readOptionalEidProperty(props, "u16"), uint8_t{34});
+    EXPECT_EQ(readOptionalEidProperty(props, "u32"), uint8_t{56});
+    EXPECT_EQ(readOptionalEidProperty(props, "u64"), uint8_t{78});
+    EXPECT_EQ(readOptionalEidProperty(props, "i16"), uint8_t{90});
+    EXPECT_EQ(readOptionalEidProperty(props, "i32"), uint8_t{123});
+    EXPECT_EQ(readOptionalEidProperty(props, "i64"), uint8_t{254});
+    EXPECT_EQ(readOptionalEidProperty(props, "zero"), uint8_t{0});
+    EXPECT_EQ(readOptionalEidProperty(props, "max"), uint8_t{255});
+}
+
+TEST(ReadOptionalEidProperty, rejectsOutOfRangeInsteadOfNarrowing)
+{
+    // 300 would silently narrow to 44, -1 to 255, huge values to arbitrary
+    // EIDs; all must be rejected.
+    pldm::utils::PropertyMap props{
+        {"tooBig", uint16_t{300}},
+        {"negative", int32_t{-1}},
+        {"huge", uint64_t{0xFFFFFFFFFFFFFF2CULL}},
+        {"aboveMax", int64_t{256}},
+    };
+    EXPECT_EQ(readOptionalEidProperty(props, "tooBig"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "negative"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "huge"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "aboveMax"), std::nullopt);
+}
+
+TEST(ReadOptionalEidProperty, parsesDecimalStringsStrictly)
+{
+    pldm::utils::PropertyMap props{
+        {"good", std::string{"42"}},     {"fractional", std::string{"12.9"}},
+        {"negative", std::string{"-1"}}, {"tooBig", std::string{"300"}},
+        {"junk", std::string{"abc"}},    {"trailing", std::string{"42abc"}},
+        {"empty", std::string{""}},
+    };
+    EXPECT_EQ(readOptionalEidProperty(props, "good"), uint8_t{42});
+    EXPECT_EQ(readOptionalEidProperty(props, "fractional"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "negative"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "tooBig"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "junk"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "trailing"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "empty"), std::nullopt);
+}
+
+TEST(ReadOptionalEidProperty, rejectsNonNumericVariantAlternatives)
+{
+    pldm::utils::PropertyMap props{
+        {"boolean", true},
+        {"floating", double{12.0}},
+        {"bytes", std::vector<uint8_t>{12}},
+    };
+    EXPECT_EQ(readOptionalEidProperty(props, "boolean"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "floating"), std::nullopt);
+    EXPECT_EQ(readOptionalEidProperty(props, "bytes"), std::nullopt);
+}
+
 TEST(TrimNameForDbus, goodTest)
 {
     std::string name = "Name with  space";

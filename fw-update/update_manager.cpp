@@ -62,57 +62,6 @@ static std::optional<std::string> extractTargetName(
     return pathStr.substr(pathStr.find_last_of('/') + 1);
 }
 
-/** @brief Read an optional EID-valued (uint8) property from an entity-manager
- *         Configuration property map.
- *
- *  Tolerates the integral and string variant alternatives entity-manager may
- *  publish (the migrated config writes StaticEndpointID / BridgePool* as
- * decimal strings). Returns std::nullopt when absent or unparseable. Never
- * throws.
- */
-static std::optional<uint8_t> extractOptionalEid(
-    const pldm::utils::PropertyMap& props, const std::string& key)
-{
-    auto it = props.find(key);
-    if (it == props.end())
-    {
-        return std::nullopt;
-    }
-    const auto& v = it->second;
-    if (auto p = std::get_if<uint8_t>(&v))
-    {
-        return *p;
-    }
-    if (auto p = std::get_if<uint16_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<uint32_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<uint64_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<int64_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<std::string>(&v))
-    {
-        try
-        {
-            return static_cast<uint8_t>(std::stoul(*p));
-        }
-        catch (const std::exception&)
-        {
-            return std::nullopt;
-        }
-    }
-    return std::nullopt;
-}
-
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
  *         set of statically-configured device EIDs.
  *
@@ -171,14 +120,17 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
                 continue;
             }
 
-            if (auto eid = extractOptionalEid(props, "StaticEndpointID"))
+            if (auto eid = pldm::utils::readOptionalEidProperty(
+                    props, "StaticEndpointID"))
             {
                 refreshEidSet.insert(*eid);
             }
             // Bridge entries declare a downstream EID pool; refresh the whole
             // range so bridged devices are covered even before discovery.
-            auto poolStart = extractOptionalEid(props, "BridgePoolStartEid");
-            auto poolEnd = extractOptionalEid(props, "BridgePoolEndEID");
+            auto poolStart = pldm::utils::readOptionalEidProperty(
+                props, "BridgePoolStartEid");
+            auto poolEnd =
+                pldm::utils::readOptionalEidProperty(props, "BridgePoolEndEID");
             if (poolStart && poolEnd && *poolStart <= *poolEnd)
             {
                 for (mctp_eid_t e = *poolStart; e <= *poolEnd; ++e)

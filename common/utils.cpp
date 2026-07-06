@@ -20,14 +20,19 @@
 #include <array>
 #include <cctype>
 #include <cerrno>
+#include <charconv>
 #include <ctime>
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 PHOSPHOR_LOG2_USING;
@@ -185,6 +190,57 @@ bool isValidEID(eid mctpEid)
     }
 
     return true;
+}
+
+std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
+                                           const std::string& key)
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return std::nullopt;
+    }
+
+    std::optional<int64_t> raw = std::visit(
+        [](const auto& v) -> std::optional<int64_t> {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
+            {
+                if (std::in_range<int64_t>(v))
+                {
+                    return static_cast<int64_t>(v);
+                }
+                return std::nullopt;
+            }
+            else if constexpr (std::is_same_v<T, std::string>)
+            {
+                // Strict decimal parse: the whole string must be consumed,
+                // so fractional, empty, and trailing-junk values are
+                // rejected instead of truncated.
+                int64_t parsed{};
+                auto [ptr, ec] =
+                    std::from_chars(v.data(), v.data() + v.size(), parsed);
+                if (ec == std::errc{} && ptr == v.data() + v.size())
+                {
+                    return parsed;
+                }
+                return std::nullopt;
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        },
+        it->second);
+
+    if (!raw || *raw < 0 || *raw > std::numeric_limits<uint8_t>::max())
+    {
+        error(
+            "Ignoring property '{KEY}': value is not an integer in the EID range 0..255",
+            "KEY", key);
+        return std::nullopt;
+    }
+    return static_cast<eid>(*raw);
 }
 
 uint8_t getNumPadBytes(uint32_t data)

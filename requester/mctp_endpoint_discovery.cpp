@@ -301,57 +301,6 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
     return true;
 }
 
-namespace
-{
-/** @brief Read an optional EID-valued property from a Configuration property
- *         map, tolerating the integral and string variant alternatives
- *         entity-manager may publish. Returns std::nullopt when absent or
- *         unparseable. Never throws.
- */
-std::optional<uint8_t> readOptionalEidProp(
-    const pldm::utils::PropertyMap& props, const std::string& key)
-{
-    auto it = props.find(key);
-    if (it == props.end())
-    {
-        return std::nullopt;
-    }
-    const auto& v = it->second;
-    if (auto p = std::get_if<uint8_t>(&v))
-    {
-        return *p;
-    }
-    if (auto p = std::get_if<uint16_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<uint32_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<uint64_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<int64_t>(&v))
-    {
-        return static_cast<uint8_t>(*p);
-    }
-    if (auto p = std::get_if<std::string>(&v))
-    {
-        try
-        {
-            return static_cast<uint8_t>(std::stoul(*p));
-        }
-        catch (const std::exception&)
-        {
-            return std::nullopt;
-        }
-    }
-    return std::nullopt;
-}
-} // namespace
-
 void MctpDiscovery::bindStaticEidConfigurations(
     std::map<MctpInfo, Availability>& mctpInfoMap)
 {
@@ -391,7 +340,8 @@ void MctpDiscovery::bindStaticEidConfigurations(
                 "PATH", objPath, "ERROR", e);
             continue;
         }
-        auto staticEid = readOptionalEidProp(props, "StaticEID");
+        auto staticEid =
+            pldm::utils::readOptionalEidProperty(props, "StaticEID");
         if (!staticEid)
         {
             continue; // device relies on configured_by

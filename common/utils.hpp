@@ -526,6 +526,24 @@ uint8_t readHostEID();
  */
 bool isValidEID(eid mctpEid);
 
+/** @brief Read an optional EID-valued property from a Configuration property
+ *         map.
+ *
+ *  Tolerates the integral and decimal-string variant alternatives
+ *  entity-manager may publish. An EID is an 8-bit identifier, so a present
+ *  but invalid value — out of the 0..255 range, fractional, or non-numeric —
+ *  is logged and rejected rather than silently narrowed to a different EID
+ *  (300 -> 44, -1 -> 255, "12.9" -> 12). An absent property returns
+ *  std::nullopt without logging. Never throws.
+ *
+ *  @param[in] props - Configuration property map
+ *  @param[in] key - property name
+ *
+ *  @return the validated EID, std::nullopt when absent or invalid
+ */
+std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
+                                           const std::string& key);
+
 /** @brief Convert a value in the JSON to a D-Bus property value
  *
  *  @param[in] type - type of the D-Bus property
