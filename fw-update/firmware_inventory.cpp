@@ -84,12 +84,11 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
     auto compInfoSearch = componentInfoMap.find(eid);
     FirmwareInfo fwInfoSearch;
 
-    // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step
-    // 3b/3d: prefer per-component metadata sourced from the entity-manager
+    // Prefer per-component metadata sourced from the entity-manager
     // Configuration.PLDMFirmwareDevice.Components array (Name, Associations →
     // RelatedItem, optional Manufacturer). Match by ComponentIdentifier against
     // the GetFirmwareParameters response; unmatched components fall through to
-    // the FCM-REQ-16 fallback names in componentNameMap below.
+    // the fallback names in componentNameMap below.
     if (auto emIt = emComponentObjectMap.find(eid);
         emIt != emComponentObjectMap.end() && !emIt->second.empty())
     {
@@ -109,8 +108,8 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
             else if (componentNameMap.contains(eid) &&
                      componentNameMap.at(eid).contains(compKey.second))
             {
-                // FCM-REQ-16: component reported by the device but not declared
-                // in the EM Components array — use the fallback name.
+                // Component reported by the device but not declared in the EM
+                // Components array — use the fallback name.
                 compObjName = componentNameMap.at(eid).at(compKey.second);
             }
             else

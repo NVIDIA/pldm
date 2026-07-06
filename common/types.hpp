@@ -203,9 +203,8 @@ using ComponentImageInfos = std::vector<ComponentImageInfo>;
 
 using DownstreamDeviceIDRecordCount = uint8_t;
 
-// Shared inventory helper types (device-inventory chassis types removed in the
-// PLDM FW Update Config Migration, DGXOPENBMC-25121 — RoT chassis are now owned
-// by entity-manager via Configuration.PLDMDeviceInventory).
+// Shared inventory helper types. RoT chassis objects are owned by
+// entity-manager via Configuration.PLDMDeviceInventory.
 using DeviceObjPath = std::string;
 using Associations =
     std::vector<std::tuple<std::string, std::string, std::string>>;

@@ -866,7 +866,7 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
     // association is published only after mctpd's endpoint object exists, so
     // the endpoint properties can be read back from mctpd and the EM
     // configuration resolved here — an endpoint is never processed before its
-    // identity exists (DGXOPENBMC-25121). No-op if the endpoint was already
+    // identity exists. No-op if the endpoint was already
     // created with a resolved name.
     sdbusplus::object_path objPath;
     try
@@ -1159,13 +1159,15 @@ bool MctpDiscovery::searchConfigurationFor(MctpInfo& mctpInfo)
             associatedService.c_str(), associatedObjPath.c_str(),
             associatedInterface.c_str());
         auto name = getNameFromProperties(mctpTargetProperties);
-        const bool resolved = !name.empty();
-        if (resolved)
+        if (name.empty())
         {
-            std::get<std::optional<std::string>>(mctpInfo) = name;
+            // Leave the map untouched so a later retry can record the
+            // resolved entry; emplace would pin the nameless one forever.
+            return false;
         }
-        configurations.emplace(associatedObjPath, mctpInfo);
-        return resolved;
+        std::get<std::optional<std::string>>(mctpInfo) = name;
+        configurations.insert_or_assign(associatedObjPath, mctpInfo);
+        return true;
     }
     catch (const std::exception& e)
     {

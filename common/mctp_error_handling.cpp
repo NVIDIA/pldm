@@ -149,10 +149,9 @@ void createMctpTransportRedfishEvent(
     mctp_eid_t eid, const std::string& commandName, uint32_t errorCode,
     uint8_t binding, uint8_t direction, const std::string& logNamespace)
 {
-    // PLDM FW Update Config Migration (DGXOPENBMC-25121): device identity is no
-    // longer resolved from an EID-keyed fw_update_config.json. The transport
+    // Device identity is not resolved from an EID-keyed lookup. The transport
     // error event below is diagnostic only; the device name is left unresolved
-    // (surfaces as "Unknown") rather than reintroducing an EID-keyed lookup.
+    // (surfaces as "Unknown").
     std::optional<std::string> componentName = std::nullopt;
 
     bool isAsync = (binding != MCTP_BINDING_UNKNOWN);

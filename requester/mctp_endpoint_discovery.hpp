@@ -150,7 +150,7 @@ class MctpDiscovery
      *         endpoint object exists, so when this fires both the endpoint
      *         properties (read back from mctpd) and the EM identity are
      *         available — endpoints are never processed before their
-     *         identity exists (DGXOPENBMC-25121). */
+     *         identity exists. */
     sdbusplus::bus::match_t mctpReactorConfiguredSignal;
 
     /** @brief List of handlers need to notify when new MCTP
@@ -284,7 +284,7 @@ class MctpDiscovery
      *         endpoints that never receive a per-device configured_by
      *         association.
      *
-     *  PLDM FW Update Config Migration (DGXOPENBMC-25121). The primary identity
+     *  The primary identity
      *  path is configured_by (searchConfigurationFor). Some platforms assign a
      *  device's MCTP EID out of band and route it through a bridge that is set
      *  up by a codeconstruct MCTP interface rather than a per-device

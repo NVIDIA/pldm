@@ -138,11 +138,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
                           localEid] : mctpInfos)
         {
-            // PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2
-            // step 3b/3d: source per-component naming/Associations/Manufacturer
-            // from the entity-manager
-            // Configuration.PLDMFirmwareDevice.Components array (joined by
-            // MCTPTargetName). Falls back to the legacy JSON-parsed
+            // Source per-component naming/Associations/Manufacturer from the
+            // entity-manager Configuration.PLDMFirmwareDevice.Components array
+            // (joined by MCTPTargetName). Falls back to the legacy JSON-parsed
             // componentNameMapInfo only if no EM entry is present.
             if (!populateComponentInfoFromEM(eid))
             {
@@ -157,10 +155,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     /** @brief Create firmware inventory and write the device UUID +
-     * EC-SKU/AP-SKU to the entity-manager-owned RoT chassis (PLDM FW Update
-     * Config Migration, DGXOPENBMC-25121).
+     *         EC-SKU/AP-SKU to the entity-manager-owned RoT chassis.
      *
-     *  RoT chassis objects are no longer created by pldmd; entity-manager owns
+     *  RoT chassis objects are not created by pldmd; entity-manager owns
      *  them via Configuration.PLDMDeviceInventory.CreateInventoryPath. pldmd
      *  writes the dynamic Common.UUID + SKU decorator to that EM-created object
      *  (and the AP-SKU to the optional UpdateInventoryPath if declared). This
@@ -177,10 +174,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         writeDeviceInventoryIdentity(eid, uuid, /*writeUuid=*/true);
         if (componentInfoMap.contains(eid))
         {
-            // FCM-REQ-16: ensure EVERY component the device reports has a name,
-            // even those absent from the EM Components array. EM-declared names
-            // (from populateComponentInfoFromEM) are kept; any device-reported
-            // component without one gets the SADD fallback
+            // Ensure EVERY component the device reports has a name, even those
+            // absent from the EM Components array. EM-declared names (from
+            // populateComponentInfoFromEM) are kept; any device-reported
+            // component without one gets the fallback
             // "<targetName>_C<ComponentIdentifier>" (or a generated name when
             // no configured_by target name is available).
             const std::string targetName = getTargetNameForEid(eid);
@@ -459,8 +456,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Write the device identity (UUID + EC-SKU/AP-SKU) to the
      *         entity-manager-owned RoT chassis.
      *
-     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.2.2/§3.3.2
-     *  step 3e. pldmd creates no inventory objects: the RoT chassis is created
+     *  pldmd creates no inventory objects: the RoT chassis is created
      *  by entity-manager from Configuration.PLDMDeviceInventory. This helper
      *  resolves the device's PLDMDeviceInventory config entry by string-match
      *  on MCTPTargetName, then writes the device identity onto the EM-owned
@@ -482,8 +478,6 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Resolve a device's friendly Name (the MCTPTargetName join key)
      *         for a discovered endpoint.
      *
-     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 Step 2.
-     *
      *  Identity is resolved via configured_by ONLY: the configurations map is
      *  keyed by the entity-manager config path that the endpoint's
      * configured_by association resolves to; the stored name is the transport
@@ -491,7 +485,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  `.Name`, which equals the MCTPTargetName cited by every PLDM-* entry for
      *  the same device. This is the canonical, transport-agnostic key.
      *
-     *  Identity is configured_by-only (FCM-REQ-11) — the EID is never used as
+     *  Identity is configured_by-only — the EID is never used as
      * an identity key. If configured_by is absent the name is empty and the
      *  endpoint is treated as not (yet) resolvable.
      *
@@ -522,17 +516,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** @brief Populate per-component naming/Associations/Manufacturer from the
      *         entity-manager Configuration.PLDMFirmwareDevice.Components array.
      *
-     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step 3b.
      *  Resolves the device's target Name via getTargetNameForEid (configured_by
-     *  only — SADD §3.3.2 Step 2), runs a global ObjectMapper GetSubTree for
+     *  only), runs a global ObjectMapper GetSubTree for
      *  Configuration.PLDMFirmwareDevice, keeps the entry whose MCTPTargetName
      *  equals the target Name, unpacks the nested
      *  Components array (D-Bus aa{sv}) into a ComponentIdentifier → {Name,
      *  Associations, Manufacturer} map, and hands it to the firmware inventory
      *  manager (drives one Software.Version per component with RelatedItem and
-     *  per-component update Task name — FCM-REQ-13/14/17). Also seeds
-     *  componentNameMap[eid] (id → Name) for target filtering and the
-     *  FCM-REQ-16 fallback.
+     *  per-component update Task name). Also seeds componentNameMap[eid]
+     *  (id → Name) for target filtering and the name fallback.
      *
      *  @param[in] eid - MCTP endpoint
      *  @return true if a matching PLDMFirmwareDevice entry was found and
@@ -829,17 +821,26 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                         pldmDeviceInventoryIntf);
                 if (auto it = props.find("MCTPTargetName"); it != props.end())
                 {
-                    entryTargetName = std::get<std::string>(it->second);
+                    if (auto* p = std::get_if<std::string>(&it->second))
+                    {
+                        entryTargetName = *p;
+                    }
                 }
                 if (auto it = props.find("CreateInventoryPath");
                     it != props.end())
                 {
-                    createPath = std::get<std::string>(it->second);
+                    if (auto* p = std::get_if<std::string>(&it->second))
+                    {
+                        createPath = *p;
+                    }
                 }
                 if (auto it = props.find("UpdateInventoryPath");
                     it != props.end())
                 {
-                    updatePath = std::get<std::string>(it->second);
+                    if (auto* p = std::get_if<std::string>(&it->second))
+                    {
+                        updatePath = *p;
+                    }
                 }
             }
             catch (const std::exception& e)

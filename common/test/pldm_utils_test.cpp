@@ -5612,11 +5612,6 @@ TEST(MatchEntryInfoTest, compareValuesAllValueTypePairsForAllAliases)
                       expectedResult)
                 << "FirmwareInventoryInfo pair mismatch (" << expectedIdx
                 << ", " << actualIdx << ")";
-            EXPECT_EQ(invokeCompareValuesNoInline<FirmwareInventoryInfo>(
-                          expectedVal, actualVal),
-                      expectedResult)
-                << "FirmwareInventoryInfo pair mismatch (" << expectedIdx
-                << ", " << actualIdx << ")";
             EXPECT_EQ(invokeCompareValuesNoInline<ComponentNameMapInfo>(
                           expectedVal, actualVal),
                       expectedResult)
@@ -5660,17 +5655,6 @@ TEST(MatchEntryInfoTest, isPropertyMatchAllValueTypePairs)
             }
 
             {
-                MatchFirmwareInfo matchInfos;
-                matchInfos.push_back(
-                    {DBusIntfMatch{interface, cfgPropMap}, makeFirmwareInfo()});
-                FirmwareInventoryInfo inv(matchInfos);
-                EXPECT_EQ(inv.isPropertyMatch(ifaceMap, cfgProp, interface),
-                          expectedResult)
-                    << "FirmwareInventoryInfo mismatch for pair ("
-                    << expectedIdx << ", " << actualIdx << ")";
-            }
-
-            {
                 MatchComponentNameMapInfo matchInfos;
                 matchInfos.push_back({DBusIntfMatch{interface, cfgPropMap},
                                       ComponentIdNameMap{{1, "comp1"}}});
@@ -5694,15 +5678,6 @@ TEST(MatchEntryInfoTest, isPropertyMatchAllValueTypesNoInlineDispatch)
         dbus::PropertyMap cfgProps = {{property, value}};
         dbus::InterfaceMap ifaceMap = {{interface, cfgProps}};
         std::pair<dbus::Property, dbus::Value> cfgProp{property, value};
-
-        {
-            MatchFirmwareInfo matchInfos;
-            matchInfos.push_back(
-                {DBusIntfMatch{interface, cfgProps}, makeFirmwareInfo()});
-            FirmwareInventoryInfo inv(matchInfos);
-            EXPECT_TRUE(invokeIsPropertyMatchNoInline(inv, ifaceMap, cfgProp,
-                                                      interface));
-        }
 
         {
             MatchFirmwareInfo matchInfos;

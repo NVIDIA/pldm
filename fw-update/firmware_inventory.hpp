@@ -151,8 +151,7 @@ class Manager
      *         Configuration.PLDMFirmwareDevice.Components array for an
      * endpoint.
      *
-     *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2 step
-     *  3b/3d. When present for an EID, createEntry() prefers this EM-sourced
+     *  When present for an EID, createEntry() prefers this EM-sourced
      * map (component Name, Associations → RelatedItem, optional Manufacturer)
      * over the legacy JSON-parsed firmwareInventoryInfo. Match is by
      *  ComponentIdentifier against the PLDM GetFirmwareParameters response.
@@ -182,7 +181,7 @@ class Manager
     const ComponentNameMap& componentNameMap;
 
     /** @brief Per-endpoint component metadata sourced from entity-manager
-     *         Configuration.PLDMFirmwareDevice.Components (DGXOPENBMC-25121).
+     *         Configuration.PLDMFirmwareDevice.Components.
      */
     std::unordered_map<eid, CreateComponentIdNameMap> emComponentObjectMap;
 

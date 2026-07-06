@@ -333,10 +333,9 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
         throw InternalFailure();
     }
 
-    for (auto& fdr : fwDeviceIDRecords)
-    {
+    std::erase_if(fwDeviceIDRecords, [&](auto& fdr) {
         auto& applicable = std::get<ApplicableComponents>(fdr);
-        std::erase_if(applicable, [&](const auto& idx) {
+        const auto removed = std::erase_if(applicable, [&](const auto& idx) {
             if (idx >= componentImageInfos.size())
             {
                 error(
@@ -346,7 +345,16 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
             }
             return false;
         });
-    }
+        // A record stripped of every component would still match descriptors
+        // and shadow a later valid record for the same device.
+        if (removed > 0 && applicable.empty())
+        {
+            error(
+                "Dropping FirmwareDeviceIDRecord with no valid applicable components after sanitization");
+            return true;
+        }
+        return false;
+    });
 
     size_t expectedChecksumSize = sizeof(PackageHeaderChecksum);
     if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)

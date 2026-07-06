@@ -45,10 +45,10 @@ class InventoryManagerTest : public testing::Test
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
-    InventoryManager inventoryManager;
     DescriptorMap outDescriptorMap{};
     DownstreamDescriptorMap outDownstreamDescriptorMap{};
     ComponentInfoMap outComponentInfoMap{};
+    InventoryManager inventoryManager;
     std::string messageError;
     std::string resolution;
 };

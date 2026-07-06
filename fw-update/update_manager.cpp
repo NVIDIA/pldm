@@ -116,8 +116,7 @@ static std::optional<uint8_t> extractOptionalEid(
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
  *         set of statically-configured device EIDs.
  *
- *  PLDM FW Update Config Migration (DGXOPENBMC-25121), SADD §3.3.2. The
- *  refresh-EID set otherwise derives from the live descriptorMap keys
+ *  The refresh-EID set otherwise derives from the live descriptorMap keys
  *  (configured_by-resolved discovery), which can omit a device not yet
  *  discovered at update time. To guarantee the COMPLETE device set is refreshed
  *  before an update, union every statically-assigned EID from the MCTP
@@ -125,7 +124,7 @@ static std::optional<uint8_t> extractOptionalEid(
  *  [BridgePoolStartEid, BridgePoolEndEID] range on bridge entries (covering the
  *  bridged downstream devices). std::set dedups against the live keys. This
  *  influences ONLY the refresh set — never device identity, inventory, or the
- *  MCTPTargetName join (those stay configured_by-resolved, FCM-REQ-11). D-Bus
+ *  MCTPTargetName join (those stay configured_by-resolved). D-Bus
  *  read failures are logged and skipped; never thrown.
  *
  *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
@@ -626,11 +625,10 @@ exec::task<void> UpdateManager::processStream(
     // Snapshot the user-requested target names along with each one's PLDM EID
     // so logUnupdatedTargets can emit a per-target Critical
     // ResourceErrorsDetected entry at terminal state for any requested target
-    // whose image wasn't in the package. PLDM FW Update Config Migration
-    // (DGXOPENBMC-25121) removed the EID-keyed fw_update_config.json lookup;
-    // resolution is now solely against the live componentNameMap (populated
-    // from the configured_by-resolved discovery flow). Names that don't resolve
-    // to any PLDM EID (e.g. non-PLDM targets) are intentionally skipped.
+    // whose image wasn't in the package. Resolution is solely against the
+    // live componentNameMap (populated from the configured_by-resolved
+    // discovery flow). Names that don't resolve to any PLDM EID (e.g.
+    // non-PLDM targets) are intentionally skipped.
     requestedTargets.clear();
     for (const auto& path : targets)
     {

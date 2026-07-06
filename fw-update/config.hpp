@@ -41,10 +41,9 @@ namespace pldm::fw_update
  *  update inventory commands. The config file also generates args for update
  *  message registry entries.
  *
- *  Device (RoT chassis) inventory is no longer parsed here: post the PLDM FW
- *  Update Config Migration (DGXOPENBMC-25121) the RoT chassis objects are
- *  owned by entity-manager (Configuration.PLDMDeviceInventory) and pldmd only
- *  writes the dynamic UUID to the EM-created object.
+ *  Device (RoT chassis) inventory is not parsed here: the RoT chassis objects
+ *  are owned by entity-manager (Configuration.PLDMDeviceInventory) and pldmd
+ *  only writes the dynamic UUID to the EM-created object.
  *
  *  @param[in] jsonPath - Path of firmware update config file
  *  @param[out] fwInventoryInfo - D-Bus firmware inventory config info
