@@ -16,6 +16,7 @@
  */
 #include "libpldm/firmware_update.h"
 
+#include "common/dBusAsyncUtils.hpp"
 #include "common/test/mocked_utils.hpp"
 #include "fw-update/other_device_update_manager.hpp"
 #include "fw-update/update_manager.hpp"
@@ -105,6 +106,9 @@ class OtherDeviceUpdateManagerTest : public testing::Test
 
     void TearDown() override
     {
+#ifdef MOCK_DBUS_ASYNC_UTILS
+        pldm::utils::dbusAsyncMock::reset();
+#endif
         if (staticBusSwapped)
         {
             pldm::utils::DBusHandler::getBus() = std::move(*savedStaticBus);
@@ -556,6 +560,103 @@ TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedAddsTrackedOtherDevice)
     EXPECT_NO_THROW({ otherDeviceUpdateManager.interfaceAdded(msg); });
     EXPECT_TRUE(otherDeviceUpdateManager.otherDevices.contains(objPath));
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
+}
+
+TEST_F(OtherDeviceUpdateManagerTest,
+       interfaceAddedFoldsItemUpdaterTimeoutsIntoCache)
+{
+    MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{}));
+
+    const std::string pathA = "/xyz/openbmc_project/software/other/timeout_a";
+    const std::string pathB = "/xyz/openbmc_project/software/other/timeout_b";
+    const std::string pathNoIface =
+        "/xyz/openbmc_project/software/other/timeout_no_iface";
+    const std::string pathBadType =
+        "/xyz/openbmc_project/software/other/timeout_bad_type";
+    const std::string uuidA = "00112233445566778899AABBCCDDEE01";
+    const std::string uuidB = "00112233445566778899AABBCCDDEE02";
+    const std::string uuidNoIface = "00112233445566778899AABBCCDDEE03";
+    const std::string uuidBadType = "00112233445566778899AABBCCDDEE04";
+    const std::string timeoutInterface = "com.nvidia.Software.UpdateTimeout";
+
+    pldm::utils::dbusAsyncMock::getServiceMap =
+        [&](const std::string& path,
+            const pldm::dbus::Interfaces&) -> pldm::utils::MapperServiceMap {
+        if (path == pathNoIface)
+        {
+            // Older nvidia-code-mgmt: no UpdateTimeout interface.
+            return {};
+        }
+        return {{"com.nvidia.ItemUpdater", {timeoutInterface}}};
+    };
+    pldm::utils::dbusAsyncMock::getProperty =
+        [&](const std::string& path, const std::string& property,
+            const std::string&,
+            const std::string&) -> pldm::utils::PropertyValue {
+        if (property != "Timeout")
+        {
+            throw std::runtime_error("unexpected property request");
+        }
+        if (path == pathA)
+        {
+            return uint64_t{1800};
+        }
+        if (path == pathB)
+        {
+            return uint64_t{21600};
+        }
+        return std::string{"not-a-uint64"};
+    };
+
+    OtherDeviceUpdateManager otherDeviceUpdateManager(
+        busMock, &updateManager, updatePolicyTargets, dbusHandler);
+    otherDeviceUpdateManager.startWatchingInterfaceAddition();
+    ASSERT_NE(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
+
+    // Pre-seed the pending images as extractOtherDevicePkgs would, so the
+    // watcher stays armed until the last InterfacesAdded arrives.
+    otherDeviceUpdateManager.isImageFileProcessed[uuidA] = false;
+    otherDeviceUpdateManager.isImageFileProcessed[uuidB] = false;
+    otherDeviceUpdateManager.isImageFileProcessed[uuidNoIface] = false;
+    otherDeviceUpdateManager.isImageFileProcessed[uuidBadType] = false;
+
+    auto deliverInterfaceAdded = [&](const std::string& objPath,
+                                     const std::string& uuid) {
+        pldm::dbus::PropertyMap uuidProperties;
+        uuidProperties.emplace("UUID", uuid);
+        pldm::dbus::InterfaceMap interfaces;
+        interfaces.emplace("xyz.openbmc_project.Common.UUID", uuidProperties);
+
+        auto rawBus = sdbusplus::bus::new_default();
+        auto msg = rawBus.new_method_call("org.test",
+                                          "/xyz/openbmc_project/software/other",
+                                          "org.test.Interface", "Method");
+        msg.append(sdbusplus::object_path(objPath), interfaces);
+        sealAndRewind(msg);
+        otherDeviceUpdateManager.interfaceAdded(msg);
+    };
+
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 0u);
+
+    deliverInterfaceAdded(pathA, uuidA);
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 1800u);
+
+    // No UpdateTimeout interface: skipped silently, cache unchanged.
+    deliverInterfaceAdded(pathNoIface, uuidNoIface);
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 1800u);
+
+    // Wrong D-Bus type for Timeout: ignored, cache unchanged.
+    deliverInterfaceAdded(pathBadType, uuidBadType);
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 1800u);
+
+    deliverInterfaceAdded(pathB, uuidB);
+    EXPECT_EQ(otherDeviceUpdateManager.getMaxItemUpdaterTimeoutSec(), 21600u);
+
+    EXPECT_TRUE(otherDeviceUpdateManager.otherDevices.contains(pathA));
+    EXPECT_TRUE(otherDeviceUpdateManager.otherDevices.contains(pathB));
 }
 
 TEST_F(OtherDeviceUpdateManagerTest, interfaceAddedSkipsExistingTrackedDevice)
@@ -1612,10 +1713,9 @@ TEST_F(OtherDeviceUpdateManagerTest, startTimerReturnsWhenWatchNotActive)
 TEST_F(OtherDeviceUpdateManagerTest,
        extractOtherDevicePkgsReturnsZeroWhenMultiComponentTransferFails)
 {
-    GTEST_SKIP() << "TODO(async-reads): MockdBusHandler-injected values not "
-                    "visible through new coroutine-based D-Bus reads";
     MockdBusHandler dbusHandler;
     const std::string objPath = "/xyz/openbmc_project/software/other/multi";
+    const std::string service = "com.nvidia.MultiFailure";
     const std::string uuid = "76910DFA1E4C11ED861D0242AC120002";
     const std::string sku = "0X01020304";
 
@@ -1644,6 +1744,19 @@ TEST_F(OtherDeviceUpdateManagerTest,
             throw std::runtime_error("unexpected property request");
         });
 
+    pldm::utils::dbusAsyncMock::getSubTree =
+        [&](const std::string&, int,
+            const pldm::dbus::Interfaces&) -> pldm::utils::GetSubTreeResponse {
+        return {{objPath, {{service, {"xyz.openbmc_project.Common.UUID"}}}}};
+    };
+    pldm::utils::dbusAsyncMock::getProperty =
+        [&](const std::string& path, const std::string& property,
+            const std::string& interface,
+            const std::string&) -> pldm::utils::PropertyValue {
+        return dbusHandler.getDbusPropertyVariant(
+            path.c_str(), property.c_str(), interface.c_str());
+    };
+
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
     std::filesystem::create_directories(otherDeviceTempRoot() / "multi");
@@ -1671,6 +1784,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.uuidMappings.contains(uuid));
     EXPECT_FALSE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
+    EXPECT_EQ(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
     std::filesystem::remove_all(otherDeviceTempRoot() / "multi");
 }
 
@@ -1912,11 +2026,10 @@ TEST_F(OtherDeviceUpdateManagerTest,
 TEST_F(OtherDeviceUpdateManagerTest,
        extractOtherDevicePkgsReturnsZeroWhenSingleTransferFails)
 {
-    GTEST_SKIP() << "TODO(async-reads): MockdBusHandler-injected values not "
-                    "visible through new coroutine-based D-Bus reads";
     MockdBusHandler dbusHandler;
     const std::string objPath =
         "/xyz/openbmc_project/software/other/single_fail";
+    const std::string service = "com.nvidia.SingleFailure";
     const std::string uuid = "76910DFA1E4C11ED861D0242AC120002";
     const std::string sku = "0X01020304";
 
@@ -1945,6 +2058,19 @@ TEST_F(OtherDeviceUpdateManagerTest,
             throw std::runtime_error("unexpected property request");
         });
 
+    pldm::utils::dbusAsyncMock::getSubTree =
+        [&](const std::string&, int,
+            const pldm::dbus::Interfaces&) -> pldm::utils::GetSubTreeResponse {
+        return {{objPath, {{service, {"xyz.openbmc_project.Common.UUID"}}}}};
+    };
+    pldm::utils::dbusAsyncMock::getProperty =
+        [&](const std::string& path, const std::string& property,
+            const std::string& interface,
+            const std::string&) -> pldm::utils::PropertyValue {
+        return dbusHandler.getDbusPropertyVariant(
+            path.c_str(), property.c_str(), interface.c_str());
+    };
+
     OtherDeviceUpdateManager otherDeviceUpdateManager(
         busMock, &updateManager, updatePolicyTargets, dbusHandler);
     std::filesystem::create_directories(otherDeviceTempRoot() / "single_fail");
@@ -1969,6 +2095,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
         otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
 
     EXPECT_EQ(result, 0);
+    EXPECT_EQ(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);
     std::filesystem::remove_all(otherDeviceTempRoot() / "single_fail");
 }
 

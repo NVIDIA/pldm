@@ -30,6 +30,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <com/nvidia/Software/UpdateTimeout/common.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/FilePath/server.hpp>
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
@@ -53,6 +54,11 @@ namespace fw_update
 {
 
 namespace MatchRules = sdbusplus::bus::match::rules;
+
+constexpr auto updateTimeoutInterface =
+    sdbusplus::common::com::nvidia::software::UpdateTimeout::interface;
+constexpr auto updateTimeoutProperty = sdbusplus::common::com::nvidia::
+    software::UpdateTimeout::property_names::timeout;
 
 pldm::utils::DBusHandlerInterface&
     OtherDeviceUpdateManager::defaultDbusHandler()
@@ -309,6 +315,9 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
                                 isImageFileProcessed[uuid] = false;
                             });
                         setUpdatePolicy(path, uuid);
+                        timeoutScope.spawn(fetchItemUpdaterTimeout(path),
+                                           exec::default_task_context<void>(
+                                               stdexec::inline_scheduler{}));
                     }
                 }
             }
@@ -326,7 +335,41 @@ void OtherDeviceUpdateManager::interfaceAdded(sdbusplus::message::message& m)
     if (allProcessed)
     {
         interfaceAddedMatch = nullptr;
-        updateManager->updateOtherDeviceComponents(isImageFileProcessed);
+        // Completing the components unblocks activation, whose
+        // activatePackage() consumes getMaxItemUpdaterTimeoutSec(), so it
+        // must wait for every in-flight fetchItemUpdaterTimeout() read to
+        // fold first. No new reads can start: the watcher is disarmed.
+        completionScope.spawn(
+            notifyOtherDeviceComponents(),
+            exec::default_task_context<void>(stdexec::inline_scheduler{}));
+    }
+}
+
+exec::task<void> OtherDeviceUpdateManager::notifyOtherDeviceComponents()
+{
+    co_await timeoutScope.on_empty();
+    updateManager->updateOtherDeviceComponents(isImageFileProcessed);
+}
+
+exec::task<void> OtherDeviceUpdateManager::handleUpdaterActivationTimeout()
+{
+    // Drains the timeout reads and sends the update information to the
+    // update manager.
+    co_await notifyOtherDeviceComponents();
+    for (auto& x : isImageFileProcessed)
+    {
+        if (x.second == false)
+        {
+            error("{PATH} not processed at timeout", "PATH", x.first);
+            // update message registry
+            std::string resolution = "Retry firmware update operation";
+            std::string messageArg0 = "Firmware Update Service";
+            std::string messageArg1 = uuidMappings[x.first].componentName +
+                                      " firmware update timed out";
+            createLogEntry(resourceErrorDetected, messageArg0, messageArg1,
+                           resolution);
+            updateManager->updateOtherDeviceCompletion(x.first, x.second);
+        }
     }
 }
 
@@ -481,8 +524,17 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
     co_return 0;
 #else
     size_t totalNumImages = 0;
-    startWatchingInterfaceAddition();
+    // Fresh package: the max is re-accumulated in interfaceAdded() as Item
+    // Updaters publish their activation objects for the transferred images.
+    maxItemUpdaterTimeoutCacheSec = 0;
     co_await buildDeviceDescriptorMap();
+    // All awaited D-Bus discovery must complete before the watcher is armed.
+    // From this point through the transfer loop there are no suspension
+    // points, so no InterfacesAdded callback can run and mark components
+    // processed before the pending-UUID bookkeeping (isImageFileProcessed)
+    // exists. The callbacks only record Item Updater readiness; activation
+    // is always initiated by pldm afterwards.
+    startWatchingInterfaceAddition();
 
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
@@ -530,6 +582,7 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 directoryName, componentImageInfo, package, objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
+                interfaceAddedMatch.reset();
                 co_return 0;
             }
             if (transferState == TransferPackageState::SKIPPED)
@@ -544,6 +597,7 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
                 objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
+                interfaceAddedMatch.reset();
                 co_return 0;
             }
         }
@@ -551,9 +605,6 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
         totalNumImages++;
         isImageFileProcessed[uuid] = false;
     }
-    // Populate the timeout cache before the synchronous getter is called by
-    // UpdateManager::activatePackage.
-    [[maybe_unused]] auto _rc2 = co_await populateMaxItemUpdaterTimeoutCache();
     startTimer(totalNumImages * UPDATER_ACTIVATION_WAIT_PER_IMAGE_SEC);
     co_return totalNumImages;
 #endif
@@ -565,26 +616,11 @@ void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
         if (this->interfaceAddedMatch != nullptr)
         {
             this->interfaceAddedMatch = nullptr;
-            //  send update information to update manager
-            updateManager->updateOtherDeviceComponents(
-                this->isImageFileProcessed);
-            for (auto& x : isImageFileProcessed)
-            {
-                if (x.second == false)
-                {
-                    error("{PATH} not processed at timeout", "PATH", x.first);
-                    // update message registry
-                    std::string resolution = "Retry firmware update operation";
-                    std::string messageArg0 = "Firmware Update Service";
-                    std::string messageArg1 =
-                        uuidMappings[x.first].componentName +
-                        " firmware update timed out";
-                    createLogEntry(resourceErrorDetected, messageArg0,
-                                   messageArg1, resolution);
-                    updateManager->updateOtherDeviceCompletion(x.first,
-                                                               x.second);
-                }
-            }
+            // Same gating as the interfaceAdded() completion path: devices
+            // that did appear may still have timeout reads in flight.
+            completionScope.spawn(
+                handleUpdaterActivationTimeout(),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
         }
     });
     info("Starting Timer to allow item updaters to process images");
@@ -748,39 +784,31 @@ uint64_t OtherDeviceUpdateManager::getMaxItemUpdaterTimeoutSec() const
     return maxItemUpdaterTimeoutCacheSec;
 }
 
-exec::task<int> OtherDeviceUpdateManager::populateMaxItemUpdaterTimeoutCache()
+exec::task<void> OtherDeviceUpdateManager::fetchItemUpdaterTimeout(
+    const std::string path)
 {
-    maxItemUpdaterTimeoutCacheSec = 0;
-#ifdef NON_PLDM
-    const std::string updateTimeoutInterface{
-        "com.nvidia.Software.UpdateTimeout"};
-    const std::string timeoutProperty{"Timeout"};
-    pldm::dbus::Interfaces timeoutIfaceList{updateTimeoutInterface};
-
-    try
+    auto services = co_await pldm::utils::coGetServiceMap(
+        path, pldm::dbus::Interfaces{updateTimeoutInterface});
+    if (services.empty())
     {
-        for (const auto& kv : otherDevices)
-        {
-            const std::string path = kv.first;
-            auto serviceMap =
-                co_await pldm::utils::coGetServiceMap(path, timeoutIfaceList);
-            if (serviceMap.empty())
-            {
-                continue;
-            }
-            const std::string serviceName = serviceMap.begin()->first;
-            auto value = co_await pldm::utils::coGetDbusProperty<uint64_t>(
-                path, timeoutProperty, updateTimeoutInterface, serviceName);
-            maxItemUpdaterTimeoutCacheSec =
-                std::max(maxItemUpdaterTimeoutCacheSec, value);
-        }
+        // Item Updater doesn't publish UpdateTimeout (older nvidia-code-mgmt
+        // builds) or the mapper lookup failed; either way the update falls
+        // back to the default timeout. coGetServiceMap logs the lookup error.
+        co_return;
     }
-    catch (const std::exception& e)
+    auto timeout = co_await pldm::utils::coGetDbusProperty<uint64_t>(
+        path, updateTimeoutProperty, updateTimeoutInterface,
+        services.begin()->first);
+    // A read failure or unexpected D-Bus type resolves to 0 (logged inside
+    // coGetDbusProperty), which folds as a no-op.
+    if (timeout > 0)
     {
-        error("populateMaxItemUpdaterTimeoutCache failed: {ERROR}", "ERROR", e);
+        maxItemUpdaterTimeoutCacheSec =
+            std::max(maxItemUpdaterTimeoutCacheSec, timeout);
+        info("Item Updater {PATH} advertises UpdateTimeout {SEC}s", "PATH",
+             path, "SEC", timeout);
     }
-#endif
-    co_return 0;
+    co_return;
 }
 
 } // namespace fw_update

@@ -19,6 +19,8 @@
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
+#include <exec/async_scope.hpp>
+#include <exec/task.hpp>
 #include <sdbusplus/async.hpp>
 #include <sdbusplus/timer.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
@@ -110,7 +112,22 @@ class OtherDeviceUpdateManager
     OtherDeviceUpdateManager& operator=(const OtherDeviceUpdateManager&) =
         delete;
     OtherDeviceUpdateManager& operator=(OtherDeviceUpdateManager&&) = delete;
-    ~OtherDeviceUpdateManager() = default;
+
+    /**
+     * @brief Drain in-flight coroutines so suspended frames see `*this`
+     *        alive through their full await chain (same pattern as
+     *        DebugToken::tokenScope). Stop is requested first so nothing
+     *        schedules further work; timeoutScope drains before
+     *        completionScope because the completion coroutines await
+     *        timeoutScope.on_empty().
+     */
+    ~OtherDeviceUpdateManager()
+    {
+        timeoutScope.request_stop();
+        completionScope.request_stop();
+        stdexec::sync_wait(timeoutScope.on_empty());
+        stdexec::sync_wait(completionScope.on_empty());
+    }
 
     /**
      * @brief Construct a new Other Device Update Manager object
@@ -196,9 +213,10 @@ class OtherDeviceUpdateManager
 
     /**
      * @brief Return the cached max UpdateTimeout (seconds) advertised by the
-     *        Item Updaters that descriptor-matched the current package. The
-     *        cache is populated asynchronously during extractOtherDevicePkgs,
-     *        so this synchronous getter never blocks the event loop.
+     *        Item Updaters processing the current package. The cache is folded
+     *        asynchronously in interfaceAdded() as each Item Updater publishes
+     *        its activation object, so this synchronous getter never blocks
+     *        the event loop.
      *
      * @return 0 if no Item Updater publishes the property; caller falls
      *         back to FIRMWARE_UPDATE_TIME.
@@ -230,6 +248,42 @@ class OtherDeviceUpdateManager
     void startWatchingInterfaceAddition();
 
     /**
+     * @brief Coroutine that reads com.nvidia.Software.UpdateTimeout.Timeout
+     *        from an Item Updater activation object and folds the value into
+     *        maxItemUpdaterTimeoutCacheSec. Spawned into timeoutScope from
+     *        interfaceAdded() for each newly tracked object. The completion
+     *        coroutines await timeoutScope.on_empty() before signaling
+     *        UpdateManager, so every read is guaranteed to have folded
+     *        before activation can consume the cache. Objects that don't
+     *        publish the interface (older nvidia-code-mgmt) are skipped
+     *        silently; read failures resolve to 0 inside the awaitables and
+     *        fold as no-ops.
+     *
+     * @param path - Item Updater activation object path (by value: the
+     *               caller's string may be destroyed across suspension)
+     */
+    exec::task<void> fetchItemUpdaterTimeout(const std::string path);
+
+    /**
+     * @brief Coroutine spawned into completionScope when interfaceAdded()
+     *        observes all pending images processed. Awaits
+     *        timeoutScope.on_empty() so every fetchItemUpdaterTimeout()
+     *        read has folded into the cache, then notifies UpdateManager —
+     *        which unblocks activation and the cache consumer,
+     *        UpdateManager::activatePackage().
+     */
+    exec::task<void> notifyOtherDeviceComponents();
+
+    /**
+     * @brief Coroutine spawned into completionScope when the activation
+     *        wait timer expires with images still pending. Awaits
+     *        timeoutScope.on_empty() like notifyOtherDeviceComponents(),
+     *        then notifies UpdateManager and logs the devices that never
+     *        published an activation object.
+     */
+    exec::task<void> handleUpdaterActivationTimeout();
+
+    /**
      * @brief Get Activation State of all other devices
      *          if any one to the activation state is activation then it
      *          returns State as activating otherwise Fail / Active
@@ -237,13 +291,6 @@ class OtherDeviceUpdateManager
      * @return activation State
      */
     Server::Activation::Activations getOverAllActivationState();
-
-    /**
-     * @brief Async populate maxItemUpdaterTimeoutCacheSec by reading the
-     *        com.nvidia.Software.UpdateTimeout property from each known
-     *        Item Updater path.
-     */
-    exec::task<int> populateMaxItemUpdaterTimeoutCache();
 
     /**
      * @brief updates the valid target count.
@@ -320,9 +367,10 @@ class OtherDeviceUpdateManager
     size_t validTargetCount;
 
     /**
-     * @brief Cached max UpdateTimeout (seconds) across Item Updaters that
-     *        descriptor-matched the current package. Populated asynchronously
-     *        inside extractOtherDevicePkgs so the sync getter never blocks.
+     * @brief Cached max UpdateTimeout (seconds) across the Item Updater
+     *        activation objects tracked for the current package. Reset at the
+     *        start of extractOtherDevicePkgs and folded asynchronously by
+     *        fetchItemUpdaterTimeout as each object appears.
      */
     uint64_t maxItemUpdaterTimeoutCacheSec{0};
 
@@ -386,6 +434,18 @@ class OtherDeviceUpdateManager
      */
     std::unordered_map<std::string, ComponentMap> uuidMappings;
     std::vector<sdbusplus::object_path> targets;
+
+    /** @brief Owns in-flight fetchItemUpdaterTimeout() coroutines. The
+     *  destructor sync_waits this scope before any member is torn down, so
+     *  a suspended coroutine always sees a live `this` for the full chain
+     *  (same pattern as DebugToken::tokenScope). */
+    exec::async_scope timeoutScope;
+
+    /** @brief Owns the completion coroutines
+     *  (notifyOtherDeviceComponents / handleUpdaterActivationTimeout),
+     *  which await timeoutScope.on_empty() and therefore cannot live in
+     *  timeoutScope itself. Drained by the destructor after timeoutScope. */
+    exec::async_scope completionScope;
 
     /** @brief Liveness sentinel for async callbacks. Captured as weak_ptr;
      *  expires when this object is destroyed, gating safe use of `this`.

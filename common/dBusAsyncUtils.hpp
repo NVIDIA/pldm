@@ -20,6 +20,9 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#ifdef MOCK_DBUS_ASYNC_UTILS
+#include <functional>
+#endif
 #include <queue>
 namespace pldm
 {
@@ -364,6 +367,35 @@ struct coGetSubTree
 
 #else
 
+namespace dbusAsyncMock
+{
+
+using PropertyGetter =
+    std::function<PropertyValue(const std::string&, const std::string&,
+                                const std::string&, const std::string&)>;
+using PropertySetter =
+    std::function<bool(const std::string&, const std::string&,
+                       const std::string&, const PropertyValue&)>;
+using ServiceMapGetter = std::function<MapperServiceMap(
+    const std::string&, const dbus::Interfaces&)>;
+using SubTreeGetter = std::function<GetSubTreeResponse(
+    const std::string&, int, const dbus::Interfaces&)>;
+
+inline PropertyGetter getProperty;
+inline PropertySetter setProperty;
+inline ServiceMapGetter getServiceMap;
+inline SubTreeGetter getSubTree;
+
+inline void reset()
+{
+    getProperty = {};
+    setProperty = {};
+    getServiceMap = {};
+    getSubTree = {};
+}
+
+} // namespace dbusAsyncMock
+
 template <typename type>
 struct coGetDbusProperty
 {
@@ -384,8 +416,17 @@ struct coGetDbusProperty
         return true;
     }
 
-    type await_resume() const noexcept
+    type await_resume() const
     {
+        if (dbusAsyncMock::getProperty)
+        {
+            auto value = dbusAsyncMock::getProperty(objectPath, property,
+                                                    interface, service);
+            if (auto typedValue = std::get_if<type>(&value))
+            {
+                return *typedValue;
+            }
+        }
         return ret;
     }
 
@@ -414,8 +455,12 @@ struct coGetServiceMap
         return true;
     }
 
-    MapperServiceMap await_resume() const noexcept
+    MapperServiceMap await_resume() const
     {
+        if (dbusAsyncMock::getServiceMap)
+        {
+            return dbusAsyncMock::getServiceMap(objectPath, ifaceList);
+        }
         return ret;
     }
 
@@ -443,8 +488,12 @@ struct coGetSubTree
         return true;
     }
 
-    GetSubTreeResponse await_resume() const noexcept
+    GetSubTreeResponse await_resume() const
     {
+        if (dbusAsyncMock::getSubTree)
+        {
+            return dbusAsyncMock::getSubTree(objectPath, depth, ifaceList);
+        }
         return ret;
     }
 
@@ -474,8 +523,13 @@ struct coSetDbusProperty
         return true;
     }
 
-    bool await_resume() const noexcept
+    bool await_resume() const
     {
+        if (dbusAsyncMock::setProperty)
+        {
+            return dbusAsyncMock::setProperty(objectPath, interface, property,
+                                              PropertyValue{value});
+        }
         return ret;
     }
 
