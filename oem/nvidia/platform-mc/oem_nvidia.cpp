@@ -741,6 +741,72 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
+    // PCIe root-port link-control effecters (PCIeRPLinkCtrl) live on a PCI
+    // Express Bus entity that has no inventory item of its own, so the
+    // generic association pass leaves them unassociated. Resolve each to
+    // the CPU package the bus belongs to — the Processor entity that is the
+    // container or a sibling in the same Processor I/O Module — and publish
+    // the pcie_link_controls chassis association consumed by bmcweb.
+    constexpr std::string_view pcieRpLinkCtrl("PCIeRPLinkCtrl");
+    for (auto effecter : terminus.numericEffecters)
+    {
+        if (!effecter->hasAssociationIntf())
+        {
+            continue;
+        }
+        sdbusplus::object_path effecterObjPath(effecter->path);
+        if (effecterObjPath.filename().find(pcieRpLinkCtrl) ==
+            std::string::npos)
+        {
+            continue;
+        }
+
+        auto entityInfo = effecter->getEntityInfo();
+        const auto& containerId = std::get<0>(entityInfo);
+        std::vector<std::string> cpuPaths;
+        if (auto containerEntity = terminus.getContainerEntity(containerId))
+        {
+            uint16_t containerType = std::get<1>(*containerEntity) & 0x7FFF;
+            if (containerType == PLDM_ENTITY_PROC)
+            {
+                cpuPaths = terminus.findInventory(*containerEntity, true);
+            }
+            // Mirror the SYS_BUS sensor precedent: only take the
+            // PROC-sibling fallback when the shared container is a
+            // processor module.
+            else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+            {
+                if (auto* contained =
+                        terminus.getContainedEntities(containerId))
+                {
+                    for (const auto& sibling : *contained)
+                    {
+                        if ((std::get<1>(sibling) & 0x7FFF) == PLDM_ENTITY_PROC)
+                        {
+                            cpuPaths = terminus.findInventory(sibling, true);
+                            if (!cpuPaths.empty())
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!cpuPaths.empty())
+        {
+            std::vector<std::tuple<std::string, std::string, std::string>>
+                assocs;
+            assocs.reserve(cpuPaths.size());
+            for (const auto& path : cpuPaths)
+            {
+                assocs.emplace_back("chassis", "pcie_link_controls", path);
+            }
+            effecter->setAssociation(assocs);
+        }
+    }
+
     co_return PLDM_SUCCESS;
 }
 

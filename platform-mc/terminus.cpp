@@ -846,11 +846,18 @@ size_t Terminus::addNewPdrs(const std::vector<std::vector<uint8_t>>& newPdrs)
         addStateEffecter(effecterId, std::move(stateSetEffecterInfo));
     }
 
+    // A repository change means this terminus restarted its device-side state
+    // sequence. Effecters re-reported as already-present are skipped above and
+    // keep whatever needUpdate they settled on, so a tracked effecter that
+    // disarmed on a terminal state would never be read again. Re-arm them here,
+    // ahead of the caller's applied-count early return.
+    auto rearmed = rearmTrackedEffecters();
+
     lg2::info(
-        "addNewPdrs: applied {N} new PDR(s), skipped {SK} already-present; +{NS} numeric sensor(s), +{SS} state sensor(s)",
+        "addNewPdrs: applied {N} new PDR(s), skipped {SK} already-present; +{NS} numeric sensor(s), +{SS} state sensor(s), re-armed {RE} tracked effecter(s)",
         "N", newPdrs.size() - skipped, "SK", skipped, "NS",
         numericSensorPdrs.size() - numStart, "SS",
-        stateSensorPdrs.size() - stateStart);
+        stateSensorPdrs.size() - stateStart, "RE", rearmed);
 
     return newPdrs.size() - skipped;
 }
@@ -2608,6 +2615,30 @@ void Terminus::setOnline()
     }
 
     lg2::info("Terminus {TID} is online", "TID", tid);
+}
+
+size_t Terminus::rearmTrackedEffecters()
+{
+    size_t rearmed = 0;
+    for (auto& numericEffecter : numericEffecters)
+    {
+        if (!numericEffecter || !numericEffecter->trackOperationalState ||
+            numericEffecter->needUpdate)
+        {
+            continue;
+        }
+        numericEffecter->needUpdate = true;
+        ++rearmed;
+    }
+
+    if (rearmed)
+    {
+        lg2::info(
+            "rearmTrackedEffecters: re-armed {N} tracked effecter(s) on tid={TID}",
+            "N", rearmed, "TID", tid);
+    }
+
+    return rearmed;
 }
 
 void Terminus::setOffline()

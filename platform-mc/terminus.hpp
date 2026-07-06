@@ -264,6 +264,18 @@ class Terminus
         return std::nullopt;
     }
 
+    /** @brief Get the contained (child) entities for a given container ID */
+    const std::set<EntityInfo>* getContainedEntities(
+        ContainerID containerId) const
+    {
+        auto itr = entityAssociations.find(containerId);
+        if (itr != entityAssociations.end())
+        {
+            return &itr->second.second;
+        }
+        return nullptr;
+    }
+
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
 
@@ -457,6 +469,13 @@ class Terminus
 
     /** @brief set the terminus to offline state */
     void setOffline();
+
+    /** @brief Resume operational-state tracking on numeric effecters that
+     *         disarmed it, after the terminus restarted its state sequence.
+     *
+     *  @return number of effecters re-armed
+     */
+    size_t rearmTrackedEffecters();
 
     const UUID& getUuid()
     {

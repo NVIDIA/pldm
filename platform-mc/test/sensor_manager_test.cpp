@@ -1751,6 +1751,104 @@ TEST_F(SensorManagerInterruptTest, doSensorPollingTaskStopAfterAwaitCoverage)
     }
 }
 
+TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
+{
+    constexpr pldm::tid_t tid = 0x7B;
+    auto terminus = createPlatformTerminus(tid);
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis7b"};
+
+    std::string trackedName{"tracked_numeric_effecter"};
+    auto trackedEffecter = std::make_shared<pldm::platform_mc::NumericEffecter>(
+        tid, false, makeNumericEffecterValuePdrForPolling(0x17B), trackedName,
+        inventoryPath, terminusManager);
+    trackedEffecter->trackOperationalState = true;
+    terminus->numericEffecters.emplace_back(trackedEffecter);
+
+    std::string untrackedName{"untracked_numeric_effecter"};
+    auto untrackedEffecter =
+        std::make_shared<pldm::platform_mc::NumericEffecter>(
+            tid, false, makeNumericEffecterValuePdrForPolling(0x17C),
+            untrackedName, inventoryPath, terminusManager);
+    terminus->numericEffecters.emplace_back(untrackedEffecter);
+
+    // Interrupt anchor polled after the numeric effecters each round.
+    auto stateEffecter = std::make_shared<pldm::platform_mc::StateEffecter>(
+        tid, false, 0x17D, makeBootRequestStateSetInfo(), nullptr,
+        inventoryPath, terminusManager);
+    terminus->stateEffecters.emplace_back(stateEffecter);
+
+    // Round 1: both numeric effecters are read; the loop clears needUpdate
+    // only for the untracked one.
+    ASSERT_TRUE(trackedEffecter->needUpdate);
+    ASSERT_TRUE(untrackedEffecter->needUpdate);
+    prepareInterrupt(tid, InterruptAction::stopPolling);
+    terminusManager.interruptCall = 3;
+    auto response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto stateResponse = makeGetStateEffecterStatesResp(1);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(stateResponse));
+    auto rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
+    EXPECT_TRUE(trackedEffecter->needUpdate);
+    EXPECT_FALSE(untrackedEffecter->needUpdate);
+
+    // Round 2: the tracked effecter reads a terminal state and disarms.
+    terminus->stopPolling = false;
+    prepareInterrupt(tid, InterruptAction::stopPolling);
+    terminusManager.interruptCall = 2;
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                               EFFECTER_OPER_STATE_UNAVAILABLE);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    stateResponse = makeGetStateEffecterStatesResp(1);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(stateResponse));
+    rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
+    EXPECT_FALSE(trackedEffecter->needUpdate);
+
+    // Round 3: with both numeric effecters idle, the single queued response
+    // is decoded by the state effecter — had a numeric effecter still been
+    // polled, it would have consumed the response first and the update-
+    // pending flag below would not be set.
+    terminus->stopPolling = false;
+    prepareInterrupt(tid, InterruptAction::stopPolling);
+    stateResponse = makeGetStateEffecterStatesResp(
+        1, PLDM_SUCCESS, EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(stateResponse));
+    rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
+    EXPECT_TRUE(stateEffecter->isUpdatePending());
+    EXPECT_FALSE(trackedEffecter->needUpdate);
+
+    // Round 4: a PDR repository refresh re-arms the tracked effecter only, and
+    // the next round genuinely reads it again. Queuing a terminal state is the
+    // discriminator: needUpdate can only fall back to false if the effecter
+    // actually issued a GetNumericEffecterValue this round.
+    EXPECT_EQ(1u, terminus->rearmTrackedEffecters());
+    EXPECT_TRUE(trackedEffecter->needUpdate);
+    EXPECT_FALSE(untrackedEffecter->needUpdate);
+
+    terminus->stopPolling = false;
+    prepareInterrupt(tid, InterruptAction::stopPolling);
+    terminusManager.interruptCall = 2;
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                               EFFECTER_OPER_STATE_UNAVAILABLE);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    stateResponse = makeGetStateEffecterStatesResp(1);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(stateResponse));
+    rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
+    EXPECT_FALSE(trackedEffecter->needUpdate);
+    EXPECT_FALSE(untrackedEffecter->needUpdate);
+}
+
 TEST_F(SensorManagerDataPathTest, initSensorListSkipsAsyncStateSensorsCoverage)
 {
     constexpr pldm::tid_t tid = 0x79;
