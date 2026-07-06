@@ -39,10 +39,19 @@ reviews:
               Code must build from publicly available sources only.
 
               **CG7 – D-Bus interface definitions in application code**
-              Flag new D-Bus interface definitions added inside application
-              code — they belong in the phosphor-dbus-interfaces repository.
-              String-type-for-numeric checks are enforced at the definition
-              layer via PDI-CG1 in phosphor-dbus-interfaces.
+              Flag code that registers or implements a new sdbusplus server
+              interface inline in application code (e.g., inheriting from a
+              generated `server::` template, calling `register_interface()`,
+              or adding new interface definitions via
+              `sdbusplus::server::object`). New interface definitions belong
+              in the phosphor-dbus-interfaces repository.
+
+              Do not flag caller/consumer code that merely references an
+              existing interface by name string (e.g., `const std::string
+              iface{"com.nvidia.Software.UpdateTimeout"}`) for property
+              reads, method calls, or service map queries. Using a string
+              literal to name an already-defined external interface is not a
+              definition and is acceptable in application code.
 
               **CG8 – Unit tests required with testable changes**
               Flag if the MR modifies logic files (under `src/`, `lib/`, or
