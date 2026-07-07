@@ -9,6 +9,7 @@ reviews:
     review_status: true
     poem: false
     request_changes_workflow: false
+    commit_status: false
 
     path_instructions:
         - path: "**/*.{cpp,hpp,c,h}"
@@ -190,8 +191,6 @@ reviews:
                   and vendored code.
                   Large commits are hard to review. Suggest splitting into
                   smaller, focused commits.
-
-commit_status: false
 
 chat:
     auto_reply: true
