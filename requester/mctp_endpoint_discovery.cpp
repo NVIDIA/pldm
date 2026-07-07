@@ -776,8 +776,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
                     auto [_2, ins2] = enableMatches.try_emplace(
                         objPath.str, bus,
                         sdbusplus::bus::match::rules::propertiesChanged(
-                            objPath.str,
-                            "au.com.codeconstruct.MCTP.Endpoint1"),
+                            objPath.str, "au.com.codeconstruct.MCTP.Endpoint1"),
                         std::bind_front(&MctpDiscovery::refreshEndpoints,
                                         this));
                     if (ins2)
@@ -901,7 +900,7 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
         enableMatches.try_emplace(
             path, bus,
             sdbusplus::bus::match::rules::propertiesChanged(path,
-                                                             MCTPInterfaceCC),
+                                                            MCTPInterfaceCC),
             std::bind_front(&MctpDiscovery::refreshEndpoints, this));
 
         info(
