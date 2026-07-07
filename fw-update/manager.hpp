@@ -670,8 +670,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             {
                 continue;
             }
-            const auto& [title, data] =
-                std::get<VendorDefinedDescriptorInfo>(descValue);
+            const VendorDefinedDescriptorInfo* vddi =
+                std::get_if<VendorDefinedDescriptorInfo>(&descValue);
+            if (vddi == nullptr)
+            {
+                continue;
+            }
+            const auto& [title, data] = *vddi;
             if (data.size() != 4)
             {
                 continue;

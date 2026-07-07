@@ -22,6 +22,8 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
@@ -40,24 +42,41 @@ namespace
  */
 uint16_t extractUint16(const pldm::utils::PropertyValue& v)
 {
+    constexpr auto kMax = std::numeric_limits<uint16_t>::max();
     if (auto p = std::get_if<uint16_t>(&v))
     {
         return *p;
     }
     if (auto p = std::get_if<uint64_t>(&v))
     {
+        if (*p > kMax)
+        {
+            throw std::out_of_range("uint64 value exceeds uint16 range");
+        }
         return static_cast<uint16_t>(*p);
     }
     if (auto p = std::get_if<uint32_t>(&v))
     {
+        if (*p > kMax)
+        {
+            throw std::out_of_range("uint32 value exceeds uint16 range");
+        }
         return static_cast<uint16_t>(*p);
     }
     if (auto p = std::get_if<int64_t>(&v))
     {
+        if (*p < 0 || *p > kMax)
+        {
+            throw std::out_of_range("int64 value out of uint16 range");
+        }
         return static_cast<uint16_t>(*p);
     }
     if (auto p = std::get_if<double>(&v))
     {
+        if (*p < 0 || *p > kMax)
+        {
+            throw std::out_of_range("double value out of uint16 range");
+        }
         return static_cast<uint16_t>(*p);
     }
     throw std::bad_variant_access();

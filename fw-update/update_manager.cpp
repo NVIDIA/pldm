@@ -133,9 +133,10 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
                 pldm::utils::readOptionalEidProperty(props, "BridgePoolEndEID");
             if (poolStart && poolEnd && *poolStart <= *poolEnd)
             {
-                for (mctp_eid_t e = *poolStart; e <= *poolEnd; ++e)
+                for (uint16_t e = *poolStart;
+                     e <= static_cast<uint16_t>(*poolEnd); ++e)
                 {
-                    refreshEidSet.insert(e);
+                    refreshEidSet.insert(static_cast<mctp_eid_t>(e));
                 }
             }
         }
@@ -637,7 +638,8 @@ exec::task<void> UpdateManager::processStream(
         exec::async_scope refreshScope;
         for (const auto& eid : refreshEids)
         {
-            bool isTarget = compTargetList.contains(eid);
+            bool isTarget = (compTargetList.empty() && targets.empty()) ||
+                            compTargetList.contains(eid);
             refreshScope.spawn(
                 [this, eid, isTarget]() -> exec::task<void> {
                     [[maybe_unused]] auto rc =

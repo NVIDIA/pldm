@@ -1270,6 +1270,13 @@ void InventoryManager::logDiscoveryFailedMessage(
         createLogEntry(resourceErrorDetected, nameIt->second, messageError,
                        resolution, logNamespace, forceInformational);
     }
+    else
+    {
+        createLogEntry(resourceErrorDetected,
+                       std::format("eid:{}", static_cast<unsigned>(eid)),
+                       messageError, resolution, logNamespace,
+                       forceInformational);
+    }
 }
 
 exec::task<int> InventoryManager::refreshSingleEndpoint(

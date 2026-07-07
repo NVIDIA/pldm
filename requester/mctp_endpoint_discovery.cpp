@@ -282,16 +282,14 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
 
         // Watch for PropertiesChanged signal from
         // xyz.openbmc_project.Object.Enable PDI
-        if (enableMatches.find(path) == enableMatches.end())
+        auto [_, inserted] = enableMatches.try_emplace(
+            path, bus,
+            sdbusplus::bus::match::rules::propertiesChanged(
+                path.c_str(), "au.com.codeconstruct.MCTP.Endpoint1"),
+            std::bind_front(&MctpDiscovery::refreshEndpoints, this));
+        if (inserted)
         {
             info("register match_t path:{OBJPATH}", "OBJPATH", path);
-            enableMatches.emplace(
-                path,
-                sdbusplus::bus::match_t(
-                    bus,
-                    sdbusplus::bus::match::rules::propertiesChanged(
-                        path.c_str(), "au.com.codeconstruct.MCTP.Endpoint1"),
-                    std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
         }
     }
 
@@ -775,19 +773,17 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
 
                     // watch PropertiesChanged signal from
                     // au.com.codeconstruct.MCTP.Endpoint1 PDI
-                    if (enableMatches.find(objPath.str) == enableMatches.end())
+                    auto [_2, ins2] = enableMatches.try_emplace(
+                        objPath.str, bus,
+                        sdbusplus::bus::match::rules::propertiesChanged(
+                            objPath.str,
+                            "au.com.codeconstruct.MCTP.Endpoint1"),
+                        std::bind_front(&MctpDiscovery::refreshEndpoints,
+                                        this));
+                    if (ins2)
                     {
                         info("register match_t objectPath:{OBJPATH}", "OBJPATH",
                              objPath.str);
-                        enableMatches.emplace(
-                            objPath.str,
-                            sdbusplus::bus::match_t(
-                                bus,
-                                sdbusplus::bus::match::rules::propertiesChanged(
-                                    objPath.str,
-                                    "au.com.codeconstruct.MCTP.Endpoint1"),
-                                std::bind_front(
-                                    &MctpDiscovery::refreshEndpoints, this)));
                     }
                 }
             }
@@ -902,16 +898,11 @@ void MctpDiscovery::onMctpReactorConfigured(sdbusplus::message_t& msg)
 
         // Track this endpoint's Connectivity (availability) changes, matching
         // the per-endpoint watch the old mctpd-driven path used to register.
-        if (enableMatches.find(path) == enableMatches.end())
-        {
-            enableMatches.emplace(
-                path,
-                sdbusplus::bus::match_t(
-                    bus,
-                    sdbusplus::bus::match::rules::propertiesChanged(
-                        path, MCTPInterfaceCC),
-                    std::bind_front(&MctpDiscovery::refreshEndpoints, this)));
-        }
+        enableMatches.try_emplace(
+            path, bus,
+            sdbusplus::bus::match::rules::propertiesChanged(path,
+                                                             MCTPInterfaceCC),
+            std::bind_front(&MctpDiscovery::refreshEndpoints, this));
 
         info(
             "configured_by published by mctpreactor for EID {EID}; creating named firmware inventory",
@@ -1175,7 +1166,13 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
             return;
         }
 
-        const auto connectivity = std::get<std::string>(prop->second);
+        const auto* connPtr = std::get_if<std::string>(&prop->second);
+        if (connPtr == nullptr)
+        {
+            error("refreshEndpoints: Connectivity property is not a string");
+            return;
+        }
+        const auto& connectivity = *connPtr;
         info(
             "Received au.com.codeconstruct.MCTP.Endpoint1 PropertiesChanged signal for "
             "Connectivity={CONN} at PATH={OBJ_PATH} from SERVICE={SERVICE}",
