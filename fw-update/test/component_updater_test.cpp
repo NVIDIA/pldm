@@ -1196,6 +1196,27 @@ TEST_F(ComponentUpdaterTest, transferCompleteWithoutPreCreatedCompleteTimer)
     EXPECT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
 }
 
+TEST_F(ComponentUpdaterTest, outOfSequenceTransferCompleteDoesNotArmTimer)
+{
+    // Replays a crash precursor: the FD sends TransferComplete (result 0x0A)
+    // while the UA is still awaiting the UpdateComponent response. The command
+    // must be rejected without arming the complete-commands timer, since no
+    // accepted handler would ever stop it.
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::UpdateComponent);
+
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
+        transferCompleteReq{0x8A, 0x05, 0x16, 0x0A};
+    auto transferMsg =
+        reinterpret_cast<const pldm_msg*>(transferCompleteReq.data());
+
+    auto response =
+        componentUpdater.transferComplete(transferMsg, sizeof(uint8_t));
+
+    EXPECT_EQ(response[sizeof(pldm_msg_hdr)], PLDM_FWUP_COMMAND_NOT_EXPECTED);
+    EXPECT_EQ(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+}
+
 TEST_F(ComponentUpdaterTest, requestFwData_outOfRange)
 {
     auto reqFwDataReq =
@@ -1995,6 +2016,29 @@ TEST_F(ComponentUpdaterTest, timeoutCancellationSkipsTimerCancelCallbacks)
     EXPECT_TRUE(reqHandler.handlers.empty());
 }
 
+TEST_F(ComponentUpdaterTest, completeCommandsTimeoutIgnoredWhenStateInvalid)
+{
+    // A completeCommandsTimeoutTimer left armed by a failed/canceled update
+    // fires with the updater already in Invalid state; the callback must not
+    // send CancelUpdateComponent or re-run the completion flow.
+    initializeFromParsedPackage();
+    componentUpdater.componentUpdaterState.set(
+        ComponentUpdaterSequence::Invalid);
+
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    componentUpdater.completeCommandsTimeoutTimer->start(
+        std::chrono::seconds(0), false);
+    for (int i = 0; i < 4; ++i)
+    {
+        runEvent();
+    }
+
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+    EXPECT_TRUE(reqHandler.handlers.empty());
+}
+
 TEST_F(ComponentUpdaterTest,
        requestFwDataTimerReturnsWhenDiscoverTaskAlreadyPending)
 {
@@ -2103,8 +2147,7 @@ TEST_F(ComponentUpdaterTest,
     waitForUpdateCompletionTask();
 }
 
-TEST_F(ComponentUpdaterTest,
-       completeCommandsTimerInvalidStateCompletesCancelTask)
+TEST_F(ComponentUpdaterTest, completeCommandsTimerInvalidStateIgnored)
 {
     initializeFromParsedPackage();
     componentUpdater.componentUpdaterState.set(
@@ -2114,16 +2157,14 @@ TEST_F(ComponentUpdaterTest,
 
     componentUpdater.completeCommandsTimeoutTimer->start(
         std::chrono::seconds(0), false);
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         runEvent();
     }
 
-    ASSERT_TRUE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
-    auto& [scope, rcOpt] = *componentUpdater.discoverMctpTerminusTaskHandle;
-    (void)scope;
-    EXPECT_TRUE(rcOpt.has_value());
-    waitForUpdateCompletionTask();
+    EXPECT_FALSE(componentUpdater.discoverMctpTerminusTaskHandle.has_value());
+    EXPECT_FALSE(componentUpdater.updateCompletionCoHandle.has_value());
+    EXPECT_TRUE(reqHandler.handlers.empty());
 }
 
 TEST_F(ComponentUpdaterTest,

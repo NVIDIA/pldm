@@ -30,6 +30,7 @@
 #include <chrono>
 #include <fstream>
 #include <numeric>
+#include <unordered_set>
 
 namespace pldm
 {
@@ -491,6 +492,14 @@ class DeviceUpdater
      *         PassComponentTable
      */
     size_t componentIndex = 0;
+
+    /** @brief Component indices whose completion has already been processed.
+     *         A stale timer or duplicate detached task may re-run the
+     *         completion flow for a component that already finished; without
+     *         this guard that would advance componentIndex past the
+     *         applicable components and index out of bounds.
+     */
+    std::unordered_set<size_t> completedComponentIndices;
 
     size_t numComponents = 0;
 

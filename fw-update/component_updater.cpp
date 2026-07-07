@@ -568,6 +568,15 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
         return response;
     }
 
+    if (componentUpdaterState.expectedState(
+            ComponentUpdaterSequence::TransferComplete) ==
+        ComponentUpdaterSequence::Invalid)
+    {
+        // A rejected command must not arm the complete-commands timer; no
+        // accepted handler would ever stop it.
+        return sendCommandNotExpectedResponse(request, payloadLength);
+    }
+
     if (!completeCommandsTimeoutTimer)
     {
         error(
@@ -587,13 +596,6 @@ Response ComponentUpdater::transferComplete(const pldm_msg* request,
             completeCommandsTimeoutTimer->start(
                 std::chrono::seconds(completeCommandsTimeoutSeconds), false);
         }
-    }
-
-    if (componentUpdaterState.expectedState(
-            ComponentUpdaterSequence::TransferComplete) ==
-        ComponentUpdaterSequence::Invalid)
-    {
-        return sendCommandNotExpectedResponse(request, payloadLength);
     }
     if (componentUpdaterState.expectedState(
             ComponentUpdaterSequence::TransferComplete) ==
@@ -1101,6 +1103,16 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
             stateFailedMessageId = applyFailed;
         }
 
+        if (commandName.empty())
+        {
+            error(
+                "Complete commands timeout fired in unexpected state {STATE}, "
+                "ignoring stale timer. EID={EID}, ComponentIndex={COMPONENTINDEX}",
+                "STATE", static_cast<int>(componentUpdaterState.current), "EID",
+                eid, "COMPONENTINDEX", componentIndex);
+            return;
+        }
+
         error("{CMD} Command Timeout. EID={EID}, "
               "ComponentIndex={COMPONENTINDEX}",
               "CMD", commandName, "EID", eid, "COMPONENTINDEX", componentIndex);
@@ -1112,12 +1124,6 @@ void ComponentUpdater::createCompleteCommandsTimeoutTimer()
 
             // Then check device status
             bool logged = queryDeviceStatusAndLog(eid);
-            if (commandName.empty())
-            {
-                error(
-                    "Unexpected state during complete commands timeout: {STATE}",
-                    "STATE", static_cast<int>(componentUpdaterState.current));
-            }
             if (logged)
             {
                 updateManager->createMessageRegistry(

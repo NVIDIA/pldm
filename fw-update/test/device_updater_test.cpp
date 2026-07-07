@@ -879,3 +879,32 @@ TEST_F(DeviceUpdaterTest,
 
     EXPECT_FALSE(localUpdater.isLiveActivationSupported());
 }
+
+TEST_F(DeviceUpdaterTest, staleComponentCompletionIsIgnored)
+{
+    // A stale timer can replay component 0's completion after the device
+    // updater has already advanced to component 1; it must not advance
+    // componentIndex a second time.
+    deviceUpdater.componentIndex = 1;
+
+    auto co = deviceUpdater.updateComponentCompletion(
+        0, ComponentUpdateStatus::UpdateFailed);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_SUCCESS);
+    EXPECT_EQ(deviceUpdater.componentIndex, 1u);
+    EXPECT_TRUE(deviceUpdater.componentUpdaterMap.empty());
+}
+
+TEST_F(DeviceUpdaterTest, duplicateComponentCompletionIsIgnored)
+{
+    deviceUpdater.completedComponentIndices.insert(0);
+
+    auto co = deviceUpdater.updateComponentCompletion(
+        0, ComponentUpdateStatus::UpdateFailed);
+    auto rc = stdexec::sync_wait(std::move(co));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(*rc), PLDM_SUCCESS);
+    EXPECT_EQ(deviceUpdater.componentIndex, 0u);
+    EXPECT_TRUE(deviceUpdater.componentUpdaterMap.empty());
+}
