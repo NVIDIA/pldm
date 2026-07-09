@@ -1396,6 +1396,20 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
         }
         memcpy(parsedPdr.get(), pdr.data(), pdr.size());
     }
+
+    // The memcpy fallback above bypasses libpldm's decode validation, so
+    // reject an out-of-range effecterDataSize before it selects a branch
+    // of union_effecter_data_size downstream.
+    if (parsedPdr->effecter_data_size > PLDM_EFFECTER_DATA_SIZE_MAX)
+    {
+        // Copy the packed fields; lg2 binds arguments by reference.
+        uint8_t dataSize = parsedPdr->effecter_data_size;
+        uint16_t effecterId = parsedPdr->effecter_id;
+        lg2::error(
+            "parseNumericEffecterPDR: unknown effecterDataSize {SIZE}, tid={TID}, effecterId={EFFECTERID}, skipping effecter.",
+            "SIZE", dataSize, "TID", tid, "EFFECTERID", effecterId);
+        return nullptr;
+    }
     return parsedPdr;
 }
 
