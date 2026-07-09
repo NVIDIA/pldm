@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: "en-US"
 early_access: false
+inheritance: true
 
 reviews:
     profile: "assertive"
@@ -12,6 +13,29 @@ reviews:
     commit_status: false
 
     path_instructions:
+        - path: "**/*"
+          instructions: |
+              ## Commit message checks (applied to every file in the diff)
+
+              **CM1** Subject line must be ≤ 50 characters.
+              **CM2** Body lines must be ≤ 72 characters (URLs exempt).
+              **CM3** Subject must start with a component prefix and colon,
+              e.g. `apphandler: fix foo` not `fix foo`.
+              **CM4** Body must explain WHY the change is made, not just what.
+              Flag if the body is absent, or if every sentence starts with
+              an action verb ("Add", "Change", "Fix", "Remove", "Update")
+              with no sentence explaining the motivation or problem being
+              solved.
+              **CM5** A "Tested:" field is required describing how the change
+              was verified (unit tests run, manual steps, hardware used).
+              **CM6** Each commit must make exactly one logical change.
+              Warn if a single commit touches files across more than 2
+              unrelated top-level directories with no explanation of the
+              connection in the commit body.
+              **CM7** Warn if any single commit in this MR adds or removes
+              more than 200 lines, excluding files under `test/` or `tests/`
+              directories, auto-generated files, lock files, and vendored code.
+
         - path: "**/*.{cpp,hpp,c,h}"
           instructions: |
               ## OpenBMC Contributing Guidelines (flag any match in new or modified code)
@@ -155,42 +179,6 @@ reviews:
               (e.g. `RDEPENDS_${PN} += "libsystemd"`). Bitbake adds these
               automatically; explicit entries become stale and install unnecessary
               packages. Resolution: remove them and let bitbake auto-detect.
-
-    pre_merge_checks:
-        custom_checks:
-            - name: "Commit message format (OpenBMC rules)"
-              mode: "warning"
-              instructions: |
-                  **CM1** Subject line must be ≤ 50 characters.
-                  **CM2** Body lines must be ≤ 72 characters (URLs exempt).
-                  **CM3** Subject must start with a component prefix and colon,
-                  e.g. `apphandler: fix foo` not `fix foo`.
-                  **CM4** Body must explain WHY the change is made, not just what.
-                  Flag if the body is absent, or if every sentence starts with
-                  an action verb ("Add", "Change", "Fix", "Remove", "Update")
-                  with no sentence explaining the motivation or problem being
-                  solved.
-                  **CM5** A "Tested:" field is required describing how the change
-                  was verified (unit tests run, manual steps, hardware used).
-
-            - name: "Atomic commits"
-              mode: "warning"
-              instructions: |
-                  **CM6** Each commit must make exactly one logical change.
-                  Warn if a single commit touches files across more than 2
-                  unrelated top-level directories (e.g. `fw-update/` AND
-                  `platform/` AND `bios/`) with no explanation of the
-                  connection in the commit body.
-
-            - name: "Large commits"
-              mode: "warning"
-              instructions: |
-                  **CM7** Warn if any single commit in this MR adds or removes
-                  more than 200 lines, excluding files under `test/` or
-                  `tests/` directories, auto-generated files, lock files,
-                  and vendored code.
-                  Large commits are hard to review. Suggest splitting into
-                  smaller, focused commits.
 
 chat:
     auto_reply: true
