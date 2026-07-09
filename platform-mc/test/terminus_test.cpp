@@ -3936,6 +3936,88 @@ TEST_F(TerminusTest, privateFindInventoryAndPhysicalContextCoverage)
               terminus.toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
 }
 
+TEST_F(TerminusTest, findInventoryProcModuleInstanceNoConfigCoverage)
+{
+    // Regression: on legacy platforms with no EID-to-terminus config, a single
+    // terminus reports both CPUs. getInstance() is null and the CPU's own
+    // entity_instance_num is identical for both CPUs, so CPU_1's sensors
+    // previously resolved to HGX_CPU_0. The owning ProcessorModule instance
+    // from the entity association hierarchy must disambiguate them.
+    std::string uuid("00000000-0000-0000-0000-000000000156");
+    Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.systemInventoryPath =
+        "/xyz/openbmc_project/inventory/system/chassis/chassis56";
+    // No setInstance(): legacy path, getInstance() stays nullopt.
+    ASSERT_FALSE(terminus.getInstance().has_value());
+
+    const std::string cpu0{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis56/HGX_CPU_0"};
+    const std::string cpu1{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis56/HGX_CPU_1"};
+    // Inventory instance numbers track the ProcessorModule index (0 and 1).
+    terminus.inventories.emplace_back(cpu0, PLDM_ENTITY_PROC, 0);
+    terminus.inventories.emplace_back(cpu1, PLDM_ENTITY_PROC, 1);
+
+    // Association hierarchy (one terminus, two modules):
+    //   container 10 -> ProcessorModule instance 0 (owns the CPU at cid 10)
+    //   container 20 -> ProcessorModule instance 1 (owns the CPU at cid 20)
+    terminus.entityAssociations.emplace(
+        10, std::make_pair(
+                EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0},
+                std::set<EntityInfo>{EntityInfo{10, PLDM_ENTITY_PROC, 0}}));
+    terminus.entityAssociations.emplace(
+        20, std::make_pair(
+                EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 1},
+                std::set<EntityInfo>{EntityInfo{20, PLDM_ENTITY_PROC, 0}}));
+
+    // Both CPUs carry the SAME ambiguous local instance (0); only the
+    // container (module) differs. Before the fix both matched HGX_CPU_0.
+    auto cpu0Paths =
+        terminus.findInventory(EntityInfo{10, PLDM_ENTITY_PROC, 0}, false);
+    ASSERT_EQ(1u, cpu0Paths.size());
+    EXPECT_EQ(cpu0, cpu0Paths.front());
+
+    terminus.entities.clear();
+    auto cpu1Paths =
+        terminus.findInventory(EntityInfo{20, PLDM_ENTITY_PROC, 0}, false);
+    ASSERT_EQ(1u, cpu1Paths.size());
+    EXPECT_EQ(cpu1, cpu1Paths.front());
+
+    // Walk-up case: entity nested under a CPU that is itself under module 1.
+    //   container 30 -> CPU whose own container is 20 (module-1 container).
+    terminus.entities.clear();
+    terminus.entityAssociations.emplace(
+        30, std::make_pair(
+                EntityInfo{20, PLDM_ENTITY_PROC, 0},
+                std::set<EntityInfo>{EntityInfo{30, PLDM_ENTITY_PROC, 0}}));
+    auto nestedPaths =
+        terminus.findInventory(EntityInfo{30, PLDM_ENTITY_PROC, 0}, false);
+    ASSERT_EQ(1u, nestedPaths.size());
+    EXPECT_EQ(cpu1, nestedPaths.front());
+
+    // getInstanceFromAssoicationPdr() returns nullopt (container is neither a
+    // ProcessorModule nor a CPU) and no config -> entity keeps its own
+    // instance (0 -> HGX_CPU_0).
+    terminus.entities.clear();
+    terminus.entityAssociations.emplace(
+        40, std::make_pair(EntityInfo{0, PLDM_ENTITY_SYS_BOARD, 0},
+                           std::set<EntityInfo>{}));
+    auto noModulePaths =
+        terminus.findInventory(EntityInfo{40, PLDM_ENTITY_PROC, 0}, false);
+    ASSERT_EQ(1u, noModulePaths.size());
+    EXPECT_EQ(cpu0, noModulePaths.front());
+
+    // With static config present, getInstance() takes priority over the
+    // association PDR (getInstanceFromAssoicationPdr is not consulted).
+    terminus.entities.clear();
+    terminus.setInstance(1);
+    auto cfgPaths =
+        terminus.findInventory(EntityInfo{40, PLDM_ENTITY_PROC, 0}, false);
+    ASSERT_EQ(1u, cfgPaths.size());
+    EXPECT_EQ(cpu1, cfgPaths.front());
+}
+
 TEST_F(TerminusTest, privateFindInventoryOverrideCoverage)
 {
     std::string uuid("00000000-0000-0000-0000-000000000165");

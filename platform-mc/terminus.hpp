@@ -232,6 +232,20 @@ class Terminus
     std::vector<std::string> findInventory(ContainerID contianerId,
                                            bool findClosest = true);
 
+    /** @brief Derive a CPU/ProcessorModule entity instance from the entity
+     *         association PDRs when no EID-to-terminus static config instance
+     *         is available. Walks from the given container up to the owning
+     *         ProcessorModule (PLDM_ENTITY_PROC_IO_MODULE) whose instance
+     *         uniquely identifies CPU_0 vs CPU_1, even when a single terminus
+     *         reports both CPUs.
+     *
+     *  @param[in] containerId - container ID of the entity being resolved
+     *  @return the ProcessorModule instance number, or std::nullopt when no
+     *          ProcessorModule is found in the hierarchy
+     */
+    std::optional<uint16_t> getInstanceFromAssoicationPdr(
+        ContainerID containerId);
+
     /** @brief Get the container EntityInfo for a given container ID */
     std::optional<EntityInfo> getContainerEntity(ContainerID containerId) const
     {

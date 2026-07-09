@@ -1891,6 +1891,40 @@ exec::task<int> Terminus::updateAssociations()
 #endif
     co_return PLDM_SUCCESS;
 }
+std::optional<uint16_t> Terminus::getInstanceFromAssoicationPdr(
+    ContainerID containerId)
+{
+    // The instance number distinguishing CPU_0 from CPU_1 lives in the owning
+    // ProcessorModule (PLDM_ENTITY_PROC_IO_MODULE) entity in the association
+    // PDRs, which is present regardless of any EID-to-terminus static config.
+    auto containerItr = entityAssociations.find(containerId);
+    if (containerItr == entityAssociations.end())
+    {
+        return std::nullopt;
+    }
+
+    const auto& containerEntity = containerItr->second.first;
+    uint16_t containerType = std::get<1>(containerEntity) & 0x7FFF;
+    if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+    {
+        // Entity sits directly under a ProcessorModule; use its instance.
+        return std::get<2>(containerEntity);
+    }
+    if (containerType == PLDM_ENTITY_PROC)
+    {
+        // Entity sits under a CPU; walk up one level to the ProcessorModule.
+        auto parentContainerId = std::get<0>(containerEntity);
+        auto parentItr = entityAssociations.find(parentContainerId);
+        if (parentItr != entityAssociations.end() &&
+            (std::get<1>(parentItr->second.first) & 0x7FFF) ==
+                PLDM_ENTITY_PROC_IO_MODULE)
+        {
+            return std::get<2>(parentItr->second.first);
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
                                                  const bool findClosest)
 {
@@ -1914,13 +1948,23 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
     // Strip LOGICAL flag for comparison - PDRs may use either raw or LOGICAL
     // types
     uint16_t rawEntityType = entityType & 0x7FFF;
-    // Use terminus instance from static config for CPU and ProcessorModule
-    // entities
-    if ((rawEntityType == PLDM_ENTITY_PROC ||
-         rawEntityType == PLDM_ENTITY_PROC_IO_MODULE) &&
-        getInstance())
+    // Resolve the instance for CPU/ProcessorModule entities. Prefer the
+    // terminus instance from static config; when that is unavailable (legacy
+    // platforms without an EID-to-terminus config) derive it from the entity
+    // association hierarchy, where the owning ProcessorModule instance
+    // distinguishes CPU_0 from CPU_1 even if a single terminus reports both.
+    if (rawEntityType == PLDM_ENTITY_PROC ||
+        rawEntityType == PLDM_ENTITY_PROC_IO_MODULE)
     {
-        entityInstance = *getInstance();
+        if (getInstance())
+        {
+            entityInstance = *getInstance();
+        }
+        else if (auto moduleInstance =
+                     getInstanceFromAssoicationPdr(containerId))
+        {
+            entityInstance = *moduleInstance;
+        }
     }
     auto ContainerInventoryPaths = findInventory(containerId);
 
