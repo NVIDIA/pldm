@@ -2060,7 +2060,7 @@ class SetNumericEffecterValue : public CommandInterface
         app->add_option("-s, --size", effecterDataSize,
                         "The bit width and format of the setting value for the "
                         "effecter. enum value: {uint8, sint8, uint16, sint16, "
-                        "uint32, sint32}\n")
+                        "uint32, sint32, uint64, sint64}\n")
             ->required();
         app->add_option("-d,--data", maxEffecterValue,
                         "The setting value of numeric effecter being "
@@ -2070,13 +2070,7 @@ class SetNumericEffecterValue : public CommandInterface
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
     {
-        std::vector<uint8_t> requestMsg(
-            sizeof(pldm_msg_hdr) +
-            PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 3);
-
-        std::array<uint8_t, sizeof(uint32_t)> effecterValue{};
-
-        auto request = new (requestMsg.data()) pldm_msg;
+        std::array<uint8_t, sizeof(uint64_t)> effecterValue{};
 
         size_t payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
 
@@ -2094,10 +2088,25 @@ class SetNumericEffecterValue : public CommandInterface
             auto value = static_cast<uint32_t>(maxEffecterValue);
             memcpy(effecterValue.data(), &value, sizeof(value));
         }
+        else if (effecterDataSize == PLDM_EFFECTER_DATA_SIZE_UINT64 ||
+                 effecterDataSize == PLDM_EFFECTER_DATA_SIZE_SINT64)
+        {
+            // 8-byte value so a full 48-bit mask (e.g. PCIeRPLinkCtrl)
+            // can be sent from the CLI.
+            payload_length = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES + 7;
+            uint64_t value = maxEffecterValue;
+            memcpy(effecterValue.data(), &value, sizeof(value));
+        }
         else
         {
             effecterValue[0] = static_cast<uint8_t>(maxEffecterValue);
         }
+
+        // Allocate the request after payload_length is known so wider
+        // effecter values fit and no trailing bytes are sent.
+        std::vector<uint8_t> requestMsg(sizeof(pldm_msg_hdr) + payload_length);
+        auto request = new (requestMsg.data()) pldm_msg;
+
         auto rc = encode_set_numeric_effecter_value_req(
             0, effecterId, effecterDataSize, effecterValue.data(), request,
             payload_length);
