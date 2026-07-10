@@ -13,29 +13,6 @@ reviews:
     commit_status: false
 
     path_instructions:
-        - path: "**/*"
-          instructions: |
-              ## Commit message checks (applied to every file in the diff)
-
-              **CM1** Subject line must be ≤ 50 characters.
-              **CM2** Body lines must be ≤ 72 characters (URLs exempt).
-              **CM3** Subject must start with a component prefix and colon,
-              e.g. `apphandler: fix foo` not `fix foo`.
-              **CM4** Body must explain WHY the change is made, not just what.
-              Flag if the body is absent, or if every sentence starts with
-              an action verb ("Add", "Change", "Fix", "Remove", "Update")
-              with no sentence explaining the motivation or problem being
-              solved.
-              **CM5** A "Tested:" field is required describing how the change
-              was verified (unit tests run, manual steps, hardware used).
-              **CM6** Each commit must make exactly one logical change.
-              Warn if a single commit touches files across more than 2
-              unrelated top-level directories with no explanation of the
-              connection in the commit body.
-              **CM7** Warn if any single commit in this MR adds or removes
-              more than 200 lines, excluding files under `test/` or `tests/`
-              directories, auto-generated files, lock files, and vendored code.
-
         - path: "**/*.{cpp,hpp,c,h}"
           instructions: |
               ## OpenBMC Contributing Guidelines (flag any match in new or modified code)
@@ -99,14 +76,6 @@ reviews:
               **AP1 – Custom ArgumentParser**
               Flag any hand-rolled ArgumentParser class. Resolution: use CLI11.
 
-              **AP8 – Oversized lambda callbacks**
-              Flag inline lambdas passed to `sdbusplus::asio::`,
-              `boost::asio::`, `crow::` route handlers
-              (`.methods(...)(handler)`), or any `*_async()` call that
-              exceed more than 10 lines.
-              Resolution: extract to a named static/free function and pass
-              via `std::bind_front`.
-
               **AP5 – Swallowed unexpected exceptions**
               Flag `catch(...)` or `catch(std::exception&)` blocks that call
               `commit<>()` or `log()` without a rethrow or `std::terminate`.
@@ -124,6 +93,28 @@ reviews:
               definitions belong in phosphor-dbus-interfaces, not inline in
               application code alongside hardware calls.
 
+              **AP8 – Oversized lambda callbacks**
+              Flag inline lambdas passed to `sdbusplus::asio::`,
+              `boost::asio::`, `crow::` route handlers
+              (`.methods(...)(handler)`), or any `*_async()` call that
+              exceed more than 10 lines.
+              Resolution: extract to a named static/free function and pass
+              via `std::bind_front`.
+
+              **AP9 – Internal headers in a parallel subtree**
+              Flag any `.hpp` file placed under a separate `include/`
+              directory when it is not part of a public API — i.e. when
+              no installed target or external consumer depends on it.
+              Internal headers have no reason to be separated from their
+              corresponding `.cpp` implementation.
+              Resolution: move the header alongside its `.cpp` source file.
+
+              **AP10 – Ill-structured lg2 messages**
+              Flag ad-hoc metadata encoding inside the MESSAGE string
+              (e.g. `"PATH={X} INTF={Y}"`). Resolution: pass each datum as a
+              structured key-value argument to lg2; interpolate into MESSAGE
+              only for human readability.
+
               **AP11 – Blocking call in single-threaded daemon**
               Flag any call to `sleep()`, `usleep()`,
               `std::this_thread::sleep_for()`,
@@ -138,19 +129,50 @@ reviews:
               for delays, async resolver for DNS, and async I/O
               for file descriptors.
 
-              **AP10 – Ill-structured lg2 messages**
-              Flag ad-hoc metadata encoding inside the MESSAGE string
-              (e.g. `"PATH={X} INTF={Y}"`). Resolution: pass each datum as a
-              structured key-value argument to lg2; interpolate into MESSAGE
-              only for human readability.
+              **AP13 – No bare magic numbers; use named constants**
+              Flag integer or float literals used in logic where the value
+              carries domain meaning that is not self-evident from context:
+              timeouts, retry counts, buffer sizes, threshold values, and
+              version numbers. Replace with a `constexpr` or `enum` with a
+              name that explains the value's origin or units.
+              Exempt: `0` and `1` in any context; bitmasks and shift amounts
+              at hardware/protocol boundaries; and any literal whose meaning
+              is unambiguous from the surrounding variable name or comment.
 
-              **AP9 – Internal headers in a parallel subtree**
-              Flag any `.hpp` file placed under a separate `include/`
-              directory when it is not part of a public API — i.e. when
-              no installed target or external consumer depends on it.
-              Internal headers have no reason to be separated from their
-              corresponding `.cpp` implementation.
-              Resolution: move the header alongside its `.cpp` source file.
+              **AP17 – Check return values and stream state after fallible operations**
+              Flag file stream operations (`write`, `close`, `flush`) where
+              the stream's error state is not checked immediately after.
+              Accepted checks: `if (!outFile)`, `outFile.good()`,
+              `outFile.fail()`, `outFile.bad()`, or enabling exceptions via
+              `outFile.exceptions(...)` before the operation (which causes
+              the stream to throw on failure rather than silently set a bit).
+              Also flag D-Bus method call results, firmware update state
+              transitions, and PLDM completion codes that are stored or
+              discarded without being checked against an error condition.
+              Silent failures are hard to diagnose in production; either
+              check the result and log on failure, or use a wrapper that
+              throws.
+
+              **AP18 – Wrap known-throwing sdbusplus/stdplus calls in try/catch**
+              Flag call sites for APIs documented to throw — including
+              `stdplus::Timer::start()`, sdbusplus property accessors
+              (e.g., `getPropertyString`, `getPropertyUint64`), and any
+              other sdbusplus or stdplus function whose documentation or
+              source marks it as throwing — when the call appears outside
+              a `try`/`catch` block. An uncaught exception from these
+              sites propagates into the event loop and terminates the daemon
+              ungracefully.
+
+              **AP19 – Use overflow-safe bounds checks for image/buffer offsets**
+              Flag bounds checks of the form `offset + length <= imageSize`
+              or `offset + length < imageSize` where `offset` and `length`
+              are unsigned integer types. If both values are large the
+              addition wraps to zero and the check passes incorrectly,
+              allowing out-of-bounds access. The safe form is:
+              `offset <= imageSize && length <= imageSize - offset`.
+              Apply wherever image metadata (offsets, lengths, sizes) from
+              external or untrusted sources is validated against a buffer
+              size.
 
         - path: "**/*.service"
           instructions: |
@@ -179,6 +201,45 @@ reviews:
               (e.g. `RDEPENDS_${PN} += "libsystemd"`). Bitbake adds these
               automatically; explicit entries become stale and install unnecessary
               packages. Resolution: remove them and let bitbake auto-detect.
+
+    pre_merge_checks:
+        custom_checks:
+            - name: "Commit message format (OpenBMC rules)"
+              mode: "warning"
+              instructions: |
+                  **CM1** Subject line must be ≤ 50 characters.
+                  **CM2** Body lines must be ≤ 72 characters (URLs exempt).
+                  **CM3** Subject must start with a component prefix and colon,
+                  e.g. `apphandler: fix foo` not `fix foo`.
+                  **CM4** Body must explain WHY the change is made, not just what.
+                  Flag if the body is absent, or if every sentence starts with
+                  an action verb ("Add", "Change", "Fix", "Remove", "Update")
+                  with no sentence explaining the motivation or problem being
+                  solved.
+                  **CM5** A "Tested:" field is required in the commit message.
+                  It must include: (1) the hardware platform or simulator used
+                  (e.g. "DGX H100", "mockresponder", "QEMU"); (2) the specific
+                  scenario(s) exercised, not just "ran unit tests"; and (3) the
+                  actual observed output or pass/fail result where applicable.
+                  Flag if Tested: is absent, if it contains only a generic
+                  statement ("manual testing", "ran tests", "verified"), or if
+                  it names no specific hardware or environment. A Jira or bug
+                  tracker link alone is not sufficient.
+
+            - name: "Atomic commits"
+              mode: "warning"
+              instructions: |
+                  **CM6** Each commit must make exactly one logical change.
+                  Warn if a single commit touches files across more than 2
+                  unrelated top-level directories with no explanation of the
+                  connection in the commit body.
+
+            - name: "Large commits"
+              mode: "warning"
+              instructions: |
+                  **CM7** Warn if any single commit in this MR adds or removes
+                  more than 200 lines, excluding files under `test/` or `tests/`
+                  directories, auto-generated files, lock files, and vendored code.
 
 chat:
     auto_reply: true
