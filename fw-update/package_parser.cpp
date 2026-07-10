@@ -353,8 +353,16 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
         auto checksum = static_cast<PackagePayloadChecksum>(
             le32toh(pkgHdr[offset] | (pkgHdr[offset + 1] << 8) |
                     (pkgHdr[offset + 2] << 16) | (pkgHdr[offset + 3] << 24)));
-        auto calcChecksum = pldm_edac_crc32(
-            pkgData + pkgHeaderSize, calculatePackageSize() - pkgHeaderSize);
+        auto calcPkgSize = calculatePackageSize();
+        if (calcPkgSize > pkgSize)
+        {
+            error(
+                "Calculated package size '{CALC_SIZE}' exceeds actual package size '{PKG_SIZE}'",
+                "CALC_SIZE", calcPkgSize, "PKG_SIZE", pkgSize);
+            throw InternalFailure();
+        }
+        auto calcChecksum = pldm_edac_crc32(pkgData + pkgHeaderSize,
+                                            calcPkgSize - pkgHeaderSize);
         if (calcChecksum != checksum)
         {
             error(
