@@ -14,6 +14,8 @@ ActivationIntf::Activations Activation::activation(
     {
         deleteImpl.reset();
         namespace software = sdbusplus::xyz::openbmc_project::Software::server;
+        // Set Activating first: checks may set Failed inline below
+        ActivationIntf::activation(value);
         updateManager->performSecurityChecksAsync(
             [this, updateManager(updateManager)](bool securityCheck) {
                 if (!securityCheck)
@@ -55,6 +57,8 @@ ActivationIntf::Activations Activation::activation(
                 ActivationIntf::activation(
                     software::Activation::Activations::Failed);
             });
+        // Return without writing: checks may already have set Failed
+        return ActivationIntf::activation();
     }
     else if (value == Activations::Active || value == Activations::Failed)
     {

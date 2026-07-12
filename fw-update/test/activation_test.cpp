@@ -255,7 +255,7 @@ TEST_F(ActivationTest,
     auto result =
         activation.activation(Server::Activation::Activations::Activating);
 
-    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(result, Server::Activation::Activations::Failed);
     EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
     EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
 }
@@ -346,7 +346,7 @@ TEST_F(ActivationTest, ActivationActivatingWhenSecurityChecksFail)
     auto result =
         activation.activation(Server::Activation::Activations::Activating);
 
-    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(result, Server::Activation::Activations::Failed);
     EXPECT_EQ(testing::resultPerformSecurityChecksOnComplete,
               Server::Activation::Activations::Failed);
     EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
@@ -409,7 +409,7 @@ TEST_F(ActivationTest, ActivationActivatingWhenSecurityCheckCallbackErrors)
     auto result =
         activation.activation(Server::Activation::Activations::Activating);
 
-    EXPECT_EQ(result, Server::Activation::Activations::Activating);
+    EXPECT_EQ(result, Server::Activation::Activations::Failed);
     EXPECT_TRUE(testing::resetActivationBlocksTransitionCalled);
     EXPECT_TRUE(testing::clearFirmwareUpdatePackageCalled);
 }
