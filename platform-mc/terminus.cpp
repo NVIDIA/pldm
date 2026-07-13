@@ -50,14 +50,28 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)
 {
-    if (!initalized)
-    {
-        return;
-    }
-
     sdbusplus::object_path objPath;
     pldm::dbus::InterfaceMap interfaces;
     m.read(objPath, interfaces);
+
+    if (!initalized)
+    {
+#ifdef OEM_NVIDIA
+        // If terminus is not initialized, still mark it as needing a refresh
+        // for the interested interfaces. Whenever it gets initialized, it
+        // should refresh the associations.
+        if (interfaces.count(
+                "xyz.openbmc_project.Configuration.NsmDeviceAssociation"))
+        {
+            lg2::info(
+                "Tid={TID} NsmDeviceAssociation arrived on {PATH} during init; "
+                "refresh deferred until Terminus is initialized",
+                "TID", tid, "PATH", std::string(objPath));
+            needRefresh = true;
+        }
+#endif
+        return;
+    }
 
     // if any interested interface added, refresh the associations
     for (const auto& [intf, properties] : interfaces)

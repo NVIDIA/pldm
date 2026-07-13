@@ -496,6 +496,17 @@ class Terminus
         return cpuIndex;
     }
 
+    /** @brief Trigger a deferred association refresh if one was queued while
+     *         the terminus was still initializing.
+     */
+    void applyPendingRefresh()
+    {
+        if (needRefresh)
+        {
+            refreshAssociations();
+        }
+    }
+
   private:
     std::shared_ptr<pldm_numeric_sensor_value_pdr> parseNumericSensorPDR(
         const std::vector<uint8_t>& pdrData);

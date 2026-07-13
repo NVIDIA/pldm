@@ -92,6 +92,7 @@ exec::task<int> PlatformManager::initTerminusImpl(
                 // Configuration PDIs
                 co_await terminus->updateAssociations();
                 terminus->initalized = true;
+                terminus->applyPendingRefresh();
             }
         }
         co_await initEventReceiver(tid);

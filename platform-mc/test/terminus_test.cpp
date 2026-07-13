@@ -3483,6 +3483,7 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
     terminus.initalized = true;
+    EXPECT_GE(sd_bus_message_rewind(msg.get(), true), 0);
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
     auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
