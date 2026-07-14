@@ -16,6 +16,7 @@
  */
 #include "terminus_manager.hpp"
 
+#include "common/sleep.hpp"
 #include "manager.hpp"
 
 #include <nlohmann/json.hpp>
@@ -382,7 +383,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         }
     }
     tid_t tid = 0;
-    auto rc = co_await getTidOverMctp(eid, tid);
+    auto rc = co_await getTidOverMctpWithRetry(eid, tid);
     // tid == 0 per DSP0240 means the
     // remote terminus has not been assigned a TID yet
     // Treat it the same as PLDM_TID_RESERVED so that
@@ -400,7 +401,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         }
 
         tid = mappedTid.value();
-        rc = co_await setTidOverMctp(eid, tid);
+        rc = co_await setTidOverMctpWithRetry(eid, tid);
         if (rc != PLDM_SUCCESS)
         {
             if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
@@ -455,7 +456,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         }
 
         tid = mappedTid.value();
-        rc = co_await setTidOverMctp(eid, tid);
+        rc = co_await setTidOverMctpWithRetry(eid, tid);
         if (rc != PLDM_SUCCESS && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
         {
             unmapTid(tid);
@@ -552,6 +553,58 @@ exec::task<int> TerminusManager::SendRecvPldmMsgOverMctp(
     else
     {
         pldmErrorLogLimiter.clear(eid);
+    }
+    co_return rc;
+}
+
+exec::task<int> TerminusManager::getTidOverMctpWithRetry(mctp_eid_t eid,
+                                                         tid_t& tid)
+{
+    int rc = PLDM_ERROR;
+    for (uint8_t attempt = 1; attempt <= mctpTidDiscoveryMaxAttempts; ++attempt)
+    {
+        rc = co_await getTidOverMctp(eid, tid);
+        // A successful exchange - even one reporting an unassigned TID of 0 or
+        // PLDM_TID_RESERVED - means the endpoint responded; do not retry.
+        if (rc == PLDM_SUCCESS)
+        {
+            co_return rc;
+        }
+        if (attempt < mctpTidDiscoveryMaxAttempts)
+        {
+            lg2::info(
+                "getTidOverMctp failed, retrying. eid={EID} attempt={ATTEMPT}/{MAX} rc={RC}",
+                "EID", eid, "ATTEMPT", attempt, "MAX",
+                mctpTidDiscoveryMaxAttempts, "RC", rc);
+            co_await timer::Sleep(event, mctpTidDiscoveryRetryDelayUsec,
+                                  timer::Priority);
+        }
+    }
+    co_return rc;
+}
+
+exec::task<int> TerminusManager::setTidOverMctpWithRetry(mctp_eid_t eid,
+                                                         tid_t tid)
+{
+    int rc = PLDM_ERROR;
+    for (uint8_t attempt = 1; attempt <= mctpTidDiscoveryMaxAttempts; ++attempt)
+    {
+        rc = co_await setTidOverMctp(eid, tid);
+        // Success, or a definitive "command unsupported" answer, are both
+        // terminal - only genuine comms failures are worth retrying.
+        if (rc == PLDM_SUCCESS || rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+        {
+            co_return rc;
+        }
+        if (attempt < mctpTidDiscoveryMaxAttempts)
+        {
+            lg2::info(
+                "setTidOverMctp failed, retrying. eid={EID} tid={TID} attempt={ATTEMPT}/{MAX} rc={RC}",
+                "EID", eid, "TID", tid, "ATTEMPT", attempt, "MAX",
+                mctpTidDiscoveryMaxAttempts, "RC", rc);
+            co_await timer::Sleep(event, mctpTidDiscoveryRetryDelayUsec,
+                                  timer::Priority);
+        }
     }
     co_return rc;
 }
