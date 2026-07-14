@@ -546,6 +546,13 @@ void MctpDiscovery::discoverEndpoints(sdbusplus::message_t& msg)
 {
     MctpInfos addedInfos;
     getAddedMctpInfos(msg, addedInfos);
+    for (const auto& mctpInfo : addedInfos)
+    {
+        lg2::info(
+            "discoverEndpoints: EID {EID} added (networkId {NETWORK}) via InterfacesAdded signal",
+            "EID", unsigned(std::get<pldm::eid>(mctpInfo)), "NETWORK",
+            std::get<NetworkId>(mctpInfo));
+    }
     addToExistingMctpInfos(addedInfos);
     loadStaticEndpoints(addedInfos);
     handleMctpEndpoints(addedInfos);
@@ -593,6 +600,9 @@ void MctpDiscovery::removeEndpoints(sdbusplus::message_t& msg)
 
     if (it == existingMctpInfos.end())
     {
+        lg2::debug(
+            "removeEndpoints: MCTP endpoint removed signal for {PATH} did not match any tracked endpoint; ignoring",
+            "PATH", objPath.str);
         return;
     }
 

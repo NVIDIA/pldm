@@ -127,6 +127,9 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
     }
     else
     {
+        lg2::debug(
+            "checkNsmDeviceInventory: NSM UUID {NSMUUID} does not map to terminus MCTP UUID {UUID} (TID {TID})",
+            "NSMUUID", nsmUuid, "UUID", uuid, "TID", tid);
         return false;
     }
 }
@@ -229,6 +232,10 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 
                     if (found)
                     {
+                        lg2::debug(
+                            "checkDeviceInventory: matched device inventory for TID {TID} at {PATH} (eid={EID} bus={BUS} addr={ADDR}); loading EM config",
+                            "TID", tid, "PATH", objPath, "EID", inventoryEid,
+                            "BUS", bus, "ADDR", addr);
                         co_await getSensorAuxNameFromEM(bus, addr, inventoryEid,
                                                         objPath);
 #ifdef OEM_NVIDIA
@@ -267,6 +274,9 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
 
         if (getSubTreeResponse.size() == 0)
         {
+            lg2::error(
+                "getSensorAuxNameFromEM: unable to load SensorAuxName config from EM under {PATH} (eid={EID} bus={BUS} addr={ADDR}); sensor names fall back to PLDM defaults",
+                "PATH", objPath, "EID", eid, "BUS", bus, "ADDR", addr);
             co_return PLDM_SUCCESS;
         }
 
@@ -352,6 +362,10 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
 
             sensorAuxNameOverwriteTbl[sensorId] =
                 std::make_tuple(auxNameTbl, parentPathEM);
+            lg2::debug(
+                "getSensorAuxNameFromEM: loaded {COUNT} aux name(s) for sensorId {SID} from EM {PATH} (eid={EID})",
+                "COUNT", auxNameTbl.size(), "SID", sensorId, "PATH", path,
+                "EID", eid);
         }
     }
     catch (const std::exception& e)
@@ -1545,6 +1559,14 @@ exec::task<int> Terminus::scanInventories()
 
         inventories.clear();
         inventoryParentMap.clear();
+
+        if (!terminusManager.toMctpInfo(tid).has_value())
+        {
+            lg2::error(
+                "scanInventories: TID {TID} has no MCTP mapping; device inventory cannot be matched, sensors/telemetry will be missing for this terminus",
+                "TID", tid);
+        }
+
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
             EntityType type = 0;
@@ -1640,6 +1662,9 @@ exec::task<int> Terminus::scanInventories()
         lg2::error("Failed to scan inventories Error: {ERROR}", "ERROR", e);
         co_return PLDM_FAILED;
     }
+    lg2::debug(
+        "scanInventories: completed for TID {TID}; {COUNT} device inventories matched",
+        "TID", tid, "COUNT", inventories.size());
     co_return PLDM_SUCCESS;
 }
 
