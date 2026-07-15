@@ -54,56 +54,69 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     pldm::dbus::InterfaceMap interfaces;
     m.read(objPath, interfaces);
 
-    if (!initalized)
-    {
-#ifdef OEM_NVIDIA
-        // If terminus is not initialized, still mark it as needing a refresh
-        // for the interested interfaces. Whenever it gets initialized, it
-        // should refresh the associations.
-        if (interfaces.count(
-                "xyz.openbmc_project.Configuration.NsmDeviceAssociation"))
-        {
-            lg2::info(
-                "Tid={TID} NsmDeviceAssociation arrived on {PATH} during init; "
-                "refresh deferred until Terminus is initialized",
-                "TID", tid, "PATH", std::string(objPath));
-            needRefresh = true;
-        }
-#endif
-        return;
-    }
-
     // if any interested interface added, refresh the associations
+    bool interested = false;
     for (const auto& [intf, properties] : interfaces)
     {
         for (const auto& [entitytype, entityIface] : entityInterfaces)
         {
             if (intf == entityIface)
             {
-                needRefresh = true;
+                interested = true;
                 break;
             }
         }
         if (intf == overallSystemInterface)
         {
-            needRefresh = true;
+            interested = true;
         }
 #ifdef OEM_NVIDIA
         if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
         {
-            needRefresh = true;
+            interested = true;
         }
 #endif
-        if (needRefresh)
+        // Device-association configs bind an inventory object to a terminus
+        // (checkDeviceInventory); one arriving after its box was scanned
+        // must trigger a re-scan just like the NSM variant above.
+        if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
+            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation")
+        {
+            interested = true;
+        }
+        if (interested)
         {
             break;
         }
     }
 
-    if (needRefresh)
+    if (!interested)
     {
-        refreshAssociations();
+        return;
     }
+    needRefresh = true;
+
+    if (!initalized)
+    {
+        // Inventory can be published while the terminus is still
+        // initializing (init spans many co_awaits, and the match is
+        // registered before scanInventories snapshots the subtree).
+        // needRefresh is already latched above, so this return only defers
+        // the refresh — applyPendingRefresh() serves it right after init
+        // completes; the signal is not dropped. This keeps the original
+        // init-time deferral for NsmDeviceAssociation (the race fix that
+        // latched needRefresh during init) and extends it to every
+        // interested interface: a dropped signal leaves fallback-gated
+        // sensors without metric-report updates until an unrelated future
+        // inventory event.
+        lg2::info("Tid={TID} interested inventory interface arrived on "
+                  "{PATH} during init; refresh deferred until Terminus is "
+                  "initialized",
+                  "TID", tid, "PATH", std::string(objPath));
+        return;
+    }
+
+    refreshAssociations();
 }
 
 bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
@@ -1780,7 +1793,28 @@ exec::task<int> Terminus::updateAssociations()
                 }
             }
         }
-        ptr->setInventoryPaths(inventoryPaths, false);
+        // A resolution that degraded past the entity's dedicated inventory
+        // (to the system chassis, or to an ancestor while the real parent is
+        // still settling) is a placeholder, not a real parent: keep
+        // defaultInventoryAssociated set so the shared-memory push in
+        // NumericSensor::updateReading() stays gated and the first
+        // MetricReport (shmem) insert cannot freeze a wrong metricProperty
+        // URI. Only the MetricReport entry is withheld — the sensor itself
+        // stays visible on D-Bus/Redfish under the fallback parent.
+        // refreshAssociations() re-resolves once the real inventory appears.
+        // An explicit per-sensor inventory override from EM configuration is
+        // authoritative and never treated as a fallback.
+        bool fallbackAssociation =
+            !inventoryPath &&
+            isFallbackAssociation(inventoryPaths, std::get<1>(entityInfo));
+        if (fallbackAssociation)
+        {
+            lg2::debug("Sensor {NAME}: association degraded to a "
+                       "non-dedicated parent; metric-report updates gated "
+                       "until inventory resolves.",
+                       "NAME", ptr->getSensorName());
+        }
+        ptr->setInventoryPaths(inventoryPaths, fallbackAssociation);
 
         auto type = toPhysicalContextType(std::get<1>(entityInfo));
         ptr->setPhysicalContext(type);
@@ -1882,7 +1916,22 @@ exec::task<int> Terminus::updateAssociations()
             }
         }
 
-        ptr->setInventoryPaths(inventoryPaths, false);
+        // Same placeholder rule as numeric sensors above: keep
+        // defaultInventoryAssociated set while the association is a
+        // degraded fallback so state-set shared-memory updates (e.g. port
+        // Status/State/Health MetricReport entries) stay gated until
+        // refreshAssociations() re-resolves against real inventory.
+        bool fallbackAssociation =
+            !inventoryPath &&
+            isFallbackAssociation(inventoryPaths, std::get<1>(entityInfo));
+        if (fallbackAssociation)
+        {
+            lg2::debug("State sensor {ID}: association degraded to a "
+                       "non-dedicated parent; metric-report updates gated "
+                       "until inventory resolves.",
+                       "ID", ptr->sensorId);
+        }
+        ptr->setInventoryPaths(inventoryPaths, fallbackAssociation);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
@@ -2109,6 +2158,68 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
         return inventoryPaths;
     }
     return effectiveContainerPaths;
+}
+
+bool Terminus::isFallbackAssociation(
+    const std::vector<std::string>& inventoryPaths, EntityType entityType) const
+{
+    // Entity types that must resolve to dedicated inventory, mapped to the
+    // entity types of the inventory objects that can serve as their Redfish
+    // home. findInventory(findClosest=true) degrades to the closest ancestor
+    // (module, board, system chassis) while EM inventory is still settling;
+    // any resolution that is not one of the home types below is a
+    // placeholder and metric-report updates must stay gated so the first
+    // shmem insert cannot freeze a wrong metricProperty URI.
+    // Cross-reference: buildEntityTypeTag() names these same terminus-local
+    // sub-entities; entityInterfaces lists the inventory interfaces
+    // scanInventories() collects. Keep the three in sync.
+    // Types absent from this map (e.g. baseboard sensors, and — pending
+    // platform validation — ETHERNET/INFINIBAND/ADD_IN_CARD/OPERATING_SYS)
+    // may legitimately live on the system chassis and are never gated.
+    static const std::map<EntityType, std::vector<EntityType>> dedicatedHomes =
+        {
+            {PLDM_ENTITY_PROC, {PLDM_ENTITY_PROC}},
+            {PLDM_ENTITY_PROC_IO_MODULE,
+             {PLDM_ENTITY_PROC, PLDM_ENTITY_PROC_IO_MODULE}},
+            {PLDM_ENTITY_MEMORY_CONTROLLER,
+             {PLDM_ENTITY_PROC_IO_MODULE, PLDM_ENTITY_PROC}},
+            {PLDM_ENTITY_POWER_SUPPLY, {PLDM_ENTITY_PROC}},
+            {PLDM_ENTITY_SYS_BUS, {PLDM_ENTITY_PROC}},
+            {PLDM_ENTITY_PCI_EXPRESS_BUS, {PLDM_ENTITY_PROC}},
+        };
+
+    // Strip LOGICAL flag for comparison, matching findInventory
+    auto itr =
+        dedicatedHomes.find(static_cast<EntityType>(entityType & 0x7FFF));
+    if (itr == dedicatedHomes.end())
+    {
+        return false;
+    }
+    if (inventoryPaths.empty())
+    {
+        return true;
+    }
+    const auto& homeTypes = itr->second;
+    for (const auto& path : inventoryPaths)
+    {
+        bool isHome = false;
+        for (const auto& [invPath, invType, invInstance] : inventories)
+        {
+            if (invPath == path &&
+                std::find(homeTypes.begin(), homeTypes.end(),
+                          static_cast<EntityType>(invType & 0x7FFF)) !=
+                    homeTypes.end())
+            {
+                isHome = true;
+                break;
+            }
+        }
+        if (!isHome)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
@@ -2548,14 +2659,21 @@ void Terminus::refreshAssociations()
 
 exec::task<int> Terminus::refreshAssociationsTask()
 {
-    while (needRefresh)
+    // A refresh request can land while this task is suspended inside
+    // scanInventories() or updateAssociations() (refreshAssociations()
+    // sees the task in flight and only latches needRefresh). Re-run the
+    // scan+update pass until no request landed mid-pass so a latched
+    // request is never dropped — a dropped request leaves fallback-gated
+    // sensors without metric-report updates until an unrelated future
+    // inventory event.
+    do
     {
         needRefresh = false;
         // Update inventory list
         co_await scanInventories();
-    }
-    // Update Sensor PDIs after scans are done
-    co_await updateAssociations();
+        // Update Sensor PDIs after scans are done
+        co_await updateAssociations();
+    } while (needRefresh);
     co_return PLDM_SUCCESS;
 }
 

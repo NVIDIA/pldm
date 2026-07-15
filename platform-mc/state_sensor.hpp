@@ -103,11 +103,14 @@ class StateSensor
             stateSet->setAssociation(assocs);
             defaultInventoryAssociated = flag;
 
-            if (!defaultInventoryAssociated)
-            {
-                sdbusplus::object_path entityPath(associatedEntityPath);
-                associationEntityId = entityPath.filename();
-            }
+            // Track the association entity even while the association is a
+            // gated fallback: handleSensorEvent() drops events with an empty
+            // entity name, and sensor events arriving in the settling window
+            // must keep their (fallback) attribution rather than vanish.
+            // Unconditional assignment also clears a stale entity when a
+            // sensor later re-degrades from real inventory to the fallback.
+            sdbusplus::object_path entityPath(associatedEntityPath);
+            associationEntityId = entityPath.filename();
         }
     }
 

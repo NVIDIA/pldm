@@ -246,6 +246,13 @@ class Terminus
     std::optional<uint16_t> getInstanceFromAssoicationPdr(
         ContainerID containerId);
 
+    /** @brief Whether a resolved association is a degraded placeholder for
+     *         an entity type that must resolve to dedicated inventory (the
+     *         paths are not inventory objects of the type's expected home);
+     *         metric-report (shmem) updates stay gated while this is true */
+    bool isFallbackAssociation(const std::vector<std::string>& inventoryPaths,
+                               EntityType entityType) const;
+
     /** @brief Get the container EntityInfo for a given container ID */
     std::optional<EntityInfo> getContainerEntity(ContainerID containerId) const
     {

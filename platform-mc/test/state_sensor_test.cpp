@@ -1550,7 +1550,8 @@ TEST_F(StateSensorCoverage, stateSensorInlineAndAssociationFlagCoverage)
         "/xyz/openbmc_project/inventory/system/chassis/chassis31/cpu0"};
     sensor.setInventoryPaths(inventoryPaths, true);
     EXPECT_TRUE(sensor.isDefaultInventoryAssociated());
-    EXPECT_TRUE(sensor.getAssociationEntityId().empty());
+    // Gated sensors keep the fallback attribution so events still log.
+    EXPECT_EQ("cpu0", sensor.getAssociationEntityId());
 
     auto sensorEventInfo = std::make_shared<pldm::utils::SensorEventInfo>();
     sensorEventInfo->impactedComponent = "CPU31";
@@ -2042,7 +2043,7 @@ TEST_F(StateSensorCoverage,
         {"/xyz/openbmc_project/inventory/system/chassis/chassis48/cpu0"}, true);
 
     EXPECT_TRUE(sensor->isDefaultInventoryAssociated());
-    EXPECT_TRUE(sensor->getAssociationEntityId().empty());
+    EXPECT_EQ("cpu0", sensor->getAssociationEntityId());
     ASSERT_EQ(1u, trackedStateSet->lastAssociations.size());
     EXPECT_EQ("/xyz/openbmc_project/inventory/system/chassis/chassis48/cpu0",
               trackedStateSet->lastAssociations.front().path);
@@ -2139,7 +2140,7 @@ TEST_F(StateSensorCoverage, stateSensorUpdateSensorNamesFallbackCoverage)
 
     sensor.setInventoryPaths({associationPath + "/cpu0"}, true);
     EXPECT_TRUE(sensor.isDefaultInventoryAssociated());
-    EXPECT_TRUE(sensor.getAssociationEntityId().empty());
+    EXPECT_EQ("cpu0", sensor.getAssociationEntityId());
 
     auto sensorEventInfo = std::make_shared<pldm::utils::SensorEventInfo>();
     sensorEventInfo->impactedComponent = "CPU46";
@@ -2654,7 +2655,7 @@ TEST_F(StateSensorCoverage, stateSensorAssociationEntityIdCopyCoverage)
     StateSensor defaultSensor(0x65, false, 0x6500, info, nullptr,
                               associationPath, nullptr);
     defaultSensor.setInventoryPaths({associationPath + "/cpu1"}, true);
-    EXPECT_TRUE(defaultSensor.getAssociationEntityId().empty());
+    EXPECT_EQ("cpu1", defaultSensor.getAssociationEntityId());
     EXPECT_TRUE(defaultSensor.isDefaultInventoryAssociated());
 
     StateSensor longSensor(0x66, false, 0x6600, info, nullptr, associationPath,
@@ -2911,7 +2912,7 @@ TEST_F(StateSensorCoverage, stateSensorInlineGetterAndFlagMatrixCoverage)
     sensor.setInventoryPaths(
         {associationPath + "/cpu0", associationPath + "/cpu1"}, true);
     EXPECT_TRUE(sensor.isDefaultInventoryAssociated());
-    EXPECT_TRUE(sensor.getAssociationEntityId().empty());
+    EXPECT_EQ("cpu1", sensor.getAssociationEntityId());
 
     sensor.setInventoryPaths({associationPath + "/" + std::string(128, 'x')},
                              false);
@@ -3006,8 +3007,10 @@ TEST_F(StateSensorCoverage, stateSensorInlineTransitionMatrixCoverage)
     EXPECT_EQ(std::string(160, 'x'), sensor.getAssociationEntityId());
     EXPECT_FALSE(sensor.isDefaultInventoryAssociated());
 
+    // An empty resolution clears the attribution instead of keeping a
+    // stale entity from the earlier real association.
     sensor.setInventoryPaths({}, true);
-    EXPECT_EQ(std::string(160, 'x'), sensor.getAssociationEntityId());
+    EXPECT_TRUE(sensor.getAssociationEntityId().empty());
     EXPECT_TRUE(sensor.isDefaultInventoryAssociated());
 
     sensor.setRefreshed(false);
@@ -3067,7 +3070,9 @@ TEST_F(StateSensorCoverage, stateSensorInlineRuntimeGetterCoverage)
     for (const auto& [paths, defaultInventory] : inventoryCases)
     {
         sensor.setInventoryPaths(paths, defaultInventory);
-        EXPECT_FALSE((sensor.*getAssoc)().empty());
+        // The attribution follows the resolved paths: set when paths exist,
+        // cleared when the resolution is empty.
+        EXPECT_EQ(paths.empty(), (sensor.*getAssoc)().empty());
     }
     EXPECT_TRUE(sensor.isDefaultInventoryAssociated());
 
