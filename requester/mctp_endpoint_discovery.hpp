@@ -22,6 +22,17 @@ namespace pldm
 {
 
 const std::string emptyUUID = "00000000-0000-0000-0000-000000000000";
+
+/** @brief Check whether a UUID is the all-zeros sentinel.
+ *
+ *  getEndpointUUIDProp() returns emptyUUID on any D-Bus read failure, and
+ *  mctpd publishes it when a device reports a nil UUID. Every discovery
+ *  path must reject it before registering an endpoint.
+ */
+inline bool isEmptyUUID(const UUID& uuid)
+{
+    return uuid == emptyUUID;
+}
 constexpr const char* MCTPService = "au.com.codeconstruct.MCTP1";
 constexpr const char* MCTPReactorService = "xyz.openbmc_project.MCTPReactor";
 /** @brief Interface mctpreactor publishes on an endpoint to assert

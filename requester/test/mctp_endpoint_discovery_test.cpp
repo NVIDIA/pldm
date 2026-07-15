@@ -705,6 +705,12 @@ TEST_F(DbusBackedMctpDiscoveryTest,
     EXPECT_EQ(handler.lastOfflineEid, env->onlinePldm().eid);
 }
 
+TEST(MctpEndpointDiscoveryTest, isEmptyUUID)
+{
+    EXPECT_TRUE(pldm::isEmptyUUID(pldm::emptyUUID));
+    EXPECT_FALSE(pldm::isEmptyUUID("7865bed9-5320-4b6a-b94d-8fa70b6283d6"));
+}
+
 TEST(MctpEndpointDiscoveryTest, ZeroHandleMctpEndpoint)
 {
     MockdBusHandler mockedDbusHandler;
