@@ -148,6 +148,7 @@ exec::task<void> DebugToken::updateDebugToken(
     // `package` is only used in the synchronous prologue below; see header
     // for the invariant. Do not add post-await reads from `package`.
     installToken = false;
+    bool installTokenInPackage = false;
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
         const auto& fwDeviceIDRecord = fwDeviceIDRecords[index];
@@ -186,26 +187,21 @@ exec::task<void> DebugToken::updateDebugToken(
                 {
                     continue;
                 }
+                // The package carries an install token for us. Remember that
+                // independently of whether its object resolves, so that a
+                // failed lookup is not mistaken for "no install token" below.
+                installTokenInPackage = true;
                 const auto& version = std::get<static_cast<size_t>(
                     ComponentImageInfoPos::CompVersionPos)>(componentImageInfo);
                 std::string filepath = "";
                 std::string objPath;
-                try
+                std::tie(filepath, objPath) = getFilePath(uuid);
+                if (filepath.empty() || objPath.empty())
                 {
-                    // get File PATH and object path
-                    std::tie(filepath, objPath) = getFilePath(uuid);
-                }
-                catch (const sdbusplus::exception::SdBusError& e)
-                {
-                    error("failed to get filepath.", "ERROR", e);
                     continue;
                 }
                 info("Got filepath for install token. FILEPATH={FILEPATH}",
                      "FILEPATH", filepath);
-                if (filepath == "")
-                {
-                    continue;
-                }
                 package.seekg(
                     std::get<5>(componentImageInfo)); // SEEK to image offset
                 std::vector<uint8_t> buffer(std::get<6>(componentImageInfo));
@@ -229,22 +225,35 @@ exec::task<void> DebugToken::updateDebugToken(
             }
         }
     }
+    if (!installToken && installTokenInPackage)
+    {
+        // An install token was requested but its object never resolved. Do
+        // not fall through to the erase branch: that would silently erase a
+        // token when the caller asked to install one.
+        error("Cannot install debug token: no D-Bus object for UUID={UUID}",
+              "UUID", InstallTokenUUID);
+        startUpdate();
+        co_return;
+    }
     if (!installToken)
     {
-        try
+        // Only the object path matters here; the erase branch never uses the
+        // directory. getFilePath() derives it with parent_path(), which is
+        // empty for a Path with no directory component, so testing it would
+        // reject an erase object that resolved successfully.
+        const auto objPath = getFilePath(EraseTokenUUID).second;
+        if (objPath.empty())
         {
-            auto [filepath, objPath] = getFilePath(EraseTokenUUID);
-            tokenPath = objPath;
-            tokenVersion = "0.0"; // erase token doesn't have any version
-        }
-        catch (const sdbusplus::exception::SdBusError& e)
-        {
-            error("Failed to get D-Bus object path.", "ERROR", e);
+            error("Cannot erase debug token: no D-Bus object for UUID={UUID}",
+                  "UUID", EraseTokenUUID);
             createLogEntry(debugTokenEraseFailed, "HGX_FW_Debug_Token_Erase",
-                           "0.0", transferFailedResolution);
+                           "Debug token service is not ready.",
+                           transferFailedResolution);
             startUpdate();
             co_return;
         }
+        tokenPath = objPath;
+        tokenVersion = eraseTokenVersion;
     }
 
     try
@@ -367,6 +376,8 @@ std::pair<std::string, std::string> DebugToken::getFilePath(
                 "OBJ", obj, "ERROR", e);
         }
     }
+    error("No debug token object for UUID={UUID}, searched {PATHCOUNT} path(s)",
+          "UUID", uuid, "PATHCOUNT", paths.size());
     return {};
 }
 

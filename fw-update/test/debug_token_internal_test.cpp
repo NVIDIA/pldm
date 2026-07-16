@@ -28,8 +28,10 @@
 #include <systemd/sd-event.h>
 
 #include <sdbusplus/async.hpp>
+#include <sdbusplus/exception.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 
+#include <cerrno>
 #include <sstream>
 #include <stdexcept>
 
@@ -283,7 +285,7 @@ TEST_F(DebugTokenInternalTest, startTimerTimeoutForInstallPathTriggersUpdate)
     sd_event_unref(timerEvent);
 }
 
-TEST_F(DebugTokenInternalTest, updateDebugTokenFallsBackToEraseTokenPath)
+TEST_F(DebugTokenInternalTest, updateDebugTokenEraseReportsFailureWhenPathEmpty)
 {
     DebugToken debugToken(busMock, &updateManager);
     std::vector<sdbusplus::object_path> targets;
@@ -300,12 +302,16 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenFallsBackToEraseTokenPath)
     ComponentImageInfos componentImageInfos;
     std::istringstream package("dummy package");
 
+    // With no install-token record the erase-token branch runs, and
+    // getFilePath(EraseTokenUUID) resolves to an empty object path. The branch
+    // logs the erase failure and returns before assigning the token version,
+    // so tokenVersion stays empty instead of being set to "0.0".
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
             fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
-    EXPECT_EQ(debugToken.tokenVersion, "0.0");
+    EXPECT_TRUE(debugToken.tokenVersion.empty());
 }
 
 TEST_F(DebugTokenInternalTest, startUpdateHandlesFailedNonPldmActivation)
@@ -663,6 +669,108 @@ TEST_F(DebugTokenInternalTest, getFilePathSkipsEntryWhenPathLookupThrows)
     auto [directoryPath, objectPath] = debugToken.getFilePath(InstallTokenUUID);
     EXPECT_EQ(directoryPath, "/tmp/debug-token/b");
     EXPECT_EQ(objectPath, "/xyz/openbmc_project/software/other/b");
+}
+
+TEST_F(DebugTokenInternalTest, getFilePathReturnsEmptyOnUuidReadFailure)
+{
+    // A D-Bus failure while reading the UUID property is logged and the entry
+    // skipped, so getFilePath returns an empty path. The caller
+    // (updateDebugToken) then reports the failure via its empty-path check.
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillOnce(testing::Return(
+            std::vector<std::string>{"/xyz/openbmc_project/software/other/a"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char*, const char*,
+                           const char*) -> pldm::utils::PropertyValue {
+            throw sdbusplus::exception::SdBusError(EIO,
+                                                   "mock UUID read failure");
+        });
+
+    auto [directoryPath, objectPath] = debugToken.getFilePath(InstallTokenUUID);
+    EXPECT_TRUE(directoryPath.empty());
+    EXPECT_TRUE(objectPath.empty());
+}
+
+TEST_F(DebugTokenInternalTest, getFilePathReturnsEmptyOnPathReadFailure)
+{
+    // A D-Bus failure while reading the Path property (after the UUID matched)
+    // is likewise logged and the entry skipped, so getFilePath returns an
+    // empty path for the caller to handle.
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillOnce(testing::Return(
+            std::vector<std::string>{"/xyz/openbmc_project/software/other/a"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char*, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            throw sdbusplus::exception::SdBusError(EIO,
+                                                   "mock Path read failure");
+        });
+
+    auto [directoryPath, objectPath] = debugToken.getFilePath(InstallTokenUUID);
+    EXPECT_TRUE(directoryPath.empty());
+    EXPECT_TRUE(objectPath.empty());
+}
+
+TEST_F(DebugTokenInternalTest,
+       updateDebugTokenDoesNotEraseWhenInstallUnresolved)
+{
+    // A package carrying an install token whose D-Bus object cannot be
+    // resolved must not fall through to the erase branch, which would erase a
+    // token when the caller asked to install one. getFilePath() is therefore
+    // called exactly once, for the install UUID, and never again for the
+    // erase UUID -- a second call would mean the erase lookup ran.
+    std::vector<sdbusplus::object_path> targets;
+    updateManager.otherDeviceUpdateManager =
+        std::make_unique<OtherDeviceUpdateManager>(busMock, &updateManager,
+                                                   targets);
+    updateManager.deviceUpdaterMap.clear();
+    updateManager.objPath =
+        "/xyz/openbmc_project/software/debug_token_install_unresolved";
+    updateManager.createProgressUpdateTimer();
+    updateManager.debugToken =
+        std::make_unique<DebugToken>(busMock, &updateManager);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .Times(1)
+        .WillOnce(testing::Return(std::vector<std::string>{}));
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords{
+        {1,
+         {0},
+         "VersionString",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {}}};
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
+    std::istringstream package("12345678");
+
+    EXPECT_NO_THROW({
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
+    });
+    EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
+    EXPECT_TRUE(debugToken.tokenVersion.empty());
 }
 
 TEST_F(DebugTokenInternalTest,
