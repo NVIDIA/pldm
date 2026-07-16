@@ -49,6 +49,10 @@ const std::string activateFailed{"Update.1.0.ActivateFailed"};
 const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
+const std::string preUpdateValidationFailed{
+    "NvidiaUpdate.1.2.PreUpdateValidationFailed"};
+const std::string firmwarePackageComponentImageMissing{
+    "NvidiaUpdate.1.2.FirmwarePackageComponentImageMissing"};
 const std::string componentUpdateSkipped{
     "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
@@ -224,6 +228,16 @@ inline void createLogEntry(
         {
             level = Level::Critical;
         }
+    }
+    else if (messageID == firmwarePackageComponentImageMissing)
+    {
+        messageArgs = arg0;
+        level = Level::Critical;
+    }
+    else if (messageID == preUpdateValidationFailed)
+    {
+        messageArgs = "";
+        level = Level::Critical;
     }
     else
     {

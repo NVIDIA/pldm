@@ -48,7 +48,8 @@ exec::task<int> sendRecvPldmMsgOverMctp(
 }
 
 void handleTransportError(RequesterHandler& handler, mctp_eid_t eid,
-                          const std::string& commandName, uint8_t pldmType)
+                          const std::string& commandName, uint8_t pldmType,
+                          bool critical)
 {
     auto errorInfo = handler.getTransportError(eid, pldmType);
 
@@ -56,7 +57,7 @@ void handleTransportError(RequesterHandler& handler, mctp_eid_t eid,
     {
         pldm::transport::createMctpTransportRedfishEvent(
             eid, commandName, errorInfo->errorCode, errorInfo->binding,
-            errorInfo->direction);
+            errorInfo->direction, "FWUpdate", critical);
 
         handler.clearTransportError(eid);
     }

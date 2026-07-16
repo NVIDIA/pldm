@@ -100,7 +100,7 @@ exec::task<int> sendRecvPldmMsgOverMctp(
  *  Transport errors are infrastructure/connectivity issues:
  *  - EHOSTUNREACH, ETIMEDOUT, EPROTO, reassembly failures
  *  - Both TX and RX direction errors
- *  - Logged to journal only, no message registry created
+ *  - Emits a Redfish event through createMctpTransportRedfishEvent()
  *  - Examples: Device unreachable, link down, packet reassembly failure
  *
  *  This function should ONLY be called when rc ==
@@ -113,10 +113,13 @@ exec::task<int> sendRecvPldmMsgOverMctp(
  * "RequestUpdate")
  *  @param[in] pldmType - PLDM type to filter errors (default: PLDM_FWUP for
  * Type 5, can also use PLDM_BASE for Type 0)
+ *  @param[in] critical - Emit the transport Redfish event at Critical
+ * severity. Set only for endpoints validated by a PreUpdateValidation update
+ * request, where the failure rejects the whole request.
  */
 void handleTransportError(RequesterHandler& handler, mctp_eid_t eid,
                           const std::string& commandName,
-                          uint8_t pldmType = PLDM_FWUP);
+                          uint8_t pldmType = PLDM_FWUP, bool critical = false);
 
 } // namespace fw_update
 

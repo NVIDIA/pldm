@@ -107,7 +107,8 @@ TEST_F(ManagerInternalTest, refreshSingleEndpointCallbackPathIsCallable)
     Manager manager(event, reqHandler, instanceIdDb, configPath, true);
 
     ASSERT_TRUE(manager.updateManager.refreshSingleEndpointCallback);
-    auto co = manager.updateManager.refreshSingleEndpointCallback(1, true);
+    auto co =
+        manager.updateManager.refreshSingleEndpointCallback(1, true, false);
     auto rc = stdexec::sync_wait(std::move(co));
     ASSERT_TRUE(rc.has_value());
 }

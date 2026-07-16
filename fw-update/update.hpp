@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/mmap_stream.hpp"
+#include "config.hpp"
 
 #include <unistd.h>
 
@@ -42,13 +43,16 @@ class Update : public UpdateIntf
         objPath(path)
     {
         allowedForceUpdate(true);
+        // Supported only on platforms with a config-derived device scope.
+        allowedPreUpdateValidation(!getConfigEids().empty());
         allowedTargets(true);
     }
 
     virtual sdbusplus::message::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-        std::vector<sdbusplus::message::object_path> targets) override;
+        std::vector<sdbusplus::message::object_path> targets,
+        bool preUpdateValidation) override;
 
     /** @brief Close the image stream and release the mmap
      *

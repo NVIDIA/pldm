@@ -89,14 +89,17 @@ TEST(ConfigInternal, parseConfigInvalidJsonReturnsEmptyOutputs)
     FirmwareInventoryInfo fwInventoryInfo;
     ComponentNameMapInfo componentNameMapInfo;
     ExcludedFwUpdateEids excludedFwUpdateEids;
+    ExpectedComponentIdsByEid expectedComponentIdsByEid;
 
     parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                componentNameMapInfo, excludedFwUpdateEids);
+                componentNameMapInfo, excludedFwUpdateEids,
+                expectedComponentIdsByEid);
 
     EXPECT_TRUE(deviceInventoryInfo.infos.empty());
     EXPECT_TRUE(fwInventoryInfo.infos.empty());
     EXPECT_TRUE(componentNameMapInfo.infos.empty());
     EXPECT_TRUE(excludedFwUpdateEids.empty());
+    EXPECT_TRUE(expectedComponentIdsByEid.empty());
 }
 
 TEST(ConfigInternal, getDeviceNameFromEidLoadsFromRuntimeConfig)
@@ -245,7 +248,7 @@ TEST(ConfigInternal, buildEidToNameMapExercisesFallbackAndSkipBranches)
     EXPECT_FALSE(eidToNameMap.contains(26));
 }
 
-TEST(ConfigInternal, targetNameLookupSkipsExcludedFwUpdateEids)
+TEST(ConfigInternal, preUpdateValidationLookupMapsSkipExcludedFwUpdateEids)
 {
     const std::string config = R"({
         "excluded_fw_update_eids": [31],
@@ -283,16 +286,132 @@ TEST(ConfigInternal, targetNameLookupSkipsExcludedFwUpdateEids)
 
     auto eidToNameMap = buildEidToNameMap();
     auto nameToEidMap = buildNameToEidMap();
+    DeviceInventoryInfo deviceInventoryInfo{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    ComponentNameMapInfo componentNameMapInfo{};
+    ExcludedFwUpdateEids excludedFwUpdateEids{};
+    ExpectedComponentIdsByEid eidToExpectedComponentIdsMap{};
+    parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
+                componentNameMapInfo, excludedFwUpdateEids,
+                eidToExpectedComponentIdsMap);
 
+    // The display-name map keeps excluded EIDs (unchanged default behaviour —
+    // transport-event logging still resolves their names); the
+    // component-targets map below omits them.
     ASSERT_TRUE(eidToNameMap.contains(31));
     EXPECT_EQ(eidToNameMap.at(31), "ExcludedDevice");
-    EXPECT_TRUE(eidToNameMap.contains(32));
+    ASSERT_TRUE(eidToNameMap.contains(32));
+    EXPECT_EQ(eidToNameMap.at(32), "IncludedDevice");
     EXPECT_FALSE(nameToEidMap.contains("ExcludedDevice"));
     EXPECT_FALSE(nameToEidMap.contains("ExcludedComponent"));
     EXPECT_FALSE(nameToEidMap.contains("ExcludedUpdateComponent"));
     EXPECT_FALSE(nameToEidMap.contains("ExcludedComponentInfo"));
     ASSERT_TRUE(nameToEidMap.contains("IncludedDevice"));
     EXPECT_EQ(nameToEidMap.at("IncludedDevice"), 32);
+    EXPECT_FALSE(eidToExpectedComponentIdsMap.contains(31));
+    ASSERT_TRUE(eidToExpectedComponentIdsMap.contains(32));
+    EXPECT_EQ(eidToExpectedComponentIdsMap.at(32),
+              (ExpectedComponentIdsByName{{"IncludedComponentInfo", {5}}}));
+}
+
+TEST(ConfigInternal,
+     preUpdateValidationScopeExcludesConfiguredEidWithoutDisplayName)
+{
+    const std::string config = R"({
+        "entries": [
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 41}]
+                },
+                "firmware_inventory": {
+                    "create": {"NoComponentInfo": {"component_id": 40}}
+                }
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 42}]
+                },
+                "component_info": {"Component": 1}
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 42}]
+                },
+                "device_inventory": {
+                    "create": {"object_path": "/xyz/openbmc_project/inventory/system/chassis/Duplicate"}
+                }
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 0}]
+                },
+                "component_info": {"ReservedEid": 2}
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 43}]
+                },
+                "component_info": {"FW_RECOVERY_Component": 3}
+            }
+        ]
+    })";
+    writeRuntimeConfig(config);
+
+    auto eidToNameMap = buildEidToNameMap();
+
+    // The gate scope is getConfigEids() (the name-map keys), so a configured
+    // entry whose display name cannot be derived is not validated - a
+    // recorded trade-off of reusing the existing structure instead of a
+    // parallel scope collection.
+    EXPECT_FALSE(eidToNameMap.contains(41));
+    EXPECT_TRUE(eidToNameMap.contains(42));
+}
+
+TEST(ConfigInternal, preUpdateValidationScopeExcludesEmptySectionRecoveryEntry)
+{
+    // Mirrors the vr-nvl-bmc EID 51 entry: a normally absent recovery
+    // identity configured with EMPTY device_inventory/firmware_inventory
+    // sections plus component_info recovery names. It must stay out of the
+    // whole-system scope or every gated update would reject on it.
+    const std::string config = R"({
+        "entries": [
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 50}]
+                },
+                "device_inventory": {
+                    "create": {"object_path": "/xyz/openbmc_project/inventory/system/chassis/ERoT"}
+                },
+                "firmware_inventory": {
+                    "create": {"FW_ERoT_0": {"component_id": 65280}}
+                },
+                "component_info": {"FW_ERoT_0": 65280}
+            },
+            {
+                "match": {
+                    "Interface": "xyz.openbmc_project.MCTP.Endpoint",
+                    "Properties": [{"Name": "EID", "Type": "y", "Value": 51}]
+                },
+                "device_inventory": {},
+                "firmware_inventory": {},
+                "component_info": {"FW_RECOVERY_ERoT_0": 65280}
+            }
+        ]
+    })";
+    writeRuntimeConfig(config);
+
+    auto eidToNameMap = buildEidToNameMap();
+
+    // The gate scope is getConfigEids() (the name-map keys): the recovery
+    // identity derives no display name, so it stays out of the scope.
+    EXPECT_TRUE(eidToNameMap.contains(50));
+    EXPECT_FALSE(eidToNameMap.contains(51));
 }
 
 } // namespace pldm::fw_update

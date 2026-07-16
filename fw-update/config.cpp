@@ -19,6 +19,7 @@
 #include <nlohmann/json.hpp>
 #include <phosphor-logging/lg2.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <ranges>
 
@@ -29,11 +30,21 @@ namespace pldm::fw_update
 
 using Json = nlohmann::json;
 
+namespace
+{
+void deriveExpectedComponentIds(
+    const ComponentNameMapInfo& componentNameMapInfo,
+    const FirmwareInventoryInfo& fwInventoryInfo,
+    const ExcludedFwUpdateEids& excludedFwUpdateEids,
+    ExpectedComponentIdsByEid& expectedComponentIdsByEid);
+} // namespace
+
 void parseConfig(const fs::path& jsonPath,
                  DeviceInventoryInfo& deviceInventoryInfo,
                  FirmwareInventoryInfo& fwInventoryInfo,
                  ComponentNameMapInfo& componentNameMapInfo,
-                 ExcludedFwUpdateEids& excludedFwUpdateEids)
+                 ExcludedFwUpdateEids& excludedFwUpdateEids,
+                 ExpectedComponentIdsByEid& expectedComponentIdsByEid)
 {
     if (!fs::exists(jsonPath))
     {
@@ -196,6 +207,9 @@ void parseConfig(const fs::path& jsonPath,
             }
         }
     }
+
+    deriveExpectedComponentIds(componentNameMapInfo, fwInventoryInfo,
+                               excludedFwUpdateEids, expectedComponentIdsByEid);
 }
 
 namespace
@@ -259,8 +273,11 @@ std::unordered_map<mctp_eid_t, std::string> buildEidToNameMap()
         ComponentNameMapInfo componentNameMapInfo;
         ExcludedFwUpdateEids excludedFwUpdateEids;
 
+        ExpectedComponentIdsByEid expectedComponentIdsByEid;
+
         parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                    componentNameMapInfo, excludedFwUpdateEids);
+                    componentNameMapInfo, excludedFwUpdateEids,
+                    expectedComponentIdsByEid);
 
         // Build component_id → component_name map for fallback lookups
         std::unordered_map<uint8_t, std::unordered_map<uint16_t, std::string>>
@@ -438,8 +455,11 @@ std::unordered_map<std::string, mctp_eid_t> buildNameToEidMap()
         ComponentNameMapInfo componentNameMapInfo;
         ExcludedFwUpdateEids excludedFwUpdateEids;
 
+        ExpectedComponentIdsByEid expectedComponentIdsByEid;
+
         parseConfig(FW_UPDATE_CONFIG_JSON, deviceInventoryInfo, fwInventoryInfo,
-                    componentNameMapInfo, excludedFwUpdateEids);
+                    componentNameMapInfo, excludedFwUpdateEids,
+                    expectedComponentIdsByEid);
 
         auto extractEidFromMatch =
             [](const DBusIntfMatch& match) -> std::optional<mctp_eid_t> {
@@ -540,6 +560,69 @@ const std::unordered_map<std::string, mctp_eid_t>& getNameToEidMap()
 }
 
 } // anonymous namespace
+
+namespace
+{
+void deriveExpectedComponentIds(
+    const ComponentNameMapInfo& componentNameMapInfo,
+    const FirmwareInventoryInfo& fwInventoryInfo,
+    const ExcludedFwUpdateEids& excludedFwUpdateEids,
+    ExpectedComponentIdsByEid& expectedComponentIdsByEid)
+{
+    auto includedEid = [&excludedFwUpdateEids](const DBusIntfMatch& match)
+        -> std::optional<mctp_eid_t> {
+        auto eidProperty = match.second.find("EID");
+        if (eidProperty == match.second.end())
+        {
+            return std::nullopt;
+        }
+        auto eid = extractEid(eidProperty->second);
+        if (!eid.has_value() || *eid == 0 ||
+            excludedFwUpdateEids.contains(*eid))
+        {
+            return std::nullopt;
+        }
+        return *eid;
+    };
+    auto addComponent =
+        [&expectedComponentIdsByEid](mctp_eid_t eid, const std::string& name,
+                                     CompIdentifier componentId) {
+            if (!name.empty())
+            {
+                expectedComponentIdsByEid[eid][name].insert(componentId);
+            }
+        };
+
+    for (const auto& [match, componentMap] : componentNameMapInfo.infos)
+    {
+        auto eid = includedEid(match);
+        if (!eid.has_value())
+        {
+            continue;
+        }
+        for (const auto& [componentId, componentName] : componentMap)
+        {
+            addComponent(*eid, componentName, componentId);
+        }
+    }
+
+    for (const auto& [match, firmwareInfo] : fwInventoryInfo.infos)
+    {
+        auto eid = includedEid(match);
+        if (!eid.has_value())
+        {
+            continue;
+        }
+        // firmware_inventory "create" entries are reported-but-not-
+        // updatable (e.g. InfoROM) and are not coverage obligations.
+        const auto& updateFirmware = std::get<1>(firmwareInfo);
+        for (const auto& [componentId, componentName] : updateFirmware)
+        {
+            addComponent(*eid, componentName, componentId);
+        }
+    }
+}
+} // namespace
 
 std::optional<std::string> getDeviceNameFromEid(mctp_eid_t eid)
 {

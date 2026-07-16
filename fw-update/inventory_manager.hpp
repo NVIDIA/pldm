@@ -274,10 +274,12 @@ class InventoryManager
      *  @param[in] eid - MCTP endpoint to refresh
      *  @param[in] mctpInterfaces - MCTP interface information
      *  @param[in] isTarget - Whether this endpoint is a target for update
+     *  @param[in] preUpdateValidation - log failure with critical severity
      *  @return PLDM_SUCCESS on success, error code otherwise
      */
     exec::task<int> refreshSingleEndpoint(
-        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget);
+        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget,
+        bool preUpdateValidation = false);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -346,9 +348,11 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
+     *  @param[in] preUpdateValidation - log failure with critical severity
      */
     exec::task<int> queryDeviceIdentifiers(
-        mctp_eid_t eid, std::string& messageError, std::string& resolution);
+        mctp_eid_t eid, std::string& messageError, std::string& resolution,
+        bool preUpdateValidation = false);
 
     /** @brief Send GetFirmwareParameters command request
      *
@@ -357,11 +361,12 @@ class InventoryManager
      *  @param[in] resolution - recommended resolution
      *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware
      * version after receiving platform event
+     *  @param[in] preUpdateValidation - log failure with critical severity
      */
     exec::task<int> getFirmwareParameters(
         mctp_eid_t eid, std::string& messageError, std::string& resolution,
-        dbus::MctpInterfaces& mctpInterfaces,
-        bool refreshFWVersionOnly = false);
+        dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly = false,
+        bool preUpdateValidation = false);
 
     /** @brief Handler for QueryDownstreamDevices command response
      *
@@ -398,8 +403,12 @@ class InventoryManager
      * @param[in] eid - mctp end point
      * @param[in] messageError - message error
      * @param[in] resolution - recommended resolution
+     * @return true if a ResourceErrorsDetected entry was created for the
+     *         inventory device name; false if no live MCTP/device-inventory
+     *         match was available (caller may emit a config-name fallback,
+     *         e.g. during pre-update validation refresh)
      */
-    void logDiscoveryFailedMessage(
+    bool logDiscoveryFailedMessage(
         const mctp_eid_t eid, const std::string& messageError,
         const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
         const std::string& logNamespace = "", bool overrideSeverity = false);

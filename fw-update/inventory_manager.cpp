@@ -17,6 +17,7 @@
 #include "inventory_manager.hpp"
 
 #include "common/utils.hpp"
+#include "config.hpp"
 #include "dbusutil.hpp"
 #include "fw_update_utility.hpp"
 #include "requester/handler.hpp"
@@ -323,7 +324,8 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
 }
 
 exec::task<int> InventoryManager::queryDeviceIdentifiers(
-    mctp_eid_t eid, std::string& messageError, std::string& resolution)
+    mctp_eid_t eid, std::string& messageError, std::string& resolution,
+    bool preUpdateValidation)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(
@@ -358,7 +360,8 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
         }
         else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            handleTransportError(handler, eid, "QueryDeviceIdentifiers");
+            handleTransportError(handler, eid, "QueryDeviceIdentifiers",
+                                 PLDM_FWUP, preUpdateValidation);
         }
         co_return rc;
     }
@@ -513,7 +516,8 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
 
 exec::task<int> InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
-    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly,
+    bool preUpdateValidation)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request requestMsg(
@@ -549,7 +553,8 @@ exec::task<int> InventoryManager::getFirmwareParameters(
         }
         else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            handleTransportError(handler, eid, "GetFirmwareParameters");
+            handleTransportError(handler, eid, "GetFirmwareParameters",
+                                 PLDM_FWUP, preUpdateValidation);
         }
         co_return rc;
     }
@@ -1210,7 +1215,7 @@ bool InventoryManager::logDeviceStatusErrors(const mctp_eid_t eid,
     return true;
 }
 
-void InventoryManager::logDiscoveryFailedMessage(
+bool InventoryManager::logDiscoveryFailedMessage(
     const mctp_eid_t eid, const std::string& messageError,
     const std::string& resolution, dbus::MctpInterfaces mctpInterfaces,
     const std::string& logNamespace, bool forceInformational)
@@ -1228,12 +1233,15 @@ void InventoryManager::logDiscoveryFailedMessage(
                 std::filesystem::path(deviceObjPath).filename();
             createLogEntry(resourceErrorDetected, compName, messageError,
                            resolution, logNamespace, forceInformational);
+            return true;
         }
     }
+    return false;
 }
 
 exec::task<int> InventoryManager::refreshSingleEndpoint(
-    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget)
+    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget,
+    bool preUpdateValidation)
 {
     if (excludedFwUpdateEids.contains(eid))
     {
@@ -1241,6 +1249,25 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
              "EID", eid);
         co_return PLDM_SUCCESS;
     }
+
+    // preUpdateValidation failures log at Critical severity: the failure
+    // rejects the whole request.
+    const bool forceInformational = !isTarget && !preUpdateValidation;
+
+    // logDiscoveryFailedMessage is a no-op without live MCTP inventory; a
+    // preUpdateValidation rejection still needs a named Critical message, so
+    // fall back to the configured device name.
+    auto logCriticalDiscoveryFallback = [eid](const std::string& messageErr,
+                                              const std::string& res) {
+        createLogEntry(
+            resourceErrorDetected,
+            getDeviceNameFromEid(eid).value_or(
+                "EID " + std::to_string(static_cast<unsigned>(eid))),
+            messageErr.empty()
+                ? "The device did not respond to the firmware update discovery request."
+                : messageErr,
+            res, "FWUpdate", false);
+    };
 
     std::string messageError{};
     // discoveryResolution captures the resolution message from discovery
@@ -1253,15 +1280,20 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
 
     info("Refreshing descriptors for endpoint ID {EID}", "EID", eid);
 
-    auto rc =
-        co_await queryDeviceIdentifiers(eid, messageError, discoveryResolution);
+    auto rc = co_await queryDeviceIdentifiers(
+        eid, messageError, discoveryResolution, preUpdateValidation);
     if (rc != PLDM_SUCCESS)
     {
-        if (rc == PLDM_ERROR_INVALID_DATA or
-            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+        if (rc == PLDM_ERROR_INVALID_DATA ||
+            !logDeviceStatusErrors(eid, forceInformational, "FWUpdate"))
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces, "FWUpdate", !isTarget);
+            if (!logDiscoveryFailedMessage(eid, messageError, resolution,
+                                           mctpInterfaces, "FWUpdate",
+                                           forceInformational) &&
+                preUpdateValidation)
+            {
+                logCriticalDiscoveryFallback(messageError, resolution);
+            }
             if (isTarget)
             {
                 error(
@@ -1281,14 +1313,20 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     }
 
     rc = co_await getFirmwareParameters(eid, messageError, discoveryResolution,
-                                        mctpInterfaces, true);
+                                        mctpInterfaces, true,
+                                        preUpdateValidation);
     if (rc != PLDM_SUCCESS)
     {
-        if (rc == PLDM_ERROR_INVALID_DATA or
-            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+        if (rc == PLDM_ERROR_INVALID_DATA ||
+            !logDeviceStatusErrors(eid, forceInformational, "FWUpdate"))
         {
-            logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces, "FWUpdate", !isTarget);
+            if (!logDiscoveryFailedMessage(eid, messageError, resolution,
+                                           mctpInterfaces, "FWUpdate",
+                                           forceInformational) &&
+                preUpdateValidation)
+            {
+                logCriticalDiscoveryFallback(messageError, resolution);
+            }
             if (isTarget)
             {
                 error(

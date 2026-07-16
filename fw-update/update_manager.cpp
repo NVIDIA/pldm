@@ -21,6 +21,7 @@
 #include "common/sleep.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
+#include "dbusutil.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
@@ -29,6 +30,7 @@
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bitset>
 #include <cassert>
@@ -114,18 +116,21 @@ UpdateManager::UpdateManager(
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug,
-    RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
+    RefreshSingleEndpointCallback refreshSingleEndpointCallback,
+    const ExpectedComponentIdsByEid& expectedComponentIdsByEid) :
     event(event), handler(handler), instanceIdDb(instanceIdDb),
     fwDebug(fwDebug),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
     componentNameMap(componentNameMap),
+    expectedComponentIdsByEid(expectedComponentIdsByEid),
     updater(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
 {
     progressTimer = nullptr;
     forceUpdate = false;
+    preUpdateValidation = false;
 }
 
 UpdateManager::~UpdateManager() = default;
@@ -291,15 +296,42 @@ void UpdateManager::handleDuplicateDescriptorMatch(
 
 std::string UpdateManager::processStreamDefer(
     std::istream& package, uintmax_t packageSize, bool forceUpdateFlag,
-    std::vector<sdbusplus::message::object_path> targets)
+    std::vector<sdbusplus::message::object_path> targets,
+    bool preUpdateValidation)
 {
     auto swId = getSwId();
     objPath = swRootPath + swId;
     forceUpdate = forceUpdateFlag;
 
+    // Update pre-update validation applies to whole-system requests only. A
+    // targeted request (non-empty Targets) ignores the option and runs the
+    // existing best-effort flow unchanged. Note the aggregating BMC strips the
+    // routing chassis target before forwarding, so a whole-system request
+    // arrives here with an empty Targets list.
+    if (preUpdateValidation && !targets.empty())
+    {
+        info(
+            "PreUpdateValidation ignored: pre-update validation is not supported for targeted requests ({COUNT} target(s) specified); running the default best-effort update",
+            "COUNT", targets.size());
+        preUpdateValidation = false;
+    }
+
+    // No EID-matched entries in fw_update_config.json → getConfigEids() is
+    // empty (e.g. UUID-only platforms). There is nothing to gate, so ignore
+    // the option; AllowedPreUpdateValidation is false on those platforms.
+    if (preUpdateValidation && getConfigEids().empty())
+    {
+        info(
+            "PreUpdateValidation ignored: the firmware-update configuration does not define a device scope; running the default best-effort update");
+        preUpdateValidation = false;
+    }
+
+    this->preUpdateValidation = preUpdateValidation;
+
     info(
-        "Update Parameters: ForceUpdate: {FORCEUPDATE}, ApplyTime: {APPLYTIME}",
-        "FORCEUPDATE", forceUpdate, "APPLYTIME",
+        "Update Parameters: ForceUpdate: {FORCEUPDATE}, PreUpdateValidation: {PRE_UPDATE_VALIDATION}, ApplyTime: {APPLYTIME}",
+        "FORCEUPDATE", forceUpdate, "PRE_UPDATE_VALIDATION",
+        preUpdateValidation, "APPLYTIME",
         sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
             requestedApplyTime));
 
@@ -334,11 +366,13 @@ std::string UpdateManager::processStreamDefer(
     }
 
     updateDeferHandler = std::make_unique<sdeventplus::source::Defer>(
-        event, [this, &package, packageSize,
-                targets](sdeventplus::source::EventBase&) {
+        event, [this, &package, packageSize, targets,
+                preUpdateValidation = this->preUpdateValidation](
+                   sdeventplus::source::EventBase&) {
             // Start processStream coroutine in detached mode
             stdexec::start_detached(
-                this->processStream(package, packageSize, targets),
+                this->processStream(package, packageSize, targets,
+                                    preUpdateValidation),
                 exec::default_task_context<void>(exec::inline_scheduler{}));
         });
 
@@ -347,7 +381,8 @@ std::string UpdateManager::processStreamDefer(
 
 exec::task<void> UpdateManager::processStream(
     std::istream& package, uintmax_t packageSize,
-    std::vector<sdbusplus::message::object_path> targets)
+    std::vector<sdbusplus::message::object_path> targets,
+    bool preUpdateValidation)
 {
     startTime = std::chrono::steady_clock::now();
     unavailableTargetEids.clear();
@@ -530,9 +565,11 @@ exec::task<void> UpdateManager::processStream(
                             configTargetEids.contains(eid);
             refreshScope.spawn(
                 stdexec::just() |
-                stdexec::let_value([this, eid, isTarget]() -> exec::task<void> {
-                    [[maybe_unused]] auto rc =
-                        co_await refreshSingleEndpointCallback(eid, isTarget);
+                stdexec::let_value([this, eid, isTarget,
+                                    preUpdateValidation = preUpdateValidation]()
+                                       -> exec::task<void> {
+                    co_await refreshSingleEndpointCallback(eid, isTarget,
+                                                           preUpdateValidation);
                 }));
         }
         co_await refreshScope.on_empty();
@@ -546,6 +583,15 @@ exec::task<void> UpdateManager::processStream(
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         compTargetList, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+
+    // Run the gate before any DeviceUpdater is constructed so a rejected
+    // package cannot leave a partially-started transfer.
+    if (preUpdateValidation &&
+        !runPreUpdateValidationGate(refreshEids, deviceUpdaterInfos))
+    {
+        parser.reset();
+        co_return;
+    }
 
     // Emit per-target ResourceErrorsDetected entries for requested targets
     // whose image isn't in the package BEFORE any update transfer starts.
@@ -1086,6 +1132,130 @@ void UpdateManager::logUnupdatedTargets(
     requestedTargets.clear();
 }
 
+bool UpdateManager::runPreUpdateValidationGate(
+    const std::vector<mctp_eid_t>& configEids,
+    const DeviceUpdaterInfos& deviceUpdaterInfos)
+{
+    const std::set<mctp_eid_t> uniqueConfigEids(configEids.begin(),
+                                                configEids.end());
+    std::set<std::string> noMatchingImageNames{};
+
+    // Readiness == descriptorMap membership after the pre-update refresh.
+    size_t unreachableDeviceCount = 0;
+    for (const auto eid : uniqueConfigEids)
+    {
+        if (!descriptorMap.contains(eid))
+        {
+            ++unreachableDeviceCount;
+        }
+    }
+
+    // Index package coverage by EID. Non-PLDM (item-updater) components are
+    // outside the gate.
+    std::set<mctp_eid_t> packageCoveredEids{};
+    std::unordered_map<mctp_eid_t, std::set<CompIdentifier>>
+        packageComponentIds{};
+    // processStream() returns early when the package fails to parse, so the
+    // parser is always valid here.
+    const ComponentImageInfos& componentImageInfos =
+        parser->getComponentImageInfos();
+    for (const auto& [eid, recordOffset] : deviceUpdaterInfos)
+    {
+        if (recordOffset >= fwDeviceIDRecords.size())
+        {
+            continue;
+        }
+        const auto& components =
+            std::get<ApplicableComponents>(fwDeviceIDRecords[recordOffset]);
+        if (components.empty())
+        {
+            continue;
+        }
+        packageCoveredEids.insert(eid);
+        for (const auto componentIndex : components)
+        {
+            if (componentIndex >= componentImageInfos.size())
+            {
+                continue;
+            }
+            packageComponentIds[eid].insert(
+                std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompIdentifierPos)>(
+                    componentImageInfos[componentIndex]));
+        }
+    }
+
+    // Every reachable configured EID must be covered by the package.
+    for (const auto eid : uniqueConfigEids)
+    {
+        if (!descriptorMap.contains(eid))
+        {
+            continue;
+        }
+        const auto expected = expectedComponentIdsByEid.find(eid);
+        if (expected != expectedComponentIdsByEid.end() &&
+            !expected->second.empty())
+        {
+            const auto& packagedIds = packageComponentIds[eid];
+            for (const auto& [name, expectedIds] : expected->second)
+            {
+                bool covered = false;
+                for (const auto componentId : expectedIds)
+                {
+                    if (packagedIds.contains(componentId))
+                    {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (!covered)
+                {
+                    noMatchingImageNames.insert(name);
+                }
+            }
+            continue;
+        }
+        // Without component metadata, any record with a real image covers
+        // the EID.
+        if (packageCoveredEids.contains(eid))
+        {
+            continue;
+        }
+        if (auto name = getDeviceNameFromEid(eid); name.has_value())
+        {
+            noMatchingImageNames.insert(*name);
+        }
+        else
+        {
+            noMatchingImageNames.insert(
+                "EID " + std::to_string(static_cast<unsigned>(eid)));
+        }
+    }
+
+    if (unreachableDeviceCount == 0 && noMatchingImageNames.empty())
+    {
+        return true;
+    }
+
+    error(
+        "PreUpdateValidation update rejected: {UNREACHABLE} device(s) unreachable, {UNCOVERED} component(s) with no image in the package; no firmware transferred",
+        "UNREACHABLE", unreachableDeviceCount, "UNCOVERED",
+        noMatchingImageNames.size());
+
+    // Only coverage gaps get the gate-specific message; unavailable devices
+    // were already logged at Critical by the refresh path.
+    for (const auto& name : noMatchingImageNames)
+    {
+        createLogEntry(firmwarePackageComponentImageMissing, name, "", "");
+    }
+
+    clearFirmwareUpdatePackage();
+
+    createLogEntry(preUpdateValidationFailed, "", "", "");
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
+    return false;
+}
+
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status,
     const std::vector<ComponentName>& successCompNames)
@@ -1294,6 +1464,7 @@ void UpdateManager::clearActivationInfo()
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
     listCompNames.clear();
+    preUpdateValidation = false;
     if (progressTimer)
     {
         progressTimer->stop();

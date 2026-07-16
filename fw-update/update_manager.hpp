@@ -18,6 +18,7 @@
 
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
+#include "config.hpp"
 #include "device_updater.hpp"
 #include "fw-update/update.hpp"
 #include "other_device_update_manager.hpp"
@@ -32,6 +33,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -56,8 +58,21 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
+
+/** @brief Refresh one endpoint's firmware inventory.
+ *
+ *  Arguments: (eid, isTarget, preUpdateValidation). isTarget logs a
+ *  refresh failure at error (rather than warning) severity;
+ *  preUpdateValidation emits the existing failure messages at
+ *  Critical severity, since the failure rejects the whole request.
+ */
 using RefreshSingleEndpointCallback =
-    std::function<exec::task<int>(mctp_eid_t, bool)>;
+    std::function<exec::task<int>(mctp_eid_t, bool, bool)>;
+
+/** @brief Default (empty) expected-component map for callers that construct
+ *         an UpdateManager without a parsed firmware update config.
+ */
+inline const ExpectedComponentIdsByEid emptyExpectedComponentIds{};
 
 class Activation;
 class ActivationProgress;
@@ -88,7 +103,9 @@ class UpdateManager
         InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap, bool fwDebug,
-        RefreshSingleEndpointCallback refreshSingleEndpointCallback);
+        RefreshSingleEndpointCallback refreshSingleEndpointCallback,
+        const ExpectedComponentIdsByEid& expectedComponentIdsByEid =
+            emptyExpectedComponentIds);
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -131,7 +148,8 @@ class UpdateManager
      */
     exec::task<void> processStream(
         std::istream& packageStream, uintmax_t packageSize,
-        std::vector<sdbusplus::message::object_path> targets = {});
+        std::vector<sdbusplus::message::object_path> targets = {},
+        bool preUpdateValidation = false);
 
     /** @brief Defers processing of the package stream to the event loop
      *
@@ -146,13 +164,17 @@ class UpdateManager
      *                           the update even if target has same/newer
      * version
      *  @param[in] targets - Optional list of specific target components to
-     * update
+     *                       update
+     *  @param[in] preUpdateValidation - If true, run the preUpdateValidation
+     * readiness gate: reject the entire update before any transfer if any
+     * configured device is unavailable
      *
      *  @return D-Bus object path of the created Software update object
      */
     std::string processStreamDefer(
         std::istream& packageStream, uintmax_t packageSize, bool forceUpdate,
-        std::vector<sdbusplus::message::object_path> targets);
+        std::vector<sdbusplus::message::object_path> targets,
+        bool preUpdateValidation = false);
 
     /** @brief Set the RequestedApplyTime for the current update session
      *
@@ -417,6 +439,9 @@ class UpdateManager
      */
     bool forceUpdate;
 
+    /** @brief preUpdateValidation flag for the current update session */
+    bool preUpdateValidation{};
+
     bool fwDebug;
 
     /**
@@ -529,6 +554,24 @@ class UpdateManager
      */
     void logUnupdatedTargets(const DeviceUpdaterInfos& deviceUpdaterInfos);
 
+    /** @brief Run the pre-update validation readiness gate.
+     *
+     *  Rejects the whole bundle before any transfer when a configured PLDM
+     *  device is unreachable after the pre-update refresh or the package
+     *  lacks an image for an expected component. On rejection the coverage
+     *  and summary messages are emitted, the package is released, and
+     *  Activation is published as Failed - the same terminal handling as
+     *  the package checksum failure path. Whole-system only; non-PLDM
+     *  (item-updater) components are outside the gate.
+     *
+     *  @param[in] configEids - Configured endpoint scope
+     *  @param[in] deviceUpdaterInfos - Package-to-PLDM-device associations
+     *  @return true when validation passed and the update may proceed
+     */
+    bool runPreUpdateValidationGate(
+        const std::vector<mctp_eid_t>& configEids,
+        const DeviceUpdaterInfos& deviceUpdaterInfos);
+
     /** @brief Requested apply time for the current update session */
     sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
         RequestedApplyTimes requestedApplyTime;
@@ -539,6 +582,9 @@ class UpdateManager
     const ComponentInfoMap& componentInfoMap;
     /** @brief Component information needed for the update of the managed FDs */
     const ComponentNameMap& componentNameMap;
+    /** @brief Expected (updatable) component identifiers per endpoint,
+     *         config-derived; consumed by the pre-update validation gate */
+    const ExpectedComponentIdsByEid& expectedComponentIdsByEid;
     std::unique_ptr<Activation> activation;
     std::unique_ptr<Update> updater;
     std::unique_ptr<ActivationProgress> activationProgress;
@@ -557,9 +603,10 @@ class UpdateManager
      *         references the exact component the user asked for rather than
      *         a differently-named component on the same EID). Each name is
      *         resolved to its owning PLDM EID once at processStream time
-     *         against the live componentNameMap; names that don't resolve to
-     *         a PLDM EID (e.g. non-PLDM targets) are intentionally omitted.
-     *         Drained by logUnupdatedTargets() at terminal state.
+     *         from configured metadata, with the live componentNameMap as a
+     *         fallback; names that don't resolve to a PLDM EID (e.g. non-PLDM
+     *         targets) are intentionally omitted. Drained by
+     *         logUnupdatedTargets() at terminal state.
      */
     std::unordered_map<std::string, mctp_eid_t> requestedTargets;
 

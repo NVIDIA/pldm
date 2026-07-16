@@ -230,6 +230,20 @@ using ComponentNameMap = std::unordered_map<eid, ComponentIdNameMap>;
 using ComponentTargetList =
     std::unordered_map<eid, std::vector<CompIdentifier>>;
 
+/** @brief Expected (updatable) component identifiers, grouped by component
+ *         name, and the per-endpoint collection of those groups.
+ *
+ *  Derived from fw_update_config.json: an endpoint's expected set is the
+ *  union of its component_info entries and its firmware_inventory "update"
+ *  entries. firmware_inventory "create" entries are
+ *  reported-but-not-updatable (e.g. InfoROM) and are excluded, as are
+ *  endpoints listed in excluded_fw_update_eids.
+ */
+using ExpectedComponentIdsByName =
+    std::unordered_map<ComponentName, std::set<CompIdentifier>>;
+using ExpectedComponentIdsByEid =
+    std::unordered_map<eid, ExpectedComponentIdsByName>;
+
 // DeviceStatus return type
 using AdditionalData = std::map<std::string, std::string>;
 using DeviceStatusErrorCode = int64_t;

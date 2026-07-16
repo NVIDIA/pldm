@@ -47,13 +47,17 @@ namespace pldm::fw_update
  *  @param[out] componentNameMapInfo - Component name info
  *  @param[out] excludedFwUpdateEids - EIDs to skip for PLDM T5 discovery
  *                                     (top-level `excluded_fw_update_eids`)
- *
+ *  @param[out] expectedComponentIdsByEid - expected component identifiers
+ *                                          per endpoint (see
+ *                                          ExpectedComponentIdsByEid for the
+ *                                          derivation rule)
  */
 void parseConfig(const fs::path& jsonPath,
                  DeviceInventoryInfo& deviceInventoryInfo,
                  FirmwareInventoryInfo& fwInventoryInfo,
                  ComponentNameMapInfo& componentNameMapInfo,
-                 ExcludedFwUpdateEids& excludedFwUpdateEids);
+                 ExcludedFwUpdateEids& excludedFwUpdateEids,
+                 ExpectedComponentIdsByEid& expectedComponentIdsByEid);
 
 /** @brief Get device/component name from EID using fw_update_config.json
  *

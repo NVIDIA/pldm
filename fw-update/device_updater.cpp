@@ -816,7 +816,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                          "activation",
                          "EID", eid);
                     co_await updateManager->refreshSingleEndpointCallback(
-                        eid, true);
+                        eid, true, false);
                 }
 
                 deviceUpdaterState.nextState(deviceUpdaterState.current,
@@ -1162,7 +1162,7 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
                      "activation",
                      "EID", eid);
                 co_await updateManager->refreshSingleEndpointCallback(
-                    eid, true);
+                    eid, true, false);
             }
 
             updateManager->updateDeviceCompletion(eid, true, successCompNames);

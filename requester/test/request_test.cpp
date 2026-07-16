@@ -42,7 +42,7 @@ namespace pldm::transport
 void test_createMctpTransportRedfishEvent(
     mctp_eid_t /*eid*/, const std::string& /*commandName*/,
     uint32_t /*errorCode*/, uint8_t /*binding*/, uint8_t /*direction*/,
-    const std::string& /*logNamespace*/)
+    const std::string& /*logNamespace*/, bool /*critical*/)
 {
     ++g_mctpTransportRedfishEventCalls;
 }

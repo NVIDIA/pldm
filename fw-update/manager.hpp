@@ -78,21 +78,21 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap,
                      deviceInventoryInfo, excludedFwUpdateEids),
-        updateManager(event, handler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, fwDebug,
-                      // manager_internal_test.cpp triggers a false-positive
-                      // clang-analyzer-cplusplus.NewDeleteLeaks here:
-                      // std::function allocates callback storage during
-                      // Manager construction, but the analyzer loses track of
-                      // that ownership and reports the error on this line.
-                      // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-                      [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
-                          dbus::MctpInterfaces mctpInterfaces;
-                          getMctpInterfaces(mctpInterfaces);
+        updateManager(
+            event, handler, instanceIdDb, descriptorMap, componentInfoMap,
+            componentNameMap, fwDebug,
+            // False-positive: the analyzer loses track of std::function
+            // callback storage allocated during Manager construction.
+            // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+            [this](mctp_eid_t eid, bool isTarget,
+                   bool preUpdateValidation) -> exec::task<int> {
+                dbus::MctpInterfaces mctpInterfaces{};
+                getMctpInterfaces(mctpInterfaces);
 
-                          co_return co_await inventoryMgr.refreshSingleEndpoint(
-                              eid, mctpInterfaces, isTarget);
-                      }),
+                co_return co_await inventoryMgr.refreshSingleEndpoint(
+                    eid, mctpInterfaces, isTarget, preUpdateValidation);
+            },
+            expectedComponentIdsByEid),
         deviceInventoryManager(pldm::utils::DBusHandler::getBus(),
                                deviceInventoryInfo, descriptorMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
@@ -102,7 +102,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             parseConfig(fwUpdateConfigFile, deviceInventoryInfo,
                         fwInventoryInfo, componentNameMapInfo,
-                        excludedFwUpdateEids);
+                        excludedFwUpdateEids, expectedComponentIdsByEid);
         }
         catch (const std::exception& e)
         {
@@ -404,6 +404,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     /** @brief EIDs excluded from PLDM T5 firmware discovery */
     ExcludedFwUpdateEids excludedFwUpdateEids;
+
+    /** @brief Expected (updatable) component identifiers per endpoint,
+     *         derived from the firmware update config; consumed by the
+     *         pre-update validation gate */
+    ExpectedComponentIdsByEid expectedComponentIdsByEid;
 
     /** @brief PLDM firmware inventory manager */
     InventoryManager inventoryMgr;

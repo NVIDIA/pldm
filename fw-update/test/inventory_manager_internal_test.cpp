@@ -451,10 +451,10 @@ TEST_F(InventoryManagerInternalTest,
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     dbus::MctpInterfaces mctpInterfaces{{uuid, {}}};
 
-    manager.logDiscoveryFailedMessage(
+    EXPECT_FALSE(manager.logDiscoveryFailedMessage(
         eid, "test-message",
         "Retry firmware update operation, if problem persists.", mctpInterfaces,
-        "FWUpdate", false);
+        "FWUpdate", false));
 
     EXPECT_TRUE(manager.mctpEidMap.contains(eid));
 }
@@ -486,10 +486,10 @@ TEST_F(InventoryManagerInternalTest,
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
     EXPECT_NO_THROW({
-        manager.logDiscoveryFailedMessage(
+        EXPECT_TRUE(manager.logDiscoveryFailedMessage(
             eid, "test-message",
             "Retry firmware update operation, if problem persists.",
-            mctpInterfaces, "FWUpdate", true);
+            mctpInterfaces, "FWUpdate", true));
     });
 }
 
