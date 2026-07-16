@@ -54,6 +54,10 @@ foreach t : tests
         is_parallel: not serial_tests.contains(t),
         workdir: meson.current_source_dir(),
         suite: non_valgrind_test_suites,
+        # bios_config_test drives a real dbus-daemon through several
+        # per-test fixtures; give it headroom over the 30s default so a
+        # loaded CI machine cannot time it out.
+        timeout: t == 'libpldmresponder_bios_config_test' ? 90 : 30,
     )
 endforeach
 

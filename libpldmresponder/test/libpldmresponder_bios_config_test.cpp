@@ -18,6 +18,9 @@
 
 #include <libpldm/edac.h>
 
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/use_future.hpp>
 #include <nlohmann/json.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
@@ -26,6 +29,7 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <future>
 #include <memory>
 #include <thread>
 
@@ -241,7 +245,6 @@ class BIOSConfigDbusFixture
         enumIface->initialize();
 
         ioThread = std::thread([this] { io.run(); });
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     ~BIOSConfigDbusFixture()
@@ -255,33 +258,56 @@ class BIOSConfigDbusFixture
 
     bool setPendingAttributesProperty(const PendingAttributes& value)
     {
-        auto updated = iface->set_property("PendingAttributes", value);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        return updated;
+        return setPropertyOnIoThread(iface, "PendingAttributes", value);
     }
 
     bool setStrExample1Property(const std::string& value)
     {
-        auto updated = strExample1Iface->set_property("Str_example1", value);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        return updated;
+        return setPropertyOnIoThread(strExample1Iface, "Str_example1", value);
     }
 
     bool setAvsRailProperty(uint8_t value)
     {
-        auto updated = avsIface->set_property("Rail", value);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        return updated;
+        return setPropertyOnIoThread(avsIface, "Rail", value);
     }
 
     bool setInbandCodeUpdatePolicy(uint8_t value)
     {
-        auto updated = enumIface->set_property("Policy", value);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        return updated;
+        return setPropertyOnIoThread(enumIface, "Policy", value);
+    }
+
+    /** @brief set_property performs sd-bus operations (property update +
+     *         PropertiesChanged emission); sd_bus is not thread-safe and
+     *         ioThread concurrently dispatches messages on the same bus, so
+     *         run the mutation on the io thread instead of racing it from
+     *         the test thread. Completion of the future also guarantees the
+     *         signal was handed to the daemon, replacing the sleep-based
+     *         propagation guesses. */
+    template <typename T>
+    bool setPropertyOnIoThread(
+        const std::shared_ptr<sdbusplus::asio::dbus_interface>& intf,
+        const std::string& propertyName, const T& value)
+    {
+        auto done = boost::asio::post(
+            io, boost::asio::use_future([intf, propertyName, value] {
+                return intf->set_property(propertyName, value);
+            }));
+        if (done.wait_for(std::chrono::seconds(10)) !=
+            std::future_status::ready)
+        {
+            ADD_FAILURE() << "Timed out setting property " << propertyName
+                          << " on the fixture io thread";
+            return false;
+        }
+        return done.get();
     }
 
     boost::asio::io_context io;
+    // Keep io.run() alive even when the connection is momentarily out of
+    // pending async work; without this the io thread can exit mid-test and
+    // the server silently stops dispatching.
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+        workGuard = boost::asio::make_work_guard(io);
     std::shared_ptr<sdbusplus::asio::connection> connection;
     std::unique_ptr<sdbusplus::asio::object_server> server;
     std::shared_ptr<sdbusplus::asio::dbus_interface> iface;

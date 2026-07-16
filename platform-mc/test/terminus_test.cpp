@@ -52,7 +52,10 @@
 #include "platform-mc/sensor_manager.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/use_future.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 #include <sdbusplus/async.hpp>
@@ -75,6 +78,22 @@
 
 using namespace pldm::platform_mc;
 const uint8_t localEid = 0x08;
+
+// An sdbusplus::asio::connection always keeps one fd-watch completion
+// armed (read_immediate() posts it, read_wait() arms the socket wait).
+// For the process-lifetime client connection
+// (DBusHandler::getAsioConnection()) and for mock connections whose io
+// thread exits with the watch still armed, boost::asio's recycling
+// allocator keeps that handler's block cached in thread-local storage,
+// which LeakSanitizer reports at exit. These are one-shot, per-connection
+// allocations, not growth leaks. The patterns anchor to the two fd-watch
+// frames rather than asio's generic handler allocator so that genuinely
+// leaked completion handlers elsewhere in the binary still get reported.
+extern "C" const char* __lsan_default_suppressions()
+{
+    return "leak:sdbusplus::asio::connection::read_immediate\n"
+           "leak:sdbusplus::asio::connection::read_wait\n";
+}
 
 template <typename Sender>
 auto syncWaitWithDbusIo(Sender&& sender)
@@ -218,38 +237,49 @@ class AsyncEntityManagerServer
                       const pldm::utils::PropertyMap& properties,
                       const std::string& serviceName = entityManagerService)
     {
-        auto iface = server->add_interface(path, interfaceName);
-        for (const auto& [propertyName, propertyValue] : properties)
-        {
-            if (std::holds_alternative<uint64_t>(propertyValue))
-            {
-                iface->register_property(propertyName,
-                                         std::get<uint64_t>(propertyValue));
-            }
-            else if (std::holds_alternative<std::string>(propertyValue))
-            {
-                iface->register_property(propertyName,
-                                         std::get<std::string>(propertyValue));
-            }
-            else if (std::holds_alternative<std::vector<std::string>>(
-                         propertyValue))
-            {
-                iface->register_property(
-                    propertyName,
-                    std::get<std::vector<std::string>>(propertyValue));
-            }
-            else
-            {
-                throw std::invalid_argument("Unsupported property type");
-            }
-        }
-        iface->initialize();
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            registeredInterfaces[path].push_back(
-                {serviceName, interfaceName, std::move(iface)});
-        }
-        waitUntilIoDrained();
+        // add_interface()/initialize() perform sd-bus operations on the
+        // server's connection. sd_bus is not thread-safe and ioThread is
+        // concurrently dispatching messages on the same bus, so run the
+        // mutation on the io thread instead of racing it from the test
+        // thread (observed as flaky '!bus->current_slot' asserts, fd
+        // double-closes and heap corruption). runOnIoThread captures by
+        // value, so a timed-out call cannot leave the queued task with
+        // dangling references, and the future rethrows the old synchronous
+        // exceptions (e.g. the invalid_argument below) on the test thread.
+        runOnIoThread(
+            [this, path, interfaceName, properties, serviceName] {
+                auto iface = server->add_interface(path, interfaceName);
+                for (const auto& [propertyName, propertyValue] : properties)
+                {
+                    if (std::holds_alternative<uint64_t>(propertyValue))
+                    {
+                        iface->register_property(
+                            propertyName, std::get<uint64_t>(propertyValue));
+                    }
+                    else if (std::holds_alternative<std::string>(propertyValue))
+                    {
+                        iface->register_property(
+                            propertyName, std::get<std::string>(propertyValue));
+                    }
+                    else if (std::holds_alternative<std::vector<std::string>>(
+                                 propertyValue))
+                    {
+                        iface->register_property(
+                            propertyName,
+                            std::get<std::vector<std::string>>(propertyValue));
+                    }
+                    else
+                    {
+                        throw std::invalid_argument(
+                            "Unsupported property type");
+                    }
+                }
+                iface->initialize();
+                std::lock_guard<std::mutex> lock(mutex);
+                registeredInterfaces[path].push_back(
+                    {serviceName, interfaceName, std::move(iface)});
+            },
+            "adding interface " + interfaceName + " on " + path);
     }
 
     void setSubTreeResponse(const std::string& rootPath,
@@ -355,28 +385,36 @@ class AsyncEntityManagerServer
         return buildServiceMap(it->second, interfaces);
     }
 
+    /** @brief Run fn on the io thread and wait for it; exceptions rethrow
+     *         here. The packaged task owns fn's by-value captures, so a
+     *         timed-out wait cannot leave the queued task with dangling
+     *         references to this frame. */
+    template <typename Fn>
+    void runOnIoThread(Fn&& fn, const std::string& what)
+    {
+        auto done = boost::asio::post(
+            io, boost::asio::use_future(std::forward<Fn>(fn)));
+        if (done.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+        {
+            ADD_FAILURE() << "Timed out " << what
+                          << " on the AsyncEntityManagerServer io thread";
+            return;
+        }
+        done.get();
+    }
+
     void waitUntilIoDrained()
     {
-        std::promise<void> ready;
-        auto readyFuture = ready.get_future();
-        boost::asio::post(io, [&ready] {
-            try
-            {
-                ready.set_value();
-            }
-            catch (...)
-            {}
-        });
-
-        if (readyFuture.wait_for(std::chrono::seconds(1)) !=
-            std::future_status::ready)
-        {
-            ADD_FAILURE() << "Timed out waiting for AsyncEntityManagerServer "
-                             "io_context to drain";
-        }
+        runOnIoThread([] {}, "waiting for io_context to drain");
     }
 
     boost::asio::io_context io;
+    // Keep io.run() alive even when the connection is momentarily out of
+    // pending async work; without this the io thread can exit mid-test and
+    // every later posted task (runOnIoThread) or bus dispatch silently
+    // stalls until its timeout.
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+        workGuard = boost::asio::make_work_guard(io);
     std::shared_ptr<sdbusplus::asio::connection> connection;
     std::unique_ptr<sdbusplus::asio::object_server> server;
     std::shared_ptr<sdbusplus::asio::dbus_interface> mapperIface;
