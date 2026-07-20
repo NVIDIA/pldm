@@ -873,6 +873,17 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
         co_return PLDM_SUCCESS;
     }
 
+    if (compIndex != componentIndex ||
+        !completedComponentIndices.insert(compIndex).second)
+    {
+        error(
+            "Ignoring stale component update completion. EID={EID}, "
+            "ComponentIndex={COMPONENTINDEX}, CurrentComponentIndex={CURRENTINDEX}",
+            "EID", eid, "COMPONENTINDEX", compIndex, "CURRENTINDEX",
+            componentIndex);
+        co_return PLDM_SUCCESS;
+    }
+
     if (compStatus == ComponentUpdateStatus::UpdateComplete)
     {
         componentUpdaterMap[compIndex].second = true;
@@ -888,7 +899,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
         successCompNames.emplace_back(updateManager->getComponentName(
             eid, fwDeviceIDRecord, componentIndex));
     }
-    if (compIndex < applicableComponents.size() - 1)
+    if (compIndex + 1 < applicableComponents.size())
     {
         updateManager->updateActivationProgress(); // for previous component
         componentIndex++;
