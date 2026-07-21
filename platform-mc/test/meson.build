@@ -34,6 +34,7 @@ dep_src_files = [
 
 dep_src_files += [
     '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
+    '../../oem/nvidia/platform-mc/pcie_port_info.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
 ]
 

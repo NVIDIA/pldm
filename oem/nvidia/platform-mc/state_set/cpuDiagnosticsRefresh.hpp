@@ -19,7 +19,13 @@
 #include "platform-mc/state_effecter.hpp"
 #include "platform-mc/state_set.hpp"
 
+#include <sdeventplus/clock.hpp>
+#include <sdeventplus/event.hpp>
+#include <sdeventplus/utility/timer.hpp>
 #include <xyz/openbmc_project/Control/Trigger/server.hpp>
+
+#include <chrono>
+#include <memory>
 
 namespace pldm
 {
@@ -133,8 +139,8 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
   public:
     StateSetCpuDiagnosticsRefresh(
         uint16_t stateSetId, uint8_t compId, std::string& objectPath,
-        dbus::PathAssociation& stateAssociation, StateEffecter* effecter) :
-        StateSet(stateSetId), compId(compId)
+        dbus::PathAssociation& stateAssociation, StateEffecter* effecter,
+        bool autoRefresh = false) : StateSet(stateSetId), compId(compId)
     {
         auto& bus = pldm::utils::DBusHandler::getBus();
         associationDefinitionsIntf =
@@ -156,6 +162,22 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
                 bus, objectPath.c_str(), compId);
         }
         setDefaultValue();
+
+        // Opt-in periodic self-trigger (used by the LinkBWTelemetry effecter):
+        // the HMC drives collection by asserting Refresh once at init and then
+        // every 30 s, so SatMC gathers PCIe link-BW data and emits the 0xF4
+        // event. Other CpuDiagnostics refreshers stay on-demand (autoRefresh
+        // defaults to false).
+        if (autoRefresh && effecter != nullptr)
+        {
+            using RefreshTimer =
+                sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic>;
+            refreshTimer = std::make_unique<RefreshTimer>(
+                sdeventplus::Event::get_default(),
+                [this](RefreshTimer&) { triggerRefresh(); },
+                std::chrono::seconds(refreshIntervalSeconds));
+            triggerRefresh(); // initial collection at init
+        }
     }
 
     ~StateSetCpuDiagnosticsRefresh() = default;
@@ -208,7 +230,22 @@ class StateSetCpuDiagnosticsRefresh : public StateSet
     }
 
   private:
+    /** @brief Assert the Refresh trigger (sends setStateEffecterStates to
+     *  SatMC via the effecter's refresh() override; auto-clears).
+     */
+    void triggerRefresh()
+    {
+        if (ValueIntf)
+        {
+            ValueIntf->refresh(true);
+        }
+    }
+
+    static constexpr int refreshIntervalSeconds = 30;
     std::unique_ptr<CpuDiagnosticsRefreshStateIntf> ValueIntf = nullptr;
+    std::unique_ptr<
+        sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic>>
+        refreshTimer;
     [[maybe_unused]] uint8_t compId = 0;
 };
 

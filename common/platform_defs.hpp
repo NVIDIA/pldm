@@ -34,6 +34,9 @@ constexpr uint8_t PLDM_OEM_EVENT_CLASS_MFTDUMP = 0xF2;
 // OEM Event Class for SatMC Inventory JSON
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_0xF3 = 0xF3;
 
+// OEM Event Class for SatMC PCIe Port Info (per-RP link speed/width)
+constexpr uint8_t PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO = 0xF4;
+
 } // namespace platform
 
 } // namespace pldm

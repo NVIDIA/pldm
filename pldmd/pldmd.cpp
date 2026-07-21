@@ -460,6 +460,15 @@ int main(int argc, char** argv)
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
          }}},
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO,
+         {[&platformManager](const pldm_msg* request, size_t payloadLength,
+                             uint8_t formatVersion, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus) {
+             return platformManager->handlePciePortInfoEvent(
+                 request, payloadLength, formatVersion, tid, eventDataOffset,
+                 platformEventStatus);
+         }}},
         {pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
          {[&platformManager](const pldm_msg* request, size_t payloadLength,
                              uint8_t formatVersion, uint8_t tid,

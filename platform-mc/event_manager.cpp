@@ -23,6 +23,9 @@
 #include "fw-update/manager.hpp"
 #include "oem_events.hpp"
 #include "platform_manager.hpp"
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/platform-mc/pcie_port_info.hpp"
+#endif
 #include "sensor_manager.hpp"
 #include "terminus_manager.hpp"
 
@@ -45,6 +48,7 @@ using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
 using pldm::platform::PLDM_TELEMETRY_PAUSE;
 using pldm::platform::PLDM_TELEMETRY_REDISCOVER;
@@ -209,6 +213,7 @@ int EventManager::handlePlatformEvent(
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_ERROR_COUNTER ||
              eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO ||
              eventClass == PLDM_OEM_EVENT_CLASS_MFTDUMP)
     {
         // Helper to get terminus name from tid
@@ -245,6 +250,20 @@ int EventManager::handlePlatformEvent(
                           "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handlePcieTelemetryEvent(
                     terminusName, eventData, eventDataSize);
+                break;
+
+            case PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO:
+                // PCIe Port Info Event (0xF4)
+                lg2::debug(
+                    "Received PCIe Port Info Event ({EC}) from tid={TID}", "EC",
+                    lg2::hex, eventClass, "TID", tid);
+#ifdef OEM_NVIDIA
+                success = pldm::oem_nvidia::handlePciePortInfoEvent(
+                    terminusName, eventData, eventDataSize);
+#else
+                // OEM feature disabled: accept and drop.
+                success = true;
+#endif
                 break;
 
             case PLDM_OEM_EVENT_CLASS_MFTDUMP:
