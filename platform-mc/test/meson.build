@@ -34,6 +34,7 @@ dep_src_files = [
 
 dep_src_files += [
     '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
+    '../../oem/nvidia/platform-mc/pcie_port_info.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
 ]
 
@@ -67,7 +68,7 @@ tests = [
     'oem_events_test',
 ]
 
-private_tests = ['oem_events_private_test']
+private_tests = ['oem_events_private_test', 'pcie_port_info_private_test']
 
 openssl = dependency('openssl', required: true)
 
