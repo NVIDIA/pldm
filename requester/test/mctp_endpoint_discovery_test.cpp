@@ -174,8 +174,9 @@ static const std::vector<std::chrono::milliseconds> kFastRetry{
     std::chrono::milliseconds(1), std::chrono::milliseconds(1),
     std::chrono::milliseconds(1)};
 
-static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
-    MockdBusHandler& mockedDbusHandler, pldm::MctpDiscoveryHandlerIntf* handler)
+static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMockHandlers(
+    MockdBusHandler& mockedDbusHandler,
+    std::initializer_list<pldm::MctpDiscoveryHandlerIntf*> handlers)
 {
     auto& bus = mockedDbusHandler.getBus();
     // Constructor startup probes MCTP ownership, configured endpoints, and
@@ -186,9 +187,14 @@ static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
         .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
 
     return std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{handler},
-        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
-        kFastRetry);
+        bus, handlers, "/tmp/mctp-discovery-no-static-endpoints.json",
+        mockedDbusHandler, kFastRetry);
+}
+
+static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
+    MockdBusHandler& mockedDbusHandler, pldm::MctpDiscoveryHandlerIntf* handler)
+{
+    return makeDiscoveryWithMockHandlers(mockedDbusHandler, {handler});
 }
 
 static std::vector<std::pair<std::string, std::string>> getMctpEndpoints()
@@ -701,48 +707,47 @@ TEST_F(DbusBackedMctpDiscoveryTest,
     EXPECT_EQ(handler.lastOfflineEid, env->onlinePldm().eid);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_ZeroHandleMctpEndpoint)
+TEST(MctpEndpointDiscoveryTest, ZeroHandleMctpEndpoint)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
     EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(0);
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
     mctpDiscoveryHandler = nullptr;
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_MultipleHandleMctpEndpoints)
+TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager1;
     pldm::MockManager manager2;
 
     EXPECT_CALL(manager1, handleMctpEndpoints(_, _)).Times(0);
     EXPECT_CALL(manager2, handleMctpEndpoints(_, _)).Times(0);
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 &manager1, &manager2});
+    auto mctpDiscoveryHandler = makeDiscoveryWithMockHandlers(
+        mockedDbusHandler, {&manager1, &manager2});
     mctpDiscoveryHandler = nullptr;
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_goodGetMctpInfos)
+TEST(MctpEndpointDiscoveryTest, goodGetMctpInfos)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
     std::map<pldm::MctpInfo, pldm::Availability> currentMctpInfoMap;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
     mctpDiscoveryHandler->getMctpInfos(currentMctpInfoMap);
     EXPECT_EQ(currentMctpInfoMap.size(), 0);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_goodAddToExistingMctpInfos)
+TEST(MctpEndpointDiscoveryTest, goodAddToExistingMctpInfos)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {
         pldm::MctpInfo(11, pldm::emptyUUID, "", 1, std::nullopt, "",
@@ -750,8 +755,8 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_goodAddToExistingMctpInfos)
         pldm::MctpInfo(12, pldm::emptyUUID, "abc", 1, std::nullopt, "",
                        std::nullopt)};
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
     mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
@@ -760,15 +765,15 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_goodAddToExistingMctpInfos)
     EXPECT_EQ(std::get<3>(mctpInfo), 1);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_badAddToExistingMctpInfos)
+TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
     const pldm::MctpInfos& mctpInfos = {pldm::MctpInfo(
         11, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
     mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
     EXPECT_NE(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
 }
@@ -878,17 +883,22 @@ TEST(MctpEndpointDiscoveryTest, badSearchConfigurationFor)
     EXPECT_EQ(configuration.size(), 0);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithPldmType)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithPldmType)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    auto pldmJsonPath = "pldm_eid_table_test.json";
+    {
+        std::ofstream out(pldmJsonPath);
+        out << R"({"Endpoints":[{"EID":2,"SupportedMessageTypes":[0,1]}]})";
+    }
+
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    // Construct with default (non-existent) path first
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
-    // Now point staticEidTablePath to our test fixture and call manually
-    mctpDiscoveryHandler->staticEidTablePath = "static_eid_table.json";
+    // Point staticEidTablePath to our test fixture and call manually
+    mctpDiscoveryHandler->staticEidTablePath = pldmJsonPath;
     pldm::MctpInfos mctpInfos;
     mctpDiscoveryHandler->loadStaticEndpoints(mctpInfos);
 
@@ -903,15 +913,16 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithPldmType)
         }
     }
     EXPECT_TRUE(foundStaticEid);
+    std::filesystem::remove(pldmJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsFileNotFound)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsFileNotFound)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     // Point to a non-existent path and call manually
     mctpDiscoveryHandler->staticEidTablePath = "/nonexistent_file.json";
@@ -921,7 +932,7 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsFileNotFound)
     EXPECT_EQ(mctpInfos.size(), 0);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutPldmType)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithoutPldmType)
 {
     auto nonPldmJsonPath = "non_pldm_eid_table_test.json";
     {
@@ -929,11 +940,11 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutPldmType)
         out << R"({"Endpoints":[{"EID":9,"SupportedMessageTypes":[0,2]}]})";
     }
 
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     mctpDiscoveryHandler->staticEidTablePath = nonPldmJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -943,7 +954,7 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutPldmType)
     std::filesystem::remove(nonPldmJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsMixedTypes)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsMixedTypes)
 {
     auto mixedJsonPath = "mixed_eid_table_test.json";
     {
@@ -951,11 +962,11 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsMixedTypes)
         out << R"({"Endpoints":[{"EID":3,"SupportedMessageTypes":[1]},{"EID":4,"SupportedMessageTypes":[0]}]})";
     }
 
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     mctpDiscoveryHandler->staticEidTablePath = mixedJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -966,7 +977,7 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsMixedTypes)
     std::filesystem::remove(mixedJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutEndpointsKey)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithoutEndpointsKey)
 {
     auto noEndpointsJsonPath = "no_endpoints_key_test.json";
     {
@@ -974,11 +985,11 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutEndpointsKey)
         out << R"({"SomethingElse":[{"EID":7,"SupportedMessageTypes":[1]}]})";
     }
 
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     mctpDiscoveryHandler->staticEidTablePath = noEndpointsJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -988,8 +999,7 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsWithoutEndpointsKey)
     std::filesystem::remove(noEndpointsJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest,
-     DISABLED_loadStaticEndpointsWithEmptyEndpointsArray)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithEmptyEndpointsArray)
 {
     auto emptyEndpointsJsonPath = "empty_endpoints_array_test.json";
     {
@@ -997,11 +1007,11 @@ TEST(MctpEndpointDiscoveryTest,
         out << R"({"Endpoints":[]})";
     }
 
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     mctpDiscoveryHandler->staticEidTablePath = emptyEndpointsJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -1011,7 +1021,7 @@ TEST(MctpEndpointDiscoveryTest,
     std::filesystem::remove(emptyEndpointsJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsInvalidJson)
+TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsInvalidJson)
 {
     auto invalidJsonPath = "invalid_eid_table_test.json";
 
@@ -1021,11 +1031,11 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsInvalidJson)
         out << "{ this is not valid json }}}";
     }
 
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     mctpDiscoveryHandler->staticEidTablePath = invalidJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -1036,16 +1046,14 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_loadStaticEndpointsInvalidJson)
     std::filesystem::remove(invalidJsonPath);
 }
 
-TEST(MctpEndpointDiscoveryTest,
-     DISABLED_handleMctpEndpointsWithMultipleHandlers)
+TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsWithMultipleHandlers)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager1;
     pldm::MockManager manager2;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 &manager1, &manager2});
+    auto mctpDiscoveryHandler = makeDiscoveryWithMockHandlers(
+        mockedDbusHandler, {&manager1, &manager2});
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1057,13 +1065,13 @@ TEST(MctpEndpointDiscoveryTest,
     mctpDiscoveryHandler->handleMctpEndpoints(mctpInfos);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_handleMctpEndpointsEmpty)
+TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsEmpty)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     const pldm::MctpInfos emptyInfos;
 
@@ -1073,13 +1081,13 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_handleMctpEndpointsEmpty)
     mctpDiscoveryHandler->handleMctpEndpoints(emptyInfos);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_handleRemovedMctpEndpoints)
+TEST(MctpEndpointDiscoveryTest, handleRemovedMctpEndpoints)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     const pldm::MctpInfos removedInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1089,13 +1097,13 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_handleRemovedMctpEndpoints)
     mctpDiscoveryHandler->handleRemovedMctpEndpoints(removedInfos);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_updateMctpEndpointAvailability)
+TEST(MctpEndpointDiscoveryTest, updateMctpEndpointAvailability)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     pldm::MctpInfo mctpInfo(30, pldm::emptyUUID, "", 1, std::nullopt, "",
                             std::nullopt);
@@ -1107,13 +1115,13 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_updateMctpEndpointAvailability)
     mctpDiscoveryHandler->updateMctpEndpointAvailability(mctpInfo, false);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_addDuplicateToExistingMctpInfos)
+TEST(MctpEndpointDiscoveryTest, addDuplicateToExistingMctpInfos)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         11, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1272,14 +1280,13 @@ TEST(MctpEndpointDiscoveryTest, searchConfigurationExceptionHandling)
     EXPECT_EQ(configuration.size(), 0);
 }
 
-TEST(MctpEndpointDiscoveryTest,
-     DISABLED_handleMctpEndpointsCallsHandleConfigurations)
+TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsCallsHandleConfigurations)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1421,15 +1428,21 @@ TEST(MctpEndpointDiscoveryTest, handlerIntfDefaultImplementations)
     // Destructor default implementation tested when handler goes out of scope
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_getMctpEndpointPropsException)
+TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsException)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
-    // Call with non-existent service/path - D-Bus call throws, hits catch block
+    // D-Bus properties read throws - hits catch block
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyMap {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
     auto result = TestMctpDiscovery::getMctpEndpointProps(
         *mctpDiscoveryHandler, "nonexistent.service", "/nonexistent/path");
 
@@ -1492,15 +1505,21 @@ TEST(MctpEndpointDiscoveryTest,
     EXPECT_TRUE(std::get<4>(result).empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_getEndpointUUIDPropException)
+TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropException)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
-    // Call with non-existent service/path - D-Bus call throws, hits catch block
+    // D-Bus properties read throws - hits catch block
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyMap {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
     auto result = TestMctpDiscovery::getEndpointUUIDProp(
         *mctpDiscoveryHandler, "nonexistent.service", "/nonexistent/path");
 
@@ -1541,15 +1560,21 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeReturnsEmpty)
               pldm::emptyUUID);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_getEndpointConnectivityPropException)
+TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropException)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
-    // Call with non-existent path - D-Bus call throws, hits catch block
+    // D-Bus property read throws - hits catch block
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyValue {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
     auto result = TestMctpDiscovery::getEndpointConnectivityProp(
         *mctpDiscoveryHandler, "/nonexistent/path");
 
@@ -1593,13 +1618,13 @@ TEST(MctpEndpointDiscoveryTest, getNameFromPropertiesWrongTypeThrowsDirect)
                  std::bad_variant_access);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_discoverEndpointsInvalidMsg)
+TEST(MctpEndpointDiscoveryTest, discoverEndpointsInvalidMsg)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     // Create a dummy D-Bus message - msg.read() in getAddedMctpInfos will fail
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
@@ -1615,13 +1640,13 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_discoverEndpointsInvalidMsg)
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_getAddedMctpInfosInvalidMsg)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosInvalidMsg)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
         "xyz.openbmc_project.sdbusplus.test.Object",
@@ -1653,41 +1678,30 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosWrongSignatureReturnsEmpty)
     EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest,
-     DISABLED_getAddedMctpInfosValidMsgGetServiceFails)
+TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosUuidPropertyMissingSkips)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
-    // Construct InterfacesAdded message: object_path + interfaces map
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call("org.test", "/test", "org.test.Interface",
-                                      "Method");
-
-    sdbusplus::object_path objPath(
-        "/au/com/codeconstruct/mctp1/networks/1/endpoints/10");
-
-    using PropertyMap = std::map<std::string, pldm::dbus::Value>;
-    std::map<std::string, PropertyMap> interfaces;
-    PropertyMap mctpProps;
-    mctpProps["NetworkId"] = uint32_t(1);
-    mctpProps["EID"] = uint8_t(10);
-    mctpProps["SupportedMessageTypes"] = std::vector<uint8_t>{1};
-    mctpProps["MediumType"] = std::string("SPI");
-    interfaces["xyz.openbmc_project.MCTP.Endpoint"] = mctpProps;
-
-    msg.append(objPath, interfaces);
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
+    // UUID interface present in the signal but without a UUID property:
+    // uuid stays emptyUUID and the endpoint is skipped.
+    std::map<std::string, std::map<std::string, pldm::dbus::Value>> interfaces;
+    interfaces[pldm::MCTPInterface] = {
+        {"NetworkId", uint32_t(1)},
+        {"EID", uint8_t(10)},
+        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+        {"MediumType", std::string("SPI")}};
+    interfaces[pldm::EndpointUUID] = {
+        {"SomethingElse", std::string("not-a-uuid")}};
+    auto msg = makeInterfacesAddedMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/10", interfaces);
 
     pldm::MctpInfos infos;
     TestMctpDiscovery::getAddedMctpInfos(*mctpDiscoveryHandler, msg, infos);
 
-    // msg.read() succeeds, getEndpointConnectivityProp returns false (D-Bus
-    // fails gracefully), then getService for UUID throws → caught → return
     EXPECT_EQ(infos.size(), 0);
 }
 
@@ -1716,45 +1730,44 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosMissingUuidSkipsDbusFallback)
     EXPECT_TRUE(infos.empty());
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_refreshEndpointsValidMsg)
+TEST(MctpEndpointDiscoveryTest,
+     refreshEndpointsSecondHandlerNotifiedAfterFirstFailure)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler1;
+    TrackingMctpHandler handler2;
+    auto disc = makeDiscoveryWithMockHandlers(mockedDbusHandler,
+                                              {&handler1, &handler2});
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto msg = makeRefreshEndpointsMessage(
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/10", "Available");
 
-    // Construct PropertiesChanged message with Connectivity property
-    auto rawBus = sdbusplus::bus::new_default();
-    auto msg = rawBus.new_method_call(
-        "org.test", "/au/com/codeconstruct/mctp1/networks/1/endpoints/10",
-        "org.test.Interface", "Method");
+    // The per-handler loop reads UUID + EID per handler. First handler's
+    // UUID read throws (caught, logged); the loop continues and the second
+    // handler is still notified.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce([](const char*, const char*,
+                     const char*) -> pldm::utils::PropertyValue {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        })
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{
+            std::string("10101010-1111-2222-3333-444455556666")}))
+        .WillOnce(testing::Return(pldm::utils::PropertyValue{uint8_t(10)}));
 
-    std::string interface = "au.com.codeconstruct.MCTP.Endpoint1";
-    pldm::dbus::PropertyMap properties;
-    properties["Connectivity"] = std::string("Available");
+    disc->refreshEndpoints(msg);
 
-    msg.append(interface, properties);
-    // Set sender before sealing (get_sender returns null otherwise)
-    sd_bus_message_set_sender(msg.get(), "org.test.Sender");
-    sd_bus_message_seal(msg.get(), 0, 0);
-    sd_bus_message_rewind(msg.get(), true);
-
-    // refreshEndpoints reads msg successfully, finds Connectivity=Available,
-    // then for each handler tries D-Bus calls to get UUID/EID which throw
-    mctpDiscoveryHandler->refreshEndpoints(msg);
-
-    // No endpoints should be modified since D-Bus calls fail
-    EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 0);
+    EXPECT_EQ(handler1.onlineCalls, 0);
+    EXPECT_EQ(handler2.onlineCalls, 1);
+    EXPECT_EQ(handler2.lastOnlineEid, 10);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_refreshEndpointsNoConnectivityProp)
+TEST(MctpEndpointDiscoveryTest, refreshEndpointsNoConnectivityProp)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    auto mctpDiscoveryHandler =
+        makeDiscoveryWithMock(mockedDbusHandler, &manager);
 
     // Construct PropertiesChanged message without Connectivity property
     auto rawBus = sdbusplus::bus::new_default();
@@ -1799,14 +1812,11 @@ TEST(MctpEndpointDiscoveryTest, refreshEndpointsMockDbusPropertyException)
     EXPECT_EQ(handler.offlineCalls, 0);
 }
 
-TEST(MctpEndpointDiscoveryTest,
-     DISABLED_refreshEndpointsConnectivityWrongTypeThrows)
+TEST(MctpEndpointDiscoveryTest, refreshEndpointsConnectivityWrongTypeIgnored)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
-    pldm::MockManager manager;
-
-    auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
 
     auto rawBus = sdbusplus::bus::new_default();
     auto msg = rawBus.new_method_call(
@@ -1822,8 +1832,11 @@ TEST(MctpEndpointDiscoveryTest,
     sd_bus_message_seal(msg.get(), 0, 0);
     sd_bus_message_rewind(msg.get(), true);
 
-    EXPECT_THROW(mctpDiscoveryHandler->refreshEndpoints(msg),
-                 std::bad_variant_access);
+    // A non-string Connectivity variant is logged and ignored - no throw,
+    // no handler notification.
+    EXPECT_NO_THROW(disc->refreshEndpoints(msg));
+    EXPECT_EQ(handler.onlineCalls, 0);
+    EXPECT_EQ(handler.offlineCalls, 0);
 }
 
 TEST(MctpEndpointDiscoveryTest,
@@ -3117,14 +3130,13 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosDuplicatePathNoDuplicateMatch)
     EXPECT_EQ(infosSecond.size(), 1);
 }
 
-TEST(MctpEndpointDiscoveryTest, DISABLED_NullHandlersAreSkipped)
+TEST(MctpEndpointDiscoveryTest, NullHandlersAreSkipped)
 {
-    auto& bus = pldm::utils::DBusHandler::getBus();
+    MockdBusHandler mockedDbusHandler;
     pldm::MockManager manager;
 
-    auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 nullptr, &manager});
+    auto disc =
+        makeDiscoveryWithMockHandlers(mockedDbusHandler, {nullptr, &manager});
 
     testing::Mock::VerifyAndClearExpectations(&manager);
 
@@ -3142,6 +3154,214 @@ TEST(MctpEndpointDiscoveryTest, DISABLED_NullHandlersAreSkipped)
 
     EXPECT_CALL(manager, updateMctpEndpointAvailability(_, true)).Times(1);
     disc->updateMctpEndpointAvailability(mctpInfo, true);
+}
+
+// ---------------------------------------------------------------------------
+// onMctpReactorConfigured — runtime discovery driven by the identity
+// publisher (mctpreactor) adding the configured_by association.
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredBadPayloadIgnored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    // Payload is not an object path - msg.read(objPath) throws, swallowed.
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg =
+        rawBus.new_method_call("org.test", "/test", "org.test.Intf", "Method");
+    msg.append(uint32_t(7));
+    sd_bus_message_seal(msg.get(), 0, 0);
+    sd_bus_message_rewind(msg.get(), true);
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
+
+    EXPECT_NO_THROW(disc->onMctpReactorConfigured(msg));
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredNonEndpointPathIgnored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
+
+    // Path outside the MCTP namespace.
+    auto foreign = makeInterfacesAddedMessage("/xyz/other/endpoints/9", {});
+    disc->onMctpReactorConfigured(foreign);
+
+    // MCTP path without an /endpoints/ component.
+    auto network = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1", {});
+    disc->onMctpReactorConfigured(network);
+
+    // Non-numeric EID segment (an ObjectMapper-synthesised child object).
+    auto childObject = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/9/configured_by",
+        {});
+    disc->onMctpReactorConfigured(childObject);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredGetServiceThrowsSwallowed)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/10", {});
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce([](const char*, const char*) -> std::string {
+            throw sdbusplus::exception::SdBusError(EINVAL, "mock");
+        });
+
+    EXPECT_NO_THROW(disc->onMctpReactorConfigured(msg));
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredNonPldmEndpointIgnored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/10", {});
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return("xyz.openbmc_project.MCTP"));
+    // Endpoint properties: no PLDM (type 1) in SupportedMessageTypes, so the
+    // UUID interface is never read.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"NetworkId", uint32_t(1)},
+            {"EID", uint8_t(10)},
+            {"SupportedMessageTypes", std::vector<uint8_t>{0}},
+            {"MediumType", std::string("SMBus")}}));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+
+    disc->onMctpReactorConfigured(msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredDuplicateEndpointIgnored)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    // Endpoint already known (same network + EID): the probe dedups before
+    // resolving the EM configuration.
+    disc->addToExistingMctpInfos(pldm::MctpInfos{
+        pldm::MctpInfo(10, pldm::emptyUUID, "SMBus", 1, std::nullopt,
+                       "MctpOverSMBus", std::nullopt)});
+    handler.handleMctpEndpointsCalls = 0;
+
+    auto msg = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/10", {});
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return("xyz.openbmc_project.MCTP"));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"NetworkId", uint32_t(1)},
+            {"EID", uint8_t(10)},
+            {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+            {"MediumType", std::string("SMBus")}}))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"UUID", std::string("10101010-1111-2222-3333-444455556666")}}));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _)).Times(0);
+
+    disc->onMctpReactorConfigured(msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_EQ(disc->existingMctpInfos.size(), 1u);
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredUnresolvedConfigNotPublished)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/10", {});
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return("xyz.openbmc_project.MCTP"));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"NetworkId", uint32_t(1)},
+            {"EID", uint8_t(10)},
+            {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+            {"MediumType", std::string("SMBus")}}))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"UUID", std::string("10101010-1111-2222-3333-444455556666")}}));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    // Configuration never resolves: initial probe + every backoff retry see
+    // an empty associated subtree.
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillRepeatedly(
+            testing::Return(pldm::utils::GetAssociatedSubTreeResponse{}));
+
+    disc->onMctpReactorConfigured(msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
+    EXPECT_TRUE(disc->existingMctpInfos.empty());
+}
+
+TEST(MctpEndpointDiscoveryTest, ReactorConfiguredResolvedPublishesNamedEndpoint)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
+
+    auto msg = makeInterfacesAddedMessage(
+        std::string{pldm::MCTPPath} + "/networks/1/endpoints/10", {});
+
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillOnce(testing::Return("xyz.openbmc_project.MCTP"));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"NetworkId", uint32_t(1)},
+            {"EID", uint8_t(10)},
+            {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+            {"MediumType", std::string("SMBus")}}))
+        .WillOnce(testing::Return(pldm::utils::PropertyMap{
+            {"UUID", std::string("10101010-1111-2222-3333-444455556666")}}))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyMap{{"Name", std::string("ERoT_GPU_0")}}));
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillOnce(testing::Return(
+            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}));
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillOnce(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{
+            {"/xyz/openbmc_project/inventory/system/board/Dev0",
+             {{"xyz.openbmc_project.EntityManager",
+               {"xyz.openbmc_project.Configuration.MCTPI2CTarget"}}}}}));
+
+    disc->onMctpReactorConfigured(msg);
+
+    EXPECT_EQ(handler.handleMctpEndpointsCalls, 1);
+    ASSERT_EQ(disc->existingMctpInfos.size(), 1u);
+    const auto& info = disc->existingMctpInfos.front();
+    EXPECT_EQ(std::get<pldm::eid>(info), 10);
+    EXPECT_EQ(std::get<std::optional<std::string>>(info), "ERoT_GPU_0");
 }
 
 // ---------------------------------------------------------------------------

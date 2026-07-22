@@ -176,6 +176,36 @@ Batch summary:
   - [libpldmresponder/test/libpldmresponder_platform_test.cpp](/mnt/sda1/probe/pldm/libpldmresponder/test/libpldmresponder_platform_test.cpp)
 - Removed three `libpldmresponder_platform_test` assertions that depended on the known unreachable OEM `getStateSensorReadings()` wrapper path documented below in the production-bug notes. The authoritative CI run passed `68/68` after that correction.
 
+### 2026-07-22 branch-coverage recovery after develop rebase (CI gate fix)
+
+Gate context: level-1 branches failed at `78.2` against the `78.5`
+develop baseline (tolerance 0.2 → minimum 78.3). Functions/lines passed.
+
+- Before: `91.1 / 95.2 / 78.2 / 76.7` (14794/18922 branches)
+- After: `91.6 / 95.4 / 78.8 / 77.0` (14906/18922 branches)
+
+Batch summary:
+
+- Re-enabled 28 of the 32 `DISABLED_` cases in
+  `requester/test/mctp_endpoint_discovery_test.cpp` by converting them from
+  default-(real)-DBusHandler construction to the `makeDiscoveryWithMock`
+  fast-retry pattern; added a `makeDiscoveryWithMockHandlers` variant for
+  multi-handler and null-handler cases. Three cases were repurposed where
+  the disabled expectations described removed behavior (wrong-typed
+  Connectivity now logs and returns instead of throwing; UUID is read from
+  the signal payload only). The four live-mapper cases stay disabled.
+- Added a `ReactorConfigured*` pack covering `onMctpReactorConfigured`
+  runtime discovery: bad payload, non-endpoint/non-numeric paths,
+  getService failure, non-PLDM endpoint, identity dedup, unresolved-config
+  retry exhaustion, and the resolved happy path.
+- Added `fw-update/test/update_manager_internal_test.cpp`
+  (config_internal_test pattern, new `no_update_manager` meson subtraction)
+  covering `seedRefreshEidsFromStaticConfig`: StaticEndpointID uint64 and
+  decimal-string decoding, out-of-range rejection, empty service maps,
+  props-read failures, bridge-pool expansion, inverted/half-specified pools.
+- Authoritative run passed `70/70`. One earlier baseline run hit the known
+  `terminus_test` SIGSEGV flake on first attempt; clean on re-run.
+
 ## Production Bugs To Revisit
 
 ### `libpldmresponder/platform.cpp` request length mismatch

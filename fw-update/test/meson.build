@@ -24,6 +24,7 @@ fw_update_test_sources_no_config = []
 fw_update_test_sources_no_em_config = []
 fw_update_test_sources_no_firmware_inventory = []
 fw_update_test_sources_no_activation = []
+fw_update_test_sources_no_update_manager = []
 foreach src : fw_update_test_sources
     if src != '../config.cpp'
         fw_update_test_sources_no_config += src
@@ -36,6 +37,9 @@ foreach src : fw_update_test_sources
     endif
     if src != '../activation.cpp'
         fw_update_test_sources_no_activation += src
+    endif
+    if src != '../update_manager.cpp'
+        fw_update_test_sources_no_update_manager += src
     endif
 endforeach
 
@@ -51,6 +55,9 @@ fw_update_test_src_no_firmware_inventory = declare_dependency(
 )
 fw_update_test_src_no_activation = declare_dependency(
     sources: fw_update_test_sources_no_activation,
+)
+fw_update_test_src_no_update_manager = declare_dependency(
+    sources: fw_update_test_sources_no_update_manager,
 )
 
 tests = [
@@ -76,6 +83,7 @@ tests = [
     'package_parser_test',
     'package_signature_test',
     'update_and_utility_test',
+    'update_manager_internal_test',
     'update_manager_pkg_association_test',
     'update_manager_test',
 ]
@@ -98,6 +106,8 @@ foreach t : tests
         test_fw_update_src = fw_update_test_src_no_activation
     elif t == 'firmware_inventory_internal_thread_test'
         test_fw_update_src = fw_update_test_src_no_firmware_inventory
+    elif t == 'update_manager_internal_test'
+        test_fw_update_src = fw_update_test_src_no_update_manager
     elif t == 'debug_token_internal_test' or t == 'other_device_update_manager_test'
         test_cpp_args = ['-fno-access-control']
     elif t == 'package_signature_test'
