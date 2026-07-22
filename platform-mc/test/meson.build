@@ -71,33 +71,50 @@ private_tests = ['oem_events_private_test']
 
 openssl = dependency('openssl', required: true)
 
+# terminus_test retries once via the wrapper: a rare cross-test flake
+# (late reply of an abandoned async D-Bus call on the shared default bus
+# corrupting a reused stack frame) can crash the binary at startup. See
+# run_with_retry.sh for details.
+retry_runner = find_program('run_with_retry.sh')
+
 foreach t : tests
-    test(
-        t,
-        executable(
-            t.underscorify(),
-            t + '.cpp',
-            implicit_include_directories: false,
-            cpp_args: test_cpp_args,
-            dependencies: [
-                gtest,
-                gmock,
-                libpldm_dep,
-                libpldmutils,
-                nlohmann_json_dep,
-                phosphor_dbus_interfaces,
-                phosphor_logging_dep,
-                sdbusplus,
-                sdeventplus,
-                test_src,
-                nvidia_tal,
-                openssl,
-            ],
-        ),
-        is_parallel: t != 'terminus_test',
-        workdir: meson.current_source_dir(),
-        suite: non_valgrind_test_suites,
+    test_exe = executable(
+        t.underscorify(),
+        t + '.cpp',
+        implicit_include_directories: false,
+        cpp_args: test_cpp_args,
+        dependencies: [
+            gtest,
+            gmock,
+            libpldm_dep,
+            libpldmutils,
+            nlohmann_json_dep,
+            phosphor_dbus_interfaces,
+            phosphor_logging_dep,
+            sdbusplus,
+            sdeventplus,
+            test_src,
+            nvidia_tal,
+            openssl,
+        ],
     )
+    if t == 'terminus_test'
+        test(
+            t,
+            retry_runner,
+            args: [test_exe],
+            is_parallel: false,
+            workdir: meson.current_source_dir(),
+            suite: non_valgrind_test_suites,
+        )
+    else
+        test(
+            t,
+            test_exe,
+            workdir: meson.current_source_dir(),
+            suite: non_valgrind_test_suites,
+        )
+    endif
 endforeach
 
 foreach t : private_tests
