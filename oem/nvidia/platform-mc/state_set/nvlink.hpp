@@ -27,6 +27,7 @@
 #include <xyz/openbmc_project/State/Decorator/SecureState/server.hpp>
 
 #include <filesystem>
+#include <optional>
 
 #ifdef OEM_NVIDIA
 #include <tal.hpp>
@@ -56,6 +57,11 @@ class StateSetNvlink : public StateSet
     std::unique_ptr<InstanceIntf> endpointInstanceIntf = nullptr;
     std::string objPath;
     const StateSensor& stateSensor;
+
+    // Last state value seen by setValue(). The device re-reports its current
+    // state on every sensor poll, so this gates link-state logging to actual
+    // transitions instead of once per poll.
+    std::optional<uint8_t> prevValue;
 
     // WORKAROUND: NVLink per-partition Port mirroring
     NvlinkPortMirror portMirror;
@@ -175,6 +181,20 @@ class StateSetNvlink : public StateSet
         // share numeric values for ACTIVE; treating a CLink 4 as the
         // NVLink enum (or vice versa) would misrepresent link health.
 
+        // Log link-state changes only on transition. The device re-reports
+        // its current state on every sensor poll (~30s); a persistent failure
+        // or invalid state would otherwise re-log an error/warning each poll
+        // and flood the journal.
+        const bool valueChanged = (prevValue != value);
+        // Rendered only when we actually log (on a change); shown as "none"
+        // before the first sample so the log reads as a transition.
+        std::string prevValueStr;
+        if (valueChanged)
+        {
+            prevValueStr = prevValue ? std::to_string(*prevValue) : "none";
+        }
+        prevValue = value;
+
         PortLinkStates newLinkState = PortLinkStates::Unknown;
         PortLinkStatus newLinkStatus = PortLinkStatus::NoLink;
 
@@ -194,16 +214,24 @@ class StateSetNvlink : public StateSet
                 case PLDM_STATE_SET_CLINK_FAIL_EXCEPTION:
                     newLinkState = PortLinkStates::Error;
                     newLinkStatus = PortLinkStatus::LinkDown;
-                    lg2::error(
-                        "Device reported CLink port state as {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
-                        "VAL", value, "PATH", objPath);
+                    if (valueChanged)
+                    {
+                        lg2::error(
+                            "Device reported CLink port state change {PREV} -> {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
+                            "PREV", prevValueStr, "VAL", value, "PATH",
+                            objPath);
+                    }
                     break;
                 default:
                     newLinkState = PortLinkStates::Unknown;
                     newLinkStatus = PortLinkStatus::NoLink;
-                    lg2::warning(
-                        "Device reported invalid State value {VAL} for {PATH}; So setting default LinkStatus Unknown and LinkState as NoLink",
-                        "VAL", value, "PATH", objPath);
+                    if (valueChanged)
+                    {
+                        lg2::warning(
+                            "Device reported invalid CLink state change {PREV} -> {VAL} for {PATH}; So setting default LinkState Unknown and LinkStatus as NoLink",
+                            "PREV", prevValueStr, "VAL", value, "PATH",
+                            objPath);
+                    }
                     break;
             }
         }
@@ -239,16 +267,24 @@ class StateSetNvlink : public StateSet
                 case PLDM_STATE_SET_NVLINK_C2C1_CLKDET_FAIL:
                     newLinkState = PortLinkStates::Error;
                     newLinkStatus = PortLinkStatus::LinkDown;
-                    lg2::error(
-                        "Device reported NVLink port state as {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
-                        "VAL", value, "PATH", objPath);
+                    if (valueChanged)
+                    {
+                        lg2::error(
+                            "Device reported NVLink port state change {PREV} -> {VAL} for {PATH} - So setting LinkState as Error with Status as LinkDown",
+                            "PREV", prevValueStr, "VAL", value, "PATH",
+                            objPath);
+                    }
                     break;
                 default:
                     newLinkState = PortLinkStates::Unknown;
                     newLinkStatus = PortLinkStatus::NoLink;
-                    lg2::warning(
-                        "Device reported invalid State value {VAL} for {PATH}; So setting default LinkStatus Unknown and LinkState as NoLink",
-                        "VAL", value, "PATH", objPath);
+                    if (valueChanged)
+                    {
+                        lg2::warning(
+                            "Device reported invalid NVLink state change {PREV} -> {VAL} for {PATH}; So setting default LinkState Unknown and LinkStatus as NoLink",
+                            "PREV", prevValueStr, "VAL", value, "PATH",
+                            objPath);
+                    }
                     break;
             }
         }
