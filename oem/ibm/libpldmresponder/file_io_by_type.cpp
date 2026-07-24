@@ -11,26 +11,22 @@
 #include "file_io_type_lid.hpp"
 #include "file_io_type_pel.hpp"
 #include "file_io_type_progress_src.hpp"
-#include "xyz/openbmc_project/Common/error.hpp"
+#include "file_io_type_vpd.hpp"
+#include "libpldmresponder/file_io.hpp"
 
 #include <stdint.h>
 #include <unistd.h>
 
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
-#include <exception>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
-#include <vector>
 
 namespace pldm
 {
 namespace responder
 {
-
-using namespace sdbusplus::xyz::openbmc_project::Common::Error;
-
 int FileHandler::transferFileData(int32_t fd, bool upstream, uint32_t offset,
                                   uint32_t& length, uint64_t address)
 {
@@ -92,7 +88,7 @@ int FileHandler::transferFileData(const fs::path& path, bool upstream,
                       << " FILE_SIZE=" << fileSize << "\n";
             return PLDM_DATA_OUT_OF_RANGE;
         }
-        if (offset + length > fileSize)
+        if (length > fileSize - offset)
         {
             length = fileSize - offset;
         }
@@ -188,7 +184,7 @@ int FileHandler::readFile(const std::string& filePath, uint32_t offset,
         return PLDM_DATA_OUT_OF_RANGE;
     }
 
-    if (offset + length > fileSize)
+    if (length > fileSize - offset)
     {
         length = fileSize - offset;
     }

@@ -16,8 +16,6 @@
 
 #include <chrono>
 #include <functional>
-#include <iostream>
-#include <string>
 
 PHOSPHOR_LOG2_USING;
 
@@ -153,7 +151,7 @@ class Request final : public RequestRetryTimer
     Request(Request&&) = delete;
     Request& operator=(const Request&) = delete;
     Request& operator=(Request&&) = delete;
-    ~Request() = default;
+    ~Request() override = default;
 
     /** @brief Constructor
      *

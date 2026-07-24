@@ -4,8 +4,6 @@
 
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
-#include "common/utils.hpp"
-#include "libpldmresponder/pdr.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/bios.h>
@@ -17,7 +15,6 @@
 #include <cstring>
 #include <iostream>
 #include <map>
-#include <stdexcept>
 #include <vector>
 
 #ifdef OEM_IBM
@@ -78,22 +75,24 @@ Response Handler::getPLDMTypes(const pldm_msg* request,
                                size_t /*payloadLength*/)
 {
     // DSP0240 has this as a bitfield8[N], where N = 0 to 7
-    std::array<bitfield8_t, 8> types{};
+    pldm_base_get_pldm_types_resp resp{PLDM_SUCCESS, {{0}}};
     for (const auto& type : capabilities)
     {
         auto index = type.first / 8;
         // <Type Number> = <Array Index> * 8 + <bit position>
         auto bit = type.first - (index * 8);
-        types[index].byte |= 1 << bit;
+        resp.pldm_types[index].byte |= 1 << bit;
     }
 
-    Response response(sizeof(pldm_msg_hdr) + PLDM_GET_TYPES_RESP_BYTES, 0);
-    auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
-    auto rc = encode_get_types_resp(request->hdr.instance_id, PLDM_SUCCESS,
-                                    types.data(), responsePtr);
-    if (rc != PLDM_SUCCESS)
+    Response response(
+        sizeof(pldm_msg_hdr) + PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES, 0);
+    auto responsePtr = new (response.data()) pldm_msg;
+    size_t payloadLength = PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES;
+    auto rc = encode_pldm_base_get_pldm_types_resp(
+        request->hdr.instance_id, &resp, responsePtr, &payloadLength);
+    if (rc || payloadLength != PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES)
     {
-        return CmdHandler::ccOnlyResponse(request, rc);
+        return CmdHandler::ccOnlyResponse(request, PLDM_ERROR);
     }
 
     return response;
@@ -102,7 +101,7 @@ Response Handler::getPLDMTypes(const pldm_msg* request,
 Response Handler::getPLDMCommands(const pldm_msg* request, size_t payloadLength)
 {
     ver32_t version{};
-    Type type;
+    Type type = 0;
 
     Response response(sizeof(pldm_msg_hdr) + PLDM_GET_COMMANDS_RESP_BYTES, 0);
     auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
@@ -142,9 +141,9 @@ Response Handler::getPLDMCommands(const pldm_msg* request, size_t payloadLength)
 
 Response Handler::getPLDMVersion(const pldm_msg* request, size_t payloadLength)
 {
-    uint32_t transferHandle;
-    Type type;
-    uint8_t transferFlag;
+    uint32_t transferHandle = 0;
+    Type type = 0;
+    uint8_t transferFlag = 0;
 
     Response response(sizeof(pldm_msg_hdr) + PLDM_GET_VERSION_RESP_BYTES, 0);
     auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
@@ -253,16 +252,15 @@ void Handler::processSetEventReceiver(
 
 Response Handler::getTID(const pldm_msg* request, size_t /*payloadLength*/)
 {
-    // assigned 1 to the bmc as the PLDM terminus
-    uint8_t tid = 1;
-
-    Response response(sizeof(pldm_msg_hdr) + PLDM_GET_TID_RESP_BYTES, 0);
-    auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
-    auto rc = encode_get_tid_resp(request->hdr.instance_id, PLDM_SUCCESS, tid,
-                                  responsePtr);
-    if (rc != PLDM_SUCCESS)
+    pldm_base_get_tid_resp resp{PLDM_SUCCESS, TERMINUS_ID};
+    Response response(sizeof(pldm_msg_hdr) + PLDM_BASE_GET_TID_RESP_BYTES, 0);
+    auto responsePtr = new (response.data()) pldm_msg;
+    size_t payloadLength = PLDM_BASE_GET_TID_RESP_BYTES;
+    auto rc = encode_pldm_base_get_tid_resp(request->hdr.instance_id, &resp,
+                                            responsePtr, &payloadLength);
+    if (rc || payloadLength != PLDM_BASE_GET_TID_RESP_BYTES)
     {
-        return ccOnlyResponse(request, rc);
+        return ccOnlyResponse(request, PLDM_ERROR);
     }
 
     survEvent = std::make_unique<sdeventplus::source::Defer>(

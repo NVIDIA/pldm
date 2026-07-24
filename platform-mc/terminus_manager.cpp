@@ -586,16 +586,26 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
         co_return rc;
     }
 
-    uint8_t completionCode = 0;
-    rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode, &tid);
+    pldm_base_get_tid_resp resp{};
+    rc = decode_pldm_base_get_tid_resp(responseMsg, responseLen, &resp);
     if (rc)
     {
-        lg2::error("decode_get_tid_resp failed. eid={EID} rc={RC}", "EID", eid,
-                   "RC", rc);
+        lg2::error(
+            "Failed to decode response GetTID for Endpoint ID {EID}, error {RC} ",
+            "EID", eid, "RC", rc);
         co_return rc;
     }
 
-    co_return completionCode;
+    if (resp.completion_code != PLDM_SUCCESS)
+    {
+        lg2::error("Error : GetTID for Endpoint ID {EID}, complete code {CC}.",
+                   "EID", eid, "CC", resp.completion_code);
+        co_return rc;
+    }
+
+    *tid = resp.tid;
+
+    co_return resp.completion_code;
 }
 
 exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
@@ -656,17 +666,26 @@ exec::task<int> TerminusManager::getPLDMTypes(tid_t tid,
         co_return rc;
     }
 
-    uint8_t completionCode = 0;
-    bitfield8_t* types = reinterpret_cast<bitfield8_t*>(&supportedTypes);
-    rc =
-        decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
+    pldm_base_get_pldm_types_resp resp{};
+    rc = decode_pldm_base_get_pldm_types_resp(responseMsg, responseLen, &resp);
     if (rc)
     {
-        lg2::error("decode_get_types_resp failed, tid={TID} rc={RC}.", "TID",
-                   tid, "RC", rc);
+        lg2::error(
+            "Failed to decode response GetPLDMTypes for terminus ID {TID}, error {RC} ",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
-    co_return completionCode;
+
+    if (resp.completion_code != PLDM_SUCCESS)
+    {
+        lg2::error(
+            "Error : GetPLDMTypes for terminus ID {TID}, complete code {CC}.",
+            "TID", tid, "CC", resp.completion_code);
+        co_return rc;
+    }
+
+    ::memcpy(&supportedTypes, &resp.pldm_types, sizeof(resp.pldm_types));
+    co_return resp.completion_code;
 }
 
 exec::task<int> TerminusManager::getTerminusUID(tid_t tid, UUID& uuid)

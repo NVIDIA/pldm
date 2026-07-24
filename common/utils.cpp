@@ -1,13 +1,16 @@
 #include "utils.hpp"
 
-#include <libpldm/base.h>
-#include <libpldm/bios.h>
+#include "start_lifetime_as.hpp"
+
+#include <fcntl.h>
 #include <libpldm/firmware_update.h>
 #include <libpldm/fru.h>
 #include <libpldm/pdr.h>
 #include <libpldm/platform.h>
 #include <libpldm/pldm_types.h>
 #include <linux/mctp.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <xyz/openbmc_project/BIOSConfig/Manager/client.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
@@ -17,22 +20,19 @@
 #include <xyz/openbmc_project/PLDM/Event/common.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
-#include <cerrno>
-#include <charconv>
+#include <cstdlib>
 #include <ctime>
 #include <format>
 #include <fstream>
 #include <iostream>
 #include <limits>
 #include <map>
-#include <optional>
+#include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
-#include <utility>
-#include <variant>
+#include <system_error>
 #include <vector>
 
 PHOSPHOR_LOG2_USING;
@@ -67,15 +67,17 @@ std::vector<std::vector<uint8_t>> findStateEffecterPDR(
                                                   record, &outData, &size);
             if (record)
             {
-                auto pdr = new (outData) pldm_state_effecter_pdr;
+                auto pdr =
+                    std::start_lifetime_as<pldm_state_effecter_pdr>(outData);
                 auto compositeEffecterCount = pdr->composite_effecter_count;
                 auto possible_states_start = pdr->possible_states;
 
                 for (auto effecters = 0x00; effecters < compositeEffecterCount;
                      effecters++)
                 {
-                    auto possibleStates = new (possible_states_start)
-                        state_effecter_possible_states;
+                    auto possibleStates =
+                        std::start_lifetime_as<state_effecter_possible_states>(
+                            possible_states_start);
                     auto setId = possibleStates->state_set_id;
                     auto possibleStateSize =
                         possibleStates->possible_states_size;
@@ -118,15 +120,17 @@ std::vector<std::vector<uint8_t>> findStateSensorPDR(
                                                   record, &outData, &size);
             if (record)
             {
-                auto pdr = new (outData) pldm_state_sensor_pdr;
+                auto pdr =
+                    std::start_lifetime_as<pldm_state_sensor_pdr>(outData);
                 auto compositeSensorCount = pdr->composite_sensor_count;
                 auto possible_states_start = pdr->possible_states;
 
                 for (auto sensors = 0x00; sensors < compositeSensorCount;
                      sensors++)
                 {
-                    auto possibleStates = new (possible_states_start)
-                        state_sensor_possible_states;
+                    auto possibleStates =
+                        std::start_lifetime_as<state_sensor_possible_states>(
+                            possible_states_start);
                     auto setId = possibleStates->state_set_id;
                     auto possibleStateSize =
                         possibleStates->possible_states_size;
@@ -245,7 +249,7 @@ std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
 
 uint8_t getNumPadBytes(uint32_t data)
 {
-    uint8_t pad;
+    uint8_t pad = 0;
     pad = ((data % 4) ? (4 - data % 4) : 0);
     return pad;
 } // end getNumPadBytes
@@ -632,15 +636,16 @@ uint16_t findStateEffecterId(const pldm_pdr* pdrRepo, uint16_t entityType,
                                               record, &pdrData, &pdrSize);
         if (record && (localOrRemote ^ pldm_pdr_record_is_remote(record)))
         {
-            auto pdr = new (pdrData) pldm_state_effecter_pdr;
+            auto pdr = std::start_lifetime_as<pldm_state_effecter_pdr>(pdrData);
             auto compositeEffecterCount = pdr->composite_effecter_count;
             auto possible_states_start = pdr->possible_states;
 
             for (auto effecters = 0x00; effecters < compositeEffecterCount;
                  effecters++)
             {
-                auto possibleStates = new (possible_states_start)
-                    state_effecter_possible_states;
+                auto possibleStates =
+                    std::start_lifetime_as<state_effecter_possible_states>(
+                        possible_states_start);
                 auto setId = possibleStates->state_set_id;
                 auto possibleStateSize = possibleStates->possible_states_size;
 
@@ -709,14 +714,16 @@ uint16_t findStateSensorId(const pldm_pdr* pdrRepo, uint8_t tid,
     auto pdrs = findStateSensorPDR(tid, entityType, stateSetId, pdrRepo);
     for (auto pdr : pdrs)
     {
-        auto sensorPdr = new (pdr.data()) pldm_state_sensor_pdr;
+        auto sensorPdr =
+            std::start_lifetime_as<pldm_state_sensor_pdr>(pdr.data());
         auto compositeSensorCount = sensorPdr->composite_sensor_count;
         auto possible_states_start = sensorPdr->possible_states;
 
         for (auto sensors = 0x00; sensors < compositeSensorCount; sensors++)
         {
-            auto possibleStates = new (possible_states_start)
-                state_sensor_possible_states;
+            auto possibleStates =
+                std::start_lifetime_as<state_sensor_possible_states>(
+                    possible_states_start);
             auto setId = possibleStates->state_set_id;
             auto possibleStateSize = possibleStates->possible_states_size;
             if (entityType == sensorPdr->entity_type &&
@@ -817,7 +824,7 @@ bool checkForFruPresence(const std::string& objPath)
             objPath.c_str(), "Present", InventoryItem::interface);
         isPresent = std::get<bool>(propVal);
     }
-    catch (const sdbusplus::exception::SdBusError& e)
+    catch (const sdbusplus::exception::internal_exception& e)
     {
         error("Failed to check for FRU presence at {PATH}, error - {ERROR}",
               "PATH", objPath, "ERROR", e);
@@ -942,7 +949,7 @@ std::optional<uint32_t> fruFieldParserU32(const uint8_t* value,
         return std::nullopt;
     }
 
-    uint32_t ret;
+    uint32_t ret = 0;
     std::memcpy(&ret, value, length);
     return ret;
 }
@@ -959,7 +966,7 @@ SensorPDRs getStateSensorPDRsByType(uint16_t entityType, const pldm_pdr* repo)
         while ((record = pldm_pdr_find_record_by_type(
                     repo, PLDM_STATE_SENSOR_PDR, record, &outData, &size)))
         {
-            auto pdr = new (outData) pldm_state_sensor_pdr;
+            auto pdr = std::start_lifetime_as<pldm_state_sensor_pdr>(outData);
             if (pdr && pdr->entity_type == entityType)
             {
                 pdrs.emplace_back(outData, outData + size);
@@ -1005,7 +1012,7 @@ EffecterPDRs getStateEffecterPDRsByType(uint16_t entityType,
         while ((record = pldm_pdr_find_record_by_type(
                     repo, PLDM_STATE_EFFECTER_PDR, record, &outData, &size)))
         {
-            auto pdr = new (outData) pldm_state_effecter_pdr;
+            auto pdr = std::start_lifetime_as<pldm_state_effecter_pdr>(outData);
             if (pdr && pdr->entity_type == entityType)
             {
                 pdrs.emplace_back(outData, outData + size);
@@ -1212,6 +1219,180 @@ void setBiosAttr(const PendingAttributesList& biosAttrList)
         info("Error setting BIOS pending attributes: {ERR_EXCEP}", "ERR_EXCEP",
              e);
     }
+}
+
+MMapHandler::MMapHandler(int fd, std::optional<size_t> size) :
+    fd(fd), ownsFd(false) // External fd, not owned by MMapHandler
+{
+    struct stat sb;
+    if (fstat(fd, &sb) == -1)
+    {
+        error("Failed to get the actual file size");
+        data = nullptr;
+        throw std::runtime_error("Failed to get the actual file size");
+    }
+
+    if (size.has_value())
+    {
+        this->size = size.value();
+        if (this->size > static_cast<size_t>(sb.st_size))
+        {
+            error("Requested size {REQSIZE} exceeds file size {FILESIZE}",
+                  "REQSIZE", this->size, "FILESIZE", sb.st_size);
+            data = nullptr;
+            throw std::invalid_argument("Requested size exceeds file size");
+        }
+    }
+    else
+    {
+        this->size = static_cast<size_t>(sb.st_size);
+    }
+
+    data = static_cast<char*>(
+        mmap(nullptr, this->size, PROT_READ, MAP_PRIVATE, fd, 0));
+    if (data == MAP_FAILED)
+    {
+        int savedErrno = errno;
+        data = nullptr;
+        error("mmap failed: size {SIZE}, error: {ERROR}", "SIZE", this->size,
+              "ERROR", savedErrno);
+        throw std::system_error(savedErrno, std::system_category(),
+                                "mmap failed");
+    }
+}
+
+MMapHandler::MMapHandler(const std::filesystem::path& path,
+                         std::optional<size_t> size) :
+    ownsFd(true) // MMapHandler owns this fd and will close it
+{
+    fd = open(path.c_str(), O_RDONLY);
+    if (fd < 0)
+    {
+        int savedErrno = errno;
+        error("Failed to open file: {PATH}, error: {ERROR}", "PATH",
+              path.c_str(), "ERROR", savedErrno);
+        throw std::system_error(savedErrno, std::system_category(),
+                                "Failed to open file: " + path.string());
+    }
+
+    try
+    {
+        struct stat sb;
+        if (fstat(fd, &sb) == -1)
+        {
+            int savedErrno = errno;
+            close(fd);
+            fd = -1;
+            error("Failed to fstat file: {ERROR}", "ERROR", savedErrno);
+            throw std::system_error(savedErrno, std::system_category(),
+                                    "Failed to fstat file");
+        }
+
+        if (size.has_value())
+        {
+            this->size = size.value();
+            if (this->size > static_cast<size_t>(sb.st_size))
+            {
+                close(fd);
+                fd = -1;
+                error("Requested size {REQSIZE} exceeds file size {FILESIZE}",
+                      "REQSIZE", this->size, "FILESIZE", sb.st_size);
+                throw std::invalid_argument("Requested size exceeds file size");
+            }
+        }
+        else
+        {
+            this->size = static_cast<size_t>(sb.st_size);
+        }
+
+        data = static_cast<char*>(
+            mmap(nullptr, this->size, PROT_READ, MAP_PRIVATE, fd, 0));
+        if (data == MAP_FAILED)
+        {
+            int savedErrno = errno;
+            close(fd);
+            fd = -1;
+            data = nullptr;
+            error("mmap failed: size {SIZE}, error: {ERROR}", "SIZE",
+                  this->size, "ERROR", savedErrno);
+            throw std::system_error(savedErrno, std::system_category(),
+                                    "mmap failed");
+        }
+    }
+    catch (...)
+    {
+        if (fd >= 0)
+        {
+            close(fd);
+            fd = -1;
+        }
+        throw;
+    }
+}
+
+MMapHandler::~MMapHandler()
+{
+    if (data)
+    {
+        munmap(data, size);
+    }
+
+    // Only close fd if we own it (opened via path constructor)
+    if (ownsFd && fd >= 0)
+    {
+        close(fd);
+    }
+}
+
+char* MMapHandler::getData()
+{
+    return data;
+}
+
+const char* MMapHandler::getData() const
+{
+    return data;
+}
+
+std::span<const uint8_t> MMapHandler::getBytes() const
+{
+    if (!data)
+    {
+        return {};
+    }
+    return {reinterpret_cast<const uint8_t*>(data), size};
+}
+
+std::span<uint8_t> MMapHandler::getBytes()
+{
+    if (!data)
+    {
+        return {};
+    }
+    return {reinterpret_cast<uint8_t*>(data), size};
+}
+
+std::span<const char> MMapHandler::getChars() const
+{
+    if (!data)
+    {
+        return {};
+    }
+    return {data, size};
+}
+
+std::span<char> MMapHandler::getChars()
+{
+    if (!data)
+    {
+        return {};
+    }
+    return {data, size};
+}
+
+size_t MMapHandler::getSize() const
+{
+    return size;
 }
 
 } // namespace utils

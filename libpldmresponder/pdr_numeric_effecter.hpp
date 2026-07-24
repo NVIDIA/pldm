@@ -1,3 +1,4 @@
+#include <iostream>
 #pragma once
 
 #include "libpldmresponder/pdr_utils.hpp"

@@ -1,8 +1,6 @@
 #pragma once
 
 #include "common/instance_id.hpp"
-#include "common/types.hpp"
-#include "oem_event_manager.hpp"
 #include "platform-mc/manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
@@ -13,8 +11,7 @@ namespace pldm
 {
 namespace oem_ampere
 {
-using namespace pldm::pdr;
-#define NORMAL_EVENT_POLLING_TIME 5000000 // ms
+constexpr uint64_t NORMAL_EVENT_POLLING_TIME = 5000000; // ms
 
 using EventToMsgMap_t = std::unordered_map<uint8_t, std::string>;
 

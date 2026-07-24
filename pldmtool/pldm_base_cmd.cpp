@@ -214,7 +214,7 @@ const std::map<const char*, pldm_fileio_commands> pldmIBMFileIOCmds{
 class GetPLDMTypes : public CommandInterface
 {
   public:
-    ~GetPLDMTypes() = default;
+    ~GetPLDMTypes() override = default;
     GetPLDMTypes() = delete;
     GetPLDMTypes(const GetPLDMTypes&) = delete;
     GetPLDMTypes(GetPLDMTypes&&) = default;
@@ -233,29 +233,29 @@ class GetPLDMTypes : public CommandInterface
 
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
-        uint8_t cc = 0;
-        std::vector<bitfield8_t> types(8);
-        auto rc = decode_get_types_resp(responsePtr, payloadLength, &cc,
-                                        types.data());
-        if (rc != PLDM_SUCCESS)
+        pldm_base_get_pldm_types_resp resp{};
+        auto rc = decode_pldm_base_get_pldm_types_resp(responsePtr,
+                                                       payloadLength, &resp);
+        if (rc)
         {
             std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
+                      << "rc=" << rc << ",cc=" << resp.completion_code << "\n";
             return;
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data, PLDM_BASE);
-        if (cc == PLDM_SUCCESS)
+        fillCompletionCode(resp.completion_code, data, PLDM_BASE);
+        if (resp.completion_code == PLDM_SUCCESS)
         {
-            printPLDMTypes(types, data);
+            printPLDMTypes(resp.pldm_types, data);
         }
 
         pldmtool::helper::DisplayInJson(data);
     }
 
   private:
-    void printPLDMTypes(std::vector<bitfield8_t>& types, ordered_json& data)
+    void printPLDMTypes(bitfield8_t (&types)[PLDM_MAX_TYPES / 8],
+                        ordered_json& data)
     {
         ordered_json jPldmTypes;
         ordered_json jarray;
@@ -286,7 +286,7 @@ class GetPLDMTypes : public CommandInterface
 class GetPLDMVersion : public CommandInterface
 {
   public:
-    ~GetPLDMVersion() = default;
+    ~GetPLDMVersion() override = default;
     GetPLDMVersion() = delete;
     GetPLDMVersion(const GetPLDMVersion&) = delete;
     GetPLDMVersion(GetPLDMVersion&&) = default;
@@ -380,7 +380,7 @@ class GetPLDMVersion : public CommandInterface
 class GetTID : public CommandInterface
 {
   public:
-    ~GetTID() = default;
+    ~GetTID() override = default;
     GetTID() = delete;
     GetTID(const GetTID&) = delete;
     GetTID(GetTID&&) = default;
@@ -399,24 +399,19 @@ class GetTID : public CommandInterface
 
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
     {
-        uint8_t cc = 0;
-        uint8_t tid = 0;
-        std::vector<bitfield8_t> types(8);
-        auto rc = decode_get_tid_resp(responsePtr, payloadLength, &cc, &tid);
-        if (rc != PLDM_SUCCESS || cc != PLDM_SUCCESS)
+        pldm_base_get_tid_resp resp{};
+        auto rc =
+            decode_pldm_base_get_tid_resp(responsePtr, payloadLength, &resp);
+        if (rc != PLDM_SUCCESS || resp.completion_code != PLDM_SUCCESS)
         {
             std::cerr << "Response Message Error: "
-                      << "rc=" << rc << ",cc=" << (int)cc << "\n";
+                      << "rc=" << rc << ",cc="
+                      << static_cast<int>(resp.completion_code) << "\n";
             return;
         }
 
         ordered_json data;
-        fillCompletionCode(cc, data, PLDM_BASE);
-        if (cc == PLDM_SUCCESS)
-        {
-            data["TID"] = tid;
-        }
-
+        data["Response"] = static_cast<uint32_t>(resp.tid);
         pldmtool::helper::DisplayInJson(data);
     }
 };
@@ -424,7 +419,7 @@ class GetTID : public CommandInterface
 class GetPLDMCommands : public CommandInterface
 {
   public:
-    ~GetPLDMCommands() = default;
+    ~GetPLDMCommands() override = default;
     GetPLDMCommands() = delete;
     GetPLDMCommands(const GetPLDMCommands&) = delete;
     GetPLDMCommands(GetPLDMCommands&&) = default;
@@ -575,7 +570,7 @@ class GetPLDMCommands : public CommandInterface
 class SetTID : public CommandInterface
 {
   public:
-    ~SetTID() = default;
+    ~SetTID() override = default;
     SetTID() = delete;
     SetTID(const SetTID&) = delete;
     SetTID(SetTID&&) = default;

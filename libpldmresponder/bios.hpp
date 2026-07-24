@@ -13,9 +13,6 @@
 #include <stdint.h>
 
 #include <ctime>
-#include <functional>
-#include <map>
-#include <vector>
 
 namespace pldm
 {

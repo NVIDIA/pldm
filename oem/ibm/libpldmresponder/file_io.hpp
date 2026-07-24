@@ -6,7 +6,7 @@
 
 #include "common/utils.hpp"
 #include "oem/ibm/requester/dbus_to_file_handler.hpp"
-#include "oem_ibm_handler.hpp"
+#include "oem_handler.hpp"
 #include "pldmd/handler.hpp"
 #include "requester/handler.hpp"
 
@@ -17,7 +17,6 @@
 #include <unistd.h>
 
 #include <filesystem>
-#include <iostream>
 #include <vector>
 
 namespace pldm
@@ -237,12 +236,12 @@ class Handler : public CmdHandler
                                                           payloadLength);
             });
 
-        resDumpMatcher = std::make_unique<sdbusplus::bus::match_t>(
+        resDumpMatcher = std::make_unique<sdbusplus::match>(
             pldm::utils::DBusHandler::getBus(),
-            sdbusplus::bus::match::rules::interfacesAdded() +
-                sdbusplus::bus::match::rules::argNpath(0, dumpObjPath),
-            [this, hostSockFd, hostEid, dbusImplReqester,
-             handler](sdbusplus::message::message& msg) {
+            sdbusplus::match_rules::interfacesAdded() +
+                sdbusplus::match_rules::argNpath(0, dumpObjPath),
+            [this, hostSockFd, hostEid, instanceIdDb,
+             handler](sdbusplus::message_t& msg) {
                 std::map<
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
@@ -280,12 +279,12 @@ class Handler : public CmdHandler
                     }
                 }
             });
-        vmiCertMatcher = std::make_unique<sdbusplus::bus::match_t>(
+        vmiCertMatcher = std::make_unique<sdbusplus::match>(
             pldm::utils::DBusHandler::getBus(),
-            sdbusplus::bus::match::rules::interfacesAdded() +
-                sdbusplus::bus::match::rules::argNpath(0, certObjPath),
-            [this, hostSockFd, hostEid, dbusImplReqester,
-             handler](sdbusplus::message::message& msg) {
+            sdbusplus::match_rules::interfacesAdded() +
+                sdbusplus::match_rules::argNpath(0, certObjPath),
+            [this, hostSockFd, hostEid, instanceIdDb,
+             handler](sdbusplus::message_t& msg) {
                 std::map<
                     std::string,
                     std::map<std::string, std::variant<std::string, uint32_t>>>
@@ -448,10 +447,10 @@ class Handler : public CmdHandler
         std::vector<std::pair<std::string, std::variant<std::string>>>>>;
     std::unique_ptr<pldm::requester::oem_ibm::DbusToFileHandler>
         dbusToFileHandler; //!< pointer to send request to Host
-    std::unique_ptr<sdbusplus::bus::match_t>
+    std::unique_ptr<sdbusplus::match>
         resDumpMatcher;    //!< Pointer to capture the interface added signal
                            //!< for new resource dump
-    std::unique_ptr<sdbusplus::bus::match_t>
+    std::unique_ptr<sdbusplus::match>
         vmiCertMatcher;    //!< Pointer to capture the interface added signal
                            //!< for new csr string
     /** @brief PLDM request handler */

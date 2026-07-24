@@ -44,7 +44,7 @@ namespace fw_update
  */
 using ComponentUpdateStatusMap = std::map<size_t, bool>;
 
-class UpdateManager;
+class UpdateManagerBase;
 
 /** @brief Polling interval for self-contained activation status check */
 constexpr auto activationPollInterval = std::chrono::seconds(5);
@@ -247,12 +247,21 @@ class DeviceUpdater
      *  @param[in] updateManager - To update the status of fw update of the
      *                             device
      */
-    explicit DeviceUpdater(
-        mctp_eid_t eid, std::istream& package,
-        const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-        const ComponentImageInfos& compImageInfos,
-        const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
-        uint32_t maxTransferSize, UpdateManager* updateManager);
+    explicit DeviceUpdater(mctp_eid_t eid, std::istream& package,
+                           const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+                           const ComponentImageInfos& compImageInfos,
+                           const ComponentInfo& compInfo,
+                           uint32_t maxTransferSize,
+                           UpdateManagerBase* updateManager);
+
+    /** @brief Get the progress of updating this device as percentage
+     *
+     * Goes through each component for this device and calculates
+     *   the percentage we are through the update process
+     *
+     * @return The percentage as an int [0-100], 0 is no progress, 100 is done.
+     */
+    uint8_t getProgress() const;
 
     /** @brief Start the firmware update flow for the FD
      *
@@ -484,7 +493,7 @@ class DeviceUpdater
     uint32_t maxTransferSize;
 
     /** @brief To update the status of fw update of the FD */
-    UpdateManager* updateManager;
+    UpdateManagerBase* updateManager;
 
     /** @brief Component index is used to track the current component being
      *         updated if multiple components are applicable for the FD.

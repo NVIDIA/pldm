@@ -11,7 +11,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iostream>
 #include <string>
 
@@ -36,6 +35,22 @@ enum class TypeId
 {
     PLDM_EFFECTER_ID,
     PLDM_SENSOR_ID
+};
+
+struct FruTLV
+{
+    uint8_t fruFieldType;
+    uint8_t fruFieldLen;
+    std::vector<uint8_t> fruFieldValue;
+};
+
+struct FruRecordDataFormat
+{
+    uint16_t fruRSI;
+    uint8_t fruRecType;
+    uint8_t fruNum;
+    uint8_t fruEncodeType;
+    std::vector<FruTLV> fruTLV;
 };
 
 /** @struct PdrEntry
@@ -112,7 +127,7 @@ StatestoDbusVal populateMapping(const std::string& type, const Json& dBusValues,
 class RepoInterface
 {
   public:
-    RepoInterface(pldm_pdr* repo) : repo(repo) {}
+    explicit RepoInterface(pldm_pdr* repo) : repo(repo) {}
 
     virtual ~RepoInterface() = default;
 
@@ -185,7 +200,7 @@ class RepoInterface
 class Repo : public RepoInterface
 {
   public:
-    Repo(pldm_pdr* repo) : RepoInterface(repo) {}
+    explicit Repo(pldm_pdr* repo) : RepoInterface(repo) {}
 
     pldm_pdr* getPdr() const override;
 
@@ -214,6 +229,26 @@ class Repo : public RepoInterface
 std::tuple<pldm::pdr::TerminusHandle, pldm::pdr::SensorID,
            pldm::pdr::SensorInfo>
     parseStateSensorPDR(const std::vector<uint8_t>& stateSensorPdr);
+
+/** @brief Parse FRU record table and return the vector of the FRU record data
+ *         format structure
+ *
+ *  @param[in] fruData - fru data
+ *  @param[in] fruLen  - fru len
+ *
+ *  @return std::vector<FruRecordDataFormat> - the vector of the FRU record data
+ *          format structure
+ */
+std::vector<FruRecordDataFormat> parseFruRecordTable(const uint8_t* fruData,
+                                                     size_t fruLen);
+
+/** @brief Return the size of data type based on the effecterDataSize enum value
+ *
+ *  @param[in] effecterDataSize - Bitwidth and format of setting effecter value
+ *  @return[out] Map the effecterDataSize enum value to datatype and return the
+ *               size of dataType
+ */
+size_t getEffecterDataSize(uint8_t effecterDataSize);
 
 } // namespace pdr_utils
 } // namespace responder

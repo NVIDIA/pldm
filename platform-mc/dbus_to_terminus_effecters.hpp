@@ -8,7 +8,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace pldm
@@ -124,12 +123,16 @@ class HostEffecterParser
                               int8_t modify);
 
   protected:
-    pldm::InstanceIdDb* instanceIdDb;
-    [[maybe_unused]] int sockFd;
-    const pldm_pdr* pdrRepo;
-    std::vector<EffecterInfo> hostEffecterInfo;
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> effecterInfoMatch;
-    const pldm::utils::DBusHandler* dbusHandler;
+    pldm::InstanceIdDb* instanceIdDb; //!< Reference to the InstanceIdDb object
+                                      //!< to obtain instance id
+    int sockFd;                       //!< Socket fd to send message to host
+    const pldm_pdr* pdrRepo;          //!< Reference to PDR repo
+    std::vector<EffecterInfo> hostEffecterInfo; //!< Parsed effecter information
+    std::vector<std::unique_ptr<sdbusplus::match>>
+        effecterInfoMatch; //!< vector to catch the D-Bus property change
+                           //!< signals for the effecters
+    const pldm::utils::DBusHandler* dbusHandler; //!< D-bus Handler
+    /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>* handler;
     pldm::platform_mc::Manager* platformManager;
 };

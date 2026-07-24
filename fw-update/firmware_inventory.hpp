@@ -22,10 +22,11 @@
 #include <sdbusplus/server.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
+#include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
 
 class FirmwareInventoryTest;
+class FirmwareInventoryTestInstance;
 
 namespace pldm::fw_update::fw_inventory
 {
@@ -217,6 +218,9 @@ class Manager
 namespace pldm::fw_update
 {
 
+class FirmwareInventory;
+using SoftwareActivation = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Software::server::Activation>;
 using SoftwareVersion = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Software::server::Version>;
 using SoftwareAssociationDefinitions = sdbusplus::server::object_t<
@@ -227,12 +231,12 @@ class FirmwareInventory
 {
   public:
     friend class ::FirmwareInventoryTest;
+    friend class ::FirmwareInventoryTestInstance;
     FirmwareInventory() = delete;
     FirmwareInventory(const FirmwareInventory&) = delete;
     FirmwareInventory(FirmwareInventory&&) = delete;
     FirmwareInventory& operator=(const FirmwareInventory&) = delete;
     FirmwareInventory& operator=(FirmwareInventory&&) = delete;
-    ~FirmwareInventory() = default;
 
     /**
      * @brief Constructor
@@ -240,6 +244,7 @@ class FirmwareInventory
      *                                 component identifier
      * @param[in] softwarePath - D-Bus object path for the firmware inventory
      * entry
+     * @param[in] generatedId - Software hash identifier
      * @param[in] softwareVersion - Active version of the firmware
      * @param[in] associatedEndpoint - D-Bus object path of the endpoint
      * associated with the firmware
@@ -247,15 +252,31 @@ class FirmwareInventory
      */
     explicit FirmwareInventory(
         SoftwareIdentifier softwareIdentifier, const std::string& softwarePath,
-        const std::string& softwareVersion,
+        const std::string& generatedId, const std::string& softwareVersion,
         const std::string& associatedEndpoint,
         SoftwareVersionPurpose purpose = SoftwareVersionPurpose::Unknown);
 
   private:
     sdbusplus::bus_t& bus = utils::DBusHandler::getBus();
+
+    /**
+     * @brief Software identifier containing EID and component identifier
+     */
+    SoftwareIdentifier softwareIdentifier;
+
+    /**
+     * @brief The D-Bus object path for the firmware inventory entry, obtained
+     * by
+     */
     std::string softwarePath;
     SoftwareAssociationDefinitions association;
     SoftwareVersion version;
+
+    /**
+     * @brief Software activation object that represents the activation state
+     *        of the firmware
+     */
+    SoftwareActivation activation;
 };
 
 } // namespace pldm::fw_update

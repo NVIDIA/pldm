@@ -1,17 +1,16 @@
+#include <iostream>
 #pragma once
 
-#include "config.h"
-
+#include "common/start_lifetime_as.hpp"
 #include "common/utils.hpp"
 #include "libpldmresponder/pdr.hpp"
 #include "pdr_utils.hpp"
-#include "pldmd/handler.hpp"
 
 #include <libpldm/platform.h>
 #include <libpldm/states.h>
 
 #include <cstdint>
-#include <map>
+#include <memory>
 
 namespace pldm
 {
@@ -61,7 +60,7 @@ int setStateEffecterStatesHandler(
     auto pdrRecord = stateEffecterPDRs.getFirstRecord(pdrEntry);
     while (pdrRecord)
     {
-        pdr = reinterpret_cast<pldm_state_effecter_pdr*>(pdrEntry.data);
+        pdr = std::start_lifetime_as<pldm_state_effecter_pdr>(pdrEntry.data);
         if (pdr->effecter_id != effecterId)
         {
             pdr = nullptr;

@@ -1,7 +1,6 @@
 #include "file_io_type_pel.hpp"
 
 #include "common/utils.hpp"
-#include "xyz/openbmc_project/Common/error.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/oem/ibm/file_io.h>
@@ -17,7 +16,6 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <vector>
 
 PHOSPHOR_LOG2_USING;
 
@@ -68,7 +66,7 @@ Entry::Level getEntryLevelFromPEL(const std::string& pelFileName)
         {
             pel.seekg(severityOffset);
 
-            uint8_t sev;
+            uint8_t sev = 0;
             pel.read(reinterpret_cast<char*>(&sev), 1);
 
             // Get the type
@@ -154,7 +152,7 @@ int PelHandler::read(uint32_t offset, uint32_t& length, Response& response,
                 "OFFSET", offset, "SIZE", fileSize, "FILE_HANDLE", fileHandle);
             return PLDM_DATA_OUT_OF_RANGE;
         }
-        if (offset + length > fileSize)
+        if (length > static_cast<uint64_t>(fileSize - offset))
         {
             length = fileSize - offset;
         }

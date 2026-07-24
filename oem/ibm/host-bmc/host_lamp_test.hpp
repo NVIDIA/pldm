@@ -1,14 +1,11 @@
 #pragma once
 
-#include "pldmd/dbus_impl_pdr.hpp"
 #include "requester/handler.hpp"
 
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Led/Group/server.hpp>
 
 #include <string>
-
-using namespace pldm::dbus_api;
 
 namespace pldm
 {
@@ -34,7 +31,7 @@ class HostLampTest : public HostLampTestInterfaces, public LEDGroupObj
 {
   public:
     HostLampTest() = delete;
-    ~HostLampTest() = default;
+    ~HostLampTest() override = default;
     HostLampTest(const HostLampTest&) = delete;
     HostLampTest& operator=(const HostLampTest&) = delete;
     HostLampTest(HostLampTest&&) = delete;

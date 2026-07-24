@@ -5,9 +5,7 @@
 #include "common/instance_id.hpp"
 #include "requester/handler.hpp"
 
-#include <filesystem>
-#include <fstream>
-#include <map>
+#include <libpldm/platform.h>
 
 namespace pldm
 {

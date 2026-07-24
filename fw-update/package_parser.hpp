@@ -20,10 +20,8 @@
 
 #include <libpldm/firmware_update.h>
 
-#include <array>
 #include <cstdint>
 #include <memory>
-#include <tuple>
 #include <vector>
 
 namespace pldm
@@ -35,10 +33,6 @@ namespace fw_update
 /** @class PackageParser
  *
  *  PackageParser is the class for parsing the PLDM firmware update package.
- *  The PLDM firmware update contains two major sections; the firmware package
- *  header, and the firmware package payload. The PackageParser understands the
- *  format of the package header and implements the parse API for header format
- *  versions 0x01-0x04.
  */
 class PackageParser
 {
@@ -48,7 +42,7 @@ class PackageParser
     PackageParser(PackageParser&&) = default;
     PackageParser& operator=(const PackageParser&) = delete;
     PackageParser& operator=(PackageParser&&) = delete;
-    virtual ~PackageParser() = default;
+    ~PackageParser() = default;
 
     /** @brief Constructor
      *
@@ -76,7 +70,7 @@ class PackageParser
      *
      *  @note Throws exception is parsing fails
      */
-    virtual void parse(const uint8_t* pkgData, uintmax_t pkgSize);
+    void parse(const std::vector<uint8_t>& pkgHdr, uintmax_t pkgSize);
 
     /** @brief Get firmware device ID records from the package
      *

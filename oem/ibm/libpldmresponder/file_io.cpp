@@ -7,7 +7,6 @@
 #include "file_io_by_type.hpp"
 #include "file_table.hpp"
 #include "utils.hpp"
-#include "xyz/openbmc_project/Common/error.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -76,7 +75,7 @@ int DMA::transferHostDataToSocket(int fd, uint32_t length, uint64_t address)
 
     pldm::utils::CustomFD xdmaFd(dmaFd);
 
-    void* vgaMem;
+    void* vgaMem = nullptr;
     vgaMem =
         mmap(nullptr, pageAlignedLength, PROT_READ, MAP_SHARED, xdmaFd(), 0);
     if (MAP_FAILED == vgaMem)
@@ -142,7 +141,7 @@ int DMA::transferDataHost(int fd, uint32_t offset, uint32_t length,
 
     pldm::utils::CustomFD xdmaFd(dmaFd);
 
-    void* vgaMem;
+    void* vgaMem = nullptr;
     vgaMem = mmap(nullptr, pageAlignedLength, upstream ? PROT_WRITE : PROT_READ,
                   MAP_SHARED, xdmaFd(), 0);
     if (MAP_FAILED == vgaMem)
@@ -290,7 +289,7 @@ Response Handler::readFileIntoMemory(const pldm_msg* request,
         return response;
     }
 
-    if (offset + length > fileSize)
+    if (length > fileSize - offset)
     {
         length = fileSize - offset;
     }
@@ -504,7 +503,7 @@ Response Handler::readFile(const pldm_msg* request, size_t payloadLength)
         return response;
     }
 
-    if (offset + length > fileSize)
+    if (length > fileSize - offset)
     {
         length = fileSize - offset;
     }

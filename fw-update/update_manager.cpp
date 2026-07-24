@@ -1200,8 +1200,7 @@ void UpdateManager::logUnupdatedTargets(
 }
 
 void UpdateManager::updateDeviceCompletion(
-    mctp_eid_t eid, bool status,
-    const std::vector<ComponentName>& successCompNames)
+    mctp_eid_t eid, bool status, std::vector<std::string> successCompNames)
 {
     const auto [it, inserted] = deviceUpdateCompletionMap.emplace(eid, status);
     if (!inserted)
@@ -1536,6 +1535,11 @@ void UpdateManager::setActivationStatus(
         return;
     }
     activation->activation(state);
+}
+
+void UpdateManager::resetActivationState()
+{
+    clearExistingActivation();
 }
 
 void UpdateManager::clearExistingActivation()

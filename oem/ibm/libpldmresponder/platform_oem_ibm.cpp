@@ -4,7 +4,6 @@
 #include "libpldm/pldm.h"
 
 #include "common/utils.hpp"
-#include "libpldmresponder/pdr.hpp"
 
 #include <iostream>
 

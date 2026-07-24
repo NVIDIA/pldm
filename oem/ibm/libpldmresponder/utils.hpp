@@ -63,7 +63,7 @@ namespace oem_ibm_utils
 class Handler : public oem_utils::Handler
 {
   public:
-    Handler(const pldm::utils::DBusHandler* dBusIntf) :
+    explicit Handler(const pldm::utils::DBusHandler* dBusIntf) :
         oem_utils::Handler(dBusIntf), dBusIntf(dBusIntf)
     {}
 
@@ -73,11 +73,10 @@ class Handler : public oem_utils::Handler
      *  @param[in] entityMaps - the mapping of entity to DBus string
      *
      */
-    virtual int setCoreCount(
-        const pldm::utils::EntityAssociations& associations,
-        const pldm::utils::EntityMaps entityMaps);
+    int setCoreCount(const pldm::utils::EntityAssociations& associations,
+                     const pldm::utils::EntityMaps entityMaps) override;
 
-    virtual ~Handler() = default;
+    ~Handler() override = default;
 
   protected:
     const pldm::utils::DBusHandler* dBusIntf;

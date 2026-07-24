@@ -6,10 +6,7 @@
 #include <libpldm/transport/af-mctp.h>
 #include <libpldm/transport/mctp-demux.h>
 
-#include <algorithm>
-#include <cerrno>
 #include <ranges>
-#include <system_error>
 
 struct pldm_transport* transport_impl_init(TransportImpl& impl, pollfd& pollfd,
                                            bool listening);
@@ -51,7 +48,7 @@ static constexpr uint8_t MCTP_EID_VALID_MAX = 255;
         int rc = pldm_transport_mctp_demux_map_tid(impl.mctp_demux, eid, eid);
         if (rc)
         {
-            pldm_transport_af_mctp_destroy(impl.af_mctp);
+            pldm_transport_mctp_demux_destroy(impl.mctp_demux);
             return nullptr;
         }
     }
@@ -130,7 +127,14 @@ PldmTransport::PldmTransport(bool listening)
     transport = transport_impl_init(impl, pfd, listening);
     if (!transport)
     {
-        throw std::runtime_error("Cannot initialize transport layer");
+#if defined(PLDM_TRANSPORT_WITH_MCTP_DEMUX)
+        throw std::runtime_error(
+            "Cannot initialize mctp-demux transport layer");
+#elif defined(PLDM_TRANSPORT_WITH_AF_MCTP)
+        throw std::runtime_error("Cannot initialize af-mctp transport layer");
+#else
+        throw std::runtime_error("Cannot initialize unknown transport layer");
+#endif
     }
 }
 

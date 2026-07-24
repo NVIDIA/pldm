@@ -1,5 +1,6 @@
 #include "platform.hpp"
 
+#include "common/start_lifetime_as.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "event_parser.hpp"
@@ -16,7 +17,13 @@
 #include <libpldm/entity.h>
 #include <libpldm/state_set.h>
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <cstring>
+#include <iostream>
+#include <memory>
+
+PHOSPHOR_LOG2_USING;
 
 using namespace pldm::utils;
 using namespace pldm::responder::pdr;
@@ -253,9 +260,9 @@ Response Handler::setStateEffecterStates(const pldm_msg* request,
 {
     Response response(
         sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_STATES_RESP_BYTES, 0);
-    auto responsePtr = reinterpret_cast<pldm_msg*>(response.data());
-    uint16_t effecterId;
-    uint8_t compEffecterCnt;
+    auto responsePtr = new (response.data()) pldm_msg;
+    uint16_t effecterId = 0;
+    uint8_t compEffecterCnt = 0;
     constexpr auto maxCompositeEffecterCnt = 8;
     std::vector<set_effecter_state_field> stateField(maxCompositeEffecterCnt,
                                                      {0, 0});
@@ -524,9 +531,7 @@ int Handler::pldmPDRRepositoryChgEvent(
                 return rc;
             }
 
-            if (eventDataOperation == PLDM_RECORDS_ADDED ||
-                eventDataOperation == PLDM_RECORDS_MODIFIED ||
-                eventDataOperation == PLDM_RECORDS_DELETED)
+            if (hostPDRHandler && eventDataOperation == PLDM_RECORDS_MODIFIED)
             {
                 rc = getPDRRecordHandles(
                     changeRecordData + dataOffset,
@@ -594,13 +599,12 @@ int Handler::getPDRRecordHandles(
     }
     for (size_t i = 0; i < numberOfChangeEntries; i++)
     {
-        ChangeEntry handle{};
-        // Change entries come from packed event bytes and can start at a
-        // non-4-byte offset, such as the 0x7b 00 00 00 handle in the failing
-        // coverage case. Decode from raw bytes instead of dereferencing a
-        // ChangeEntry* directly.
-        memcpy(&handle, changeEntryData + (i * sizeof(handle)), sizeof(handle));
-        pdrRecordHandles.push_back(le32toh(handle));
+        // the changeEntry array is offset by the PLDM message header and the
+        // event data framing in the request payload, so it is not naturally
+        // aligned for a direct read
+        ChangeEntry entry;
+        std::memcpy(&entry, changeEntryData + i, sizeof(ChangeEntry));
+        pdrRecordHandles.push_back(entry);
     }
     return PLDM_SUCCESS;
 }
@@ -712,10 +716,14 @@ Response Handler::getStateSensorReadings(const pldm_msg* request,
     }
     else
     {
+        static const stateSensorCacheMaps emptySensorCache{};
+        const auto& sensorCache = dbusToPLDMEventHandler
+                                      ? dbusToPLDMEventHandler->getSensorCache()
+                                      : emptySensorCache;
         rc = platform_state_sensor::getStateSensorReadingsHandler<
             pldm::utils::DBusHandler, Handler>(
             dBusIntf, *this, sensorId, sensorRearmCount, comSensorCnt,
-            stateField);
+            stateField, sensorCache);
     }
 
     if (rc != PLDM_SUCCESS)
@@ -766,8 +774,8 @@ bool isOemStateSensor(Handler& handler, uint16_t sensorId,
     auto pdrRecord = stateSensorPDRs.getFirstRecord(pdrEntry);
     while (pdrRecord)
     {
-        pdr = reinterpret_cast<pldm_state_sensor_pdr*>(pdrEntry.data);
-        assert(pdr != NULL);
+        pdr = std::start_lifetime_as<pldm_state_sensor_pdr>(pdrEntry.data);
+        assert(pdr != nullptr);
         if (pdr->sensor_id != sensorId)
         {
             pdr = nullptr;
@@ -833,8 +841,8 @@ bool isOemStateEffecter(Handler& handler, uint16_t effecterId,
     auto pdrRecord = stateEffecterPDRs.getFirstRecord(pdrEntry);
     while (pdrRecord)
     {
-        pdr = reinterpret_cast<pldm_state_effecter_pdr*>(pdrEntry.data);
-        assert(pdr != NULL);
+        pdr = std::start_lifetime_as<pldm_state_effecter_pdr>(pdrEntry.data);
+        assert(pdr != nullptr);
         if (pdr->effecter_id != effecterId)
         {
             pdr = nullptr;

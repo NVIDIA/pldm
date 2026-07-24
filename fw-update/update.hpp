@@ -44,7 +44,7 @@ class Update : public UpdateIntf
         allowedTargets(true);
     }
 
-    virtual sdbusplus::object_path startUpdate(
+    sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
         std::vector<sdbusplus::object_path> targets) override;

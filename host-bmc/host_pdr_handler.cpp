@@ -1,16 +1,18 @@
-
-
 #include "host_pdr_handler.hpp"
 
 #include "libpldm/pldm.h"
 
 #include "common/types.hpp"
-#include "dbus/custom_dbus.hpp"
+#include "host-bmc/utils.hpp"
 
 #include <libpldm/fru.h>
+
+#include <iostream>
 #ifdef OEM_IBM
 #include <libpldm/oem/ibm/fru.h>
 #endif
+#include "common/start_lifetime_as.hpp"
+#include "dbus/custom_dbus.hpp"
 
 #include <nlohmann/json.hpp>
 #include <sdeventplus/clock.hpp>
@@ -20,8 +22,10 @@
 #include <xyz/openbmc_project/State/Host/client.hpp>
 
 #include <cassert>
-#include <fstream>
-#include <stdexcept>
+#include <memory>
+#include <type_traits>
+
+PHOSPHOR_LOG2_USING;
 
 using HostState = sdbusplus::common::xyz::openbmc_project::state::Host;
 
@@ -31,12 +35,12 @@ namespace pldm
 using namespace pldm::responder::events;
 using namespace pldm::responder::pdr_utils;
 using namespace pldm::utils;
-using namespace sdbusplus::bus::match::rules;
+using namespace sdbusplus::match_rules;
+using namespace pldm::responder::pdr_utils;
 using namespace pldm::hostbmc::utils;
 using namespace pldm::dbus;
 using Json = nlohmann::json;
-namespace fs = std::filesystem;
-constexpr auto fruJson = "host_frus.json";
+using namespace pldm::dbus;
 const Json emptyJson{};
 const std::vector<Json> emptyJsonList{};
 
@@ -72,42 +76,7 @@ HostPDRHandler::HostPDRHandler(
 {
     responseReceived = false;
     mergedHostParents = false;
-
-    fs::path hostFruJson(fs::path(HOST_JSONS_DIR) / fruJson);
-    if (fs::exists(hostFruJson))
-    {
-        // Note parent entities for entities sent down by the host firmware.
-        // This will enable a merge of entity associations.
-        try
-        {
-            std::ifstream jsonFile(hostFruJson);
-            auto data = Json::parse(jsonFile, nullptr, false);
-            if (data.is_discarded())
-            {
-                std::cerr << "Parsing Host FRU json file failed" << std::endl;
-            }
-            else
-            {
-                auto entities = data.value("entities", emptyJsonList);
-                for (auto& entity : entities)
-                {
-                    EntityType entityType = entity.value("entity_type", 0);
-                    auto parent = entity.value("parent", emptyJson);
-                    pldm_entity p{};
-                    p.entity_type = parent.value("entity_type", 0);
-                    p.entity_instance_num = parent.value("entity_instance", 0);
-                    parents.emplace(entityType, std::move(p));
-                }
-            }
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr << "Parsing Host FRU json file failed, exception = "
-                      << e.what() << std::endl;
-        }
-    }
-
-    hostOffMatch = std::make_unique<sdbusplus::bus::match_t>(
+    hostOffMatch = std::make_unique<sdbusplus::match>(
         pldm::utils::DBusHandler::getBus(),
         propertiesChanged("/xyz/openbmc_project/state/host0",
                           HostState::interface),
@@ -250,24 +219,56 @@ void HostPDRHandler::mergeEntityAssociations(const std::vector<uint8_t>& pdr)
     size_t numEntities{};
     pldm_entity* entities = nullptr;
     bool merged = false;
-    auto entityPdr = reinterpret_cast<pldm_pdr_entity_association*>(
-        const_cast<uint8_t*>(pdr.data()) + sizeof(pldm_pdr_hdr));
+    auto entityPdr = new (const_cast<uint8_t*>(pdr.data()) +
+                          sizeof(pldm_pdr_hdr)) pldm_pdr_entity_association;
 
     pldm_entity_association_pdr_extract(pdr.data(), pdr.size(), &numEntities,
                                         &entities);
-    for (size_t i = 0; i < numEntities; ++i)
+    if (numEntities > 0)
     {
-        pldm_entity parent{};
-        if (getParent(entities[i].entity_type, parent))
+        pldm_entity_node* pNode = nullptr;
+        if (!mergedHostParents)
         {
-            auto node = pldm_entity_association_tree_find(entityTree, &parent);
-            if (node)
+            pNode = pldm_entity_association_tree_find_with_locality(
+                entityTree, &entities[0], false);
+        }
+        else
+        {
+            pNode = pldm_entity_association_tree_find_with_locality(
+                entityTree, &entities[0], true);
+        }
+        if (!pNode)
+        {
+            free(entities);
+            return;
+        }
+
+        Entities entityAssoc;
+        entityAssoc.push_back(pNode);
+        for (size_t i = 1; i < numEntities; ++i)
+        {
+            bool isUpdateContainerId = true;
+            if (oemPlatformHandler)
             {
-                pldm_entity_association_tree_add(entityTree, &entities[i],
-                                                 0xFFFF, node,
-                                                 entityPdr->association_type);
-                merged = true;
+                isUpdateContainerId =
+                    checkIfLogicalBitSet(entities[i].entity_container_id);
             }
+            auto node = pldm_entity_association_tree_add_entity(
+                entityTree, &entities[i], entities[i].entity_instance_num,
+                pNode, entityPdr->association_type, true, isUpdateContainerId,
+                0xFFFF);
+            if (!node)
+            {
+                continue;
+            }
+            merged = true;
+            entityAssoc.push_back(node);
+        }
+
+        mergedHostParents = true;
+        if (merged)
+        {
+            entityAssociations.push_back(entityAssoc);
         }
     }
 
@@ -278,13 +279,29 @@ void HostPDRHandler::mergeEntityAssociations(const std::vector<uint8_t>& pdr)
         pldm_find_entity_ref_in_tree(entityTree, entities[0], &node);
         if (node == nullptr)
         {
-            std::cerr
-                << "\ncould not find referrence of the entity in the tree \n";
+            error("Failed to find reference of the entity in the tree");
         }
         else
         {
-            int rc = pldm_entity_association_pdr_add_from_node(
-                node, repo, &entities, numEntities, true, TERMINUS_HANDLE);
+            int rc = 0;
+            if (oemPlatformHandler)
+            {
+                auto record = oemPlatformHandler->fetchLastBMCRecord(repo);
+
+                uint32_t record_handle =
+                    pldm_pdr_get_record_handle(repo, record);
+
+                rc =
+                    pldm_entity_association_pdr_add_from_node_with_record_handle(
+                        node, repo, &entities, numEntities, true,
+                        TERMINUS_HANDLE, (record_handle + 1));
+            }
+            else
+            {
+                rc = pldm_entity_association_pdr_add_from_node(
+                    node, repo, &entities, numEntities, true, TERMINUS_HANDLE);
+            }
+
             if (rc)
             {
                 error(
@@ -455,9 +472,6 @@ void HostPDRHandler::processHostPDRs(
         response, respMsgLen /*- sizeof(pldm_msg_hdr)*/, &completionCode,
         &nextRecordHandle, &nextDataTransferHandle, &transferFlag, &respCount,
         nullptr, 0, &transferCRC);
-    std::vector<uint8_t> responsePDRMsg;
-    responsePDRMsg.resize(respMsgLen + sizeof(pldm_msg_hdr));
-    memcpy(responsePDRMsg.data(), response, respMsgLen + sizeof(pldm_msg_hdr));
     if (rc != PLDM_SUCCESS)
     {
         std::cerr << "Failed to decode_get_pdr_resp, rc = " << rc << std::endl;
@@ -490,7 +504,7 @@ void HostPDRHandler::processHostPDRs(
                 rh = nextRecordHandle - 1;
             }
 
-            auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
+            auto pdrHdr = std::start_lifetime_as<pldm_pdr_hdr>(pdr.data());
             if (!rh)
             {
                 rh = pdrHdr->record_handle;
@@ -650,7 +664,7 @@ void HostPDRHandler::setHostFirmwareCondition()
     }
 }
 
-bool HostPDRHandler::isHostUp()
+bool HostPDRHandler::isHostUp() const
 {
     return responseReceived;
 }
@@ -740,8 +754,8 @@ void HostPDRHandler::setHostSensorState(const PDRList& stateSensorPDRs)
                             "xyz.openbmc_project.bmc.pldm.InternalFailure");
                     }
 
-                    uint8_t eventState;
-                    uint8_t previousEventState;
+                    uint8_t eventState = 0;
+                    uint8_t previousEventState = 0;
                     uint8_t sensorOffset = comp_sensor_count - 1;
 
                     for (size_t i = 0; i < comp_sensor_count; i++)
@@ -865,11 +879,11 @@ void HostPDRHandler::getFRURecordTableMetadataByRemote(
         }
 
         uint8_t cc = 0;
-        uint8_t fru_data_major_version, fru_data_minor_version;
-        uint32_t fru_table_maximum_size, fru_table_length;
-        uint16_t total_record_set_identifiers;
-        uint16_t total;
-        uint32_t checksum;
+        uint8_t fru_data_major_version = 0, fru_data_minor_version = 0;
+        uint32_t fru_table_maximum_size = 0, fru_table_length = 0;
+        uint16_t total_record_set_identifiers = 0;
+        uint16_t total = 0;
+        uint32_t checksum = 0;
 
         auto rc = decode_get_fru_record_table_metadata_resp(
             response, respMsgLen, &cc, &fru_data_major_version,

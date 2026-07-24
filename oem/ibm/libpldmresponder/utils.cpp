@@ -7,7 +7,12 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#include <iostream>
+#include <phosphor-logging/lg2.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/client.hpp>
+#include <xyz/openbmc_project/Inventory/Item/Connector/client.hpp>
+#include <xyz/openbmc_project/ObjectMapper/client.hpp>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -18,7 +23,7 @@ namespace utils
 
 int setupUnixSocket(const std::string& socketInterface)
 {
-    int sock;
+    int sock = 0;
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -87,7 +92,7 @@ int setupUnixSocket(const std::string& socketInterface)
 
 int writeToUnixSocket(const int sock, const char* buf, const uint64_t blockSize)
 {
-    uint64_t i;
+    uint64_t i = 0;
     int nwrite = 0;
 
     for (i = 0; i < blockSize; i = i + nwrite)

@@ -7,7 +7,6 @@
 #include "libpldmresponder/oem_handler.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "requester/handler.hpp"
-#include "utils.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/platform.h>
@@ -16,7 +15,6 @@
 #include <sdeventplus/source/event.hpp>
 
 #include <deque>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <vector>
@@ -189,7 +187,7 @@ class HostPDRHandler
 
     /** @brief check whether Host is running when pldmd starts
      */
-    bool isHostUp();
+    bool isHostUp() const;
 
     inline void setOemPlatformHandler(
         pldm::responder::oem_platform::Handler* handler)
@@ -338,7 +336,7 @@ class HostPDRHandler
     PDRRecordHandles modifiedPDRRecordHandles;
     std::map<EntityType, pldm_entity> parents;
     /** @brief D-Bus property changed signal match */
-    std::unique_ptr<sdbusplus::bus::match_t> hostOffMatch;
+    std::unique_ptr<sdbusplus::match> hostOffMatch;
 
     /** @brief sensorMap is a lookup data structure that is build from the
      *         hostPDR that speeds up the lookup of <TerminusID, SensorID> in

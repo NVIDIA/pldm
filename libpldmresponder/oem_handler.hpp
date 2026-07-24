@@ -17,7 +17,9 @@ namespace oem_platform
 class Handler : public CmdHandler
 {
   public:
-    Handler(const pldm::utils::DBusHandler* dBusIntf) : dBusIntf(dBusIntf) {}
+    explicit Handler(const pldm::utils::DBusHandler* dBusIntf) :
+        dBusIntf(dBusIntf)
+    {}
 
     /** @brief Interface to get the state sensor readings requested by pldm
      *  requester for OEM types. Each specific type should implement a handler
@@ -129,7 +131,8 @@ class Handler : public CmdHandler
 
     /** @brief To handle the boot types bios attributes at shutdown*/
     virtual void handleBootTypesAtChassisOff() = 0;
-    virtual ~Handler() = default;
+
+    ~Handler() override = default;
 
   protected:
     const pldm::utils::DBusHandler* dBusIntf;
@@ -153,7 +156,7 @@ class Handler : public CmdHandler
      */
     virtual int processOEMFRUTable(const std::vector<uint8_t>& fruData) = 0;
 
-    virtual ~Handler() = default;
+    ~Handler() override = default;
 };
 
 } // namespace oem_fru
@@ -165,7 +168,9 @@ using namespace pldm::utils;
 class Handler : public CmdHandler
 {
   public:
-    Handler(const pldm::utils::DBusHandler* dBusIntf) : dBusIntf(dBusIntf) {}
+    explicit Handler(const pldm::utils::DBusHandler* dBusIntf) :
+        dBusIntf(dBusIntf)
+    {}
 
     /** @brief Collecting core count data and setting to Dbus properties
      *
@@ -176,7 +181,7 @@ class Handler : public CmdHandler
     virtual int setCoreCount(const EntityAssociations& associations,
                              const EntityMaps entityMaps) = 0;
 
-    virtual ~Handler() = default;
+    ~Handler() override = default;
 
   protected:
     const pldm::utils::DBusHandler* dBusIntf;
@@ -186,8 +191,6 @@ class Handler : public CmdHandler
 
 namespace oem_bios
 {
-using namespace pldm::utils;
-
 class Handler : public CmdHandler
 {
   public:
@@ -199,7 +202,7 @@ class Handler : public CmdHandler
     virtual void processOEMBaseBiosTable(
         const pldm::bios::BaseBIOSTable& biosTable) = 0;
 
-    virtual ~Handler() = default;
+    ~Handler() override = default;
 };
 
 } // namespace oem_bios

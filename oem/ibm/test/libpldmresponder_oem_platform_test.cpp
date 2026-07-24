@@ -3,10 +3,10 @@
 #include "common/test/mocked_utils.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
-#include "libpldmresponder/event_parser.hpp"
+#include "host-bmc/utils.hpp"
 #include "libpldmresponder/pdr.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
-#include "libpldmresponder/platform.hpp"
+#include "oem/ibm/libpldmresponder/collect_slot_vpd.hpp"
 #include "oem/ibm/libpldmresponder/inband_code_update.hpp"
 #include "oem/ibm/libpldmresponder/oem_ibm_handler.hpp"
 

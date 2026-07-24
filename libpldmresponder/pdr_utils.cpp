@@ -1,9 +1,21 @@
-#include "common/types.hpp"
-#include "pdr.hpp"
+#include "pdr_utils.hpp"
 
+#include "common/types.hpp"
+
+#include <libpldm/fru.h>
 #include <libpldm/platform.h>
 
 #include <climits>
+#include <iostream>
+
+// Refer: DSP0257_1.0.0 Table 2
+// 7: uint16_t(FRU Record Set Identifier), uint8_t(FRU Record Type),
+// uint8_t(Number of FRU fields), uint8_t(Encoding Type for FRU fields),
+// uint8_t(FRU Field Type), uint8_t(FRU Field Length)
+static constexpr uint8_t fruRecordDataFormatLength = 7;
+
+// 2: 1byte FRU Field Type, 1byte FRU Field Length
+static constexpr uint8_t fruFieldTypeLength = 2;
 
 using namespace pldm::pdr;
 
@@ -198,6 +210,100 @@ std::tuple<TerminusHandle, SensorID, SensorInfo> parseStateSensorPDR(
                                       std::move(stateSetIds));
     return std::make_tuple(pdr->terminus_handle, pdr->sensor_id,
                            std::move(sensorInfo));
+}
+
+std::vector<FruRecordDataFormat> parseFruRecordTable(const uint8_t* fruData,
+                                                     size_t fruLen)
+{
+    // Refer: DSP0257_1.0.0 Table 2
+    // 7: uint16_t(FRU Record Set Identifier), uint8_t(FRU Record Type),
+    // uint8_t(Number of FRU fields), uint8_t(Encoding Type for FRU fields),
+    // uint8_t(FRU Field Type), uint8_t(FRU Field Length)
+    if (fruData == nullptr || fruLen < fruRecordDataFormatLength)
+    {
+        error("Invalid FRU length '{LENGTH}' while parsing FRU record table",
+              "LENGTH", fruLen);
+        return {};
+    }
+
+    std::vector<FruRecordDataFormat> frus;
+
+    size_t index = 0;
+    while (index < fruLen)
+    {
+        constexpr size_t recordHeaderLength =
+            offsetof(pldm_fru_record_data_format, tlvs);
+        if (recordHeaderLength > fruLen - index)
+        {
+            error("Truncated FRU record header at offset '{OFFSET}'", "OFFSET",
+                  index);
+            return {};
+        }
+
+        FruRecordDataFormat fru;
+
+        auto record = reinterpret_cast<const pldm_fru_record_data_format*>(
+            fruData + index);
+        fru.fruRSI = (int)le16toh(record->record_set_id);
+        fru.fruRecType = record->record_type;
+        fru.fruNum = record->num_fru_fields;
+        fru.fruEncodeType = record->encoding_type;
+
+        index += recordHeaderLength;
+
+        for (uint8_t field = 0; field < record->num_fru_fields; ++field)
+        {
+            if (fruFieldTypeLength > fruLen - index)
+            {
+                error("Truncated FRU field header at offset '{OFFSET}'",
+                      "OFFSET", index);
+                return {};
+            }
+
+            auto tlv =
+                reinterpret_cast<const pldm_fru_record_tlv*>(fruData + index);
+            index += fruFieldTypeLength;
+            if (tlv->length > fruLen - index)
+            {
+                error("FRU field at offset '{OFFSET}' exceeds table length",
+                      "OFFSET", index - fruFieldTypeLength);
+                return {};
+            }
+
+            FruTLV frutlv;
+            frutlv.fruFieldType = tlv->type;
+            frutlv.fruFieldLen = tlv->length;
+            frutlv.fruFieldValue.assign(fruData + index,
+                                        fruData + index + tlv->length);
+            fru.fruTLV.push_back(std::move(frutlv));
+            index += tlv->length;
+        }
+
+        frus.push_back(std::move(fru));
+    }
+
+    return frus;
+}
+
+size_t getEffecterDataSize(uint8_t effecterDataSize)
+{
+    switch (effecterDataSize)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            return sizeof(uint8_t);
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            return sizeof(int8_t);
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            return sizeof(uint16_t);
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            return sizeof(int16_t);
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            return sizeof(uint32_t);
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            return sizeof(int32_t);
+        default:
+            return 0;
+    }
 }
 
 } // namespace pdr_utils

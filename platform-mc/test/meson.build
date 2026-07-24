@@ -42,8 +42,17 @@ dep_src_headers = ['../../requester', '../../oem/nvidia']
 test_cpp_args = ['-DOEM_NVIDIA']
 
 test_src = declare_dependency(
-    sources: dep_src_files,
-    include_directories: dep_src_headers,
+    sources: [
+        '../terminus_manager.cpp',
+        '../terminus.cpp',
+        '../platform_manager.cpp',
+        '../manager.cpp',
+        '../sensor_manager.cpp',
+        '../numeric_sensor.cpp',
+        '../event_manager.cpp',
+        '../dbus_to_terminus_effecters.cpp',
+    ],
+    include_directories: ['../../requester', '../../pldmd'],
 )
 
 tests = [

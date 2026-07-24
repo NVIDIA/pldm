@@ -1,6 +1,7 @@
 #include "softoff.hpp"
 
 #include "common/instance_id.hpp"
+#include "common/start_lifetime_as.hpp"
 #include "common/transport.hpp"
 #include "common/utils.hpp"
 
@@ -19,6 +20,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 PHOSPHOR_LOG2_USING;
 
@@ -38,7 +40,7 @@ using sdbusplus::exception::SdBusError;
 // Shutdown effecter terminus ID, set when we look up the effecter
 pldm::pdr::TerminusID TID = 0;
 
-namespace sdbusRule = sdbusplus::bus::match::rules;
+namespace sdbusRule = sdbusplus::match_rules;
 
 SoftPowerOff::SoftPowerOff(sdbusplus::bus_t& bus, sd_event* event,
                            pldm::InstanceIdDb& instanceIdDb) :
@@ -71,8 +73,10 @@ SoftPowerOff::SoftPowerOff(sdbusplus::bus_t& bus, sd_event* event,
             auto rc = getSensorInfo(entityType, stateSetId);
             if (rc != PLDM_SUCCESS)
             {
-                error("Failed to get Sensor PDRs, response code '{RC}'", "RC",
-                      lg2::hex, rc);
+                error(
+                    "Failed to get Sensor PDRs for TID={TID}, EntityType={ENTITY_TYPE}, StateSetId={STATE_SET}, response code '{RC}'",
+                    "TID", static_cast<unsigned>(TID), "ENTITY_TYPE",
+                    entityType, "STATE_SET", stateSetId, "RC", rc);
                 hasError = true;
                 return;
             }
@@ -85,7 +89,7 @@ SoftPowerOff::SoftPowerOff(sdbusplus::bus_t& bus, sd_event* event,
     }
 
     // Matches on the pldm StateSensorEvent signal
-    pldmEventSignal = std::make_unique<sdbusplus::bus::match_t>(
+    pldmEventSignal = std::make_unique<sdbusplus::match>(
         bus,
         sdbusRule::type::signal() + sdbusRule::member("StateSensorEvent") +
             sdbusRule::path("/xyz/openbmc_project/pldm") +
@@ -127,11 +131,11 @@ int SoftPowerOff::getHostState()
 
 void SoftPowerOff::hostSoftOffComplete(sdbusplus::message_t& msg)
 {
-    pldm::pdr::TerminusID msgTID;
-    pldm::pdr::SensorID msgSensorID;
-    pldm::pdr::SensorOffset msgSensorOffset;
-    pldm::pdr::EventState msgEventState;
-    pldm::pdr::EventState msgPreviousEventState;
+    pldm::pdr::TerminusID msgTID = 0;
+    pldm::pdr::SensorID msgSensorID = 0;
+    pldm::pdr::SensorOffset msgSensorOffset = 0;
+    pldm::pdr::EventState msgEventState = 0;
+    pldm::pdr::EventState msgPreviousEventState = 0;
 
     // Read the msg and populate each variable
     msg.read(msgTID, msgSensorID, msgSensorOffset, msgEventState,
@@ -189,7 +193,8 @@ bool SoftPowerOff::getEffecterID(pldm::pdr::EntityType& entityType,
         {
             for (auto& rep : response)
             {
-                auto softoffPdr = new (rep.data()) pldm_state_effecter_pdr;
+                auto softoffPdr =
+                    std::start_lifetime_as<pldm_state_effecter_pdr>(rep.data());
                 effecterID = softoffPdr->effecter_id;
             }
         }
@@ -200,7 +205,10 @@ bool SoftPowerOff::getEffecterID(pldm::pdr::EntityType& entityType,
     }
     catch (const sdbusplus::exception_t& e)
     {
-        error("Failed to get softPowerOff PDR, error - {ERROR}", "ERROR", e);
+        error(
+            "Failed to get State Effecter PDR for TID={TID}, EntityType={ENTITY_TYPE}, StateSetId={STATE_SET}, error - {ERROR}",
+            "TID", static_cast<unsigned>(TID), "ENTITY_TYPE", entityType,
+            "STATE_SET", stateSetId, "ERROR", e);
         return false;
     }
     return true;
@@ -224,17 +232,23 @@ int SoftPowerOff::getSensorInfo(pldm::pdr::EntityType& entityType,
 
         if (Response.size() == 0)
         {
-            error("No sensor PDR has been found that matches the criteria");
+            error(
+                "No State Sensor PDR found for TID={TID}, EntityType={ENTITY_TYPE}, StateSetId={STATE_SET}",
+                "TID", static_cast<unsigned>(TID), "ENTITY_TYPE", entityType,
+                "STATE_SET", stateSetId);
             return PLDM_ERROR;
         }
 
         pldm_state_sensor_pdr* pdr = nullptr;
         for (auto& rep : Response)
         {
-            pdr = new (rep.data()) pldm_state_sensor_pdr;
+            pdr = std::start_lifetime_as<pldm_state_sensor_pdr>(rep.data());
             if (!pdr)
             {
-                error("Failed to get state sensor PDR.");
+                error(
+                    "Failed to parse State Sensor PDR for TID={TID}, EntityType={ENTITY_TYPE}, StateSetId={STATE_SET}",
+                    "TID", static_cast<unsigned>(TID), "ENTITY_TYPE",
+                    entityType, "STATE_SET", stateSetId);
                 return PLDM_ERROR;
             }
         }
@@ -246,8 +260,9 @@ int SoftPowerOff::getSensorInfo(pldm::pdr::EntityType& entityType,
 
         for (auto offset = 0; offset < compositeSensorCount; offset++)
         {
-            auto possibleStates = new (possibleStatesStart)
-                state_sensor_possible_states;
+            auto possibleStates =
+                std::start_lifetime_as<state_sensor_possible_states>(
+                    possibleStatesStart);
             auto setId = possibleStates->state_set_id;
             auto possibleStateSize = possibleStates->possible_states_size;
 
@@ -262,8 +277,10 @@ int SoftPowerOff::getSensorInfo(pldm::pdr::EntityType& entityType,
     }
     catch (const sdbusplus::exception_t& e)
     {
-        error("Failed to get state sensor PDR during soft-off, error - {ERROR}",
-              "ERROR", e);
+        error(
+            "Failed to get State Sensor PDR for TID={TID}, EntityType={ENTITY_TYPE}, StateSetId={STATE_SET}, error - {ERROR}",
+            "TID", static_cast<unsigned>(TID), "ENTITY_TYPE", entityType,
+            "STATE_SET", stateSetId, "ERROR", e);
         return PLDM_ERROR;
     }
 
@@ -274,13 +291,13 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
 {
     constexpr uint8_t effecterCount = 1;
     PldmTransport pldmTransport{};
-    uint8_t mctpEID;
+    uint8_t mctpEID = 0;
 
     mctpEID = pldm::utils::readHostEID();
     // TODO: fix mapping to work around OpenBMC ecosystem deficiencies
     pldm_tid_t pldmTID = static_cast<pldm_tid_t>(mctpEID);
 
-    uint8_t effecterState;
+    uint8_t effecterState = 0;
     auto requestHostTransition =
         pldm::utils::DBusHandler().getDbusProperty<std::string>(
             "/xyz/openbmc_project/state/host0", "RequestedHostTransition",
@@ -299,7 +316,7 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
                sizeof(pldm_msg_hdr) + sizeof(effecterID) +
                    sizeof(effecterCount) + sizeof(set_effecter_state_field)>
         requestMsg{};
-    auto request = new (requestMsg.data()) pldm_msg;
+    auto request = std::start_lifetime_as<pldm_msg>(requestMsg.data());
     set_effecter_state_field stateField{PLDM_REQUEST_SET, effecterState};
     auto instanceIdResult = instanceIdDb.next(pldmTID);
     if (!instanceIdResult)
@@ -365,7 +382,7 @@ int SoftPowerOff::hostSoftOff(sdeventplus::Event& event)
         // We've got the response meant for the PLDM request msg that was
         // sent out
         io.set_enabled(Enabled::Off);
-        auto response = new (responseMsgPtr.get()) pldm_msg;
+        auto response = std::start_lifetime_as<pldm_msg>(responseMsgPtr.get());
 
         if (srcTID != pldmTID ||
             !pldm_msg_hdr_correlate_response(&request->hdr, &response->hdr))

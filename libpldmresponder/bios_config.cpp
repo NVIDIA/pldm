@@ -168,14 +168,14 @@ int BIOSConfig::checkAttributeTable(const Table& table)
             case PLDM_BIOS_ENUMERATION:
             case PLDM_BIOS_ENUMERATION_READ_ONLY:
             {
-                uint8_t pvNum;
+                uint8_t pvNum = 0;
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_enum_decode_pv_num(entry, &pvNum);
                 std::vector<uint16_t> pvHandls(pvNum);
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_enum_decode_pv_hdls(
                     entry, pvHandls.data(), pvHandls.size());
-                uint8_t defNum;
+                uint8_t defNum = 0;
                 pldm_bios_table_attr_entry_enum_decode_def_num(entry, &defNum);
                 std::vector<uint8_t> defIndices(defNum);
                 pldm_bios_table_attr_entry_enum_decode_def_indices(
@@ -310,7 +310,7 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                 attributeType = "xyz.openbmc_project.BIOSConfig.Manager."
                                 "AttributeType.Enumeration";
 
-                uint8_t pvNum;
+                uint8_t pvNum = 0;
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_enum_decode_pv_num(attrEntry,
                                                               &pvNum);
@@ -346,7 +346,7 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                     currentValue = getValue(pvHandls[handles[i]], *stringTable);
                 }
 
-                uint8_t defNum;
+                uint8_t defNum = 0;
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_enum_decode_def_num(attrEntry,
                                                                &defNum);
@@ -372,8 +372,8 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                     pldm_bios_table_attr_value_entry_integer_decode_cv(
                         tableEntry));
 
-                uint64_t lower, upper, def;
-                uint32_t scalar;
+                uint64_t lower = 0, upper = 0, def = 0;
+                uint32_t scalar = 0;
                 pldm_bios_table_attr_entry_integer_decode(
                     attrEntry, &lower, &upper, &scalar, &def);
                 options.push_back(
@@ -406,7 +406,7 @@ int BIOSConfig::checkAttributeValueTable(const Table& table)
                     attrEntry);
                 auto max = pldm_bios_table_attr_entry_string_decode_max_length(
                     attrEntry);
-                uint16_t def;
+                uint16_t def = 0;
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_string_decode_def_string_length(
                     attrEntry, &def);
@@ -659,6 +659,113 @@ void BIOSConfig::load(const fs::path& filePath, ParseHandler handler)
                       << filePath.c_str() << std::endl;
         }
     }
+}
+
+std::string BIOSConfig::decodeStringFromStringEntry(
+    const pldm_bios_string_table_entry* stringEntry)
+{
+    auto strLength =
+        pldm_bios_table_string_entry_decode_string_length(stringEntry);
+    std::vector<char> buffer(strLength + 1 /* sizeof '\0' */);
+    // Preconditions are upheld therefore no error check necessary
+    pldm_bios_table_string_entry_decode_string(stringEntry, buffer.data(),
+                                               buffer.size());
+    return std::string(buffer.data(), buffer.data() + strLength);
+}
+
+std::string BIOSConfig::displayStringHandle(
+    uint16_t handle, uint8_t index, const std::optional<Table>& attrTable,
+    const std::optional<Table>& stringTable)
+{
+    auto attrEntry = pldm_bios_table_attr_find_by_handle(
+        attrTable->data(), attrTable->size(), handle);
+    uint8_t pvNum = 0;
+    int rc = pldm_bios_table_attr_entry_enum_decode_pv_num(attrEntry, &pvNum);
+    if (rc != PLDM_SUCCESS)
+    {
+        error(
+            "Failed to decode BIOS table possible values for attribute entry, response code '{RC}'",
+            "RC", rc);
+        throw std::runtime_error(
+            "Failed to decode BIOS table possible values for attribute entry");
+    }
+
+    std::vector<uint16_t> pvHandls(pvNum);
+    // Preconditions are upheld therefore no error check necessary
+    pldm_bios_table_attr_entry_enum_decode_pv_hdls(attrEntry, pvHandls.data(),
+                                                   pvHandls.size());
+
+    std::string displayString = std::to_string(pvHandls[index]);
+
+    auto stringEntry = pldm_bios_table_string_find_by_handle(
+        stringTable->data(), stringTable->size(), pvHandls[index]);
+
+    auto decodedStr = decodeStringFromStringEntry(stringEntry);
+
+    return decodedStr + "(" + displayString + ")";
+}
+
+void BIOSConfig::traceBIOSUpdate(
+    const pldm_bios_attr_val_table_entry* attrValueEntry,
+    const pldm_bios_attr_table_entry* attrEntry, bool isBMC)
+{
+    auto stringTable = getBIOSTable(PLDM_BIOS_STRING_TABLE);
+    auto attrTable = getBIOSTable(PLDM_BIOS_ATTR_TABLE);
+
+    auto [attrHandle,
+          attrType] = table::attribute_value::decodeHeader(attrValueEntry);
+
+    auto attrHeader = table::attribute::decodeHeader(attrEntry);
+    BIOSStringTable biosStringTable(*stringTable);
+    auto attrName = biosStringTable.findString(attrHeader.stringHandle);
+
+    switch (attrType)
+    {
+        case PLDM_BIOS_ENUMERATION:
+        case PLDM_BIOS_ENUMERATION_READ_ONLY:
+        {
+            auto count = pldm_bios_table_attr_value_entry_enum_decode_number(
+                attrValueEntry);
+            std::vector<uint8_t> handles(count);
+            pldm_bios_table_attr_value_entry_enum_decode_handles(
+                attrValueEntry, handles.data(), handles.size());
+
+            for (uint8_t handle : handles)
+            {
+                auto nwVal = displayStringHandle(attrHandle, handle, attrTable,
+                                                 stringTable);
+                auto chkBMC = isBMC ? "true" : "false";
+                info(
+                    "BIOS attribute '{ATTRIBUTE}' updated to value '{VALUE}' by BMC '{CHECK_BMC}'",
+                    "ATTRIBUTE", attrName, "VALUE", nwVal, "CHECK_BMC", chkBMC);
+            }
+            break;
+        }
+        case PLDM_BIOS_INTEGER:
+        case PLDM_BIOS_INTEGER_READ_ONLY:
+        {
+            auto value =
+                table::attribute_value::decodeIntegerEntry(attrValueEntry);
+            auto chkBMC = isBMC ? "true" : "false";
+            info(
+                "BIOS attribute '{ATTRIBUTE}' updated to value '{VALUE}' by BMC '{CHECK_BMC}'",
+                "ATTRIBUTE", attrName, "VALUE", value, "CHECK_BMC", chkBMC);
+            break;
+        }
+        case PLDM_BIOS_STRING:
+        case PLDM_BIOS_STRING_READ_ONLY:
+        {
+            auto value =
+                table::attribute_value::decodeStringEntry(attrValueEntry);
+            auto chkBMC = isBMC ? "true" : "false";
+            info(
+                "BIOS attribute '{ATTRIBUTE}' updated to value '{VALUE}' by BMC '{CHECK_BMC}'",
+                "ATTRIBUTE", attrName, "VALUE", value, "CHECK_BMC", chkBMC);
+            break;
+        }
+        default:
+            break;
+    };
 }
 
 int BIOSConfig::checkAttrValueToUpdate(
@@ -981,8 +1088,8 @@ void BIOSConfig::constructPendingAttribute(
 
 void BIOSConfig::listenPendingAttributes()
 {
-    using namespace sdbusplus::bus::match::rules;
-    auto updateBIOSMatch = std::make_unique<sdbusplus::bus::match_t>(
+    using namespace sdbusplus::match_rules;
+    auto updateBIOSMatch = std::make_unique<sdbusplus::match>(
         pldm::utils::DBusHandler::getBus(),
         propertiesChanged(biosConfigPath, BIOSConfigManager::interface),
         [this](sdbusplus::message_t& msg) {

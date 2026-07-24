@@ -1,8 +1,6 @@
 #pragma once
 
-#include "common/utils.hpp"
 #include "file_io_by_type.hpp"
-#include "oem/meta/utils.hpp"
 
 namespace pldm::responder::oem_meta
 {
@@ -22,7 +20,7 @@ class PostCodeHandler : public FileHandler
 
     explicit PostCodeHandler(pldm_tid_t tid) : tid(tid) {}
 
-    ~PostCodeHandler() = default;
+    ~PostCodeHandler() override = default;
 
     /** @brief Method to store postcode list
      *  @param[in] data - post code

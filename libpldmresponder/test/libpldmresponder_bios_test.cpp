@@ -1,17 +1,10 @@
 #include "common/bios_utils.hpp"
 #include "libpldmresponder/bios.hpp"
-#include "libpldmresponder/bios_table.hpp"
-#include "test/test_instance_id.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/bios.h>
 
-#include <array>
-#include <cstring>
 #include <ctime>
-#include <optional>
-#include <set>
-#include <vector>
 
 #include <gtest/gtest.h>
 

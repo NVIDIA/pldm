@@ -1,9 +1,12 @@
 #pragma once
 
 #include "oem/meta/event/types.hpp"
-#include "platform-mc/manager.hpp"
 
 #include <libpldm/base.h>
+#include <libpldm/platform.h>
+
+#include <format>
+#include <string>
 
 namespace pldm::oem_meta
 {

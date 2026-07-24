@@ -8,7 +8,6 @@
 
 #include <libpldm/oem/meta/file_io.h>
 
-#include <filesystem>
 namespace pldm::responder::oem_meta
 {
 
@@ -75,7 +74,7 @@ Response FileIOHandler::writeFileIO(pldm_tid_t tid, const pldm_msg* request,
 Response FileIOHandler::readFileIO(pldm_tid_t tid, const pldm_msg* request,
                                    size_t payloadLength)
 {
-    int rc;
+    int rc = 0;
     struct pldm_oem_meta_file_io_read_req request_msg = {};
     request_msg.version = sizeof(struct pldm_oem_meta_file_io_read_req);
 

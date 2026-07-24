@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/instance_id.hpp"
-#include "common/utils.hpp"
+#include "common/types.hpp"
 
 #include <err.h>
 #include <libpldm/base.h>
@@ -20,7 +20,6 @@
 #include <nlohmann/json.hpp>
 
 #include <cstring>
-#include <iomanip>
 #include <iostream>
 #include <utility>
 
@@ -109,7 +108,7 @@ class CommandInterface
      *
      * @return uint8_t - MCTP endpoint ID
      */
-    inline uint8_t getMCTPEID()
+    inline uint8_t getMCTPEID() const
     {
         return mctp_eid;
     }

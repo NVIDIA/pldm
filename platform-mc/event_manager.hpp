@@ -22,9 +22,7 @@
 #include "common/instance_id.hpp"
 #include "common/platform_defs.hpp"
 #include "common/types.hpp"
-#include "numeric_sensor.hpp"
-#include "requester/handler.hpp"
-#include "terminus.hpp"
+#include "terminus_manager.hpp"
 
 #include <unordered_set>
 

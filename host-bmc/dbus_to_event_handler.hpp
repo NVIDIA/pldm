@@ -1,10 +1,10 @@
 #pragma once
 
-#include "libpldm/platform.h"
-
 #include "common/instance_id.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "requester/handler.hpp"
+
+#include <libpldm/platform.h>
 
 #include <map>
 
@@ -17,6 +17,8 @@ using DbusObjMaps =
                                   pldm::responder::pdr_utils::DbusValMaps>>;
 using sensorEvent =
     std::function<void(SensorId sensorId, const DbusObjMaps& dbusMaps)>;
+using stateSensorCacheMaps =
+    std::map<pldm::pdr::SensorID, pldm::responder::pdr_utils::EventStates>;
 
 namespace state_sensor
 {
@@ -41,7 +43,7 @@ class DbusToPLDMEvent
      *  @param[in] handler - PLDM request handler
      */
     explicit DbusToPLDMEvent(
-        int mctp_fd, uint8_t mctp_eid, InstanceIdDb& instanceIdDb,
+        int mctp_fd, uint8_t mctp_eid, pldm::InstanceIdDb& instanceIdDb,
         pldm::requester::Handler<pldm::requester::Request>* handler);
 
   public:
@@ -51,6 +53,24 @@ class DbusToPLDMEvent
      */
     void listenSensorEvent(const pldm::responder::pdr_utils::Repo& repo,
                            const DbusObjMaps& dbusMaps);
+
+    /** @brief get the sensor state cache */
+    inline const stateSensorCacheMaps& getSensorCache()
+    {
+        return sensorCacheMap;
+    }
+
+    /** @brief function to update the sensor cache
+     *  @param[in] sensorId - sensor Id of the corresponding sensor
+     *  @param[in] sensorRearm - sensor rearm value with in the sensor
+     *  @param[in] previousState - previous state of the sensor
+     */
+    inline void updateSensorCacheMaps(pldm::pdr::SensorID sensorId,
+                                      size_t sensorRearm, uint8_t previousState)
+    {
+        // update the sensor cache
+        sensorCacheMap[sensorId][sensorRearm] = previousState;
+    }
 
   private:
     /** @brief Send state sensor event msg when a D-Bus property changes
@@ -74,10 +94,13 @@ class DbusToPLDMEvent
     pldm::InstanceIdDb& instanceIdDb;
 
     /** @brief D-Bus property changed signal match */
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> stateSensorMatchs;
+    std::vector<std::unique_ptr<sdbusplus::match>> stateSensorMatchs;
 
     /** @brief PLDM request handler */
     pldm::requester::Handler<pldm::requester::Request>* handler;
+
+    /** @brief sensor cache */
+    stateSensorCacheMaps sensorCacheMap;
 };
 
 } // namespace state_sensor

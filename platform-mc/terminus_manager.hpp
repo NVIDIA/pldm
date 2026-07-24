@@ -16,13 +16,7 @@
  */
 #pragma once
 
-#include "libpldm/platform.h"
-#include "libpldm/pldm.h"
-
-#include "common/instance_id.hpp"
-#include "common/log_rate_limit.hpp"
 #include "requester/handler.hpp"
-#include "requester/mctp_endpoint_discovery.hpp"
 #include "terminus.hpp"
 
 #include <queue>
@@ -112,7 +106,22 @@ class TerminusManager
     std::optional<tid_t> mapTid(const MctpInfo& mctpInfo, tid_t tid);
     void unmapTid(const tid_t& tid);
 
-    mctp_eid_t getLocalEid()
+    /** @brief Member functions to store the mctp info and tid to terminus info
+     *         list.
+     *
+     *  @param[in] mctpInfos - list information of the MCTP endpoints
+     *  @param[in] tid - Destination TID
+     *
+     *  @return tid - Terminus tid
+     */
+    std::optional<pldm_tid_t> storeTerminusInfo(const MctpInfo& mctpInfo,
+                                                pldm_tid_t tid);
+
+    /** @brief getter of local EID
+     *
+     *  @return uint8_t - local EID
+     */
+    mctp_eid_t getLocalEid() const
     {
         return localEid;
     }

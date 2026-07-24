@@ -5,8 +5,8 @@
 #include "../oem/ibm/libpldmresponder/fru_oem_ibm.hpp"
 #include "../oem/ibm/libpldmresponder/oem_ibm_handler.hpp"
 #include "../oem/ibm/libpldmresponder/utils.hpp"
+#include "bios.hpp"
 #include "common/utils.hpp"
-#include "host-bmc/dbus_to_event_handler.hpp"
 #include "invoker.hpp"
 #include "libpldmresponder/base.hpp"
 #include "libpldmresponder/fru.hpp"
@@ -18,9 +18,6 @@ namespace pldm
 {
 namespace oem_ibm
 {
-
-using namespace pldm::state_sensor;
-using namespace pldm::dbus_api;
 
 /**
  * @class OemIBM
@@ -82,8 +79,11 @@ class OemIBM
         createOemPlatformHandler();
         createOemIbmUtilsHandler();
         codeUpdate->setOemPlatformHandler(oemPlatformHandler.get());
-        hostPDRHandler->setOemPlatformHandler(oemPlatformHandler.get());
-        hostPDRHandler->setOemUtilsHandler(oemUtilsHandler.get());
+        if (hostPDRHandler)
+        {
+            hostPDRHandler->setOemPlatformHandler(oemPlatformHandler.get());
+            hostPDRHandler->setOemUtilsHandler(oemUtilsHandler.get());
+        }
         fruHandler->setOemPlatformHandler(oemPlatformHandler.get());
         platformHandler->setOemPlatformHandler(oemPlatformHandler.get());
         baseHandler->setOemPlatformHandler(oemPlatformHandler.get());
@@ -119,9 +119,10 @@ class OemIBM
      */
     void createOemPlatformHandler()
     {
-        oemPlatformHandler = std::make_unique<oem_ibm_platform::Handler>(
-            dBusIntf, codeUpdate.get(), slotHandler.get(), mctp_fd, mctp_eid,
-            instanceIdDb, event, reqHandler);
+        oemPlatformHandler =
+            std::make_unique<pldm::responder::oem_ibm_platform::Handler>(
+                dBusIntf, codeUpdate.get(), slotHandler.get(), mctp_fd,
+                mctp_eid, instanceIdDb, event, reqHandler);
     }
 
     /** @brief Method for creating oemIbmBiosHandler */

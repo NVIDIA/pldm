@@ -13,6 +13,7 @@
 #include "libpldmresponder/bios_enum_attribute.hpp"
 #include "libpldmresponder/bios_integer_attribute.hpp"
 #include "libpldmresponder/bios_string_attribute.hpp"
+#include "libpldmresponder/platform_config.hpp"
 #include "mocked_bios.hpp"
 #include "test/test_tmp_utils.hpp"
 
@@ -29,9 +30,6 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include <future>
-#include <memory>
-#include <thread>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

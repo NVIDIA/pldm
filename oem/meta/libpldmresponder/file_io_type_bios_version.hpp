@@ -2,7 +2,6 @@
 
 #include "common/utils.hpp"
 #include "file_io_by_type.hpp"
-#include "oem/meta/utils.hpp"
 
 namespace pldm::responder::oem_meta
 {
@@ -26,7 +25,7 @@ class BIOSVersionHandler : public FileHandler
         tid(tid), dBusIntf(dBusIntf)
     {}
 
-    ~BIOSVersionHandler() = default;
+    ~BIOSVersionHandler() override = default;
 
     /** @brief Method to set Host's BIOS version.
      *  @param[in] data - BIOS version raw data.

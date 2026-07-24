@@ -19,7 +19,7 @@ class Cable : public ItemCable
 {
   public:
     Cable() = delete;
-    ~Cable() = default;
+    ~Cable() override = default;
     Cable(const Cable&) = delete;
     Cable& operator=(const Cable&) = delete;
 

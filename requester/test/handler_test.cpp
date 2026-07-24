@@ -1,4 +1,5 @@
 #include "common/instance_id.hpp"
+#include "common/start_lifetime_as.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "mock_request.hpp"
@@ -12,7 +13,7 @@
 
 #include <sdbusplus/async.hpp>
 
-#include <cerrno>
+#include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -387,33 +388,33 @@ TEST_F(HandlerTest, singleRequestResponseScenarioUsingCoroutine)
     auto instanceId = instanceIdResult.value();
     EXPECT_EQ(instanceId, 0);
 
-    scope.spawn(
-        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
-            const pldm_msg* responseMsg;
-            size_t responseLen;
-            int rc = PLDM_SUCCESS;
+    auto coroFn = [&]() -> exec::task<void> {
+        pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+        const pldm_msg* responseMsg = nullptr;
+        size_t responseLen = 0;
+        int rc = PLDM_SUCCESS;
 
-            auto requestPtr = new (request.data()) pldm_msg;
-            requestPtr->hdr.instance_id = instanceId;
+        auto requestPtr = std::start_lifetime_as<pldm_msg>(request.data());
+        requestPtr->hdr.instance_id = instanceId;
 
-            try
-            {
-                std::tie(rc, responseMsg, responseLen) =
-                    co_await reqHandler.sendRecvMsg(eid, std::move(request));
-            }
-            catch (...)
-            {
-                std::rethrow_exception(std::current_exception());
-            }
+        try
+        {
+            std::tie(rc, responseMsg, responseLen) =
+                co_await reqHandler.sendRecvMsg(eid, std::move(request));
+        }
+        catch (...)
+        {
+            std::rethrow_exception(std::current_exception());
+        }
 
-            EXPECT_NE(responseLen, 0);
+        EXPECT_NE(responseLen, 0);
 
-            this->pldmResponseCallBack(eid, responseMsg, responseLen);
+        this->pldmResponseCallBack(eid, responseMsg, responseLen);
 
-            EXPECT_EQ(validResponse, true);
-        }),
-        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+        EXPECT_EQ(validResponse, true);
+    };
+    scope.spawn(coroFn(),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
     pldm::Response mockResponse(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
     auto mockResponsePtr =
@@ -437,19 +438,19 @@ TEST_F(HandlerTest, singleRequestCancellationScenarioUsingCoroutine)
 
     bool stopped = false;
 
-    scope.spawn(
-        stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-            pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
-            pldm::Response response;
+    auto coroFn = [&]() -> exec::task<void> {
+        pldm::Request request(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
+        pldm::Response response;
 
-            auto requestPtr = new (request.data()) pldm_msg;
-            requestPtr->hdr.instance_id = instanceId;
+        auto requestPtr = std::start_lifetime_as<pldm_msg>(request.data());
+        requestPtr->hdr.instance_id = instanceId;
 
-            co_await reqHandler.sendRecvMsg(eid, std::move(request));
+        co_await reqHandler.sendRecvMsg(eid, std::move(request));
 
-            EXPECT_TRUE(false); // unreachable
-        }) | stdexec::upon_stopped([&] { stopped = true; }),
-        exec::default_task_context<void>(stdexec::inline_scheduler{}));
+        EXPECT_TRUE(false); // unreachable
+    };
+    scope.spawn(coroFn() | stdexec::upon_stopped([&] { stopped = true; }),
+                exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
     scope.request_stop();
 
@@ -1024,10 +1025,10 @@ TEST_F(HandlerTest, asyncRequestResponseByCoroutine)
                                               mctp_eid_t eid,
                                               uint8_t instanceId, uint8_t& tid)
         {
-            pldm::Request request(sizeof(pldm_msg_hdr), 0);
-            auto requestMsg = new (request.data()) pldm_msg;
-            const pldm_msg* responseMsg;
-            size_t responseLen;
+            pldm::Request request(sizeof(pldm_msg), 0);
+            auto requestMsg = std::start_lifetime_as<pldm_msg>(request.data());
+            const pldm_msg* responseMsg = nullptr;
+            size_t responseLen = 0;
 
             auto rc = encode_get_tid_req(instanceId, requestMsg);
             EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -1036,11 +1037,12 @@ TEST_F(HandlerTest, asyncRequestResponseByCoroutine)
                 co_await handler.sendRecvMsg(eid, std::move(request));
             EXPECT_NE(responseLen, 0);
 
-            uint8_t cc = 0;
-            rc = decode_get_tid_resp(responseMsg, responseLen, &cc, &tid);
+            pldm_base_get_tid_resp resp{};
+            rc = decode_pldm_base_get_tid_resp(responseMsg, responseLen, &resp);
             EXPECT_EQ(rc, PLDM_SUCCESS);
 
-            co_return cc;
+            tid = resp.tid;
+            co_return resp.completion_code;
         }
     };
 
@@ -1053,24 +1055,30 @@ TEST_F(HandlerTest, asyncRequestResponseByCoroutine)
 
     uint8_t expectedTid = 1;
 
+    auto coroFn = [&]() -> exec::task<void> {
+        uint8_t respTid = 0;
+
+        co_await _::getTIDTask(reqHandler, eid, instanceId, respTid);
+
+        EXPECT_EQ(expectedTid, respTid);
+    };
     // Execute a coroutine to send getTID command. The coroutine is suspended
     // until reqHandler.handleResponse() is received.
-    scope.spawn(stdexec::just() | stdexec::let_value([&]() -> exec::task<void> {
-                    uint8_t respTid = 0;
-
-                    co_await _::getTIDTask(reqHandler, eid, instanceId,
-                                           respTid);
-
-                    EXPECT_EQ(expectedTid, respTid);
-                }),
+    scope.spawn(coroFn(),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
 
-    pldm::Response mockResponse(sizeof(pldm_msg_hdr) + PLDM_GET_TID_RESP_BYTES,
-                                0);
-    auto mockResponseMsg = new (mockResponse.data()) pldm_msg;
+    pldm::Response mockResponse(
+        sizeof(pldm_msg_hdr) + PLDM_BASE_GET_TID_RESP_BYTES, 0);
+    auto mockResponseMsg =
+        std::start_lifetime_as<pldm_msg>(mockResponse.data());
 
     // Compose response message of getTID command
-    encode_get_tid_resp(instanceId, PLDM_SUCCESS, expectedTid, mockResponseMsg);
+    pldm_base_get_tid_resp resp{PLDM_SUCCESS, expectedTid};
+    size_t payloadLength = PLDM_BASE_GET_TID_RESP_BYTES;
+    auto rc = encode_pldm_base_get_tid_resp(instanceId, &resp, mockResponseMsg,
+                                            &payloadLength);
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(payloadLength, PLDM_BASE_GET_TID_RESP_BYTES);
 
     // Send response back to resume getTID coroutine to update respTid by
     // calling  reqHandler.handleResponse() manually

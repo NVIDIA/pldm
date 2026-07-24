@@ -2,6 +2,8 @@
 
 #include "common/utils.hpp"
 
+#include <iostream>
+
 using namespace pldm::utils;
 
 namespace pldm

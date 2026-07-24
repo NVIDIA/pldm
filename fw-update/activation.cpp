@@ -12,6 +12,10 @@ ActivationIntf::Activations Activation::activation(
 {
     if (value == Activations::Activating)
     {
+        if (ActivationIntf::activation() != ActivationIntf::Activations::Ready)
+        {
+            return ActivationIntf::activation();
+        }
         deleteImpl.reset();
         namespace software = sdbusplus::xyz::openbmc_project::Software::server;
         // Set Activating first: checks may set Failed inline below
@@ -72,7 +76,7 @@ ActivationIntf::Activations Activation::activation(
 
 void Delete::delete_()
 {
-    updateManager->clearActivationInfo();
+    updateManager->resetActivationState();
 }
 } // namespace fw_update
 } // namespace pldm

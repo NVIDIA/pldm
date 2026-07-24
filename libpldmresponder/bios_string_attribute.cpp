@@ -2,8 +2,9 @@
 
 #include "common/utils.hpp"
 
+#include <phosphor-logging/lg2.hpp>
+
 #include <iostream>
-#include <tuple>
 #include <variant>
 
 using namespace pldm::utils;
@@ -44,7 +45,7 @@ BIOSStringAttribute::BIOSStringAttribute(const Json& entry,
         stringInfo.defString.data(),
     };
 
-    const char* errmsg;
+    const char* errmsg = nullptr;
     auto rc = pldm_bios_table_attr_entry_string_info_check(&info, &errmsg);
     if (rc != PLDM_SUCCESS)
     {

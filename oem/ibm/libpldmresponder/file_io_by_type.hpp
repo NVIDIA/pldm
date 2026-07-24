@@ -1,6 +1,8 @@
 #pragma once
 
-#include "file_io.hpp"
+#include "oem_handler.hpp"
+
+#include <filesystem>
 
 namespace pldm
 {
@@ -144,7 +146,7 @@ class FileHandler
 
     /** @brief Constructor to create a FileHandler object
      */
-    FileHandler(uint32_t fileHandle) : fileHandle(fileHandle) {}
+    explicit FileHandler(uint32_t fileHandle) : fileHandle(fileHandle) {}
 
     /** FileHandler destructor
      */

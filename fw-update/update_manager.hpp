@@ -69,6 +69,74 @@ class Activation;
 class ActivationProgress;
 class ActivationBlocksTransition;
 
+class UpdateManagerBase
+{
+  public:
+    virtual ~UpdateManagerBase() = default;
+
+    UpdateManagerBase() = delete;
+    UpdateManagerBase(const UpdateManagerBase&) = delete;
+    UpdateManagerBase(UpdateManagerBase&&) = delete;
+    UpdateManagerBase& operator=(const UpdateManagerBase&) = delete;
+    UpdateManagerBase& operator=(UpdateManagerBase&&) = delete;
+
+    UpdateManagerBase(
+        Event& event,
+        pldm::requester::Handler<pldm::requester::Request>& handler,
+        InstanceIdDb& instanceIdDb) :
+        event(event), handler(handler), instanceIdDb(instanceIdDb)
+    {}
+
+    virtual void updateDeviceCompletion(
+        mctp_eid_t eid, bool status,
+        std::vector<std::string> compNames = {}) = 0;
+    virtual void updateActivationProgress() = 0;
+    virtual software::Activation::Activations activatePackage() = 0;
+    virtual void resetActivationState() = 0;
+
+    virtual bool isApplyTimeImmediate() const
+    {
+        return false;
+    }
+    virtual std::string getActivationMethod(
+        bitfield16_t /*compActivationModification*/)
+    {
+        return {};
+    }
+    virtual ComponentName getComponentName(mctp_eid_t /*eid*/,
+                                           size_t /*compIndex*/)
+    {
+        return {};
+    }
+    virtual void createMessageRegistry(
+        mctp_eid_t /*eid*/, const FirmwareDeviceIDRecord& /*fwDeviceIDRecord*/,
+        size_t /*compIndex*/, const std::string& /*messageID*/,
+        const std::string& /*resolution*/ = {},
+        const pldm_firmware_update_commands /*commandType*/ =
+            static_cast<pldm_firmware_update_commands>(0),
+        const uint8_t /*errorCode*/ = 0)
+    {}
+    virtual void createMessageRegistryResourceErrors(
+        mctp_eid_t /*eid*/, const FirmwareDeviceIDRecord& /*fwDeviceIDRecord*/,
+        size_t /*compIndex*/, const std::string& /*messageID*/,
+        const std::string& /*messageError*/, const std::string& /*resolution*/,
+        bool /*overrideSeverity*/ = false)
+    {}
+    virtual void resetActivationBlocksTransition() {}
+    virtual void clearFirmwareUpdatePackage() {}
+    virtual void performSecurityChecksAsync(
+        std::function<void(bool)> /*onComplete*/,
+        std::function<void(const std::string&)> /*onError*/)
+    {}
+
+    bool fwDebug = false;
+    RefreshSingleEndpointCallback refreshSingleEndpointCallback;
+
+    Event& event;
+    pldm::requester::Handler<pldm::requester::Request>& handler;
+    InstanceIdDb& instanceIdDb;
+};
+
 /** @enum Enumeration to represent the types of security checks
  */
 enum class SecurityCheckType
@@ -78,7 +146,7 @@ enum class SecurityCheckType
     Authentication
 };
 
-class UpdateManager
+class UpdateManager : public UpdateManagerBase
 {
   public:
     UpdateManager() = delete;
@@ -189,7 +257,7 @@ class UpdateManager
      */
     void updateDeviceCompletion(
         mctp_eid_t eid, bool status,
-        const std::vector<ComponentName>& successCompNames = {});
+        std::vector<std::string> compNames = {}) override;
 
     /** @brief Increments completed updates and refreshes the reported progress
      */
@@ -202,7 +270,7 @@ class UpdateManager
      *         of no device detections we will set default to Active state
      * @return returns Activations state
      */
-    software::Activation::Activations activatePackage();
+    software::Activation::Activations activatePackage() override;
 
     void clearActivationInfo();
 
@@ -353,6 +421,7 @@ class UpdateManager
         std::function<void(const std::string& errorMsg)> onError);
 
     /** @brief Clear any existing activation if present */
+    void resetActivationState() override;
     void clearExistingActivation();
 
     std::unique_ptr<PackageSignature> packageSignatureParser;

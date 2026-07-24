@@ -1,9 +1,15 @@
 #include "dbus_to_event_handler.hpp"
 
-#include "libpldm/pldm.h"
-
+#include "common/start_lifetime_as.hpp"
 #include "common/types.hpp"
 #include "libpldmresponder/pdr.hpp"
+
+#include <phosphor-logging/lg2.hpp>
+
+#include <iostream>
+#include <memory>
+
+PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -12,7 +18,7 @@ using namespace pldm::responder;
 using namespace pldm::responder::pdr;
 using namespace pldm::responder::pdr_utils;
 using namespace pldm::utils;
-using namespace sdbusplus::bus::match::rules;
+using namespace sdbusplus::match_rules;
 
 namespace state_sensor
 {
@@ -111,7 +117,7 @@ void DbusToPLDMEvent::sendStateSensorEvent(SensorId sensorId,
 
         const auto& dbusMapping = dbusMappings[offset];
         const auto& dbusValueMapping = dbusValMaps[offset];
-        auto stateSensorMatch = std::make_unique<sdbusplus::bus::match_t>(
+        auto stateSensorMatch = std::make_unique<sdbusplus::match>(
             pldm::utils::DBusHandler::getBus(),
             propertiesChanged(dbusMapping.objectPath.c_str(),
                               dbusMapping.interface.c_str()),
@@ -194,7 +200,7 @@ void DbusToPLDMEvent::listenSensorEvent(const pdr_utils::Repo& repo,
         auto pdrRecord = sensorPDRs.getFirstRecord(pdrEntry);
         while (pdrRecord)
         {
-            pdr = reinterpret_cast<pldm_state_sensor_pdr*>(pdrEntry.data);
+            pdr = std::start_lifetime_as<pldm_state_sensor_pdr>(pdrEntry.data);
             SensorId sensorId = LE16TOH(pdr->sensor_id);
             if (sensorHandlers.contains(pdrType))
             {

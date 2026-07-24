@@ -1,3 +1,4 @@
+#include <iostream>
 #pragma once
 
 #include "bios_attribute.hpp"
@@ -12,10 +13,8 @@
 
 #include <nlohmann/json.hpp>
 
-#include <iostream>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -169,10 +168,12 @@ class BIOSConfig
     BIOSAttributes biosAttributes;
 
     using propName = std::string;
+    using ifaceName = std::string;
     using DbusChObjProperties = std::map<propName, pldm::utils::PropertyValue>;
+    using DbusIfacesAdded = std::map<ifaceName, DbusChObjProperties>;
 
     // vector to catch the D-Bus property change signals for BIOS attributes
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> biosAttrMatch;
+    std::vector<std::unique_ptr<sdbusplus::match>> biosAttrMatch;
 
     /** @brief Method to update a BIOS attribute when the corresponding Dbus
      *  property is changed
@@ -199,38 +200,33 @@ class BIOSConfig
 
             if (dBusMap.has_value())
             {
-                using namespace sdbusplus::bus::match::rules;
-                biosAttrMatch.push_back(
-                    std::make_unique<sdbusplus::bus::match_t>(
-                        pldm::utils::DBusHandler::getBus(),
-                        propertiesChanged(dBusMap->objectPath,
-                                          dBusMap->interface),
-                        [this,
-                         biosAttrIndex](sdbusplus::message::message& msg) {
-                            DbusChObjProperties props;
-                            std::string iface;
-                            msg.read(iface, props);
-                            processBiosAttrChangeNotification(props,
+                using namespace sdbusplus::match_rules;
+                biosAttrMatch.push_back(std::make_unique<sdbusplus::match>(
+                    pldm::utils::DBusHandler::getBus(),
+                    propertiesChanged(dBusMap->objectPath, dBusMap->interface),
+                    [this, biosAttrIndex](sdbusplus::message_t& msg) {
+                        DbusChObjProperties props;
+                        std::string iface;
+                        msg.read(iface, props);
+                        processBiosAttrChangeNotification(props, biosAttrIndex);
+                    }));
+
+                biosAttrMatch.push_back(std::make_unique<sdbusplus::match>(
+                    pldm::utils::DBusHandler::getBus(),
+                    interfacesAdded() + argNpath(0, dBusMap->objectPath),
+                    [this, biosAttrIndex, interface = dBusMap->interface](
+                        sdbusplus::message_t& msg) {
+                        sdbusplus::object_path path;
+                        DbusIfacesAdded interfaces;
+
+                        msg.read(path, interfaces);
+                        auto ifaceIt = interfaces.find(interface);
+                        if (ifaceIt != interfaces.end())
+                        {
+                            processBiosAttrChangeNotification(ifaceIt->second,
                                                               biosAttrIndex);
-                        }));
-
-                biosAttrMatch.push_back(
-                    std::make_unique<sdbusplus::bus::match_t>(
-                        pldm::utils::DBusHandler::getBus(),
-                        interfacesAdded() + argNpath(0, dBusMap->objectPath),
-                        [this, biosAttrIndex, interface = dBusMap->interface](
-                            sdbusplus::message_t& msg) {
-                            sdbusplus::object_path path;
-                            pldm::utils::InterfaceMap interfaces;
-
-                            msg.read(path, interfaces);
-                            auto ifaceIt = interfaces.find(interface);
-                            if (ifaceIt != interfaces.end())
-                            {
-                                processBiosAttrChangeNotification(
-                                    ifaceIt->second, biosAttrIndex);
-                            }
-                        }));
+                        }
+                    }));
             }
         }
         catch (const std::exception& e)
@@ -275,6 +271,38 @@ class BIOSConfig
      *  @return The table, std::nullopt if loading fails
      */
     std::optional<Table> loadTable(const fs::path& path);
+
+    /** @brief Method to decode the attribute name from the string handle
+     *
+     *  @param[in] stringEntry - string entry from string table
+     *  @return the decoded string
+     */
+    std::string decodeStringFromStringEntry(
+        const pldm_bios_string_table_entry* stringEntry);
+
+    /** @brief Method to print the string Handle by passing the attribute Handle
+     *         of the bios attribute that got updated
+     *
+     *  @param[in] handle - the Attribute handle of the bios attribute
+     *  @param[in] index - index to the possible value handles
+     *  @param[in] attrTable - the attribute table
+     *  @param[in] stringTable - the string table
+     *  @return string handle from the string table and decoded string to the
+     * name handle
+     */
+    std::string displayStringHandle(uint16_t handle, uint8_t index,
+                                    const std::optional<Table>& attrTable,
+                                    const std::optional<Table>& stringTable);
+
+    /** @brief Method to trace the bios attribute which got changed
+     *
+     *  @param[in] attrValueEntry - The attribute value entry to update
+     *  @param[in] attrEntry - The attribute table entry
+     *  @param[in] isBMC - indicates if the attribute is set by BMC
+     */
+    void traceBIOSUpdate(const pldm_bios_attr_val_table_entry* attrValueEntry,
+                         const pldm_bios_attr_table_entry* attrEntry,
+                         bool isBMC);
 
     /** @brief Check the attribute value to update
      *  @param[in] attrValueEntry - The attribute value entry to update

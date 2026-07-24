@@ -1,17 +1,17 @@
+#include <iostream>
 #pragma once
 
-#include "config.h"
-
+#include "common/start_lifetime_as.hpp"
 #include "common/utils.hpp"
 #include "libpldmresponder/pdr.hpp"
 #include "pdr_utils.hpp"
-#include "pldmd/handler.hpp"
 
 #include <libpldm/platform.h>
 #include <libpldm/states.h>
 
 #include <cstdint>
 #include <map>
+#include <memory>
 
 namespace pldm
 {
@@ -99,8 +99,8 @@ int getStateSensorReadingsHandler(
     auto pdrRecord = stateSensorPDRs.getFirstRecord(pdrEntry);
     while (pdrRecord)
     {
-        pdr = reinterpret_cast<pldm_state_sensor_pdr*>(pdrEntry.data);
-        assert(pdr != NULL);
+        pdr = std::start_lifetime_as<pldm_state_sensor_pdr>(pdrEntry.data);
+        assert(pdr != nullptr);
         if (pdr->sensor_id != sensorId)
         {
             pdr = nullptr;

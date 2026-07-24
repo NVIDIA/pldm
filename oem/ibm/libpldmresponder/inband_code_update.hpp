@@ -1,8 +1,7 @@
 #pragma once
 
 #include "common/utils.hpp"
-#include "libpldmresponder/pdr_utils.hpp"
-#include "libpldmresponder/platform.hpp"
+#include "oem_handler.hpp"
 
 #include <string>
 
@@ -50,7 +49,8 @@ class CodeUpdate
     /** @brief Constructor to create an inband codeupdate object
      *  @param[in] dBusIntf - D-Bus handler pointer
      */
-    CodeUpdate(const pldm::utils::DBusHandler* dBusIntf) : dBusIntf(dBusIntf)
+    explicit CodeUpdate(const pldm::utils::DBusHandler* dBusIntf) :
+        dBusIntf(dBusIntf)
     {
         currBootSide = Tside;
         nextBootSide = Tside;
@@ -100,7 +100,7 @@ class CodeUpdate
      *        going on
      *  @return - bool
      */
-    bool isCodeUpdateInProgress()
+    bool isCodeUpdateInProgress() const
     {
         return codeUpdateInProgress;
     }
@@ -139,7 +139,7 @@ class CodeUpdate
      * validation PDR
      * @return - sensor id
      */
-    uint16_t getMarkerLidSensor()
+    uint16_t getMarkerLidSensor() const
     {
         return markerLidSensorId;
     }
@@ -164,7 +164,7 @@ class CodeUpdate
     /* @brief Method to fetch the sensor id for firmware update state
      * @return - sensor id
      */
-    uint16_t getFirmwareUpdateSensor()
+    uint16_t getFirmwareUpdateSensor() const
     {
         return firmwareUpdateSensorId;
     }
@@ -181,7 +181,7 @@ class CodeUpdate
     /* @brief Method to fetch the sensor id for boot side rename state
      * @return - sensor id
      */
-    uint16_t getBootSideRenameStateSensor()
+    uint16_t getBootSideRenameStateSensor() const
     {
         return bootSideRenameStateSensorId;
     }
@@ -238,10 +238,10 @@ class CodeUpdate
     bool codeUpdateInProgress =
         false;                     //!< indicates whether codeupdate is going on
     const pldm::utils::DBusHandler* dBusIntf; //!< D-Bus handler
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>>
+    std::vector<std::unique_ptr<sdbusplus::match>>
         captureNextBootSideChange; //!< vector to catch the D-Bus property
                                    //!< change for next boot side
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>>
+    std::vector<std::unique_ptr<sdbusplus::match>>
         fwUpdateMatcher; //!< pointer to capture the interface added signal for
                          //!< new image
     pldm::responder::oem_platform::Handler*
@@ -250,7 +250,7 @@ class CodeUpdate
     uint16_t firmwareUpdateSensorId;
     uint16_t bootSideRenameStateSensorId;
     /** @brief D-Bus property changed signal match for image activation */
-    std::unique_ptr<sdbusplus::bus::match_t> imageActivationMatch;
+    std::unique_ptr<sdbusplus::match> imageActivationMatch;
 
     /* @brief Method to take action when the subscribed D-Bus property is
      *        changed

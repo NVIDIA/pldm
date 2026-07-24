@@ -23,7 +23,6 @@
 #include "common/types.hpp"
 #include "event_manager.hpp"
 #include "platform_manager.hpp"
-#include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "sensor_manager.hpp"
 #include "terminus_manager.hpp"
@@ -53,7 +52,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     Manager(Manager&&) = delete;
     Manager& operator=(const Manager&) = delete;
     Manager& operator=(Manager&&) = delete;
-    ~Manager() = default;
+    ~Manager() override = default;
 
     explicit Manager(sdeventplus::Event& event,
                      requester::Handler<requester::Request>& handler,
@@ -81,12 +80,22 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         co_return rc;
     }
 
+    /** @brief Helper function to invoke registered handlers for
+     *         the added MCTP endpoints
+     *
+     *  @param[in] mctpInfos - list information of the MCTP endpoints
+     */
     void handleMctpEndpoints(const MctpInfos& mctpInfos,
                              const dbus::MctpInterfaces&) override
     {
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
+    /** @brief Helper function to invoke registered handlers for
+     *         the removed MCTP endpoints
+     *
+     *  @param[in] mctpInfos - list information of the MCTP endpoints
+     */
     void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) override
     {
         for (const auto& mctpInfo : mctpInfos)
@@ -236,6 +245,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                                          platformEventStatus);
         return PLDM_SUCCESS;
     }
+
+    /** @brief OEM task to do OEM event polling
+     *
+     *  @param[in] tid - Destination TID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> oemPollForPlatformEvent(pldm_tid_t tid);
 
     int handleInventoryJsonEvent(const pldm_msg* request, size_t payloadLength,
                                  uint8_t /* formatVersion */, uint8_t tid,

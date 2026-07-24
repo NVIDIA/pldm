@@ -1,9 +1,7 @@
 #include "file_io_type_dump.hpp"
 
-#include "com/ibm/Dump/Notify/server.hpp"
 #include "common/utils.hpp"
 #include "utils.hpp"
-#include "xyz/openbmc_project/Common/error.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/oem/ibm/file_io.h>
@@ -17,7 +15,6 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
-#include <type_traits>
 
 PHOSPHOR_LOG2_USING;
 
@@ -42,7 +39,7 @@ static constexpr auto resDumpDirPath = "/var/lib/pldm/resourcedump/1";
 int DumpHandler::fd = -1;
 namespace fs = std::filesystem;
 
-std::string DumpHandler::findDumpObjPath(uint32_t fileHandle)
+std::string DumpHandler::findDumpObjPath(uint32_t fileHandle) const
 {
     static constexpr auto DUMP_MANAGER_BUSNAME =
         "xyz.openbmc_project.Dump.Manager";
@@ -146,7 +143,7 @@ int DumpHandler::newFileAvailable(uint64_t length)
     return PLDM_SUCCESS;
 }
 
-std::string DumpHandler::getOffloadUri(uint32_t fileHandle)
+std::string DumpHandler::getOffloadUri(uint32_t fileHandle) const
 {
     auto path = findDumpObjPath(fileHandle);
     if (path.empty())

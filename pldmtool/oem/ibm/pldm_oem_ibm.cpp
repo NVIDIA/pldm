@@ -5,10 +5,12 @@
 #include "pldm_types.h"
 
 #include "../../pldm_cmd_helper.hpp"
+#include "common/start_lifetime_as.hpp"
 
 #include <endian.h>
 
 #include <iostream>
+#include <memory>
 #include <string>
 namespace pldmtool
 {
@@ -33,7 +35,7 @@ constexpr uint8_t CHKSUM_PADDING = 8;
 class GetAlertStatus : public CommandInterface
 {
   public:
-    ~GetAlertStatus() = default;
+    ~GetAlertStatus() override = default;
     GetAlertStatus() = delete;
     GetAlertStatus(const GetAlertStatus&) = delete;
     GetAlertStatus(GetAlertStatus&&) = default;
@@ -95,7 +97,7 @@ class GetAlertStatus : public CommandInterface
 class GetFileTable : public CommandInterface
 {
   public:
-    ~GetFileTable() = default;
+    ~GetFileTable() override = default;
     GetFileTable() = delete;
     GetFileTable(const GetFileTable&) = delete;
     GetFileTable(GetFileTable&&) = default;
@@ -137,7 +139,7 @@ class GetFileTable : public CommandInterface
         uint8_t transferFlag = 0;
         uint32_t nextTransferHandle = 0;
         size_t fileTableDataLength = 0;
-        uint8_t table_data_start_offset;
+        uint8_t table_data_start_offset = 0;
         auto responsePtr = new (responseMsg.data()) pldm_msg;
         auto payloadLength = responseMsg.size() - sizeof(pldm_msg_hdr);
 
@@ -171,7 +173,8 @@ class GetFileTable : public CommandInterface
         while (startptr < endptr)
         {
             ordered_json fdata;
-            auto filetableData = new (startptr) pldm_file_attr_table_entry;
+            auto filetableData =
+                std::start_lifetime_as<pldm_file_attr_table_entry>(startptr);
             fdata["FileHandle"] = std::to_string(filetableData->file_handle);
             startptr += sizeof(filetableData->file_handle);
 

@@ -1,16 +1,4 @@
-#include "common/utils.hpp"
-#include "libpldmresponder/oem_handler.hpp"
-
-#include <filesystem>
 #include <fstream>
-#include <map>
-#include <sstream>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <variant>
-#include <vector>
-
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"

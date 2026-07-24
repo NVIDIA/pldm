@@ -260,21 +260,14 @@ void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
     }
 }
 
-void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
+void PackageParser::parse(const std::vector<uint8_t>& pkgHdr, uintmax_t pkgSize)
 {
-    if (pkgData == nullptr || pkgHeaderSize > pkgSize)
+    if (pkgHeaderSize >= pkgHdr.size())
     {
-#ifndef SKIP_PACKAGE_SIZE_CHECK
-        error(
-            "Invalid package data or header size '{PKG_HDR_SIZE}' exceeds package size '{PKG_SIZE}'",
-            "PKG_HDR_SIZE", pkgHeaderSize, "PKG_SIZE", pkgSize);
+        error("Invalid package header size '{PKG_HDR_SIZE}'", "PKG_HDR_SIZE",
+              pkgHeaderSize);
         throw InternalFailure();
-#endif
     }
-
-    // Create a vector view of only the header portion - no copying of entire
-    // package
-    std::vector<uint8_t> pkgHdr(pkgData, pkgData + pkgHeaderSize);
 
     size_t offset = sizeof(pldm_package_header_information) + pkgVersion.size();
     if (offset + sizeof(DeviceIDRecordCount) >= pkgHeaderSize)
@@ -384,7 +377,7 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
                 "CALC_SIZE", calcPkgSize, "PKG_SIZE", pkgSize);
             throw InternalFailure();
         }
-        auto calcChecksum = pldm_edac_crc32(pkgData + pkgHeaderSize,
+        auto calcChecksum = pldm_edac_crc32(pkgHdr.data() + pkgHeaderSize,
                                             calcPkgSize - pkgHeaderSize);
         if (calcChecksum != checksum)
         {
@@ -441,22 +434,12 @@ std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
         supportedPackageVersions.find(pkgHeader.package_header_format_version);
     if (it != supportedPackageVersions.end())
     {
-        const auto& expectedUUID = it->second;
-        bool validPackage =
-            std::equal(pkgHeader.uuid, pkgHeader.uuid + PLDM_FWUP_UUID_LENGTH,
-                       expectedUUID.begin(), expectedUUID.end());
-
-        if (validPackage)
-        {
-            PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
-            ComponentBitmapBitLength componentBitmapBitLength =
-                pkgHeader.component_bitmap_bit_length;
-
-            return std::make_unique<PackageParser>(
-                pkgHdrSize, utils::toString(pkgVersion),
-                componentBitmapBitLength,
-                pkgHeader.package_header_format_version);
-        }
+        PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
+        ComponentBitmapBitLength componentBitmapBitLength =
+            pkgHeader.component_bitmap_bit_length;
+        return std::make_unique<PackageParser>(
+            pkgHdrSize, utils::toString(pkgVersion), componentBitmapBitLength,
+            pkgHeader.package_header_format_version);
     }
     return nullptr;
 }

@@ -37,13 +37,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <iomanip>
-#include <iterator>
 #include <memory>
-#include <optional>
-#include <ranges>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -63,7 +57,6 @@ PHOSPHOR_LOG2_USING;
 #include "libpldmresponder/base.hpp"
 #include "libpldmresponder/bios.hpp"
 #include "libpldmresponder/fru.hpp"
-#include "libpldmresponder/oem_handler.hpp"
 #include "libpldmresponder/platform.hpp"
 #include "xyz/openbmc_project/PLDM/Event/server.hpp"
 #endif
@@ -295,22 +288,14 @@ int main(int argc, char** argv)
 
     auto event = Event::get_default();
     auto& bus = pldm::utils::DBusHandler::getBus();
-    sdbusplus::server::manager_t objManager(bus,
-                                            "/xyz/openbmc_project/software");
-    sdbusplus::server::manager_t sensorObjManager(
-        bus, "/xyz/openbmc_project/sensors");
-    sdbusplus::server::manager_t metricObjManager(
-        bus, "/xyz/openbmc_project/metric");
-    sdbusplus::server::manager_t controlObjManager(
-        bus, "/xyz/openbmc_project/control");
-    sdbusplus::server::manager_t stateObjManager(bus,
-                                                 "/xyz/openbmc_project/state");
 
-    PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
+    std::array<sdbusplus::server::manager_t, 4> dbusObjectManagers{
+        sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/software"),
+        sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/sensors"),
+        sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/metric"),
+        sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/inventory")};
 
     InstanceIdDb instanceIdDb;
-    sdbusplus::server::manager_t inventoryManager(
-        bus, "/xyz/openbmc_project/inventory");
 
     DBusHandler dbusHandler;
     Invoker invoker{};
@@ -533,10 +518,8 @@ int main(int argc, char** argv)
 
 #ifdef OEM_AMPERE
     pldm::oem_ampere::OemAMPERE oemAMPERE(
-        &dbusHandler, pldmTransport.getEventSource(), pdrRepo.get(),
-        instanceIdDb, event, invoker, hostPDRHandler.get(),
-        platformHandler.get(), fruHandler.get(), baseHandler.get(),
-        biosHandler.get(), platformManager.get(), &reqHandler);
+        instanceIdDb, event, platformHandler.get(), platformManager.get(),
+        &reqHandler);
 #endif
 
 #ifdef OEM_META
@@ -625,8 +608,10 @@ int main(int argc, char** argv)
 
         int returnCode = 0;
         void* requestMsg = nullptr;
-        size_t recvDataLength;
+        size_t recvDataLength = 0;
         returnCode = pldmTransport.recvMsg(TID, requestMsg, recvDataLength);
+
+        std::unique_ptr<void, decltype(&free)> requestMsgPtr(requestMsg, free);
 
         if (returnCode == PLDM_REQUESTER_SUCCESS)
         {
@@ -715,16 +700,24 @@ int main(int argc, char** argv)
         // TODO check that we get here if mctp-demux dies?
         else if (returnCode == PLDM_REQUESTER_RECV_FAIL)
         {
-            // MCTP daemon has closed the socket this daemon is
-            // connected to. This may or may not be an error
-            // scenario, in either case the recovery mechanism for
-            // this daemon is to restart, and hence exit the event
-            // loop, that will cause this daemon to exit with a
+#if defined(PLDM_TRANSPORT_WITH_MCTP_DEMUX)
+            // MCTP daemon has closed the socket this daemon is connected to.
+            // This may or may not be an error scenario, in either case the
+            // recovery mechanism for this daemon is to restart, and hence exit
+            // the event loop, that will cause this daemon to exit with a
             // failure code.
             error(
                 "MCTP daemon closed the socket, IO exiting with response code '{RC}'",
                 "RC", returnCode);
             io.get_event().exit(0);
+#elif defined(PLDM_TRANSPORT_WITH_AF_MCTP)
+            // With AF_MCTP, a recv failure is not fatal. A common cause is a
+            // loopback message (e.g. pldmtool sending to own EID) where the
+            // source arrives with ifindex=0, which cannot be mapped to a TID.
+            warning(
+                "Failed to receive PLDM message, ignoring: response code '{RC}'",
+                "RC", returnCode);
+#endif
         }
         else
         {
@@ -732,8 +725,6 @@ int main(int argc, char** argv)
                 "Failed to receive PLDM request for pldmTransport, response code '{RETURN_CODE}'",
                 "RETURN_CODE", returnCode);
         }
-        /* Free requestMsg after using */
-        free(requestMsg);
     };
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);

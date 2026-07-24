@@ -38,7 +38,7 @@ const std::map<const char*, pldm_bios_table_types> pldmBIOSTableTypes{
 class GetDateTime : public CommandInterface
 {
   public:
-    ~GetDateTime() = default;
+    ~GetDateTime() override = default;
     GetDateTime() = delete;
     GetDateTime(const GetDateTime&) = delete;
     GetDateTime(GetDateTime&&) = default;
@@ -60,8 +60,8 @@ class GetDateTime : public CommandInterface
     {
         uint8_t cc = 0;
 
-        uint8_t seconds, minutes, hours, day, month;
-        uint16_t year;
+        uint8_t seconds = 0, minutes = 0, hours = 0, day = 0, month = 0;
+        uint16_t year = 0;
         auto rc =
             decode_get_date_time_resp(responsePtr, payloadLength, &cc, &seconds,
                                       &minutes, &hours, &day, &month, &year);
@@ -94,7 +94,7 @@ class GetDateTime : public CommandInterface
 class SetDateTime : public CommandInterface
 {
   public:
-    ~SetDateTime() = default;
+    ~SetDateTime() override = default;
     SetDateTime() = delete;
     SetDateTime(const SetDateTime&) = delete;
     SetDateTime(SetDateTime&&) = default;
@@ -164,7 +164,7 @@ class SetDateTime : public CommandInterface
 class GetBIOSTableHandler : public CommandInterface
 {
   public:
-    ~GetBIOSTableHandler() = default;
+    ~GetBIOSTableHandler() override = default;
     GetBIOSTableHandler() = delete;
     GetBIOSTableHandler(const GetBIOSTableHandler&) = delete;
     GetBIOSTableHandler(GetBIOSTableHandler&&) = delete;
@@ -219,9 +219,8 @@ class GetBIOSTableHandler : public CommandInterface
 
         uint8_t cc = 0, transferFlag = 0;
         uint32_t nextTransferHandle = 0;
-        size_t bios_table_offset;
-        auto responsePtr =
-            reinterpret_cast<struct pldm_msg*>(responseMsg.data());
+        size_t bios_table_offset = 0;
+        auto responsePtr = new (responseMsg.data()) pldm_msg;
         auto payloadLength = responseMsg.size() - sizeof(pldm_msg_hdr);
 
         rc = decode_get_bios_table_resp(responsePtr, payloadLength, &cc,
@@ -334,9 +333,9 @@ class GetBIOSTableHandler : public CommandInterface
         {
             return displayString;
         }
-        uint8_t pvNum;
-        int rc = pldm_bios_table_attr_entry_enum_decode_pv_num_check(
-            attrEntry, &pvNum);
+        uint8_t pvNum = 0;
+        int rc =
+            pldm_bios_table_attr_entry_enum_decode_pv_num(attrEntry, &pvNum);
         if (rc != PLDM_SUCCESS)
         {
             return displayString;
@@ -446,7 +445,7 @@ class GetBIOSTableHandler : public CommandInterface
 class GetBIOSTable : public GetBIOSTableHandler
 {
   public:
-    ~GetBIOSTable() = default;
+    ~GetBIOSTable() override = default;
     GetBIOSTable() = delete;
     GetBIOSTable(const GetBIOSTable&) = delete;
     GetBIOSTable(GetBIOSTable&&) = default;
@@ -555,7 +554,7 @@ class GetBIOSTable : public GetBIOSTableHandler
                 case PLDM_BIOS_ENUMERATION:
                 case PLDM_BIOS_ENUMERATION_READ_ONLY:
                 {
-                    uint8_t pvNum;
+                    uint8_t pvNum = 0;
                     // Preconditions are upheld therefore no error check
                     // necessary
                     pldm_bios_table_attr_entry_enum_decode_pv_num_check(entry,
@@ -563,7 +562,7 @@ class GetBIOSTable : public GetBIOSTableHandler
                     std::vector<uint16_t> pvHandls(pvNum);
                     pldm_bios_table_attr_entry_enum_decode_pv_hdls_check(
                         entry, pvHandls.data(), pvHandls.size());
-                    uint8_t defNum;
+                    uint8_t defNum = 0;
                     // Preconditions are upheld therefore no error check
                     // necessary
                     pldm_bios_table_attr_entry_enum_decode_def_num_check(
@@ -594,8 +593,8 @@ class GetBIOSTable : public GetBIOSTableHandler
                 case PLDM_BIOS_INTEGER:
                 case PLDM_BIOS_INTEGER_READ_ONLY:
                 {
-                    uint64_t lower, upper, def;
-                    uint32_t scalar;
+                    uint64_t lower = 0, upper = 0, def = 0;
+                    uint32_t scalar = 0;
                     pldm_bios_table_attr_entry_integer_decode(
                         entry, &lower, &upper, &scalar, &def);
                     attrdata["LowerBound"] = lower;
@@ -616,7 +615,7 @@ class GetBIOSTable : public GetBIOSTableHandler
                     auto max =
                         pldm_bios_table_attr_entry_string_decode_max_length(
                             entry);
-                    uint16_t def;
+                    uint16_t def = 0;
                     // Preconditions are upheld therefore no error check
                     // necessary
                     pldm_bios_table_attr_entry_string_decode_def_string_length_check(
@@ -670,7 +669,7 @@ class GetBIOSTable : public GetBIOSTableHandler
 class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
 {
   public:
-    ~GetBIOSAttributeCurrentValueByHandle() = default;
+    ~GetBIOSAttributeCurrentValueByHandle() override = default;
     GetBIOSAttributeCurrentValueByHandle(
         const GetBIOSAttributeCurrentValueByHandle&) = delete;
     GetBIOSAttributeCurrentValueByHandle(
@@ -688,7 +687,7 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
             ->required();
     }
 
-    void exec()
+    void exec() override
     {
         auto stringTable = getBIOSTable(PLDM_BIOS_STRING_TABLE);
         auto attrTable = getBIOSTable(PLDM_BIOS_ATTR_TABLE);
@@ -761,7 +760,7 @@ class GetBIOSAttributeCurrentValueByHandle : public GetBIOSTableHandler
 class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
 {
   public:
-    ~SetBIOSAttributeCurrentValue() = default;
+    ~SetBIOSAttributeCurrentValue() override = default;
     SetBIOSAttributeCurrentValue() = delete;
     SetBIOSAttributeCurrentValue(const SetBIOSAttributeCurrentValue&) = delete;
     SetBIOSAttributeCurrentValue(SetBIOSAttributeCurrentValue&&) = default;
@@ -781,7 +780,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
         // -v is conflict with --verbose in class CommandInterface, so used -d
     }
 
-    void exec()
+    void exec() override
     {
         auto stringTable = getBIOSTable(PLDM_BIOS_STRING_TABLE);
         auto attrTable = getBIOSTable(PLDM_BIOS_ATTR_TABLE);
@@ -815,7 +814,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
             {
                 entryLength =
                     pldm_bios_table_attr_value_entry_encode_enum_length(1);
-                uint8_t pvNum;
+                uint8_t pvNum = 0;
                 // Preconditions are upheld therefore no error check necessary
                 pldm_bios_table_attr_entry_enum_decode_pv_num_check(attrEntry,
                                                                     &pvNum);
@@ -835,7 +834,7 @@ class SetBIOSAttributeCurrentValue : public GetBIOSTableHandler
                 auto valueHandle =
                     pldm_bios_table_string_entry_decode_handle(stringEntry);
 
-                uint8_t i;
+                uint8_t i = 0;
                 for (i = 0; i < pvNum; i++)
                 {
                     if (valueHandle == pvHdls[i])
