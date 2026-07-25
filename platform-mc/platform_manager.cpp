@@ -16,16 +16,9 @@
  */
 #include "platform_manager.hpp"
 
-#include "common/start_lifetime_as.hpp"
-#include "common/types.hpp"
-#include "manager.hpp"
 #include "terminus_manager.hpp"
 
 #include <phosphor-logging/lg2.hpp>
-
-#include <memory>
-
-PHOSPHOR_LOG2_USING;
 
 namespace pldm
 {
@@ -34,158 +27,9 @@ namespace platform_mc
 
 exec::task<int> PlatformManager::initTerminus()
 {
-    /* Snapshot TIDs before iterating. The termini map can be modified (entries
-     * erased) by removeMctpTerminus() while this coroutine is suspended at a
-     * co_await point, which would invalidate range-for iterators and references
-     * into the map, causing use-after-free. */
-    std::vector<pldm_tid_t> tids;
-    for (auto& [tid, _] : termini)
+    for (auto& [tid, terminus] : termini)
     {
-        tids.push_back(tid);
-    }
-
-    for (const auto tid : tids)
-    {
-        // termini[tid] would auto-insert if the TID was erased after the
-        // snapshot above.
-        if (!termini.contains(tid))
-        {
-            continue;
-        }
-
-        /* Take a local shared_ptr copy so the Terminus object stays alive even
-         * if the map entry is erased while this coroutine is suspended. */
-        auto terminus = termini[tid];
-
-        if (terminus->initalized)
-        {
-            continue;
-        }
-
-        /* Get Fru */
-        uint16_t totalTableRecords = 0;
-        if (terminus->doesSupport(PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE_METADATA))
-        {
-            auto rc =
-                co_await getFRURecordTableMetadata(tid, &totalTableRecords);
-            if (rc)
-            {
-                lg2::error(
-                    "Failed to get FRU Metadata for terminus {TID}, error {ERROR}",
-                    "TID", tid, "ERROR", rc);
-            }
-            if (!totalTableRecords)
-            {
-                lg2::info("Fru record table meta data has 0 records");
-            }
-        }
-
-        if (!termini.contains(tid))
-        {
-            continue;
-        }
-
-        std::vector<uint8_t> fruData{};
-        if ((totalTableRecords != 0) &&
-            terminus->doesSupport(PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE))
-        {
-            auto rc =
-                co_await getFRURecordTables(tid, totalTableRecords, fruData);
-            if (rc)
-            {
-                lg2::error(
-                    "Failed to get Fru Record table for terminus {TID}, error {ERROR}",
-                    "TID", tid, "ERROR", rc);
-            }
-        }
-
-        if (!termini.contains(tid))
-        {
-            continue;
-        }
-
-        if (terminus->doesSupport(PLDM_PLATFORM, PLDM_GET_PDR))
-        {
-            auto rc = co_await getPDRs(terminus);
-            if (rc)
-            {
-                lg2::error(
-                    "Failed to fetch PDRs for terminus with TID: {TID}, error: {ERROR}",
-                    "TID", tid, "ERROR", rc);
-                continue; // Continue to next terminus
-            }
-
-            if (!termini.contains(tid))
-            {
-                continue;
-            }
-
-            terminus->parseTerminusPDRs();
-        }
-
-        /**
-         * Need terminus name from PDRs before updating Inventory object with
-         * Fru data
-         */
-        if (fruData.size())
-        {
-            updateInventoryWithFru(tid, fruData.data(), fruData.size());
-        }
-
-        uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
-        if (!terminus->doesSupport(PLDM_PLATFORM,
-                                   PLDM_EVENT_MESSAGE_BUFFER_SIZE))
-        {
-            terminusMaxBufferSize = PLDM_PLATFORM_DEFAULT_MESSAGE_BUFFER_SIZE;
-        }
-        else
-        {
-            /* Get maxBufferSize use PLDM command eventMessageBufferSize */
-            auto rc = co_await eventMessageBufferSize(
-                tid, terminus->maxBufferSize, terminusMaxBufferSize);
-            if (rc != PLDM_SUCCESS)
-            {
-                lg2::error(
-                    "Failed to get message buffer size for terminus with TID: {TID}, error: {ERROR}",
-                    "TID", tid, "ERROR", rc);
-                terminusMaxBufferSize =
-                    PLDM_PLATFORM_DEFAULT_MESSAGE_BUFFER_SIZE;
-            }
-        }
-
-        if (!termini.contains(tid))
-        {
-            continue;
-        }
-
-        terminus->maxBufferSize =
-            std::min(terminus->maxBufferSize, terminusMaxBufferSize);
-
-        auto rc = co_await configEventReceiver(tid);
-
-        if (!termini.contains(tid))
-        {
-            continue;
-        }
-
-        if (rc)
-        {
-            lg2::error(
-                "Failed to config event receiver for terminus with TID: {TID}, error: {ERROR}",
-                "TID", tid, "ERROR", rc);
-        }
-
-        terminus->initalized = true;
-        if (manager)
-        {
-            manager->startSensorPolling(tid);
-        }
-        else
-        {
-            lg2::error(
-                "Cannot start sensor polling for TID: {TID} because the manager is not initialized.",
-                "TID", tid);
-        }
+        co_await initTerminusImpl(tid, terminus);
     }
     co_return PLDM_SUCCESS;
 }
@@ -195,7 +39,7 @@ exec::task<int> PlatformManager::initTerminus(tid_t tid)
     // Re-initialize a single terminus. Used by the PDRRepositoryChgEvent
     // full-rebuild path so a rediscovery for one terminus does NOT re-create
     // objects for other termini that a concurrent rebuild left
-    // initalized=false (which races on D-Bus object creation → FileExists).
+    // initalized=false (which races on D-Bus object creation -> FileExists).
     auto it = termini.find(tid);
     if (it == termini.end())
     {
@@ -206,90 +50,36 @@ exec::task<int> PlatformManager::initTerminus(tid_t tid)
     co_return co_await initTerminusImpl(tid, it->second);
 }
 
-/* Take a local shared_ptr copy so the Terminus object stays alive even
- * if the map entry is erased while this coroutine is suspended. */
-auto terminus = termini[tid];
-if (!terminus->doesSupport(PLDM_PLATFORM, PLDM_EVENT_MESSAGE_SUPPORTED))
+exec::task<int> PlatformManager::initTerminusImpl(
+    tid_t tid, std::shared_ptr<Terminus> terminus)
 {
-    uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
-    auto rc = co_await eventMessageBufferSize(tid, terminus->maxBufferSize,
-                                              terminusMaxBufferSize);
-    if (!rc)
+    if (terminus->doesSupport(PLDM_PLATFORM))
     {
-        terminus->maxBufferSize =
-            std::min(terminus->maxBufferSize, terminusMaxBufferSize);
-    }
+        uint16_t terminusMaxBufferSize = terminus->maxBufferSize;
+        auto rc = co_await eventMessageBufferSize(tid, terminus->maxBufferSize,
+                                                  terminusMaxBufferSize);
+        if (!rc)
+        {
+            terminus->maxBufferSize =
+                std::min(terminus->maxBufferSize, terminusMaxBufferSize);
+        }
 
-    uint8_t synchronyConfiguration = 0;
-    uint8_t numberEventClassReturned = 0;
-    std::vector<uint8_t> eventClass{};
-    rc = co_await eventMessageSupported(
-        tid, 1, synchronyConfiguration,
-        terminus->synchronyConfigurationSupported, numberEventClassReturned,
-        eventClass);
-    if (rc)
-    {
-        lg2::error("tid={TID} eventMessageSupported failed rc={RC}, "
-                   "setEventReceiver will be skipped.",
-                   "TID", tid, "RC", rc);
-        terminus->synchronyConfigurationSupported.byte = 0;
-    }
+        uint8_t synchronyConfiguration = 0;
+        uint8_t numberEventClassReturned = 0;
+        std::vector<uint8_t> eventClass{};
+        rc = co_await eventMessageSupported(
+            tid, 1, synchronyConfiguration,
+            terminus->synchronyConfigurationSupported, numberEventClassReturned,
+            eventClass);
+        if (rc)
+        {
+            lg2::error("tid={TID} eventMessageSupported failed rc={RC}, "
+                       "setEventReceiver will be skipped.",
+                       "TID", tid, "RC", rc);
+            terminus->synchronyConfigurationSupported.byte = 0;
+        }
 
-    if (!termini.contains(tid))
-    {
-        co_return PLDM_ERROR;
-    }
-
-    if (!terminus->doesSupport(PLDM_PLATFORM, PLDM_SET_EVENT_RECEIVER))
-    {
-        lg2::error("Terminus {TID} does not support Event", "TID", tid);
-        co_return PLDM_ERROR;
-    }
-
-    /**
-     *  Set Event receiver base on synchronyConfigurationSupported data
-     *  use PLDM command SetEventReceiver
-     */
-    pldm_event_message_global_enable eventMessageGlobalEnable =
-        PLDM_EVENT_MESSAGE_GLOBAL_DISABLE;
-    uint16_t heartbeatTimer = 0;
-
-    /* Use PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE when
-     * for eventMessageGlobalEnable when the terminus supports that type
-     */
-    if (terminus->synchronyConfigurationSupported.byte &
-        (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE))
-    {
-        heartbeatTimer = HEARTBEAT_TIMEOUT;
-        eventMessageGlobalEnable =
-            PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE;
-    }
-    /* Use PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC when
-     * for eventMessageGlobalEnable when the terminus does not support
-     * PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC_KEEP_ALIVE
-     * and supports PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC type
-     */
-    else if (terminus->synchronyConfigurationSupported.byte &
-             (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
-    {
-        eventMessageGlobalEnable = PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC;
-    }
-    /* Only use PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_POLLING
-     * for eventMessageGlobalEnable when the terminus only supports
-     * this type
-     */
-    else if (terminus->synchronyConfigurationSupported.byte &
-             (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_POLLING))
-    {
-        eventMessageGlobalEnable = PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_POLLING;
-    }
-
-    if (eventMessageGlobalEnable != PLDM_EVENT_MESSAGE_GLOBAL_DISABLE)
-    {
-        auto rc = co_await setEventReceiver(tid, eventMessageGlobalEnable,
-                                            PLDM_TRANSPORT_PROTOCOL_TYPE_MCTP,
-                                            heartbeatTimer);
-        if (rc != PLDM_SUCCESS)
+        if (!terminus->initalized)
         {
             rc = co_await getPDRs(terminus);
             if (!rc)
@@ -317,12 +107,38 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
         co_return PLDM_SUCCESS;
     }
 
-    if (!termini.contains(tid))
+    auto& terminus = termini[tid];
+    uint8_t rc = PLDM_SUCCESS;
+    if (terminus->synchronyConfigurationSupported.byte &
+        (1 << PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC))
     {
-        co_return PLDM_ERROR;
-    }
+        auto localEid = terminusManager.getLocalEid();
+        rc = co_await setEventReceiver(
+            tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC, localEid);
+        if (rc != PLDM_SUCCESS &&
+            rc != terminus->resumptionStatus.eventReciever)
+        {
+            auto tName = terminus->getTerminusName().value_or("Unknown");
+            auto mctpInfo = terminusManager.toMctpInfo(tid);
+            if (!mctpInfo)
+            {
+                lg2::error("setEventReceiver failed for tid={TID} name={NAME}, "
+                           "rc={RC}. No MCTP info found for tid={TID}.",
+                           "TID", tid, "NAME", tName, "RC", rc);
+            }
+            else
+            {
+                auto destEid = std::get<0>(mctpInfo.value());
+                lg2::error("setEventReceiver failed for tid={TID} name={NAME}, "
+                           "rc={RC}, localEid={EID}, destEid={DESTEID}",
+                           "TID", tid, "NAME", tName, "RC", rc, "EID", localEid,
+                           "DESTEID", destEid);
+            }
+        }
 
-    co_return PLDM_SUCCESS;
+        terminus->resumptionStatus.eventReciever = rc;
+    }
+    co_return rc;
 }
 
 exec::task<int> PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
@@ -396,7 +212,7 @@ exec::task<int> PlatformManager::getPDRs(std::shared_ptr<Terminus> terminus)
         {
             // multipart transfer
             uint32_t receivedRecordSize = responseCnt;
-            auto pdrHdr = std::start_lifetime_as<pldm_pdr_hdr>(recvBuf.data());
+            auto pdrHdr = reinterpret_cast<pldm_pdr_hdr*>(recvBuf.data());
             uint16_t recordChgNum = le16toh(pdrHdr->record_change_num);
             std::vector<uint8_t> receivedPdr(recvBuf.begin(),
                                              recvBuf.begin() + responseCnt);
@@ -693,211 +509,6 @@ exec::task<int> PlatformManager::eventMessageSupported(
     }
 
     co_return completionCode;
-}
-
-exec::task<int> PlatformManager::getFRURecordTableMetadata(pldm_tid_t tid,
-                                                           uint16_t* total)
-{
-    Request request(
-        sizeof(pldm_msg_hdr) + PLDM_GET_FRU_RECORD_TABLE_METADATA_REQ_BYTES);
-    auto requestMsg = new (request.data()) pldm_msg;
-
-    auto rc = encode_get_fru_record_table_metadata_req(
-        0, requestMsg, PLDM_GET_FRU_RECORD_TABLE_METADATA_REQ_BYTES);
-    if (rc)
-    {
-        lg2::error(
-            "Failed to encode request GetFRURecordTableMetadata for terminus ID {TID}, error {RC} ",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    const pldm_msg* responseMsg = nullptr;
-    size_t responseLen = 0;
-
-    rc = co_await terminusManager.sendRecvPldmMsg(tid, request, &responseMsg,
-                                                  &responseLen);
-    if (rc)
-    {
-        lg2::error(
-            "Failed to send GetFRURecordTableMetadata message for terminus {TID}, error {RC}",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    uint8_t completionCode = 0;
-    if (responseMsg == nullptr || !responseLen)
-    {
-        lg2::error(
-            "No response data for GetFRURecordTableMetadata for terminus {TID}",
-            "TID", tid);
-        co_return rc;
-    }
-
-    uint8_t fru_data_major_version = 0, fru_data_minor_version = 0;
-    uint32_t fru_table_maximum_size = 0, fru_table_length = 0;
-    uint16_t total_record_set_identifiers = 0;
-    uint32_t checksum = 0;
-    rc = decode_get_fru_record_table_metadata_resp(
-        responseMsg, responseLen, &completionCode, &fru_data_major_version,
-        &fru_data_minor_version, &fru_table_maximum_size, &fru_table_length,
-        &total_record_set_identifiers, total, &checksum);
-
-    if (rc)
-    {
-        lg2::error(
-            "Failed to decode response GetFRURecordTableMetadata for terminus ID {TID}, error {RC} ",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    if (completionCode != PLDM_SUCCESS)
-    {
-        lg2::error(
-            "Error : GetFRURecordTableMetadata for terminus ID {TID}, complete code {CC}.",
-            "TID", tid, "CC", completionCode);
-        co_return completionCode;
-    }
-
-    co_return rc;
-}
-
-exec::task<int> PlatformManager::getFRURecordTable(
-    pldm_tid_t tid, const uint32_t dataTransferHndl,
-    const uint8_t transferOpFlag, uint32_t* nextDataTransferHndl,
-    uint8_t* transferFlag, size_t* responseCnt,
-    std::vector<uint8_t>& recordData)
-{
-    Request request(sizeof(pldm_msg_hdr) + PLDM_GET_FRU_RECORD_TABLE_REQ_BYTES);
-    auto requestMsg = new (request.data()) pldm_msg;
-
-    auto rc = encode_get_fru_record_table_req(
-        0, dataTransferHndl, transferOpFlag, requestMsg,
-        PLDM_GET_FRU_RECORD_TABLE_REQ_BYTES);
-    if (rc != PLDM_SUCCESS)
-    {
-        lg2::error(
-            "Failed to encode request GetFRURecordTable for terminus ID {TID}, error {RC} ",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    const pldm_msg* responseMsg = nullptr;
-    size_t responseLen = 0;
-
-    rc = co_await terminusManager.sendRecvPldmMsg(tid, request, &responseMsg,
-                                                  &responseLen);
-    if (rc)
-    {
-        lg2::error(
-            "Failed to send GetFRURecordTable message for terminus {TID}, error {RC}",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    uint8_t completionCode = 0;
-    if (responseMsg == nullptr || !responseLen)
-    {
-        lg2::error("No response data for GetFRURecordTable for terminus {TID}",
-                   "TID", tid);
-        co_return rc;
-    }
-
-    auto responsePtr = reinterpret_cast<const struct pldm_msg*>(responseMsg);
-    rc = decode_get_fru_record_table_resp(
-        responsePtr, responseLen, &completionCode, nextDataTransferHndl,
-        transferFlag, recordData.data(), responseCnt);
-
-    if (rc)
-    {
-        lg2::error(
-            "Failed to decode response GetFRURecordTable for terminus ID {TID}, error {RC} ",
-            "TID", tid, "RC", rc);
-        co_return rc;
-    }
-
-    if (completionCode != PLDM_SUCCESS)
-    {
-        lg2::error(
-            "Error : GetFRURecordTable for terminus ID {TID}, complete code {CC}.",
-            "TID", tid, "CC", completionCode);
-        co_return completionCode;
-    }
-
-    co_return rc;
-}
-
-void PlatformManager::updateInventoryWithFru(
-    pldm_tid_t tid, const uint8_t* fruData, const size_t fruLen)
-{
-    if (tid == PLDM_TID_RESERVED || !termini.contains(tid) || !termini[tid])
-    {
-        lg2::error("Invalid terminus {TID}", "TID", tid);
-        return;
-    }
-
-    termini[tid]->updateInventoryWithFru(fruData, fruLen);
-}
-
-exec::task<int> PlatformManager::getFRURecordTables(
-    pldm_tid_t tid, const uint16_t& totalTableRecords,
-    std::vector<uint8_t>& fruData)
-{
-    if (!totalTableRecords)
-    {
-        lg2::info("Fru record table has 0 records");
-        co_return PLDM_ERROR;
-    }
-
-    uint32_t dataTransferHndl = 0;
-    uint32_t nextDataTransferHndl = 0;
-    uint8_t transferFlag = 0;
-    uint8_t transferOpFlag = PLDM_GET_FIRSTPART;
-    size_t responseCnt = 0;
-    std::vector<uint8_t> recvBuf(PLDM_PLATFORM_GETPDR_MAX_RECORD_BYTES);
-
-    size_t fruLength = 0;
-    std::vector<uint8_t> receivedFru(0);
-    do
-    {
-        auto rc = co_await getFRURecordTable(
-            tid, dataTransferHndl, transferOpFlag, &nextDataTransferHndl,
-            &transferFlag, &responseCnt, recvBuf);
-
-        if (rc)
-        {
-            lg2::error(
-                "Failed to get Fru Record Data for terminus {TID}, error: {RC}, first part of data handle {RECORD}",
-                "TID", tid, "RC", rc, "RECORD", dataTransferHndl);
-            co_return rc;
-        }
-
-        receivedFru.insert(receivedFru.end(), recvBuf.begin(),
-                           recvBuf.begin() + responseCnt);
-        fruLength += responseCnt;
-        if (transferFlag == PLDM_PLATFORM_TRANSFER_START_AND_END ||
-            transferFlag == PLDM_PLATFORM_TRANSFER_END)
-        {
-            break;
-        }
-
-        // multipart transfer
-        dataTransferHndl = nextDataTransferHndl;
-        transferOpFlag = PLDM_GET_NEXTPART;
-
-    } while (nextDataTransferHndl != 0);
-
-    if (fruLength != receivedFru.size())
-    {
-        lg2::error(
-            "Size of Fru Record Data {SIZE} for terminus {TID} is different the responded size {RSPSIZE}.",
-            "SIZE", receivedFru.size(), "RSPSIZE", fruLength);
-        co_return PLDM_ERROR_INVALID_LENGTH;
-    }
-
-    fruData = receivedFru;
-
-    co_return PLDM_SUCCESS;
 }
 
 } // namespace platform_mc

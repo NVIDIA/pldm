@@ -16,13 +16,29 @@
  */
 #pragma once
 
+#include "activation.hpp"
 #include "aggregate_update_manager.hpp"
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
+#include "common/utils.hpp"
+#include "config.hpp"
+#include "device_updater.hpp"
+#include "em_config.hpp"
+#include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "update_manager.hpp"
+
+#include <libpldm/pldm.h>
+
+#include <exec/start_detached.hpp>
+#include <phosphor-logging/lg2.hpp>
+
+#include <algorithm>
+#include <format>
+#include <unordered_map>
+#include <vector>
 
 namespace pldm
 {

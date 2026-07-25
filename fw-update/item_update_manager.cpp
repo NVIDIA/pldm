@@ -84,9 +84,11 @@ bool ItemUpdateManager::processPackage()
     auto packageSpan = packageMap->getChars();
     packageDataStream =
         std::make_unique<std::ispanstream>(packageSpan, std::ios::binary);
+    static const ComponentIdNameMap emptyCompIdNameMap{};
     deviceUpdater = std::make_unique<DeviceUpdater>(
         eid, *packageDataStream, fwDeviceIDRecords[*deviceIdRecordOffset],
-        compImageInfos, componentInfo, MAXIMUM_TRANSFER_SIZE, this);
+        compImageInfos, componentInfo, emptyCompIdNameMap,
+        MAXIMUM_TRANSFER_SIZE, this);
     inProgressActivation->activation(software::Activation::Activations::Ready);
     activationProgress = std::make_unique<ActivationProgress>(
         pldm::utils::DBusHandler::getBus(), objPathWithSwId);
@@ -248,7 +250,8 @@ void ItemUpdateManager::updateActivationProgress()
 
 sdbusplus::object_path ItemUpdateManager::startUpdate(
     sdbusplus::message::unix_fd image,
-    ApplyTimeIntf::RequestedApplyTimes /*applyTime*/)
+    ApplyTimeIntf::RequestedApplyTimes /*applyTime*/, bool /*forceUpdate*/,
+    std::vector<sdbusplus::object_path> /*targets*/)
 {
     if (updateInProgress)
     {

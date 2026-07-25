@@ -99,10 +99,10 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
      * @param[in] image The image file descriptor
      * @param[in] applyTime The requested apply time
      */
-    virtual sdbusplus::object_path startUpdate(
+    sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
-        ApplyTimeIntf::RequestedApplyTimes applyTime =
-            ApplyTimeIntf::RequestedApplyTimes::Immediate) override;
+        ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
+        std::vector<sdbusplus::object_path> targets) override;
 
     /**
      * @brief Associate the firmware update package with the target device

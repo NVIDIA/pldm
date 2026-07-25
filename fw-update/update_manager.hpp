@@ -103,8 +103,10 @@ class UpdateManagerBase
     {
         return {};
     }
-    virtual ComponentName getComponentName(mctp_eid_t /*eid*/,
-                                           size_t /*compIndex*/)
+    virtual ComponentName getComponentName(
+        mctp_eid_t /*eid*/,
+        const FirmwareDeviceIDRecord& /*fwDeviceIDRecord*/,
+        size_t /*compIndex*/)
     {
         return {};
     }

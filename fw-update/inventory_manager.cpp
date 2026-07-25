@@ -17,6 +17,7 @@
 #include "inventory_manager.hpp"
 
 #include "common/utils.hpp"
+#include "dbusutil.hpp"
 
 #include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -112,17 +113,16 @@ exec::task<int> InventoryManager::getPLDMTypes(mctp_eid_t eid,
         co_return rc;
     }
 
-    uint8_t completionCode = PLDM_SUCCESS;
-    bitfield8_t* types = reinterpret_cast<bitfield8_t*>(&supportedTypes);
-    rc =
-        decode_get_types_resp(responseMsg, responseLen, &completionCode, types);
+    pldm_base_get_pldm_types_resp resp{};
+    rc = decode_pldm_base_get_pldm_types_resp(responseMsg, responseLen, &resp);
     if (rc)
     {
-        error("decode_get_types_resp failed, eid={EID} rc={RC}.", "EID", eid,
-              "RC", rc);
+        error("decode_pldm_base_get_pldm_types_resp failed, eid={EID} rc={RC}.",
+              "EID", eid, "RC", rc);
         co_return rc;
     }
-    co_return completionCode;
+    ::memcpy(&supportedTypes, &resp.pldm_types, sizeof(resp.pldm_types));
+    co_return resp.completion_code;
 }
 
 exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(

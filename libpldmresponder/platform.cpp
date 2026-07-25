@@ -716,14 +716,10 @@ Response Handler::getStateSensorReadings(const pldm_msg* request,
     }
     else
     {
-        static const stateSensorCacheMaps emptySensorCache{};
-        const auto& sensorCache = dbusToPLDMEventHandler
-                                      ? dbusToPLDMEventHandler->getSensorCache()
-                                      : emptySensorCache;
         rc = platform_state_sensor::getStateSensorReadingsHandler<
             pldm::utils::DBusHandler, Handler>(
             dBusIntf, *this, sensorId, sensorRearmCount, comSensorCnt,
-            stateField, sensorCache);
+            stateField);
     }
 
     if (rc != PLDM_SUCCESS)

@@ -251,6 +251,7 @@ class DeviceUpdater
                            const FirmwareDeviceIDRecord& fwDeviceIDRecord,
                            const ComponentImageInfos& compImageInfos,
                            const ComponentInfo& compInfo,
+                           const ComponentIdNameMap& compIdNameInfo,
                            uint32_t maxTransferSize,
                            UpdateManagerBase* updateManager);
 
