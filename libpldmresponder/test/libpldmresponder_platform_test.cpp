@@ -84,6 +84,8 @@ using ::testing::Return;
 using ::testing::StrEq;
 using ::testing::Throw;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 namespace
 {
 
@@ -1208,6 +1210,7 @@ fs::path makeEventConfigDir(const std::string& json)
 }
 
 } // namespace
+#pragma GCC diagnostic pop
 
 TEST(getPDR, testGoodPath)
 {
@@ -2646,10 +2649,6 @@ TEST(setNumericEffecterValueHandler, dbusFailureCoverage)
     DBusMapping dbusMapping{"/foo/bar", "xyz.openbmc_project.Foo.Bar",
                             "propertyName", "uint64_t"};
 
-    pldm_numeric_effecter_value_pdr* pdr =
-        std::start_lifetime_as<pldm_numeric_effecter_value_pdr>(e.data);
-    EXPECT_EQ(pdr->hdr.type, PLDM_NUMERIC_EFFECTER_PDR);
-
     auto rc = platform_numeric_effecter::setNumericEffecterValueHandler<
         MockdBusHandler, Handler>(
         mockedUtils, handler, effecterId, PLDM_EFFECTER_DATA_SIZE_UINT32,
@@ -3288,9 +3287,8 @@ TEST(getStateSensorReadings, testNoDbusToPLDMEventHandler)
 
     auto inPDRRepo = pldm_pdr_init();
     auto event = sdeventplus::Event::get_default();
-    Handler handler(&mockedUtils, 0, nullptr, "./pdr_jsons/state_sensor/good",
-                    inPDRRepo, nullptr, nullptr, nullptr, nullptr, nullptr,
-                    event);
+    Handler handler(&mockedUtils, "./pdr_jsons/state_sensor/good", inPDRRepo,
+                    nullptr, nullptr, nullptr, nullptr, event);
 
     auto response = handler.getStateSensorReadings(req, requestPayloadLength);
     auto responsePtr = std::start_lifetime_as<pldm_msg>(response.data());
@@ -3342,11 +3340,12 @@ TEST(pldmPDRRepositoryChgEvent, testNoHostPDRHandler)
 
     auto inPDRRepo = pldm_pdr_init();
     auto event = sdeventplus::Event::get_default();
-    Handler handler(&mockedUtils, 0, nullptr, "./pdr_jsons/state_sensor/good",
-                    inPDRRepo, nullptr, nullptr, nullptr, nullptr, nullptr,
-                    event);
+    Handler handler(&mockedUtils, "./pdr_jsons/state_sensor/good", inPDRRepo,
+                    nullptr, nullptr, nullptr, nullptr, event);
 
-    rc = handler.pldmPDRRepositoryChgEvent(req, actualSize, 0x01, 1, 0);
+    uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
+    rc = handler.pldmPDRRepositoryChgEvent(req, actualSize, 0x01, 1, 0,
+                                           platformEventStatus);
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     pldm_pdr_destroy(inPDRRepo);

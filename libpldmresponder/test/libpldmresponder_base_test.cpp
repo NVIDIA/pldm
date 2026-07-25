@@ -1,5 +1,10 @@
+#include "common/instance_id.hpp"
 #include "common/start_lifetime_as.hpp"
+#include "common/transport.hpp"
+#include "common/utils.hpp"
 #include "libpldmresponder/base.hpp"
+#include "test/pldmd_coverage_hooks.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/platform.h>
@@ -10,6 +15,7 @@
 #include <chrono>
 #include <cstring>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

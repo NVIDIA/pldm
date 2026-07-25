@@ -603,7 +603,7 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
         co_return rc;
     }
 
-    *tid = resp.tid;
+    tid = resp.tid;
 
     co_return resp.completion_code;
 }
