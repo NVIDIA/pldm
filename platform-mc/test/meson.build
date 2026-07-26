@@ -52,7 +52,6 @@ test_src = declare_dependency(
         '../sensor_manager.cpp',
         '../numeric_sensor.cpp',
         '../event_manager.cpp',
-        '../dbus_to_terminus_effecters.cpp',
     ],
     include_directories: dep_src_headers,
 )
