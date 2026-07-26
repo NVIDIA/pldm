@@ -48,6 +48,12 @@ if cpp.has_argument('-Wno-subobject-linkage')
     add_project_arguments('-Wno-subobject-linkage', language: 'cpp')
 endif
 
+# GCC 15 warns about template bodies redeclared with different access in
+# third-party headers (Boost ASIO via sdbusplus). Suppress to avoid -Werror.
+if cpp.has_argument('-Wno-template-body')
+    add_project_arguments('-Wno-template-body', language: 'cpp')
+endif
+
 # Enable POSIX poll APIs in libpldm
 if cpp.has_header('poll.h')
     conf_data.set('PLDM_HAS_POLL', 1)

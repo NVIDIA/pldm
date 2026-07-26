@@ -44,7 +44,7 @@ enum class ComponentUpdateStatus
     UpdateSkipped
 };
 
-class UpdateManager;
+class UpdateManagerBase;
 class DeviceUpdater;
 
 /** @enum Enumeration to represent the PLDM ComponentUpdater sequence in the
@@ -226,7 +226,7 @@ class ComponentUpdater
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos,
         const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
-        uint32_t maxTransferSize, UpdateManager* updateManager,
+        uint32_t maxTransferSize, UpdateManagerBase* updateManager,
         DeviceUpdater* deviceUpdater, size_t componentIndex) :
         fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(), eid(eid),
         package(package), compImageInfos(compImageInfos), compInfo(compInfo),
@@ -409,7 +409,7 @@ class ComponentUpdater
 
     /**
      *  @brief To update the status of fw update of the FD */
-    UpdateManager* updateManager;
+    UpdateManagerBase* updateManager;
 
     /**
      *  @brief To update the status of fw update of the component */

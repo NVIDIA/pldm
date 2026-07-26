@@ -26,7 +26,7 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
     ItemUpdateManager(ItemUpdateManager&&) = delete;
     ItemUpdateManager& operator=(const ItemUpdateManager&) = delete;
     ItemUpdateManager& operator=(ItemUpdateManager&&) = delete;
-    ~ItemUpdateManager() = default;
+    ~ItemUpdateManager();
 
     /**
      * @brief Constructor for ItemUpdateManager

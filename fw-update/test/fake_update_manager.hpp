@@ -24,10 +24,13 @@
 #include "fw-update/update_manager.hpp"
 #undef UpdateManager
 
+#include "test/test_instance_id.hpp"
+
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 
 #include <functional>
 #include <stdexcept>
+#include <vector>
 
 namespace software = sdbusplus::xyz::openbmc_project::Software::server;
 
@@ -83,12 +86,44 @@ void resetTestState()
 namespace pldm::fw_update
 {
 
-class FakeUpdateManager
+// Base-from-member: owns Event/Handler/InstanceIdDb so they outlive
+// UpdateManagerBase refs
+struct FakeUpdateManagerResources
+{
+    TestInstanceIdDb instanceIdDb;
+    sdeventplus::Event event{sdeventplus::Event::get_default()};
+    pldm::requester::Handler<pldm::requester::Request> handler{
+        nullptr,
+        event,
+        instanceIdDb,
+        false,
+        std::chrono::seconds(1),
+        2,
+        std::chrono::milliseconds(100)};
+};
+
+class FakeUpdateManager :
+    public FakeUpdateManagerResources,
+    public UpdateManagerBase
 {
   public:
-    bool fwDebug = true;
+    FakeUpdateManager() :
+        UpdateManagerBase(FakeUpdateManagerResources::event,
+                          FakeUpdateManagerResources::handler,
+                          FakeUpdateManagerResources::instanceIdDb)
+    {
+        fwDebug = true;
+    }
 
-    software::Activation::Activations activatePackage()
+    // Pure virtual overrides required by UpdateManagerBase
+    void updateDeviceCompletion(
+        mctp_eid_t /*eid*/, bool /*status*/,
+        std::vector<std::string> /*compNames*/ = {}) override
+    {}
+    void updateActivationProgress() override {}
+    void resetActivationState() override {}
+
+    software::Activation::Activations activatePackage() override
     {
         if (testing::throwOnActivatePackage)
         {
@@ -121,26 +156,25 @@ class FakeUpdateManager
         return;
     }
 
-    void resetActivationBlocksTransition()
+    void resetActivationBlocksTransition() override
     {
         testing::resetActivationBlocksTransitionCalled = true;
         testing::resetActivationBlocksTransitionCallCount++;
         return;
     }
 
-    void clearFirmwareUpdatePackage()
+    void clearFirmwareUpdatePackage() override
     {
         testing::clearFirmwareUpdatePackageCalled = true;
         testing::clearFirmwareUpdatePackageCallCount++;
         return;
     }
-    void closePackage()
-    {
-        return;
-    }
+
+    void closePackage() {}
+
     void performSecurityChecksAsync(
         std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError)
+        std::function<void(const std::string& errorMsg)> onError) override
     {
         if (testing::triggerSecurityChecksError)
         {

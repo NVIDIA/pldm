@@ -23,6 +23,8 @@ PHOSPHOR_LOG2_USING;
 namespace pldm::fw_update
 {
 
+ItemUpdateManager::~ItemUpdateManager() = default;
+
 bool ItemUpdateManager::processPackage()
 {
     inProgressActivation = std::make_unique<Activation>(

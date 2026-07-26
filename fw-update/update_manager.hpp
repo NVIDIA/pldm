@@ -131,6 +131,7 @@ class UpdateManagerBase
     {}
 
     bool fwDebug = false;
+    bool forceUpdate = false;
     RefreshSingleEndpointCallback refreshSingleEndpointCallback;
 
     Event& event;
@@ -386,11 +387,6 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief Clear the firmware update package stream and free resources */
     void clearFirmwareUpdatePackage();
-
-    /** @brief Stores the force update flag set on update policy */
-    bool forceUpdate;
-
-    bool fwDebug;
 
     /** @brief start pldm firmware update */
     void startPLDMUpdate();

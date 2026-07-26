@@ -262,7 +262,7 @@ UpdateManager::UpdateManager(
     ComponentNameMap& componentNameMap, bool fwDebug,
     RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
     UpdateManagerBase(event, handler, instanceIdDb), event(event),
-    handler(handler), instanceIdDb(instanceIdDb), fwDebug(fwDebug),
+    handler(handler), instanceIdDb(instanceIdDb),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
     componentNameMap(componentNameMap)
@@ -280,6 +280,7 @@ UpdateManager::UpdateManager(
 {
     progressTimer = nullptr;
     forceUpdate = false;
+    this->fwDebug = fwDebug;
 }
 
 UpdateManager::~UpdateManager() = default;
