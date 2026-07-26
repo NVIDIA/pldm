@@ -247,13 +247,12 @@ class DeviceUpdater
      *  @param[in] updateManager - To update the status of fw update of the
      *                             device
      */
-    explicit DeviceUpdater(mctp_eid_t eid, std::istream& package,
-                           const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-                           const ComponentImageInfos& compImageInfos,
-                           const ComponentInfo& compInfo,
-                           const ComponentIdNameMap& compIdNameInfo,
-                           uint32_t maxTransferSize,
-                           UpdateManagerBase* updateManager);
+    explicit DeviceUpdater(
+        mctp_eid_t eid, std::istream& package,
+        const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        const ComponentImageInfos& compImageInfos,
+        const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
+        uint32_t maxTransferSize, UpdateManagerBase* updateManager);
 
     /** @brief Get the progress of updating this device as percentage
      *

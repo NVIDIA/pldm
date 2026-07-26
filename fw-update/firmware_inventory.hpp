@@ -22,9 +22,9 @@
 #include <sdbusplus/server.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 
 class FirmwareInventoryTest;
 class FirmwareInventoryTestInstance;
