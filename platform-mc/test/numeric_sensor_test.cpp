@@ -20,6 +20,9 @@
 #include "../../test/test_valgrind_utils.hpp"
 #include "common/instance_id.hpp"
 #include "platform-mc/numeric_sensor.hpp"
+#include "platform-mc/terminus.hpp"
+#include "platform-mc/terminus_manager.hpp"
+#include "test/test_instance_id.hpp"
 
 #include <array>
 #include <cmath>
