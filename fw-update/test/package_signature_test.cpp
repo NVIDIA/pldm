@@ -1668,7 +1668,7 @@ class PackageSignatureTest : public testing::Test
         package.seekg(0);
         package.read(reinterpret_cast<char*>(fullPackage.data()), packageSize);
 
-        parser->parse(fullPackage.data(), packageSize);
+        parser->parse(fullPackage, packageSize);
 
         return parser->calculatePackageSize();
     }
