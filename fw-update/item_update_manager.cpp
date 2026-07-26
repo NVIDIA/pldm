@@ -81,7 +81,6 @@ bool ItemUpdateManager::processPackage()
 
     const auto& fwDeviceIDRecords = parser->getFwDeviceIDRecords();
     const auto& compImageInfos = parser->getComponentImageInfos();
-    static constexpr uint32_t MAXIMUM_TRANSFER_SIZE = 4096;
 
     auto packageSpan = packageMap->getChars();
     packageDataStream =
