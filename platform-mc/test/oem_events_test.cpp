@@ -6,6 +6,8 @@
 #include "platform-mc/oem_events.hpp"
 #include "platform-mc/smbios_mdr.hpp"
 
+#include <unistd.h>
+
 #include <array>
 
 #include <gtest/gtest.h>
@@ -74,29 +76,46 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
 {
     const std::array<uint8_t, 6> validOemPayload{
         {0x01, 0x00, 0x02, 0x00, 0xAA, 0x55}};
-    EXPECT_FALSE(handleCperErrorCountEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-    EXPECT_FALSE(handleMftDumpEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-    EXPECT_FALSE(handlePcieTelemetryEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-
     const std::array<uint8_t, 6> validInventoryPayload{
         {0x01, 0x00, 0x02, 0x00, '{', '}'}};
-    EXPECT_FALSE(handleInventoryEvent("../unsafe\\terminus",
-                                      validInventoryPayload.data(),
-                                      validInventoryPayload.size()));
+    if (getuid() != 0)
+    {
+        // Non-root: sanitized paths are not writable → operations fail
+        EXPECT_FALSE(handleCperErrorCountEvent(
+            "../unsafe\\terminus", validOemPayload.data(),
+            validOemPayload.size()));
+        EXPECT_FALSE(
+            handleMftDumpEvent("../unsafe\\terminus", validOemPayload.data(),
+                               validOemPayload.size()));
+        EXPECT_FALSE(handlePcieTelemetryEvent(
+            "../unsafe\\terminus", validOemPayload.data(),
+            validOemPayload.size()));
+        EXPECT_FALSE(handleInventoryEvent("../unsafe\\terminus",
+                                          validInventoryPayload.data(),
+                                          validInventoryPayload.size()));
+    }
 
     uint8_t smbiosPayload[] = {0x10, 0x20};
-    EXPECT_THROW(
-        (void)mdr::saveSmbiosData(sizeof(smbiosPayload), smbiosPayload),
-        std::filesystem::filesystem_error);
-
     const std::array<uint8_t, 5> validSmbiosEvent{
         {0x01, 0x02, 0x00, 0x10, 0x20}};
-    EXPECT_THROW((void)handleSmbiosEvent(validSmbiosEvent.data(),
-                                         validSmbiosEvent.size()),
-                 std::filesystem::filesystem_error);
+    if (getuid() != 0)
+    {
+        // Non-root: smbios directory creation fails with filesystem_error
+        EXPECT_THROW(
+            (void)mdr::saveSmbiosData(sizeof(smbiosPayload), smbiosPayload),
+            std::filesystem::filesystem_error);
+        EXPECT_THROW((void)handleSmbiosEvent(validSmbiosEvent.data(),
+                                             validSmbiosEvent.size()),
+                     std::filesystem::filesystem_error);
+    }
+    else
+    {
+        // Root: smbios directory can be created, write succeeds
+        EXPECT_NO_THROW(
+            (void)mdr::saveSmbiosData(sizeof(smbiosPayload), smbiosPayload));
+        EXPECT_NO_THROW((void)handleSmbiosEvent(validSmbiosEvent.data(),
+                                                validSmbiosEvent.size()));
+    }
 }
 
 TEST(OemEventsCoverage, sanitizeUnknownAndWarningHeaderCoverage)
@@ -104,17 +123,25 @@ TEST(OemEventsCoverage, sanitizeUnknownAndWarningHeaderCoverage)
     const std::array<uint8_t, 5> validPayloadWithWarnings{
         {0x02, 0x01, 0x01, 0x00, 0x5A}};
 
-    EXPECT_FALSE(
-        handleCperErrorCountEvent("..", validPayloadWithWarnings.data(),
-                                  validPayloadWithWarnings.size()));
-    EXPECT_FALSE(handleMftDumpEvent("..", validPayloadWithWarnings.data(),
-                                    validPayloadWithWarnings.size()));
-    EXPECT_FALSE(handlePcieTelemetryEvent("..", validPayloadWithWarnings.data(),
-                                          validPayloadWithWarnings.size()));
+    if (getuid() != 0)
+    {
+        // Non-root: "unknown_terminus" fallback path is not writable → fail
+        EXPECT_FALSE(
+            handleCperErrorCountEvent("..", validPayloadWithWarnings.data(),
+                                      validPayloadWithWarnings.size()));
+        EXPECT_FALSE(handleMftDumpEvent("..", validPayloadWithWarnings.data(),
+                                        validPayloadWithWarnings.size()));
+        EXPECT_FALSE(
+            handlePcieTelemetryEvent("..", validPayloadWithWarnings.data(),
+                                     validPayloadWithWarnings.size()));
+    }
 
-    const std::array<uint8_t, 6> validInventoryPayloadWithWarnings{
-        {0x02, 0x01, 0x02, 0x00, '{', '}'}};
-    EXPECT_FALSE(
-        handleInventoryEvent("..", validInventoryPayloadWithWarnings.data(),
-                             validInventoryPayloadWithWarnings.size()));
+    if (getuid() != 0)
+    {
+        const std::array<uint8_t, 6> validInventoryPayloadWithWarnings{
+            {0x02, 0x01, 0x02, 0x00, '{', '}'}};
+        EXPECT_FALSE(
+            handleInventoryEvent("..", validInventoryPayloadWithWarnings.data(),
+                                 validInventoryPayloadWithWarnings.size()));
+    }
 }

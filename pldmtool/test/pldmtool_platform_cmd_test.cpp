@@ -1681,8 +1681,10 @@ TEST(SetStateEffecter, CreateRequestMsgDirectValidPath)
 
     auto [rc, requestMsg] = cmd.createRequestMsg();
     EXPECT_EQ(rc, PLDM_SUCCESS);
+    // effecterCount=1: payloadSize = MIN_REQ_BYTES + (1-1)*sizeof(state_field)
     EXPECT_EQ(requestMsg.size(),
-              sizeof(pldm_msg_hdr) + PLDM_SET_STATE_EFFECTER_STATES_REQ_BYTES);
+              sizeof(pldm_msg_hdr) +
+                  PLDM_SET_STATE_EFFECTER_STATES_MIN_REQ_BYTES);
 }
 
 TEST(SetStateEffecter, CreateRequestMsgInvalidCount)

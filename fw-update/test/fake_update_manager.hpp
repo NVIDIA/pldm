@@ -149,7 +149,7 @@ class FakeUpdateManager :
         testing::lastSetActivationStatus = state;
     }
 
-    void clearActivationInfo()
+    void clearActivationInfo() override
     {
         testing::clearActivationInfoCalled = true;
         testing::clearActivationInfoCallCount++;

@@ -586,6 +586,11 @@ int FruImpl::getFRURecordByOption(
     // FRU table is built lazily, build if not done.
     buildFRUTable();
 
+    if (table.size() <= padBytes)
+    {
+        return PLDM_FRU_DATA_STRUCTURE_TABLE_UNAVAILABLE;
+    }
+
     /* 7 is sizeof(checksum,4) + padBytesMax(3)
      * We can not know size of the record table got by options in advance, but
      * it must be less than the source table. So it's safe to use sizeof the

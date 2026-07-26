@@ -42,7 +42,7 @@ class PackageParser
     PackageParser(PackageParser&&) = default;
     PackageParser& operator=(const PackageParser&) = delete;
     PackageParser& operator=(PackageParser&&) = delete;
-    ~PackageParser() = default;
+    virtual ~PackageParser() = default;
 
     /** @brief Constructor
      *

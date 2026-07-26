@@ -42,7 +42,6 @@ using namespace pldm::dbus;
 using Json = nlohmann::json;
 using namespace pldm::dbus;
 const Json emptyJson{};
-const std::vector<Json> emptyJsonList{};
 
 template <typename T>
 uint16_t extractTerminusHandle(std::vector<uint8_t>& pdr)

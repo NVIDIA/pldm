@@ -285,6 +285,14 @@ bool handleMftDumpEvent(const std::string& terminus, const uint8_t* eventData,
     lg2::info("Processing MFTDump Event (0xF2), terminus={TERM}, size={SIZE}",
               "TERM", terminus, "SIZE", eventDataSize);
 
+    // Require at least the OEM event header plus one payload byte
+    if (eventDataSize <= OEM_EVENT_HEADER_SIZE)
+    {
+        lg2::error("MFTDump event too small: size={SIZE}, minimum={MIN}",
+                   "SIZE", eventDataSize, "MIN", OEM_EVENT_HEADER_SIZE + 1);
+        return false;
+    }
+
     // The 0xF2 event does not follow the OEM header layout, so save the
     // complete event buffer to file without parsing or stripping a header.
     return saveEventData(terminus, MFTDUMP_FILE, eventData, eventDataSize,

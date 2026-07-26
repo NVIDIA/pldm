@@ -125,6 +125,7 @@ class UpdateManagerBase
     {}
     virtual void resetActivationBlocksTransition() {}
     virtual void clearFirmwareUpdatePackage() {}
+    virtual void clearActivationInfo() {}
     virtual void performSecurityChecksAsync(
         std::function<void(bool)> /*onComplete*/,
         std::function<void(const std::string&)> /*onError*/)
@@ -244,7 +245,7 @@ class UpdateManager : public UpdateManagerBase
      *
      *  @return true if apply time is Immediate, false otherwise
      */
-    bool isApplyTimeImmediate() const
+    bool isApplyTimeImmediate() const override
     {
         return requestedApplyTime ==
                sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
@@ -263,7 +264,7 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief Increments completed updates and refreshes the reported progress
      */
-    void updateActivationProgress();
+    void updateActivationProgress() override;
 
     /** @brief Callback function that will be invoked when the
      *         RequestedActivation will be set to active in the Activation
@@ -274,7 +275,7 @@ class UpdateManager : public UpdateManagerBase
      */
     software::Activation::Activations activatePackage() override;
 
-    void clearActivationInfo();
+    void clearActivationInfo() override;
 
     /** @brief Get the list of component targets for each EID based on object
      *         paths
@@ -298,7 +299,8 @@ class UpdateManager : public UpdateManagerBase
     /** @brief Translate the RequestedComponentActivationMethod in PLDM spec to
      *         a human readable string
      */
-    std::string getActivationMethod(bitfield16_t compActivationModification);
+    std::string getActivationMethod(
+        bitfield16_t compActivationModification) override;
 
     /** @brief Create message registry for firmware update
      */
@@ -308,7 +310,7 @@ class UpdateManager : public UpdateManagerBase
         const std::string& resolution = {},
         const pldm_firmware_update_commands commandType =
             static_cast<pldm_firmware_update_commands>(0),
-        const uint8_t errorCode = 0);
+        const uint8_t errorCode = 0) override;
 
     /** @brief Create a Message Registry for Resource Errors
      */
@@ -316,7 +318,7 @@ class UpdateManager : public UpdateManagerBase
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         size_t compIndex, const std::string& messageID,
         const std::string& messageError, const std::string& resolution,
-        bool overrideSeverity = false);
+        bool overrideSeverity = false) override;
 
     /** @brief Emit an Info-severity ResourceErrorsDetected entry per
      *         applicable component when multiple package records match
@@ -383,10 +385,10 @@ class UpdateManager : public UpdateManagerBase
     void updatePackageCompletion();
 
     /** @brief reset activation block transition to disable bmc reboot guard */
-    void resetActivationBlocksTransition();
+    void resetActivationBlocksTransition() override;
 
     /** @brief Clear the firmware update package stream and free resources */
-    void clearFirmwareUpdatePackage();
+    void clearFirmwareUpdatePackage() override;
 
     /** @brief start pldm firmware update */
     void startPLDMUpdate();
@@ -400,7 +402,7 @@ class UpdateManager : public UpdateManagerBase
     /** @brief Get the component name corresponding to the input params */
     ComponentName getComponentName(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-        size_t compIndex);
+        size_t compIndex) override;
 
     /** @brief performs package verification checks asynchronously */
     void verifyPackageAsync(
@@ -415,7 +417,7 @@ class UpdateManager : public UpdateManagerBase
     /** @brief perform security checks */
     void performSecurityChecksAsync(
         std::function<void(bool)> onComplete,
-        std::function<void(const std::string& errorMsg)> onError);
+        std::function<void(const std::string& errorMsg)> onError) override;
 
     /** @brief Clear any existing activation if present */
     void resetActivationState() override;

@@ -425,7 +425,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Activating;
 
     const Server::Activation::Activations stateActive =
-        Server::Activation::Activations::Active;
+        Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
     _activation.activation(activationState);
@@ -444,7 +444,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Activating;
 
     const Server::Activation::Activations stateActive =
-        Server::Activation::Activations::Active;
+        Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
     testing::updateManagerActivatePackageResult =
@@ -467,7 +467,7 @@ TEST_F(ActivationTest,
         Server::Activation::Activations::Activating;
 
     const Server::Activation::Activations stateActive =
-        Server::Activation::Activations::Active;
+        Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
     testing::securityChecksStatus = false;
@@ -486,7 +486,7 @@ TEST_F(ActivationTest, RequestedActivation_status_active)
         Server::Activation::RequestedActivations::Active;
 
     const Server::Activation::Activations stateActive =
-        Server::Activation::Activations::Active;
+        Server::Activation::Activations::Ready;
 
     Activation _activation(busMock, objPath, stateActive, &updateManager);
     Server::Activation::RequestedActivations resultState =

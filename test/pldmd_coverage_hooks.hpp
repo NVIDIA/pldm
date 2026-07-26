@@ -181,6 +181,21 @@ extern "C" uint8_t pack_pldm_header(const struct pldm_header_info* header,
     return realFn(header, msg);
 }
 
+extern "C" int pack_pldm_header_errno(const struct pldm_header_info* header,
+                                      struct pldm_msg_hdr* msg)
+{
+    auto& state = pldm::test::coverage::hookState();
+    if (state.forcePackFailure)
+    {
+        return -EINVAL;
+    }
+
+    using Fn = int (*)(const struct pldm_header_info*, struct pldm_msg_hdr*);
+    static auto realFn =
+        pldm::test::coverage::resolveNextSymbol<Fn>("pack_pldm_header_errno");
+    return realFn(header, msg);
+}
+
 extern "C" pldm_pdr* pldm_pdr_init()
 {
     auto& state = pldm::test::coverage::hookState();

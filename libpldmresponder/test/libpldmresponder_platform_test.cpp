@@ -2649,6 +2649,10 @@ TEST(setNumericEffecterValueHandler, dbusFailureCoverage)
     DBusMapping dbusMapping{"/foo/bar", "xyz.openbmc_project.Foo.Bar",
                             "propertyName", "uint64_t"};
 
+    EXPECT_CALL(mockedUtils,
+                setDbusProperty(dbusMapping, PropertyValue{uint64_t{1234}}))
+        .WillOnce(Throw(std::runtime_error("dbus failure")));
+
     auto rc = platform_numeric_effecter::setNumericEffecterValueHandler<
         MockdBusHandler, Handler>(
         mockedUtils, handler, effecterId, PLDM_EFFECTER_DATA_SIZE_UINT32,

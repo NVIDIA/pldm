@@ -600,7 +600,7 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
     {
         lg2::error("Error : GetTID for Endpoint ID {EID}, complete code {CC}.",
                    "EID", eid, "CC", resp.completion_code);
-        co_return rc;
+        co_return resp.completion_code;
     }
 
     tid = resp.tid;
@@ -681,7 +681,7 @@ exec::task<int> TerminusManager::getPLDMTypes(tid_t tid,
         lg2::error(
             "Error : GetPLDMTypes for terminus ID {TID}, complete code {CC}.",
             "TID", tid, "CC", resp.completion_code);
-        co_return rc;
+        co_return resp.completion_code;
     }
 
     ::memcpy(&supportedTypes, &resp.pldm_types, sizeof(resp.pldm_types));

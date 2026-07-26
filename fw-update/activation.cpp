@@ -76,7 +76,7 @@ ActivationIntf::Activations Activation::activation(
 
 void Delete::delete_()
 {
-    updateManager->resetActivationState();
+    updateManager->clearActivationInfo();
 }
 } // namespace fw_update
 } // namespace pldm

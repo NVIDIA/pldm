@@ -434,6 +434,14 @@ std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
         supportedPackageVersions.find(pkgHeader.package_header_format_version);
     if (it != supportedPackageVersions.end())
     {
+        // Validate UUID matches the expected value for this format version
+        const auto& expectedUUID = it->second;
+        if (!std::equal(pkgHeader.uuid, pkgHeader.uuid + PLDM_FWUP_UUID_LENGTH,
+                        expectedUUID.begin(), expectedUUID.end()))
+        {
+            error("PLDM package UUID does not match format version");
+            return nullptr;
+        }
         PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
         ComponentBitmapBitLength componentBitmapBitLength =
             pkgHeader.component_bitmap_bit_length;
