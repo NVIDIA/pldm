@@ -2,6 +2,7 @@ fw_update_test_sources = [
     'fake_dbusutil.cpp',
     '../activation.cpp',
     '../aggregate_update_manager.cpp',
+    '../item_update_manager.cpp',
     '../em_config.cpp',
     '../inventory_manager.cpp',
     '../package_parser.cpp',

@@ -60,14 +60,17 @@ TEST(GetPLDMTypes, ParseResponseMsgSuccess)
     GetPLDMTypes cmd("base", "GetPLDMTypes", sub);
 
     // Build response: cc=0, types bitfield with base(0) and platform(2) set
-    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + 1 + 8, 0);
+    std::vector<uint8_t> responseData(
+        sizeof(pldm_msg_hdr) + PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES, 0);
     auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
 
-    // Encode a valid response
-    std::vector<bitfield8_t> types(8, {0});
-    types[0].byte = 0x05; // bit 0 (base) and bit 2 (platform) set
-
-    auto rc = encode_get_types_resp(0, PLDM_SUCCESS, types.data(), resp);
+    // Encode a valid response using new struct-based API
+    pldm_base_get_pldm_types_resp typesResp{};
+    typesResp.completion_code = PLDM_SUCCESS;
+    typesResp.pldm_types.byte[0] = 0x05; // base(0) and platform(2)
+    size_t payloadLen = PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES;
+    auto rc =
+        encode_pldm_base_get_pldm_types_resp(0, &typesResp, resp, &payloadLen);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
     EXPECT_NO_THROW(
@@ -94,12 +97,15 @@ TEST(GetPLDMTypes, ParseResponseMsgCompletionCodeError)
     auto sub = app.add_subcommand("test", "test");
     GetPLDMTypes cmd("base", "GetPLDMTypes", sub);
 
-    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + 1 + 8, 0);
+    std::vector<uint8_t> responseData(
+        sizeof(pldm_msg_hdr) + PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES, 0);
     auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
-    std::vector<bitfield8_t> types(8, {0});
-    types[0].byte = 0x01;
-
-    auto rc = encode_get_types_resp(0, PLDM_ERROR, types.data(), resp);
+    pldm_base_get_pldm_types_resp typesResp{};
+    typesResp.completion_code = PLDM_ERROR;
+    typesResp.pldm_types.byte[0] = 0x01;
+    size_t payloadLen2 = PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES;
+    auto rc =
+        encode_pldm_base_get_pldm_types_resp(0, &typesResp, resp, &payloadLen2);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
     EXPECT_NO_THROW(
@@ -125,15 +131,16 @@ TEST(GetTID, ParseResponseMsgSuccess)
     auto sub = app.add_subcommand("test", "test");
     GetTID cmd("base", "GetTID", sub);
 
-    // Build response
-    size_t payloadLen = PLDM_GET_TID_RESP_BYTES;
+    // Build response using new struct-based API
+    size_t payloadLen = PLDM_BASE_GET_TID_RESP_BYTES;
     std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
     auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
 
-    auto rc = encode_get_tid_resp(0, PLDM_SUCCESS, 5, resp);
+    pldm_base_get_tid_resp tidResp{PLDM_SUCCESS, 5};
+    auto rc = encode_pldm_base_get_tid_resp(0, &tidResp, resp, &payloadLen);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
-    EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    EXPECT_NO_THROW(cmd.parseResponseMsg(resp, PLDM_BASE_GET_TID_RESP_BYTES));
 }
 
 TEST(GetTID, ParseResponseMsgErrorCC)
@@ -142,14 +149,15 @@ TEST(GetTID, ParseResponseMsgErrorCC)
     auto sub = app.add_subcommand("test", "test");
     GetTID cmd("base", "GetTID", sub);
 
-    size_t payloadLen = PLDM_GET_TID_RESP_BYTES;
+    size_t payloadLen = PLDM_BASE_GET_TID_RESP_BYTES;
     std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
     auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
 
-    auto rc = encode_get_tid_resp(0, PLDM_ERROR, 0, resp);
+    pldm_base_get_tid_resp tidRespErr{PLDM_ERROR, 0};
+    auto rc = encode_pldm_base_get_tid_resp(0, &tidRespErr, resp, &payloadLen);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
-    EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    EXPECT_NO_THROW(cmd.parseResponseMsg(resp, PLDM_BASE_GET_TID_RESP_BYTES));
 }
 
 TEST(GetTID, ParseResponseMsgDecodeError)

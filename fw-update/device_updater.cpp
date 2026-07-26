@@ -77,6 +77,52 @@ void DeviceUpdater::deviceUpdaterHandler()
                         stdexec::then([&](int rc) { rcOpt.emplace(rc); })));
 }
 
+exec::task<int> DeviceUpdater::startDeviceUpdate()
+{
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    size_t numComponents = applicableComponents.size();
+    auto rc = co_await sendRequestUpdate();
+    if (rc)
+    {
+        error("Error while sending RequestUpdate.");
+        updateManager->updateDeviceCompletion(eid, false);
+        co_return PLDM_ERROR;
+    }
+    for (size_t compIndex = 0; compIndex < numComponents; compIndex++)
+    {
+        rc = co_await sendPassCompTableRequest(compIndex);
+        if (rc)
+        {
+            error("Error while sending PassComponentTable.");
+            auto cancelRc = co_await sendCancelUpdateRequest();
+            if (cancelRc)
+            {
+                error("Error while sending CancelUpdate.");
+            }
+            updateManager->updateDeviceCompletion(eid, false);
+            co_return PLDM_ERROR;
+        }
+    }
+    std::unique_ptr<ComponentUpdater> compUpdater =
+        std::make_unique<ComponentUpdater>(
+            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
+            compIdNameInfo, maxTransferSize, updateManager, this,
+            componentIndex);
+    componentUpdaterMap.emplace(componentIndex,
+                                std::make_pair(std::move(compUpdater), false));
+    rc = co_await componentUpdaterMap[componentIndex]
+             .first->startComponentUpdater();
+    if (rc)
+    {
+        error("Error while initiating component updater for "
+              "ComponentIndex={COMPONENTINDEX}.",
+              "COMPONENTINDEX", componentIndex);
+        co_return PLDM_ERROR;
+    }
+    co_return PLDM_SUCCESS;
+}
+
 exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
 {
     auto instanceIdResult = updateManager->instanceIdDb.next(eid);
