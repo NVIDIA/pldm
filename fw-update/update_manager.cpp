@@ -526,6 +526,7 @@ exec::task<void> UpdateManager::processStream(
     {
         pkgData = mmapStream->data();
         packageSize = mmapStream->size();
+        packageData.assign(pkgData, pkgData + packageSize);
     }
     else
     {
@@ -554,7 +555,7 @@ exec::task<void> UpdateManager::processStream(
     }
     try
     {
-        parser->parse(pkgData, packageSize);
+        parser->parse(packageData, packageSize);
     }
     catch (const sdbusplus::error::xyz::openbmc_project::software::update::
                InvalidSignature&)
