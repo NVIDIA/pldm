@@ -35,14 +35,16 @@ dep_src_files = [
 dep_src_files += [
     '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
+    '../../fw-update/aggregate_update_manager.cpp',
+    '../../fw-update/item_update_manager.cpp',
 ]
 
-dep_src_headers = ['../../requester', '../../oem/nvidia']
+dep_src_headers = ['../../requester', '../../oem/nvidia', '../../pldmd']
 
 test_cpp_args = ['-DOEM_NVIDIA']
 
 test_src = declare_dependency(
-    sources: [
+    sources: dep_src_files + [
         '../terminus_manager.cpp',
         '../terminus.cpp',
         '../platform_manager.cpp',
@@ -52,7 +54,7 @@ test_src = declare_dependency(
         '../event_manager.cpp',
         '../dbus_to_terminus_effecters.cpp',
     ],
-    include_directories: ['../../requester', '../../pldmd'],
+    include_directories: dep_src_headers,
 )
 
 tests = [
