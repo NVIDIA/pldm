@@ -237,7 +237,7 @@ TEST_F(DeviceUpdaterTest, validatePackage)
 
     package.seekg(0);
 
-    parser->parse(packageHeader.data(), packageSize);
+    parser->parse(packageHeader, packageSize);
     const auto& fwDeviceIDRecords = parser->getFwDeviceIDRecords();
     const auto& testPkgCompImageInfos = parser->getComponentImageInfos();
 
