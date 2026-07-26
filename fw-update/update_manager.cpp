@@ -261,8 +261,8 @@ UpdateManager::UpdateManager(
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug,
     RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
-    event(event), handler(handler), instanceIdDb(instanceIdDb),
-    fwDebug(fwDebug),
+    UpdateManagerBase(event, handler, instanceIdDb), event(event),
+    handler(handler), instanceIdDb(instanceIdDb), fwDebug(fwDebug),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
     componentNameMap(componentNameMap)
