@@ -1,3 +1,5 @@
+#include "common/utils.hpp"
+
 #include <fstream>
 #ifdef __clang__
 #pragma clang diagnostic push

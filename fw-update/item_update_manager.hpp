@@ -1,5 +1,6 @@
 #pragma once
 
+#include "activation.hpp"
 #include "update_manager.hpp"
 
 #include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
