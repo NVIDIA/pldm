@@ -412,16 +412,19 @@ class FirmwareInventoryObjectTest : public pldm::fw_update::FirmwareInventory
 TEST(FirmwareInventoryObjectTest, ConstructorSetsProperties)
 {
     SoftwareIdentifier softwareIdentifier{1, 100};
+    const std::string softwareBasePath =
+        "/xyz/openbmc_project/software/PLDM_Device_TestDevice";
+    const std::string generatedId = "1234";
     const std::string expectedSoftwarePath =
-        "/xyz/openbmc_project/software/PLDM_Device_TestDevice_1234";
+        softwareBasePath + "_" + generatedId;
     const std::string expectedSoftwareVersion = "2.3.4";
     const std::string expectedEndpointPath =
         "/xyz/openbmc_project/inventory/system/board/PLDM_Device";
     SoftwareVersionPurpose expectedPurpose = SoftwareVersionPurpose::Unknown;
 
     FirmwareInventoryObjectTest inventory(
-        softwareIdentifier, expectedSoftwarePath, expectedSoftwareVersion,
-        expectedEndpointPath, expectedPurpose);
+        softwareIdentifier, softwareBasePath, generatedId,
+        expectedSoftwareVersion, expectedEndpointPath, expectedPurpose);
 
     EXPECT_EQ(inventory.getSoftwarePath(), expectedSoftwarePath);
     auto associationTuples = inventory.getAssociation().associations();
