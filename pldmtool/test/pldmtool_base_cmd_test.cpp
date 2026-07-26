@@ -67,7 +67,7 @@ TEST(GetPLDMTypes, ParseResponseMsgSuccess)
     // Encode a valid response using new struct-based API
     pldm_base_get_pldm_types_resp typesResp{};
     typesResp.completion_code = PLDM_SUCCESS;
-    typesResp.pldm_types.byte[0] = 0x05; // base(0) and platform(2)
+    typesResp.pldm_types[0].byte = 0x05; // base(0) and platform(2)
     size_t payloadLen = PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES;
     auto rc =
         encode_pldm_base_get_pldm_types_resp(0, &typesResp, resp, &payloadLen);
@@ -102,7 +102,7 @@ TEST(GetPLDMTypes, ParseResponseMsgCompletionCodeError)
     auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
     pldm_base_get_pldm_types_resp typesResp{};
     typesResp.completion_code = PLDM_ERROR;
-    typesResp.pldm_types.byte[0] = 0x01;
+    typesResp.pldm_types[0].byte = 0x01;
     size_t payloadLen2 = PLDM_BASE_GET_PLDM_TYPES_RESP_BYTES;
     auto rc =
         encode_pldm_base_get_pldm_types_resp(0, &typesResp, resp, &payloadLen2);

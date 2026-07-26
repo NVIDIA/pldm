@@ -447,6 +447,7 @@ source_files = [
     'common/mctp_error_handling.cpp',
     'fw-update/activation.cpp',
     'fw-update/aggregate_update_manager.cpp',
+    'fw-update/item_update_manager.cpp',
     'fw-update/em_config.cpp',
     'fw-update/inventory_manager.cpp',
     'fw-update/firmware_inventory_manager.cpp',

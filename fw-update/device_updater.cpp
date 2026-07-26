@@ -123,6 +123,30 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
     co_return PLDM_SUCCESS;
 }
 
+uint8_t DeviceUpdater::getProgress() const
+{
+    if (componentUpdaterMap.empty())
+    {
+        return 0;
+    }
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    size_t total = applicableComponents.size();
+    if (total == 0)
+    {
+        return 0;
+    }
+    size_t completed = 0;
+    for (const auto& [idx, updater] : componentUpdaterMap)
+    {
+        if (updater.second)
+        {
+            completed++;
+        }
+    }
+    return static_cast<uint8_t>((completed * 100) / total);
+}
+
 exec::task<int> DeviceUpdater::sendRequestUpdate(uint8_t retryCount)
 {
     auto instanceIdResult = updateManager->instanceIdDb.next(eid);
