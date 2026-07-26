@@ -269,6 +269,38 @@ static void sealAndRewind(sdbusplus::message::message& msg)
     EXPECT_GE(sd_bus_message_rewind(msg.get(), true), 0);
 }
 
+static std::string getSingleAssociationPath(
+    const std::shared_ptr<NumericSensor>& sensor)
+{
+    const auto& assocs = sensor->associationDefinitionsIntf->associations();
+    EXPECT_EQ(1u, assocs.size());
+    if (assocs.empty())
+    {
+        return std::string{};
+    }
+    return std::get<2>(assocs.front());
+}
+
+static void waitForRefreshAssociationsTask(Terminus& terminus)
+{
+    if (!terminus.refreshAssociationsTaskHandle.has_value())
+    {
+        return;
+    }
+
+    auto& rcOpt = std::get<1>(*terminus.refreshAssociationsTaskHandle);
+    auto& io = pldm::utils::DBusHandler::getAsioConnection()->get_io_context();
+    for (size_t attempt = 0; attempt < 1000 && !rcOpt.has_value(); ++attempt)
+    {
+        io.run_for(std::chrono::milliseconds(1));
+        io.restart();
+    }
+
+    const bool completed = rcOpt.has_value();
+    terminus.refreshAssociationsTaskHandle.reset();
+    EXPECT_TRUE(completed);
+}
+
 static std::vector<uint8_t> makeEntityAssociationPdr()
 {
     std::vector<uint8_t> pdr(
@@ -2176,6 +2208,9 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
     terminus.initalized = true;
+    // interfaceAdded() now reads the message before the init check (so a
+    // refresh is latched even during init), so the first call consumed it.
+    EXPECT_GE(sd_bus_message_rewind(msg.get(), true), 0);
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
     auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
@@ -2580,6 +2615,277 @@ TEST_F(TerminusTest, privateGetterAndUpdateAssociationsCoverage)
     EXPECT_EQ(nullptr, noAuxSensor->valueIntf);
     EXPECT_NE(std::string::npos, auxSensor->path.find("TerminusPrivate_"));
     EXPECT_NE(std::string::npos, overwriteSensor->path.find("OverwriteSensor"));
+}
+
+TEST_F(TerminusTest, updateAssociationsFallbackGatesTelemetryCoverage)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000169");
+    Terminus terminus(0x69, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("TerminusGate");
+    terminus.systemInventoryPath =
+        "/xyz/openbmc_project/inventory/system/chassis/chassis69";
+    terminus.setInstance(9);
+
+    const std::string boardPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis69/board0"};
+    const std::string cpuPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis69/CPU_9"};
+
+    // Board inventory only — the CPU inventory is intentionally absent so
+    // the PROC sensor degrades to the system-chassis fallback.
+    terminus.inventories.emplace_back(boardPath, PLDM_ENTITY_SYS_BOARD, 1);
+    terminus.inventoryParentMap[boardPath] = terminus.systemInventoryPath;
+
+    std::string associationPath = terminus.systemInventoryPath;
+
+    auto cpuPdr =
+        makeNumericSensorValuePdrStruct(0x720, PLDM_ENTITY_PROC, 1, 50);
+    std::string cpuName{"cpu_gate_69"};
+    auto cpuSensor = std::make_shared<NumericSensor>(
+        terminus.getTid(), false, cpuPdr, cpuName, associationPath, nullptr);
+
+    auto boardPdr =
+        makeNumericSensorValuePdrStruct(0x721, PLDM_ENTITY_SYS_BOARD, 1, 51);
+    std::string boardName{"board_gate_69"};
+    auto boardSensor =
+        std::make_shared<NumericSensor>(terminus.getTid(), false, boardPdr,
+                                        boardName, associationPath, nullptr);
+
+    auto looseBoardPdr =
+        makeNumericSensorValuePdrStruct(0x722, PLDM_ENTITY_SYS_BOARD, 2, 52);
+    std::string looseBoardName{"loose_board_gate_69"};
+    auto looseBoardSensor = std::make_shared<NumericSensor>(
+        terminus.getTid(), false, looseBoardPdr, looseBoardName,
+        associationPath, nullptr);
+
+    terminus.numericSensors.emplace_back(cpuSensor);
+    terminus.numericSensors.emplace_back(boardSensor);
+    terminus.numericSensors.emplace_back(looseBoardSensor);
+
+    // State sensors follow the same placeholder rule (port
+    // Status/State/Health leak through state sets otherwise).
+    StateSetData healthStateData =
+        std::make_tuple(static_cast<uint16_t>(PLDM_STATESET_ID_HEALTHSTATE),
+                        PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL,
+                                       PLDM_STATESET_HEALTH_STATE_CRITICAL});
+    auto cpuStateSensor = std::make_shared<StateSensor>(
+        terminus.getTid(), false, 0x723,
+        StateSetInfo{EntityInfo{50, PLDM_ENTITY_PROC, 1},
+                     std::vector<StateSetData>{healthStateData}},
+        nullptr, associationPath, nullptr);
+    auto boardStateSensor = std::make_shared<StateSensor>(
+        terminus.getTid(), false, 0x724,
+        StateSetInfo{EntityInfo{1, PLDM_ENTITY_SYS_BOARD, 1},
+                     std::vector<StateSetData>{healthStateData}},
+        nullptr, associationPath, nullptr);
+    auto looseBoardStateSensor = std::make_shared<StateSensor>(
+        terminus.getTid(), false, 0x725,
+        StateSetInfo{EntityInfo{1, PLDM_ENTITY_SYS_BOARD, 2},
+                     std::vector<StateSetData>{healthStateData}},
+        nullptr, associationPath, nullptr);
+
+    // PCIe-link port state sensor (LinkState on PCI_EXPRESS_BUS). The link
+    // has no EM inventory of its own, so findInventory resolves it through
+    // its CPU container; while the CPU inventory is absent that walk
+    // degrades to the system chassis and the sensor must stay gated, or
+    // its Status/State telemetry freezes under the chassis in shmem.
+    const EntityInfo cpuContainerEntity{50, PLDM_ENTITY_PROC, 1};
+    const EntityInfo pcieLinkEntity{60, PLDM_ENTITY_PCI_EXPRESS_BUS, 1};
+    terminus.entityAssociations.emplace(
+        60, std::make_pair(cpuContainerEntity,
+                           std::set<EntityInfo>{pcieLinkEntity}));
+    StateSetData linkStateData =
+        std::make_tuple(static_cast<uint16_t>(PLDM_STATESET_ID_LINKSTATE),
+                        PossibleStates{PLDM_STATESET_LINK_STATE_DISCONNECTED,
+                                       PLDM_STATESET_LINK_STATE_CONNECTED});
+    auto pcieLinkStateSensor = std::make_shared<StateSensor>(
+        terminus.getTid(), false, 0x726,
+        StateSetInfo{pcieLinkEntity, std::vector<StateSetData>{linkStateData}},
+        nullptr, associationPath, nullptr);
+
+    terminus.stateSensors.emplace_back(cpuStateSensor);
+    terminus.stateSensors.emplace_back(boardStateSensor);
+    terminus.stateSensors.emplace_back(looseBoardStateSensor);
+    terminus.stateSensors.emplace_back(pcieLinkStateSensor);
+
+    terminusManager.numericSensorsWithoutAuxName = true;
+    auto updateRc = stdexec::sync_wait(terminus.updateAssociations());
+    ASSERT_TRUE(updateRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
+
+    // PROC sensor fell back to the system chassis: telemetry gate must stay
+    // closed so a wrong metricProperty URI is never frozen into shmem.
+    EXPECT_EQ(terminus.systemInventoryPath,
+              getSingleAssociationPath(cpuSensor));
+    EXPECT_TRUE(cpuSensor->isDefaultInventoryAssociated());
+
+    // Sensor resolving to real inventory: gate open.
+    EXPECT_EQ(boardPath, getSingleAssociationPath(boardSensor));
+    EXPECT_FALSE(boardSensor->isDefaultInventoryAssociated());
+
+    // Non-dedicated entity type on the system chassis is a legitimate home:
+    // gate stays open so baseboard sensors keep pushing telemetry.
+    EXPECT_EQ(terminus.systemInventoryPath,
+              getSingleAssociationPath(looseBoardSensor));
+    EXPECT_FALSE(looseBoardSensor->isDefaultInventoryAssociated());
+
+    // State sensors: same rule. The PROC state sensor fell back to the
+    // system chassis: state-set telemetry stays gated, while the entity id
+    // keeps the fallback attribution so sensor events are still logged
+    // instead of being dropped by handleSensorEvent's empty-name check.
+    EXPECT_TRUE(cpuStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("chassis69", cpuStateSensor->getAssociationEntityId());
+
+    // State sensor resolving to real inventory: gate open.
+    EXPECT_FALSE(boardStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("board0", boardStateSensor->getAssociationEntityId());
+
+    // Non-dedicated state sensor on the system chassis: gate open.
+    EXPECT_FALSE(looseBoardStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("chassis69", looseBoardStateSensor->getAssociationEntityId());
+
+    // PCIe-link state sensor resolved through the missing CPU container to
+    // the system chassis: gated (otherwise leaks as
+    // ...PCIeBus_0_PCIeLink_N#/Status/State under the chassis).
+    EXPECT_TRUE(pcieLinkStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("chassis69", pcieLinkStateSensor->getAssociationEntityId());
+
+    // The ProcessorModule inventory appears first (EM publishes module and
+    // CPU as separate objects): the PROC sensor now resolves one level up
+    // to the module, which is still not its dedicated home — the gate must
+    // stay closed or the first shmem insert freezes the URI under
+    // HGX_ProcessorModule_x instead of the CPU.
+    const std::string modulePath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis69/module9"};
+    const EntityInfo moduleEntity{40, PLDM_ENTITY_PROC_IO_MODULE, 9};
+    terminus.inventories.emplace_back(modulePath, PLDM_ENTITY_PROC_IO_MODULE,
+                                      9);
+    terminus.inventoryParentMap[modulePath] = terminus.systemInventoryPath;
+    terminus.entityAssociations.emplace(
+        50,
+        std::make_pair(moduleEntity, std::set<EntityInfo>{cpuContainerEntity}));
+    updateRc = stdexec::sync_wait(terminus.updateAssociations());
+    ASSERT_TRUE(updateRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
+
+    EXPECT_EQ(modulePath, getSingleAssociationPath(cpuSensor));
+    EXPECT_TRUE(cpuSensor->isDefaultInventoryAssociated());
+    EXPECT_TRUE(cpuStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("module9", cpuStateSensor->getAssociationEntityId());
+    EXPECT_TRUE(pcieLinkStateSensor->isDefaultInventoryAssociated());
+
+    // CPU inventory shows up later (refreshAssociations path): the real
+    // parent resolves and the gate opens.
+    terminus.inventories.emplace_back(cpuPath, PLDM_ENTITY_PROC, 9);
+    terminus.inventoryParentMap[cpuPath] = boardPath;
+    updateRc = stdexec::sync_wait(terminus.updateAssociations());
+    ASSERT_TRUE(updateRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
+
+    EXPECT_EQ(cpuPath, getSingleAssociationPath(cpuSensor));
+    EXPECT_FALSE(cpuSensor->isDefaultInventoryAssociated());
+
+    EXPECT_FALSE(cpuStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("CPU_9", cpuStateSensor->getAssociationEntityId());
+
+    // The PCIe link re-resolves through its CPU container to the real
+    // inventory: gate opens without a daemon restart.
+    EXPECT_FALSE(pcieLinkStateSensor->isDefaultInventoryAssociated());
+    EXPECT_EQ("CPU_9", pcieLinkStateSensor->getAssociationEntityId());
+}
+
+TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
+{
+    std::string uuid("00000000-0000-0000-0000-00000000017E");
+    Terminus terminus(0x7E, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.initalized = true;
+
+    // A device-association config (I2C/USB) arriving after its inventory
+    // box was scanned must trigger a refresh, like the NSM variant.
+    auto rawBus = sdbusplus::bus::new_default();
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace("xyz.openbmc_project.Configuration.USBDeviceAssociation",
+                       pldm::dbus::PropertyMap{});
+    auto msg = rawBus.new_method_call(
+        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7E",
+        "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(
+                   "/xyz/openbmc_project/inventory/system/chassis/chassis7E"),
+               interfaces);
+    sealAndRewind(msg);
+
+    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
+    EXPECT_TRUE(terminus.refreshAssociationsTaskHandle.has_value());
+    waitForRefreshAssociationsTask(terminus);
+
+    std::string i2cUuid("00000000-0000-0000-0000-00000000017F");
+    Terminus i2cTerminus(0x7F, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, i2cUuid,
+                         terminusManager);
+    i2cTerminus.initalized = true;
+
+    pldm::dbus::InterfaceMap i2cInterfaces;
+    i2cInterfaces.emplace(
+        "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
+        pldm::dbus::PropertyMap{});
+    auto i2cMsg = rawBus.new_method_call(
+        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7F",
+        "org.test.Interface", "Method");
+    i2cMsg.append(
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/inventory/system/chassis/chassis7F"),
+        i2cInterfaces);
+    sealAndRewind(i2cMsg);
+
+    EXPECT_NO_THROW(i2cTerminus.interfaceAdded(i2cMsg));
+    EXPECT_TRUE(i2cTerminus.refreshAssociationsTaskHandle.has_value());
+    waitForRefreshAssociationsTask(i2cTerminus);
+}
+
+TEST_F(TerminusTest, interfaceAddedDuringInitLatchesRefreshCoverage)
+{
+    std::string uuid("00000000-0000-0000-0000-00000000017C");
+    Terminus terminus(0x7C, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    EXPECT_FALSE(terminus.initalized);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace(std::string(entityInterfaces.begin()->second),
+                       pldm::dbus::PropertyMap{});
+    auto msg = rawBus.new_method_call(
+        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7C",
+        "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(
+                   "/xyz/openbmc_project/inventory/system/chassis/chassis7C"),
+               interfaces);
+    sealAndRewind(msg);
+
+    // Inventory published while the terminus is still initializing must
+    // latch a deferred refresh so applyPendingRefresh() re-resolves gated
+    // sensors right after init instead of dropping the signal.
+    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
+    EXPECT_TRUE(terminus.needRefresh);
+    EXPECT_FALSE(terminus.refreshAssociationsTaskHandle.has_value());
+
+    // A non-interested interface during init must not latch a refresh.
+    std::string quietUuid("00000000-0000-0000-0000-00000000017D");
+    Terminus quietTerminus(0x7D, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, quietUuid,
+                           terminusManager);
+    pldm::dbus::InterfaceMap boringInterfaces;
+    boringInterfaces.emplace("org.test.Uninteresting",
+                             pldm::dbus::PropertyMap{});
+    auto boringMsg = rawBus.new_method_call(
+        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7D",
+        "org.test.Interface", "Method");
+    boringMsg.append(
+        sdbusplus::message::object_path(
+            "/xyz/openbmc_project/inventory/system/chassis/chassis7D"),
+        boringInterfaces);
+    sealAndRewind(boringMsg);
+    EXPECT_NO_THROW(quietTerminus.interfaceAdded(boringMsg));
+    EXPECT_FALSE(quietTerminus.needRefresh);
 }
 
 #ifdef OEM_NVIDIA

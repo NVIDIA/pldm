@@ -290,6 +290,15 @@ class NumericSensor
         return sensorName;
     }
 
+    /** @brief whether the sensor is still associated with the default
+     *         (system-chassis fallback) inventory; metric-report (shmem)
+     *         pushes stay gated while this is true — the sensor itself
+     *         remains visible under the fallback parent */
+    bool isDefaultInventoryAssociated() const
+    {
+        return defaultInventoryAssociated;
+    }
+
     /** @brief  update sensorName to sensor PDIs*/
     void updateSensorName(std::string name);
 
