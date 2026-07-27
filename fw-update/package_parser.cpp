@@ -350,7 +350,7 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
 
     if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
     {
-        auto checksum = static_cast<PackagePayloadChecksum>(
+        payloadChecksum = static_cast<PackagePayloadChecksum>(
             le32toh(pkgHdr[offset] | (pkgHdr[offset + 1] << 8) |
                     (pkgHdr[offset + 2] << 16) | (pkgHdr[offset + 3] << 24)));
         auto calcPkgSize = calculatePackageSize();
@@ -360,17 +360,6 @@ void PackageParser::parse(const uint8_t* pkgData, uintmax_t pkgSize)
                 "Calculated package size '{CALC_SIZE}' exceeds actual package size '{PKG_SIZE}'",
                 "CALC_SIZE", calcPkgSize, "PKG_SIZE", pkgSize);
             throw InternalFailure();
-        }
-        auto calcChecksum = pldm_edac_crc32(pkgData + pkgHeaderSize,
-                                            calcPkgSize - pkgHeaderSize);
-        if (calcChecksum != checksum)
-        {
-            error(
-                "Payload Checksum Verification failed. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_PAYLOAD_CHECKSUM}'",
-                "CALCULATED_CHECKSUM", calcChecksum, "PACKAGE_PAYLOAD_CHECKSUM",
-                checksum);
-            throw sdbusplus::error::xyz::openbmc_project::software::update::
-                InvalidSignature();
         }
     }
 

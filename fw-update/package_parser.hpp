@@ -23,6 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -103,6 +104,10 @@ class PackageParser
 
     /** @brief Package version string */
     const PackageVersion pkgVersion;
+
+    /** @brief Expected payload checksum parsed from a FR04H package header,
+     *         validated by the caller over the package payload */
+    std::optional<PackagePayloadChecksum> payloadChecksum;
 
     /** @brief Calculate size of the package
      *

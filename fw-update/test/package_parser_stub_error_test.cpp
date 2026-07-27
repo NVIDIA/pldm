@@ -408,13 +408,13 @@ TEST(PackageParserStubErrorTest, parseDetectsComponentCountMismatch)
     EXPECT_ANY_THROW(parser.parse(data.data(), data.size()));
 }
 
-TEST(PackageParserStubErrorTest, parseFr04PayloadChecksumMismatchThrows)
+TEST(PackageParserStubErrorTest, parseFr04StoresPayloadChecksum)
 {
-    stubMode = StubMode::payloadChecksumMismatch;
+    stubMode = StubMode::success;
     constexpr std::string_view version{"v"};
     const auto baseOffset =
         sizeof(pldm_package_header_information) + version.size();
-    const auto headerSize = static_cast<PackageHeaderSize>(baseOffset + 10);
+    const auto headerSize = static_cast<PackageHeaderSize>(baseOffset + 12);
     PackageParserProbe parser(headerSize, std::string(version), 8,
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
 
@@ -423,9 +423,11 @@ TEST(PackageParserStubErrorTest, parseFr04PayloadChecksumMismatchThrows)
     data[baseOffset + 1] = 0;
     data[baseOffset + 2] = 0;
     data[baseOffset + 3] = 0;
-    data[baseOffset + 6] = 1;
+    data[baseOffset + 8] = 1;
 
-    EXPECT_ANY_THROW(parser.parse(data.data(), data.size()));
+    EXPECT_NO_THROW(parser.parse(data.data(), data.size()));
+    ASSERT_TRUE(parser.payloadChecksum.has_value());
+    EXPECT_EQ(*parser.payloadChecksum, 1u);
 }
 
 TEST(PackageParserStubErrorTest, calculatePackageSizeOffsetMismatchThrows)

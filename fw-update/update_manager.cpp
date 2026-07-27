@@ -18,15 +18,18 @@
 
 #include "activation.hpp"
 #include "common/mmap_stream.hpp"
+#include "common/sleep.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
 
+#include <boost/crc.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
+#include <array>
 #include <bitset>
 #include <cassert>
 #include <cmath>
@@ -387,20 +390,59 @@ exec::task<void> UpdateManager::processStream(
     {
         parser->parse(mmapStream->data(), packageSize);
     }
-    catch (const sdbusplus::error::xyz::openbmc_project::software::update::
-               InvalidSignature&)
-    {
-        error("Firmware package checksum validation failed");
-        handlePayloadChecksumError();
-        parser.reset();
-        co_return;
-    }
     catch (const std::exception& e)
     {
         error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
         handleInvalidPackageError();
         parser.reset();
         co_return;
+    }
+
+    if (parser->payloadChecksum)
+    {
+        /** Bytes of payload hashed per event-loop iteration; independent of
+         *  the CALCULATE_DIGEST_CHUNK_SIZE integrity-check option */
+        constexpr size_t payloadCrcChunkSize = 1024 * 1024;
+        /** Immediate-expiry timer: yields only to drain queued event-loop
+         *  work between chunks, not to add delay */
+        constexpr uint64_t payloadCrcYieldUsec = 1;
+
+        const uint8_t* payload = mmapStream->data() + parser->pkgHeaderSize;
+        uintmax_t remaining =
+            parser->calculatePackageSize() - parser->pkgHeaderSize;
+        boost::crc_32_type crc;
+        while (remaining > 0)
+        {
+            auto chunk = static_cast<size_t>(
+                std::min<uintmax_t>(remaining, payloadCrcChunkSize));
+            crc.process_bytes(payload, chunk);
+            payload += chunk;
+            remaining -= chunk;
+            if (remaining > 0)
+            {
+                auto rc = co_await timer::Sleep(event, payloadCrcYieldUsec,
+                                                timer::NonPriority);
+                if (rc != PLDM_SUCCESS)
+                {
+                    // Sleep returns without suspending on failure; checksum
+                    // computation continues, only without yielding
+                    warning(
+                        "Failed to yield to the event loop during payload checksum computation, rc={RC}",
+                        "RC", rc);
+                }
+            }
+        }
+        if (crc.checksum() != *parser->payloadChecksum)
+        {
+            error(
+                "Firmware package checksum validation failed. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_PAYLOAD_CHECKSUM}'",
+                "CALCULATED_CHECKSUM", crc.checksum(),
+                "PACKAGE_PAYLOAD_CHECKSUM",
+                *parser->payloadChecksum);
+            handlePayloadChecksumError();
+            parser.reset();
+            co_return;
+        }
     }
 
     ComponentTargetList compTargetList =
