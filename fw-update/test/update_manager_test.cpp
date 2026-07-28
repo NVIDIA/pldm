@@ -333,16 +333,17 @@ TEST_F(UpdateManagerTest, updateDeviceCompletion_withoutSuccessCompNames)
     EXPECT_NO_THROW({ updateManager.updateDeviceCompletion(eid, status); });
 }
 
-TEST_F(UpdateManagerTest, updateActivationProgress)
+TEST_F(UpdateManagerTest, markComponentUpdateCompleted)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
 
-    EXPECT_NO_THROW({ updateManager.updateActivationProgress(); });
+    EXPECT_NO_THROW({ updateManager.markComponentUpdateCompleted(); });
 }
 
-TEST_F(UpdateManagerTest, updateActivationProgressIncompleteKeepsTimerRunning)
+TEST_F(UpdateManagerTest,
+       markComponentUpdateCompletedIncompleteKeepsTimerRunning)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -356,7 +357,7 @@ TEST_F(UpdateManagerTest, updateActivationProgressIncompleteKeepsTimerRunning)
     updateManager.createProgressUpdateTimer();
     ASSERT_NE(updateManager.progressTimer, nullptr);
 
-    updateManager.updateActivationProgress();
+    updateManager.markComponentUpdateCompleted();
 
     EXPECT_EQ(updateManager.compUpdateCompletedCount, 2U);
     EXPECT_NE(updateManager.progressTimer, nullptr);
@@ -708,20 +709,6 @@ TEST_F(UpdateManagerTest, onResponseSendCompleteDelegatesToTrackedDeviceUpdater)
         updateManager.onResponseSendComplete(eid, true);
         updateManager.onResponseSendComplete(eid, false);
     });
-}
-
-TEST_F(UpdateManagerTest, setActivationStatus)
-{
-    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                                componentInfoMap, componentNameMap, true,
-                                nullptr);
-
-    const Server::Activation::Activations activationState =
-        Server::Activation::Activations::Active;
-
-    processPackageStream(updateManager, "./test_pkg");
-
-    EXPECT_NO_THROW({ updateManager.setActivationStatus(activationState); });
 }
 
 TEST_F(UpdateManagerTest, updateOtherDeviceComponents)
@@ -1636,7 +1623,7 @@ TEST_F(UpdateManagerTest, clearExistingActivationNoActivationObjectNoop)
     EXPECT_NO_THROW({ updateManager.clearExistingActivation(); });
 }
 
-TEST_F(UpdateManagerTest, updateActivationProgressCompletesAndStopsTimer)
+TEST_F(UpdateManagerTest, markComponentUpdateCompletedStopsTimer)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -1649,10 +1636,9 @@ TEST_F(UpdateManagerTest, updateActivationProgressCompletesAndStopsTimer)
     updateManager.createProgressUpdateTimer();
     ASSERT_NE(updateManager.progressTimer, nullptr);
 
-    updateManager.updateActivationProgress();
+    updateManager.markComponentUpdateCompleted();
     EXPECT_EQ(updateManager.compUpdateCompletedCount, 1);
     EXPECT_EQ(updateManager.progressTimer, nullptr);
-    EXPECT_EQ(updateManager.activationProgress->progress(), 100);
 }
 
 TEST_F(UpdateManagerTest, updatePackageCompletionSetsActiveOnAllSuccess)
@@ -1667,6 +1653,8 @@ TEST_F(UpdateManagerTest, updatePackageCompletionSetsActiveOnAllSuccess)
     updateManager.activation = std::make_unique<Activation>(
         busMock, updateManager.objPath,
         software::Activation::Activations::Ready, &updateManager);
+    updateManager.activationProgress =
+        std::make_unique<ActivationProgress>(busMock, updateManager.objPath);
     updateManager.deviceUpdaterMap.emplace(0x1, nullptr);
     updateManager.deviceUpdateCompletionMap.emplace(0x1, true);
     updateManager.otherDeviceComponents.emplace("UUID_A", true);
@@ -1677,6 +1665,7 @@ TEST_F(UpdateManagerTest, updatePackageCompletionSetsActiveOnAllSuccess)
     EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
     EXPECT_EQ(updateManager.activation->activation(),
               software::Activation::Activations::Active);
+    EXPECT_EQ(updateManager.activationProgress->progress(), 100);
 }
 
 TEST_F(UpdateManagerTest, updatePackageCompletionSetsFailedWhenAnyFailure)
@@ -1867,22 +1856,6 @@ TEST_F(UpdateManagerTest, clearActivationInfoStopsAndResetsProgressTimer)
     updateManager.clearActivationInfo();
     EXPECT_EQ(updateManager.progressTimer, nullptr);
     EXPECT_TRUE(updateManager.objPath.empty());
-}
-
-TEST_F(UpdateManagerTest, setActivationStatusUpdatesExistingActivation)
-{
-    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
-                                componentInfoMap, componentNameMap, true,
-                                nullptr);
-    updateManager.objPath = "/xyz/openbmc_project/software/set_activation";
-    updateManager.activation = std::make_unique<Activation>(
-        busMock, updateManager.objPath,
-        software::Activation::Activations::Ready, &updateManager);
-
-    updateManager.setActivationStatus(
-        software::Activation::Activations::Active);
-    EXPECT_EQ(updateManager.activation->activation(),
-              software::Activation::Activations::Active);
 }
 
 TEST_F(UpdateManagerTest, clearExistingActivationWhenActivatingClearsState)

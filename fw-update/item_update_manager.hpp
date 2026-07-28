@@ -78,9 +78,9 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
         std::vector<std::string> compNames = {}) override;
 
     /**
-     * @brief Update the activation progress status
+     * @brief Refresh the reported progress when a component update completes
      */
-    void updateActivationProgress() override;
+    void markComponentUpdateCompleted() override;
 
     /**
      * @brief Activate the firmware update package

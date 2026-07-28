@@ -32,6 +32,12 @@ class TestLoggingAsioConnection
         }
     }
 
+    template <typename Callback, typename... Args>
+    void async_method_call_timed(Callback&& callback, Args&&...)
+    {
+        std::forward<Callback>(callback)(boost::system::error_code{});
+    }
+
   private:
     template <typename Callback, typename... Supplied>
     static void invokeWithDefaults(Callback&& cb, Supplied&&... supplied)

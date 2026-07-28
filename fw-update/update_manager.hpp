@@ -91,7 +91,7 @@ class UpdateManagerBase
     virtual void updateDeviceCompletion(
         mctp_eid_t eid, bool status,
         std::vector<std::string> compNames = {}) = 0;
-    virtual void updateActivationProgress() = 0;
+    virtual void markComponentUpdateCompleted() = 0;
     virtual software::Activation::Activations activatePackage() = 0;
     virtual void resetActivationState() = 0;
 
@@ -263,9 +263,14 @@ class UpdateManager : public UpdateManagerBase
         mctp_eid_t eid, bool status,
         std::vector<std::string> compNames = {}) override;
 
-    /** @brief Increments completed updates and refreshes the reported progress
+    /**
+     * @brief Increments completed updates and stops the progress timer once
+     *        every component update has completed
+     *
+     * Called when a component update finishes, whether it succeeded or failed,
+     * so that a failed component still advances the count and the timer stops.
      */
-    void updateActivationProgress() override;
+    void markComponentUpdateCompleted() override;
 
     /** @brief Callback function that will be invoked when the
      *         RequestedActivation will be set to active in the Activation
@@ -397,8 +402,21 @@ class UpdateManager : public UpdateManagerBase
     /** @brief start non-pldm firmware update */
     software::Activation::Activations startNonPLDMUpdate();
 
-    /** @brief Set activation status */
-    void setActivationStatus(const software::Activation::Activations& state);
+    /**
+     * @brief Publish the final activation status once the message registry
+     *        entries already queued on this connection have been emitted
+     *
+     * Entries reach a client only after phosphor-log-manager emits
+     * InterfacesAdded for them, while activation state is observed directly on
+     * this connection. Publishing from the reply keeps the final state, and
+     * the completion percentage reported with it, behind the entries that
+     * explain the outcome.
+     *
+     * @param[in] state - final activation state
+     * @param[in] onPublished - optional work to run once the state is published
+     */
+    void publishFinalActivationStatus(software::Activation::Activations state,
+                                      std::function<void()> onPublished = {});
 
     /** @brief Get the component name corresponding to the input params */
     ComponentName getComponentName(

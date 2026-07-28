@@ -471,8 +471,7 @@ std::string UpdateManager::processStreamDefer(
         createLogEntry(resourceErrorDetected, compName, messageError,
                        resolution);
 
-        activation->activation(software::Activation::Activations::Failed);
-        activationProgress->progress(100);
+        publishFinalActivationStatus(software::Activation::Activations::Failed);
 
         return objPath;
     }
@@ -1225,7 +1224,7 @@ void UpdateManager::updateDeviceCompletion(
         }
     }
 
-    updateActivationProgress();
+    markComponentUpdateCompleted();
     /* Update package completion */
     updatePackageCompletion();
     return;
@@ -1355,7 +1354,6 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
         }
         progressTimer->stop();
         progressTimer.reset();
-        activationProgress->progress(100);
 #ifdef OEM_NVIDIA
         if (debugToken && debugToken->isDebugTokenComponentPresent() &&
             parser->getComponentImageInfos().size() == 1)
@@ -1441,26 +1439,25 @@ void UpdateManager::updatePackageCompletion()
                            " in the Redfish FW Inventory");
         }
 
-        if ((pldmState == software::Activation::Activations::Failed) ||
-            !unavailableTargetEids.empty() || noMatchingDevices ||
-            (otherState == software::Activation::Activations::Failed))
-        {
-            activation->activation(software::Activation::Activations::Failed);
-        }
-        else
-        {
-            activation->activation(software::Activation::Activations::Active);
-        }
-        auto endTime = std::chrono::steady_clock::now();
-        info("Firmware update time: {UPDATE_TIME} ms", "UPDATE_TIME",
-             std::chrono::duration<double, std::milli>(endTime - startTime)
-                 .count());
-        activationBlocksTransition.reset();
-        clearFirmwareUpdatePackage();
+        const auto finalState =
+            ((pldmState == software::Activation::Activations::Failed) ||
+             !unavailableTargetEids.empty() || noMatchingDevices ||
+             (otherState == software::Activation::Activations::Failed))
+                ? software::Activation::Activations::Failed
+                : software::Activation::Activations::Active;
+
+        publishFinalActivationStatus(finalState, [this]() {
+            auto endTime = std::chrono::steady_clock::now();
+            info("Firmware update time: {UPDATE_TIME} ms", "UPDATE_TIME",
+                 std::chrono::duration<double, std::milli>(endTime - startTime)
+                     .count());
+            activationBlocksTransition.reset();
+            clearFirmwareUpdatePackage();
+        });
     }
 }
 
-void UpdateManager::updateActivationProgress()
+void UpdateManager::markComponentUpdateCompleted()
 {
     compUpdateCompletedCount++;
     if (compUpdateCompletedCount == totalNumComponentUpdates)
@@ -1470,7 +1467,6 @@ void UpdateManager::updateActivationProgress()
             progressTimer->stop();
             progressTimer.reset();
         }
-        activationProgress->progress(100);
     }
 }
 
@@ -1520,7 +1516,7 @@ void UpdateManager::updateOtherDeviceCompletion(
                 listCompNames += " " + successCompName;
             }
         }
-        updateActivationProgress();
+        markComponentUpdateCompleted();
         updatePackageCompletion();
     }
 }
@@ -1538,15 +1534,54 @@ void UpdateManager::clearFirmwareUpdatePackage()
     }
 }
 
-void UpdateManager::setActivationStatus(
-    const software::Activation::Activations& state)
+void UpdateManager::publishFinalActivationStatus(
+    software::Activation::Activations state, std::function<void()> onPublished)
 {
-    if (!activation)
-    {
-        error("Activation object is not initialized");
-        return;
-    }
-    activation->activation(state);
+    // phosphor-log-manager emits InterfacesAdded for an entry from inside its
+    // Create handler, so a reply from that service proves every Create already
+    // queued on this connection has reached a subscriber. Ping it on the
+    // connection createLogEntry() uses and publish from the reply. The wait is
+    // capped so that an unresponsive logging service cannot withhold the result
+    // of the update.
+    constexpr uint64_t logFlushTimeoutUsec =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::seconds(5))
+            .count();
+
+    auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+    asioConnection->async_method_call_timed(
+        [this, state,
+         onPublished = std::move(onPublished)](boost::system::error_code ec) {
+            if (ec)
+            {
+                const auto stateName = sdbusplus::xyz::openbmc_project::
+                    Software::server::convertForMessage(state);
+                error(
+                    "Failed to flush firmware update log entries, publishing {ACTIVATION_STATE} anyway: {ERROR_MESSAGE}",
+                    "ACTIVATION_STATE",
+                    stateName.substr(stateName.rfind('.') + 1), "ERROR_MESSAGE",
+                    ec.message());
+            }
+            if (activationProgress)
+            {
+                activationProgress->progress(100);
+            }
+            if (activation)
+            {
+                activation->activation(state);
+            }
+            else
+            {
+                activation = std::make_unique<Activation>(
+                    pldm::utils::DBusHandler::getBus(), objPath, state, this);
+            }
+            if (onPublished)
+            {
+                onPublished();
+            }
+        },
+        "xyz.openbmc_project.Logging", "/xyz/openbmc_project/logging",
+        "org.freedesktop.DBus.Peer", "Ping", logFlushTimeoutUsec);
 }
 
 void UpdateManager::resetActivationState()
@@ -1653,16 +1688,7 @@ void UpdateManager::handleInvalidPackageError()
     createLogEntry(resourceErrorDetected, compName, messageError, resolution);
     clearFirmwareUpdatePackage();
 
-    if (activation)
-    {
-        activation->activation(software::Activation::Activations::Failed);
-    }
-    else
-    {
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Failed, this);
-    }
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
 }
 
 void UpdateManager::handlePayloadChecksumError()
@@ -1674,16 +1700,7 @@ void UpdateManager::handlePayloadChecksumError()
     createLogEntry(resourceErrorDetected, compName, messageError, resolution);
     clearFirmwareUpdatePackage();
 
-    if (activation)
-    {
-        activation->activation(software::Activation::Activations::Failed);
-    }
-    else
-    {
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Failed, this);
-    }
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
 }
 
 void UpdateManager::handleInvalidPackageHeaderError()
@@ -1695,16 +1712,7 @@ void UpdateManager::handleInvalidPackageHeaderError()
     createLogEntry(resourceErrorDetected, compName, messageError, resolution);
     clearFirmwareUpdatePackage();
 
-    if (activation)
-    {
-        activation->activation(software::Activation::Activations::Failed);
-    }
-    else
-    {
-        activation = std::make_unique<Activation>(
-            pldm::utils::DBusHandler::getBus(), objPath,
-            software::Activation::Activations::Failed, this);
-    }
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
 }
 
 } // namespace fw_update

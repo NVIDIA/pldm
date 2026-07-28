@@ -236,7 +236,7 @@ void ItemUpdateManager::resetActivationState()
     updateInProgress = false;
 }
 
-void ItemUpdateManager::updateActivationProgress()
+void ItemUpdateManager::markComponentUpdateCompleted()
 {
     if (deviceUpdater)
     {
