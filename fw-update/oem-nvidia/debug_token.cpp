@@ -383,7 +383,7 @@ void DebugToken::startUpdate()
     if (nonPLDMState == software::Activation::Activations::Failed ||
         nonPLDMState == software::Activation::Activations::Active)
     {
-        updateManager->setActivationStatus(nonPLDMState);
+        updateManager->publishFinalActivationStatus(nonPLDMState);
     }
 }
 

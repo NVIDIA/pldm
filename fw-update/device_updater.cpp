@@ -901,7 +901,7 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
     }
     if (compIndex + 1 < applicableComponents.size())
     {
-        updateManager->updateActivationProgress(); // for previous component
+        updateManager->markComponentUpdateCompleted(); // for previous component
         componentIndex++;
         std::unique_ptr<ComponentUpdater> compUpdater =
             std::make_unique<ComponentUpdater>(

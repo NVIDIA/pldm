@@ -40,11 +40,8 @@ software::Activation::Activations resultPerformSecurityChecksOnComplete =
 bool securityChecksStatus = true;
 bool startPLDMUpdateCalled = false;
 bool startNonPLDMUpdateCalled = false;
-bool setActivationStatusCalled = false;
 software::Activation::Activations startNonPLDMUpdateResult =
     software::Activation::Activations::Active;
-software::Activation::Activations lastSetActivationStatus =
-    software::Activation::Activations::NotReady;
 bool triggerSecurityChecksError = false;
 std::string securityChecksErrorMessage = "security checks callback error";
 bool clearActivationInfoCalled = false;
@@ -58,9 +55,7 @@ void resetTestState()
 {
     startPLDMUpdateCalled = false;
     startNonPLDMUpdateCalled = false;
-    setActivationStatusCalled = false;
     startNonPLDMUpdateResult = software::Activation::Activations::Active;
-    lastSetActivationStatus = software::Activation::Activations::NotReady;
     triggerSecurityChecksError = false;
     securityChecksErrorMessage = "security checks callback error";
     clearActivationInfoCalled = false;
@@ -99,12 +94,6 @@ class FakeUpdateManager
     {
         testing::startNonPLDMUpdateCalled = true;
         return testing::startNonPLDMUpdateResult;
-    }
-
-    void setActivationStatus(const software::Activation::Activations& state)
-    {
-        testing::setActivationStatusCalled = true;
-        testing::lastSetActivationStatus = state;
     }
 
     void clearActivationInfo()

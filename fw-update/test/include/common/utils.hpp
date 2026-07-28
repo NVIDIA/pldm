@@ -18,6 +18,12 @@ class TestLoggingAsioConnection
     {
         std::forward<Callback>(callback)(boost::system::error_code{});
     }
+
+    template <typename Callback, typename... Args>
+    void async_method_call_timed(Callback&& callback, Args&&...)
+    {
+        std::forward<Callback>(callback)(boost::system::error_code{});
+    }
 };
 
 class DBusLoggingTestHandler : public DBusHandler
