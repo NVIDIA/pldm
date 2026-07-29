@@ -527,6 +527,18 @@ class Terminus
     std::shared_ptr<EffecterAuxiliaryNames> parseEffecterAuxiliaryNamesPDR(
         const std::vector<uint8_t>& pdrData);
 
+    /** @brief Parse the variable-length name-string entries shared by the
+     *         sensor and effecter auxiliary-names PDRs. Walks the
+     *         device-supplied buffer [ptr, end) with explicit bounds and
+     *         length caps; returns false (caller returns nullptr) on any
+     *         malformed, truncated, or over-long field. @a label is used only
+     *         for logging.
+     */
+    bool parseAuxiliaryNameStrings(
+        const uint8_t* ptr, const uint8_t* end, uint8_t count, uint16_t id,
+        std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>& out,
+        const char* label);
+
     std::tuple<SensorID, StateSetInfo> parseStateSensorPDR(
         std::vector<uint8_t>& pdr);
 

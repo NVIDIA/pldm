@@ -1360,6 +1360,52 @@ static std::vector<uint8_t> makeZeroCountEffecterAuxNamePdr(uint16_t effecterId)
     return pdr;
 }
 
+// Fixed sensor auxiliary-names PDR header (through sensor_count) with no name
+// data appended; used to build malformed/truncated PDRs in the negative tests.
+static std::vector<uint8_t> makeSensorAuxNameHeader(uint16_t sensorId,
+                                                    uint8_t sensorCount)
+{
+    return std::vector<uint8_t>{
+        0x0,
+        0x0,
+        0x0,
+        0x21,                            // record handle
+        0x1,                             // PDRHeaderVersion
+        PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
+        0x0,
+        0x0,                             // recordChangeNumber
+        0x0,
+        0x0,                             // dataLength
+        0x0,
+        0x0,                             // terminus handle
+        static_cast<uint8_t>(sensorId & 0xFF),
+        static_cast<uint8_t>((sensorId >> 8) & 0xFF),
+        sensorCount};
+}
+
+// Fixed effecter auxiliary-names PDR header (through effecter_count), no name
+// data appended; used to build malformed/truncated PDRs in the negative tests.
+static std::vector<uint8_t> makeEffecterAuxNameHeader(uint16_t effecterId,
+                                                      uint8_t effecterCount)
+{
+    return std::vector<uint8_t>{
+        0x0,
+        0x0,
+        0x0,
+        0x25,                              // record handle
+        0x1,                               // PDRHeaderVersion
+        PLDM_EFFECTER_AUXILIARY_NAMES_PDR, // PDRType
+        0x0,
+        0x0,                               // recordChangeNumber
+        0x0,
+        0x0,                               // dataLength
+        0x0,
+        0x0,                               // terminus handle
+        static_cast<uint8_t>(effecterId & 0xFF),
+        static_cast<uint8_t>((effecterId >> 8) & 0xFF),
+        effecterCount};
+}
+
 static std::vector<uint8_t> makeEmptyCompositeEffecterAuxNamePdr(
     uint16_t effecterId)
 {
@@ -3840,6 +3886,136 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesMultipleStringsCoverage)
     EXPECT_EQ("UC0", names[0][1].second);
     ASSERT_EQ(1u, names[1].size());
     EXPECT_EQ("DIMM0", names[1][0].second);
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesShortHeaderReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A0");
+    Terminus terminus(0xA0, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    // Buffer smaller than the fixed PDR header must be rejected.
+    std::vector<uint8_t> pdr(sizeof(pldm_pdr_hdr), 0);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseSensorAuxiliaryNamesUnterminatedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A1");
+    Terminus terminus(0xA1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C0, 1); // sensor_count = 1
+    pdr.push_back(0x1);                           // nameStringCount = 1
+    pdr.push_back('e');                           // language tag, no NUL
+    pdr.push_back('n');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesNameOffsetAtEndReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A2");
+    Terminus terminus(0xA2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C1, 1); // sensor_count = 1
+    pdr.push_back(0x1);                           // nameStringCount = 1
+    appendCString(pdr, "en");                     // tag, then buffer ends
+    updatePdrLength(pdr);
+    // No room remains for the UTF-16 name string.
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesUnterminatedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A3");
+    Terminus terminus(0xA3, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C2, 1);
+    pdr.push_back(0x1);       // nameStringCount = 1
+    appendCString(pdr, "en"); // valid language tag
+    pdr.push_back(0x0);       // one UTF-16 code unit, no 0x0000 terminator
+    pdr.push_back('X');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseEffecterAuxiliaryNamesShortHeaderReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A4");
+    Terminus terminus(0xA4, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::vector<uint8_t> pdr(sizeof(pldm_pdr_hdr), 0);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseEffecterAuxiliaryNamesUnterminatedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A5");
+    Terminus terminus(0xA5, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C3, 1); // effecter_count = 1
+    pdr.push_back(0x1);                             // nameStringCount = 1
+    pdr.push_back('e');                             // language tag, no NUL
+    pdr.push_back('n');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseEffecterAuxiliaryNamesNameOffsetAtEndReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A6");
+    Terminus terminus(0xA6, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C4, 1);
+    pdr.push_back(0x1);
+    appendCString(pdr, "en"); // tag, then buffer ends (no UTF-16 name)
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseEffecterAuxiliaryNamesUnterminatedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A7");
+    Terminus terminus(0xA7, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C5, 1);
+    pdr.push_back(0x1);
+    appendCString(pdr, "en");
+    pdr.push_back(0x0); // one UTF-16 code unit, no 0x0000 terminator
+    pdr.push_back('X');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesOversizedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A8");
+    Terminus terminus(0xA8, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C6, 1);
+    pdr.push_back(0x1); // nameStringCount = 1
+    // Language tag longer than PLDM_STR_UTF_8_MAX_LEN, still NUL-terminated.
+    appendCString(pdr, std::string(PLDM_STR_UTF_8_MAX_LEN + 1, 'a').c_str());
+    appendUtf16BeCString(pdr, "en");
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesOversizedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A9");
+    Terminus terminus(0xA9, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C7, 1);
+    pdr.push_back(0x1); // nameStringCount = 1
+    appendCString(pdr, "en");
+    // UTF-16 name longer than PLDM_STR_UTF_16_MAX_LEN, still terminated.
+    appendUtf16BeCString(pdr,
+                         std::string(PLDM_STR_UTF_16_MAX_LEN + 1, 'a').c_str());
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
 }
 
 TEST_F(TerminusTest, parseEffecterAuxiliaryNamesMultipleStringsCoverage)

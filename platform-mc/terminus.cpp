@@ -1169,43 +1169,66 @@ std::shared_ptr<EffecterAuxiliaryNames> Terminus::getEffecterAuxiliaryNames(
     return nullptr;
 }
 
-std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
-    const std::vector<uint8_t>& pdrData)
+bool Terminus::parseAuxiliaryNameStrings(
+    const uint8_t* ptr, const uint8_t* const end, uint8_t count, uint16_t id,
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>& out,
+    const char* label)
 {
     constexpr uint8_t NullTerminator = 0;
-    size_t parseLen = 0;
-    auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
-        pdrData.data());
-    const uint8_t* ptr = pdr->names;
-    parseLen += sizeof(pldm_sensor_auxiliary_names_pdr);
-    // reducing by 1 byte because the length of pdr->names (names[1]) is not
-    // pared yet at the moment.
-    parseLen -= sizeof(pdr->names);
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
-        sensorAuxNames{};
     try
     {
-        for (int i = 0; i < pdr->sensor_count; i++)
+        for (uint8_t i = 0; i < count; i++)
         {
-            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
-            ptr += sizeof(uint8_t);
-            parseLen += sizeof(uint8_t);
-            std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
-            for (int j = 0; j < nameStringCount; j++)
+            // Device-controlled count: stop before dereferencing ptr.
+            if (ptr >= end)
             {
+                lg2::error("{LBL} aux names PDR: count overruns buffer, "
+                           "id={ID}, tid={TID}.",
+                           "LBL", label, "ID", id, "TID", tid);
+                return false;
+            }
+            const uint8_t nameStringCount = *ptr++;
+            std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
+            for (uint8_t j = 0; j < nameStringCount; j++)
+            {
+                // Language tag: bounded NUL scan (std::string would strlen()
+                // past end); reject if unterminated or over the spec max.
+                auto* nul = static_cast<const uint8_t*>(
+                    std::memchr(ptr, 0, static_cast<size_t>(end - ptr)));
+                if (nul == nullptr ||
+                    static_cast<size_t>(nul - ptr) > PLDM_STR_UTF_8_MAX_LEN)
+                {
+                    lg2::error("{LBL} aux names PDR: bad language tag, "
+                               "id={ID}, tid={TID}.",
+                               "LBL", label, "ID", id, "TID", tid);
+                    return false;
+                }
                 std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
-                                            0, PLDM_STR_UTF_8_MAX_LEN);
+                                            nul - ptr);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
-                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(
-                    pdrData.begin() + parseLen, pdrData.end());
-                std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
-                    0, PLDM_STR_UTF_16_MAX_LEN);
-                ptr += (u16NameString.size() + sizeof(NullTerminator)) *
-                       sizeof(uint16_t);
-                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
-                            sizeof(uint16_t);
+
+                // UTF-16 name: bounded bytewise scan (ptr is not
+                // char16_t-aligned); reject if unterminated or over the spec
+                // max, then copy into an aligned string.
+                const size_t u16Units =
+                    static_cast<size_t>(end - ptr) / sizeof(char16_t);
+                size_t u16Len = 0;
+                while (u16Len < u16Units &&
+                       (ptr[2 * u16Len] | ptr[2 * u16Len + 1]))
+                {
+                    ++u16Len;
+                }
+                if (u16Len == u16Units || u16Len > PLDM_STR_UTF_16_MAX_LEN)
+                {
+                    lg2::error("{LBL} aux names PDR: bad UTF-16 name, "
+                               "id={ID}, tid={TID}.",
+                               "LBL", label, "ID", id, "TID", tid);
+                    return false;
+                }
+                std::u16string u16NameString(u16Len, u'\0');
+                std::memcpy(u16NameString.data(), ptr,
+                            u16Len * sizeof(char16_t));
+                ptr += (u16Len + 1) * sizeof(char16_t);
                 std::transform(u16NameString.cbegin(), u16NameString.cend(),
                                u16NameString.begin(),
                                [](uint16_t utf16) { return be16toh(utf16); });
@@ -1222,25 +1245,50 @@ std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
                 catch (const std::range_error& e)
                 {
                     lg2::error(
-                        "Exception while converting UTF-16 to UTF-8 for sensor auxiliary name: {ERROR}, Skipping this name.",
-                        "ERROR", e.what());
+                        "{LBL} aux names PDR: UTF-16 to UTF-8 conversion "
+                        "failed, skipping name. id={ID}, tid={TID}, "
+                        "error={ERROR}",
+                        "LBL", label, "ID", id, "TID", tid, "ERROR", e.what());
                     continue;
                 }
 #pragma GCC diagnostic pop
-                nameStrings.emplace_back(
-                    std::make_pair(nameLanguageTag, nameString));
+                nameStrings.emplace_back(nameLanguageTag, nameString);
             }
-            sensorAuxNames.emplace_back(nameStrings);
+            out.emplace_back(nameStrings);
         }
     }
     catch (const std::exception& e)
     {
-        lg2::error(
-            "Failed to parse sensorAuxiliaryNamesPDR record, sensorId={SENSORID}, {ERROR}.",
-            "SENSORID", pdr->sensor_id, "ERROR", e);
+        lg2::error("Failed to parse {LBL} aux names PDR: {ERROR}, id={ID}, "
+                   "tid={TID}.",
+                   "LBL", label, "ERROR", e, "ID", id, "TID", tid);
+        return false;
+    }
+    return true;
+}
+
+std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
+    const std::vector<uint8_t>& pdrData)
+{
+    auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
+        pdrData.data());
+    // Reject a buffer too small for the fixed header (names[] excluded).
+    const size_t minPdrLen =
+        sizeof(struct pldm_sensor_auxiliary_names_pdr) - sizeof(pdr->names);
+    if (pdrData.size() < minPdrLen)
+    {
+        lg2::error("Sensor aux names PDR too small: {SIZE}<{NEED}, tid={TID}.",
+                   "SIZE", pdrData.size(), "NEED", minPdrLen, "TID", tid);
         return nullptr;
     }
-
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
+        sensorAuxNames{};
+    if (!parseAuxiliaryNameStrings(pdr->names, pdrData.data() + pdrData.size(),
+                                   pdr->sensor_count, pdr->sensor_id,
+                                   sensorAuxNames, "Sensor"))
+    {
+        return nullptr;
+    }
     return std::make_shared<SensorAuxiliaryNames>(
         pdr->sensor_id, pdr->sensor_count, sensorAuxNames);
 }
@@ -1249,75 +1297,27 @@ std::shared_ptr<EffecterAuxiliaryNames>
     Terminus::parseEffecterAuxiliaryNamesPDR(
         const std::vector<uint8_t>& pdrData)
 {
-    constexpr uint8_t NullTerminator = 0;
-    size_t parseLen = 0;
     auto pdr =
         reinterpret_cast<const struct pldm_effecter_auxiliary_names_pdr*>(
             pdrData.data());
-    const uint8_t* ptr = pdr->names;
-    // reducing by 1 byte because the length of pdr->names (names[1]) is not
-    // pared yet at the moment.
-    parseLen += sizeof(pldm_effecter_auxiliary_names_pdr) - sizeof(pdr->names);
-    std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
-        effecterAuxNames{};
-    try
-    {
-        for (int i = 0; i < pdr->effecter_count; i++)
-        {
-            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
-            ptr += sizeof(uint8_t);
-            parseLen += sizeof(uint8_t);
-            std::vector<std::pair<NameLanguageTag, EffecterName>> nameStrings{};
-            for (int j = 0; j < nameStringCount; j++)
-            {
-                std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
-                                            0, PLDM_STR_UTF_8_MAX_LEN);
-                ptr += nameLanguageTag.size() + sizeof(NullTerminator);
-                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(
-                    pdrData.begin() + parseLen, pdrData.end());
-                std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
-                    0, PLDM_STR_UTF_16_MAX_LEN);
-                ptr += (u16NameString.size() + sizeof(NullTerminator)) *
-                       sizeof(uint16_t);
-                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
-                            sizeof(uint16_t);
-                std::transform(u16NameString.cbegin(), u16NameString.cend(),
-                               u16NameString.begin(),
-                               [](uint16_t utf16) { return be16toh(utf16); });
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-                std::string nameString{};
-                try
-                {
-                    nameString =
-                        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,
-                                             char16_t>{}
-                            .to_bytes(u16NameString);
-                }
-                catch (const std::range_error& e)
-                {
-                    lg2::error(
-                        "Exception while converting UTF-16 to UTF-8 for entity auxiliary name: {ERROR}, Skipping this name.",
-                        "ERROR", e.what());
-                    continue;
-                }
-#pragma GCC diagnostic pop
-                nameStrings.emplace_back(
-                    std::make_pair(nameLanguageTag, nameString));
-            }
-            effecterAuxNames.emplace_back(nameStrings);
-        }
-    }
-    catch (const std::exception& e)
+    // Reject a buffer too small for the fixed header (names[] excluded).
+    const size_t minPdrLen =
+        sizeof(struct pldm_effecter_auxiliary_names_pdr) - sizeof(pdr->names);
+    if (pdrData.size() < minPdrLen)
     {
         lg2::error(
-            "Failed to parse effecterAuxiliaryNamesPDR record, effecterId={EFFECTERID}, {ERROR}.",
-            "EFFECTERID", pdr->effecter_id, "ERROR", e);
+            "Effecter aux names PDR too small: {SIZE}<{NEED}, tid={TID}.",
+            "SIZE", pdrData.size(), "NEED", minPdrLen, "TID", tid);
         return nullptr;
     }
-
+    std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
+        effecterAuxNames{};
+    if (!parseAuxiliaryNameStrings(pdr->names, pdrData.data() + pdrData.size(),
+                                   pdr->effecter_count, pdr->effecter_id,
+                                   effecterAuxNames, "Effecter"))
+    {
+        return nullptr;
+    }
     return std::make_shared<EffecterAuxiliaryNames>(
         pdr->effecter_id, pdr->effecter_count, effecterAuxNames);
 }
