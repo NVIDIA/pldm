@@ -2592,6 +2592,8 @@ void Terminus::setOnline()
         stateEffecter->setAvailable(true);
         stateEffecter->needUpdate = true;
     }
+
+    lg2::info("Terminus {TID} is online", "TID", tid);
 }
 
 void Terminus::setOffline()
@@ -2616,6 +2618,8 @@ void Terminus::setOffline()
     {
         stateEffecter->handleErrGetStateEffecterStates();
     }
+
+    lg2::info("Terminus {TID} is offline", "TID", tid);
 }
 
 std::optional<std::string> Terminus::getAuxNameForNumericSensor(SensorID id)
