@@ -2896,6 +2896,59 @@ TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
     waitForRefreshAssociationsTask(i2cTerminus);
 }
 
+TEST_F(TerminusTest, checkDeviceInventoryMctpEndpointAssociationCoverage)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000217");
+    Terminus terminus(0x28, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.initalized = true;
+
+    auto rawBus = sdbusplus::bus::new_default();
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace(
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        pldm::dbus::PropertyMap{});
+    auto msg = rawBus.new_method_call(
+        "org.test",
+        "/xyz/openbmc_project/inventory/system/chassis/cov217",
+        "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(
+                   "/xyz/openbmc_project/inventory/system/chassis/cov217"),
+               interfaces);
+    sealAndRewind(msg);
+
+    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
+    EXPECT_TRUE(terminus.refreshAssociationsTaskHandle.has_value());
+    waitForRefreshAssociationsTask(terminus);
+}
+
+TEST_F(TerminusTest,
+       checkDeviceInventoryReturnsFailedWhenMctpEndpointEidDoesNotMatch)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000218");
+    Terminus terminus(0x29, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    EXPECT_FALSE(terminus.initalized);
+
+    auto rawBus = sdbusplus::bus::new_default();
+    pldm::dbus::InterfaceMap interfaces;
+    interfaces.emplace(
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        pldm::dbus::PropertyMap{});
+    auto msg = rawBus.new_method_call(
+        "org.test",
+        "/xyz/openbmc_project/inventory/system/chassis/cov218",
+        "org.test.Interface", "Method");
+    msg.append(sdbusplus::message::object_path(
+                   "/xyz/openbmc_project/inventory/system/chassis/cov218"),
+               interfaces);
+    sealAndRewind(msg);
+
+    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
+    EXPECT_TRUE(terminus.needRefresh);
+    EXPECT_FALSE(terminus.refreshAssociationsTaskHandle.has_value());
+}
+
 TEST_F(TerminusTest, interfaceAddedDuringInitLatchesRefreshCoverage)
 {
     std::string uuid("00000000-0000-0000-0000-00000000017C");
