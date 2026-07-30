@@ -70,7 +70,7 @@ class NumericEffecter
   public:
     NumericEffecter(const tid_t tid, const bool effecterDisabled,
                     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
-                    std::string& effecerName, std::string& associationPath,
+                    std::string& effecterName, std::string& associationPath,
                     TerminusManager& terminusManager);
     ~NumericEffecter() {};
 

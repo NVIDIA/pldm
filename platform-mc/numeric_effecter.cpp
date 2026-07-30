@@ -33,7 +33,7 @@ namespace platform_mc
 NumericEffecter::NumericEffecter(
     const tid_t tid, const bool effecterDisabled,
     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
-    std::string& effecerName, std::string& associationPath,
+    std::string& effecterName, std::string& associationPath,
     TerminusManager& terminusManager) :
     tid(tid), effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
@@ -44,7 +44,7 @@ NumericEffecter::NumericEffecter(
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     path = "/xyz/openbmc_project/control/";
-    path += effecerName;
+    path += effecterName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     switch (baseUnit)
