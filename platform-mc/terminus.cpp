@@ -80,7 +80,8 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         // (checkDeviceInventory); one arriving after its box was scanned
         // must trigger a re-scan just like the NSM variant above.
         if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
-            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation")
+            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation" ||
+            intf == "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
         {
             interested = true;
         }
@@ -139,6 +140,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             objPath, 0,
             {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
              "xyz.openbmc_project.Configuration.USBDeviceAssociation",
+             "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
              "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
 
         if (getSubTreeResponse.size() == 0)
@@ -195,6 +197,20 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                             uint64_t>(
                             objectPath.c_str(), "EID",
                             "xyz.openbmc_project.Configuration.USBDeviceAssociation");
+                        if (terminusEid == inventoryEid)
+                        {
+                            found = true;
+                        }
+                    }
+                    else if (
+                        interface ==
+                        "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
+                    {
+                        inventoryEid = co_await utils::coGetDbusProperty<
+                            uint64_t>(
+                            objectPath.c_str(), "EID",
+                            "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+                            serviceName);
                         if (terminusEid == inventoryEid)
                         {
                             found = true;

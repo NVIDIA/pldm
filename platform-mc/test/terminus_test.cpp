@@ -1942,6 +1942,71 @@ TEST_F(TerminusTest, checkDeviceInventoryI2cAssociationCoverage)
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
 }
 
+TEST_F(TerminusTest, checkDeviceInventoryMctpEndpointAssociationCoverage)
+{
+    AsyncEntityManagerServer entityManager;
+    std::string uuid("00000000-0000-0000-0000-000000000217");
+    Terminus terminus(0x28, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x48, uuid, "smbus", 1, std::nullopt,
+                                  "mctp-over-smbus", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov217";
+    entityManager.addInterface(
+        rootPath + "/mctp_assoc",
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        {{"EID", uint64_t{0x48}}});
+    entityManager.addInterface(
+        rootPath + "/aux_eid_match",
+        "xyz.openbmc_project.Configuration.SensorAuxName",
+        {{"SensorId", uint64_t{0x5700}},
+         {"AuxNames", std::vector<std::string>{"Port 0"}},
+         {"ParentObjPath", rootPath},
+         {"EID", uint64_t{0x48}}});
+    entityManager.addInterface(
+        rootPath + "/aux_eid_mismatch",
+        "xyz.openbmc_project.Configuration.SensorAuxName",
+        {{"SensorId", uint64_t{0x5701}},
+         {"AuxNames", std::vector<std::string>{"WrongEid"}},
+         {"ParentObjPath", rootPath},
+         {"EID", uint64_t{0x49}}});
+
+    auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    // The matched EID has to reach getSensorAuxNameFromEM, otherwise every
+    // EID filtered SensorAuxName would be dropped.
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(0x5700));
+    EXPECT_FALSE(terminus.sensorAuxNameOverwriteTbl.contains(0x5701));
+}
+
+TEST_F(TerminusTest,
+       checkDeviceInventoryReturnsFailedWhenMctpEndpointEidDoesNotMatch)
+{
+    AsyncEntityManagerServer entityManager;
+    std::string uuid("00000000-0000-0000-0000-000000000218");
+    Terminus terminus(0x29, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x4a, uuid, "smbus", 1, std::nullopt,
+                                  "mctp-over-smbus", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov218";
+    entityManager.addInterface(
+        rootPath + "/mctp_assoc",
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        {{"EID", uint64_t{0x4b}}});
+
+    auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
+}
+
 TEST_F(TerminusTest, getSensorAuxNameFromEMI2cFilterCoverage)
 {
     AsyncEntityManagerServer entityManager;
