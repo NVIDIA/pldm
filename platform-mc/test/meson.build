@@ -54,6 +54,7 @@ tests = [
     'numeric_sensor_test',
     'numeric_effecter_test',
     'event_manager_test',
+    'pcore_dump_test',
     'state_effecter_test',
     'state_sensor_test',
 ]
