@@ -97,6 +97,13 @@ class NumericEffecter
         return operationalStatusIntf->state();
     }
 
+    /** @brief Getting the effecter availability
+     */
+    bool isAvailable()
+    {
+        return availabilityIntf && availabilityIntf->available();
+    }
+
     /** @brief Sending setNumericEffecterEnable command for the effecter
      *
      *  @param[in] state - the effecter state to be set

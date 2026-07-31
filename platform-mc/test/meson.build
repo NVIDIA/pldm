@@ -61,6 +61,7 @@ tests = [
     'sensor_manager_test',
     'numeric_sensor_test',
     'numeric_effecter_test',
+    'pcore_dump_test',
     'state_effecter_test',
     'state_sensor_test',
     'state_set_nvidia_internal_test',
