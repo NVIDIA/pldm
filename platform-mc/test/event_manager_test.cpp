@@ -44,6 +44,7 @@
 #include "test/test_instance_id.hpp"
 
 #include <array>
+#include <filesystem>
 
 #include <gtest/gtest.h>
 
@@ -409,10 +410,10 @@ TEST_F(PlatformMcManagerTest, managerEventHandlersCoverage)
                                                platformEventStatus),
               PLDM_SUCCESS);
     EXPECT_EQ(
-        manager.handleMftDumpEvent(msg, 64, 1, tid, 65, platformEventStatus),
+        manager.handlePCoreDumpEvent(msg, 64, 1, tid, 65, platformEventStatus),
         PLDM_ERROR_INVALID_LENGTH);
     EXPECT_EQ(
-        manager.handleMftDumpEvent(msg, 64, 1, tid, 0, platformEventStatus),
+        manager.handlePCoreDumpEvent(msg, 64, 1, tid, 0, platformEventStatus),
         PLDM_SUCCESS);
 
     EXPECT_EQ(manager.handlePldmMessagePollEvent(msg, 64, 1, tid, 64,
@@ -909,6 +910,55 @@ TEST_F(EventManagerProtectedTest, handlePlatformEventAdditionalCoverage)
                               oemEventShortData.size(), platformEventStatus));
 }
 
+/** A PCore dump is filed under the terminus it came from and the collector
+ *  reads it back by exactly that path, so falling back to a default name does
+ *  not merely mislabel the payload -- it stages one CPU's dump where the other
+ *  CPU's is expected. Reject the event instead.
+ */
+TEST_F(EventManagerProtectedTest, pcoreDumpEventRejectedWhenTerminusUnresolved)
+{
+    uint8_t platformEventStatus = 0;
+    const std::array<uint8_t, 5> payload{{0x02, 0x01, 0x01, 0x00, 0x5A}};
+
+    // A terminus that is present but has not been named yet.
+    constexpr pldm::tid_t unnamedTid = 0x81;
+    std::string unnamedUuid("00000000-0000-0000-0000-000000000181");
+    termini[unnamedTid] = std::make_shared<Terminus>(
+        unnamedTid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, unnamedUuid,
+        terminusManager);
+
+    // A terminus entry that exists but holds nothing.
+    constexpr pldm::tid_t nullTerminusTid = 0x82;
+    termini[nullTerminusTid] = nullptr;
+
+    // A TID that was never discovered at all.
+    constexpr pldm::tid_t unknownTid = 0x83;
+
+    // Whether the staging root is writable here depends on the environment,
+    // so compare against what was on disk beforehand rather than assuming it
+    // is empty.
+    const auto defaultStagingFile =
+        std::filesystem::path(pldm::oem_events::PLDM_EVENT_DIR) /
+        "ProcessorModule_0" / pldm::oem_events::PCOREDUMP_FILE;
+    const bool stagedBefore = std::filesystem::exists(defaultStagingFile);
+
+    for (auto tid : {unnamedTid, nullTerminusTid, unknownTid})
+    {
+        platformEventStatus = 0;
+        EXPECT_EQ(PLDM_ERROR,
+                  eventManager.handlePlatformEvent(
+                      tid, PLDM_OEM_EVENT_CLASS_PCOREDUMP, payload.data(),
+                      payload.size(), platformEventStatus))
+            << "tid " << static_cast<unsigned>(tid);
+        EXPECT_EQ(PLDM_EVENT_LOGGING_REJECTED, platformEventStatus)
+            << "tid " << static_cast<unsigned>(tid);
+    }
+
+    // None of those may have staged a dump under the default terminus name on
+    // the way out.
+    EXPECT_EQ(stagedBefore, std::filesystem::exists(defaultStagingFile));
+}
+
 TEST_F(EventManagerTest, getSensorThresholdEventDataSensorEventInfoCoverage)
 {
     auto sensorEventInfo = std::make_shared<pldm::utils::SensorEventInfo>();
@@ -1007,6 +1057,6 @@ TEST(OemEventsCoverage, validationPaths)
         0x01, 0x00, 0x01, 0x00, // version, type, payload size (1)
         0x5A                    // payload
     };
-    (void)pldm::oem_events::handleMftDumpEvent(
+    (void)pldm::oem_events::handlePCoreDumpEvent(
         "ProcessorModule_0", sizeMatchedData.data(), sizeMatchedData.size());
 }
