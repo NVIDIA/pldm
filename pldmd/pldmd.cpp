@@ -483,12 +483,12 @@ int main(int argc, char** argv)
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
          }}},
-        {pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+        {pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP,
          {[&platformManager](const pldm_msg* request, size_t payloadLength,
                              uint8_t formatVersion, uint8_t tid,
                              size_t eventDataOffset,
                              uint8_t& platformEventStatus) {
-             return platformManager->handleMftDumpEvent(
+             return platformManager->handlePCoreDumpEvent(
                  request, payloadLength, formatVersion, tid, eventDataOffset,
                  platformEventStatus);
          }}},

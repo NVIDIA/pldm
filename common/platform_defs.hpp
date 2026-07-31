@@ -29,7 +29,7 @@ constexpr uint8_t PLDM_TELEMETRY_RESUME = 0x02;     // Resume Type 2 monitoring
 // These events carry diagnostic data from SatMC to HMC after effecter trigger
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_ERROR_COUNTER = 0xF0;
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY = 0xF1;
-constexpr uint8_t PLDM_OEM_EVENT_CLASS_MFTDUMP = 0xF2;
+constexpr uint8_t PLDM_OEM_EVENT_CLASS_PCOREDUMP = 0xF2;
 
 // OEM Event Class for SatMC Inventory JSON
 constexpr uint8_t PLDM_OEM_EVENT_CLASS_0xF3 = 0xF3;
