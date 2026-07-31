@@ -36,9 +36,9 @@ using namespace pldm::pdr;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
-using pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP;
 
 /**
  * @brief Manager
@@ -394,13 +394,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     }
 
     /**
-     * @brief Handles the MFTDump Event (0xF2).
+     * @brief Handles the PCoreDump Event (0xF2).
      *
-     * This event is sent by SatMC containing MFTDump data.
+     * This event is sent by SatMC containing PCoreDump data.
      */
-    int handleMftDumpEvent(const pldm_msg* request, size_t payloadLength,
-                           uint8_t /* formatVersion */, uint8_t tid,
-                           size_t eventDataOffset, uint8_t& platformEventStatus)
+    int handlePCoreDumpEvent(const pldm_msg* request, size_t payloadLength,
+                             uint8_t /* formatVersion */, uint8_t tid,
+                             size_t eventDataOffset,
+                             uint8_t& platformEventStatus)
     {
         if (eventDataOffset > payloadLength)
         {
@@ -409,7 +410,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         auto eventData = reinterpret_cast<const uint8_t*>(request->payload) +
                          eventDataOffset;
         auto eventDataSize = payloadLength - eventDataOffset;
-        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_MFTDUMP,
+        eventManager.handlePlatformEvent(tid, PLDM_OEM_EVENT_CLASS_PCOREDUMP,
                                          eventData, eventDataSize,
                                          platformEventStatus);
         return PLDM_SUCCESS;
