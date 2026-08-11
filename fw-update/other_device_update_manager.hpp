@@ -195,6 +195,18 @@ class OtherDeviceUpdateManager
     size_t getValidTargets(void);
 
     /**
+     * @brief Check whether a target-filtered request selected no Item Updater.
+     *
+     * An Item Updater moves its Activation to Activating only when the
+     * requested targets select it, so no such transition for a filtered
+     * request means nothing in the package matched.
+     *
+     * @return True if targets were requested and no Item Updater started an
+     *         update, false for update-all or when an update did start.
+     */
+    bool noTargetedUpdateStarted() const;
+
+    /**
      * @brief Compute the max UpdateTimeout (seconds) advertised by the
      *        Item Updaters that descriptor-matched the current package.
      *
@@ -311,6 +323,12 @@ class OtherDeviceUpdateManager
      *
      */
     size_t validTargetCount;
+
+    /**
+     * @brief Set when an Item Updater Activation reaches Activating, i.e. an
+     *        Item Updater accepted one of the requested targets.
+     */
+    bool updateStarted = false;
 
     /**
      * @brief D-Bus object referance
