@@ -211,6 +211,8 @@ class OtherDeviceUpdateManager
      */
     size_t getValidTargets(void);
 
+    bool noTargetedUpdateStarted() const;
+
     /**
      * @brief Return the cached max UpdateTimeout (seconds) advertised by the
      *        Item Updaters processing the current package. The cache is folded
@@ -365,6 +367,8 @@ class OtherDeviceUpdateManager
      *
      */
     size_t validTargetCount;
+
+    bool updateStarted = false;
 
     /**
      * @brief Cached max UpdateTimeout (seconds) across the Item Updater

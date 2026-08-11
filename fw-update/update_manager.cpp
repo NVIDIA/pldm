@@ -1430,8 +1430,22 @@ void UpdateManager::updatePackageCompletion()
                 "");
         }
 
+        // No pldm device updater ran and no Item Updater accepted a requested
+        // target, so the request selected nothing in the package.
+        const bool noMatchingDevices =
+            deviceUpdaterMap.empty() && otherDeviceUpdateManager &&
+            (otherState != software::Activation::Activations::Failed) &&
+            otherDeviceUpdateManager->noTargetedUpdateStarted();
+        if (noMatchingDevices)
+        {
+            createLogEntry(resourceErrorDetected, "Firmware Update Service",
+                           "No Matching Devices",
+                           "Verify the FW package has devices that are listed"
+                           " in the Redfish FW Inventory");
+        }
+
         if ((pldmState == software::Activation::Activations::Failed) ||
-            !unavailableTargetEids.empty() ||
+            !unavailableTargetEids.empty() || noMatchingDevices ||
             (otherState == software::Activation::Activations::Failed))
         {
             activation->activation(software::Activation::Activations::Failed);
