@@ -125,7 +125,7 @@ class HostEffecterParser
   protected:
     pldm::InstanceIdDb* instanceIdDb; //!< Reference to the InstanceIdDb object
                                       //!< to obtain instance id
-    int sockFd;                       //!< Socket fd to send message to host
+    [[maybe_unused]] int sockFd;      //!< Socket fd to send message to host
     const pldm_pdr* pdrRepo;          //!< Reference to PDR repo
     std::vector<EffecterInfo> hostEffecterInfo; //!< Parsed effecter information
     std::vector<std::unique_ptr<sdbusplus::match>>
