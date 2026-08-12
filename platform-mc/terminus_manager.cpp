@@ -652,17 +652,20 @@ exec::task<int> TerminusManager::getPLDMTypes(tid_t tid,
     auto rc = encode_get_types_req(0, requestMsg);
     if (rc)
     {
-        lg2::error("encode_get_types_req failed, tid={TID} rc={RC}.", "TID",
-                   tid, "RC", rc);
+        lg2::error(
+            "Failed to encode request getPLDMTypes for terminus ID {TID}, error {RC} ",
+            "TID", tid, "RC", rc);
         co_return rc;
     }
 
-    const pldm_msg* responseMsg = NULL;
+    const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
 
     rc = co_await SendRecvPldmMsg(tid, request, &responseMsg, &responseLen);
     if (rc)
     {
+        lg2::error("Failed to send GetPLDMTypes for terminus {TID}, error {RC}",
+                   "TID", tid, "RC", rc);
         co_return rc;
     }
 
