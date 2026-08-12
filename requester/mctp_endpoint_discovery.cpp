@@ -568,6 +568,18 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
             "ERROR", e);
         return;
     }
+
+    // If the MCTP Endpoint interface is absent, this signal is not an endpoint
+    // addition (e.g. a Bridge interface being added to an existing endpoint).
+    // Ignore it to avoid spurious D-Bus calls.
+    if (!interfaces.contains(MCTPInterface))
+    {
+        info(
+            "getAddedMctpInfos: {PATH} MCTPInterface absent from signal, ignoring (not an endpoint signal)",
+            "PATH", objPath.str);
+        return;
+    }
+
     // Read Connectivity from signal; default to true if absent.
     Availability availability = true;
     if (interfaces.contains(MCTPInterfaceCC))
