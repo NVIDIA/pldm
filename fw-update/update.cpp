@@ -7,6 +7,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Software/Update/error.hpp>
 
 #include <stdexcept>
 
@@ -16,6 +17,9 @@ namespace pldm
 {
 namespace fw_update
 {
+
+using InvalidImage =
+    sdbusplus::xyz::openbmc_project::Software::Update::Error::InvalidImage;
 
 sdbusplus::message::object_path Update::startUpdate(
     sdbusplus::message::unix_fd image,
@@ -32,6 +36,14 @@ sdbusplus::message::object_path Update::startUpdate(
     if (imageFd < 0)
     {
         throw std::runtime_error("Failed to duplicate image file descriptor");
+    }
+
+    off_t imageSize = lseek(imageFd, 0, SEEK_END);
+    if (imageSize <= 0)
+    {
+        error("Rejecting firmware image of size {SIZE}", "SIZE", imageSize);
+        close(imageFd);
+        throw InvalidImage();
     }
 
     if (!mmapFile.map(imageFd, true /* take ownership of fd */))
