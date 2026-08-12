@@ -83,8 +83,9 @@ class UpdateManagerBase
     UpdateManagerBase(
         Event& event,
         pldm::requester::Handler<pldm::requester::Request>& handler,
-        InstanceIdDb& instanceIdDb) :
-        event(event), handler(handler), instanceIdDb(instanceIdDb)
+        InstanceIdDb& instanceIdDb, bool fwDebug = false) :
+        fwDebug(fwDebug), event(event), handler(handler),
+        instanceIdDb(instanceIdDb)
     {}
 
     virtual void updateDeviceCompletion(

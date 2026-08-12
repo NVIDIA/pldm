@@ -261,7 +261,7 @@ UpdateManager::UpdateManager(
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug,
     RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
-    UpdateManagerBase(event, handler, instanceIdDb), event(event),
+    UpdateManagerBase(event, handler, instanceIdDb, fwDebug), event(event),
     handler(handler), instanceIdDb(instanceIdDb),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
@@ -277,11 +277,7 @@ UpdateManager::UpdateManager(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
 #endif
-{
-    progressTimer = nullptr;
-    forceUpdate = false;
-    this->fwDebug = fwDebug;
-}
+{}
 
 UpdateManager::~UpdateManager() = default;
 
