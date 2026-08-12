@@ -215,22 +215,21 @@ int EventManager::handlePlatformEvent(
              eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
              eventClass == PLDM_OEM_EVENT_CLASS_MFTDUMP)
     {
-        // Require a known terminus with a valid name; reject otherwise
-        auto it = termini.find(tid);
-        if (it == termini.end() || !it->second)
-        {
-            lg2::error("OEM event from unknown terminus tid={TID}", "TID", tid);
-            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
-            return PLDM_ERROR;
-        }
-        auto nameOpt = it->second->getTerminusName();
-        if (!nameOpt.has_value())
-        {
-            lg2::error("OEM event from unnamed terminus tid={TID}", "TID", tid);
-            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
-            return PLDM_ERROR;
-        }
-        std::string terminusName = std::string(nameOpt.value());
+        // Helper to get terminus name from tid
+        auto getTerminusName = [this](tid_t tid) -> std::string {
+            auto it = termini.find(tid);
+            if (it != termini.end() && it->second)
+            {
+                auto name = it->second->getTerminusName();
+                if (name.has_value())
+                {
+                    return std::string(name.value());
+                }
+            }
+            return DEFAULT_TERMINUS_NAME;
+        };
+
+        std::string terminusName = getTerminusName(tid);
         bool success = false;
 
         switch (eventClass)
