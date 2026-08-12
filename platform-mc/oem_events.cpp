@@ -117,7 +117,7 @@ static std::string getEventDir(const std::string& terminus)
  *   uint8  payload[]: Event payload starts here
  *
  * By default the 4-byte header is parsed and only the payload is written to
- * file. Some event classes (e.g. the 0xF2 MFTDump event) do not follow
+ * file. Some event classes (e.g. the 0xF2 PCoreDump event) do not follow
  * this layout; for those pass skipHeader=true to write the complete event
  * buffer (totalSize) to file without parsing or stripping any header.
  *
@@ -279,10 +279,10 @@ bool handleCperErrorCountEvent(const std::string& terminus,
                          eventDataSize);
 }
 
-bool handleMftDumpEvent(const std::string& terminus, const uint8_t* eventData,
-                        size_t eventDataSize)
+bool handlePCoreDumpEvent(const std::string& terminus, const uint8_t* eventData,
+                          size_t eventDataSize)
 {
-    lg2::info("Processing MFTDump Event (0xF2), terminus={TERM}, size={SIZE}",
+    lg2::info("Processing PCoreDump Event (0xF2), terminus={TERM}, size={SIZE}",
               "TERM", terminus, "SIZE", eventDataSize);
 
     // Require at least the OEM event header plus one payload byte
@@ -295,7 +295,7 @@ bool handleMftDumpEvent(const std::string& terminus, const uint8_t* eventData,
 
     // The 0xF2 event does not follow the OEM header layout, so save the
     // complete event buffer to file without parsing or stripping a header.
-    return saveEventData(terminus, MFTDUMP_FILE, eventData, eventDataSize,
+    return saveEventData(terminus, PCOREDUMP_FILE, eventData, eventDataSize,
                          /*skipHeader=*/true);
 }
 

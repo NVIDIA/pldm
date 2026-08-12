@@ -303,15 +303,46 @@ TEST_F(OemEventsPrivateTest, pcieEventWriteCoverage)
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0xAB});
     const auto eventDir = eventRoot() / "Processor_Module_0";
 
-    EXPECT_TRUE(handleMftDumpEvent("Processor/Module\\0", ltssmPayload.data(),
-                                   ltssmPayload.size()));
+    EXPECT_TRUE(handlePCoreDumpEvent("Processor/Module\\0", ltssmPayload.data(),
+                                     ltssmPayload.size()));
     EXPECT_TRUE(
         handlePcieTelemetryEvent("Processor/Module\\0", telemetryPayload.data(),
                                  telemetryPayload.size()));
 
-    EXPECT_EQ(ltssmPayload, readBytes(eventDir / MFTDUMP_FILE));
+    EXPECT_EQ(ltssmPayload, readBytes(eventDir / PCOREDUMP_FILE));
     EXPECT_EQ(std::vector<uint8_t>({0xAB}),
               readBytes(eventDir / PCIE_TELEMETRY_FILE));
+}
+
+TEST_F(OemEventsPrivateTest, pcoreDumpStagingContract)
+{
+    // The staging file name is what the dump collector waits on. It is not a
+    // device contract, but pldmd and the collector must agree on it exactly:
+    // a mismatched pairing produces no error anywhere, just a collection that
+    // times out with nothing to show for it. Pin the name here so a rename
+    // has to be a deliberate, paired change.
+    EXPECT_STREQ("PCoreDump_0_0.bin", PCOREDUMP_FILE);
+
+    // The 0xF2 payload has no OEM header: the whole buffer is the dump, and
+    // it must reach the file byte for byte, with no parsing, stripping or
+    // transformation on the way.
+    const std::vector<uint8_t> rawPayload{0x00, 0xFF, 0x01, 0x02,
+                                          0x03, 0x00, 0x00, 0x7F};
+    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", rawPayload.data(),
+                                     rawPayload.size()));
+
+    const auto staged = eventRoot() / "ProcessorModule_1" / PCOREDUMP_FILE;
+    EXPECT_EQ(rawPayload, readBytes(staged));
+    // Published by rename, so no partial file is ever visible to a watcher.
+    EXPECT_FALSE(fs::exists(staged.string() + ".tmp"));
+
+    // Each dump overwrites the last under the same fixed name -- that is what
+    // makes the staging directory self-cleaning, and why the collector has to
+    // copy a payload out before triggering the next selector.
+    const std::vector<uint8_t> nextPayload{0xAA, 0xBB};
+    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", nextPayload.data(),
+                                     nextPayload.size()));
+    EXPECT_EQ(nextPayload, readBytes(staged));
 }
 
 TEST_F(OemEventsPrivateTest, saveEventDataFilesystemFailureCoverage)

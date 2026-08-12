@@ -19,6 +19,7 @@
 #include "libpldm/platform.h"
 
 #include "common/utils.hpp"
+#include "platform-mc/numeric_effecter_pcie_link_mask.hpp"
 #include "platform-mc/numeric_effecter_power_cap.hpp"
 #include "platform-mc/terminus_manager.hpp"
 
@@ -33,18 +34,19 @@ namespace platform_mc
 NumericEffecter::NumericEffecter(
     const tid_t tid, const bool effecterDisabled,
     std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr,
-    std::string& effecerName, std::string& associationPath,
+    const std::string& effecterName, const std::string& associationPath,
     TerminusManager& terminusManager) :
     tid(tid), effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance)),
-    needUpdate(true), terminusManager(terminusManager), baseUnit(pdr->base_unit)
+    effecterName(effecterName), needUpdate(true),
+    terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
     std::string reverseAssociation = "all_controls";
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     path = "/xyz/openbmc_project/control/";
-    path += effecerName;
+    path += effecterName;
     path = std::regex_replace(path, std::regex("[^a-zA-Z0-9_/]+"), "_");
 
     switch (baseUnit)
@@ -56,6 +58,22 @@ NumericEffecter::NumericEffecter(
                 reverseAssociation = "power_controls";
                 unitIntf = std::make_unique<NumericEffecterWattInft>(
                     *this, bus, path.c_str());
+            }
+            else
+            {
+                unitIntf = std::make_unique<NumericEffecterBaseUnit>(*this);
+            }
+            break;
+        case PLDM_SENSOR_UNIT_BITS:
+            if ((pdr->entity_type & 0x7FFF) == PLDM_ENTITY_PCI_EXPRESS_BUS &&
+                effecterName.find("PCIeRPLinkCtrl") != std::string::npos)
+            {
+                reverseAssociation = "pcie_link_controls";
+                unitIntf = std::make_unique<NumericEffecterPcieLinkMask>(
+                    *this, bus, path.c_str());
+                // Track the effecter's operational state (initializing ->
+                // enabled -> unavailable)
+                trackOperationalState = true;
             }
             else
             {
@@ -188,6 +206,17 @@ double NumericEffecter::baseToUnit(double value)
     return convertedValue;
 }
 
+void NumericEffecter::disarmOperationalStateTracking()
+{
+    if (!trackOperationalState || !needUpdate)
+    {
+        return;
+    }
+    needUpdate = false;
+    lg2::info("{EFFECTERNAME}: OperationalState is no longer tracked.",
+              "EFFECTERNAME", effecterName);
+}
+
 void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
                                   double pendingValue, double presentValue)
 {
@@ -213,6 +242,7 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
             available = true;
             functional = false;
             state = StateType::Disabled;
+            disarmOperationalStateTracking();
             break;
         case EFFECTER_OPER_STATE_INITIALIZING:
             available = false;
@@ -220,6 +250,8 @@ void NumericEffecter::updateValue(pldm_effecter_oper_state effecterOperState,
             state = StateType::Starting;
             break;
         case EFFECTER_OPER_STATE_UNAVAILABLE:
+            disarmOperationalStateTracking();
+            [[fallthrough]];
         case EFFECTER_OPER_STATE_STATUSUNKNOWN:
         case EFFECTER_OPER_STATE_FAILED:
         case EFFECTER_OPER_STATE_SHUTTINGDOWN:
@@ -327,6 +359,12 @@ exec::task<int> NumericEffecter::setNumericEffecterEnable(
 
 exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
+    if (trackOperationalState)
+    {
+        // Re-arm the state tracking so the write is followed until it
+        // settles; the reads clear this again on a terminal state.
+        needUpdate = true;
+    }
     union_effecter_data_size effecterValueRaw;
     size_t payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
     switch (dataSize)

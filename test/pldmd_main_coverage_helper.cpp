@@ -354,7 +354,7 @@ void configureFakeTransportFromEnv()
     else if (activeScenario == "host_eid_pcie_ltssm")
     {
         state.recvActions = {recvSuccess(makePlatformEventMessage(
-                                 pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+                                 pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP,
                                  {0x02, 0x01, 0x01, 0x00, 0x5A})),
                              recvFail};
     }
@@ -445,7 +445,7 @@ void configureFakeTransportFromEnv()
     else if (activeScenario == "pcie_ltssm")
     {
         state.recvActions = {recvSuccess(makePlatformEventMessage(
-                                 pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+                                 pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP,
                                  {0x02, 0x01, 0x01, 0x00, 0x5A})),
                              recvFail};
     }

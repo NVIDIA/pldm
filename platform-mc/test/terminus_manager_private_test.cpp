@@ -84,7 +84,13 @@ class TerminusManagerPrivateTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         terminusManager(event, reqHandler, instanceIdDb, termini, 0x08, nullptr)
-    {}
+    {
+        // The unit tests drive coroutines via stdexec::sync_wait without
+        // running the sd-event loop, so the retry helpers' timer::Sleep()
+        // backoff would never resume. Disable retry (single attempt) so the
+        // getTID/setTID failure paths return immediately instead of hanging.
+        terminusManager.mctpTidDiscoveryMaxAttempts = 1;
+    }
 
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;

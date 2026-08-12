@@ -52,6 +52,8 @@
 #include "platform-mc/sensor_manager.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <endian.h>
+
 #include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/post.hpp>
@@ -728,27 +730,44 @@ static std::vector<uint8_t> makeEntityAssociationPdr()
     return pdr;
 }
 
-static std::vector<uint8_t> makeAuxNamePdr(uint16_t effecterId, uint8_t pdrType)
+/* Build an effecter aux-name PDR carrying a caller-supplied "en" name, so a
+ * test can drive the aux-name-based unit dispatch in NumericEffecter's ctor.
+ * Multibyte fields are written in protocol (little-endian) order rather than
+ * host order, so the bytes are the same on any build host. */
+static std::vector<uint8_t> makeNamedAuxNamePdr(
+    uint16_t effecterId, uint8_t pdrType, std::string_view name)
 {
     std::vector<uint8_t> names{
-        1,                     // nameStringCount
-        'e',  'n',  0x00,      // name language tag: "en"
-        0x00, 0x41, 0x00, 0x00 // UTF16-BE "A"
+        1,             // nameStringCount
+        'e', 'n', 0x00 // name language tag: "en"
     };
+    for (char ch : name)
+    {
+        names.push_back(0x00); // UTF16-BE high byte
+        names.push_back(static_cast<uint8_t>(ch));
+    }
+    names.push_back(0x00); // UTF16-BE NUL terminator
+    names.push_back(0x00);
 
     std::vector<uint8_t> pdr(
         sizeof(pldm_effecter_aux_name_pdr) + names.size() - 1, 0);
     auto* aux = reinterpret_cast<pldm_effecter_aux_name_pdr*>(pdr.data());
-    aux->hdr.record_handle = 6;
+    aux->hdr.record_handle = htole32(6);
     aux->hdr.version = 1;
     aux->hdr.type = pdrType;
-    aux->hdr.record_change_num = 0;
-    aux->hdr.length = pdr.size() - sizeof(pldm_pdr_hdr);
-    aux->terminus_handle = 1;
-    aux->effecter_id = effecterId;
+    aux->hdr.record_change_num = htole16(0);
+    aux->hdr.length =
+        htole16(static_cast<uint16_t>(pdr.size() - sizeof(pldm_pdr_hdr)));
+    aux->terminus_handle = htole16(1);
+    aux->effecter_id = htole16(effecterId);
     aux->effecter_count = 1;
     memcpy(aux->effecter_names, names.data(), names.size());
     return pdr;
+}
+
+static std::vector<uint8_t> makeAuxNamePdr(uint16_t effecterId, uint8_t pdrType)
+{
+    return makeNamedAuxNamePdr(effecterId, pdrType, "A");
 }
 
 /* Build a compact (wire-format) numeric effecter PDR byte vector.
@@ -939,6 +958,42 @@ static std::vector<uint8_t> makeNumericEffecterPdr(uint16_t effecterId,
     pdr.normal_min.value_u8 = 40;
     pdr.rated_max.value_u8 = 70;
     pdr.rated_min.value_u8 = 30;
+    return serializeNumericEffecterPdr(pdr);
+}
+
+static constexpr float pcieLinkMaskTransitionIntervalSec = 0.05f;
+/* 48 significant bits: SegmentCtlrId * 8 + RpId. */
+static constexpr uint64_t pcieLinkMaskSupportedMask = 0x0000FFFFFFFFFFFFULL;
+
+/* SatMC PCIe root-port link-enable mask effecter: base unit Bits + entity
+ * PCI Express Bus + an aux name containing "PCIeRPLinkCtrl" is what makes
+ * NumericEffecter's ctor set trackOperationalState. */
+static std::vector<uint8_t> makePcieLinkMaskEffecterPdr(uint16_t effecterId)
+{
+    pldm_numeric_effecter_value_pdr pdr{};
+    pdr.hdr.record_handle = effecterId;
+    pdr.hdr.version = 1;
+    pdr.hdr.type = PLDM_NUMERIC_EFFECTER_PDR;
+    pdr.hdr.record_change_num = 0;
+    pdr.terminus_handle = 1;
+    pdr.effecter_id = effecterId;
+    pdr.entity_type = PLDM_ENTITY_PCI_EXPRESS_BUS;
+    pdr.entity_instance = 0;
+    pdr.container_id = 3;
+    pdr.effecter_semantic_id = 0;
+    pdr.effecter_init = PLDM_NO_INIT;
+    pdr.effecter_auxiliary_names = true;
+    pdr.base_unit = PLDM_SENSOR_UNIT_BITS;
+    pdr.unit_modifier = 0;
+    pdr.is_linear = true;
+    pdr.effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT64;
+    pdr.resolution = 1.0f;
+    pdr.offset = 0.0f;
+    pdr.transition_interval = pcieLinkMaskTransitionIntervalSec;
+    pdr.max_settable.value_u64 = pcieLinkMaskSupportedMask;
+    pdr.min_settable.value_u64 = 0;
+    pdr.range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT64;
+    pdr.range_field_support.byte = 0x00;
     return serializeNumericEffecterPdr(pdr);
 }
 
@@ -1358,6 +1413,52 @@ static std::vector<uint8_t> makeZeroCountEffecterAuxNamePdr(uint16_t effecterId)
     };
     updatePdrLength(pdr);
     return pdr;
+}
+
+// Fixed sensor auxiliary-names PDR header (through sensor_count) with no name
+// data appended; used to build malformed/truncated PDRs in the negative tests.
+static std::vector<uint8_t> makeSensorAuxNameHeader(uint16_t sensorId,
+                                                    uint8_t sensorCount)
+{
+    return std::vector<uint8_t>{
+        0x0,
+        0x0,
+        0x0,
+        0x21,                            // record handle
+        0x1,                             // PDRHeaderVersion
+        PLDM_SENSOR_AUXILIARY_NAMES_PDR, // PDRType
+        0x0,
+        0x0,                             // recordChangeNumber
+        0x0,
+        0x0,                             // dataLength
+        0x0,
+        0x0,                             // terminus handle
+        static_cast<uint8_t>(sensorId & 0xFF),
+        static_cast<uint8_t>((sensorId >> 8) & 0xFF),
+        sensorCount};
+}
+
+// Fixed effecter auxiliary-names PDR header (through effecter_count), no name
+// data appended; used to build malformed/truncated PDRs in the negative tests.
+static std::vector<uint8_t> makeEffecterAuxNameHeader(uint16_t effecterId,
+                                                      uint8_t effecterCount)
+{
+    return std::vector<uint8_t>{
+        0x0,
+        0x0,
+        0x0,
+        0x25,                              // record handle
+        0x1,                               // PDRHeaderVersion
+        PLDM_EFFECTER_AUXILIARY_NAMES_PDR, // PDRType
+        0x0,
+        0x0,                               // recordChangeNumber
+        0x0,
+        0x0,                               // dataLength
+        0x0,
+        0x0,                               // terminus handle
+        static_cast<uint8_t>(effecterId & 0xFF),
+        static_cast<uint8_t>((effecterId >> 8) & 0xFF),
+        effecterCount};
 }
 
 static std::vector<uint8_t> makeEmptyCompositeEffecterAuxNamePdr(
@@ -1839,6 +1940,71 @@ TEST_F(TerminusTest, checkDeviceInventoryI2cAssociationCoverage)
     auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(rootPath));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+}
+
+TEST_F(TerminusTest, checkDeviceInventoryMctpEndpointAssociationCoverage)
+{
+    AsyncEntityManagerServer entityManager;
+    std::string uuid("00000000-0000-0000-0000-000000000217");
+    Terminus terminus(0x28, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x48, uuid, "smbus", 1, std::nullopt,
+                                  "mctp-over-smbus", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov217";
+    entityManager.addInterface(
+        rootPath + "/mctp_assoc",
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        {{"EID", uint64_t{0x48}}});
+    entityManager.addInterface(
+        rootPath + "/aux_eid_match",
+        "xyz.openbmc_project.Configuration.SensorAuxName",
+        {{"SensorId", uint64_t{0x5700}},
+         {"AuxNames", std::vector<std::string>{"Port 0"}},
+         {"ParentObjPath", rootPath},
+         {"EID", uint64_t{0x48}}});
+    entityManager.addInterface(
+        rootPath + "/aux_eid_mismatch",
+        "xyz.openbmc_project.Configuration.SensorAuxName",
+        {{"SensorId", uint64_t{0x5701}},
+         {"AuxNames", std::vector<std::string>{"WrongEid"}},
+         {"ParentObjPath", rootPath},
+         {"EID", uint64_t{0x49}}});
+
+    auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    // The matched EID has to reach getSensorAuxNameFromEM, otherwise every
+    // EID filtered SensorAuxName would be dropped.
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(0x5700));
+    EXPECT_FALSE(terminus.sensorAuxNameOverwriteTbl.contains(0x5701));
+}
+
+TEST_F(TerminusTest,
+       checkDeviceInventoryReturnsFailedWhenMctpEndpointEidDoesNotMatch)
+{
+    AsyncEntityManagerServer entityManager;
+    std::string uuid("00000000-0000-0000-0000-000000000218");
+    Terminus terminus(0x29, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x4a, uuid, "smbus", 1, std::nullopt,
+                                  "mctp-over-smbus", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov218";
+    entityManager.addInterface(
+        rootPath + "/mctp_assoc",
+        "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+        {{"EID", uint64_t{0x4b}}});
+
+    auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
 }
 
 TEST_F(TerminusTest, getSensorAuxNameFromEMI2cFilterCoverage)
@@ -3840,6 +4006,136 @@ TEST_F(TerminusTest, parseSensorAuxiliaryNamesMultipleStringsCoverage)
     EXPECT_EQ("UC0", names[0][1].second);
     ASSERT_EQ(1u, names[1].size());
     EXPECT_EQ("DIMM0", names[1][0].second);
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesShortHeaderReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A0");
+    Terminus terminus(0xA0, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    // Buffer smaller than the fixed PDR header must be rejected.
+    std::vector<uint8_t> pdr(sizeof(pldm_pdr_hdr), 0);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseSensorAuxiliaryNamesUnterminatedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A1");
+    Terminus terminus(0xA1, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C0, 1); // sensor_count = 1
+    pdr.push_back(0x1);                           // nameStringCount = 1
+    pdr.push_back('e');                           // language tag, no NUL
+    pdr.push_back('n');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesNameOffsetAtEndReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A2");
+    Terminus terminus(0xA2, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C1, 1); // sensor_count = 1
+    pdr.push_back(0x1);                           // nameStringCount = 1
+    appendCString(pdr, "en");                     // tag, then buffer ends
+    updatePdrLength(pdr);
+    // No room remains for the UTF-16 name string.
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesUnterminatedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A3");
+    Terminus terminus(0xA3, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C2, 1);
+    pdr.push_back(0x1);       // nameStringCount = 1
+    appendCString(pdr, "en"); // valid language tag
+    pdr.push_back(0x0);       // one UTF-16 code unit, no 0x0000 terminator
+    pdr.push_back('X');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseEffecterAuxiliaryNamesShortHeaderReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A4");
+    Terminus terminus(0xA4, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    std::vector<uint8_t> pdr(sizeof(pldm_pdr_hdr), 0);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseEffecterAuxiliaryNamesUnterminatedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A5");
+    Terminus terminus(0xA5, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C3, 1); // effecter_count = 1
+    pdr.push_back(0x1);                             // nameStringCount = 1
+    pdr.push_back('e');                             // language tag, no NUL
+    pdr.push_back('n');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseEffecterAuxiliaryNamesNameOffsetAtEndReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A6");
+    Terminus terminus(0xA6, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C4, 1);
+    pdr.push_back(0x1);
+    appendCString(pdr, "en"); // tag, then buffer ends (no UTF-16 name)
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest,
+       parseEffecterAuxiliaryNamesUnterminatedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A7");
+    Terminus terminus(0xA7, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeEffecterAuxNameHeader(0x1C5, 1);
+    pdr.push_back(0x1);
+    appendCString(pdr, "en");
+    pdr.push_back(0x0); // one UTF-16 code unit, no 0x0000 terminator
+    pdr.push_back('X');
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseEffecterAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesOversizedLanguageTagReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A8");
+    Terminus terminus(0xA8, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C6, 1);
+    pdr.push_back(0x1); // nameStringCount = 1
+    // Language tag longer than PLDM_STR_UTF_8_MAX_LEN, still NUL-terminated.
+    appendCString(pdr, std::string(PLDM_STR_UTF_8_MAX_LEN + 1, 'a').c_str());
+    appendUtf16BeCString(pdr, "en");
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
+}
+
+TEST_F(TerminusTest, parseSensorAuxiliaryNamesOversizedUtf16NameReturnsNull)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001A9");
+    Terminus terminus(0xA9, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    auto pdr = makeSensorAuxNameHeader(0x1C7, 1);
+    pdr.push_back(0x1); // nameStringCount = 1
+    appendCString(pdr, "en");
+    // UTF-16 name longer than PLDM_STR_UTF_16_MAX_LEN, still terminated.
+    appendUtf16BeCString(pdr,
+                         std::string(PLDM_STR_UTF_16_MAX_LEN + 1, 'a').c_str());
+    updatePdrLength(pdr);
+    EXPECT_EQ(nullptr, terminus.parseSensorAuxiliaryNamesPDR(pdr));
 }
 
 TEST_F(TerminusTest, parseEffecterAuxiliaryNamesMultipleStringsCoverage)
@@ -8578,6 +8874,99 @@ TEST_F(TerminusTest, addNewPdrsSkipsAlreadyPresent)
                            PLDM_STATESET_ID_HEALTHSTATE, true)};
     EXPECT_EQ(2u, terminus.addNewPdrs(mixed));
     EXPECT_EQ(2u, terminus.stateSensors.size());
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterOnPdrReapply)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000531");
+    Terminus terminus(0x55, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmReapplyTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    auto tracked = terminus.numericEffecters[0];
+    ASSERT_TRUE(tracked->trackOperationalState);
+
+    // The device closed its write window: updateValue() observed a terminal
+    // operational state and disarmed tracking.
+    tracked->needUpdate = false;
+
+    // SatMC re-reports the same PDRs as ADDED on the next power cycle. Nothing
+    // is applied, but the effecter must be re-armed so the new window is seen.
+    std::vector<std::vector<uint8_t>> reAdded{
+        makeNamedAuxNamePdr(0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR,
+                            "PCIeRPLinkCtrl_0"),
+        makePcieLinkMaskEffecterPdr(0x0845)};
+    EXPECT_EQ(0u, terminus.addNewPdrs(reAdded));
+    EXPECT_EQ(1u, terminus.numericEffecters.size());
+    EXPECT_TRUE(tracked->needUpdate);
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterOnPdrApplyNewRecord)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000532");
+    Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmNewRecordTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericEffecters.size());
+    auto tracked = terminus.numericEffecters[0];
+    ASSERT_TRUE(tracked->trackOperationalState);
+    tracked->needUpdate = false;
+
+    // A batch carrying a genuinely new, unrelated PDR still re-arms the tracked
+    // effecter: the sweep is driven by "this terminus refreshed its
+    // repository", not by whether the effecter's own record handle was listed.
+    std::vector<std::vector<uint8_t>> mixed{
+        makeSensorAuxNamePdr(0x701),
+        makeStateSensorPdr(0x701, PLDM_ENTITY_SYS_BOARD,
+                           PLDM_STATESET_ID_HEALTHSTATE, true)};
+    EXPECT_EQ(2u, terminus.addNewPdrs(mixed));
+    EXPECT_TRUE(tracked->needUpdate);
+}
+
+TEST_F(TerminusTest, rearmPolledEffecterLeavesOrdinaryEffectersAlone)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000533");
+    Terminus terminus(0x57, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("RearmScopeTerminus");
+
+    terminus.pdrs.emplace_back(makeNamedAuxNamePdr(
+        0x0845, PLDM_EFFECTER_AUXILIARY_NAMES_PDR, "PCIeRPLinkCtrl_0"));
+    terminus.pdrs.emplace_back(makePcieLinkMaskEffecterPdr(0x0845));
+    terminus.pdrs.emplace_back(makeNumericEffecterPdr(0x0846, false));
+    terminus.pdrs.emplace_back(makeStateEffecterPdr(
+        0x0847, PLDM_ENTITY_SYS_BOARD, PLDM_STATESET_ID_HEALTHSTATE));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(2u, terminus.numericEffecters.size());
+    ASSERT_EQ(1u, terminus.stateEffecters.size());
+
+    for (auto& effecter : terminus.numericEffecters)
+    {
+        effecter->needUpdate = false;
+    }
+    terminus.stateEffecters[0]->needUpdate = false;
+
+    // Only the tracked effecter is re-armed. Ordinary numeric effecters keep
+    // their one-shot read semantics, and state effecters are out of scope.
+    EXPECT_EQ(1u, terminus.rearmTrackedEffecters());
+    for (auto& effecter : terminus.numericEffecters)
+    {
+        EXPECT_EQ(effecter->trackOperationalState, effecter->needUpdate);
+    }
+    EXPECT_FALSE(terminus.stateEffecters[0]->needUpdate);
+
+    // Idempotent: an already-armed effecter is not counted twice.
+    EXPECT_EQ(0u, terminus.rearmTrackedEffecters());
 }
 
 TEST_F(TerminusTest, canReplacePdrIncrementallyClassifiesTypes)

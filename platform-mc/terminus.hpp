@@ -264,6 +264,18 @@ class Terminus
         return std::nullopt;
     }
 
+    /** @brief Get the contained (child) entities for a given container ID */
+    const std::set<EntityInfo>* getContainedEntities(
+        ContainerID containerId) const
+    {
+        auto itr = entityAssociations.find(containerId);
+        if (itr != entityAssociations.end())
+        {
+            return &itr->second.second;
+        }
+        return nullptr;
+    }
+
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
 
@@ -458,6 +470,13 @@ class Terminus
     /** @brief set the terminus to offline state */
     void setOffline();
 
+    /** @brief Resume operational-state tracking on numeric effecters that
+     *         disarmed it, after the terminus restarted its state sequence.
+     *
+     *  @return number of effecters re-armed
+     */
+    size_t rearmTrackedEffecters();
+
     const UUID& getUuid()
     {
         return uuid;
@@ -526,6 +545,18 @@ class Terminus
 
     std::shared_ptr<EffecterAuxiliaryNames> parseEffecterAuxiliaryNamesPDR(
         const std::vector<uint8_t>& pdrData);
+
+    /** @brief Parse the variable-length name-string entries shared by the
+     *         sensor and effecter auxiliary-names PDRs. Walks the
+     *         device-supplied buffer [ptr, end) with explicit bounds and
+     *         length caps; returns false (caller returns nullptr) on any
+     *         malformed, truncated, or over-long field. @a label is used only
+     *         for logging.
+     */
+    bool parseAuxiliaryNameStrings(
+        const uint8_t* ptr, const uint8_t* end, uint8_t count, uint16_t id,
+        std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>& out,
+        const char* label);
 
     std::tuple<SensorID, StateSetInfo> parseStateSensorPDR(
         std::vector<uint8_t>& pdr);

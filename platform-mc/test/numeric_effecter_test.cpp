@@ -855,3 +855,190 @@ TEST(OemBaseCoverage, ctorDtorCoverage)
     OemIntf oem;
     (void)oem;
 }
+
+TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
+{
+    constexpr pldm::tid_t tid = 0x51;
+    const pldm::MctpInfo mctpInfo(
+        15, "00000000-0000-0000-0000-000000000051",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis51"};
+
+    std::string maskEffecterName{"ProcessorModule_0_CPU_0_PCIeRPLinkCtrl_0"};
+    auto maskPdr = makeNumericEffecterValuePdr(
+        0x0F31, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_BITS,
+        PLDM_ENTITY_PCI_EXPRESS_BUS);
+    NumericEffecter maskEffecter(tid, false, maskPdr, maskEffecterName,
+                                 inventoryPath, terminusManager);
+    EXPECT_TRUE(maskEffecter.trackOperationalState);
+    EXPECT_TRUE(maskEffecter.needUpdate);
+
+    std::string plainEffecterName{"plain_counts_effecter"};
+    auto plainPdr = makeNumericEffecterValuePdr(
+        0x0F32, PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    NumericEffecter plainEffecter(tid, false, plainPdr, plainEffecterName,
+                                  inventoryPath, terminusManager);
+    EXPECT_FALSE(plainEffecter.trackOperationalState);
+
+    // Non-terminal operational states keep the tracking armed.
+    for (auto operState : {EFFECTER_OPER_STATE_INITIALIZING,
+                           EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING,
+                           EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+                           EFFECTER_OPER_STATE_STATUSUNKNOWN})
+    {
+        auto response = makeGetNumericEffecterValueResp(
+            PLDM_EFFECTER_DATA_SIZE_UINT64, operState);
+        ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+        auto rc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+        EXPECT_TRUE(maskEffecter.needUpdate) << "operState " << operState;
+    }
+
+    // Completion-code and decode errors bypass updateValue and keep the
+    // tracking armed.
+    auto response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT64,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING, PLDM_ERROR);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto ccRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
+    ASSERT_TRUE(ccRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*ccRc));
+    EXPECT_TRUE(maskEffecter.needUpdate);
+
+    response = makeCcOnlyResp(PLDM_GET_NUMERIC_EFFECTER_VALUE, PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto decodeRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
+    ASSERT_TRUE(decodeRc.has_value());
+    EXPECT_NE(PLDM_SUCCESS, std::get<0>(*decodeRc));
+    EXPECT_TRUE(maskEffecter.needUpdate);
+
+    // unavailable is terminal: the device closed its write window.
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT64,
+                                               EFFECTER_OPER_STATE_UNAVAILABLE);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto unavailRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
+    ASSERT_TRUE(unavailRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*unavailRc));
+    EXPECT_FALSE(maskEffecter.needUpdate);
+    EXPECT_EQ(StateType::UnavailableOffline, maskEffecter.state());
+
+    // disabled is terminal too (feature knob off).
+    maskEffecter.needUpdate = true;
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT64,
+                                               EFFECTER_OPER_STATE_DISABLED);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto disabledRc =
+        stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
+    ASSERT_TRUE(disabledRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*disabledRc));
+    EXPECT_FALSE(maskEffecter.needUpdate);
+    EXPECT_EQ(StateType::Disabled, maskEffecter.state());
+
+    // A write re-arms the tracking until the state settles...
+    response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT64,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto setRc = stdexec::sync_wait(maskEffecter.setNumericEffecterValue(1));
+    ASSERT_TRUE(setRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
+    EXPECT_TRUE(maskEffecter.needUpdate);
+
+    // ...and self-limits when the trailing read already sees the window
+    // closed.
+    response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT64,
+                                               EFFECTER_OPER_STATE_UNAVAILABLE);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    setRc = stdexec::sync_wait(maskEffecter.setNumericEffecterValue(2));
+    ASSERT_TRUE(setRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
+    EXPECT_FALSE(maskEffecter.needUpdate);
+
+    // Untracked effecters keep their one-shot needUpdate semantics: neither
+    // a terminal reading nor a write may touch the flag.
+    plainEffecter.needUpdate = true;
+    response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT8,
+                                               EFFECTER_OPER_STATE_DISABLED);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    auto plainRc = stdexec::sync_wait(plainEffecter.getNumericEffecterValue());
+    ASSERT_TRUE(plainRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*plainRc));
+    EXPECT_TRUE(plainEffecter.needUpdate);
+    EXPECT_EQ(StateType::Disabled, plainEffecter.state());
+
+    plainEffecter.needUpdate = false;
+    response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    response = makeGetNumericEffecterValueResp(
+        PLDM_EFFECTER_DATA_SIZE_UINT8,
+        EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    setRc = stdexec::sync_wait(plainEffecter.setNumericEffecterValue(3));
+    ASSERT_TRUE(setRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
+    EXPECT_FALSE(plainEffecter.needUpdate);
+}
+
+TEST_F(TestNumericEffecter, pcieLinkMaskTrackingDispatchNegativeCases)
+{
+    constexpr pldm::tid_t tid = 0x52;
+    const pldm::MctpInfo mctpInfo(
+        16, "00000000-0000-0000-0000-000000000052",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis52"};
+
+    // Tracking needs BOTH halves of the ctor condition: the PCI Express Bus
+    // entity type AND a "PCIeRPLinkCtrl" aux name. Neither alone qualifies.
+    std::string wrongName{"ProcessorModule_0_PCIeBus_0_SomeOtherCtrl_0"};
+    auto wrongNamePdr = makeNumericEffecterValuePdr(
+        0x0F41, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_BITS,
+        PLDM_ENTITY_PCI_EXPRESS_BUS);
+    NumericEffecter wrongNameEffecter(tid, false, wrongNamePdr, wrongName,
+                                      inventoryPath, terminusManager);
+    EXPECT_FALSE(wrongNameEffecter.trackOperationalState);
+
+    // The D-Bus object path is derived from the effecter name alone, so each
+    // effecter below needs a distinct name to avoid colliding on the bus.
+    std::string wrongEntityName{"ProcessorModule_1_PCIeRPLinkCtrl_0"};
+    auto wrongEntityPdr = makeNumericEffecterValuePdr(
+        0x0F42, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_BITS,
+        PLDM_ENTITY_SYS_BOARD);
+    NumericEffecter wrongEntityEffecter(tid, false, wrongEntityPdr,
+                                        wrongEntityName, inventoryPath,
+                                        terminusManager);
+    EXPECT_FALSE(wrongEntityEffecter.trackOperationalState);
+
+    // A base unit other than Bits falls through to the plain unit class, which
+    // publishes no mask interface at all.
+    std::string wrongUnitName{"ProcessorModule_2_PCIeRPLinkCtrl_0"};
+    auto wrongUnitPdr = makeNumericEffecterValuePdr(
+        0x0F43, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_COUNTS,
+        PLDM_ENTITY_PCI_EXPRESS_BUS);
+    NumericEffecter wrongUnitEffecter(tid, false, wrongUnitPdr, wrongUnitName,
+                                      inventoryPath, terminusManager);
+    EXPECT_FALSE(wrongUnitEffecter.trackOperationalState);
+
+    // The entity type is matched with the 0x8000 "logical" bit masked off, so a
+    // logical PCI Express Bus entity still tracks.
+    std::string logicalName{"ProcessorModule_3_PCIeRPLinkCtrl_0"};
+    auto logicalPdr = makeNumericEffecterValuePdr(
+        0x0F44, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_BITS,
+        static_cast<uint16_t>(PLDM_ENTITY_PCI_EXPRESS_BUS | 0x8000));
+    NumericEffecter logicalEffecter(tid, false, logicalPdr, logicalName,
+                                    inventoryPath, terminusManager);
+    EXPECT_TRUE(logicalEffecter.trackOperationalState);
+}

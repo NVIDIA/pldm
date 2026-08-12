@@ -22,6 +22,9 @@
 #include "fw-update/manager.hpp"
 #include "oem_events.hpp"
 #include "platform_manager.hpp"
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/platform-mc/pcie_port_info.hpp"
+#endif
 #include "sensor_manager.hpp"
 #include "terminus_manager.hpp"
 
@@ -34,6 +37,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <optional>
 #include <queue>
 #include <variant>
 
@@ -49,8 +53,9 @@ namespace fs = std::filesystem;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xF3;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_0xFD;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_ERROR_COUNTER;
-using pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO;
 using pldm::platform::PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY;
+using pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP;
 using pldm::platform::PLDM_TELEMETRY_PAUSE;
 using pldm::platform::PLDM_TELEMETRY_REDISCOVER;
 using pldm::platform::PLDM_TELEMETRY_RESUME;
@@ -213,10 +218,11 @@ int EventManager::handlePlatformEvent(
     }
     else if (eventClass == PLDM_OEM_EVENT_CLASS_ERROR_COUNTER ||
              eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
-             eventClass == PLDM_OEM_EVENT_CLASS_MFTDUMP)
+             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCOREDUMP)
     {
         // Helper to get terminus name from tid
-        auto getTerminusName = [this](tid_t tid) -> std::string {
+        auto getTerminusName = [this](tid_t tid) -> std::optional<std::string> {
             auto it = termini.find(tid);
             if (it != termini.end() && it->second)
             {
@@ -226,10 +232,28 @@ int EventManager::handlePlatformEvent(
                     return std::string(name.value());
                 }
             }
-            return DEFAULT_TERMINUS_NAME;
+            return std::nullopt;
         };
 
-        std::string terminusName = getTerminusName(tid);
+        auto resolvedName = getTerminusName(tid);
+
+        // A PCore dump is filed under the terminus it came from, and the
+        // collector picks it up by exactly that path. Falling back to a
+        // guessed name here does not merely mislabel the payload, it stages
+        // one CPU's dump where the other CPU's collector will read it, so
+        // reject the event instead. Unattributed beats wrongly attributed.
+        // The other two classes keep their historical fallback.
+        if (eventClass == PLDM_OEM_EVENT_CLASS_PCOREDUMP &&
+            !resolvedName.has_value())
+        {
+            lg2::error(
+                "Rejecting PCoreDump Event (0xF2) from tid={TID}: terminus name is unresolved, refusing to stage it under another terminus",
+                "TID", tid);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+            return PLDM_ERROR;
+        }
+
+        std::string terminusName = resolvedName.value_or(DEFAULT_TERMINUS_NAME);
         bool success = false;
 
         switch (eventClass)
@@ -251,11 +275,25 @@ int EventManager::handlePlatformEvent(
                     terminusName, eventData, eventDataSize);
                 break;
 
-            case PLDM_OEM_EVENT_CLASS_MFTDUMP:
-                // MFTDump Event (0xF2)
-                lg2::info("Received MFTDump Event ({EC}) from tid={TID}", "EC",
-                          lg2::hex, eventClass, "TID", tid);
-                success = oem_events::handleMftDumpEvent(
+            case PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO:
+                // PCIe Port Info Event (0xF4)
+                lg2::debug(
+                    "Received PCIe Port Info Event ({EC}) from tid={TID}", "EC",
+                    lg2::hex, eventClass, "TID", tid);
+#ifdef OEM_NVIDIA
+                success = pldm::oem_nvidia::handlePciePortInfoEvent(
+                    terminusName, eventData, eventDataSize);
+#else
+                // OEM feature disabled: accept and drop.
+                success = true;
+#endif
+                break;
+
+            case PLDM_OEM_EVENT_CLASS_PCOREDUMP:
+                // PCoreDump Event (0xF2)
+                lg2::info("Received PCoreDump Event ({EC}) from tid={TID}",
+                          "EC", lg2::hex, eventClass, "TID", tid);
+                success = oem_events::handlePCoreDumpEvent(
                     terminusName, eventData, eventDataSize);
                 break;
 

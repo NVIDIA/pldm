@@ -110,7 +110,7 @@ foreach t : tests
     elif t == 'update_manager_internal_test'
         test_fw_update_src = fw_update_test_src_no_update_manager
     elif t == 'debug_token_internal_test' or t == 'other_device_update_manager_test'
-        test_cpp_args = ['-fno-access-control']
+        test_cpp_args += ['-fno-access-control']
     elif t == 'package_signature_test'
         test_link_args = [
             '-Wl,--wrap=EVP_PKEY_CTX_new',

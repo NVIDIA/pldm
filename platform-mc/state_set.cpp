@@ -163,8 +163,13 @@ std::unique_ptr<StateSet> StateSetCreator::createEffecter(
     else if (stateSetId ==
              oem_nvidia::PLDM_NVIDIA_OEM_STATE_SET_CPU_DIAG_REFRESH)
     {
+        // LinkBWTelemetry effecters are driven periodically (every 30s + at
+        // init) so SatMC collects PCIe link BW and emits the 0xF4 event; other
+        // CpuDiagnostics refreshers remain on-demand.
+        const bool autoRefresh =
+            path.find("LinkBWTelemetry") != std::string::npos;
         return std::make_unique<oem_nvidia::StateSetCpuDiagnosticsRefresh>(
-            stateSetId, compId, path, stateAssociation, effecter);
+            stateSetId, compId, path, stateAssociation, effecter, autoRefresh);
     }
 #endif
     else

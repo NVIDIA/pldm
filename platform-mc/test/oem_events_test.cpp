@@ -21,7 +21,7 @@ TEST(OemEventsCoverage, oemEventValidationCoverage)
                                            tooSmall.size()));
 
     const std::array<uint8_t, 4> truncatedPayload{{0x01, 0x00, 0x08, 0x00}};
-    EXPECT_FALSE(handleMftDumpEvent(
+    EXPECT_FALSE(handlePCoreDumpEvent(
         "ProcessorModule_1", truncatedPayload.data(), truncatedPayload.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
         "ProcessorModule_2", truncatedPayload.data(), truncatedPayload.size()));
@@ -76,6 +76,13 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
 {
     const std::array<uint8_t, 6> validOemPayload{
         {0x01, 0x00, 0x02, 0x00, 0xAA, 0x55}};
+    EXPECT_FALSE(handleCperErrorCountEvent(
+        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
+    EXPECT_FALSE(handlePCoreDumpEvent(
+        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
+    EXPECT_FALSE(handlePcieTelemetryEvent(
+        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
+
     const std::array<uint8_t, 6> validInventoryPayload{
         {0x01, 0x00, 0x02, 0x00, '{', '}'}};
     if (getuid() != 0)
@@ -85,8 +92,8 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
             "../unsafe\\terminus", validOemPayload.data(),
             validOemPayload.size()));
         EXPECT_FALSE(
-            handleMftDumpEvent("../unsafe\\terminus", validOemPayload.data(),
-                               validOemPayload.size()));
+            handlePCoreDumpEvent("../unsafe\\terminus", validOemPayload.data(),
+                                 validOemPayload.size()));
         EXPECT_FALSE(handlePcieTelemetryEvent(
             "../unsafe\\terminus", validOemPayload.data(),
             validOemPayload.size()));
@@ -129,8 +136,8 @@ TEST(OemEventsCoverage, sanitizeUnknownAndWarningHeaderCoverage)
         EXPECT_FALSE(
             handleCperErrorCountEvent("..", validPayloadWithWarnings.data(),
                                       validPayloadWithWarnings.size()));
-        EXPECT_FALSE(handleMftDumpEvent("..", validPayloadWithWarnings.data(),
-                                        validPayloadWithWarnings.size()));
+        EXPECT_FALSE(handlePCoreDumpEvent("..", validPayloadWithWarnings.data(),
+                                          validPayloadWithWarnings.size()));
         EXPECT_FALSE(
             handlePcieTelemetryEvent("..", validPayloadWithWarnings.data(),
                                      validPayloadWithWarnings.size()));

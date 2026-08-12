@@ -168,6 +168,41 @@ class TerminusManager
      */
     exec::task<int> setTidOverMctp(mctp_eid_t eid, tid_t tid);
 
+    /** @brief Wrapper around getTidOverMctp() that retries the getTID exchange
+     *         a bounded number of times on transient MCTP failure, so a single
+     *         non-response during discovery does not permanently drop the
+     *         terminus for this boot.
+     *
+     *  @param[in] eid - Destination EID
+     *  @param[out] tid - TID returned from terminus
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> getTidOverMctpWithRetry(mctp_eid_t eid, tid_t& tid);
+
+    /** @brief Wrapper around setTidOverMctp() that retries the setTID exchange
+     *         a bounded number of times on transient MCTP failure. An
+     *         unsupported-command response is treated as terminal (not
+     * retried).
+     *
+     *  @param[in] eid - Destination EID
+     *  @param[in] tid - Terminus ID
+     *  @return coroutine return_value - PLDM completion code
+     */
+    exec::task<int> setTidOverMctpWithRetry(mctp_eid_t eid, tid_t tid);
+
+    /** @brief Max attempts for the MCTP TID-discovery commands (getTID/setTID)
+     *         before giving up on a terminus for this discovery pass. A single
+     *         transient MCTP non-response (e.g. a CX still stabilising after
+     *         reset release) must not permanently drop the endpoint for the
+     *         boot. Overridable by unit tests to disable retry/backoff.
+     */
+    uint8_t mctpTidDiscoveryMaxAttempts = 3;
+
+    /** @brief Delay between MCTP TID-discovery retry attempts (500 ms).
+     *         Overridable by unit tests.
+     */
+    uint64_t mctpTidDiscoveryRetryDelayUsec = 500000;
+
     /** @brief Send getPLDMTypes command to destination EID and then return the
      *         value of supportedTypes in reference parameter.
      *

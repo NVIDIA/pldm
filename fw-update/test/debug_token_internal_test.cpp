@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "common/dBusAsyncUtils.hpp"
 #include "common/test/mocked_utils.hpp"
 #include "fw-update/activation.hpp"
 #include "fw-update/oem-nvidia/debug_token.hpp"
@@ -49,6 +50,18 @@ class DebugTokenInternalTest : public testing::Test
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true, nullptr)
     {}
+
+    void failAsyncDbusWrites()
+    {
+        pldm::utils::dbusAsyncMock::setProperty =
+            [](const std::string&, const std::string&, const std::string&,
+               const pldm::utils::PropertyValue&) { return false; };
+    }
+
+    void TearDown() override
+    {
+        pldm::utils::dbusAsyncMock::reset();
+    }
 
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
@@ -122,6 +135,7 @@ TEST_F(DebugTokenInternalTest, activateReturnsFalseOnAsyncCallFailure)
     // coSetDbusProperty resolves to false, so activate() must surface
     // false to its caller. Guards the startTimer-only-on-success gate in
     // updateDebugToken().
+    failAsyncDbusWrites();
     wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
 
     DebugToken debugToken(busMock, &updateManager);
@@ -140,6 +154,7 @@ TEST_F(DebugTokenInternalTest, activateFailureRunsSynchronousCleanup)
     // drained, and startUpdate() must have run (proven by survival without
     // a null deref now that the timer is no longer constructed on this
     // path).
+    failAsyncDbusWrites();
     wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
 
     DebugToken debugToken(busMock, &updateManager);
@@ -166,6 +181,7 @@ TEST_F(DebugTokenInternalTest, getFilePathReturnsEmptyWhenNoMatchingUuid)
 
 TEST_F(DebugTokenInternalTest, setVersionHandlesDbusFailure)
 {
+    failAsyncDbusWrites();
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath = "/xyz/openbmc_project/software/nonexistent";
     debugToken.tokenVersion = "1.0";
@@ -719,6 +735,7 @@ TEST_F(DebugTokenInternalTest,
     // success" gate. On the mock bus the install-token path runs all the
     // way through activate(), whose coSetDbusProperty fails, so timer
     // must remain unset (was unconditionally constructed previously).
+    failAsyncDbusWrites();
     wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
 
     MockdBusHandler dbusHandler;

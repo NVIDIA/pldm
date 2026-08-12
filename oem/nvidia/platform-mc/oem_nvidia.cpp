@@ -20,6 +20,7 @@
 #include "common/utils.hpp"
 #include "mirrorEffecter.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
+#include "pcoreDump.hpp"
 #include "platform-mc/state_sensor.hpp"
 #include "platform-mc/state_set/ethIBPortLinkState.hpp"
 #include "platform-mc/terminus.hpp"
@@ -178,6 +179,8 @@ void nvidiaInitTerminus(Terminus& terminus)
     std::shared_ptr<NumericEffecter> staticPowerHintPowerEstimationEffecter =
         nullptr;
 
+    std::shared_ptr<NumericEffecter> pcoreDumpEffecter = nullptr;
+
     for (auto effecter : terminus.stateEffecters)
     {
         auto& [entityInfo, stateSets] = effecter->effecterInfo;
@@ -226,6 +229,11 @@ void nvidiaInitTerminus(Terminus& terminus)
                  effecter->path.find("PowerHint") != std::string::npos)
         {
             staticPowerHintNumberOfCoresEffecter = effecter;
+        }
+        else if (effecter->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS &&
+                 effecter->path.find("PcoreDump") != std::string::npos)
+        {
+            pcoreDumpEffecter = effecter;
         }
     }
 
@@ -319,6 +327,14 @@ void nvidiaInitTerminus(Terminus& terminus)
                 staticPowerHintPowerEstimationEffecter);
         staticPowerHintPowerEstimationEffecter->oemIntfs.push_back(
             std::move(staticPowerHintPowerEstimation));
+    }
+
+    if (pcoreDumpEffecter)
+    {
+        pcoreDumpEffecter->oemIntfs.push_back(
+            std::make_shared<OemPCoreDumpIntf>(utils::DBusHandler().getBus(),
+                                               pcoreDumpEffecter->path.c_str(),
+                                               *pcoreDumpEffecter));
     }
 }
 
@@ -437,6 +453,91 @@ static void setPortProtocol(StateSetEthIBPortLinkState* state,
                 break;
         }
     }
+}
+
+/** @brief Point this terminus' PCore dump trigger at the CPU package it dumps.
+ *
+ *  The generic association every numeric effecter carries lands wherever the
+ *  PDR's entity type resolves to, which for this effecter is not an agreed
+ *  contract and may be the board rather than the CPU. Add an explicit CPU edge
+ *  so a consumer can walk from a processor to its dump trigger instead of
+ *  matching on the device's auxiliary name.
+ */
+static exec::task<int> associatePCoreDumpToCpu(Terminus& terminus)
+{
+    // Find the trigger by type, the same way the 0xF2 event path identifies it.
+    // Matching the auxiliary name again here would just add a second place for
+    // a device-side rename to break.
+    std::shared_ptr<NumericEffecter> pcoreDumpEffecter = nullptr;
+    for (const auto& effecter : terminus.numericEffecters)
+    {
+        if (!effecter)
+        {
+            continue;
+        }
+        for (const auto& oemIntf : effecter->oemIntfs)
+        {
+            if (dynamic_cast<OemPCoreDumpIntf*>(oemIntf.get()))
+            {
+                pcoreDumpEffecter = effecter;
+                break;
+            }
+        }
+        if (pcoreDumpEffecter)
+        {
+            break;
+        }
+    }
+
+    // No adapter attached means this terminus has no PCore dump trigger at all,
+    // which is the normal case for most termini.
+    if (!pcoreDumpEffecter || !pcoreDumpEffecter->hasAssociationIntf())
+    {
+        co_return PLDM_SUCCESS;
+    }
+
+    auto instance = terminus.getInstance();
+    if (!instance)
+    {
+        lg2::error(
+            "PCoreDump: no CPU instance for terminus {TID}, leaving the trigger unassociated",
+            "TID", terminus.getTid());
+        co_return PLDM_SUCCESS;
+    }
+
+    // Resolve against the inventory name rather than the entity hierarchy.
+    // CPU_<N> is an Entity Manager and Redfish level name, so it is a stable
+    // contract, unlike the device's own PDR naming.
+    const std::string cpuName = "CPU_" + std::to_string(*instance);
+    auto inventory = co_await utils::coGetSubTree(
+        "/xyz/openbmc_project/inventory", 0,
+        {"xyz.openbmc_project.Inventory.Item.Cpu"});
+
+    std::string cpuPath;
+    for (const auto& [objPath, serviceMap] : inventory)
+    {
+        if (sdbusplus::object_path(objPath).filename() == cpuName)
+        {
+            cpuPath = objPath;
+            break;
+        }
+    }
+
+    if (cpuPath.empty())
+    {
+        lg2::error(
+            "PCoreDump: no inventory object {NAME} for terminus {TID}, leaving the trigger unassociated",
+            "NAME", cpuName, "TID", terminus.getTid());
+        co_return PLDM_SUCCESS;
+    }
+
+    pcoreDumpEffecter->setAssociation(withPCoreDumpCpuAssociation(
+        pcoreDumpEffecter->getAssociation(), cpuPath));
+
+    lg2::info("PCoreDump: associated {PATH} to {CPU}", "PATH",
+              pcoreDumpEffecter->path, "CPU", cpuPath);
+
+    co_return PLDM_SUCCESS;
 }
 
 exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
@@ -740,6 +841,74 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
             effecter->setAssociation(assocs);
         }
     }
+
+    // PCIe root-port link-control effecters (PCIeRPLinkCtrl) live on a PCI
+    // Express Bus entity that has no inventory item of its own, so the
+    // generic association pass leaves them unassociated. Resolve each to
+    // the CPU package the bus belongs to — the Processor entity that is the
+    // container or a sibling in the same Processor I/O Module — and publish
+    // the pcie_link_controls chassis association consumed by bmcweb.
+    constexpr std::string_view pcieRpLinkCtrl("PCIeRPLinkCtrl");
+    for (auto effecter : terminus.numericEffecters)
+    {
+        if (!effecter->hasAssociationIntf())
+        {
+            continue;
+        }
+        sdbusplus::object_path effecterObjPath(effecter->path);
+        if (effecterObjPath.filename().find(pcieRpLinkCtrl) ==
+            std::string::npos)
+        {
+            continue;
+        }
+
+        auto entityInfo = effecter->getEntityInfo();
+        const auto& containerId = std::get<0>(entityInfo);
+        std::vector<std::string> cpuPaths;
+        if (auto containerEntity = terminus.getContainerEntity(containerId))
+        {
+            uint16_t containerType = std::get<1>(*containerEntity) & 0x7FFF;
+            if (containerType == PLDM_ENTITY_PROC)
+            {
+                cpuPaths = terminus.findInventory(*containerEntity, true);
+            }
+            // Mirror the SYS_BUS sensor precedent: only take the
+            // PROC-sibling fallback when the shared container is a
+            // processor module.
+            else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
+            {
+                if (auto* contained =
+                        terminus.getContainedEntities(containerId))
+                {
+                    for (const auto& sibling : *contained)
+                    {
+                        if ((std::get<1>(sibling) & 0x7FFF) == PLDM_ENTITY_PROC)
+                        {
+                            cpuPaths = terminus.findInventory(sibling, true);
+                            if (!cpuPaths.empty())
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!cpuPaths.empty())
+        {
+            std::vector<std::tuple<std::string, std::string, std::string>>
+                assocs;
+            assocs.reserve(cpuPaths.size());
+            for (const auto& path : cpuPaths)
+            {
+                assocs.emplace_back("chassis", "pcie_link_controls", path);
+            }
+            effecter->setAssociation(assocs);
+        }
+    }
+
+    co_await associatePCoreDumpToCpu(terminus);
 
     co_return PLDM_SUCCESS;
 }

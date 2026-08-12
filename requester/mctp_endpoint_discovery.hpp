@@ -43,7 +43,8 @@ const std::vector<std::string> interfaceFilter = {
     "xyz.openbmc_project.Configuration.MCTPI3CTarget",
     "xyz.openbmc_project.Configuration.MCTPUSBDevice",
     "xyz.openbmc_project.Configuration.MCTPSPIDevice",
-    "xyz.openbmc_project.Configuration.MCTPBridgePoolDevice"};
+    "xyz.openbmc_project.Configuration.MCTPBridgePoolDevice",
+    "xyz.openbmc_project.Configuration.MCTPXROTTarget"};
 
 /** @class MctpDiscoveryHandlerIntf
  *

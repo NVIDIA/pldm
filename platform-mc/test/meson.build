@@ -34,6 +34,7 @@ dep_src_files = [
 
 dep_src_files += [
     '../../oem/nvidia/platform-mc/oem_nvidia.cpp',
+    '../../oem/nvidia/platform-mc/pcie_port_info.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
     '../../fw-update/aggregate_update_manager.cpp',
     '../../fw-update/item_update_manager.cpp',
@@ -70,6 +71,7 @@ tests = [
     'sensor_manager_test',
     'numeric_sensor_test',
     'numeric_effecter_test',
+    'pcore_dump_test',
     'state_effecter_test',
     'state_sensor_test',
     'state_set_nvidia_internal_test',
@@ -77,7 +79,7 @@ tests = [
     'oem_events_test',
 ]
 
-private_tests = ['oem_events_private_test']
+private_tests = ['oem_events_private_test', 'pcie_port_info_private_test']
 
 openssl = dependency('openssl', required: true)
 

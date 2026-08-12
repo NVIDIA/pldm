@@ -80,7 +80,8 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         // (checkDeviceInventory); one arriving after its box was scanned
         // must trigger a re-scan just like the NSM variant above.
         if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
-            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation")
+            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation" ||
+            intf == "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
         {
             interested = true;
         }
@@ -127,6 +128,9 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
     }
     else
     {
+        lg2::debug(
+            "checkNsmDeviceInventory: NSM UUID {NSMUUID} does not map to terminus MCTP UUID {UUID} (TID {TID})",
+            "NSMUUID", nsmUuid, "UUID", uuid, "TID", tid);
         return false;
     }
 }
@@ -139,6 +143,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             objPath, 0,
             {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
              "xyz.openbmc_project.Configuration.USBDeviceAssociation",
+             "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
              "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
 
         if (getSubTreeResponse.size() == 0)
@@ -202,6 +207,20 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                     }
                     else if (
                         interface ==
+                        "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
+                    {
+                        inventoryEid = co_await utils::coGetDbusProperty<
+                            uint64_t>(
+                            objectPath.c_str(), "EID",
+                            "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
+                            serviceName);
+                        if (terminusEid == inventoryEid)
+                        {
+                            found = true;
+                        }
+                    }
+                    else if (
+                        interface ==
                         "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
                     {
                         auto nsmUuid = co_await utils::coGetDbusProperty<
@@ -214,6 +233,10 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 
                     if (found)
                     {
+                        lg2::debug(
+                            "checkDeviceInventory: matched device inventory for TID {TID} at {PATH} (eid={EID} bus={BUS} addr={ADDR}); loading EM config",
+                            "TID", tid, "PATH", objPath, "EID", inventoryEid,
+                            "BUS", bus, "ADDR", addr);
                         co_await getSensorAuxNameFromEM(bus, addr, inventoryEid,
                                                         objPath);
 #ifdef OEM_NVIDIA
@@ -252,6 +275,9 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
 
         if (getSubTreeResponse.size() == 0)
         {
+            lg2::error(
+                "getSensorAuxNameFromEM: unable to load SensorAuxName config from EM under {PATH} (eid={EID} bus={BUS} addr={ADDR}); sensor names fall back to PLDM defaults",
+                "PATH", objPath, "EID", eid, "BUS", bus, "ADDR", addr);
             co_return PLDM_SUCCESS;
         }
 
@@ -337,6 +363,10 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
 
             sensorAuxNameOverwriteTbl[sensorId] =
                 std::make_tuple(auxNameTbl, parentPathEM);
+            lg2::debug(
+                "getSensorAuxNameFromEM: loaded {COUNT} aux name(s) for sensorId {SID} from EM {PATH} (eid={EID})",
+                "COUNT", auxNameTbl.size(), "SID", sensorId, "PATH", path,
+                "EID", eid);
         }
     }
     catch (const std::exception& e)
@@ -846,11 +876,18 @@ size_t Terminus::addNewPdrs(const std::vector<std::vector<uint8_t>>& newPdrs)
         addStateEffecter(effecterId, std::move(stateSetEffecterInfo));
     }
 
+    // A repository change means this terminus restarted its device-side state
+    // sequence. Effecters re-reported as already-present are skipped above and
+    // keep whatever needUpdate they settled on, so a tracked effecter that
+    // disarmed on a terminal state would never be read again. Re-arm them here,
+    // ahead of the caller's applied-count early return.
+    auto rearmed = rearmTrackedEffecters();
+
     lg2::info(
-        "addNewPdrs: applied {N} new PDR(s), skipped {SK} already-present; +{NS} numeric sensor(s), +{SS} state sensor(s)",
+        "addNewPdrs: applied {N} new PDR(s), skipped {SK} already-present; +{NS} numeric sensor(s), +{SS} state sensor(s), re-armed {RE} tracked effecter(s)",
         "N", newPdrs.size() - skipped, "SK", skipped, "NS",
         numericSensorPdrs.size() - numStart, "SS",
-        stateSensorPdrs.size() - stateStart);
+        stateSensorPdrs.size() - stateStart, "RE", rearmed);
 
     return newPdrs.size() - skipped;
 }
@@ -1169,43 +1206,66 @@ std::shared_ptr<EffecterAuxiliaryNames> Terminus::getEffecterAuxiliaryNames(
     return nullptr;
 }
 
-std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
-    const std::vector<uint8_t>& pdrData)
+bool Terminus::parseAuxiliaryNameStrings(
+    const uint8_t* ptr, const uint8_t* const end, uint8_t count, uint16_t id,
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>& out,
+    const char* label)
 {
     constexpr uint8_t NullTerminator = 0;
-    size_t parseLen = 0;
-    auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
-        pdrData.data());
-    const uint8_t* ptr = pdr->names;
-    parseLen += sizeof(pldm_sensor_auxiliary_names_pdr);
-    // reducing by 1 byte because the length of pdr->names (names[1]) is not
-    // pared yet at the moment.
-    parseLen -= sizeof(pdr->names);
-    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
-        sensorAuxNames{};
     try
     {
-        for (int i = 0; i < pdr->sensor_count; i++)
+        for (uint8_t i = 0; i < count; i++)
         {
-            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
-            ptr += sizeof(uint8_t);
-            parseLen += sizeof(uint8_t);
-            std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
-            for (int j = 0; j < nameStringCount; j++)
+            // Device-controlled count: stop before dereferencing ptr.
+            if (ptr >= end)
             {
+                lg2::error("{LBL} aux names PDR: count overruns buffer, "
+                           "id={ID}, tid={TID}.",
+                           "LBL", label, "ID", id, "TID", tid);
+                return false;
+            }
+            const uint8_t nameStringCount = *ptr++;
+            std::vector<std::pair<NameLanguageTag, SensorName>> nameStrings{};
+            for (uint8_t j = 0; j < nameStringCount; j++)
+            {
+                // Language tag: bounded NUL scan (std::string would strlen()
+                // past end); reject if unterminated or over the spec max.
+                auto* nul = static_cast<const uint8_t*>(
+                    std::memchr(ptr, 0, static_cast<size_t>(end - ptr)));
+                if (nul == nullptr ||
+                    static_cast<size_t>(nul - ptr) > PLDM_STR_UTF_8_MAX_LEN)
+                {
+                    lg2::error("{LBL} aux names PDR: bad language tag, "
+                               "id={ID}, tid={TID}.",
+                               "LBL", label, "ID", id, "TID", tid);
+                    return false;
+                }
                 std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
-                                            0, PLDM_STR_UTF_8_MAX_LEN);
+                                            nul - ptr);
                 ptr += nameLanguageTag.size() + sizeof(NullTerminator);
-                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(
-                    pdrData.begin() + parseLen, pdrData.end());
-                std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
-                    0, PLDM_STR_UTF_16_MAX_LEN);
-                ptr += (u16NameString.size() + sizeof(NullTerminator)) *
-                       sizeof(uint16_t);
-                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
-                            sizeof(uint16_t);
+
+                // UTF-16 name: bounded bytewise scan (ptr is not
+                // char16_t-aligned); reject if unterminated or over the spec
+                // max, then copy into an aligned string.
+                const size_t u16Units =
+                    static_cast<size_t>(end - ptr) / sizeof(char16_t);
+                size_t u16Len = 0;
+                while (u16Len < u16Units &&
+                       (ptr[2 * u16Len] | ptr[2 * u16Len + 1]))
+                {
+                    ++u16Len;
+                }
+                if (u16Len == u16Units || u16Len > PLDM_STR_UTF_16_MAX_LEN)
+                {
+                    lg2::error("{LBL} aux names PDR: bad UTF-16 name, "
+                               "id={ID}, tid={TID}.",
+                               "LBL", label, "ID", id, "TID", tid);
+                    return false;
+                }
+                std::u16string u16NameString(u16Len, u'\0');
+                std::memcpy(u16NameString.data(), ptr,
+                            u16Len * sizeof(char16_t));
+                ptr += (u16Len + 1) * sizeof(char16_t);
                 std::transform(u16NameString.cbegin(), u16NameString.cend(),
                                u16NameString.begin(),
                                [](uint16_t utf16) { return be16toh(utf16); });
@@ -1222,25 +1282,50 @@ std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
                 catch (const std::range_error& e)
                 {
                     lg2::error(
-                        "Exception while converting UTF-16 to UTF-8 for sensor auxiliary name: {ERROR}, Skipping this name.",
-                        "ERROR", e.what());
+                        "{LBL} aux names PDR: UTF-16 to UTF-8 conversion "
+                        "failed, skipping name. id={ID}, tid={TID}, "
+                        "error={ERROR}",
+                        "LBL", label, "ID", id, "TID", tid, "ERROR", e.what());
                     continue;
                 }
 #pragma GCC diagnostic pop
-                nameStrings.emplace_back(
-                    std::make_pair(nameLanguageTag, nameString));
+                nameStrings.emplace_back(nameLanguageTag, nameString);
             }
-            sensorAuxNames.emplace_back(nameStrings);
+            out.emplace_back(nameStrings);
         }
     }
     catch (const std::exception& e)
     {
-        lg2::error(
-            "Failed to parse sensorAuxiliaryNamesPDR record, sensorId={SENSORID}, {ERROR}.",
-            "SENSORID", pdr->sensor_id, "ERROR", e);
+        lg2::error("Failed to parse {LBL} aux names PDR: {ERROR}, id={ID}, "
+                   "tid={TID}.",
+                   "LBL", label, "ERROR", e, "ID", id, "TID", tid);
+        return false;
+    }
+    return true;
+}
+
+std::shared_ptr<SensorAuxiliaryNames> Terminus::parseSensorAuxiliaryNamesPDR(
+    const std::vector<uint8_t>& pdrData)
+{
+    auto pdr = reinterpret_cast<const struct pldm_sensor_auxiliary_names_pdr*>(
+        pdrData.data());
+    // Reject a buffer too small for the fixed header (names[] excluded).
+    const size_t minPdrLen =
+        sizeof(struct pldm_sensor_auxiliary_names_pdr) - sizeof(pdr->names);
+    if (pdrData.size() < minPdrLen)
+    {
+        lg2::error("Sensor aux names PDR too small: {SIZE}<{NEED}, tid={TID}.",
+                   "SIZE", pdrData.size(), "NEED", minPdrLen, "TID", tid);
         return nullptr;
     }
-
+    std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>
+        sensorAuxNames{};
+    if (!parseAuxiliaryNameStrings(pdr->names, pdrData.data() + pdrData.size(),
+                                   pdr->sensor_count, pdr->sensor_id,
+                                   sensorAuxNames, "Sensor"))
+    {
+        return nullptr;
+    }
     return std::make_shared<SensorAuxiliaryNames>(
         pdr->sensor_id, pdr->sensor_count, sensorAuxNames);
 }
@@ -1249,75 +1334,27 @@ std::shared_ptr<EffecterAuxiliaryNames>
     Terminus::parseEffecterAuxiliaryNamesPDR(
         const std::vector<uint8_t>& pdrData)
 {
-    constexpr uint8_t NullTerminator = 0;
-    size_t parseLen = 0;
     auto pdr =
         reinterpret_cast<const struct pldm_effecter_auxiliary_names_pdr*>(
             pdrData.data());
-    const uint8_t* ptr = pdr->names;
-    // reducing by 1 byte because the length of pdr->names (names[1]) is not
-    // pared yet at the moment.
-    parseLen += sizeof(pldm_effecter_auxiliary_names_pdr) - sizeof(pdr->names);
-    std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
-        effecterAuxNames{};
-    try
-    {
-        for (int i = 0; i < pdr->effecter_count; i++)
-        {
-            const uint8_t nameStringCount = static_cast<uint8_t>(*ptr);
-            ptr += sizeof(uint8_t);
-            parseLen += sizeof(uint8_t);
-            std::vector<std::pair<NameLanguageTag, EffecterName>> nameStrings{};
-            for (int j = 0; j < nameStringCount; j++)
-            {
-                std::string nameLanguageTag(reinterpret_cast<const char*>(ptr),
-                                            0, PLDM_STR_UTF_8_MAX_LEN);
-                ptr += nameLanguageTag.size() + sizeof(NullTerminator);
-                parseLen += nameLanguageTag.size() + sizeof(NullTerminator);
-                std::vector<uint8_t> u16NameStringVec(
-                    pdrData.begin() + parseLen, pdrData.end());
-                std::u16string u16NameString(
-                    reinterpret_cast<const char16_t*>(u16NameStringVec.data()),
-                    0, PLDM_STR_UTF_16_MAX_LEN);
-                ptr += (u16NameString.size() + sizeof(NullTerminator)) *
-                       sizeof(uint16_t);
-                parseLen += (u16NameString.size() + sizeof(NullTerminator)) *
-                            sizeof(uint16_t);
-                std::transform(u16NameString.cbegin(), u16NameString.cend(),
-                               u16NameString.begin(),
-                               [](uint16_t utf16) { return be16toh(utf16); });
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-                std::string nameString{};
-                try
-                {
-                    nameString =
-                        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,
-                                             char16_t>{}
-                            .to_bytes(u16NameString);
-                }
-                catch (const std::range_error& e)
-                {
-                    lg2::error(
-                        "Exception while converting UTF-16 to UTF-8 for entity auxiliary name: {ERROR}, Skipping this name.",
-                        "ERROR", e.what());
-                    continue;
-                }
-#pragma GCC diagnostic pop
-                nameStrings.emplace_back(
-                    std::make_pair(nameLanguageTag, nameString));
-            }
-            effecterAuxNames.emplace_back(nameStrings);
-        }
-    }
-    catch (const std::exception& e)
+    // Reject a buffer too small for the fixed header (names[] excluded).
+    const size_t minPdrLen =
+        sizeof(struct pldm_effecter_auxiliary_names_pdr) - sizeof(pdr->names);
+    if (pdrData.size() < minPdrLen)
     {
         lg2::error(
-            "Failed to parse effecterAuxiliaryNamesPDR record, effecterId={EFFECTERID}, {ERROR}.",
-            "EFFECTERID", pdr->effecter_id, "ERROR", e);
+            "Effecter aux names PDR too small: {SIZE}<{NEED}, tid={TID}.",
+            "SIZE", pdrData.size(), "NEED", minPdrLen, "TID", tid);
         return nullptr;
     }
-
+    std::vector<std::vector<std::pair<NameLanguageTag, EffecterName>>>
+        effecterAuxNames{};
+    if (!parseAuxiliaryNameStrings(pdr->names, pdrData.data() + pdrData.size(),
+                                   pdr->effecter_count, pdr->effecter_id,
+                                   effecterAuxNames, "Effecter"))
+    {
+        return nullptr;
+    }
     return std::make_shared<EffecterAuxiliaryNames>(
         pdr->effecter_id, pdr->effecter_count, effecterAuxNames);
 }
@@ -1395,6 +1432,20 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
             return nullptr;
         }
         memcpy(parsedPdr.get(), pdr.data(), pdr.size());
+    }
+
+    // The memcpy fallback above bypasses libpldm's decode validation, so
+    // reject an out-of-range effecterDataSize before it selects a branch
+    // of union_effecter_data_size downstream.
+    if (parsedPdr->effecter_data_size > PLDM_EFFECTER_DATA_SIZE_MAX)
+    {
+        // Copy the packed fields; lg2 binds arguments by reference.
+        uint8_t dataSize = parsedPdr->effecter_data_size;
+        uint16_t effecterId = parsedPdr->effecter_id;
+        lg2::error(
+            "parseNumericEffecterPDR: unknown effecterDataSize {SIZE}, tid={TID}, effecterId={EFFECTERID}, skipping effecter.",
+            "SIZE", dataSize, "TID", tid, "EFFECTERID", effecterId);
+        return nullptr;
     }
     return parsedPdr;
 }
@@ -1530,6 +1581,14 @@ exec::task<int> Terminus::scanInventories()
 
         inventories.clear();
         inventoryParentMap.clear();
+
+        if (!terminusManager.toMctpInfo(tid).has_value())
+        {
+            lg2::error(
+                "scanInventories: TID {TID} has no MCTP mapping; device inventory cannot be matched, sensors/telemetry will be missing for this terminus",
+                "TID", tid);
+        }
+
         for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
         {
             EntityType type = 0;
@@ -1625,6 +1684,9 @@ exec::task<int> Terminus::scanInventories()
         lg2::error("Failed to scan inventories Error: {ERROR}", "ERROR", e);
         co_return PLDM_FAILED;
     }
+    lg2::debug(
+        "scanInventories: completed for TID {TID}; {COUNT} device inventories matched",
+        "TID", tid, "COUNT", inventories.size());
     co_return PLDM_SUCCESS;
 }
 
@@ -2592,6 +2654,32 @@ void Terminus::setOnline()
         stateEffecter->setAvailable(true);
         stateEffecter->needUpdate = true;
     }
+
+    lg2::info("Terminus {TID} is online", "TID", tid);
+}
+
+size_t Terminus::rearmTrackedEffecters()
+{
+    size_t rearmed = 0;
+    for (auto& numericEffecter : numericEffecters)
+    {
+        if (!numericEffecter || !numericEffecter->trackOperationalState ||
+            numericEffecter->needUpdate)
+        {
+            continue;
+        }
+        numericEffecter->needUpdate = true;
+        ++rearmed;
+    }
+
+    if (rearmed)
+    {
+        lg2::info(
+            "rearmTrackedEffecters: re-armed {N} tracked effecter(s) on tid={TID}",
+            "N", rearmed, "TID", tid);
+    }
+
+    return rearmed;
 }
 
 void Terminus::setOffline()
@@ -2616,6 +2704,8 @@ void Terminus::setOffline()
     {
         stateEffecter->handleErrGetStateEffecterStates();
     }
+
+    lg2::info("Terminus {TID} is offline", "TID", tid);
 }
 
 std::optional<std::string> Terminus::getAuxNameForNumericSensor(SensorID id)

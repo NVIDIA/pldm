@@ -1489,7 +1489,7 @@ TEST(PldmdInternalCoverage,
      MainInitializesHostHandlersAndProcessesPcieLtssmEventWithHostEid)
 {
     auto requestMsg =
-        makePlatformEventMessage(pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+        makePlatformEventMessage(pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP,
                                  {0x02, 0x01, 0x01, 0x00, 0x5A});
     expectMainExitWithHostEid(
         {makeRecvAction(PLDM_REQUESTER_SUCCESS, requestMsg),
@@ -1619,7 +1619,7 @@ TEST(PldmdInternalCoverage, MainProcessesPcieTelemetryEventAndExitsSuccess)
 TEST(PldmdInternalCoverage, MainProcessesPcieLtssmEventAndExitsSuccess)
 {
     auto requestMsg =
-        makePlatformEventMessage(pldm::platform::PLDM_OEM_EVENT_CLASS_MFTDUMP,
+        makePlatformEventMessage(pldm::platform::PLDM_OEM_EVENT_CLASS_PCOREDUMP,
                                  {0x02, 0x01, 0x01, 0x00, 0x5A});
     EXPECT_EXIT(
         {
