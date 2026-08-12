@@ -130,14 +130,14 @@ TEST_F(UpdateAndUtilityTest, startUpdate_invalidFdThrowsRuntimeError)
     EXPECT_TRUE(sawExpectedError);
 }
 
-TEST_F(UpdateAndUtilityTest, startUpdate_emptyImageThrowsRuntimeError)
+TEST_F(UpdateAndUtilityTest, startUpdate_emptyImageThrowsInvalidImage)
 {
     int imageFd = createTempFile({});
     ASSERT_GE(imageFd, 0);
 
     Update update(busMock, "/xyz/openbmc_project/software/test_update_empty",
                   &updateManager);
-    bool sawExpectedError = false;
+    std::string errName;
 
     try
     {
@@ -146,15 +146,14 @@ TEST_F(UpdateAndUtilityTest, startUpdate_emptyImageThrowsRuntimeError)
             ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {});
         (void)path;
     }
-    catch (const std::runtime_error& e)
+    catch (const sdbusplus::exception::generated_exception& e)
     {
-        sawExpectedError =
-            std::string(e.what()).find("memory map firmware image") !=
-            std::string::npos;
+        errName = e.name();
     }
 
     close(imageFd);
-    EXPECT_TRUE(sawExpectedError);
+    EXPECT_EQ(errName,
+              "xyz.openbmc_project.Software.Update.Error.InvalidImage");
 }
 
 TEST_F(UpdateAndUtilityTest, startUpdate_validImageReturnsSoftwareObjectPath)
