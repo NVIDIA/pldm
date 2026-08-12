@@ -296,8 +296,6 @@ int main(int argc, char** argv)
         sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/control"),
         sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/state"),
         sdbusplus::server::manager_t(bus, "/xyz/openbmc_project/inventory")};
-    // Restore ServiceReady singleton init (dropped in upstream-sync merge; its
-    // getInstance() consumer in sensor_manager survived and aborts pldmd).
     PldmServiceReadyIntf::initialize(bus, "/xyz/openbmc_project/pldm");
 
     InstanceIdDb instanceIdDb;
