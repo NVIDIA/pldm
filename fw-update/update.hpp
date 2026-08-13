@@ -57,39 +57,46 @@ class Update : public UpdateIntf
         std::vector<sdbusplus::object_path> targets,
         bool preUpdateValidation) override;
 
-    /** @brief Close the image stream and release the mmap
+    /** @brief Release the mapped firmware image
      *
      *  Release resources by unmapping the firmware image and closing
      *  the file descriptor. This prevents memory leaks and ensures proper
-     *  cleanup after firmware update completion.
+     *  cleanup after firmware update completion. Any pointer previously
+     *  returned by getImageData() dangles after this call.
      */
-    void clearImageStream()
+    void clearImageData()
     {
-        mmapStream.reset();
         mmapFile.unmap();
     }
 
-    /** @brief Get reference to the image stream for reading
+    /** @brief Get pointer to the memory-mapped firmware image data
      *
-     *  @return Reference to the istream containing the firmware image data.
-     *          The stream reads directly from memory-mapped data, providing
+     *  @return Pointer to the memory-mapped firmware image data, providing
      *          zero-copy access without relying on /proc filesystem.
      */
-    std::istream& getImageStream()
+    const uint8_t* getImageData() const
     {
-        return *mmapStream;
+        return static_cast<const uint8_t*>(mmapFile.data());
+    }
+
+    /** @brief Get the size of the memory-mapped firmware image data
+     *
+     *  @return Size of the memory-mapped firmware image data in bytes
+     */
+    size_t getImageSize() const
+    {
+        return mmapFile.size();
     }
 
     ~Update() noexcept override
     {
-        clearImageStream();
+        clearImageData();
     }
 
   private:
     UpdateManager* updateManager;
     const std::string objPath;
     pldm::MmapFile mmapFile;
-    std::unique_ptr<pldm::MmapStream> mmapStream;
 };
 
 } // namespace fw_update

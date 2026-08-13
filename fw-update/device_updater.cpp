@@ -39,15 +39,15 @@ namespace fw_update
 {
 
 DeviceUpdater::DeviceUpdater(
-    mctp_eid_t eid, std::istream& package,
+    mctp_eid_t eid, const uint8_t* package, size_t packageSize,
     const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     const ComponentImageInfos& compImageInfos, const ComponentInfo& compInfo,
     const ComponentIdNameMap& compIdNameInfo, uint32_t maxTransferSize,
     UpdateManagerBase* updateManager) :
     fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(), eid(eid),
-    package(package), compImageInfos(compImageInfos), compInfo(compInfo),
-    compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
-    updateManager(updateManager)
+    package(package), packageSize(packageSize), compImageInfos(compImageInfos),
+    compInfo(compInfo), compIdNameInfo(compIdNameInfo),
+    maxTransferSize(maxTransferSize), updateManager(updateManager)
 {}
 
 void DeviceUpdater::startFwUpdateFlow()
@@ -106,8 +106,8 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
     }
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, maxTransferSize, updateManager, this,
+            eid, package, packageSize, fwDeviceIDRecord, compImageInfos,
+            compInfo, compIdNameInfo, maxTransferSize, updateManager, this,
             componentIndex);
     componentUpdaterMap.emplace(componentIndex,
                                 std::make_pair(std::move(compUpdater), false));
@@ -918,8 +918,8 @@ exec::task<int> DeviceUpdater::updateComponentCompletion(
         componentIndex++;
         std::unique_ptr<ComponentUpdater> compUpdater =
             std::make_unique<ComponentUpdater>(
-                eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-                compIdNameInfo, maxTransferSize, updateManager, this,
+                eid, package, packageSize, fwDeviceIDRecord, compImageInfos,
+                compInfo, compIdNameInfo, maxTransferSize, updateManager, this,
                 componentIndex);
         componentUpdaterMap.emplace(
             componentIndex, std::make_pair(std::move(compUpdater), false));

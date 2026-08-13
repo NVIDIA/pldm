@@ -26,6 +26,7 @@
 #include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
+#include <cstring>
 #include <format>
 #include <functional>
 
@@ -437,7 +438,8 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     // Compute offset+length in 64-bit: a hostile offset near UINT32_MAX would
     // otherwise wrap the uint32_t sum, bypassing the DATA_OUT_OF_RANGE check
     // below and driving a wrapped package seek/read (OOB file access).
-    const uint64_t endOffset = static_cast<uint64_t>(offset) + length;
+    const uint64_t endOffset =
+        static_cast<uint64_t>(offset) + static_cast<uint64_t>(length);
 
     if (endOffset >
         static_cast<uint64_t>(compSize) + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
@@ -456,7 +458,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         }
         return response;
     }
-    else if (endOffset >= compSize)
+    else if (endOffset >= static_cast<uint64_t>(compSize))
     {
         info("Last chunk of firmware data sent for EID={EID}, "
              "ComponentIndex={COMPONENTINDEX}. Starting UA_T6 timer.",
@@ -480,18 +482,35 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     handleLogging(offset, length);
 
     size_t padBytes = 0;
-    if (endOffset > compSize)
+    if (endOffset > static_cast<uint64_t>(compSize))
     {
         padBytes = endOffset - compSize;
     }
 
+    const uint64_t copyLen = length - padBytes;
+    if (static_cast<uint64_t>(compOffset) + offset + copyLen > packageSize)
+    {
+        error(
+            "RequestFirmwareData copy range exceeds package bounds, "
+            "EID={EID}, ComponentIndex={COMPONENTINDEX}, offset={OFFSET}, length={LENGTH}",
+            "EID", eid, "COMPONENTINDEX", componentIndex, "OFFSET", offset,
+            "LENGTH", length);
+        rc = encode_request_firmware_data_resp(
+            request->hdr.instance_id, PLDM_FWUP_DATA_OUT_OF_RANGE, responseMsg,
+            sizeof(completionCode));
+        if (rc)
+        {
+            error(
+                "Failed to encode request firmware date response for endpoint ID '{EID}', response code '{RC}'",
+                "EID", eid, "RC", rc);
+        }
+        return response;
+    }
+
     response.resize(sizeof(pldm_msg_hdr) + sizeof(completionCode) + length);
     responseMsg = reinterpret_cast<pldm_msg*>(response.data());
-    package.seekg(compOffset + offset);
-    package.read(
-        reinterpret_cast<char*>(
-            response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode)),
-        length - padBytes);
+    std::memcpy(response.data() + sizeof(pldm_msg_hdr) + sizeof(completionCode),
+                package + compOffset + offset, copyLen);
     rc = encode_request_firmware_data_resp(
         request->hdr.instance_id, completionCode, responseMsg,
         sizeof(completionCode));

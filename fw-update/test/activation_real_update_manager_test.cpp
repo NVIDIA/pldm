@@ -52,7 +52,7 @@ static int processPackageStream(UpdateManager& updateManager,
         return -1;
     }
 
-    updateManager.updater->clearImageStream();
+    updateManager.updater->clearImageData();
     int imageFd = open(packagePath.c_str(), O_RDONLY);
     if (imageFd < 0)
     {
@@ -60,14 +60,6 @@ static int processPackageStream(UpdateManager& updateManager,
     }
 
     if (!updateManager.updater->mmapFile.map(imageFd, true))
-    {
-        return -1;
-    }
-
-    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
-        updateManager.updater->mmapFile.data(),
-        updateManager.updater->mmapFile.size());
-    if (!updateManager.updater->mmapStream->good())
     {
         return -1;
     }
@@ -82,9 +74,9 @@ static int processPackageStream(UpdateManager& updateManager,
                     std::vector<sdbusplus::object_path>{});
         }
 
-        auto task =
-            updateManager.processStream(*updateManager.updater->mmapStream,
-                                        updateManager.updater->mmapFile.size());
+        auto task = updateManager.processPackageData(
+            updateManager.updater->getImageData(),
+            updateManager.updater->getImageSize());
         auto rc = stdexec::sync_wait(std::move(task));
         if (!rc.has_value() || !updateManager.parser)
         {
@@ -106,22 +98,14 @@ static bool mapPackageToUpdater(UpdateManager& updateManager,
         return false;
     }
 
-    updateManager.updater->clearImageStream();
+    updateManager.updater->clearImageData();
     int imageFd = open(packagePath.c_str(), O_RDONLY);
     if (imageFd < 0)
     {
         return false;
     }
 
-    if (!updateManager.updater->mmapFile.map(imageFd, true))
-    {
-        return false;
-    }
-
-    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
-        updateManager.updater->mmapFile.data(),
-        updateManager.updater->mmapFile.size());
-    return updateManager.updater->mmapStream->good();
+    return updateManager.updater->mmapFile.map(imageFd, true);
 }
 
 class ActivationRealUpdateManagerTest : public testing::Test

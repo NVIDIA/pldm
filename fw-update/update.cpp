@@ -46,23 +46,17 @@ sdbusplus::object_path Update::startUpdate(
 
     if (!mmapFile.map(imageFd, true /* take ownership of fd */))
     {
-        close(imageFd);
+        // map() has already closed imageFd on every failure path because
+        // ownership was handed over; closing again here would risk closing
+        // an unrelated descriptor opened in the meantime.
         throw std::runtime_error("Failed to memory map firmware image");
-    }
-
-    mmapStream =
-        std::make_unique<pldm::MmapStream>(mmapFile.data(), mmapFile.size());
-
-    if (!mmapStream->good())
-    {
-        throw std::runtime_error(
-            "Failed to create stream from memory-mapped data");
     }
 
     auto packageSize = mmapFile.size();
 
-    return sdbusplus::object_path(updateManager->processStreamDefer(
-        *mmapStream, packageSize, forceUpdate, targets, preUpdateValidation));
+    return sdbusplus::object_path(updateManager->processPackageDataDefer(
+        static_cast<const uint8_t*>(mmapFile.data()), packageSize, forceUpdate,
+        targets, preUpdateValidation));
 }
 
 } // namespace fw_update

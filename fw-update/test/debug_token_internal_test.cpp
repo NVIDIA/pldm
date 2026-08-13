@@ -300,7 +300,9 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenEraseReportsFailureWhenPathEmpty)
 
     FirmwareDeviceIDRecords fwDeviceIDRecords;
     ComponentImageInfos componentImageInfos;
-    std::istringstream package("dummy package");
+    std::string packageStr("dummy package");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     // With no install-token record the erase-token branch runs, and
     // getFilePath(EraseTokenUUID) resolves to an empty object path. The branch
@@ -308,7 +310,7 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenEraseReportsFailureWhenPathEmpty)
     // so tokenVersion stays empty instead of being set to "0.0".
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
     EXPECT_TRUE(debugToken.tokenVersion.empty());
@@ -467,11 +469,13 @@ TEST_F(DebugTokenInternalTest,
                                 0x02}}},
          {}}};
     ComponentImageInfos componentImageInfos;
-    std::istringstream package("dummy package");
+    std::string packageStr("dummy package");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -500,11 +504,13 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonMatchingUuid)
          {}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
-    std::istringstream package("12345678");
+    std::string packageStr("12345678");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -534,11 +540,13 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenSkipsNonDeadInstallComponent)
          {}}};
     ComponentImageInfos componentImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
-    std::istringstream package("12345678");
+    std::string packageStr("12345678");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -569,11 +577,13 @@ TEST_F(DebugTokenInternalTest,
          {}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString3"}};
-    std::istringstream package("ABCDEFGH");
+    std::string packageStr("ABCDEFGH");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -763,11 +773,13 @@ TEST_F(DebugTokenInternalTest,
          {}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
-    std::istringstream package("12345678");
+    std::string packageStr("12345678");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
     EXPECT_TRUE(debugToken.tokenVersion.empty());
@@ -872,11 +884,13 @@ TEST_F(DebugTokenInternalTest,
 
     FirmwareDeviceIDRecords fwDeviceIDRecords;
     ComponentImageInfos componentImageInfos;
-    std::istringstream package("");
+    std::string packageStr("");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.timer, nullptr);
@@ -925,11 +939,13 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
          {0}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionStringInstall"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.tokenPath,
@@ -981,11 +997,13 @@ TEST_F(DebugTokenInternalTest,
          {0}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionStringInstall2"}};
-    std::istringstream package("WXYZ");
+    std::string packageStr("WXYZ");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.tokenPath,
@@ -1131,11 +1149,13 @@ TEST_F(DebugTokenInternalTest,
          {0}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionStringEmpty"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
 }
@@ -1155,12 +1175,14 @@ TEST_F(DebugTokenInternalTest,
                            std::vector<uint8_t>{0x01, 0x02, 0x03, 0x04})}},
          {0}}};
     ComponentImageInfos componentImageInfos;
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_THROW(
         {
             stdexec::sync_wait(debugToken.updateDebugToken(
-                fwDeviceIDRecords, componentImageInfos, package));
+                fwDeviceIDRecords, componentImageInfos, package, packageSize));
         },
         std::bad_variant_access);
 }
@@ -1220,11 +1242,13 @@ TEST_F(DebugTokenInternalTest,
          {0}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionMatchFailure"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
 }
 
@@ -1288,11 +1312,13 @@ TEST_F(DebugTokenInternalTest,
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4,
          "VersionProgressMatchFailure"}};
-    std::istringstream package("WXYZ");
+    std::string packageStr("WXYZ");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
 }
 
@@ -1362,11 +1388,13 @@ TEST_F(DebugTokenInternalTest,
          {0}}};
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionApplied"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
 }
@@ -1434,11 +1462,13 @@ TEST_F(DebugTokenInternalTest,
     ComponentImageInfos componentImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionSkipped"},
         {11, deadComponent, 0xFFFFFFFF, 0, 0, 4, 4, "VersionAppliedLater"}};
-    std::istringstream package("ABCDEFGH");
+    std::string packageStr("ABCDEFGH");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
 }
@@ -1512,11 +1542,13 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallWaitsForRepublish)
 
     ComponentImageInfos componentImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionStringInstall"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            installTokenRecords(), componentImageInfos, package));
+            installTokenRecords(), componentImageInfos, package, packageSize));
     });
 
     EXPECT_TRUE(writtenInterfaces.empty());
@@ -1611,11 +1643,13 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenEraseFailureStaysTerminal)
 
     FirmwareDeviceIDRecords fwDeviceIDRecords;
     ComponentImageInfos componentImageInfos;
-    std::istringstream package("");
+    std::string packageStr("");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
-            fwDeviceIDRecords, componentImageInfos, package));
+            fwDeviceIDRecords, componentImageInfos, package, packageSize));
     });
 
     EXPECT_EQ(debugToken.interfaceAddedMatch, nullptr);

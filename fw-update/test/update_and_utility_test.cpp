@@ -205,11 +205,9 @@ TEST_F(UpdateAndUtilityTest, startUpdate_validImageReturnsSoftwareObjectPath)
 
 TEST_F(UpdateAndUtilityTest, getImageStream_readsMappedPayload)
 {
-    constexpr std::array<char, 4> expectedBytes{'A', 'B', 'C', 'D'};
-    int imageFd = createTempFile({static_cast<uint8_t>(expectedBytes[0]),
-                                  static_cast<uint8_t>(expectedBytes[1]),
-                                  static_cast<uint8_t>(expectedBytes[2]),
-                                  static_cast<uint8_t>(expectedBytes[3])});
+    constexpr std::array<uint8_t, 4> expectedBytes{'A', 'B', 'C', 'D'};
+    int imageFd = createTempFile({expectedBytes[0], expectedBytes[1],
+                                  expectedBytes[2], expectedBytes[3]});
     ASSERT_GE(imageFd, 0);
 
     Update update(busMock, "/xyz/openbmc_project/software/test_update_stream",
@@ -219,18 +217,15 @@ TEST_F(UpdateAndUtilityTest, getImageStream_readsMappedPayload)
                                    false, {}, false);
     (void)path;
 
-    auto& stream = update.getImageStream();
-    stream.clear();
-    stream.seekg(0, std::ios::beg);
-
-    std::array<char, expectedBytes.size()> actualBytes{};
-    stream.read(actualBytes.data(),
-                static_cast<std::streamsize>(actualBytes.size()));
+    const uint8_t* data = update.getImageData();
+    size_t size = update.getImageSize();
 
     close(imageFd);
 
-    EXPECT_EQ(stream.gcount(),
-              static_cast<std::streamsize>(expectedBytes.size()));
+    ASSERT_EQ(size, expectedBytes.size());
+    std::array<uint8_t, expectedBytes.size()> actualBytes{};
+    std::copy(data, data + size, actualBytes.begin());
+
     EXPECT_EQ(actualBytes, expectedBytes);
 }
 

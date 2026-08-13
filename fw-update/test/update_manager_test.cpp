@@ -63,22 +63,14 @@ static bool mapPackageToUpdater(UpdateManager& updateManager,
         return false;
     }
 
-    updateManager.updater->clearImageStream();
+    updateManager.updater->clearImageData();
     int imageFd = open(packagePath.c_str(), O_RDONLY);
     if (imageFd < 0)
     {
         return false;
     }
 
-    if (!updateManager.updater->mmapFile.map(imageFd, true))
-    {
-        return false;
-    }
-
-    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
-        updateManager.updater->mmapFile.data(),
-        updateManager.updater->mmapFile.size());
-    return updateManager.updater->mmapStream->good();
+    return updateManager.updater->mmapFile.map(imageFd, true);
 }
 
 static int processPackageStream(
@@ -101,9 +93,9 @@ static int processPackageStream(
                     targets);
         }
 
-        auto task = updateManager.processStream(
-            *updateManager.updater->mmapStream,
-            updateManager.updater->mmapFile.size(), std::move(targets),
+        auto task = updateManager.processPackageData(
+            updateManager.updater->getImageData(),
+            updateManager.updater->getImageSize(), std::move(targets),
             preUpdateValidation);
         auto rc = stdexec::sync_wait(std::move(task));
         if (!rc.has_value() || !updateManager.parser)
@@ -1010,11 +1002,9 @@ TEST_F(UpdateManagerTest, processStream_invalidStreamState)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::stringstream badStream;
-    badStream.setstate(std::ios::failbit);
 
     EXPECT_ANY_THROW({
-        auto task = updateManager.processStream(badStream, 10, {});
+        auto task = updateManager.processPackageData(nullptr, 10, {});
         stdexec::sync_wait(std::move(task));
     });
 }
@@ -1024,10 +1014,10 @@ TEST_F(UpdateManagerTest, processStream_sizeTooSmall)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::stringstream pkg("abc");
+    std::vector<uint8_t> pkg{'a', 'b', 'c'};
 
     EXPECT_ANY_THROW({
-        auto task = updateManager.processStream(pkg, 1, {});
+        auto task = updateManager.processPackageData(pkg.data(), 1, {});
         stdexec::sync_wait(std::move(task));
     });
 }
@@ -1037,11 +1027,11 @@ TEST_F(UpdateManagerTest, processStream_nonMmapInvalidHeaderPath)
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
-    std::string bytes(sizeof(pldm_package_header_information) + 8, '\0');
-    std::stringstream pkg(bytes);
+    std::vector<uint8_t> bytes(sizeof(pldm_package_header_information) + 8, 0);
 
     EXPECT_ANY_THROW({
-        auto task = updateManager.processStream(pkg, bytes.size(), {});
+        auto task =
+            updateManager.processPackageData(bytes.data(), bytes.size(), {});
         stdexec::sync_wait(std::move(task));
     });
 }
@@ -1052,14 +1042,14 @@ TEST_F(UpdateManagerTest, processStreamDefer_noMatchingDevices)
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
     mapPackageToUpdater(updateManager, "./test_pkg");
-    auto& package = *updateManager.updater->mmapStream;
-    auto packageSize = updateManager.updater->mmapFile.size();
+    auto* package = updateManager.updater->getImageData();
+    auto packageSize = updateManager.updater->getImageSize();
     updateManager.setRequestedApplyTime(
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
-                                                     false, {}, false));
+    EXPECT_NO_THROW(updateManager.processPackageDataDefer(
+        package, packageSize, false, {}, false));
 }
 
 TEST_F(UpdateManagerTest,
@@ -1074,14 +1064,14 @@ TEST_F(UpdateManagerTest,
         [](mctp_eid_t, bool, bool) -> exec::task<int> { co_return 0; });
 
     mapPackageToUpdater(updateManager, "./test_pkg");
-    auto& package = *updateManager.updater->mmapStream;
-    auto packageSize = updateManager.updater->mmapFile.size();
+    auto* package = updateManager.updater->getImageData();
+    auto packageSize = updateManager.updater->getImageSize();
     updateManager.setRequestedApplyTime(
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
-                                                     false, {}, false));
+    EXPECT_NO_THROW(updateManager.processPackageDataDefer(
+        package, packageSize, false, {}, false));
     EXPECT_GE(sd_event_run(event.get(), 500000), 0);
     EXPECT_GE(sd_event_run(event.get(), 500000), 0);
 }
@@ -2057,11 +2047,11 @@ TEST_F(UpdateManagerTest, targetedRequestIgnoresPreUpdateValidationOption)
     std::vector<sdbusplus::object_path> targets{sdbusplus::object_path(
         "/xyz/openbmc_project/software/TargetComponent")};
 
-    // processStream() parses only pldm::MmapStream packages, so feed the
-    // package through the updater's mmap exactly as Update::startUpdate does.
+    // Feed the package through the updater's mmap exactly as
+    // Update::startUpdate does, then hand the mapped pointer straight on.
     ASSERT_TRUE(::mapPackageToUpdater(updateManager, "./test_pkg"));
-    auto& package = *updateManager.updater->mmapStream;
-    const size_t packageSize = updateManager.updater->mmapFile.size();
+    const auto* package = updateManager.updater->getImageData();
+    const size_t packageSize = updateManager.updater->getImageSize();
     // OnReset: the test verifies the refresh scope only; Immediate would
     // auto-activate the package, which needs production-only state.
     updateManager.setRequestedApplyTime(
@@ -2071,12 +2061,12 @@ TEST_F(UpdateManagerTest, targetedRequestIgnoresPreUpdateValidationOption)
     // Pre-update validation is whole-system only: a non-empty Targets makes
     // processStreamDefer ignore the option entirely, so no endpoint - not
     // even the requested target - is validated and the gate never runs.
-    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
-                                                     false, targets, true));
+    EXPECT_NO_THROW(updateManager.processPackageDataDefer(
+        package, packageSize, false, targets, true));
     EXPECT_FALSE(updateManager.preUpdateValidation);
     // Drop the activation object before pumping the loop: the test verifies
     // the refresh scope only, and a present activation would auto-start the
-    // update at the end of processStream(), which needs production-only
+    // update at the end of processPackageData(), which needs production-only
     // state (debug token, device updaters driving real requests).
     updateManager.activation.reset();
     updateManager.activationProgress.reset();
@@ -2101,7 +2091,7 @@ TEST_F(UpdateManagerTest, wholePreUpdateValidationIgnoredWithoutDeviceScope)
                                 emptyDescriptorMap, componentInfoMap,
                                 componentNameMap, true, nullptr);
     // processStreamDefer would have recorded the session flag; set it here
-    // since the helper drives processStream() directly, and verify the
+    // since the helper drives processPackageData() directly, and verify the
     // empty-scope downgrade clears it.
     updateManager.preUpdateValidation = true;
 
@@ -2305,7 +2295,7 @@ TEST_F(UpdateManagerTest,
     updateManager.fwDeviceIDRecords = {{1, {0}, "Version", Descriptors{}, {}}};
     // The gate's reject path publishes the final activation status, which
     // registers an Activation object at objPath; give it a valid path since
-    // this test calls the gate without going through processStreamDefer().
+    // this test calls the gate without going through processPackageDataDefer().
     updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
     const std::vector<mctp_eid_t> fallbackConfigEids{7};
 
@@ -2959,6 +2949,19 @@ TEST_F(UpdateManagerTest, clearActivationInfoResetsAllTrackedMembers)
 
 TEST_F(UpdateManagerTest, processStreamDeferReusesExistingActivationObjects)
 {
+    // package must be declared before updateManager, so it is destroyed
+    // after: processPackageDataDefer() captures package.data() in a
+    // deferred callback owned by updateManager, so the buffer must outlive
+    // updateManager's Defer handler even though this test never pumps the
+    // event loop to actually invoke it.
+    std::ifstream packageFile("./test_pkg", std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(packageFile.good());
+    auto packageSize = static_cast<size_t>(packageFile.tellg());
+    packageFile.seekg(0, std::ios::beg);
+    std::vector<uint8_t> package(packageSize);
+    packageFile.read(reinterpret_cast<char*>(package.data()),
+                     static_cast<std::streamsize>(packageSize));
+
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
                                 nullptr);
@@ -2976,13 +2979,8 @@ TEST_F(UpdateManagerTest, processStreamDeferReusesExistingActivationObjects)
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    std::ifstream package("./test_pkg", std::ios::binary | std::ios::ate);
-    ASSERT_TRUE(package.good());
-    auto packageSize = static_cast<uintmax_t>(package.tellg());
-    package.seekg(0, std::ios::beg);
-
-    auto returnedPath =
-        updateManager.processStreamDefer(package, packageSize, false, {});
+    auto returnedPath = updateManager.processPackageDataDefer(
+        package.data(), packageSize, false, {});
 
     EXPECT_EQ(returnedPath, updateManager.objPath);
     EXPECT_EQ(updateManager.activation.get(), activation);

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "common/instance_id.hpp"
+#include "common/mmap_stream.hpp"
 #include "common/types.hpp"
 #include "device_updater.hpp"
 #include "fw-update/update.hpp"
@@ -240,32 +241,32 @@ class UpdateManager : public UpdateManagerBase
      */
     void onResponseSendComplete(mctp_eid_t eid, bool success);
 
-    /** @brief Process the firmware update package stream
+    /** @brief Process the firmware update package data
      *
      *  Parses the firmware package header, validates the package format,
      *  associates firmware components with target devices, and initiates
      *  the update process for matched devices.
      *
-     *  @param[in] packageStream - Input file stream containing the firmware
-     *                             package data
+     *  @param[in] packageData - Pointer to the firmware package data in
+     *                           memory
      *  @param[in] packageSize - Total size of the firmware package in bytes
      *  @param[in] targets - Optional list of specific target components to
      *                       update. Empty list means update all compatible
      *                       components.
      */
-    exec::task<void> processStream(
-        std::istream& packageStream, uintmax_t packageSize,
+    exec::task<void> processPackageData(
+        const uint8_t* packageData, size_t packageSize,
         std::vector<sdbusplus::object_path> targets = {},
         bool preUpdateValidation = false);
 
-    /** @brief Defers processing of the package stream to the event loop
+    /** @brief Defers processing of the package data to the event loop
      *
      *  Creates the Update D-Bus interface and schedules the actual package
      *  processing asynchronously. This allows the D-Bus method call to
      *  return immediately while processing continues in the background.
      *
-     *  @param[in] packageStream - Input file stream containing the firmware
-     *                             package data
+     *  @param[in] packageData - Pointer to the firmware package data in
+     *                           memory
      *  @param[in] packageSize - Total size of the firmware package in bytes
      *  @param[in] forceUpdate - If true, bypasses version checks and forces
      *                           the update even if target has same/newer
@@ -278,10 +279,10 @@ class UpdateManager : public UpdateManagerBase
      *
      *  @return D-Bus object path of the created Software update object
      */
-    std::string processStreamDefer(std::istream& packageStream,
-                                   uintmax_t packageSize, bool forceUpdate,
-                                   std::vector<sdbusplus::object_path> targets,
-                                   bool preUpdateValidation = false);
+    std::string processPackageDataDefer(
+        const uint8_t* packageData, size_t packageSize, bool forceUpdate,
+        std::vector<sdbusplus::object_path> targets,
+        bool preUpdateValidation = false);
 
     /** @brief Set the RequestedApplyTime for the current update session
      *
@@ -654,6 +655,15 @@ class UpdateManager : public UpdateManagerBase
 
     std::unique_ptr<PackageParser> parser;
 
+    /** @brief Memory-mapped firmware update package backing the file-path
+     *         entry point (processPackage). Must be a member, not a local
+     *         in processPackage(): DeviceUpdater retains the raw package
+     *         pointer for the asynchronous RequestFirmwareData exchanges
+     *         that follow package processing, so the mapping has to stay
+     *         alive past processPackage()'s return. Released in
+     *         clearFirmwareUpdatePackage(). */
+    pldm::MmapFile packageMmapFile;
+
     std::unordered_map<mctp_eid_t, std::unique_ptr<DeviceUpdater>>
         deviceUpdaterMap;
     std::unordered_map<mctp_eid_t, bool> deviceUpdateCompletionMap;
@@ -663,7 +673,7 @@ class UpdateManager : public UpdateManagerBase
      *         Redfish target path (preserved verbatim so the log entry
      *         references the exact component the user asked for rather than
      *         a differently-named component on the same EID). Each name is
-     *         resolved to its owning PLDM EID once at processStream time
+     *         resolved to its owning PLDM EID once at processPackageData time
      *         from configured metadata, with the live componentNameMap as a
      *         fallback; names that don't resolve to a PLDM EID (e.g. non-PLDM
      *         targets) are intentionally omitted. Drained by

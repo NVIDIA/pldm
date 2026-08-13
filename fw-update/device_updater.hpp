@@ -233,7 +233,10 @@ class DeviceUpdater
     /** @brief Constructor
      *
      *  @param[in] eid - Endpoint ID of the firmware device
-     *  @param[in] package - File stream for firmware update package
+     *  @param[in] package - Pointer to the firmware update package data. Must
+     *                       remain valid for the lifetime of this object.
+     *  @param[in] packageSize - Size in bytes of the firmware update package
+     *                           data
      *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
      *                                package that matches this firmware device
      *  @param[in] compImageInfos - Component image information for all the
@@ -248,7 +251,7 @@ class DeviceUpdater
      *                             device
      */
     explicit DeviceUpdater(
-        mctp_eid_t eid, std::istream& package,
+        mctp_eid_t eid, const uint8_t* package, size_t packageSize,
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos,
         const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
@@ -470,8 +473,11 @@ class DeviceUpdater
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
 
-    /** @brief Stream for firmware update package */
-    std::istream& package;
+    /** @brief Pointer to firmware update package data */
+    const uint8_t* package;
+
+    /** @brief Size of the firmware update package data */
+    size_t packageSize;
 
     /** @brief Component image information for all the components in the fw
      *         update package

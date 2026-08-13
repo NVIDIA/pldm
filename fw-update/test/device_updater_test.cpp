@@ -40,6 +40,9 @@
 #include <sdeventplus/test/sdevent.hpp>
 #include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
 
+#include <cstring>
+#include <fstream>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -48,17 +51,36 @@ using namespace pldm;
 using namespace pldm::fw_update;
 using namespace std::chrono;
 
+namespace
+{
+std::vector<uint8_t> readTestPackageFile(const char* path)
+{
+    std::ifstream ifs(path, std::ios::binary | std::ios::in | std::ios::ate);
+    if (!ifs.good())
+    {
+        return {};
+    }
+    auto size = static_cast<size_t>(ifs.tellg());
+    ifs.seekg(0, std::ios::beg);
+    std::vector<uint8_t> data(size);
+    ifs.read(reinterpret_cast<char*>(data.data()),
+             static_cast<std::streamsize>(size));
+    return data;
+}
+} // namespace
+
 class DeviceUpdaterTest : public testing::Test
 {
   protected:
     DeviceUpdaterTest() :
-        package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
+        packageBytes(readTestPackageFile("./test_pkg")),
         event(sdeventplus::Event::get_default()),
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true, nullptr),
-        deviceUpdater(0, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        deviceUpdater(0, packageBytes.data(), packageBytes.size(),
+                      fwDeviceIDRecord, compImageInfos, compInfo,
                       compIdNameInfo, 512, &updateManager)
     {
         fwDeviceIDRecord = {
@@ -206,7 +228,7 @@ class DeviceUpdaterTest : public testing::Test
         handle.reset();
     }
 
-    std::ifstream package;
+    std::vector<uint8_t> packageBytes;
     mctp_eid_t eid{0};
     FirmwareDeviceIDRecord fwDeviceIDRecord;
     ComponentImageInfos compImageInfos;
@@ -225,17 +247,14 @@ class DeviceUpdaterTest : public testing::Test
 TEST_F(DeviceUpdaterTest, validatePackage)
 {
     constexpr uintmax_t testPkgSize = 1163;
-    uintmax_t packageSize = package.tellg();
-    EXPECT_EQ(packageSize, testPkgSize);
+    uintmax_t packageSize = packageBytes.size();
+    ASSERT_EQ(packageSize, testPkgSize);
 
-    package.seekg(0);
     std::vector<uint8_t> packageHeader(testPkgSize);
-    package.read(new (packageHeader.data()) char, testPkgSize);
+    std::memcpy(packageHeader.data(), packageBytes.data(), testPkgSize);
 
     auto parser = parsePkgHeader(packageHeader.data(), packageHeader.size());
     EXPECT_NE(parser, nullptr);
-
-    package.seekg(0);
 
     parser->parse(packageHeader, packageSize);
     const auto& fwDeviceIDRecords = parser->getFwDeviceIDRecords();
@@ -368,8 +387,9 @@ TEST_F(DeviceUpdaterTest,
 {
     constexpr size_t componentOffset = 0;
     auto compUpdater = std::make_unique<ComponentUpdater>(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
     compUpdater->createRequestFwDataTimer();
     compUpdater->createCompleteCommandsTimeoutTimer();
     compUpdater->pendingPostResponseAction = [] {};
@@ -498,9 +518,9 @@ TEST_F(DeviceUpdaterTest, updateComponentCompletion)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
     EXPECT_NO_THROW({
@@ -566,9 +586,9 @@ TEST_F(DeviceUpdaterTest, requestFwDataWithComponentUpdaterMapRoutesToComponent)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     compUpdater->createRequestFwDataTimer();
     compUpdater->componentUpdaterState.set(
         ComponentUpdaterSequence::RequestFirmwareData);
@@ -593,9 +613,9 @@ TEST_F(DeviceUpdaterTest,
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     compUpdater->componentUpdaterState.prev =
         ComponentUpdaterSequence::TransferComplete;
     compUpdater->componentUpdaterState.current =
@@ -619,9 +639,9 @@ TEST_F(DeviceUpdaterTest,
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     compUpdater->componentUpdaterState.prev =
         ComponentUpdaterSequence::VerifyComplete;
     compUpdater->componentUpdaterState.current =
@@ -644,9 +664,9 @@ TEST_F(DeviceUpdaterTest, applyCompleteWithComponentUpdaterMapRoutesToComponent)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     compUpdater->componentUpdaterState.prev =
         ComponentUpdaterSequence::ApplyComplete;
     compUpdater->componentUpdaterState.current =
@@ -700,9 +720,9 @@ TEST_F(DeviceUpdaterTest, onResponseSendCompleteWithTrackedComponentIsNoop)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
 
@@ -719,9 +739,9 @@ TEST_F(DeviceUpdaterTest, isComponentFailedReturnsFalseWhenComponentSucceeded)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), true));
 
@@ -733,9 +753,9 @@ TEST_F(DeviceUpdaterTest, isComponentFailedReturnsTrueWhenComponentFailed)
     size_t componentOffset = 0;
     std::unique_ptr<ComponentUpdater> compUpdater =
         std::make_unique<ComponentUpdater>(
-            eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-            compIdNameInfo, 512, &updateManager, &deviceUpdater,
-            componentOffset);
+            eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+            compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+            &deviceUpdater, componentOffset);
     deviceUpdater.componentUpdaterMap.emplace(
         componentOffset, std::make_pair(std::move(compUpdater), false));
 
@@ -746,9 +766,9 @@ TEST_F(DeviceUpdaterTest,
        isLiveActivationSupportedReturnsFalseWhenCompInfoEmpty)
 {
     ComponentInfo emptyCompInfo{};
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                               emptyCompInfo, compIdNameInfo, 512,
-                               &updateManager);
+    DeviceUpdater localUpdater(eid, packageBytes.data(), packageBytes.size(),
+                               fwDeviceIDRecord, compImageInfos, emptyCompInfo,
+                               compIdNameInfo, 512, &updateManager);
     EXPECT_FALSE(localUpdater.isLiveActivationSupported());
 }
 
@@ -759,9 +779,10 @@ TEST_F(DeviceUpdaterTest,
     mismatchedCompInfo[{20, 200}] = std::make_tuple(
         static_cast<uint8_t>(1), std::string("v"),
         static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                               mismatchedCompInfo, compIdNameInfo, 512,
-                               &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, mismatchedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_SELF_CONTAINED);
 
@@ -774,9 +795,10 @@ TEST_F(DeviceUpdaterTest,
     ComponentInfo nonSelfContainedCompInfo{};
     nonSelfContainedCompInfo[{10, 100}] = std::make_tuple(
         static_cast<uint8_t>(1), std::string("v"), static_cast<uint16_t>(0));
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord, compImageInfos,
-                               nonSelfContainedCompInfo, compIdNameInfo, 512,
-                               &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, nonSelfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_SELF_CONTAINED);
 
@@ -794,9 +816,10 @@ TEST_F(DeviceUpdaterTest, isLiveActivationSupportedReturnsTrueForImmediate)
         static_cast<uint8_t>(1), std::string("v"),
         static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
     ComponentImageInfos localCompImageInfos = compImageInfos;
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
-                               localCompImageInfos, selfContainedCompInfo,
-                               compIdNameInfo, 512, &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, selfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_SELF_CONTAINED);
 
@@ -820,9 +843,10 @@ TEST_F(DeviceUpdaterTest,
         localCompImageInfos[0])
         .set(PLDM_ACTIVATION_SELF_CONTAINED);
 
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
-                               localCompImageInfos, selfContainedCompInfo,
-                               compIdNameInfo, 512, &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, selfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_SELF_CONTAINED);
 
@@ -846,9 +870,10 @@ TEST_F(DeviceUpdaterTest,
         localCompImageInfos[0])
         .set(PLDM_ACTIVATION_SELF_CONTAINED);
 
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
-                               localCompImageInfos, selfContainedCompInfo,
-                               compIdNameInfo, 512, &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, selfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value = 0;
 
     EXPECT_FALSE(localUpdater.isLiveActivationSupported());
@@ -871,9 +896,10 @@ TEST_F(DeviceUpdaterTest,
         localCompImageInfos[0])
         .reset();
 
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
-                               localCompImageInfos, selfContainedCompInfo,
-                               compIdNameInfo, 512, &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, selfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_SELF_CONTAINED);
 

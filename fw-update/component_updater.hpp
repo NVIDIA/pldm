@@ -205,7 +205,10 @@ class ComponentUpdater
     /** @brief Constructor
      *
      *  @param[in] eid - Endpoint ID of the firmware device
-     *  @param[in] package - File stream for firmware update package
+     *  @param[in] package - Pointer to the firmware update package data. Must
+     *                       remain valid for the lifetime of this object.
+     *  @param[in] packageSize - Size in bytes of the firmware update package
+     *                           data
      *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
      *                                package that matches this firmware device
      *  @param[in] compImageInfos - Component image information for all the
@@ -222,14 +225,15 @@ class ComponentUpdater
      *  @param[in] componentIndex - component index
      */
     explicit ComponentUpdater(
-        mctp_eid_t eid, std::istream& package,
+        mctp_eid_t eid, const uint8_t* package, size_t packageSize,
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos,
         const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
         uint32_t maxTransferSize, UpdateManagerBase* updateManager,
         DeviceUpdater* deviceUpdater, size_t componentIndex) :
         fwDeviceIDRecord(fwDeviceIDRecord), componentUpdaterState(), eid(eid),
-        package(package), compImageInfos(compImageInfos), compInfo(compInfo),
+        package(package), packageSize(packageSize),
+        compImageInfos(compImageInfos), compInfo(compInfo),
         compIdNameInfo(compIdNameInfo), maxTransferSize(maxTransferSize),
         updateManager(updateManager), deviceUpdater(deviceUpdater),
         componentIndex(componentIndex), reqFwDataTimer(nullptr),
@@ -385,8 +389,11 @@ class ComponentUpdater
     /** @brief Endpoint ID of the firmware device */
     mctp_eid_t eid;
 
-    /** @brief Stream for firmware update package */
-    std::istream& package;
+    /** @brief Pointer to firmware update package data */
+    const uint8_t* package;
+
+    /** @brief Size of the firmware update package data */
+    size_t packageSize;
 
     /** @brief Component image information for all the components in the fw
      *         update package

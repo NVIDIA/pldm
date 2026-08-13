@@ -20,6 +20,7 @@
 
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <cstring>
 #include <optional>
 #include <sstream>
 #include <typeinfo>
@@ -1635,16 +1636,12 @@ class PackageSignatureTest : public testing::Test
     std::string publicKey;
     std::string publicKeyCorrupted;
 
-    uintmax_t calculatePackageSize(std::istream& package)
+    size_t calculatePackageSize(const uint8_t* package, size_t packageSize)
     {
         std::vector<uint8_t> packageHeader(
             sizeof(pldm_package_header_information));
-        package.read(reinterpret_cast<char*>(packageHeader.data()),
-                     sizeof(pldm_package_header_information));
-
-        package.seekg(0, std::ios_base::end);
-
-        uintmax_t packageSize = package.tellg();
+        std::memcpy(packageHeader.data(), package,
+                    sizeof(pldm_package_header_information));
 
         auto pkgHeaderInfo =
             reinterpret_cast<const pldm_package_header_information*>(
@@ -1656,17 +1653,13 @@ class PackageSignatureTest : public testing::Test
 
         packageHeader.resize(pkgHeaderSize);
 
-        package.seekg(0);
-
-        package.read(reinterpret_cast<char*>(packageHeader.data()),
-                     pkgHeaderSize);
+        std::memcpy(packageHeader.data(), package, pkgHeaderSize);
 
         auto parser =
             parsePkgHeader(packageHeader.data(), packageHeader.size());
 
         std::vector<uint8_t> fullPackage(packageSize);
-        package.seekg(0);
-        package.read(reinterpret_cast<char*>(fullPackage.data()), packageSize);
+        std::memcpy(fullPackage.data(), package, packageSize);
 
         parser->parse(fullPackage, packageSize);
 
@@ -1677,12 +1670,13 @@ class PackageSignatureTest : public testing::Test
 TEST_F(PackageSignatureTest, detectUnsignedPackage)
 {
     std::string strPkg((char*)unsignedPackage.data(), unsignedPackage.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     EXPECT_EQ(pkgSignHdrData.size(), 0);
 }
@@ -1691,12 +1685,13 @@ TEST_F(PackageSignatureTest, signatureV3CorruptedPublicKey)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     std::unique_ptr<PackageSignature> packageSignatureParser =
         PackageSignature::createPackageSignatureParser(pkgSignHdrData);
@@ -1717,12 +1712,13 @@ TEST_F(PackageSignatureTest, signatureV3VerificationBrokenSignature)
 {
     std::string strPkg((char*)signedPackageV3BrokenSignature.data(),
                        signedPackageV3BrokenSignature.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     std::unique_ptr<PackageSignature> packageSignatureParser =
         PackageSignature::createPackageSignatureParser(pkgSignHdrData);
@@ -1779,12 +1775,13 @@ TEST_F(PackageSignatureTest, signatureV3IntegrityCheck)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     std::unique_ptr<PackageSignature> packageSignatureParserBase =
         PackageSignature::createPackageSignatureParser(pkgSignHdrData);
@@ -1814,12 +1811,13 @@ TEST_F(PackageSignatureTest, signatureV3PackageWithCorruptedBytes)
 {
     std::string strPkg((char*)signedPackageV3WithCorruptedBytes.data(),
                        signedPackageV3WithCorruptedBytes.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     std::unique_ptr<PackageSignature> packageSignatureParser =
         PackageSignature::createPackageSignatureParser(pkgSignHdrData);
@@ -1840,12 +1838,13 @@ TEST_F(PackageSignatureTest, signatureV3Verification)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     std::unique_ptr<PackageSignature> packageSignatureParserBase =
         PackageSignature::createPackageSignatureParser(pkgSignHdrData);
@@ -1888,10 +1887,11 @@ TEST_F(PackageSignatureTest, signatureV3IncorrectSizeOfPackage)
 
     std::string strPkg((char*)signedPackageV3IncorrectSize.data(),
                        signedPackageV3IncorrectSize.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     EXPECT_THROW(PackageSignature::getSignatureHeader(
-                     package, pkgSizeWithoutsignatureHeader),
+                     package, packageStr.size(), pkgSizeWithoutsignatureHeader),
                  InternalFailure);
 }
 
@@ -1992,12 +1992,13 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksDisabled)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3TestUseChunks packageSignatureParser(
         pkgSignHdrData, false);
@@ -2018,12 +2019,13 @@ TEST_F(PackageSignatureTest, signatureV3WithUseChunksEnabled)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
-    uintmax_t calcPkgSize = calculatePackageSize(package);
+    uintmax_t calcPkgSize = calculatePackageSize(package, packageStr.size());
 
-    std::vector<uint8_t> pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::vector<uint8_t> pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3TestUseChunks packageSignatureParser(
         pkgSignHdrData, true);
@@ -2071,12 +2073,12 @@ class PackageSignatureSha384TestHook : public PackageSignatureSha384
     }
 
     void configureChunkProcessingForTest(
-        std::istream& packageStream, uintmax_t signedLength, int chunkIdx,
+        const uint8_t* packageData, uintmax_t signedLength, int chunkIdx,
         bool initDigestCtx,
         std::function<void(std::vector<unsigned char>)> onCompleteCb,
         std::function<void(const std::string&)> onErrorCb)
     {
-        package = &packageStream;
+        package = packageData;
         lengthOfSignedData = signedLength;
         chunkNumber = chunkIdx;
         hash = std::make_shared<std::vector<unsigned char>>(digestLength);
@@ -2125,10 +2127,11 @@ TEST_F(PackageSignatureTest, verifyAsyncSucceedsForValidSignedPackage)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2157,10 +2160,11 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsErrorForInvalidDigestAlgorithm)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2191,10 +2195,11 @@ TEST_F(PackageSignatureTest, integrityCheckAsyncSucceedsForValidSignedPackage)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2223,10 +2228,11 @@ TEST_F(PackageSignatureTest, integrityCheckAsyncErrorsWhenPublicKeyIsEmpty)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2256,7 +2262,8 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncUseChunksCompletes)
     sha.setUseChunksForTest(true);
 
     std::string payload("1234567890abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2292,7 +2299,8 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncErrorsOnInvalidDigestName)
     sha.setDigestNameForTest("INVALID_DIGEST");
 
     std::string payload("1234567890abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2349,10 +2357,11 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForInvalidPublicKeyFormat)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2381,10 +2390,11 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForEmptyPublicKey)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2409,13 +2419,20 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseForEmptyPublicKey)
     EXPECT_FALSE(onErrorCalled);
 }
 
-TEST_F(PackageSignatureTest, calculateDigestAsyncNoChunksHandlesReadFailure)
+TEST_F(PackageSignatureTest, calculateDigestAsyncNoChunksCompletes)
 {
+    // This previously injected a stream read failure (via failbit) to cover
+    // the onError path. The pointer+size interface reads with plain memcpy
+    // and has no stream state to fail, so that injection point no longer
+    // exists and the test now covers the no-chunks completion path. The
+    // onError path here is still covered by
+    // calculateDigestAsyncErrorsOnInvalidDigestName and
+    // calculateDigestAsyncErrorsWhenDigestInitFails.
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(false);
 
-    std::istringstream package("abc");
-    package.exceptions(std::ios::failbit | std::ios::badbit);
+    std::string packageStr(32, 'a');
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2429,19 +2446,24 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncNoChunksHandlesReadFailure)
             errorMessage = error;
         });
 
-    EXPECT_FALSE(onCompleteCalled);
-    EXPECT_TRUE(onErrorCalled);
-    EXPECT_THAT(errorMessage,
-                testing::HasSubstr("Failed to compute SHA-384 hash"));
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
 }
 
-TEST_F(PackageSignatureTest, handleChunkProcessingHandlesStreamException)
+TEST_F(PackageSignatureTest, handleChunkProcessingFinalizesAfterFinalChunk)
 {
+    // This previously injected a stream exception (via failbit) to cover the
+    // onError path. The pointer+size interface reads with plain memcpy and
+    // has no stream state to fail, so that injection point no longer exists
+    // and the test now covers consuming the final chunk and finalizing. The
+    // onError path here is still covered by
+    // handleChunkProcessingReportsDigestUpdateFailure and
+    // handleChunkProcessingReportsDigestFinalizeFailure.
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("x");
-    package.exceptions(std::ios::failbit | std::ios::badbit);
+    std::string packageStr("12345678");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2456,23 +2478,30 @@ TEST_F(PackageSignatureTest, handleChunkProcessingHandlesStreamException)
         });
 
     ASSERT_TRUE(sha.hasPendingTimerForTest());
+    // The whole 8-byte package fits in the first chunk (chunk size is at
+    // least 256 bytes per meson.options), so the first call only advances
+    // chunkNumber; the finalize/onComplete check runs at the top of the
+    // *next* call once processedLength >= lengthOfSignedData.
+    sha.handleChunkProcessing();
     sha.handleChunkProcessing();
 
-    EXPECT_FALSE(onCompleteCalled);
-    EXPECT_TRUE(onErrorCalled);
-    EXPECT_THAT(
-        errorMessage,
-        testing::HasSubstr("Exception occurred during chunk processing"));
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
 }
 
 TEST_F(PackageSignatureTest,
-       handleChunkProcessingStreamExceptionWithoutTimerObject)
+       handleChunkProcessingFinalizesWithoutTimerObjectAfterFinalChunk)
 {
+    // See handleChunkProcessingFinalizesAfterFinalChunk above for why this
+    // no longer injects a read failure. Unlike
+    // handleChunkProcessingFinalizesWhenNoTimerObjectIsPresent (which starts
+    // already past the last chunk), this walks the consume-then-finalize
+    // sequence with no timer object to confirm neither step dereferences it.
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("x");
-    package.exceptions(std::ios::failbit | std::ios::badbit);
+    std::string packageStr("12345678");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2487,13 +2516,14 @@ TEST_F(PackageSignatureTest,
         });
     EXPECT_FALSE(sha.hasPendingTimerForTest());
 
+    // See the comment in handleChunkProcessingFinalizesAfterFinalChunk
+    // above: the first call consumes the single (undersized) chunk; the
+    // second call's entry check finalizes and calls onComplete.
+    sha.handleChunkProcessing();
     sha.handleChunkProcessing();
 
-    EXPECT_FALSE(onCompleteCalled);
-    EXPECT_TRUE(onErrorCalled);
-    EXPECT_THAT(
-        errorMessage,
-        testing::HasSubstr("Exception occurred during chunk processing"));
+    EXPECT_TRUE(onCompleteCalled);
+    EXPECT_FALSE(onErrorCalled);
 }
 
 TEST_F(PackageSignatureTest, handleChunkProcessingReportsDigestFinalizeFailure)
@@ -2502,7 +2532,8 @@ TEST_F(PackageSignatureTest, handleChunkProcessingReportsDigestFinalizeFailure)
     sha.setUseChunksForTest(true);
     sha.createDummyTimerForTest();
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     std::string errorMessage;
@@ -2529,7 +2560,8 @@ TEST_F(PackageSignatureTest,
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
 
@@ -2551,7 +2583,8 @@ TEST_F(PackageSignatureTest, calculateDigestUseChunksWithShortSignedLength)
     sha.setUseChunksForTest(true);
 
     std::string payload("abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     auto digest = sha.calculateDigest(package, 1);
 
@@ -2568,7 +2601,8 @@ TEST_F(PackageSignatureTest, calculateDigestUseChunksWithExactChunkBoundaries)
     sha.setChunkSizeForTest(4);
 
     std::string payload("abcdefghijkl");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     auto digest = sha.calculateDigest(package, payload.size());
 
@@ -2584,7 +2618,8 @@ TEST_F(PackageSignatureTest, calculateDigestThrowsForInvalidDigestName)
     sha.setUseChunksForTest(true);
     sha.setDigestNameForTest("INVALID_DIGEST");
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
                  InternalFailure);
 }
@@ -2593,10 +2628,11 @@ TEST_F(PackageSignatureTest, verifySyncReturnsFalseForInvalidPublicKeyFormat)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2614,10 +2650,11 @@ TEST_F(PackageSignatureTest, verifySyncReturnsFalseForEmptyPublicKey)
 {
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2640,10 +2677,11 @@ TEST_F(PackageSignatureTest,
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2676,10 +2714,11 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseWhenVerifyInitFails)
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2712,10 +2751,11 @@ TEST_F(PackageSignatureTest, verifyAsyncReturnsFalseWhenVerifyCallFails)
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2750,7 +2790,8 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncErrorsWhenDigestInitFails)
     sha.setUseChunksForTest(true);
 
     std::string payload("1234567890abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2781,7 +2822,8 @@ TEST_F(PackageSignatureTest, handleChunkProcessingReportsDigestUpdateFailure)
     sha.setUseChunksForTest(true);
 
     std::string payload("1234567890abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
@@ -2814,7 +2856,8 @@ TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestInitFails)
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
                  InternalFailure);
 }
@@ -2828,7 +2871,8 @@ TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestUpdateFails)
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
                  InternalFailure);
 }
@@ -2842,7 +2886,8 @@ TEST_F(PackageSignatureTest, calculateDigestThrowsWhenDigestFinalFails)
     PackageSignatureSha384TestHook sha;
     sha.setUseChunksForTest(true);
 
-    std::istringstream package("abcdef");
+    std::string packageStr("abcdef");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
     EXPECT_THROW([[maybe_unused]] auto digest = sha.calculateDigest(package, 6),
                  InternalFailure);
 }
@@ -2856,10 +2901,11 @@ TEST_F(PackageSignatureTest,
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2881,10 +2927,11 @@ TEST_F(PackageSignatureTest, verifySyncReturnsFalseWhenVerifyInitFails)
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2906,10 +2953,11 @@ TEST_F(PackageSignatureTest, verifySyncReturnsFalseWhenVerifyCallFails)
 
     std::string strPkg((char*)signedPackageV3WithPublicKey.data(),
                        signedPackageV3WithPublicKey.size());
-    std::istringstream package(strPkg);
-    auto calcPkgSize = calculatePackageSize(package);
-    auto pkgSignHdrData =
-        PackageSignature::getSignatureHeader(package, calcPkgSize);
+    std::string packageStr(strPkg);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    auto calcPkgSize = calculatePackageSize(package, packageStr.size());
+    auto pkgSignHdrData = PackageSignature::getSignatureHeader(
+        package, packageStr.size(), calcPkgSize);
 
     PackageSignatureV3AsyncTestHook packageSignatureParser(pkgSignHdrData);
     packageSignatureParser.parseHeader();
@@ -2930,7 +2978,8 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncUseChunksReplacesExistingTimer)
     sha.createDummyTimerForTest();
 
     std::string payload("1234567890abcdef");
-    std::istringstream package(payload);
+    std::string packageStr(payload);
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
