@@ -1376,3 +1376,115 @@ TEST(UpdateComponent, ParseResponseMsgCompletionCodeFailure)
     EXPECT_NE(output.find("ERROR"), std::string::npos);
     EXPECT_EQ(output.find("ComponentCompatibilityResponse"), std::string::npos);
 }
+
+// ===== QueryDownstreamDevices Tests =====
+
+TEST(QueryDownstreamDevices, CreateRequestMsg)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamDevices cmd("fw_update", "QueryDownstreamDevices", sub);
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+}
+
+TEST(QueryDownstreamDevices, ParseResponseMsgSuccess)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamDevices cmd("fw_update", "QueryDownstreamDevices", sub);
+
+    const size_t payloadLen = PLDM_QUERY_DOWNSTREAM_DEVICES_RESP_BYTES;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    resp->payload[0] = PLDM_SUCCESS;
+    resp->payload[1] = PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_SUPPORTED;
+    const uint16_t numberOfDownstreamDevices = 2;
+    memcpy(resp->payload + 2, &numberOfDownstreamDevices,
+           sizeof(numberOfDownstreamDevices));
+    const uint16_t maxNumberOfDownstreamDevices = 4;
+    memcpy(resp->payload + 4, &maxNumberOfDownstreamDevices,
+           sizeof(maxNumberOfDownstreamDevices));
+    // bit0 (dynamic attachment) and bit2 (simultaneous updates) set,
+    // bit1 (dynamic removal) clear.
+    const uint32_t capabilities = 0x5;
+    memcpy(resp->payload + 6, &capabilities, sizeof(capabilities));
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("\"DownstreamDeviceUpdateSupported\": true"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"NumberOfDownstreamDevices\": 2"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"MaxNumberOfDownstreamDevices\": 4"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"SupportsDynamicAttachment\": true"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"SupportsDynamicRemoval\": false"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"SupportsSimultaneousUpdates\": true"),
+              std::string::npos);
+}
+
+TEST(QueryDownstreamDevices, ParseResponseMsgDecodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamDevices cmd("fw_update", "QueryDownstreamDevices", sub);
+
+    // Truncated payload: completion code only, missing the rest of the
+    // fixed-size response fields.
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_SUCCESS;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(
+        output.find("Decoding QueryDownstreamDevices response failed"),
+        std::string::npos);
+}
+
+TEST(QueryDownstreamDevices, ParseResponseMsgCompletionCodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamDevices cmd("fw_update", "QueryDownstreamDevices", sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_ERROR;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("QueryDownstreamDevices response failed with "
+                          "error completion code"),
+              std::string::npos);
+}
+
+TEST(QueryDownstreamDevices, ParseResponseMsgUnsupportedCommand)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamDevices cmd("fw_update", "QueryDownstreamDevices", sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("QueryDownstreamDevices: device does not "
+                          "support this command"),
+              std::string::npos);
+}

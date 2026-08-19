@@ -248,3 +248,30 @@ Example:
 ```bash
 pldmtool base GetPLDMTypes -v
 ```
+
+## pldmtool firmware update downstream device commands
+
+PLDM Firmware Update (DSP0267 v1.3.0, and any revision from v1.1.x onward)
+adds support for *downstream devices* — devices that sit behind a Firmware
+Device acting as a proxy and have no management endpoint of their own. The
+`fw_update` command group exposes downstream commands so an engineer can
+enumerate those devices and request an update on one of them.
+
+```bash
+$ pldmtool fw_update -h
+
+Subcommands:
+  ...
+  QueryDownstreamDevices             To query the downstream device capability of the FD
+```
+
+**QueryDownstreamDevices** accepts the usual **-m/--mctp_eid** and
+**-v/--verbose** options and addresses the proxy Firmware Device, not the
+downstream device directly.
+
+Example:
+
+```bash
+# Does this FD proxy any downstream devices, and how many?
+pldmtool fw_update QueryDownstreamDevices -m 8
+```
