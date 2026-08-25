@@ -1446,9 +1446,8 @@ TEST(QueryDownstreamDevices, ParseResponseMsgDecodeError)
     testing::internal::CaptureStderr();
     cmd.parseResponseMsg(resp, payloadLen);
     std::string output = testing::internal::GetCapturedStderr();
-    EXPECT_NE(
-        output.find("Decoding QueryDownstreamDevices response failed"),
-        std::string::npos);
+    EXPECT_NE(output.find("Decoding QueryDownstreamDevices response failed"),
+              std::string::npos);
 }
 
 TEST(QueryDownstreamDevices, ParseResponseMsgCompletionCodeError)
