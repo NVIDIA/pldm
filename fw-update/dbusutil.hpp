@@ -60,6 +60,10 @@ const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
 const std::string componentUpdateTime{"NvidiaUpdate.1.0.ComponentUpdateTime"};
 const std::string firmwareInRecovery{"NvidiaUpdate.1.0.FirmwareInRecovery"};
+const std::string deviceDriverErrorsDetected{
+    "NvidiaResourceEvent.1.0.DeviceDriverErrorsDetected"};
+const std::string bmcDriverErrorsDetected{
+    "NvidiaResourceEvent.1.0.BmcDriverErrorsDetected"};
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -165,7 +169,8 @@ inline void createLogEntry(
  *  @param[in] arg1 - argument 1
  *  @param[in] resolution - Resolution field
  *  @param[in] logNamespace - Logging namespace, default is FWUpdate
- *  @param[in] overrideSeverity - Overwrites the severity for the Log
+ *  @param[in] overrideSeverity - Set the entry to Informational instead of
+ *                                the severity derived from the message ID
  *  @param[in] overrideLevel - When set, overrides the severity derived from
  *                             the message ID
  */
@@ -205,7 +210,9 @@ inline void createLogEntry(
     {
         messageArgs = arg1 + "," + arg0;
     }
-    else if (messageID == resourceErrorDetected)
+    else if (messageID == resourceErrorDetected ||
+             messageID == deviceDriverErrorsDetected ||
+             messageID == bmcDriverErrorsDetected)
     {
         messageArgs = arg0 + "," + arg1;
         if (overrideSeverity)
@@ -241,10 +248,17 @@ inline void createLogEntry(
     }
     else
     {
-        info("Generic message ID using default ordering for args", "MESSAGEID",
-             messageID);
-        level = Level::Critical;
         messageArgs = arg0 + "," + arg1;
+        if (overrideSeverity)
+        {
+            level = Level::Informational;
+        }
+        else
+        {
+            level = Level::Critical;
+        }
+        info("Generic message ID using default ordering for args", "MESSAGEID",
+             messageID, "OVERRIDE_SEVERITY", overrideSeverity);
     }
 
     createLogEntry(messageID, messageArgs, resolution, logNamespace,

@@ -474,6 +474,71 @@ TEST_F(DBusUtilInternalTest,
     EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "2.0,GPU1");
 }
 
+TEST_F(DBusUtilInternalTest, createLogEntryReplayedIdHonorsSeverityOverride)
+{
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+
+    for (const auto& messageId :
+         {deviceDriverErrorsDetected, bmcDriverErrorsDetected})
+    {
+        createLogEntry(messageId, "SetEndpointID", "GPU0,unreachable",
+                       "Power cycle.", "FWUpdate", true);
+        EXPECT_EQ(
+            conn->lastSeverity,
+            sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+                Level::Informational));
+        EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"],
+                  "SetEndpointID,GPU0,unreachable");
+
+        createLogEntry(messageId, "SetEndpointID", "GPU0,unreachable",
+                       "Power cycle.", "FWUpdate", false);
+        EXPECT_EQ(
+            conn->lastSeverity,
+            sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+                Level::Critical));
+    }
+}
+
+TEST_F(DBusUtilInternalTest, createLogEntryUnknownIdHonorsSeverityOverride)
+{
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+
+    // Catch-all: an ID from a registry pldm does not model at all.
+    createLogEntry("SomeOther.1.0.MessageId", "GPU0", "detail", "Retry.",
+                   "FWUpdate", true);
+    EXPECT_EQ(
+        conn->lastSeverity,
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Informational));
+
+    createLogEntry("SomeOther.1.0.MessageId", "GPU0", "detail", "Retry.",
+                   "FWUpdate", false);
+    EXPECT_EQ(
+        conn->lastSeverity,
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Critical));
+}
+
+TEST_F(DBusUtilInternalTest, createLogEntryRecoveryKeepsSeverityOverride)
+{
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+
+    // Recovery entries are committed at Critical by their producer; a device
+    // that is not an update target must still report Informational.
+    createLogEntry(firmwareInRecovery, "", "GPU0", "Perform device FW recovery",
+                   "FWUpdate", true);
+    EXPECT_EQ(
+        conn->lastSeverity,
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Informational));
+}
+
 TEST_F(DBusUtilInternalTest, createLogEntryCoversRemainingKnownMessageIds)
 {
     createLogEntry(updateSuccessful, "GPU0", "1.2.3", "");

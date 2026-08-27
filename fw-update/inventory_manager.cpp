@@ -1209,8 +1209,9 @@ bool InventoryManager::logDeviceStatusErrors(const mctp_eid_t eid,
         {
             extraData["ERROR_ID"] = errorInfo.errorId;
         }
-        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1, "",
-                       logNamespace, overrideSeverity, std::nullopt, extraData);
+        createLogEntry(errorInfo.messageId, errorInfo.arg0, errorInfo.arg1,
+                       errorInfo.resolution, logNamespace, overrideSeverity,
+                       std::nullopt, extraData);
     }
     return true;
 }
