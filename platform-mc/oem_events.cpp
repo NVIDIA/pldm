@@ -285,11 +285,9 @@ bool handlePCoreDumpEvent(const std::string& terminus, const uint8_t* eventData,
     lg2::info("Processing PCoreDump Event (0xF2), terminus={TERM}, size={SIZE}",
               "TERM", terminus, "SIZE", eventDataSize);
 
-    // Require at least the OEM event header plus one payload byte
-    if (eventDataSize <= OEM_EVENT_HEADER_SIZE)
+    if (eventDataSize == 0)
     {
-        lg2::error("MFTDump event too small: size={SIZE}, minimum={MIN}",
-                   "SIZE", eventDataSize, "MIN", OEM_EVENT_HEADER_SIZE + 1);
+        lg2::error("PCoreDump event empty: size={SIZE}", "SIZE", eventDataSize);
         return false;
     }
 

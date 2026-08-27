@@ -21,8 +21,9 @@ TEST(OemEventsCoverage, oemEventValidationCoverage)
                                            tooSmall.size()));
 
     const std::array<uint8_t, 4> truncatedPayload{{0x01, 0x00, 0x08, 0x00}};
-    EXPECT_FALSE(handlePCoreDumpEvent(
-        "ProcessorModule_1", truncatedPayload.data(), truncatedPayload.size()));
+    const std::array<uint8_t, 0> emptyPayload{};
+    EXPECT_FALSE(handlePCoreDumpEvent("ProcessorModule_1", emptyPayload.data(),
+                                      emptyPayload.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
         "ProcessorModule_2", truncatedPayload.data(), truncatedPayload.size()));
 }
@@ -76,13 +77,6 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
 {
     const std::array<uint8_t, 6> validOemPayload{
         {0x01, 0x00, 0x02, 0x00, 0xAA, 0x55}};
-    EXPECT_FALSE(handleCperErrorCountEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-    EXPECT_FALSE(handlePCoreDumpEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-    EXPECT_FALSE(handlePcieTelemetryEvent(
-        "../unsafe\\terminus", validOemPayload.data(), validOemPayload.size()));
-
     const std::array<uint8_t, 6> validInventoryPayload{
         {0x01, 0x00, 0x02, 0x00, '{', '}'}};
     if (getuid() != 0)

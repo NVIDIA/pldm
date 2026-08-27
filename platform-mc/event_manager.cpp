@@ -237,18 +237,16 @@ int EventManager::handlePlatformEvent(
 
         auto resolvedName = getTerminusName(tid);
 
-        // A PCore dump is filed under the terminus it came from, and the
-        // collector picks it up by exactly that path. Falling back to a
-        // guessed name here does not merely mislabel the payload, it stages
-        // one CPU's dump where the other CPU's collector will read it, so
-        // reject the event instead. Unattributed beats wrongly attributed.
-        // The other two classes keep their historical fallback.
-        if (eventClass == PLDM_OEM_EVENT_CLASS_PCOREDUMP &&
+        // These classes stage the payload under a path derived from the
+        // terminus name, so an unresolved name must not fall back to a guess.
+        if ((eventClass == PLDM_OEM_EVENT_CLASS_ERROR_COUNTER ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY ||
+             eventClass == PLDM_OEM_EVENT_CLASS_PCOREDUMP) &&
             !resolvedName.has_value())
         {
             lg2::error(
-                "Rejecting PCoreDump Event (0xF2) from tid={TID}: terminus name is unresolved, refusing to stage it under another terminus",
-                "TID", tid);
+                "Rejecting OEM event {EC} from tid={TID}: terminus name is unresolved, refusing to stage it under another terminus",
+                "EC", lg2::hex, eventClass, "TID", tid);
             platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
             return PLDM_ERROR;
         }
