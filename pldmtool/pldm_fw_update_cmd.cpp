@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <sstream>
 
 namespace pldmtool
@@ -1632,6 +1633,13 @@ class QueryDownstreamIdentifiers : public CommandInterface
             sizeof(pldm_msg_hdr) + PLDM_QUERY_DOWNSTREAM_IDENTIFIERS_REQ_BYTES);
         auto request = new (requestMsg.data()) pldm_msg;
 
+        if (transferOperationFlagValue > std::numeric_limits<uint8_t>::max())
+        {
+            std::cerr << "--transfer_operation_flag must be in range [0, "
+                      << +std::numeric_limits<uint8_t>::max() << "]\n";
+            return {PLDM_ERROR_INVALID_DATA, {}};
+        }
+
         pldm_query_downstream_identifiers_req req{
             dataTransferHandle,
             static_cast<uint8_t>(transferOperationFlagValue)};
@@ -1876,6 +1884,265 @@ class RequestDownstreamDeviceUpdate : public CommandInterface
     uint16_t packageDataLength = 0;
 };
 
+class GetDownstreamFirmwareParameters : public CommandInterface
+{
+  public:
+    ~GetDownstreamFirmwareParameters() = default;
+    GetDownstreamFirmwareParameters() = delete;
+    GetDownstreamFirmwareParameters(const GetDownstreamFirmwareParameters&) =
+        delete;
+    GetDownstreamFirmwareParameters(GetDownstreamFirmwareParameters&&) = delete;
+    GetDownstreamFirmwareParameters& operator=(
+        const GetDownstreamFirmwareParameters&) = delete;
+    GetDownstreamFirmwareParameters& operator=(
+        GetDownstreamFirmwareParameters&&) = delete;
+
+    explicit GetDownstreamFirmwareParameters(const char* type, const char* name,
+                                             CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option(
+            "--data_transfer_handle", dataTransferHandle,
+            "A handle that is used to identify a\n"
+            "GetDownstreamFirmwareParameters data transfer. This handle is\n"
+            "ignored by the FDP when the transfer operation flag is set to\n"
+            "GetFirstPart.");
+
+        app->add_option(
+               "--transfer_operation_flag", transferOperationFlagValue,
+               "The operation flag that indicates whether this is the start\n"
+               "of the transfer.\nValid values\n"
+               "{GetNextPart = 0x0, GetFirstPart = 0x1}")
+            ->check(CLI::Range(static_cast<uint16_t>(PLDM_GET_NEXTPART),
+                               static_cast<uint16_t>(PLDM_GET_FIRSTPART)));
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) +
+            PLDM_GET_DOWNSTREAM_FIRMWARE_PARAMETERS_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        pldm_get_downstream_firmware_parameters_req req{
+            dataTransferHandle,
+            static_cast<uint8_t>(transferOperationFlagValue)};
+
+        auto rc = encode_get_downstream_firmware_parameters_req(
+            instanceId, &req, request,
+            PLDM_GET_DOWNSTREAM_FIRMWARE_PARAMETERS_REQ_BYTES);
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        struct pldm_get_downstream_firmware_parameters_resp resp = {};
+        struct pldm_downstream_device_parameters_iter params = {};
+
+        auto rc = decode_get_downstream_firmware_parameters_resp(
+            responsePtr, payloadLength, &resp, &params);
+        if (rc)
+        {
+            std::cerr << "Response Message Error: rc=" << rc
+                      << ",cc=" << unsigned(resp.completion_code) << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(resp.completion_code, data, PLDM_FWUP);
+        if (resp.completion_code != PLDM_SUCCESS)
+        {
+            DisplayInJson(data);
+            return;
+        }
+
+        data["EID"] = getMCTPEID();
+        data["NextDataTransferHandle"] = resp.next_data_transfer_handle;
+        data["TransferFlag"] = transferFlagToString(resp.transfer_flag);
+        data["FDPCapabilitiesDuringUpdate"] =
+            fdpCapabilitiesDuringUpdate(resp.fdp_capabilities_during_update);
+        data["DownstreamDeviceCount"] = resp.downstream_device_count;
+
+        // DSP0267 Table 26: one DownstreamDeviceParameterTable entry per
+        // downstream device supported by the FDP.
+        ordered_json paramEntries = ordered_json::array();
+        struct pldm_downstream_device_parameters_entry entry;
+        foreach_pldm_downstream_device_parameters_entry(params, entry, rc)
+        {
+            paramEntries.push_back(parameterEntry(entry));
+        }
+        if (rc)
+        {
+            std::cerr << "Response Message Error: rc=" << rc << "\n";
+            return;
+        }
+
+        data["DownstreamDeviceParameterEntries"] = paramEntries;
+
+        DisplayInJson(data);
+    }
+
+  private:
+    /**
+     * @brief Decode the FDPCapabilitiesDuringUpdate bitfield of the response
+     *        in a user friendly format, as defined in DSP0267 Table 25
+     *
+     * @param[in] capabilities - the FDPCapabilitiesDuringUpdate bitfield
+     *
+     * @return the capabilities as a json object
+     */
+    static ordered_json fdpCapabilitiesDuringUpdate(
+        const bitfield32_t& capabilities)
+    {
+        ordered_json data;
+
+        data["ComponentUpdateFailureRecovery"] =
+            capabilities.bits.bit0 ? "No revert to previous image on failure"
+                                   : "Reverts to previous image on failure";
+
+        data["ComponentUpdateFailureRetry"] =
+            capabilities.bits.bit1
+                ? "Retry needs update mode exit and a new RequestUpdate"
+                : "Retry allowed without exiting update mode";
+
+        data["HostFunctionalityDuringUpdate"] =
+            capabilities.bits.bit2 ? "Reduced during update"
+                                   : "Not reduced during update";
+
+        data["UpdateModeRestrictions"] =
+            capabilities.bits.bit4
+                ? "Update mode blocked while host OS is active"
+                : "No host OS restriction";
+
+        data["DowngradeRestrictions"] =
+            capabilities.bits.bit8 ? "Restricted, reported per component image"
+                                   : "No downgrade restrictions";
+
+        data["SecurityRevisionUpdateRequestSupport"] =
+            capabilities.bits.bit9 ? "Supported by some components"
+                                   : "Not supported";
+
+        return data;
+    }
+
+    /**
+     * @brief Decode a DownstreamDeviceParameterTable entry in a user friendly
+     *        format, as defined in DSP0267 Table 26
+     *
+     * @param[in] entry - the decoded parameter table entry
+     *
+     * @return the entry as a json object
+     */
+    static ordered_json parameterEntry(
+        const pldm_downstream_device_parameters_entry& entry)
+    {
+        ordered_json data;
+
+        data["DownstreamDeviceIndex"] = entry.downstream_device_index;
+        data["ActiveComponentComparisonStamp"] =
+            entry.active_comp_comparison_stamp;
+        data["ActiveComponentReleaseDate"] =
+            releaseDate(entry.active_comp_release_date);
+        data["PendingComponentComparisonStamp"] =
+            entry.pending_comp_comparison_stamp;
+        data["PendingComponentReleaseDate"] =
+            releaseDate(entry.pending_comp_release_date);
+
+        // ComponentActivationMethods
+        ordered_json componentActivationMethods = ordered_json::array();
+        if (entry.comp_activation_methods.bits.bit0)
+        {
+            componentActivationMethods.push_back("Automatic");
+        }
+        if (entry.comp_activation_methods.bits.bit1)
+        {
+            componentActivationMethods.push_back("Self-Contained");
+        }
+        if (entry.comp_activation_methods.bits.bit2)
+        {
+            componentActivationMethods.push_back("Medium-specific reset");
+        }
+        if (entry.comp_activation_methods.bits.bit3)
+        {
+            componentActivationMethods.push_back("System reboot");
+        }
+        if (entry.comp_activation_methods.bits.bit4)
+        {
+            componentActivationMethods.push_back("DC power cycle");
+        }
+        if (entry.comp_activation_methods.bits.bit5)
+        {
+            componentActivationMethods.push_back("AC power cycle");
+        }
+        if (entry.comp_activation_methods.bits.bit6)
+        {
+            componentActivationMethods.push_back(
+                "Supports ActivatePendingImage");
+        }
+        data["ComponentActivationMethods"] = componentActivationMethods;
+
+        // CapabilitiesDuringUpdate
+        ordered_json capabilitiesDuringUpdate;
+        capabilitiesDuringUpdate["ApplyStateFunctionality"] =
+            entry.capabilities_during_update.bits.bit0
+                ? "Auto-apply during transfer"
+                : "Applies during APPLY state";
+        capabilitiesDuringUpdate["Updateable"] =
+            entry.capabilities_during_update.bits.bit1
+                ? "Updateable through the FDP"
+                : "Inventory information only";
+        capabilitiesDuringUpdate["ComponentDowngradeCapability"] =
+            entry.capabilities_during_update.bits.bit2
+                ? "Downgrade not allowed"
+                : "Downgrade allowed";
+        capabilitiesDuringUpdate["SecurityRevisionUpdateRequestSupport"] =
+            entry.capabilities_during_update.bits.bit3
+                ? "Supported"
+                : "Not supported";
+        capabilitiesDuringUpdate["SecurityRevisionLevel"] =
+            entry.capabilities_during_update.bits.bit4
+                ? "Not at latest level"
+                : "At latest level, or not supported";
+        data["CapabilitiesDuringUpdate"] = capabilitiesDuringUpdate;
+
+        variable_field activeCompVerStr{
+            static_cast<const uint8_t*>(entry.active_comp_ver_str),
+            entry.active_comp_ver_str_len};
+        variable_field pendingCompVerStr{
+            static_cast<const uint8_t*>(entry.pending_comp_ver_str),
+            entry.pending_comp_ver_str_len};
+
+        data["ActiveComponentVersionString"] =
+            pldm::utils::toString(activeCompVerStr);
+        data["PendingComponentVersionString"] =
+            pldm::utils::toString(pendingCompVerStr);
+
+        return data;
+    }
+
+    /**
+     * @brief Format a component release date, which is set to eight null
+     *        bytes when the component does not provide one
+     *
+     * @param[in] date - the null terminated release date of the entry
+     *
+     * @return the release date, or an empty string when none was provided
+     */
+    static std::string releaseDate(const char* date)
+    {
+        std::array<char, PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN> noReleaseData{};
+        if (std::equal(noReleaseData.begin(), noReleaseData.end(), date))
+        {
+            return {};
+        }
+        return {date, PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN};
+    }
+
+    uint32_t dataTransferHandle = 0;
+    // Restricted to {GetNextPart, GetFirstPart} by the option's check().
+    uint16_t transferOperationFlagValue = PLDM_GET_FIRSTPART;
+};
+
 void registerCommand(CLI::App& app)
 {
     auto fwUpdate =
@@ -1953,6 +2220,12 @@ void registerCommand(CLI::App& app)
     commands.push_back(std::make_unique<RequestDownstreamDeviceUpdate>(
         "fw_update", "RequestDownstreamDeviceUpdate",
         requestDownstreamDeviceUpdate));
+    auto getDownstreamFirmwareParameters = fwUpdate->add_subcommand(
+        "GetDownstreamFirmwareParameters",
+        "To get the component details of the downstream devices of the FDP");
+    commands.push_back(std::make_unique<GetDownstreamFirmwareParameters>(
+        "fw_update", "GetDownstreamFirmwareParameters",
+        getDownstreamFirmwareParameters));
 }
 
 } // namespace fw_update

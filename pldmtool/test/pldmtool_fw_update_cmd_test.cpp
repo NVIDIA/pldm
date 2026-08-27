@@ -2010,3 +2010,178 @@ INSTANTIATE_TEST_SUITE_P(
                                         "ERROR_UNSUPPORTED_PLDM_CMD"},
         std::pair<uint8_t, const char*>{PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE,
                                         "UNABLE_TO_INITIATE_UPDATE"}));
+
+// ===== GetDownstreamFirmwareParameters Tests =====
+
+TEST(GetDownstreamFirmwareParameters, CreateRequestMsg)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetDownstreamFirmwareParameters cmd("fw_update",
+                                        "GetDownstreamFirmwareParameters", sub);
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(requestMsg.size(),
+              sizeof(pldm_msg_hdr) +
+                  PLDM_GET_DOWNSTREAM_FIRMWARE_PARAMETERS_REQ_BYTES);
+}
+
+TEST(GetDownstreamFirmwareParameters, CreateRequestMsgWithOptions)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetDownstreamFirmwareParameters cmd("fw_update",
+                                        "GetDownstreamFirmwareParameters", sub);
+
+    parseArgs(app, {"test", "test", "--data_transfer_handle", "305419896",
+                    "--transfer_operation_flag", "0"});
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    ASSERT_EQ(rc, PLDM_SUCCESS);
+
+    auto* req = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    EXPECT_EQ(req->payload[0], 0x78);
+    EXPECT_EQ(req->payload[1], 0x56);
+    EXPECT_EQ(req->payload[2], 0x34);
+    EXPECT_EQ(req->payload[3], 0x12);
+    EXPECT_EQ(req->payload[4], PLDM_GET_NEXTPART);
+}
+
+TEST(GetDownstreamFirmwareParameters, ParseResponseMsgSuccess)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetDownstreamFirmwareParameters cmd("fw_update",
+                                        "GetDownstreamFirmwareParameters", sub);
+
+    const std::string activeVersion{"1.0"};
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint32_t>(payload, 0);        // NextDataTransferHandle
+    payload.push_back(PLDM_START_AND_END); // TransferFlag
+    // bit0 (no revert on failure), bit8 (downgrade restrictions) and bit9
+    // (security revision update request) set.
+    appendLE<uint32_t>(payload, 0x301);
+    appendLE<uint16_t>(payload, 1); // DownstreamDeviceCount
+
+    // A single DownstreamDeviceParameterTable entry.
+    appendLE<uint16_t>(payload, 2);          // DownstreamDeviceIndex
+    appendLE<uint32_t>(payload, 0x11223344); // ActiveComponentComparisonStamp
+    payload.push_back(PLDM_STR_TYPE_ASCII);
+    payload.push_back(static_cast<uint8_t>(activeVersion.size()));
+    appendBytes(payload, {'2', '0', '2', '4', '0', '1', '0', '1'});
+    appendLE<uint32_t>(payload, 0); // PendingComponentComparisonStamp
+    payload.push_back(PLDM_STR_TYPE_UNKNOWN);
+    payload.push_back(0);           // PendingComponentVersionStringLen
+    appendBytes(payload, std::vector<uint8_t>(8, 0)); // no pending date
+    // bit1 (Self-Contained) and bit3 (System reboot).
+    appendLE<uint16_t>(payload, 0x000A);
+    // bit1: the downstream device is updateable.
+    appendLE<uint32_t>(payload, 0x2);
+    appendBytes(payload, {activeVersion.begin(), activeVersion.end()});
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("\"TransferFlag\": \"StartAndEnd\""),
+              std::string::npos);
+    EXPECT_NE(output.find("\"DownstreamDeviceCount\": 1"), std::string::npos);
+    EXPECT_NE(output.find("\"DownstreamDeviceIndex\": 2"), std::string::npos);
+    EXPECT_NE(output.find("\"ActiveComponentReleaseDate\": \"20240101\""),
+              std::string::npos);
+    EXPECT_NE(output.find("\"PendingComponentReleaseDate\": \"\""),
+              std::string::npos);
+    EXPECT_NE(output.find("Self-Contained"), std::string::npos);
+    EXPECT_NE(output.find("System reboot"), std::string::npos);
+    EXPECT_NE(output.find("\"Updateable\": \"Updateable through the FDP\""),
+              std::string::npos);
+    EXPECT_NE(
+        output.find(
+            "\"ComponentUpdateFailureRecovery\": \"No revert to previous image "
+            "on failure\""),
+        std::string::npos);
+    EXPECT_NE(output.find("\"DowngradeRestrictions\": \"Restricted, reported "
+                          "per component image\""),
+              std::string::npos);
+    EXPECT_NE(output.find("\"ActiveComponentVersionString\": \"1.0\""),
+              std::string::npos);
+    EXPECT_NE(output.find("\"PendingComponentVersionString\": \"\""),
+              std::string::npos);
+}
+
+TEST(GetDownstreamFirmwareParameters, ParseArgsFlagOutOfRange)
+{
+    for (const char* flag : {"2", "256"})
+    {
+        CLI::App app{"test"};
+        auto sub = app.add_subcommand("test", "test");
+        GetDownstreamFirmwareParameters cmd(
+            "fw_update", "GetDownstreamFirmwareParameters", sub);
+
+        std::vector<const char*> argv = {"test", "test",
+                                         "--transfer_operation_flag", flag};
+        EXPECT_THROW(app.parse(static_cast<int>(argv.size()), argv.data()),
+                     CLI::ValidationError);
+    }
+}
+
+TEST(GetDownstreamFirmwareParameters, ParseResponseMsgDecodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetDownstreamFirmwareParameters cmd("fw_update",
+                                        "GetDownstreamFirmwareParameters", sub);
+
+    // Truncated payload: shorter than the fixed-size response fields.
+    const size_t payloadLen = 2;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_SUCCESS;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("Response Message Error: rc="), std::string::npos);
+}
+
+class GetDownstreamFirmwareParametersCompletionCode :
+    public testing::TestWithParam<std::pair<uint8_t, const char*>>
+{};
+
+TEST_P(GetDownstreamFirmwareParametersCompletionCode, ReportedAsJson)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetDownstreamFirmwareParameters cmd("fw_update",
+                                        "GetDownstreamFirmwareParameters", sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = GetParam().first;
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find(
+                  std::format("\"CompletionCode\": \"{}\"", GetParam().second)),
+              std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CompletionCodes, GetDownstreamFirmwareParametersCompletionCode,
+    testing::Values(
+        std::pair<uint8_t, const char*>{PLDM_ERROR, "ERROR"},
+        std::pair<uint8_t, const char*>{PLDM_ERROR_UNSUPPORTED_PLDM_CMD,
+                                        "ERROR_UNSUPPORTED_PLDM_CMD"},
+        std::pair<uint8_t, const char*>{PLDM_FWUP_INVALID_TRANSFER_HANDLE,
+                                        "INVALID_TRANSFER_HANDLE"},
+        std::pair<uint8_t, const char*>{
+            PLDM_FWUP_DOWNSTREAM_DEVICE_LIST_CHANGED,
+            "DOWNSTREAM_DEVICE_LIST_CHANGED"}));
