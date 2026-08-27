@@ -201,8 +201,8 @@ class AsyncEntityManagerServer
     {
         connection = std::make_shared<sdbusplus::asio::connection>(
             io, sdbusplus::bus::new_bus());
-        connection->request_name(pldm::utils::mapperService);
-        connection->request_name(entityManagerService);
+        requestNameWithRetry(pldm::utils::mapperService);
+        requestNameWithRetry(entityManagerService);
         server = std::make_unique<sdbusplus::asio::object_server>(connection);
 
         mapperIface = server->add_interface(pldm::utils::mapperPath,
@@ -455,6 +455,27 @@ class AsyncEntityManagerServer
             return;
         }
         done.get();
+    }
+
+    void requestNameWithRetry(const char* name)
+    {
+        constexpr int maxAttempts = 200;
+        for (int attempt = 0; attempt < maxAttempts; ++attempt)
+        {
+            try
+            {
+                connection->request_name(name);
+                return;
+            }
+            catch (const std::exception&)
+            {
+                if (attempt + 1 == maxAttempts)
+                {
+                    throw;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
     }
 
     void startIoThread()
