@@ -210,6 +210,11 @@ void OtherDeviceUpdateManager::onActivationChanged(
             otherDevices[objPath]->activationState =
                 Server::Activation::convertActivationsFromString(
                     *activationString);
+            if (otherDevices[objPath]->activationState ==
+                Server::Activation::Activations::Activating)
+            {
+                updateStarted = true;
+            }
         }
         if (reqActivation.has_value())
         {
@@ -730,6 +735,19 @@ size_t OtherDeviceUpdateManager::getValidTargets(void)
     return 0;
 #endif
     return validTargetCount;
+}
+
+bool OtherDeviceUpdateManager::noTargetedUpdateStarted() const
+{
+#ifndef NON_PLDM
+    return false;
+#else
+    if (targets.empty() || isImageFileProcessed.empty())
+    {
+        return false;
+    }
+    return !updateStarted;
+#endif
 }
 
 void OtherDeviceUpdateManager::updateValidTargets(void)
