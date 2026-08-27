@@ -402,7 +402,7 @@ class GetTID : public CommandInterface
         pldm_base_get_tid_resp resp{};
         auto rc =
             decode_pldm_base_get_tid_resp(responsePtr, payloadLength, &resp);
-        if (rc != PLDM_SUCCESS || resp.completion_code != PLDM_SUCCESS)
+        if (rc)
         {
             std::cerr << "Response Message Error: "
                       << "rc=" << rc << ",cc="
@@ -411,7 +411,12 @@ class GetTID : public CommandInterface
         }
 
         ordered_json data;
-        data["Response"] = static_cast<uint32_t>(resp.tid);
+        fillCompletionCode(resp.completion_code, data, PLDM_BASE);
+        if (resp.completion_code == PLDM_SUCCESS)
+        {
+            data["TID"] = resp.tid;
+        }
+
         pldmtool::helper::DisplayInJson(data);
     }
 };

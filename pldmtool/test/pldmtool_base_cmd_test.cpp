@@ -140,7 +140,12 @@ TEST(GetTID, ParseResponseMsgSuccess)
     auto rc = encode_pldm_base_get_tid_resp(0, &tidResp, resp, &payloadLen);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
+    testing::internal::CaptureStdout();
     EXPECT_NO_THROW(cmd.parseResponseMsg(resp, PLDM_BASE_GET_TID_RESP_BYTES));
+    auto data = ordered_json::parse(testing::internal::GetCapturedStdout());
+
+    EXPECT_EQ(data["CompletionCode"], "SUCCESS");
+    EXPECT_EQ(data["TID"], 5);
 }
 
 TEST(GetTID, ParseResponseMsgErrorCC)
@@ -157,7 +162,12 @@ TEST(GetTID, ParseResponseMsgErrorCC)
     auto rc = encode_pldm_base_get_tid_resp(0, &tidRespErr, resp, &payloadLen);
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
+    testing::internal::CaptureStdout();
     EXPECT_NO_THROW(cmd.parseResponseMsg(resp, PLDM_BASE_GET_TID_RESP_BYTES));
+    auto data = ordered_json::parse(testing::internal::GetCapturedStdout());
+
+    EXPECT_EQ(data["CompletionCode"], "ERROR");
+    EXPECT_FALSE(data.contains("TID"));
 }
 
 TEST(GetTID, ParseResponseMsgDecodeError)
