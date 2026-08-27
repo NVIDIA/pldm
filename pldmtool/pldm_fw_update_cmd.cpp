@@ -21,6 +21,7 @@
 
 #include <libpldm/firmware_update.h>
 
+#include <algorithm>
 #include <format>
 #include <sstream>
 
@@ -97,6 +98,34 @@ const std::map<std::string, transfer_resp_flag> transferRespFlag{
     {"END", PLDM_END},
     {"STARTANDEND", PLDM_START_AND_END},
 };
+
+const std::map<std::string, transfer_op_flag> transferOperationFlag{
+    {"GETNEXTPART", PLDM_GET_NEXTPART},
+    {"GETFIRSTPART", PLDM_GET_FIRSTPART},
+};
+
+const std::map<uint8_t, const char*> transferFlagName{
+    {PLDM_START, "Start"},
+    {PLDM_MIDDLE, "Middle"},
+    {PLDM_END, "End"},
+    {PLDM_START_AND_END, "StartAndEnd"},
+};
+
+/*
+ * Render the TransferFlag of a multipart response in a user friendly format
+ *
+ *  @param[in]  transferFlag - the TransferFlag field of the response
+ *
+ *  @return - the flag name, or the numeric value when it is not recognized.
+ */
+static std::string transferFlagToString(uint8_t transferFlag)
+{
+    if (transferFlagName.contains(transferFlag))
+    {
+        return transferFlagName.at(transferFlag);
+    }
+    return std::format("Unknown ({})", transferFlag);
+}
 
 const std::map<const char*, pldm_self_contained_activation_req>
     pldmSelfContainedActivation{
@@ -505,23 +534,58 @@ class QueryDeviceIdentifiers : public CommandInterface
      */
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override;
     using CommandInterface::CommandInterface;
-
-  private:
-    /**
-     * @brief Method to update QueryDeviceIdentifiers json response in a user
-     * friendly format
-     *
-     * @param[in] descriptors - descriptor json response
-     * @param[in] descriptorType - descriptor type
-     * @param[in] descriptorVal - descriptor value
-     */
-    void updateDescriptor(
-        ordered_json& descriptors, const DescriptorType& descriptorType,
-        const std::variant<DescriptorData, VendorDefinedDescriptorInfo>&
-            descriptorVal);
 };
 
-void QueryDeviceIdentifiers::updateDescriptor(
+/*
+ * Render a vendor defined descriptor value. DSP0267 leaves the value opaque,
+ * but devices populate it with text such as a part or serial number, so
+ * report it as ASCII whenever every byte is printable. Values which are not
+ * text, and therefore would not survive the conversion, keep their hex
+ * encoding.
+ *
+ * A single byte is left as hex as well. Devices use one byte descriptors for
+ * numbers rather than text, e.g. a firmware major version of 46 arrives as
+ * 0x2e and reads as '.' if it is taken for a character.
+ *
+ *  @param[in] descData - vendor defined descriptor value
+ *  @param[in] hexValue - hex encoding of descData
+ *
+ *  @return the value as ASCII, or hexValue when the value is not ASCII text
+ */
+static std::string vendorDefinedDescriptorValue(const DescriptorData& descData,
+                                                const std::string& hexValue)
+{
+    // A value padded out to a fixed width carries trailing nulls which are
+    // not part of the text
+    auto end = descData.end();
+    while (end != descData.begin() && *(end - 1) == '\0')
+    {
+        --end;
+    }
+
+    if (std::distance(descData.begin(), end) < 2 ||
+        !std::all_of(descData.begin(), end, [](uint8_t byte) {
+            // Test the printable ASCII range directly. std::isprint is
+            // locale dependent and can report bytes above 0x7e as printable.
+            return byte >= 0x20 && byte <= 0x7e;
+        }))
+    {
+        return hexValue;
+    }
+
+    return {descData.begin(), end};
+}
+
+/*
+ * Update a descriptor json response in a user friendly format. Shared by the
+ * commands which report descriptors, i.e. QueryDeviceIdentifiers and
+ * QueryDownstreamIdentifiers.
+ *
+ *  @param[in,out] descriptors - descriptor json response
+ *  @param[in] descriptorType - descriptor type
+ *  @param[in] descriptorVal - descriptor value
+ */
+static void updateDescriptor(
     ordered_json& descriptors, const DescriptorType& descriptorType,
     const std::variant<DescriptorData, VendorDefinedDescriptorInfo>&
         descriptorVal)
@@ -542,6 +606,12 @@ void QueryDeviceIdentifiers::updateDescriptor(
         descDataStream << std::setfill('0') << std::setw(2) << std::hex << byte;
     }
 
+    std::string descValue = descDataStream.str();
+    if (descriptorType == PLDM_FWUP_VENDOR_DEFINED)
+    {
+        descValue = vendorDefinedDescriptorValue(descData, descValue);
+    }
+
     if (descriptorName.contains(descriptorType))
     {
         // Update the existing json response if entry is already present
@@ -551,14 +621,14 @@ void QueryDeviceIdentifiers::updateDescriptor(
             {
                 if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
                 {
-                    descriptor["Value"].emplace_back(descDataStream.str());
+                    descriptor["Value"].emplace_back(descValue);
                 }
                 else
                 {
                     ordered_json vendorDefinedVal;
                     vendorDefinedVal[std::get<VendorDefinedDescriptorTitle>(
                         std::get<VendorDefinedDescriptorInfo>(descriptorVal))] =
-                        descDataStream.str();
+                        descValue;
                     descriptor["Value"].emplace_back(vendorDefinedVal);
                 }
                 return;
@@ -570,14 +640,14 @@ void QueryDeviceIdentifiers::updateDescriptor(
              {"Value", ordered_json::array()}});
         if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
         {
-            descriptor["Value"].emplace_back(descDataStream.str());
+            descriptor["Value"].emplace_back(descValue);
         }
         else
         {
             ordered_json vendorDefinedVal;
             vendorDefinedVal[std::get<VendorDefinedDescriptorTitle>(
                 std::get<VendorDefinedDescriptorInfo>(descriptorVal))] =
-                descDataStream.str();
+                descValue;
             descriptor["Value"].emplace_back(vendorDefinedVal);
         }
         descriptors.emplace_back(descriptor);
@@ -1506,6 +1576,192 @@ class QueryDownstreamDevices : public CommandInterface
     }
 };
 
+class QueryDownstreamIdentifiers : public CommandInterface
+{
+  public:
+    ~QueryDownstreamIdentifiers() = default;
+    QueryDownstreamIdentifiers() = delete;
+    QueryDownstreamIdentifiers(const QueryDownstreamIdentifiers&) = delete;
+    QueryDownstreamIdentifiers(QueryDownstreamIdentifiers&&) = delete;
+    QueryDownstreamIdentifiers& operator=(const QueryDownstreamIdentifiers&) =
+        delete;
+    QueryDownstreamIdentifiers& operator=(QueryDownstreamIdentifiers&&) =
+        delete;
+
+    explicit QueryDownstreamIdentifiers(const char* type, const char* name,
+                                        CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option(
+            "--data_transfer_handle", dataTransferHandle,
+            "A handle that is used to identify a QueryDownstreamIdentifiers\n"
+            "data transfer. This handle is ignored by the FDP when the\n"
+            "transfer operation flag is set to GetFirstPart.");
+
+        app->add_option(
+               "--transfer_operation_flag", transferOperationFlagValue,
+               "The operation flag that indicates whether this is the start\n"
+               "of the transfer.\nPossible values\n"
+               "{GetNextPart = 0x0, GetFirstPart = 0x1}")
+            ->transform(CLI::CheckedTransformer(transferOperationFlag,
+                                                CLI::ignore_case));
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_QUERY_DOWNSTREAM_IDENTIFIERS_REQ_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        pldm_query_downstream_identifiers_req req{
+            dataTransferHandle,
+            static_cast<uint8_t>(transferOperationFlagValue)};
+
+        auto rc = encode_query_downstream_identifiers_req(
+            instanceId, &req, request,
+            PLDM_QUERY_DOWNSTREAM_IDENTIFIERS_REQ_BYTES);
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        struct pldm_query_downstream_identifiers_resp resp = {};
+        struct pldm_downstream_device_iter devs = {};
+
+        auto rc = decode_query_downstream_identifiers_resp(
+            responsePtr, payloadLength, &resp, &devs);
+        if (rc)
+        {
+            std::cerr
+                << "Decoding QueryDownstreamIdentifiers response failed, EID="
+                << unsigned(getMCTPEID()) << ", RC=" << rc << "\n";
+            return;
+        }
+
+        if (resp.completion_code != PLDM_SUCCESS)
+        {
+            if (resp.completion_code == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+            {
+                std::cerr << "QueryDownstreamIdentifiers: device does not "
+                             "support this command, EID="
+                          << unsigned(getMCTPEID())
+                          << ", CC=" << unsigned(resp.completion_code) << "\n";
+            }
+            else
+            {
+                std::cerr << "QueryDownstreamIdentifiers response failed with "
+                             "error completion code, EID="
+                          << unsigned(getMCTPEID())
+                          << ", CC=" << unsigned(resp.completion_code) << "\n";
+            }
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(resp.completion_code, data, PLDM_FWUP);
+
+        data["EID"] = getMCTPEID();
+        data["NextDataTransferHandle"] = resp.next_data_transfer_handle;
+        data["TransferFlag"] = transferFlagToString(resp.transfer_flag);
+        data["DownstreamDevicesLength"] = resp.downstream_devices_length;
+        data["NumberOfDownstreamDevices"] = resp.number_of_downstream_devices;
+
+        // DSP0267 Table 23: each downstream device carries an index, a
+        // descriptor count and that many descriptors.
+        ordered_json downstreamDevices = ordered_json::array();
+        struct pldm_downstream_device dev;
+        foreach_pldm_downstream_device(devs, dev, rc)
+        {
+            ordered_json deviceData;
+            deviceData["DownstreamDeviceIndex"] = dev.downstream_device_index;
+            deviceData["DownstreamDescriptorCount"] =
+                dev.downstream_descriptor_count;
+
+            ordered_json descriptors = ordered_json::array();
+            struct pldm_descriptor desc;
+            foreach_pldm_downstream_device_descriptor(devs, dev, desc, rc)
+            {
+                if (!appendDescriptor(descriptors, desc))
+                {
+                    return;
+                }
+            }
+            if (rc)
+            {
+                std::cerr
+                    << "Decoding downstream device descriptor failed, EID="
+                    << unsigned(getMCTPEID()) << ", RC=" << rc << "\n";
+                return;
+            }
+
+            deviceData["Descriptors"] = descriptors;
+            downstreamDevices.push_back(deviceData);
+        }
+        if (rc)
+        {
+            std::cerr << "Decoding downstream device failed, EID="
+                      << unsigned(getMCTPEID()) << ", RC=" << rc << "\n";
+            return;
+        }
+
+        data["DownstreamDevices"] = downstreamDevices;
+
+        DisplayInJson(data);
+    }
+
+  private:
+    /**
+     * @brief Add one decoded downstream device descriptor to the descriptor
+     *        json response
+     *
+     * @param[in,out] descriptors - descriptor json response
+     * @param[in] desc - the descriptor decoded from the response message
+     *
+     * @return true on success, false if the vendor defined descriptor value
+     *         could not be decoded
+     */
+    bool appendDescriptor(ordered_json& descriptors,
+                          const pldm_descriptor& desc)
+    {
+        const auto* descriptorData =
+            static_cast<const uint8_t*>(desc.descriptor_data);
+
+        if (desc.descriptor_type != PLDM_FWUP_VENDOR_DEFINED)
+        {
+            std::vector<uint8_t> descData(
+                descriptorData, descriptorData + desc.descriptor_length);
+            updateDescriptor(descriptors, desc.descriptor_type, descData);
+            return true;
+        }
+
+        uint8_t descriptorTitleStrType = 0;
+        variable_field descriptorTitleStr{};
+        variable_field vendorDefinedDescriptorData{};
+
+        auto rc = decode_vendor_defined_descriptor_value(
+            descriptorData, desc.descriptor_length, &descriptorTitleStrType,
+            &descriptorTitleStr, &vendorDefinedDescriptorData);
+        if (rc)
+        {
+            std::cerr << "Decoding Vendor-defined descriptor value failed, EID="
+                      << unsigned(getMCTPEID()) << ", RC=" << rc << "\n";
+            return false;
+        }
+
+        auto vendorDescTitle = pldm::utils::toString(descriptorTitleStr);
+        std::vector<uint8_t> vendorDescData(
+            vendorDefinedDescriptorData.ptr,
+            vendorDefinedDescriptorData.ptr +
+                vendorDefinedDescriptorData.length);
+        updateDescriptor(descriptors, desc.descriptor_type,
+                         std::make_tuple(vendorDescTitle, vendorDescData));
+        return true;
+    }
+
+    uint32_t dataTransferHandle = 0;
+    transfer_op_flag transferOperationFlagValue = PLDM_GET_FIRSTPART;
+};
+
 void registerCommand(CLI::App& app)
 {
     auto fwUpdate =
@@ -1570,6 +1826,12 @@ void registerCommand(CLI::App& app)
         "To query the downstream device capability of the FD");
     commands.push_back(std::make_unique<QueryDownstreamDevices>(
         "fw_update", "QueryDownstreamDevices", queryDownstreamDevices));
+
+    auto queryDownstreamIdentifiers = fwUpdate->add_subcommand(
+        "QueryDownstreamIdentifiers",
+        "To query the firmware identifiers of the downstream devices of the FDP");
+    commands.push_back(std::make_unique<QueryDownstreamIdentifiers>(
+        "fw_update", "QueryDownstreamIdentifiers", queryDownstreamIdentifiers));
 }
 
 } // namespace fw_update

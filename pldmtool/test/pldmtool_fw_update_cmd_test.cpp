@@ -40,6 +40,7 @@ extern "C" int __wrap_pldm_instance_db_init_default(
 #pragma clang diagnostic pop
 #endif
 
+#include <endian.h>
 #include <libpldm/firmware_update.h>
 
 #include <gmock/gmock.h>
@@ -1401,16 +1402,18 @@ TEST(QueryDownstreamDevices, ParseResponseMsgSuccess)
 
     resp->payload[0] = PLDM_SUCCESS;
     resp->payload[1] = PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_SUPPORTED;
-    const uint16_t numberOfDownstreamDevices = 2;
-    memcpy(resp->payload + 2, &numberOfDownstreamDevices,
-           sizeof(numberOfDownstreamDevices));
-    const uint16_t maxNumberOfDownstreamDevices = 4;
-    memcpy(resp->payload + 4, &maxNumberOfDownstreamDevices,
-           sizeof(maxNumberOfDownstreamDevices));
+    // The wire format is little endian, so encode the fields rather than
+    // copying the host representation of the value.
+    const uint16_t numberOfDownstreamDevicesLE = htole16(2);
+    memcpy(resp->payload + 2, &numberOfDownstreamDevicesLE,
+           sizeof(numberOfDownstreamDevicesLE));
+    const uint16_t maxNumberOfDownstreamDevicesLE = htole16(4);
+    memcpy(resp->payload + 4, &maxNumberOfDownstreamDevicesLE,
+           sizeof(maxNumberOfDownstreamDevicesLE));
     // bit0 (dynamic attachment) and bit2 (simultaneous updates) set,
     // bit1 (dynamic removal) clear.
-    const uint32_t capabilities = 0x5;
-    memcpy(resp->payload + 6, &capabilities, sizeof(capabilities));
+    const uint32_t capabilitiesLE = htole32(0x5);
+    memcpy(resp->payload + 6, &capabilitiesLE, sizeof(capabilitiesLE));
 
     testing::internal::CaptureStdout();
     cmd.parseResponseMsg(resp, payloadLen);
@@ -1484,6 +1487,238 @@ TEST(QueryDownstreamDevices, ParseResponseMsgUnsupportedCommand)
     cmd.parseResponseMsg(resp, payloadLen);
     std::string output = testing::internal::GetCapturedStderr();
     EXPECT_NE(output.find("QueryDownstreamDevices: device does not "
+                          "support this command"),
+              std::string::npos);
+}
+
+// ===== QueryDownstreamIdentifiers Tests =====
+
+namespace
+{
+
+/* Append a little-endian integer to a response payload under construction. */
+template <typename T>
+void appendLE(std::vector<uint8_t>& payload, T value)
+{
+    for (size_t i = 0; i < sizeof(T); ++i)
+    {
+        payload.push_back(static_cast<uint8_t>(value >> (8 * i)));
+    }
+}
+
+void appendBytes(std::vector<uint8_t>& payload, const std::vector<uint8_t>& in)
+{
+    payload.insert(payload.end(), in.begin(), in.end());
+}
+
+/* Wrap a payload in a pldm_msg so it can be handed to parseResponseMsg. */
+std::vector<uint8_t> toResponse(const std::vector<uint8_t>& payload)
+{
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr), 0);
+    responseData.insert(responseData.end(), payload.begin(), payload.end());
+    return responseData;
+}
+
+} // namespace
+
+TEST(QueryDownstreamIdentifiers, CreateRequestMsg)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(requestMsg.size(),
+              sizeof(pldm_msg_hdr) +
+                  PLDM_QUERY_DOWNSTREAM_IDENTIFIERS_REQ_BYTES);
+}
+
+TEST(QueryDownstreamIdentifiers, CreateRequestMsgWithOptions)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    parseArgs(app, {"test", "test", "--data_transfer_handle", "305419896",
+                    "--transfer_operation_flag", "GETNEXTPART"});
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    ASSERT_EQ(rc, PLDM_SUCCESS);
+
+    auto* req = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    EXPECT_EQ(req->payload[0], 0x78);
+    EXPECT_EQ(req->payload[1], 0x56);
+    EXPECT_EQ(req->payload[2], 0x34);
+    EXPECT_EQ(req->payload[3], 0x12);
+    EXPECT_EQ(req->payload[4], PLDM_GET_NEXTPART);
+}
+
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgSuccess)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    // One downstream device carrying a single PCI Vendor ID descriptor.
+    std::vector<uint8_t> devices;
+    appendLE<uint16_t>(devices, 1);     // DownstreamDeviceIndex
+    devices.push_back(1);               // DownstreamDescriptorCount
+    appendLE<uint16_t>(devices, PLDM_FWUP_PCI_VENDOR_ID);
+    appendLE<uint16_t>(devices, 2);     // descriptor length
+    appendBytes(devices, {0x12, 0x34}); // descriptor value
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint32_t>(payload, 0);        // NextDataTransferHandle
+    payload.push_back(PLDM_START_AND_END); // TransferFlag
+    appendLE<uint32_t>(payload, devices.size());
+    appendLE<uint16_t>(payload, 1);        // NumberOfDownstreamDevices
+    appendBytes(payload, devices);
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("\"TransferFlag\": \"StartAndEnd\""),
+              std::string::npos);
+    EXPECT_NE(output.find("\"NumberOfDownstreamDevices\": 1"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"DownstreamDeviceIndex\": 1"), std::string::npos);
+    EXPECT_NE(output.find("\"DownstreamDescriptorCount\": 1"),
+              std::string::npos);
+    EXPECT_NE(output.find("PCI Vendor ID"), std::string::npos);
+    EXPECT_NE(output.find("1234"), std::string::npos);
+}
+
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgVendorDefinedAscii)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    // A vendor defined descriptor whose title and value are both ASCII, plus
+    // one whose value is binary and so is reported as hex.
+    const std::string title{"PN"};
+    const std::string value{"692-9F0FZ-0000-0R0"};
+
+    std::vector<uint8_t> ascii;
+    ascii.push_back(PLDM_STR_TYPE_ASCII);
+    ascii.push_back(static_cast<uint8_t>(title.size()));
+    appendBytes(ascii, {title.begin(), title.end()});
+    appendBytes(ascii, {value.begin(), value.end()});
+
+    std::vector<uint8_t> binary;
+    binary.push_back(PLDM_STR_TYPE_ASCII);
+    binary.push_back(1);
+    binary.push_back('B');
+    appendBytes(binary, {0xde, 0xad});
+
+    // A one byte value is a number, not text: 0x2e is 46, not '.'.
+    std::vector<uint8_t> single;
+    single.push_back(PLDM_STR_TYPE_ASCII);
+    single.push_back(7);
+    appendBytes(single, {'F', 'W', 'M', 'a', 'j', 'o', 'r'});
+    single.push_back(0x2e);
+
+    std::vector<uint8_t> devices;
+    appendLE<uint16_t>(devices, 1); // DownstreamDeviceIndex
+    devices.push_back(3);           // DownstreamDescriptorCount
+    appendLE<uint16_t>(devices, PLDM_FWUP_VENDOR_DEFINED);
+    appendLE<uint16_t>(devices, ascii.size());
+    appendBytes(devices, ascii);
+    appendLE<uint16_t>(devices, PLDM_FWUP_VENDOR_DEFINED);
+    appendLE<uint16_t>(devices, binary.size());
+    appendBytes(devices, binary);
+    appendLE<uint16_t>(devices, PLDM_FWUP_VENDOR_DEFINED);
+    appendLE<uint16_t>(devices, single.size());
+    appendBytes(devices, single);
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint32_t>(payload, 0);        // NextDataTransferHandle
+    payload.push_back(PLDM_START_AND_END); // TransferFlag
+    appendLE<uint32_t>(payload, devices.size());
+    appendLE<uint16_t>(payload, 1);        // NumberOfDownstreamDevices
+    appendBytes(payload, devices);
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("\"PN\": \"" + value + "\""), std::string::npos);
+    EXPECT_NE(output.find("\"B\": \"dead\""), std::string::npos);
+    EXPECT_NE(output.find("\"FWMajor\": \"2e\""), std::string::npos);
+}
+
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgDecodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    // Truncated payload: completion code only, missing the rest of the
+    // fixed-size response fields.
+    const size_t payloadLen = 2;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_SUCCESS;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(
+        output.find("Decoding QueryDownstreamIdentifiers response failed"),
+        std::string::npos);
+}
+
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgCompletionCodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_ERROR;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("QueryDownstreamIdentifiers response failed with "
+                          "error completion code"),
+              std::string::npos);
+}
+
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgUnsupportedCommand)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("QueryDownstreamIdentifiers: device does not "
                           "support this command"),
               std::string::npos);
 }
