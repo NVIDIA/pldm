@@ -208,8 +208,26 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
                     eventId = synthesizeEventId(entityName, sensorName, arg2);
                 }
             }
+            // Assign the entry to the namespace owned by the entity that
+            // produced it; without one every event shares the "default" bin,
+            // where a busy sensor evicts unrelated entries. A namespace ID is
+            // a plain identifier, so an entity name that is not one cannot
+            // match a declared bin: reject it and say so rather than routing
+            // the event somewhere the config never declared.
+            std::string loggingNamespace = entityName;
+            if (!std::ranges::all_of(entityName, [](unsigned char c) {
+                    return (std::isalnum(c) != 0) || (c == '_');
+                }))
+            {
+                lg2::error(
+                    "A state sensor event is assigned to the default logging namespace as the entity name is not a valid namespace ID. "
+                    "TID={TD}, SensorId={SID}, EntityName={EN}.",
+                    "TD", tid, "SID", sensorId, "EN", entityName);
+                loggingNamespace.clear();
+            }
             createLogEntryAdditionalOEMArgs(messageID, arg1, arg2, resolution,
-                                            eventId, impactedComponent, level);
+                                            eventId, impactedComponent,
+                                            loggingNamespace, level);
 #else
             createLogEntry(messageID, arg1, arg2, resolution, level);
 #endif
@@ -261,7 +279,8 @@ void StateSensor::createLogEntry(std::string& messageID, std::string& arg1,
 void StateSensor::createLogEntryAdditionalOEMArgs(
     std::string& messageID, std::string& arg1, std::string& arg2,
     std::string& resolution, std::string& eventId,
-    std::string& impactedComponent, Level level)
+    std::string& impactedComponent, const std::string& loggingNamespace,
+    Level level)
 {
     auto createLog = [&messageID](std::map<std::string, std::string>& addData,
                                   Level& level) {
@@ -301,6 +320,12 @@ void StateSensor::createLogEntryAdditionalOEMArgs(
     if (!impactedComponent.empty())
     {
         addData["DEVICE_NAME"] = impactedComponent;
+    }
+    if (!loggingNamespace.empty())
+    {
+        // An undeclared namespace falls back to "default", so an unknown
+        // value degrades rather than drops.
+        addData["namespace"] = loggingNamespace;
     }
     createLog(addData, level);
     return;

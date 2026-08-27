@@ -433,15 +433,17 @@ TEST_F(StateSensorCoverage, stateSensorLogEntryCoverage)
 
     std::string eventId{"OpenBMC.0.2.TestEvent"};
     std::string impactedComponent{"Board0"};
+    std::string loggingNamespace{"Board0"};
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Critical);
+        loggingNamespace, Level::Critical);
 
     eventId.clear();
     impactedComponent.clear();
+    loggingNamespace.clear();
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Informational);
+        loggingNamespace, Level::Informational);
 }
 
 TEST_F(StateSensorCoverage, stateSetCreatorOemSensorCoverage)
