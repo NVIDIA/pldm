@@ -37,6 +37,7 @@
 #include <ranges>
 #include <set>
 #include <string>
+#include <string_view>
 
 PHOSPHOR_LOG2_USING;
 
@@ -62,6 +63,50 @@ static std::optional<std::string> extractTargetName(
     return pathStr.substr(pathStr.find_last_of('/') + 1);
 }
 
+/** @brief Check whether an MCTP transport config entry declares that its
+ *         endpoint does not accept PLDM (MCTP message type 1, DSP0239).
+ *
+ *  IgnoreMessageTypes is a comma-separated list of MCTP message type numbers
+ *  the endpoint does not serve. An entry listing type 1 (e.g. an MCTP bridge
+ *  such as HMC_MCTP_BRIDGE) can never answer QueryDeviceIdentifiers, so
+ *  seeding its EID into the pre-update refresh set only produces a spurious
+ *  Critical ResourceErrorsDetected message on the update task.
+ *
+ *  @param[in] props - the config entry's D-Bus properties
+ *
+ *  @return true when IgnoreMessageTypes is present and lists type 1
+ */
+static bool configIgnoresPldm(const pldm::utils::PropertyMap& props)
+{
+    auto it = props.find("IgnoreMessageTypes");
+    if (it == props.end())
+    {
+        return false;
+    }
+    const auto* types = std::get_if<std::string>(&it->second);
+    if (types == nullptr)
+    {
+        return false;
+    }
+    for (const auto& part : std::views::split(std::string_view(*types), ','))
+    {
+        std::string_view token(part.begin(), part.end());
+        while (!token.empty() && token.front() == ' ')
+        {
+            token.remove_prefix(1);
+        }
+        while (!token.empty() && token.back() == ' ')
+        {
+            token.remove_suffix(1);
+        }
+        if (token == "1")
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
  *         set of statically-configured device EIDs.
  *
@@ -71,10 +116,14 @@ static std::optional<std::string> extractTargetName(
  *  before an update, union every statically-assigned EID from the MCTP
  * transport config: each entry's StaticEndpointID, plus the full
  *  [BridgePoolStartEid, BridgePoolEndEID] range on bridge entries (covering the
- *  bridged downstream devices). std::set dedups against the live keys. This
- *  influences ONLY the refresh set — never device identity, inventory, or the
- *  MCTPTargetName join (those stay configured_by-resolved). D-Bus
- *  read failures are logged and skipped; never thrown.
+ *  bridged downstream devices). An entry whose IgnoreMessageTypes lists PLDM
+ *  (type 1) is skipped — its endpoint by declaration never answers PLDM, so
+ *  querying it can only fail. The pool range is still seeded for such an
+ *  entry: the pool EIDs are the bridged downstream devices, whose PLDM
+ *  capability is independent of the bridge's own. std::set dedups against the
+ *  live keys. This influences ONLY the refresh set — never device identity,
+ *  inventory, or the MCTPTargetName join (those stay configured_by-resolved).
+ *  D-Bus read failures are logged and skipped; never thrown.
  *
  *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
  */
@@ -123,7 +172,16 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
             if (auto eid = pldm::utils::readOptionalEidProperty(
                     props, "StaticEndpointID"))
             {
-                refreshEidSet.insert(*eid);
+                if (configIgnoresPldm(props))
+                {
+                    info(
+                        "seedRefreshEidsFromStaticConfig: skipping EID {EID} at {PATH}: config ignores PLDM (MCTP message type 1)",
+                        "EID", *eid, "PATH", objPath);
+                }
+                else
+                {
+                    refreshEidSet.insert(*eid);
+                }
             }
             // Bridge entries declare a downstream EID pool; refresh the whole
             // range so bridged devices are covered even before discovery.

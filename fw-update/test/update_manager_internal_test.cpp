@@ -236,4 +236,52 @@ TEST_F(UpdateManagerInternalTest, seedRefreshIgnoresInvalidEidsAndPools)
     EXPECT_TRUE(eids.empty());
 }
 
+TEST_F(UpdateManagerInternalTest, seedRefreshSkipsEndpointsThatIgnorePldm)
+{
+    // A bridge entry (e.g. HMC_MCTP_BRIDGE) whose IgnoreMessageTypes lists
+    // MCTP message type 1 (PLDM) must not have its own EID seeded, but its
+    // downstream pool is still covered.
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        usbIntf, {{"/inv/hmc-bridge", {{"svc", {usbIntf}}}},
+                  {"/inv/usb0", {{"svc", {usbIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/hmc-bridge", usbIntf,
+        {{"StaticEndpointID", uint64_t{8}},
+         {"IgnoreMessageTypes", std::string("1,2,3,4,6,126,127")},
+         {"BridgePoolStartEid", uint64_t{20}},
+         {"BridgePoolEndEID", uint64_t{21}}});
+    // An entry ignoring only non-PLDM types is still seeded.
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb0", usbIntf,
+        {{"StaticEndpointID", uint64_t{30}},
+         {"IgnoreMessageTypes", std::string("2, 6")}});
+
+    std::set<mctp_eid_t> eids;
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{20, 21, 30}));
+}
+
+TEST_F(UpdateManagerInternalTest, seedRefreshIgnoreTypesMatchesWholeTokens)
+{
+    // "126" and "127" must not match type 1 by substring; a lone "1" token
+    // (with surrounding spaces) must.
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        usbIntf, {{"/inv/usb0", {{"svc", {usbIntf}}}},
+                  {"/inv/usb1", {{"svc", {usbIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb0", usbIntf,
+        {{"StaticEndpointID", uint64_t{40}},
+         {"IgnoreMessageTypes", std::string("126,127")}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb1", usbIntf,
+        {{"StaticEndpointID", uint64_t{41}},
+         {"IgnoreMessageTypes", std::string("6, 1 ,126")}});
+
+    std::set<mctp_eid_t> eids;
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{40}));
+}
+
 } // namespace
