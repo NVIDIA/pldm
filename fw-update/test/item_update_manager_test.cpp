@@ -15,8 +15,24 @@
  * limitations under the License.
  */
 #include "common/test/mocked_utils.hpp"
-#include "common/utils.hpp"
+#include "common/types.hpp"
+#include "common/utils.hpp" // NOLINT(misc-include-cleaner)
 #include "fw-update/package_parser.hpp"
+#include "requester/handler.hpp"
+#include "requester/request.hpp"
+
+#include <sdbusplus/message/native_types.hpp>
+#include <sdeventplus/event.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
+#include <xyz/openbmc_project/Software/Activation/server.hpp>
+
+#include <chrono>
+#include <cstdint>
+#include <ios>
+#include <iterator>
+#include <memory>
+
+#include "gmock/gmock.h"
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"
@@ -27,7 +43,6 @@
 #endif
 #include "fw-update/item_update_manager.hpp"
 #undef private
-#include "requester/test/mock_request.hpp"
 #include "test/test_instance_id.hpp"
 
 #include <fcntl.h>
@@ -315,4 +330,36 @@ TEST_F(ItemUpdateManagerTest, StartUpdateDeferredProcessesPackage)
     // returns without throwing.
     waitEventExpiry(milliseconds(200));
     EXPECT_NE(manager.deviceUpdater, nullptr);
+}
+
+// Exercise the MMapHandler accessors (mutable/const getData, const getBytes and
+// getChars views) over the reference package file.
+TEST_F(ItemUpdateManagerTest, MMapHandlerAccessors)
+{
+    pldm::utils::MMapHandler handler{std::filesystem::path{"./test_pkg"}};
+    const auto& constHandler = handler;
+
+    ASSERT_GT(handler.getSize(), 0U);
+
+    char* mutableData = handler.getData();
+    ASSERT_NE(mutableData, nullptr);
+
+    const char* constData = constHandler.getData();
+    ASSERT_NE(constData, nullptr);
+    EXPECT_EQ(mutableData, constData);
+
+    auto byteView = constHandler.getBytes();
+    EXPECT_EQ(byteView.size(), handler.getSize());
+
+    auto charView = constHandler.getChars();
+    EXPECT_EQ(charView.size(), handler.getSize());
+}
+
+// Cover PackageParser::getFormatVersion() on a successfully parsed package.
+TEST_F(ItemUpdateManagerTest, PackageParserFormatVersion)
+{
+    ASSERT_FALSE(packageBytes.empty());
+    auto parser = parsePkgHeader(packageBytes.data(), packageBytes.size());
+    ASSERT_NE(parser, nullptr);
+    EXPECT_NO_THROW((void)parser->getFormatVersion());
 }

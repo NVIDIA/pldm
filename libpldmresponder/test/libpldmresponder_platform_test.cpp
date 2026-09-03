@@ -1,28 +1,62 @@
-#include "common/start_lifetime_as.hpp"
 #include "common/test/mocked_utils.hpp"
+#include "common/types.hpp"
 #include "common/utils.hpp"
+#include "handler.hpp"
 #include "host-bmc/dbus_to_event_handler.hpp"
+#include "host-bmc/host_pdr_handler.hpp"
 #include "libpldmresponder/event_parser.hpp"
+#include "libpldmresponder/fru.hpp"
+#include "libpldmresponder/oem_handler.hpp"
 #include "libpldmresponder/pdr.hpp"
 #include "libpldmresponder/pdr_utils.hpp"
 #include "libpldmresponder/platform.hpp"
 #include "libpldmresponder/platform_numeric_effecter.hpp"
 #include "libpldmresponder/platform_state_effecter.hpp"
 #include "libpldmresponder/platform_state_sensor.hpp"
+#include "request.hpp"
 #include "test/pldmd_coverage_hooks.hpp"
 #include "test/test_instance_id.hpp"
 #include "test/test_tmp_utils.hpp"
 
+#include <bits/chrono.h>
+#include <endian.h>
+#include <libpldm/base.h>
+#include <libpldm/entity.h>
+#include <libpldm/pdr.h>
+#include <libpldm/platform.h>
+#include <libpldm/pldm_types.h>
+
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
-#include <sdbusplus/test/sdbus_mock.hpp>
+#include <sdbusplus/bus.hpp>
 #include <sdeventplus/event.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include <gtest/gtest.h>
 
 using namespace pldm::pdr;
 using namespace pldm::utils;

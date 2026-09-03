@@ -1,4 +1,13 @@
 #include "common/utils.hpp"
+
+#include <unistd.h>
+
+#include <sdbusplus/message.hpp>
+#include <sdbusplus/message/native_types.hpp>
+
+#include <string>
+#include <system_error>
+#include <vector>
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"

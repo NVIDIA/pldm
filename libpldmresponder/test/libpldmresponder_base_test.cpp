@@ -1,21 +1,33 @@
-#include "common/instance_id.hpp"
-#include "common/start_lifetime_as.hpp"
+#include "common/start_lifetime_as.hpp" // NOLINT(misc-include-cleaner)
 #include "common/transport.hpp"
+#include "common/types.hpp"
 #include "common/utils.hpp"
+#include "handler.hpp"
 #include "libpldmresponder/base.hpp"
+#include "libpldmresponder/oem_handler.hpp"
+#include "libpldmresponder/pdr.hpp"
+#include "libpldmresponder/pdr_utils.hpp"
+#include "request.hpp"
 #include "test/pldmd_coverage_hooks.hpp"
 #include "test/test_instance_id.hpp"
 
 #include <libpldm/base.h>
+#include <libpldm/pdr.h>
 #include <libpldm/platform.h>
+#include <libpldm/pldm.h>
+#include <libpldm/pldm_types.h>
 
 #include <sdeventplus/event.hpp>
+#include <sdeventplus/source/event.hpp>
 
 #include <array>
-#include <chrono>
+#include <chrono> // NOLINT(misc-include-cleaner)
+#include <cstdint>
 #include <cstring>
-#include <memory>
+#include <memory> // NOLINT(misc-include-cleaner)
+#include <optional>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

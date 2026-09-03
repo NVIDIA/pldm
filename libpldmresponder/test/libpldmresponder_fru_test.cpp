@@ -1,6 +1,26 @@
 #include "common/utils.hpp"
+#include "handler.hpp" // NOLINT(misc-include-cleaner)
+#include "libpldmresponder/pdr_utils.hpp"
 
+#include <libpldm/base.h>
+#include <libpldm/pdr.h>
+#include <libpldm/platform.h>
+
+#include <sdbusplus/bus.hpp>
+#include <sdeventplus/event.hpp>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <filesystem>
 #include <fstream>
+#include <map>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <variant>
+#include <vector>
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"
@@ -16,7 +36,6 @@
 #include "test/test_tmp_utils.hpp"
 
 #include <dlfcn.h>
-#include <libpldm/entity.h>
 #include <libpldm/fru.h>
 
 #include <sdbusplus/asio/connection.hpp>

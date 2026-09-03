@@ -9,6 +9,7 @@
 #include <systemd/sd-event.h>
 
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -293,6 +294,7 @@ extern "C" int sd_event_add_io(sd_event* event, sd_event_source** source,
     return rc;
 }
 
+// NOLINTNEXTLINE(misc-include-cleaner)
 extern "C" int sd_bus_request_name(sd_bus* bus, const char* name,
                                    uint64_t flags)
 {
