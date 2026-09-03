@@ -78,4 +78,85 @@ struct DeviceComponentInfo
 std::optional<DeviceComponentInfo> fetchComponentInfo(
     const Configurations& configurations, pldm::eid mctpEid);
 
+/** @brief entity-manager interface carrying the firmware-update opt-out.
+ *
+ *  Exposed so callers needing the raw property name (e.g. to build a canned
+ *  D-Bus response in a test) do not have to duplicate it.
+ */
+constexpr auto pldmExclusionIntf = "xyz.openbmc_project.Configuration.PLDMExclusion";
+
+/** @brief The flat inventory-path array published on @ref pldmExclusionIntf. */
+constexpr auto excludedInventoryProp = "ExcludedInventory";
+
+/** @brief Read the inventory paths currently excluded from PLDM T5 firmware
+ *         update, unioned across every publishing entity-manager object.
+ *
+ *  entity-manager publishes the opt-out as a Configuration.PLDMExclusion
+ *  object carrying a flat `ExcludedInventory` array of inventory object
+ *  paths (a flat array survives PlatformExposes flattening, where a nested
+ *  object array would not). Every object publishing the interface
+ *  contributes, so a platform may split the list across several
+ *  entity-manager configuration fragments.
+ *
+ *  Queried fresh on every call rather than cached: callers are expected to
+ *  invoke this once per discovery batch (see Manager::handleMctpEndpoints()),
+ *  at a point where entity-manager's configuration is assumed to already be
+ *  on the bus, so there is no late-arriving case to track incrementally.
+ *
+ *  Never throws: an absent configuration, an unreadable object, or an
+ *  unusable array element yields (or contributes) nothing.
+ *
+ *  @return the effective excluded-inventory set; empty when nothing is
+ *          excluded
+ */
+ExcludedInventoryPaths fetchExcludedInventory();
+
+/** @brief D-Bus interface publishing the configured_by/configures
+ *         associations that identify a device to firmware update.
+ *
+ *  Published by mctpreactor directly on the MCTP endpoint object
+ *  (`.../networks/<n>/endpoints/<eid>`), on its own D-Bus service - not by
+ *  entity-manager, and not the same connection that owns the endpoint object
+ *  itself.
+ */
+constexpr auto associationDefinitionsIntf =
+    "xyz.openbmc_project.Association.Definitions";
+
+/** @brief Read the configured_by association target directly off one MCTP
+ *         endpoint's own Association.Definitions.
+ *
+ *  mctpreactor publishes the endpoint's identity as a forward "configured_by"
+ *  association naming the entity-manager inventory object that configures
+ *  it (e.g.
+ *  "/xyz/openbmc_project/inventory/system/platform/.../IO_Board_SMA_2"),
+ *  independent of any interface that object happens to carry. This is the
+ *  exact string PLDMExclusion's ExcludedInventory entries are meant to name.
+ *
+ *  Never throws: an endpoint with no configured_by association yet (or
+ *  ever, if mctpreactor does not name it), or an unreadable property,
+ *  yields nullopt.
+ *
+ *  @param[in] mctpEid - MCTP endpoint
+ *  @param[in] networkId - the endpoint's MCTP network index
+ *  @return the configured_by target path, nullopt if unresolved
+ */
+std::optional<dbus::ObjectPath> fetchConfiguredByPath(pldm::eid mctpEid,
+                                                      NetworkId networkId);
+
+/** @brief Whether an MCTP endpoint's own configured_by target is in the
+ *         given excluded-inventory set.
+ *
+ *  An endpoint with no resolvable configured_by association is never
+ *  excluded by this: there is nothing to match, so it is treated as not
+ *  (yet) opted out rather than conservatively excluded.
+ *
+ *  @param[in] excludedPaths - the effective excluded-inventory set (see
+ *             fetchExcludedInventory())
+ *  @param[in] mctpEid - MCTP endpoint
+ *  @param[in] networkId - the endpoint's MCTP network index
+ *  @return true if the endpoint's configured_by target is excluded
+ */
+bool isExcludedInventory(const ExcludedInventoryPaths& excludedPaths,
+                         pldm::eid mctpEid, NetworkId networkId);
+
 } // namespace pldm::fw_update::em_config

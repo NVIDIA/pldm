@@ -49,6 +49,7 @@ class EmConfigTestDBusHandler : public DBusLoggingTestHandler
         subtreeResponse().clear();
         throwGetSubtree() = false;
         propsByKey().clear();
+        propertyByKey().clear();
     }
 
     static void setSubtreeResponse(const GetSubTreeResponse& response)
@@ -65,6 +66,15 @@ class EmConfigTestDBusHandler : public DBusLoggingTestHandler
                          const PropertyMap& props)
     {
         propsByKey()[objPath + "|" + intf] = props;
+    }
+
+    /** @brief Serves a single-property Get() response, keyed by
+     *         "<objPath>|<intf>|<prop>"; a missing key throws, which is how
+     *         fetchConfiguredByPath()'s "unpublished" case is modeled. */
+    static void setProperty(const std::string& objPath, const std::string& intf,
+                            const std::string& prop, const PropertyValue& value)
+    {
+        propertyByKey()[objPath + "|" + intf + "|" + prop] = value;
     }
 
     GetSubTreeResponse getSubtree(
@@ -90,6 +100,20 @@ class EmConfigTestDBusHandler : public DBusLoggingTestHandler
         return it->second;
     }
 
+    PropertyValue getDbusPropertyVariant(
+        const char* objPath, const char* dbusProp,
+        const char* dbusInterface) const override
+    {
+        auto it = propertyByKey().find(std::string(objPath) + "|" +
+                                       std::string(dbusInterface) + "|" +
+                                       std::string(dbusProp));
+        if (it == propertyByKey().end())
+        {
+            throw sdbusplus::exception::SdBusError(EIO, "mock Get");
+        }
+        return it->second;
+    }
+
   private:
     static GetSubTreeResponse& subtreeResponse()
     {
@@ -106,6 +130,12 @@ class EmConfigTestDBusHandler : public DBusLoggingTestHandler
     static std::map<std::string, PropertyMap>& propsByKey()
     {
         static std::map<std::string, PropertyMap> props{};
+        return props;
+    }
+
+    static std::map<std::string, PropertyValue>& propertyByKey()
+    {
+        static std::map<std::string, PropertyValue> props{};
         return props;
     }
 };
@@ -352,6 +382,136 @@ TEST_F(EmConfigInternalTest, fetchComponentInfoUnpacksComponents)
     EXPECT_EQ(manufacturer8, "NVIDIA"); // wrong-typed Manufacturer → default
     EXPECT_FALSE(updateOnly8);          // wrong-typed UpdateOnly → default
     EXPECT_TRUE(assocs8.empty());       // endpoint list unreadable → zip to 0
+}
+
+TEST_F(EmConfigInternalTest, fetchExcludedInventorySubtreeThrowIsEmpty)
+{
+    // Platforms needing no opt-out publish no exclusion config at all, which
+    // surfaces as a GetSubTree error: nothing is excluded.
+    EmConfigTestDBusHandler::setThrowGetSubtree(true);
+    EXPECT_TRUE(em_config::fetchExcludedInventory().empty());
+}
+
+TEST_F(EmConfigInternalTest, fetchExcludedInventoryNoConfigIsEmpty)
+{
+    EXPECT_TRUE(em_config::fetchExcludedInventory().empty());
+}
+
+TEST_F(EmConfigInternalTest, fetchExcludedInventoryUnionsAcrossObjects)
+{
+    // Entry 0: empty service map — skipped.
+    // Entry 1: props read throws (no canned props) — skipped.
+    // Entry 2: interface present but no ExcludedInventory property —
+    //          skipped.
+    // Entries 3/4: contribute, and are unioned (with an overlap).
+    EmConfigTestDBusHandler::setSubtreeResponse({
+        {"/em/excl_empty", {}},
+        {"/em/excl_throws", {{"svc", {em_config::pldmExclusionIntf}}}},
+        {"/em/excl_noprop", {{"svc", {em_config::pldmExclusionIntf}}}},
+        {"/em/excl_a", {{"svc", {em_config::pldmExclusionIntf}}}},
+        {"/em/excl_b", {{"svc", {em_config::pldmExclusionIntf}}}},
+    });
+    EmConfigTestDBusHandler::setProps("/em/excl_noprop",
+                                      em_config::pldmExclusionIntf,
+                                      {{"Type", std::string("PLDMExcl")}});
+    EmConfigTestDBusHandler::setProps(
+        "/em/excl_a", em_config::pldmExclusionIntf,
+        {{"ExcludedInventory",
+          std::vector<std::string>{"/inv/dev56", "/inv/dev57"}}});
+    EmConfigTestDBusHandler::setProps(
+        "/em/excl_b", em_config::pldmExclusionIntf,
+        {{"ExcludedInventory",
+          std::vector<std::string>{"/inv/dev57", "/inv/dev58"}}});
+
+    EXPECT_EQ(em_config::fetchExcludedInventory(),
+              ExcludedInventoryPaths({"/inv/dev56", "/inv/dev57", "/inv/dev58"}));
+}
+
+TEST_F(EmConfigInternalTest, fetchExcludedInventoryRejectsUnusableEntries)
+{
+    // An empty path string and a non-array property value must be dropped
+    // rather than accepted verbatim: a usable neighbour in the same array
+    // still lands.
+    EmConfigTestDBusHandler::setSubtreeResponse({
+        {"/em/strs", {{"svc", {em_config::pldmExclusionIntf}}}},
+        {"/em/scalar", {{"svc", {em_config::pldmExclusionIntf}}}},
+    });
+    EmConfigTestDBusHandler::setProps(
+        "/em/strs", em_config::pldmExclusionIntf,
+        {{"ExcludedInventory", std::vector<std::string>{"", "/inv/dev57"}}});
+    // Not an array at all — reported and ignored.
+    EmConfigTestDBusHandler::setProps(
+        "/em/scalar", em_config::pldmExclusionIntf,
+        {{"ExcludedInventory", std::string("/inv/dev58")}});
+
+    EXPECT_EQ(em_config::fetchExcludedInventory(),
+              ExcludedInventoryPaths({"/inv/dev57"}));
+}
+
+constexpr auto endpointPath =
+    "/au/com/codeconstruct/mctp1/networks/1/endpoints/56";
+
+using AssociationList =
+    std::vector<std::tuple<std::string, std::string, std::string>>;
+
+TEST_F(EmConfigInternalTest, fetchConfiguredByPathReadsTheForwardAssociation)
+{
+    EmConfigTestDBusHandler::setProperty(
+        endpointPath, em_config::associationDefinitionsIntf, "Associations",
+        AssociationList{{"configured_by", "configures", "/inv/dev56"},
+                        {"some_other", "reverse", "/inv/other"}});
+
+    EXPECT_EQ(em_config::fetchConfiguredByPath(56, 1),
+              std::optional<std::string>("/inv/dev56"));
+}
+
+TEST_F(EmConfigInternalTest, fetchConfiguredByPathUnpublishedReturnsNullopt)
+{
+    // No Association.Definitions at all — the common case for an endpoint
+    // mctpreactor has not (yet, or ever) named, modeled by the mock throwing
+    // on an unregistered key.
+    EXPECT_EQ(em_config::fetchConfiguredByPath(99, 1), std::nullopt);
+}
+
+TEST_F(EmConfigInternalTest,
+       fetchConfiguredByPathNoConfiguredByEntryReturnsNullopt)
+{
+    EmConfigTestDBusHandler::setProperty(
+        endpointPath, em_config::associationDefinitionsIntf, "Associations",
+        AssociationList{{"some_other", "reverse", "/inv/other"}});
+
+    EXPECT_EQ(em_config::fetchConfiguredByPath(56, 1), std::nullopt);
+}
+
+TEST_F(EmConfigInternalTest, fetchConfiguredByPathWrongTypeReturnsNullopt)
+{
+    EmConfigTestDBusHandler::setProperty(
+        endpointPath, em_config::associationDefinitionsIntf, "Associations",
+        std::string("not-an-association-list"));
+
+    EXPECT_EQ(em_config::fetchConfiguredByPath(56, 1), std::nullopt);
+}
+
+TEST_F(EmConfigInternalTest, isExcludedInventoryMatchesConfiguredByTarget)
+{
+    EmConfigTestDBusHandler::setProperty(
+        endpointPath, em_config::associationDefinitionsIntf, "Associations",
+        AssociationList{{"configured_by", "configures", "/inv/dev56"}});
+
+    const ExcludedInventoryPaths excluded{"/inv/dev56", "/inv/other"};
+    EXPECT_TRUE(em_config::isExcludedInventory(excluded, 56, 1));
+
+    const ExcludedInventoryPaths notExcluded{"/inv/other"};
+    EXPECT_FALSE(em_config::isExcludedInventory(notExcluded, 56, 1));
+}
+
+TEST_F(EmConfigInternalTest,
+       isExcludedInventoryUnresolvedEndpointIsNeverExcluded)
+{
+    // No configured_by association at all — nothing to match against, so
+    // this must not be treated as conservatively excluded.
+    const ExcludedInventoryPaths excluded{"/inv/dev99"};
+    EXPECT_FALSE(em_config::isExcludedInventory(excluded, 99, 1));
 }
 
 } // namespace

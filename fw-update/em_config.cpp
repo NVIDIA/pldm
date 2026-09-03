@@ -312,4 +312,134 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
     return std::nullopt;
 }
 
+ExcludedInventoryPaths fetchExcludedInventory()
+{
+    ExcludedInventoryPaths excluded;
+
+    pldm::utils::GetSubTreeResponse subtree;
+    try
+    {
+        subtree = pldm::utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/inventory", 0, {pldmExclusionIntf});
+    }
+    catch (const std::exception&)
+    {
+        // Platforms that need no opt-out publish no exclusion config at all,
+        // and GetSubTree reports that as an error. That is the common case,
+        // so it is not traced.
+        return excluded;
+    }
+
+    for (const auto& [objPath, serviceMap] : subtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const std::string service = serviceMap.begin()->first;
+
+        pldm::utils::PropertyMap props;
+        try
+        {
+            props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                service.c_str(), objPath.c_str(), pldmExclusionIntf);
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "fetchExcludedInventory: reading props at {PATH} failed, error - {ERROR}",
+                "PATH", objPath, "ERROR", e);
+            continue;
+        }
+
+        auto it = props.find(excludedInventoryProp);
+        if (it == props.end())
+        {
+            continue;
+        }
+        const auto* paths = std::get_if<std::vector<std::string>>(&it->second);
+        if (paths == nullptr)
+        {
+            warning(
+                "fetchExcludedInventory: '{PROP}' at {PATH} is not an array of inventory paths",
+                "PROP", excludedInventoryProp, "PATH", objPath);
+            continue;
+        }
+        for (const auto& path : *paths)
+        {
+            if (path.empty())
+            {
+                warning(
+                    "fetchExcludedInventory: ignoring empty '{PROP}' entry at {PATH}",
+                    "PROP", excludedInventoryProp, "PATH", objPath);
+                continue;
+            }
+            excluded.insert(path);
+        }
+    }
+
+    return excluded;
+}
+
+namespace
+{
+/** @brief The forward association name mctpreactor publishes on an MCTP
+ *         endpoint's Association.Definitions to name the entity-manager
+ *         inventory object that configures it. */
+constexpr auto configuredByAssociationName = "configured_by";
+
+/** @brief Property carrying the (forward, reverse, endpoint) triples on
+ *         @ref associationDefinitionsIntf. */
+constexpr auto associationsProp = "Associations";
+
+/** @brief mctpreactor's own service path for the MCTP endpoint object this
+ *         reads Association.Definitions from - the MCTP control service
+ *         path, not an entity-manager one. */
+constexpr auto mctpNetworksPath = "/au/com/codeconstruct/mctp1/networks/";
+
+} // namespace
+
+std::optional<dbus::ObjectPath> fetchConfiguredByPath(pldm::eid mctpEid,
+                                                       NetworkId networkId)
+{
+    const std::string endpointPath = std::string(mctpNetworksPath) +
+                                     std::to_string(networkId) +
+                                     "/endpoints/" + std::to_string(mctpEid);
+
+    pldm::utils::PropertyValue value;
+    try
+    {
+        value = pldm::utils::DBusHandler().getDbusPropertyVariant(
+            endpointPath.c_str(), associationsProp, associationDefinitionsIntf);
+    }
+    catch (const std::exception&)
+    {
+        // The common case for an endpoint mctpreactor has not (yet, or
+        // ever) named: no Association.Definitions published at all, which
+        // GetProperty reports as an error rather than an empty array.
+        return std::nullopt;
+    }
+
+    const auto* assocs = std::get_if<Associations>(&value);
+    if (assocs == nullptr)
+    {
+        return std::nullopt;
+    }
+    for (const auto& [forward, _, path] : *assocs)
+    {
+        if (forward == configuredByAssociationName)
+        {
+            return path;
+        }
+    }
+    return std::nullopt;
+}
+
+bool isExcludedInventory(const ExcludedInventoryPaths& excludedPaths,
+                         pldm::eid mctpEid, NetworkId networkId)
+{
+    auto path = fetchConfiguredByPath(mctpEid, networkId);
+    return path.has_value() && excludedPaths.contains(*path);
+}
+
 } // namespace pldm::fw_update::em_config

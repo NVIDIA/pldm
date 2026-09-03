@@ -154,6 +154,16 @@ using DownstreamDeviceInfo =
 using DescriptorMap = std::unordered_map<eid, Descriptors>;
 using DownstreamDescriptorMap = std::unordered_map<eid, DownstreamDeviceInfo>;
 
+/** @brief Inventory object paths opted out of PLDM T5 firmware update.
+ *
+ *  entity-manager publishes these on Configuration.PLDMExclusion's
+ *  `ExcludedInventory` property. Each entry is the exact inventory path an
+ *  endpoint's own `configured_by` association resolves to (see
+ *  em_config::fetchConfiguredByPath()), not an EID: matching is by
+ *  inventory identity so the opt-out survives an EID reassignment.
+ */
+using ExcludedInventoryPaths = std::unordered_set<dbus::ObjectPath>;
+
 // Component information
 using CompClassification = uint16_t;
 using CompIdentifier = uint16_t;

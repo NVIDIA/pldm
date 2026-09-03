@@ -112,6 +112,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         specification and create component name information for creating
      *         message registry entries.
      *
+     *  An endpoint entity-manager has excluded from firmware update (see
+     *  em_config::fetchExcludedInventory()) is filtered out before any of
+     *  that: it is never discovered, never named, never given firmware
+     *  inventory.
+     *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      *  @param[in] signalMctpIfMap - UUID→InterfaceMap cache built from the
      *             InterfacesAdded signal payload; empty on the startup path
@@ -136,9 +141,39 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             getMctpInterfaces(mctpInterfaces);
         }
 
-        inventoryMgr.discoverFDs(mctpInfos, mctpInterfaces);
+        // Filter out anything entity-manager has opted out of firmware
+        // update before ANY handling proceeds for it: no T5 PLDM command
+        // (discoverFDs below sends GetPLDMTypes/QueryDeviceIdentifiers/
+        // GetFirmwareParameters), no component naming, no firmware
+        // inventory. This assumes entity-manager's PLDMExclusion
+        // configuration is already on the bus by the time a newly
+        // discovered endpoint reaches here - reasonable since an MCTP
+        // discovery pass only starts once ObjectMapper itself is up. A
+        // matched EID is simply left out of mctpEidMap (discoverFDs never
+        // sees it), which is also what keeps the online/version-change
+        // refresh path silent for it - see
+        // InventoryManager::initiateGetActiveFirmwareVersion().
+        const auto excludedInventory = em_config::fetchExcludedInventory();
+        MctpInfos allowedMctpInfos;
+        allowedMctpInfos.reserve(mctpInfos.size());
+        for (const auto& mctpInfo : mctpInfos)
+        {
+            const auto mctpEid = std::get<eid>(mctpInfo);
+            const auto networkId = std::get<NetworkId>(mctpInfo);
+            if (em_config::isExcludedInventory(excludedInventory, mctpEid,
+                                               networkId))
+            {
+                info(
+                    "EID {EID} excluded from PLDM firmware update by configuration; not handling",
+                    "EID", mctpEid);
+                continue;
+            }
+            allowedMctpInfos.push_back(mctpInfo);
+        }
+
+        inventoryMgr.discoverFDs(allowedMctpInfos, mctpInterfaces);
         for (const auto& [eid, uuid, mediumType, networkId, _, bindingType,
-                          localEid] : mctpInfos)
+                          localEid] : allowedMctpInfos)
         {
             // Source per-component naming/Associations/Manufacturer from the
             // entity-manager Configuration.PLDMFirmwareDevice.Components array
