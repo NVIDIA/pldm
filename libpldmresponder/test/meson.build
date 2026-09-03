@@ -10,9 +10,14 @@ tests = [
     'libpldmresponder_platform_test',
     'libpldmresponder_pdr_effecter_test',
     'libpldmresponder_pdr_sensor_test',
+    'libpldmresponder_platform_config_test',
 ]
 
-serial_tests = ['libpldmresponder_fru_test', 'libpldmresponder_platform_test']
+serial_tests = [
+    'libpldmresponder_fru_test',
+    'libpldmresponder_platform_test',
+    'libpldmresponder_platform_config_test',
+]
 
 
 if get_option('oem-ibm').allowed()

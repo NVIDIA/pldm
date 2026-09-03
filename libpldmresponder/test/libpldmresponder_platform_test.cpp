@@ -3354,3 +3354,72 @@ TEST(pldmPDRRepositoryChgEvent, testNoHostPDRHandler)
 
     pldm_pdr_destroy(inPDRRepo);
 }
+
+TEST(platformEventMessage, coversDispatchPaths)
+{
+    MockdBusHandler mockedUtils;
+    auto* inPDRRepo = pldm_pdr_init();
+    auto event = sdeventplus::Event::get_default();
+    Handler handler(&mockedUtils, "./pdr_jsons/state_effecter/good", inPDRRepo,
+                    nullptr, nullptr, nullptr, nullptr, event, true);
+
+    // Invalid payload length -> completion-code-only response.
+    {
+        std::vector<uint8_t> request(sizeof(pldm_msg_hdr), 0);
+        auto* msg = asMsg(request);
+        auto resp = handler.platformEventMessage(msg, 0);
+        ASSERT_GE(resp.size(), sizeof(pldm_msg_hdr) + 1);
+    }
+
+    // Heartbeat timer elapsed event -> success path (no OEM handler).
+    {
+        const auto payloadLength =
+            PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES + 1;
+        std::vector<uint8_t> request(sizeof(pldm_msg_hdr) + payloadLength, 0);
+        auto* msg = asMsg(request);
+        std::array<uint8_t, 1> eventData{};
+        ASSERT_EQ(encode_platform_event_message_req(
+                      0, PLDM_PLATFORM_EVENT_MESSAGE_FORMAT_VERSION,
+                      TERMINUS_ID, PLDM_HEARTBEAT_TIMER_ELAPSED_EVENT,
+                      eventData.data(), 1, msg, payloadLength),
+                  PLDM_SUCCESS);
+        auto resp = handler.platformEventMessage(msg, payloadLength);
+        ASSERT_GE(resp.size(), sizeof(pldm_msg_hdr));
+    }
+
+    // Unknown event class -> INVALID_DATA via the out_of_range guard.
+    {
+        const auto payloadLength =
+            PLDM_PLATFORM_EVENT_MESSAGE_MIN_REQ_BYTES + 1;
+        std::vector<uint8_t> request(sizeof(pldm_msg_hdr) + payloadLength, 0);
+        auto* msg = asMsg(request);
+        std::array<uint8_t, 1> eventData{};
+        ASSERT_EQ(encode_platform_event_message_req(
+                      0, PLDM_PLATFORM_EVENT_MESSAGE_FORMAT_VERSION,
+                      TERMINUS_ID, 0xFE, eventData.data(), 1, msg,
+                      payloadLength),
+                  PLDM_SUCCESS);
+        auto resp = handler.platformEventMessage(msg, payloadLength);
+        ASSERT_GE(resp.size(), sizeof(pldm_msg_hdr) + 1);
+    }
+
+    pldm_pdr_destroy(inPDRRepo);
+}
+
+TEST(getStateSensorReadings, invalidLengthReturnsError)
+{
+    MockdBusHandler mockedUtils;
+    auto* inPDRRepo = pldm_pdr_init();
+    auto event = sdeventplus::Event::get_default();
+    Handler handler(&mockedUtils, "./pdr_jsons/state_sensor/good", inPDRRepo,
+                    nullptr, nullptr, nullptr, nullptr, event, true);
+
+    std::vector<uint8_t> request(sizeof(pldm_msg_hdr), 0);
+    auto* msg = asMsg(request);
+    auto resp = handler.getStateSensorReadings(msg, 0);
+    ASSERT_GE(resp.size(), sizeof(pldm_msg_hdr) + 1);
+    auto* respMsg = reinterpret_cast<pldm_msg*>(resp.data());
+    EXPECT_EQ(respMsg->payload[0], PLDM_ERROR_INVALID_LENGTH);
+
+    pldm_pdr_destroy(inPDRRepo);
+}

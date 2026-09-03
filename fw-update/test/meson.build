@@ -78,6 +78,7 @@ tests = [
     'firmware_inventory_test',
     'inventory_manager_internal_test',
     'inventory_manager_test',
+    'item_update_manager_test',
     'manager_internal_test',
     'other_device_update_manager_test',
     'package_parser_stub_error_test',

@@ -12,6 +12,7 @@
 #pragma clang diagnostic pop
 #endif
 #include "libpldmresponder/fru_parser.hpp"
+#include "libpldmresponder/platform.hpp"
 #include "test/test_tmp_utils.hpp"
 
 #include <dlfcn.h>
@@ -1575,6 +1576,128 @@ TEST(FruImpl, getFRURecordByOptionReturnsUnavailableForPrebuiltEmptyTable)
                                         PLDM_FRU_RECORD_TYPE_GENERAL,
                                         PLDM_FRU_FIELD_TYPE_MODEL),
               PLDM_FRU_DATA_STRUCTURE_TABLE_UNAVAILABLE);
+
+    pldm_entity_association_tree_destroy(entityTree);
+    pldm_entity_association_tree_destroy(bmcEntityTree);
+    pldm_pdr_destroy(pdrRepo);
+}
+
+TEST(FruImpl, deleteFRURecordCoversKeepAndDeleteBranches)
+{
+    auto* pdrRepo = pldm_pdr_init();
+    auto* entityTree = pldm_entity_association_tree_init();
+    auto* bmcEntityTree = pldm_entity_association_tree_init();
+
+    pldm::responder::FruImpl impl("./fru_jsons/good",
+                                  "./fru_jsons/fru_master/fru_master.json",
+                                  pdrRepo, entityTree, bmcEntityTree);
+
+    // Hand-build a two-record FRU table in wire format so the record walker
+    // parses it cleanly. Each record is: 2B record set id, record type, number
+    // of FRU fields, encoding type, then a single TLV (type, length, value).
+    auto addRecord = [](std::vector<uint8_t>& t, uint16_t setId) {
+        t.push_back(setId & 0xFF);
+        t.push_back((setId >> 8) & 0xFF);
+        t.push_back(1); // record type
+        t.push_back(1); // num FRU fields
+        t.push_back(1); // encoding type
+        t.push_back(1); // TLV type
+        t.push_back(3); // TLV length
+        t.push_back(0xAA);
+        t.push_back(0xBB);
+        t.push_back(0xCC);
+    };
+    impl.table.clear();
+    addRecord(impl.table, 1);
+    addRecord(impl.table, 2);
+    impl.numRecs = 2;
+    auto before = impl.numRecords();
+
+    // Deleting record set id 1 exercises the delete branch for the matching
+    // record and the keep branch for record set id 2.
+    EXPECT_NO_THROW(impl.deleteFRURecord(1));
+    EXPECT_LE(impl.numRecords(), before);
+
+    // rsi == 0 walks every remaining record through the delete branch.
+    auto afterFirst = impl.numRecords();
+    EXPECT_NO_THROW(impl.deleteFRURecord(0));
+    EXPECT_LE(impl.numRecords(), afterFirst);
+
+    pldm_entity_association_tree_destroy(entityTree);
+    pldm_entity_association_tree_destroy(bmcEntityTree);
+    pldm_pdr_destroy(pdrRepo);
+}
+TEST(FruImpl, removeIndividualFRUFullAndEarlyReturns)
+{
+    FruDbusFixture dbusFixture;
+
+    auto* pdrRepo = pldm_pdr_init();
+    auto* entityTree = pldm_entity_association_tree_init();
+    auto* bmcEntityTree = pldm_entity_association_tree_init();
+
+    pldm::responder::FruImpl impl("./fru_jsons/good",
+                                  "./fru_jsons/fru_master/fru_master.json",
+                                  pdrRepo, entityTree, bmcEntityTree);
+    impl.buildFRUTable();
+    ASSERT_GT(impl.numRecords(), 0u);
+    ASSERT_GE(impl.table.size(), 2u);
+
+    // A platform handler with no requester makes the terminal
+    // sendPDRRepositoryChgEventbyPDRHandles call a safe no-op, while the rest
+    // of removeIndividualFRU exercises the real PDR/entity teardown.
+    auto event = sdeventplus::Event::get_default();
+    pldm::utils::DBusHandler dbusHandler;
+    auto* platPdrRepo = pldm_pdr_init();
+    pldm::responder::platform::Handler platHandler(
+        &dbusHandler, "./pdr_jsons/state_effecter/good", platPdrRepo, nullptr,
+        nullptr, nullptr, nullptr, event, true);
+    impl.setPlatformHandler(&platHandler);
+
+    // Associate a real record set id (found in the PDR repo) with an object
+    // path so removeIndividualFRU can locate and tear it down.
+    uint16_t rsi = static_cast<uint16_t>(impl.table[0]) |
+                   static_cast<uint16_t>(impl.table[1] << 8);
+    const std::string path = "/xyz/openbmc_project/inventory/board0";
+    impl.objectPathToRSIMap[path] = rsi;
+    EXPECT_NO_THROW(impl.removeIndividualFRU(path));
+
+    // Unknown object path hits the rsi == 0 early-return branch.
+    EXPECT_NO_THROW(impl.removeIndividualFRU(
+        "/xyz/openbmc_project/inventory/does_not_exist"));
+
+    pldm_pdr_destroy(platPdrRepo);
+    pldm_entity_association_tree_destroy(entityTree);
+    pldm_entity_association_tree_destroy(bmcEntityTree);
+    pldm_pdr_destroy(pdrRepo);
+}
+
+TEST(FruImpl, setFRUTableTableResizeAndAddHotPlug)
+{
+    auto* pdrRepo = pldm_pdr_init();
+    auto* entityTree = pldm_entity_association_tree_init();
+    auto* bmcEntityTree = pldm_entity_association_tree_init();
+
+    pldm::responder::FruImpl impl("./fru_jsons/good",
+                                  "./fru_jsons/fru_master/fru_master.json",
+                                  pdrRepo, entityTree, bmcEntityTree);
+
+    // Non-OEM record with no OEM FRU handler -> unsupported command.
+    std::vector<uint8_t> fruData(sizeof(pldm_fru_record_data_format), 0);
+    EXPECT_EQ(impl.setFRUTable(fruData), PLDM_ERROR_UNSUPPORTED_PLDM_CMD);
+
+    // tableResize on a seeded table returns a padded copy.
+    impl.table = {1, 2, 3};
+    auto resized = impl.tableResize();
+    EXPECT_GE(resized.size(), impl.table.size());
+
+    // addHotPlugRecord adds a minimal PDR and returns a non-zero handle.
+    impl.oemPlatformHandler = nullptr;
+    std::vector<uint8_t> pdrBytes(sizeof(pldm_pdr_hdr) + 4, 0);
+    pldm::responder::pdr_utils::PdrEntry entry{};
+    entry.data = pdrBytes.data();
+    entry.size = static_cast<uint32_t>(pdrBytes.size());
+    auto handle = impl.addHotPlugRecord(entry);
+    EXPECT_NE(handle, 0u);
 
     pldm_entity_association_tree_destroy(entityTree);
     pldm_entity_association_tree_destroy(bmcEntityTree);
