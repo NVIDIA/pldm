@@ -318,7 +318,7 @@ def write_fw_device_identification_area(
             metadata: metadata about PLDM FW update package
             package_header_format_revision: Format Revision of the package
             component_bitmap_bit_length: length of the ComponentBitmapBitLength
-    '''
+    """
     # The spec limits the number of firmware device ID records to 255
     max_device_id_record_count = 255
     devices = metadata["FirmwareDeviceIdentificationArea"]
@@ -386,7 +386,7 @@ def write_fw_device_identification_area(
                                       components,
                                       component_bitmap_bit_length)
         applicable_components_bitfield_length = \
-            round(len(applicable_components)/8)
+            len(applicable_components.tobytes())
         record_length += applicable_components_bitfield_length
 
         # RecordDescriptors
@@ -571,8 +571,8 @@ def write_downstream_device_identification_area(
         downstream_device_applicable_components = get_applicable_components(
             downstream_device, components, component_bitmap_bit_length
         )
-        downstream_device_applicable_components_bitfield_length = round(
-            len(downstream_device_applicable_components) / 8
+        downstream_device_applicable_components_bitfield_length = len(
+            downstream_device_applicable_components.tobytes()
         )
         downstream_device_record_length += (
             downstream_device_applicable_components_bitfield_length
@@ -658,19 +658,6 @@ def write_downstream_device_identification_area(
         ):
             pldm_fw_up_pkg.write(downstream_device_reference_manifest_data)
 
-def write_downstream_device_identification_area(pldm_fw_up_pkg):
-    '''
-    Write downstream device identification area into the PLDM package header
-    
-    This function writes the DownstreamDeviceIDRecordCount as 0, indicating
-    no downstream device ID records are present in the package.
-    
-    Parameters:
-        pldm_fw_up_pkg: PLDM FW update package
-    '''
-    # DownstreamDeviceIDRecordCount = 0 (no downstream devices)
-    pldm_fw_up_pkg.write(struct.pack('<B', 0))
-
 def get_component_comparison_stamp(component):
     '''
     Get component comparison stamp from metadata file.
@@ -721,7 +708,7 @@ def write_component_image_info_area(
         metadata: metadata about PLDM FW update package
         image_files: component images
         package_header_format_revision: Format revision of the package (numeric)
-    '''
+    """
     components = metadata["ComponentImageInformationArea"]
     # ComponentImageCount
     pldm_fw_up_pkg.write(struct.pack('<H', len(components)))
@@ -810,13 +797,6 @@ def write_component_image_info_area(
         pldm_fw_up_pkg.write(
             struct.pack(format_string, *pack_args)
         )
-        if package_header_format_revision >= 3:
-            # ComponentOpaqueDataLength
-            component_opaque_data_length = 0
-            # ComponentOpaqueData
-            pldm_fw_up_pkg.write(
-                struct.pack("<I", component_opaque_data_length)
-            )
 
     index = 0
     pkg_header_checksum_size = 4
@@ -885,7 +865,7 @@ def update_pkg_header_size(pldm_fw_up_pkg, package_header_format_revision):
 
         Parameters:
             pldm_fw_up_pkg: PLDM FW update package
-    '''
+    """
     pkg_header_checksum_size = 4
     file_size = pldm_fw_up_pkg.tell() + pkg_header_checksum_size
     if package_header_format_revision >= 4:
@@ -910,25 +890,6 @@ def append_component_images(pldm_fw_up_pkg, image_files):
         with open(image, 'rb') as file:
             for line in file:
                 pldm_fw_up_pkg.write(line)
-
-def write_pkg_payload_checksum(pldm_fw_up_pkg, image_files):
-    '''
-    Write PLDMFWPackagePayloadChecksum into the PLDM package.
-    This is calculated for all component images in the payload.
-    Only applicable for version 1.3 and above.
-
-        Parameters:
-            pldm_fw_up_pkg: PLDM FW update package
-            image_files: component images
-    '''
-    # Calculate CRC32 for all component images
-    crc = 0
-    for image in image_files:
-        with open(image, 'rb') as file:
-            crc = binascii.crc32(file.read(), crc)
-
-    # Write the payload checksum
-    pldm_fw_up_pkg.write(struct.pack('<I', crc))
 
 def main():
     """Create PLDM FW update (DSP0267) package based on a JSON metadata file"""
