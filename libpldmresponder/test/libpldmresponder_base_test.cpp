@@ -264,15 +264,15 @@ TEST_F(TestBaseCommands, testGetTIDGoodRequest)
     ASSERT_EQ(payload[1], 1);
 }
 
-// DISABLED: new libpldm API (encode_pldm_base_get_pldm_types_resp) does not
-// route through pack_pldm_header so the setForcePackFailure hook has no effect
-TEST_F(TestBaseCommands,
-       DISABLED_testPLDMTypesInvalidInstanceIdDiesOnEncodeFailure)
+TEST_F(TestBaseCommands, testPLDMTypesInvalidInstanceIdDiesOnEncodeFailure)
 {
     std::array<uint8_t, sizeof(pldm_msg_hdr)> requestPayload{};
     auto* request = reinterpret_cast<pldm_msg*>(requestPayload.data());
     auto run = [&] {
         pldm::test::coverage::ScopedHookStateReset hooks;
+        // Force the GetPLDMTypes encode to fail so the handler falls back to
+        // ccOnlyResponse, whose header pack also fails, tripping its assert.
+        pldm::test::coverage::setForceGetPldmTypesEncodeFailure();
         pldm::test::coverage::setForcePackFailure();
         base::Handler handler(mctpEid, instanceIdDb, event, nullptr, nullptr);
         static_cast<void>(handler.getPLDMTypes(request, 0));
@@ -322,15 +322,15 @@ TEST_F(TestBaseCommands, testGetPLDMVersionInvalidInstanceIdDiesOnEncodeFailure)
     EXPECT_DEATH(run(), ".*");
 }
 
-// DISABLED: new libpldm API (encode_pldm_base_get_tid_resp) does not route
-// through pack_pldm_header so the setForcePackFailure hook has no effect
-TEST_F(TestBaseCommands,
-       DISABLED_testGetTIDInvalidInstanceIdDiesOnEncodeFailure)
+TEST_F(TestBaseCommands, testGetTIDInvalidInstanceIdDiesOnEncodeFailure)
 {
     std::array<uint8_t, sizeof(pldm_msg_hdr)> requestPayload{};
     auto* request = reinterpret_cast<pldm_msg*>(requestPayload.data());
     auto run = [&] {
         pldm::test::coverage::ScopedHookStateReset hooks;
+        // Force the GetTID encode to fail so the handler falls back to
+        // ccOnlyResponse, whose header pack also fails, tripping its assert.
+        pldm::test::coverage::setForceGetTidEncodeFailure();
         pldm::test::coverage::setForcePackFailure();
         base::Handler handler(mctpEid, instanceIdDb, event, nullptr, nullptr);
         static_cast<void>(handler.getTID(request, 0));

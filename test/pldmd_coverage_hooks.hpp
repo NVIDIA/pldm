@@ -28,6 +28,8 @@ struct HookState
 {
     bool forceUnpackFailure = false;
     bool forcePackFailure = false;
+    bool forceGetTidEncodeFailure = false;
+    bool forceGetPldmTypesEncodeFailure = false;
     bool forcePdrInitFailure = false;
     int failEntityInitCall = 0;
     int entityInitCallCount = 0;
@@ -92,6 +94,16 @@ inline void setForceUnpackFailure(bool value = true)
 inline void setForcePackFailure(bool value = true)
 {
     hookState().forcePackFailure = value;
+}
+
+inline void setForceGetTidEncodeFailure(bool value = true)
+{
+    hookState().forceGetTidEncodeFailure = value;
+}
+
+inline void setForceGetPldmTypesEncodeFailure(bool value = true)
+{
+    hookState().forceGetPldmTypesEncodeFailure = value;
 }
 
 inline void setForcePdrInitFailure(bool value = true)
@@ -194,6 +206,40 @@ extern "C" int pack_pldm_header_errno(const struct pldm_header_info* header,
     static auto realFn =
         pldm::test::coverage::resolveNextSymbol<Fn>("pack_pldm_header_errno");
     return realFn(header, msg);
+}
+
+extern "C" int encode_pldm_base_get_tid_resp(
+    uint8_t instance_id, const struct pldm_base_get_tid_resp* resp,
+    struct pldm_msg* msg, size_t* payload_length)
+{
+    auto& state = pldm::test::coverage::hookState();
+    if (state.forceGetTidEncodeFailure)
+    {
+        return -EINVAL;
+    }
+
+    using Fn = int (*)(uint8_t, const struct pldm_base_get_tid_resp*,
+                       struct pldm_msg*, size_t*);
+    static auto realFn = pldm::test::coverage::resolveNextSymbol<Fn>(
+        "encode_pldm_base_get_tid_resp");
+    return realFn(instance_id, resp, msg, payload_length);
+}
+
+extern "C" int encode_pldm_base_get_pldm_types_resp(
+    uint8_t instance_id, const struct pldm_base_get_pldm_types_resp* resp,
+    struct pldm_msg* msg, size_t* payload_length)
+{
+    auto& state = pldm::test::coverage::hookState();
+    if (state.forceGetPldmTypesEncodeFailure)
+    {
+        return -EINVAL;
+    }
+
+    using Fn = int (*)(uint8_t, const struct pldm_base_get_pldm_types_resp*,
+                       struct pldm_msg*, size_t*);
+    static auto realFn = pldm::test::coverage::resolveNextSymbol<Fn>(
+        "encode_pldm_base_get_pldm_types_resp");
+    return realFn(instance_id, resp, msg, payload_length);
 }
 
 extern "C" pldm_pdr* pldm_pdr_init()
