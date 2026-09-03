@@ -38,6 +38,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -206,6 +207,111 @@ static std::vector<uint8_t> makeCcOnlyResp(uint8_t command,
                                            uint8_t completionCode)
 {
     return {0x0, PLDM_PLATFORM, command, completionCode};
+}
+
+/** @brief A SetNumericEffecterValue request as decoded from the wire. The raw
+ *  value is widened to int64_t. A UINT64 value above INT64_MAX comes back
+ *  wrapped; compare it through static_cast<uint64_t>.
+ */
+struct DecodedSetValueReq
+{
+    int rc = PLDM_ERROR_INVALID_LENGTH;
+    uint8_t dataSize = 0;
+    int64_t value = 0;
+};
+
+static DecodedSetValueReq decodeSetNumericEffecterValueReq(
+    const pldm::Request& request)
+{
+    DecodedSetValueReq decoded;
+    if (request.size() <= sizeof(pldm_msg_hdr))
+    {
+        return decoded;
+    }
+
+    uint16_t effecterId = 0;
+    union_effecter_data_size raw{};
+    decoded.rc = decode_set_numeric_effecter_value_req(
+        reinterpret_cast<const pldm_msg*>(request.data()),
+        request.size() - sizeof(pldm_msg_hdr), &effecterId, &decoded.dataSize,
+        reinterpret_cast<uint8_t*>(&raw));
+
+    switch (decoded.dataSize)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            decoded.value = raw.value_u8;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            // value_s8 is a signed number, not a character, so sign extension
+            // is intended.
+            // NOLINTNEXTLINE(bugprone-signed-char-misuse)
+            decoded.value = raw.value_s8;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            decoded.value = raw.value_u16;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            decoded.value = raw.value_s16;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            decoded.value = raw.value_u32;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            decoded.value = raw.value_s32;
+            break;
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            decoded.value = static_cast<int64_t>(raw.value_u64);
+            break;
+        default:
+            decoded.value = raw.value_s64;
+            break;
+    }
+    return decoded;
+}
+
+/** @brief Run setNumericEffecterValue() against a successful set and get
+ *  response, and return its completion code. Afterwards requests holds
+ *  the set followed by the get.
+ *
+ *  The mock does not free the instance IDs that SendRecvPldmMsg() takes, and
+ *  an endpoint has only 32. Free them here, so a test can make any number of
+ *  writes without running out.
+ */
+static int setValueWithResponses(
+    MockTerminusManager& terminusManager, pldm::InstanceIdDb& instanceIdDb,
+    mctp_eid_t eid, NumericEffecter& effecter, double value)
+{
+    terminusManager.clearQueuedResponses();
+    terminusManager.requests.clear();
+
+    auto response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
+    terminusManager.enqueueResponse(response);
+    response = makeGetNumericEffecterValueResp(
+        effecter.dataSize, EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING);
+    terminusManager.enqueueResponse(response);
+
+    auto rc = stdexec::sync_wait(effecter.setNumericEffecterValue(value));
+
+    for (const auto& request : terminusManager.requests)
+    {
+        auto msg = reinterpret_cast<const pldm_msg*>(request.data());
+        instanceIdDb.free(eid, msg->hdr.instance_id);
+    }
+
+    return rc.has_value() ? std::get<0>(*rc) : PLDM_ERROR;
+}
+
+/** @brief Expect setNumericEffecterValue() to reject value with
+ *  PLDM_ERROR_INVALID_DATA without sending a request.
+ */
+static void expectRejected(MockTerminusManager& terminusManager,
+                           NumericEffecter& effecter, double value)
+{
+    terminusManager.requests.clear();
+    auto rc = stdexec::sync_wait(effecter.setNumericEffecterValue(value));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_ERROR_INVALID_DATA, std::get<0>(*rc));
+    EXPECT_TRUE(terminusManager.requests.empty());
 }
 
 class NumericEffecterBaseUnitCoverage : public NumericEffecterBaseUnit
@@ -513,6 +619,310 @@ TEST_F(TestNumericEffecter, numericEffecterDataSizeAndStateCoverage)
     EXPECT_THROW((void)NumericEffecter(0x42, false, badPdr, effecterName,
                                        inventoryPath, terminusManager),
                  std::runtime_error);
+}
+
+TEST_F(TestNumericEffecter, setNumericEffecterValueRoundsToNearest)
+{
+    constexpr pldm::tid_t tid = 0x51;
+    constexpr mctp_eid_t eid = 23;
+    const pldm::MctpInfo mctpInfo(
+        eid, "00000000-0000-0000-0000-000000000051",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis51"};
+    std::string effecterName{"rounding_effecter"};
+
+    // DSP0248 27.8 rounds the raw setting to the nearest integer. Each data
+    // size narrows through its own cast, so every size is checked. Signed
+    // sizes are checked with negative values, which truncation moves up
+    // rather than down.
+    struct Case
+    {
+        uint8_t dataSize;
+        double requested;
+        int64_t expectedRaw;
+    };
+
+    const std::array cases{
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 10.6, 11}, // truncation gives 10
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 10.4, 10},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 10.5, 11}, // away from zero
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 11.0, 11},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 254.6, 255},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 255.4, 255}, // top of the type
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, -0.4, 0},    // rounds to -0.0
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, 127.4, 127},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -128.4, -128},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -10.6, -11}, // truncation: -10
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -10.4, -10},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -10.5, -11}, // away from zero
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -0.4, 0},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT16, 1000.6, 1001},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT16, 65535.4, 65535},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT16, -1000.6, -1001},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT16, -32768.4, -32768},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT32, 100000.6, 100001},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT32, 4294967295.4, 4294967295},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT32, -100000.6, -100001},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT32, 2147483647.4, 2147483647},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT64, 1000000.6, 1000001},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT64, -1000000.6, -1000001},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT64, -0x1p63,
+             std::numeric_limits<int64_t>::min()},
+    };
+
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        const auto& testCase = cases[i];
+        SCOPED_TRACE(testing::Message()
+                     << "dataSize " << static_cast<int>(testCase.dataSize)
+                     << ", requested " << testCase.requested);
+
+        auto pdr = makeNumericEffecterValuePdr(
+            static_cast<uint16_t>(0x0D10 + i), testCase.dataSize,
+            PLDM_SENSOR_UNIT_NONE, PLDM_ENTITY_SYS_BOARD);
+        NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                                 terminusManager);
+
+        EXPECT_EQ(PLDM_SUCCESS,
+                  setValueWithResponses(terminusManager, instanceIdDb, eid,
+                                        effecter, testCase.requested));
+
+        // The set request is sent first; a get follows it.
+        ASSERT_FALSE(terminusManager.requests.empty());
+        auto decoded =
+            decodeSetNumericEffecterValueReq(terminusManager.requests[0]);
+        ASSERT_EQ(PLDM_SUCCESS, decoded.rc);
+        EXPECT_EQ(testCase.dataSize, decoded.dataSize);
+        EXPECT_EQ(testCase.expectedRaw, decoded.value);
+    }
+}
+
+TEST_F(TestNumericEffecter, setNumericEffecterValueRoundsConvertedSetting)
+{
+    constexpr pldm::tid_t tid = 0x53;
+    constexpr mctp_eid_t eid = 25;
+    const pldm::MctpInfo mctpInfo(
+        eid, "00000000-0000-0000-0000-000000000053",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis53"};
+    std::string effecterName{"converted_setting_effecter"};
+
+    // Callers pass baseToRaw() of the requested setting. With m = 2 and
+    // B = 1, X = Round[(Y - 1) / 2], so these settings are not a whole number
+    // of counts.
+    auto pdr = makeNumericEffecterValuePdr(
+        0x0D30, PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    pdr->resolution = 2.0f;
+    pdr->offset = 1.0f;
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    struct Case
+    {
+        double setting;
+        int64_t expectedRaw;
+    };
+
+    const std::array cases{
+        Case{22.2, 11}, // 10.6 counts; truncation gives 10
+        Case{21.8, 10}, // 10.4 counts
+        Case{22.0, 11}, // 10.5 counts
+    };
+
+    for (const auto& testCase : cases)
+    {
+        SCOPED_TRACE(testing::Message() << "setting " << testCase.setting);
+
+        EXPECT_EQ(PLDM_SUCCESS,
+                  setValueWithResponses(terminusManager, instanceIdDb, eid,
+                                        effecter,
+                                        effecter.baseToRaw(testCase.setting)));
+
+        ASSERT_FALSE(terminusManager.requests.empty());
+        auto decoded =
+            decodeSetNumericEffecterValueReq(terminusManager.requests[0]);
+        ASSERT_EQ(PLDM_SUCCESS, decoded.rc);
+        EXPECT_EQ(testCase.expectedRaw, decoded.value);
+    }
+}
+
+TEST_F(TestNumericEffecter, setNumericEffecterValueRejectsNonFinite)
+{
+    constexpr pldm::tid_t tid = 0x52;
+    const pldm::MctpInfo mctpInfo(
+        24, "00000000-0000-0000-0000-000000000052",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis52"};
+    std::string effecterName{"non_finite_effecter"};
+    auto pdr = makeNumericEffecterValuePdr(
+        0x0E00, PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+
+    // Casting a non-finite value to an integer would be undefined, so
+    // nothing must be sent.
+    for (double value : {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity()})
+    {
+        SCOPED_TRACE(testing::Message() << "value " << value);
+        expectRejected(terminusManager, effecter, value);
+    }
+
+    // A PDR with a resolution of 0 makes baseToRaw() return NaN, which is how
+    // a caller reaches the check above.
+    auto zeroResolutionPdr = makeNumericEffecterValuePdr(
+        0x0E01, PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    zeroResolutionPdr->resolution = 0.0f;
+    std::string zeroResolutionName{"zero_resolution_set_effecter"};
+    NumericEffecter zeroResolutionEffecter(
+        tid, false, zeroResolutionPdr, zeroResolutionName, inventoryPath,
+        terminusManager);
+
+    expectRejected(terminusManager, zeroResolutionEffecter,
+                   zeroResolutionEffecter.baseToRaw(12.0));
+}
+
+TEST_F(TestNumericEffecter, setNumericEffecterValueRejectsOutOfRange)
+{
+    constexpr pldm::tid_t tid = 0x55;
+    constexpr mctp_eid_t eid = 27;
+    const pldm::MctpInfo mctpInfo(
+        eid, "00000000-0000-0000-0000-000000000055",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis55"};
+    std::string effecterName{"out_of_range_effecter"};
+
+    // Each value rounds to one count past its data size. Casting it would be
+    // undefined, so nothing must be sent.
+    struct Case
+    {
+        uint8_t dataSize;
+        double value;
+    };
+
+    const std::array cases{
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, 255.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT8, -0.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, 127.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT8, -128.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT16, 65535.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT16, -32768.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT32, 4294967295.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT32, 2147483647.5},
+        Case{PLDM_EFFECTER_DATA_SIZE_UINT64, 0x1p64},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT64, 0x1p63},
+        Case{PLDM_EFFECTER_DATA_SIZE_SINT64,
+             std::nextafter(-0x1p63, -std::numeric_limits<double>::infinity())},
+    };
+
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        const auto& testCase = cases[i];
+        SCOPED_TRACE(testing::Message()
+                     << "dataSize " << static_cast<int>(testCase.dataSize)
+                     << ", value " << testCase.value);
+
+        auto pdr = makeNumericEffecterValuePdr(
+            static_cast<uint16_t>(0x0D40 + i), testCase.dataSize,
+            PLDM_SENSOR_UNIT_NONE, PLDM_ENTITY_SYS_BOARD);
+        NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                                 terminusManager);
+
+        expectRejected(terminusManager, effecter, testCase.value);
+    }
+
+    // The largest doubles below the 64-bit limits still fit and are sent
+    // unchanged.
+    auto u64Pdr = makeNumericEffecterValuePdr(
+        0x0D50, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    std::string u64Name{"out_of_range_u64_effecter"};
+    NumericEffecter u64Effecter(tid, false, u64Pdr, u64Name, inventoryPath,
+                                terminusManager);
+    EXPECT_EQ(PLDM_SUCCESS,
+              setValueWithResponses(terminusManager, instanceIdDb, eid,
+                                    u64Effecter, std::nextafter(0x1p64, 0.0)));
+    ASSERT_FALSE(terminusManager.requests.empty());
+    auto decoded =
+        decodeSetNumericEffecterValueReq(terminusManager.requests[0]);
+    ASSERT_EQ(PLDM_SUCCESS, decoded.rc);
+    EXPECT_EQ(UINT64_C(0xFFFFFFFFFFFFF800),
+              static_cast<uint64_t>(decoded.value));
+
+    auto s64Pdr = makeNumericEffecterValuePdr(
+        0x0D51, PLDM_EFFECTER_DATA_SIZE_SINT64, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    std::string s64Name{"out_of_range_s64_effecter"};
+    NumericEffecter s64Effecter(tid, false, s64Pdr, s64Name, inventoryPath,
+                                terminusManager);
+    EXPECT_EQ(PLDM_SUCCESS,
+              setValueWithResponses(terminusManager, instanceIdDb, eid,
+                                    s64Effecter, std::nextafter(0x1p63, 0.0)));
+    ASSERT_FALSE(terminusManager.requests.empty());
+    decoded = decodeSetNumericEffecterValueReq(terminusManager.requests[0]);
+    ASSERT_EQ(PLDM_SUCCESS, decoded.rc);
+    EXPECT_EQ(INT64_C(0x7FFFFFFFFFFFFC00), decoded.value);
+
+    // A caller that does not check the PDR range can pass a setting that
+    // converts to a raw value past the data size: with m = 1 and B = -0.6,
+    // 255 converts to 255.6, which rounds to 256.
+    auto offsetPdr = makeNumericEffecterValuePdr(
+        0x0D52, PLDM_EFFECTER_DATA_SIZE_UINT8, PLDM_SENSOR_UNIT_NONE,
+        PLDM_ENTITY_SYS_BOARD);
+    offsetPdr->resolution = 1.0f;
+    offsetPdr->offset = -0.6f;
+    std::string offsetName{"out_of_range_offset_effecter"};
+    NumericEffecter offsetEffecter(tid, false, offsetPdr, offsetName,
+                                   inventoryPath, terminusManager);
+    expectRejected(terminusManager, offsetEffecter,
+                   offsetEffecter.baseToRaw(255.0));
+}
+
+TEST_F(TestNumericEffecter, setNumericEffecterValueNonFiniteKeepsTrackingIdle)
+{
+    constexpr pldm::tid_t tid = 0x54;
+    const pldm::MctpInfo mctpInfo(
+        26, "00000000-0000-0000-0000-000000000054",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Endpoint.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis54"};
+    std::string effecterName{"ProcessorModule_0_CPU_0_PCIeRPLinkCtrl_1"};
+    auto pdr = makeNumericEffecterValuePdr(
+        0x0E10, PLDM_EFFECTER_DATA_SIZE_UINT64, PLDM_SENSOR_UNIT_BITS,
+        PLDM_ENTITY_PCI_EXPRESS_BUS);
+    NumericEffecter effecter(tid, false, pdr, effecterName, inventoryPath,
+                             terminusManager);
+    ASSERT_TRUE(effecter.trackOperationalState);
+
+    // The check runs before the re-arm, so a write that is never sent must
+    // not start state tracking.
+    effecter.needUpdate = false;
+    expectRejected(terminusManager, effecter,
+                   std::numeric_limits<double>::quiet_NaN());
+    EXPECT_FALSE(effecter.needUpdate);
 }
 
 TEST_F(TestNumericEffecter, requestAndPowerCapCoverage)

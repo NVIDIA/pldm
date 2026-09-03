@@ -23,6 +23,7 @@
 #include "platform-mc/numeric_effecter_power_cap.hpp"
 #include "platform-mc/terminus_manager.hpp"
 
+#include <cmath>
 #include <limits>
 #include <regex>
 
@@ -30,6 +31,44 @@ namespace pldm
 {
 namespace platform_mc
 {
+
+/** @brief Whether value can be cast to the integer type T without undefined
+ *  behavior. NaN and infinity never fit.
+ */
+template <typename T>
+inline bool fitsIn(const double& value)
+{
+    // 2^digits is one past max() and exact as a double for every width,
+    // which max() itself is not for the 64-bit types.
+    const double limit = std::ldexp(1.0, std::numeric_limits<T>::digits);
+    const double lowest = std::numeric_limits<T>::is_signed ? -limit : 0.0;
+    return value >= lowest && value < limit;
+}
+
+/** @brief Whether an integral value fits the effecter's data size. */
+static bool fitsDataSize(uint8_t dataSize, double value)
+{
+    switch (dataSize)
+    {
+        case PLDM_EFFECTER_DATA_SIZE_UINT8:
+            return fitsIn<uint8_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_SINT8:
+            return fitsIn<int8_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_UINT16:
+            return fitsIn<uint16_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_SINT16:
+            return fitsIn<int16_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_UINT32:
+            return fitsIn<uint32_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_SINT32:
+            return fitsIn<int32_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_UINT64:
+            return fitsIn<uint64_t>(value);
+        case PLDM_EFFECTER_DATA_SIZE_SINT64:
+        default:
+            return fitsIn<int64_t>(value);
+    }
+}
 
 NumericEffecter::NumericEffecter(
     const tid_t tid, const bool effecterDisabled,
@@ -356,12 +395,31 @@ exec::task<int> NumericEffecter::setNumericEffecterEnable(
 
 exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
 {
+    // DSP0248 27.8 defines the setting conversion as X = Round[(Y - B) / m],
+    // so the raw value is rounded to the nearest integer. A bare cast
+    // truncates toward zero instead, setting the effecter up to one count
+    // away from what was requested.
+    effecterValue = std::round(effecterValue);
+
+    // Casting a value that does not fit the data size is undefined behavior,
+    // e.g. NaN from a resolution of 0, or 255.6 rounded to 256 for uint8.
+    // Reject it before re-arming the state tracking.
+    if (!fitsDataSize(dataSize, effecterValue))
+    {
+        lg2::error(
+            "Raw value {VALUE} does not fit data size {SIZE} for {EFFECTERNAME}, tid={TID}.",
+            "VALUE", effecterValue, "SIZE", dataSize, "EFFECTERNAME",
+            effecterName, "TID", tid);
+        co_return PLDM_ERROR_INVALID_DATA;
+    }
+
     if (trackOperationalState)
     {
         // Re-arm the state tracking so the write is followed until it
         // settles; the reads clear this again on a terminal state.
         needUpdate = true;
     }
+
     union_effecter_data_size effecterValueRaw;
     size_t payloadLength = PLDM_SET_NUMERIC_EFFECTER_VALUE_MIN_REQ_BYTES;
     switch (dataSize)
