@@ -208,23 +208,8 @@ void StateSensor::handleSensorEvent(uint8_t sensorOffset, uint8_t eventState,
                     eventId = synthesizeEventId(entityName, sensorName, arg2);
                 }
             }
-            // Assign the entry to the namespace owned by the entity that
-            // produced it; without one every event shares the "default" bin,
-            // where a busy sensor evicts unrelated entries. A namespace ID is
-            // a plain identifier, so an entity name that is not one cannot
-            // match a declared bin: reject it and say so rather than routing
-            // the event somewhere the config never declared.
-            std::string loggingNamespace = entityName;
-            if (!std::ranges::all_of(entityName, [](unsigned char c) {
-                    return (std::isalnum(c) != 0) || (c == '_');
-                }))
-            {
-                lg2::error(
-                    "A state sensor event is assigned to the default logging namespace as the entity name is not a valid namespace ID. "
-                    "TID={TD}, SensorId={SID}, EntityName={EN}.",
-                    "TD", tid, "SID", sensorId, "EN", entityName);
-                loggingNamespace.clear();
-            }
+            std::string loggingNamespace =
+                sensorEventInfo ? sensorEventInfo->loggingNamespace : "";
             createLogEntryAdditionalOEMArgs(messageID, arg1, arg2, resolution,
                                             eventId, impactedComponent,
                                             loggingNamespace, level);
