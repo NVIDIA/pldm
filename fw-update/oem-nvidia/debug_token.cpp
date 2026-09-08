@@ -148,6 +148,7 @@ exec::task<void> DebugToken::updateDebugToken(
     // `package` is only used in the synchronous prologue below; see header
     // for the invariant. Do not add post-await reads from `package`.
     installToken = false;
+    interfaceAddedMatch.reset();
     bool installTokenInPackage = false;
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
@@ -214,12 +215,23 @@ exec::task<void> DebugToken::updateDebugToken(
                 info(
                     "Extracting to filepath: VERSION={VERSION}, FILEPATH={FILEPATH}",
                     "VERSION", version, "FILEPATH", filepath);
+                tokenPath = objPath;
+                try
+                {
+                    watchTokenInterfaceAdded();
+                }
+                catch (const std::exception& e)
+                {
+                    error("Failed to watch for token object: {ERROR}", "ERROR",
+                          e.what());
+                    startUpdate();
+                    co_return;
+                }
                 std::ofstream outfile(filepath, std::ofstream::binary);
                 outfile.write(reinterpret_cast<const char*>(&buffer[0]),
                               buffer.size() *
                                   sizeof(uint8_t)); // Write to image offset
                 outfile.close();
-                tokenPath = objPath;
                 installToken = true;
                 tokenVersion = version;
             }
@@ -275,6 +287,7 @@ exec::task<void> DebugToken::updateDebugToken(
             "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
             "FAILED_MATCH", Server::Activation::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
+        interfaceAddedMatch.reset();
         startUpdate();
         co_return;
     }
@@ -295,22 +308,71 @@ exec::task<void> DebugToken::updateDebugToken(
             "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
             "FAILED_MATCH", Server::ActivationProgress::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
+        interfaceAddedMatch.reset();
         startUpdate();
         co_return;
     }
 
+    if (!installToken)
+    {
+        co_await setVersion();
+        const bool activated = co_await activate();
+        // Only arm the activation-timeout safety net when the property-set
+        // succeeded and we are genuinely waiting on a property-change signal
+        // from the token service. On failure, activate() has already run the
+        // synchronous failure cleanup (log entry + startUpdate()), so a timer
+        // here would just hold a 60s-pinned lambda on `this` for nothing.
+        if (activated)
+        {
+            startTimer(debugTokenTimeout);
+        }
+        co_return;
+    }
+
+    startTimer(debugTokenTimeout);
+    co_return;
+}
+
+void DebugToken::watchTokenInterfaceAdded()
+{
+    interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus, MatchRules::interfacesAdded("/xyz/openbmc_project/software/other"),
+        std::bind(&DebugToken::onTokenInterfaceAdded, this,
+                  std::placeholders::_1));
+}
+
+exec::task<void> DebugToken::completeTokenActivation()
+{
     co_await setVersion();
     const bool activated = co_await activate();
-    // Only arm the activation-timeout safety net when the property-set
-    // succeeded and we are genuinely waiting on a property-change signal
-    // from the token service. On failure, activate() has already run the
-    // synchronous failure cleanup (log entry + startUpdate()), so a timer
-    // here would just hold a 60s-pinned lambda on `this` for nothing.
-    if (activated)
+    if (!activated)
     {
-        startTimer(debugTokenTimeout);
+        error("Activation failed for debug token");
     }
     co_return;
+}
+
+void DebugToken::onTokenInterfaceAdded(sdbusplus::message::message& msg)
+{
+    if (interfaceAddedMatch == nullptr)
+    {
+        return;
+    }
+
+    sdbusplus::object_path objPath;
+    pldm::dbus::InterfaceMap interfaces;
+    msg.read(objPath, interfaces);
+    if (std::string(objPath) != tokenPath)
+    {
+        return;
+    }
+
+    interfaceAddedMatch.reset();
+    info("Debug token object republished: OBJPATH={OBJPATH}", "OBJPATH",
+         tokenPath);
+    tokenScope.spawn(
+        completeTokenActivation(),
+        exec::default_task_context<void>(stdexec::inline_scheduler{}));
 }
 
 void DebugToken::startTokenUpdate(
@@ -405,6 +467,7 @@ void DebugToken::startTimer(auto timerExpiryTime)
         {
             tokenStatus = true;
             activationMatches.clear();
+            interfaceAddedMatch.reset();
             auto componentName = std::filesystem::path(tokenPath).filename();
             if (componentName == "HGX_FW_Debug_Token_Erase")
             {

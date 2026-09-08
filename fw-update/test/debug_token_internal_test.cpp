@@ -839,10 +839,8 @@ TEST_F(DebugTokenInternalTest, getFilePathHandlesEmptyUuidAndEmptyPath)
 TEST_F(DebugTokenInternalTest,
        updateDebugTokenDoesNotStartTimerWhenActivateFails)
 {
-    // End-to-end regression guard for the "start timer only on activate
-    // success" gate. On the mock bus the install-token path runs all the
-    // way through activate(), whose coSetDbusProperty fails, so timer
-    // must remain unset (was unconditionally constructed previously).
+    // Regression guard for the "start timer only on activate success" gate.
+    // Install defers activate() now, so erase is the inline-activate path.
     failAsyncDbusWrites();
     wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
 
@@ -852,44 +850,35 @@ TEST_F(DebugTokenInternalTest,
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{
-            "/xyz/openbmc_project/software/other/install_no_timer"}));
+            "/xyz/openbmc_project/software/other/erase_no_timer"}));
     EXPECT_CALL(dbusHandler,
                 getDbusPropertyVariant(testing::_, testing::_, testing::_))
         .WillRepeatedly([](const char* objPath, const char* property,
                            const char*) -> pldm::utils::PropertyValue {
             if (std::string(objPath) ==
-                    "/xyz/openbmc_project/software/other/install_no_timer" &&
+                    "/xyz/openbmc_project/software/other/erase_no_timer" &&
                 std::string(property) == "UUID")
             {
-                return std::string(InstallTokenUUID);
+                return std::string(EraseTokenUUID);
             }
             if (std::string(objPath) ==
-                    "/xyz/openbmc_project/software/other/install_no_timer" &&
+                    "/xyz/openbmc_project/software/other/erase_no_timer" &&
                 std::string(property) == "Path")
             {
-                return std::string("/tmp/debug-token/install_no_timer/token");
+                return std::string("/tmp/debug-token/erase_no_timer/token");
             }
             throw std::runtime_error("unexpected property request");
         });
 
-    FirmwareDeviceIDRecords fwDeviceIDRecords{
-        {1,
-         {0},
-         "VersionNoTimer",
-         {{PLDM_FWUP_UUID,
-           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
-                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
-                                0x02}}},
-         {0}}};
-    ComponentImageInfos componentImageInfos{
-        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionNoTimer"}};
-    std::istringstream package("WXYZ");
+    FirmwareDeviceIDRecords fwDeviceIDRecords;
+    ComponentImageInfos componentImageInfos;
+    std::istringstream package("");
 
     EXPECT_NO_THROW({
         stdexec::sync_wait(debugToken.updateDebugToken(
             fwDeviceIDRecords, componentImageInfos, package));
     });
-    EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+    EXPECT_FALSE(debugToken.isDebugTokenComponentPresent());
     EXPECT_EQ(debugToken.timer, nullptr);
     EXPECT_TRUE(debugToken.tokenStatus);
     EXPECT_TRUE(debugToken.activationMatches.empty());
@@ -1452,4 +1441,182 @@ TEST_F(DebugTokenInternalTest,
             fwDeviceIDRecords, componentImageInfos, package));
     });
     EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+}
+
+namespace
+{
+constexpr auto softwareOther = "/xyz/openbmc_project/software/other";
+constexpr auto extendedVersionIface =
+    "xyz.openbmc_project.Software.ExtendedVersion";
+
+sdbusplus::message::message makeInterfacesAddedMsg(sdbusplus::bus_t& bus,
+                                                   const std::string& objPath)
+{
+    pldm::dbus::InterfaceMap interfaces;
+    auto msg = bus.new_method_call("org.test", softwareOther,
+                                   "org.test.Interface", "Method");
+    msg.append(sdbusplus::object_path(objPath), interfaces);
+    sealAndRewind(msg);
+    return msg;
+}
+
+FirmwareDeviceIDRecords installTokenRecords()
+{
+    return FirmwareDeviceIDRecords{
+        {1,
+         {0},
+         "VersionString",
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x76, 0x91, 0x0D, 0xFA, 0x1E, 0x4C, 0x11, 0xED,
+                                0x86, 0x1D, 0x02, 0x42, 0xAC, 0x12, 0x00,
+                                0x02}}},
+         {0}}};
+}
+
+void recordAsyncDbusWrites(std::vector<std::string>& writtenInterfaces)
+{
+    pldm::utils::dbusAsyncMock::setProperty =
+        [&writtenInterfaces](const std::string&, const std::string& interface,
+                             const std::string&,
+                             const pldm::utils::PropertyValue&) {
+            writtenInterfaces.push_back(interface);
+            return true;
+        };
+}
+} // namespace
+
+TEST_F(DebugTokenInternalTest, updateDebugTokenInstallWaitsForRepublish)
+{
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    std::vector<std::string> writtenInterfaces;
+    recordAsyncDbusWrites(writtenInterfaces);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/deferred"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char*, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(property) == "UUID")
+            {
+                return std::string(InstallTokenUUID);
+            }
+            return std::string("/tmp/debug-token/deferred/token.bin");
+        });
+
+    ComponentImageInfos componentImageInfos{
+        {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "VersionStringInstall"}};
+    std::istringstream package("ABCD");
+
+    EXPECT_NO_THROW({
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            installTokenRecords(), componentImageInfos, package));
+    });
+
+    EXPECT_TRUE(writtenInterfaces.empty());
+    EXPECT_TRUE(debugToken.isDebugTokenComponentPresent());
+    EXPECT_NE(debugToken.interfaceAddedMatch, nullptr);
+    EXPECT_FALSE(debugToken.tokenStatus);
+}
+
+TEST_F(DebugTokenInternalTest, onTokenInterfaceAddedWritesBothProperties)
+{
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    std::vector<std::string> writtenInterfaces;
+    recordAsyncDbusWrites(writtenInterfaces);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+    debugToken.tokenPath = "/xyz/openbmc_project/software/other/republished";
+    debugToken.tokenVersion = "1";
+    debugToken.watchTokenInterfaceAdded();
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg = makeInterfacesAddedMsg(rawBus, debugToken.tokenPath);
+    EXPECT_NO_THROW({ debugToken.onTokenInterfaceAdded(msg); });
+
+    EXPECT_EQ(
+        writtenInterfaces,
+        (std::vector<std::string>{extendedVersionIface,
+                                  std::string(Server::Activation::interface)}));
+    EXPECT_EQ(debugToken.interfaceAddedMatch, nullptr);
+    EXPECT_FALSE(debugToken.tokenStatus);
+}
+
+TEST_F(DebugTokenInternalTest, onTokenInterfaceAddedIgnoresOtherObjectPaths)
+{
+    std::vector<std::string> writtenInterfaces;
+    recordAsyncDbusWrites(writtenInterfaces);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+    debugToken.tokenPath = "/xyz/openbmc_project/software/other/install";
+    debugToken.watchTokenInterfaceAdded();
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg = makeInterfacesAddedMsg(
+        rawBus, "/xyz/openbmc_project/software/other/erase");
+    EXPECT_NO_THROW({ debugToken.onTokenInterfaceAdded(msg); });
+
+    EXPECT_TRUE(writtenInterfaces.empty());
+    EXPECT_NE(debugToken.interfaceAddedMatch, nullptr);
+}
+
+TEST_F(DebugTokenInternalTest,
+       onTokenInterfaceAddedIgnoresSignalWhenNotWatching)
+{
+    std::vector<std::string> writtenInterfaces;
+    recordAsyncDbusWrites(writtenInterfaces);
+
+    MockdBusHandler dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+    debugToken.tokenPath = "/xyz/openbmc_project/software/other/install";
+
+    auto rawBus = sdbusplus::bus::new_default();
+    auto msg = makeInterfacesAddedMsg(rawBus, debugToken.tokenPath);
+    EXPECT_NO_THROW({ debugToken.onTokenInterfaceAdded(msg); });
+
+    EXPECT_TRUE(writtenInterfaces.empty());
+}
+
+TEST_F(DebugTokenInternalTest, updateDebugTokenEraseFailureStaysTerminal)
+{
+    wireUpdateManagerForActivateAsyncFailure(updateManager, busMock);
+
+    testing::NiceMock<MockdBusHandler> dbusHandler;
+    DebugToken debugToken(busMock, &updateManager, dbusHandler);
+
+    EXPECT_CALL(dbusHandler,
+                getSubTreePaths(testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Return(std::vector<std::string>{
+            "/xyz/openbmc_project/software/other/HGX_FW_Debug_Token_Erase"}));
+    EXPECT_CALL(dbusHandler,
+                getDbusPropertyVariant(testing::_, testing::_, testing::_))
+        .WillRepeatedly([](const char*, const char* property,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(property) == "UUID")
+            {
+                return std::string(EraseTokenUUID);
+            }
+            return std::string("/tmp/debug-token/erase/na.img");
+        });
+    failAsyncDbusWrites();
+
+    FirmwareDeviceIDRecords fwDeviceIDRecords;
+    ComponentImageInfos componentImageInfos;
+    std::istringstream package("");
+
+    EXPECT_NO_THROW({
+        stdexec::sync_wait(debugToken.updateDebugToken(
+            fwDeviceIDRecords, componentImageInfos, package));
+    });
+
+    EXPECT_EQ(debugToken.interfaceAddedMatch, nullptr);
 }

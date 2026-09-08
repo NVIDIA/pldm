@@ -168,6 +168,12 @@ class DebugToken
     std::vector<sdbusplus::bus::match_t> activationMatches;
 
     /**
+     * @brief matcher rule for the item updater re-publishing the token object
+     *
+     */
+    std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
+
+    /**
      * @brief Timer for debug token install or erase
      *
      */
@@ -184,6 +190,27 @@ class DebugToken
      * @param[in] msg - msg
      */
     void onActivationChangedMsg(sdbusplus::message::message& msg);
+
+    /**
+     * @brief Sets the version and activates once the object is re-published
+     *
+     * @param[in] msg - InterfacesAdded signal
+     */
+    void onTokenInterfaceAdded(sdbusplus::message::message& msg);
+
+    /**
+     * @brief Watch for the item updater re-publishing the token object
+     *
+     */
+    void watchTokenInterfaceAdded();
+
+    /**
+     * @brief Writes the version and requests activation on the re-published
+     *        object. Spawned on tokenScope by onTokenInterfaceAdded(), which
+     *        is a synchronous callback and so cannot co_await.
+     */
+    exec::task<void> completeTokenActivation();
+
     /**
      * @brief Timer for debug token install or erase timeout
      *
