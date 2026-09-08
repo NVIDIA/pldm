@@ -126,6 +126,7 @@ void DebugToken::updateDebugToken(
     const ComponentImageInfos& componentImageInfos, std::istream& package)
 {
     installToken = false;
+    interfaceAddedMatch.reset();
     bool installTokenInPackage = false;
     for (size_t index = 0; index < fwDeviceIDRecords.size(); ++index)
     {
@@ -192,12 +193,24 @@ void DebugToken::updateDebugToken(
                 info(
                     "Extracting to filepath: VERSION={VERSION}, FILEPATH={FILEPATH}",
                     "VERSION", version, "FILEPATH", filepath);
+                // Arm the watch before the write, or re-publish is missed.
+                tokenPath = objPath;
+                try
+                {
+                    watchTokenInterfaceAdded();
+                }
+                catch (const std::exception& e)
+                {
+                    error("Failed to watch for token object: {ERROR}", "ERROR",
+                          e.what());
+                    startUpdate();
+                    return;
+                }
                 std::ofstream outfile(filepath, std::ofstream::binary);
                 outfile.write(reinterpret_cast<const char*>(&buffer[0]),
                               buffer.size() *
                                   sizeof(uint8_t)); // Write to image offset
                 outfile.close();
-                tokenPath = objPath;
                 installToken = true;
                 tokenVersion = version;
             }
@@ -253,6 +266,7 @@ void DebugToken::updateDebugToken(
             "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
             "FAILED_MATCH", Server::Activation::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
+        interfaceAddedMatch.reset();
         startUpdate();
         return;
     }
@@ -273,19 +287,63 @@ void DebugToken::updateDebugToken(
             "Failed to create match_t for interface {FAILED_MATCH} and token path {TOKENPATH} with error: {ERROR}",
             "FAILED_MATCH", Server::ActivationProgress::interface, "TOKENPATH",
             tokenPath, "ERROR", e.what());
+        interfaceAddedMatch.reset();
         startUpdate();
         return;
     }
 
+    if (!installToken)
+    {
+        // Erase writes no image, so no re-publish comes; failure is final.
+        setVersion();
+        if (!activate())
+        {
+            error("Activation failed for debug token");
+            startUpdate();
+            return;
+        }
+        startTimer(debugTokenTimeout);
+        return;
+    }
+
+    // onTokenInterfaceAdded() activates once the object is re-published.
+    startTimer(debugTokenTimeout);
+}
+
+void DebugToken::watchTokenInterfaceAdded()
+{
+    interfaceAddedMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus, MatchRules::interfacesAdded("/xyz/openbmc_project/software/other"),
+        std::bind(&DebugToken::onTokenInterfaceAdded, this,
+                  std::placeholders::_1));
+}
+
+void DebugToken::onTokenInterfaceAdded(sdbusplus::message::message& msg)
+{
+    if (interfaceAddedMatch == nullptr)
+    {
+        return;
+    }
+
+    sdbusplus::message::object_path objPath;
+    pldm::dbus::InterfaceMap interfaces;
+    msg.read(objPath, interfaces);
+    if (std::string(objPath) != tokenPath)
+    {
+        return;
+    }
+
+    interfaceAddedMatch.reset();
+    info("Debug token object republished: OBJPATH={OBJPATH}", "OBJPATH",
+         tokenPath);
     setVersion();
     if (!activate())
     {
         error("Activation failed for debug token");
+        // Terminal, so the timer must not log the same failure again.
+        tokenStatus = true;
         startUpdate();
-        return;
     }
-    startTimer(debugTokenTimeout);
-    return;
 }
 
 std::pair<std::string, std::string> DebugToken::getFilePath(
@@ -363,6 +421,7 @@ void DebugToken::startTimer(auto timerExpiryTime)
         if (!tokenStatus)
         {
             activationMatches.clear();
+            interfaceAddedMatch.reset();
             auto componentName = std::filesystem::path(tokenPath).filename();
             if (componentName == "HGX_FW_Debug_Token_Erase")
             {
