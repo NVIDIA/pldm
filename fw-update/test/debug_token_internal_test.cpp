@@ -792,8 +792,8 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenInstallPathSetsTokenPresent)
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
+    // Install defers both writes to onTokenInterfaceAdded().
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(0);
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
@@ -845,8 +845,8 @@ TEST_F(DebugTokenInternalTest,
             }
             throw std::runtime_error("unexpected property request");
         });
-    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_))
-        .Times(testing::AtLeast(2));
+    // Install defers both writes to onTokenInterfaceAdded().
+    EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(0);
 
     FirmwareDeviceIDRecords fwDeviceIDRecords{
         {1,
