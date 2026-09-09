@@ -84,6 +84,10 @@ const std::map<DescriptorType, const char*> descriptorName{
     {PLDM_FWUP_UUID, "UUID"},
     {PLDM_FWUP_PNP_VENDOR_ID, "PnP Vendor ID"},
     {PLDM_FWUP_ACPI_VENDOR_ID, "ACPI Vendor ID"},
+    // DSP0267 Table 7: valid initial descriptor for a Downstream or
+    // Individual Device only, not for the FD itself.
+    {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, "IEEE Assigned Company ID"},
+    {PLDM_FWUP_SCSI_VENDOR_ID, "SCSI Vendor ID"},
     {PLDM_FWUP_PCI_DEVICE_ID, "PCI Device ID"},
     {PLDM_FWUP_PCI_SUBSYSTEM_VENDOR_ID, "PCI Subsystem Vendor ID"},
     {PLDM_FWUP_PCI_SUBSYSTEM_ID, "PCI Subsystem ID"},

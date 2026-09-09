@@ -1597,6 +1597,45 @@ TEST(QueryDownstreamIdentifiers, ParseResponseMsgSuccess)
     EXPECT_NE(output.find("1234"), std::string::npos);
 }
 
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgIeeeAssignedCompanyId)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    // DSP0267 Table 7: a downstream device reporting vendor defined values
+    // may use IEEE Assigned Company ID as its initial descriptor, not just
+    // PCI Vendor ID / IANA Enterprise ID.
+    std::vector<uint8_t> devices;
+    appendLE<uint16_t>(devices, 0);           // DownstreamDeviceIndex
+    devices.push_back(1);                     // DownstreamDescriptorCount
+    appendLE<uint16_t>(devices, PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID);
+    appendLE<uint16_t>(devices, 3);           // descriptor length
+    appendBytes(devices, {0xa0, 0x36, 0x9f}); // descriptor value (OUI)
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint32_t>(payload, 0);        // NextDataTransferHandle
+    payload.push_back(PLDM_START_AND_END); // TransferFlag
+    appendLE<uint32_t>(payload, devices.size());
+    appendLE<uint16_t>(payload, 1);        // NumberOfDownstreamDevices
+    appendBytes(payload, devices);
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+    std::string errOutput = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(output.find("\"IEEE Assigned Company ID\""), std::string::npos);
+    EXPECT_NE(output.find("a0369f"), std::string::npos);
+    EXPECT_EQ(errOutput.find("Unknown descriptor type"), std::string::npos);
+}
+
 TEST(QueryDownstreamIdentifiers, ParseResponseMsgVendorDefinedAscii)
 {
     CLI::App app{"test"};
