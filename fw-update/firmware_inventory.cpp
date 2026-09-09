@@ -215,6 +215,26 @@ void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                 continue;
             }
 
+            // Inventory objects are preserved across MCTP endpoint removal
+            // (see Manager::handleRemovedMctpEndpoints), so a re-discovered
+            // device reaches this create path with its object still
+            // registered. Re-registering the path makes
+            // sd_bus_add_object_vtable fail with -EEXIST and the freshly read
+            // version would be lost; refresh the existing entry in place
+            // instead, as the JSON-config and no-config branches below do.
+            if (auto existing = firmwareInventoryMap.find(
+                    std::make_pair(eid, compKey.second));
+                existing != firmwareInventoryMap.end())
+            {
+                existing->second->setVersion(std::get<CompVersion>(compInfo));
+
+                lg2::info(
+                    "Refreshed software D-Bus object (EM config): path={PATH}, component_id={ID}, version={VERSION}",
+                    "PATH", objPath, "ID", swId, "VERSION",
+                    std::get<CompVersion>(compInfo));
+                continue;
+            }
+
             auto entry = std::make_unique<Entry>(
                 bus, objPath, std::get<CompVersion>(compInfo), swId,
                 compObjManufacturer);
