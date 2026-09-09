@@ -6712,6 +6712,26 @@ TEST_F(DBusHandlerBusMockTest, setDbusPropertyThrowsOnVariantTypeMismatch)
                        PropertyValue{std::vector<std::string>{"a"}});
 }
 
+TEST(IsValidLoggingNamespace, AcceptsPlainIdentifiers)
+{
+    EXPECT_TRUE(isValidLoggingNamespace("NVSwitch_0"));
+    EXPECT_TRUE(isValidLoggingNamespace("GPU_3_XID"));
+    EXPECT_TRUE(isValidLoggingNamespace("Baseboard_0"));
+    EXPECT_TRUE(isValidLoggingNamespace("Manager"));
+    EXPECT_TRUE(isValidLoggingNamespace("_"));
+    // An unconfigured namespace is handled by the caller, not rejected here.
+    EXPECT_TRUE(isValidLoggingNamespace(""));
+}
+
+TEST(IsValidLoggingNamespace, RejectsValuesThatAreNotIdentifiers)
+{
+    EXPECT_FALSE(isValidLoggingNamespace("NVSwitch 0"));
+    EXPECT_FALSE(isValidLoggingNamespace("NVSwitch-0"));
+    EXPECT_FALSE(isValidLoggingNamespace("NVSwitch.0"));
+    EXPECT_FALSE(isValidLoggingNamespace("chassis/NVSwitch_0"));
+    EXPECT_FALSE(isValidLoggingNamespace("NVSwitch_0\n"));
+}
+
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options
 #endif

@@ -20,6 +20,8 @@
 #include <xyz/openbmc_project/Logging/Entry/server.hpp>
 #include <xyz/openbmc_project/ObjectMapper/client.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -207,7 +209,26 @@ struct SensorEventInfo
 {
     std::string impactedComponent;
     std::unordered_map<std::string, std::string> eventIdsMap;
+    std::string loggingNamespace{};
 };
+
+/**
+ * @brief Validate a logging namespace
+ *
+ * A logging namespace is a plain identifier, so a value holding anything
+ * else can never match a declared one.
+ *
+ * @param[in] loggingNamespace - logging namespace to validate
+ * @return true if every character is [A-Za-z0-9_]
+ */
+inline bool isValidLoggingNamespace(const std::string& loggingNamespace)
+{
+    return std::all_of(loggingNamespace.begin(), loggingNamespace.end(),
+                       [](unsigned char character) {
+                           return std::isalnum(character) != 0 ||
+                                  character == '_';
+                       });
+}
 
 struct DBusMapping
 {

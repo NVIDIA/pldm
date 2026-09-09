@@ -29,6 +29,7 @@
 #include "terminus_manager.hpp"
 
 #include <cstring>
+#include <stdexcept>
 
 namespace pldm
 {
@@ -542,6 +543,27 @@ exec::task<int> Terminus::getSensorEventInfoFromEM(const std::string& objPath)
                     path.c_str(), "EventIds",
                     "xyz.openbmc_project.Configuration.SensorEventInfo");
 
+                std::string loggingNamespace;
+                try
+                {
+                    loggingNamespace = co_await pldm::utils::coGetDbusProperty<
+                        std::string>(
+                        path.c_str(), "LoggingNamespace",
+                        "xyz.openbmc_project.Configuration.SensorEventInfo");
+                }
+                catch (const std::exception&)
+                {
+                    loggingNamespace.clear();
+                }
+
+                if (!loggingNamespace.empty() &&
+                    !pldm::utils::isValidLoggingNamespace(loggingNamespace))
+                {
+                    throw std::invalid_argument(
+                        "Invalid LoggingNamespace '" + loggingNamespace +
+                        "'; use only [A-Za-z0-9_]");
+                }
+
                 std::unordered_map<std::string, std::string> eventIdsMap;
                 if (eventIdsEM.size() % 2 != 0)
                 {
@@ -559,7 +581,8 @@ exec::task<int> Terminus::getSensorEventInfoFromEM(const std::string& objPath)
 
                 sensorEventInfoOverwriteTbl[sensorId] =
                     std::make_shared<utils::SensorEventInfo>(
-                        impactedComponent, std::move(eventIdsMap));
+                        impactedComponent, std::move(eventIdsMap),
+                        std::move(loggingNamespace));
             }
             catch (const std::exception& e)
             {

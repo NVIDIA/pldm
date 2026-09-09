@@ -138,7 +138,8 @@ class StateSensor
     void createLogEntryAdditionalOEMArgs(
         std::string& messageID, std::string& arg1, std::string& arg2,
         std::string& resolution, std::string& eventId,
-        std::string& impactedComponent, Level level = Level::Informational);
+        std::string& impactedComponent, const std::string& loggingNamespace,
+        Level level = Level::Informational);
 
 #ifdef OEM_NVIDIA
     /** @brief Synthesize a deterministic EventId from the

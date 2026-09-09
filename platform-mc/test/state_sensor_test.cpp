@@ -960,15 +960,17 @@ TEST_F(StateSensorCoverage, stateSensorLogEntryCoverage)
 
     std::string eventId{"OpenBMC.0.2.TestEvent"};
     std::string impactedComponent{"Board0"};
+    std::string loggingNamespace{"Board0"};
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Critical);
+        loggingNamespace, Level::Critical);
 
     eventId.clear();
     impactedComponent.clear();
+    loggingNamespace.clear();
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Informational);
+        loggingNamespace, Level::Informational);
 }
 
 TEST_F(StateSensorCoverage, stateSetCreatorOemSensorCoverage)
@@ -2227,6 +2229,96 @@ TEST_F(StateSensorDbusMockTest,
                               PLDM_STATESET_HEALTH_STATE_NORMAL);
 }
 
+TEST_F(StateSensorDbusMockTest,
+       handleSensorEventChargesEventToConfiguredNamespaceCoverage)
+{
+    constexpr auto* logObjPath = "/xyz/openbmc_project/logging";
+    constexpr auto* logInterface = "xyz.openbmc_project.Logging.Create";
+    constexpr auto* logService = "xyz.openbmc_project.Logging";
+
+    // The bug this guards: a boot-time burst of link-training events all land
+    // in the shared "default" bin and evict unrelated entries. Entity-manager
+    // declares which bin a sensor's events belong to, and that value has to
+    // reach the entry as the "namespace" key for phosphor-logging to charge
+    // the event to the switch that produced it.
+    auto sensorEventInfo = std::make_shared<pldm::utils::SensorEventInfo>(
+        "NVSwitch_0", std::unordered_map<std::string, std::string>{},
+        "NVSwitch_0");
+    auto sensor = makeTrackingStateSensor(52, 0x5200, sensorEventInfo);
+    auto trackedStateSet = std::make_shared<TrackingStateSet>(
+        "Health", TrackingStateSet::EventTuple{
+                      "OpenBMC.0.1.CustomNotice", "LinkUp", Level::Notice,
+                      "NVSWITCH0_LINKUP", "NVSwitch_0"});
+    sensor->stateSets = {trackedStateSet};
+    sensor->setInventoryPaths(
+        {"/xyz/openbmc_project/inventory/system/chassis/chassis52/nvswitch0"},
+        false);
+
+    const auto severity =
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Notice);
+
+    testing::InSequence seq;
+    expectNewMethodCall(logService, logObjPath, logInterface, "Create");
+    expectAppendString("OpenBMC.0.1.CustomNotice");
+    expectAppendString(severity.c_str());
+    expectStringMap({
+        {"DEVICE_NAME", "NVSwitch_0"},
+        {"ERROR_ID", "NVSWITCH0_LINKUP"},
+        {"REDFISH_MESSAGE_ARGS", "nvswitch0 Health,LinkUp"},
+        {"REDFISH_MESSAGE_ID", "OpenBMC.0.1.CustomNotice"},
+        {"namespace", "NVSwitch_0"},
+        {"xyz.openbmc_project.Logging.Entry.EventId", "NVSWITCH0_LINKUP"},
+        {"xyz.openbmc_project.Logging.Entry.Resolution", "None"},
+    });
+    expectBusCallNoReply();
+
+    sensor->handleSensorEvent(0, PLDM_STATESET_HEALTH_STATE_NORMAL, 0);
+}
+
+TEST_F(StateSensorDbusMockTest,
+       handleSensorEventOmitsNamespaceWhenConfigDeclaresNoneCoverage)
+{
+    constexpr auto* logObjPath = "/xyz/openbmc_project/logging";
+    constexpr auto* logInterface = "xyz.openbmc_project.Logging.Create";
+    constexpr auto* logService = "xyz.openbmc_project.Logging";
+
+    // A SensorEventInfo that predates LoggingNamespace: it still declares an
+    // ImpactedComponent, and the event must still be logged -- without a
+    // "namespace" key, so phosphor-logging falls back to the default bin.
+    // That is the behaviour of every platform that has not opted in.
+    auto sensorEventInfo = std::make_shared<pldm::utils::SensorEventInfo>(
+        "CX9", std::unordered_map<std::string, std::string>{}, "");
+    auto sensor = makeTrackingStateSensor(53, 0x5300, sensorEventInfo);
+    auto trackedStateSet = std::make_shared<TrackingStateSet>(
+        "Health",
+        TrackingStateSet::EventTuple{"OpenBMC.0.1.CustomNotice", "LinkUp",
+                                     Level::Notice, "CX9_LINKUP", "CX9"});
+    sensor->stateSets = {trackedStateSet};
+    sensor->setInventoryPaths(
+        {"/xyz/openbmc_project/inventory/system/chassis/chassis53/cx9"}, false);
+
+    const auto severity =
+        sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+            Level::Notice);
+
+    testing::InSequence seq;
+    expectNewMethodCall(logService, logObjPath, logInterface, "Create");
+    expectAppendString("OpenBMC.0.1.CustomNotice");
+    expectAppendString(severity.c_str());
+    expectStringMap({
+        {"DEVICE_NAME", "CX9"},
+        {"ERROR_ID", "CX9_LINKUP"},
+        {"REDFISH_MESSAGE_ARGS", "cx9 Health,LinkUp"},
+        {"REDFISH_MESSAGE_ID", "OpenBMC.0.1.CustomNotice"},
+        {"xyz.openbmc_project.Logging.Entry.EventId", "CX9_LINKUP"},
+        {"xyz.openbmc_project.Logging.Entry.Resolution", "None"},
+    });
+    expectBusCallNoReply();
+
+    sensor->handleSensorEvent(0, PLDM_STATESET_HEALTH_STATE_NORMAL, 0);
+}
+
 TEST_F(StateSensorDbusMockTest, createLogEntrySuccessCoverage)
 {
     constexpr auto* logObjPath = "/xyz/openbmc_project/logging";
@@ -2364,7 +2456,7 @@ TEST_F(StateSensorDbusMockTest, createLogEntryAdditionalOemArgsSuccessCoverage)
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Critical);
+        std::string{}, Level::Critical);
 }
 
 TEST_F(StateSensorDbusMockTest,
@@ -2396,7 +2488,7 @@ TEST_F(StateSensorDbusMockTest,
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Warning);
+        std::string{}, Level::Warning);
 }
 
 TEST_F(StateSensorDbusMockTest, createLogEntryAdditionalOemArgsFailureCoverage)
@@ -2439,7 +2531,7 @@ TEST_F(StateSensorDbusMockTest, createLogEntryAdditionalOemArgsFailureCoverage)
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Critical);
+        std::string{}, Level::Critical);
 }
 
 TEST_F(StateSensorDbusMockTest,
@@ -2479,7 +2571,7 @@ TEST_F(StateSensorDbusMockTest,
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Warning);
+        std::string{}, Level::Warning);
 }
 
 TEST_F(StateSensorDbusMockTest,
@@ -2521,7 +2613,7 @@ TEST_F(StateSensorDbusMockTest,
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Critical);
+        std::string{}, Level::Critical);
 }
 
 TEST_F(StateSensorDbusMockTest,
@@ -2562,7 +2654,7 @@ TEST_F(StateSensorDbusMockTest,
 
     sensor->createLogEntryAdditionalOEMArgs(
         messageId, arg1, arg2, resolution, eventId, impactedComponent,
-        Level::Warning);
+        std::string{}, Level::Warning);
 }
 
 TEST_F(StateSensorCoverage, stateSensorLongAssociationEntityIdCoverage)
