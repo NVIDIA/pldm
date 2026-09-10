@@ -83,7 +83,8 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
  *  Exposed so callers needing the raw property name (e.g. to build a canned
  *  D-Bus response in a test) do not have to duplicate it.
  */
-constexpr auto pldmExclusionIntf = "xyz.openbmc_project.Configuration.PLDMExclusion";
+constexpr auto pldmExclusionIntf =
+    "xyz.openbmc_project.Configuration.PLDMExclusion";
 
 /** @brief The flat inventory-path array published on @ref pldmExclusionIntf. */
 constexpr auto excludedInventoryProp = "ExcludedInventory";
@@ -98,10 +99,13 @@ constexpr auto excludedInventoryProp = "ExcludedInventory";
  *  contributes, so a platform may split the list across several
  *  entity-manager configuration fragments.
  *
- *  Queried fresh on every call rather than cached: callers are expected to
- *  invoke this once per discovery batch (see Manager::handleMctpEndpoints()),
- *  at a point where entity-manager's configuration is assumed to already be
- *  on the bus, so there is no late-arriving case to track incrementally.
+ *  Stateless: each call re-queries ObjectMapper rather than caching
+ *  internally, which keeps this unit testable in isolation. The caller (see
+ *  Manager::handleMctpEndpoints()) is the one that caches, invoking this at
+ *  most once - entity-manager's configuration is assumed to already be on
+ *  the bus by the first discovery batch, so there is no late-arriving case
+ *  to track incrementally, and nothing a later call could learn that the
+ *  first one didn't.
  *
  *  Never throws: an absent configuration, an unreadable object, or an
  *  unusable array element yields (or contributes) nothing.

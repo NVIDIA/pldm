@@ -152,8 +152,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         // matched EID is simply left out of mctpEidMap (discoverFDs never
         // sees it), which is also what keeps the online/version-change
         // refresh path silent for it - see
-        // InventoryManager::initiateGetActiveFirmwareVersion().
-        const auto excludedInventory = em_config::fetchExcludedInventory();
+        // InventoryManager::initiateGetActiveFirmwareVersion(). Fetched once
+        // and cached for the life of this Manager rather than on every call:
+        // the same on-the-bus-by-first-call assumption that lets
+        // fetchExcludedInventory() skip incremental tracking also means a
+        // later call would see nothing new, so re-querying ObjectMapper on
+        // every discovery batch would just be repeated work for the same
+        // answer.
+        if (!excludedInventoryCache)
+        {
+            excludedInventoryCache = em_config::fetchExcludedInventory();
+        }
+        const auto& excludedInventory = *excludedInventoryCache;
         MctpInfos allowedMctpInfos;
         allowedMctpInfos.reserve(mctpInfos.size());
         for (const auto& mctpInfo : mctpInfos)
@@ -472,6 +482,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     /** Configuration bindings from the Entity Manager */
     Configurations configurations;
+
+    /** @brief Cached result of em_config::fetchExcludedInventory(), fetched
+     *         once on the first handleMctpEndpoints() call and reused for
+     *         every later one instead of re-querying ObjectMapper. */
+    std::optional<ExcludedInventoryPaths> excludedInventoryCache;
 
     /** @brief Config info to create D-Bus firmware inventory */
     FirmwareInventoryInfo fwInventoryInfo;

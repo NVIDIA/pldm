@@ -104,9 +104,9 @@ class EmConfigTestDBusHandler : public DBusLoggingTestHandler
         const char* objPath, const char* dbusProp,
         const char* dbusInterface) const override
     {
-        auto it = propertyByKey().find(std::string(objPath) + "|" +
-                                       std::string(dbusInterface) + "|" +
-                                       std::string(dbusProp));
+        auto it = propertyByKey().find(
+            std::string(objPath) + "|" + std::string(dbusInterface) + "|" +
+            std::string(dbusProp));
         if (it == propertyByKey().end())
         {
             throw sdbusplus::exception::SdBusError(EIO, "mock Get");
@@ -423,8 +423,9 @@ TEST_F(EmConfigInternalTest, fetchExcludedInventoryUnionsAcrossObjects)
         {{"ExcludedInventory",
           std::vector<std::string>{"/inv/dev57", "/inv/dev58"}}});
 
-    EXPECT_EQ(em_config::fetchExcludedInventory(),
-              ExcludedInventoryPaths({"/inv/dev56", "/inv/dev57", "/inv/dev58"}));
+    EXPECT_EQ(
+        em_config::fetchExcludedInventory(),
+        ExcludedInventoryPaths({"/inv/dev56", "/inv/dev57", "/inv/dev58"}));
 }
 
 TEST_F(EmConfigInternalTest, fetchExcludedInventoryRejectsUnusableEntries)

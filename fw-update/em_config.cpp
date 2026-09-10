@@ -344,7 +344,7 @@ ExcludedInventoryPaths fetchExcludedInventory()
             props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
                 service.c_str(), objPath.c_str(), pldmExclusionIntf);
         }
-        catch (const std::exception& e)
+        catch (const sdbusplus::exception_t& e)
         {
             warning(
                 "fetchExcludedInventory: reading props at {PATH} failed, error - {ERROR}",
@@ -400,11 +400,11 @@ constexpr auto mctpNetworksPath = "/au/com/codeconstruct/mctp1/networks/";
 } // namespace
 
 std::optional<dbus::ObjectPath> fetchConfiguredByPath(pldm::eid mctpEid,
-                                                       NetworkId networkId)
+                                                      NetworkId networkId)
 {
-    const std::string endpointPath = std::string(mctpNetworksPath) +
-                                     std::to_string(networkId) +
-                                     "/endpoints/" + std::to_string(mctpEid);
+    const std::string endpointPath =
+        std::string(mctpNetworksPath) + std::to_string(networkId) +
+        "/endpoints/" + std::to_string(mctpEid);
 
     pldm::utils::PropertyValue value;
     try

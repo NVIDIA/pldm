@@ -47,7 +47,7 @@ Each entry must be the exact inventory path the excluded device's own
 on the MCTP endpoint's `xyz.openbmc_project.Association.Definitions`
 `Associations` property, e.g.:
 
-```
+```text
 $ busctl get-property xyz.openbmc_project.MCTPReactor \
     /au/com/codeconstruct/mctp1/networks/1/endpoints/80 \
     xyz.openbmc_project.Association.Definitions Associations
@@ -64,10 +64,12 @@ the normal startup and hot-plug paths this feature targets. There is no
 retry, no signal watch for a late-published or later-withdrawn exclusion, and
 no tracking of state already discovered before an exclusion took effect:
 `Manager::handleMctpEndpoints()` reads
-`xyz.openbmc_project.Configuration.PLDMExclusion.ExcludedInventory` fresh
-(unioned across every object publishing the interface) each time it is
-called, matches each of that call's endpoints against its own
-`configured_by` target, and simply never hands a matched EID to discovery.
+`xyz.openbmc_project.Configuration.PLDMExclusion.ExcludedInventory` (unioned
+across every object publishing the interface) once, on its first call, and
+caches the result for the life of the daemon rather than re-querying
+ObjectMapper on every discovery batch. Each call matches that call's
+endpoints against its own `configured_by` target and simply never hands a
+matched EID to discovery.
 For a matched endpoint, pldmd sends no PLDM command (`GetPLDMTypes`,
 `QueryDeviceIdentifiers`, `GetFirmwareParameters`), does not record it as a
 discovered endpoint, creates no firmware inventory for it, and never selects
