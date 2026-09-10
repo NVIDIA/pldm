@@ -938,6 +938,17 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
         };
 
         pendingPostResponseAction = [this, validateApplyStatusSuccess]() {
+            ComponentUpdaterSequence expectedState =
+                componentUpdaterState.expectedState(
+                    ComponentUpdaterSequence::ApplyComplete);
+            if (expectedState == ComponentUpdaterSequence::RetryRequest)
+            {
+                error("Dropping request retry for apply complete EID={EID}",
+                      "EID", eid);
+                return;
+            }
+
+            componentUpdaterState.nextState(componentUpdaterState.current);
             GetStatus(validateApplyStatusSuccess);
         };
     }
