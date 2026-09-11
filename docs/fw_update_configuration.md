@@ -76,6 +76,21 @@ discovered endpoint, creates no firmware inventory for it, and never selects
 it as a firmware update target. Platforms that publish no such record
 exclude nothing and behave exactly as before.
 
+The update-time descriptor refresh (`UpdateManager::processStream()`,
+triggered when a firmware package is processed) reaches endpoints through a
+separate path that is not limited to what discovery already knows about: its
+refresh set is the union of `descriptorMap`'s keys and every statically
+configured EID from the MCTP transport config (`StaticEndpointID` and bridge
+pool ranges), so a device not yet discovered at update time is still
+refreshed. An excluded EID never enters `descriptorMap`, but can still be
+statically configured, so this refresh path re-checks the same exclusion set
+(via `Manager::isEidExcludedFromFwUpdate()`) before refreshing each endpoint,
+using the network ID `handleMctpEndpoints()` cached the last time it saw that
+EID. An EID this pldmd instance has never discovered has no cached network ID
+and is not excluded by this check either - consistent with the
+`configured_by`-unresolved case above, since such a device cannot yet have a
+`configured_by` association to match against.
+
 Because there is no retry or retraction, an exclusion published or changed
 after pldmd has already handled a given endpoint has no effect on that
 endpoint until pldmd restarts or that endpoint is rediscovered (e.g. an

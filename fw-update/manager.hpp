@@ -88,6 +88,22 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                       // clang-analyzer-cplusplus.NewDeleteLeaks diagnostics.
                       // NOLINTNEXTLINE
                       [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
+                          // The update-time refresh set is seeded from
+                          // static MCTP config as well as descriptorMap, so
+                          // it can include an EID handleMctpEndpoints()
+                          // already excluded from firmware update (that EID
+                          // never made it into descriptorMap, but can still
+                          // have a StaticEndpointID or fall in a bridge
+                          // pool range). Re-check here so an excluded EID
+                          // never receives a live PLDM command from this
+                          // path either.
+                          if (isEidExcludedFromFwUpdate(eid))
+                          {
+                              info(
+                                  "EID {EID} excluded from PLDM firmware update by configuration; not refreshing",
+                                  "EID", eid);
+                              co_return PLDM_SUCCESS;
+                          }
                           dbus::MctpInterfaces mctpInterfaces;
                           getMctpInterfaces(mctpInterfaces);
 
@@ -115,7 +131,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  An endpoint entity-manager has excluded from firmware update (see
      *  em_config::fetchExcludedInventory()) is filtered out before any of
      *  that: it is never discovered, never named, never given firmware
-     *  inventory.
+     *  inventory. Also records the endpoint's network ID in
+     *  eidNetworkIdCache regardless of the exclusion outcome, so a later
+     *  call from an independent refresh path can re-check the same EID -
+     *  see isEidExcludedFromFwUpdate().
      *
      *  @param[in] mctpInfos - <EID, UUID> for every MCTP endpoint
      *  @param[in] signalMctpIfMap - UUID→InterfaceMap cache built from the
@@ -159,19 +178,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         // later call would see nothing new, so re-querying ObjectMapper on
         // every discovery batch would just be repeated work for the same
         // answer.
-        if (!excludedInventoryCache)
-        {
-            excludedInventoryCache = em_config::fetchExcludedInventory();
-        }
-        const auto& excludedInventory = *excludedInventoryCache;
         MctpInfos allowedMctpInfos;
         allowedMctpInfos.reserve(mctpInfos.size());
         for (const auto& mctpInfo : mctpInfos)
         {
             const auto mctpEid = std::get<eid>(mctpInfo);
-            const auto networkId = std::get<NetworkId>(mctpInfo);
-            if (em_config::isExcludedInventory(excludedInventory, mctpEid,
-                                               networkId))
+            // Recorded for every EID seen here, excluded or not: this is
+            // what lets isEidExcludedFromFwUpdate() re-check an EID later,
+            // from a refresh path (see UpdateManager's
+            // refreshSingleEndpointCallback) that only knows the EID, not
+            // its MCTP network ID.
+            eidNetworkIdCache[mctpEid] = std::get<NetworkId>(mctpInfo);
+            if (isEidExcludedFromFwUpdate(mctpEid))
             {
                 info(
                     "EID {EID} excluded from PLDM firmware update by configuration; not handling",
@@ -199,6 +217,47 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 }
             }
         }
+    }
+
+    /** @brief Whether an EID is currently excluded from PLDM firmware
+     *         update (see em_config::fetchExcludedInventory()).
+     *
+     *  Shared by handleMctpEndpoints() and the update-time descriptor
+     *  refresh path (UpdateManager's refreshSingleEndpointCallback, set up
+     *  in this class's constructor), which reaches an EID independently of
+     *  discovery: its refresh set is seeded from static MCTP config as well
+     *  as descriptorMap, so it can include an EID handleMctpEndpoints()
+     *  already excluded (that EID never entered descriptorMap, but can
+     *  still have a StaticEndpointID or fall in a bridge pool range).
+     *
+     *  The exclusion set is fetched once (same on-the-bus-by-first-call
+     *  assumption as fetchExcludedInventory() itself) and reused here. The
+     *  endpoint's network ID comes from eidNetworkIdCache, which
+     *  handleMctpEndpoints() populates for every EID it has ever seen -
+     *  excluded or not. An EID this Manager has never seen on any MCTP
+     *  discovery pass (e.g. seeded purely from static config, not yet
+     *  discovered) has no cached network ID and is treated as not excluded:
+     *  this matches em_config::isExcludedInventory()'s own "unresolved
+     *  configured_by is never excluded" rule, since such a device could not
+     *  yet have a configured_by association for entity-manager to match
+     *  against either.
+     *
+     *  @param[in] mctpEid - MCTP endpoint
+     *  @return true if the endpoint is excluded from firmware update
+     */
+    bool isEidExcludedFromFwUpdate(eid mctpEid)
+    {
+        if (!excludedInventoryCache)
+        {
+            excludedInventoryCache = em_config::fetchExcludedInventory();
+        }
+        auto it = eidNetworkIdCache.find(mctpEid);
+        if (it == eidNetworkIdCache.end())
+        {
+            return false;
+        }
+        return em_config::isExcludedInventory(*excludedInventoryCache,
+                                              mctpEid, it->second);
     }
 
     /** @brief Create firmware inventory and write the device UUID +
@@ -487,6 +546,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         once on the first handleMctpEndpoints() call and reused for
      *         every later one instead of re-querying ObjectMapper. */
     std::optional<ExcludedInventoryPaths> excludedInventoryCache;
+
+    /** @brief MCTP network ID last seen for each EID handleMctpEndpoints()
+     *         has processed, excluded or not. Lets
+     *         isEidExcludedFromFwUpdate() re-check an EID from a refresh
+     *         path that only knows the EID, not its network ID - see
+     *         em_config::isExcludedInventory(), which needs both. */
+    std::unordered_map<eid, NetworkId> eidNetworkIdCache;
 
     /** @brief Config info to create D-Bus firmware inventory */
     FirmwareInventoryInfo fwInventoryInfo;
