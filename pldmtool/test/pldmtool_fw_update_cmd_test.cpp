@@ -1560,20 +1560,27 @@ TEST(QueryDownstreamIdentifiers, CreateRequestMsgWithOptions)
 // pldmtool is used to validate device conformance, including how a device
 // responds to an out-of-range transfer operation flag, so the CLI must not
 // reject a value outside {GetNextPart, GetFirstPart} itself.
-TEST(QueryDownstreamIdentifiers, CreateRequestMsgAcceptsUnvalidatedFlag)
+// pldmtool must not gate --transfer_operation_flag on a CLI-side name
+// lookup; a bare numeric value has to reach
+// encode_query_downstream_identifiers_req() on its own, without the caller
+// spelling out "GetFirstPart". (libpldm's encoder is a separate matter: it
+// validates the field against the spec range (0/1) and fails a
+// deliberately out-of-range value with -EINVAL before it ever reaches the
+// wire, so this test can only pin the CLI side of the ask.)
+TEST(QueryDownstreamIdentifiers, CreateRequestMsgAcceptsNumericFlagByValue)
 {
     CLI::App app{"test"};
     auto sub = app.add_subcommand("test", "test");
     QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
                                    sub);
 
-    parseArgs(app, {"test", "test", "--transfer_operation_flag", "255"});
+    parseArgs(app, {"test", "test", "--transfer_operation_flag", "1"});
 
     auto [rc, requestMsg] = cmd.createRequestMsg();
     ASSERT_EQ(rc, PLDM_SUCCESS);
 
     auto* req = reinterpret_cast<pldm_msg*>(requestMsg.data());
-    EXPECT_EQ(req->payload[4], 0xff);
+    EXPECT_EQ(req->payload[4], PLDM_GET_FIRSTPART);
 }
 
 TEST(QueryDownstreamIdentifiers, ParseResponseMsgSuccess)
