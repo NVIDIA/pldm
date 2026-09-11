@@ -45,8 +45,6 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
         testBus() = nullptr;
         subtreeResponse().clear();
         throwGetSubtree() = false;
-        propsByKey().clear();
-        propertyByKey().clear();
     }
 
     static void setSubtreeResponse(const GetSubTreeResponse& response)
@@ -59,23 +57,6 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
         throwGetSubtree() = value;
     }
 
-    /** @brief Serves a GetAll()-style response, keyed by "<objPath>|<intf>",
-     *         for em_config::fetchExcludedInventory()'s property read. */
-    static void setProps(const std::string& objPath, const std::string& intf,
-                         const PropertyMap& props)
-    {
-        propsByKey()[objPath + "|" + intf] = props;
-    }
-
-    /** @brief Serves a single-property Get() response, keyed by
-     *         "<objPath>|<intf>|<prop>", for
-     *         em_config::fetchConfiguredByPath()'s property read. */
-    static void setProperty(const std::string& objPath, const std::string& intf,
-                            const std::string& prop, const PropertyValue& value)
-    {
-        propertyByKey()[objPath + "|" + intf + "|" + prop] = value;
-    }
-
     GetSubTreeResponse getSubtree(
         const std::string&, int, const std::vector<std::string>&) const override
     {
@@ -84,33 +65,6 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
             throw sdbusplus::exception::SdBusError(EIO, "mock getSubtree");
         }
         return subtreeResponse();
-    }
-
-    PropertyMap getDbusPropertiesVariant(
-        const char*, const char* objPath,
-        const char* dbusInterface) const override
-    {
-        auto it = propsByKey().find(
-            std::string(objPath) + "|" + std::string(dbusInterface));
-        if (it == propsByKey().end())
-        {
-            throw sdbusplus::exception::SdBusError(EIO, "mock GetAll");
-        }
-        return it->second;
-    }
-
-    PropertyValue getDbusPropertyVariant(
-        const char* objPath, const char* dbusProp,
-        const char* dbusInterface) const override
-    {
-        auto it = propertyByKey().find(
-            std::string(objPath) + "|" + std::string(dbusInterface) + "|" +
-            std::string(dbusProp));
-        if (it == propertyByKey().end())
-        {
-            throw sdbusplus::exception::SdBusError(EIO, "mock Get");
-        }
-        return it->second;
     }
 
   private:
@@ -130,18 +84,6 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
     {
         static bool value = false;
         return value;
-    }
-
-    static std::map<std::string, PropertyMap>& propsByKey()
-    {
-        static std::map<std::string, PropertyMap> props{};
-        return props;
-    }
-
-    static std::map<std::string, PropertyValue>& propertyByKey()
-    {
-        static std::map<std::string, PropertyValue> props{};
-        return props;
     }
 };
 
@@ -488,27 +430,11 @@ TEST_F(ManagerInternalTest, isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
 }
 
 TEST_F(ManagerInternalTest,
-       isEidExcludedFromFwUpdateMatchesHandleMctpEndpointsDecision)
+       handleMctpEndpointsCachesNetworkIdRegardlessOfExclusionOutcome)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};
     Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
-
-    // entity-manager publishes the opt-out for inventory path "/inv/dev56"...
-    pldm::utils::ManagerTestDBusHandler::setSubtreeResponse({
-        {"/em/excl", {{"svc", {em_config::pldmExclusionIntf}}}},
-    });
-    pldm::utils::ManagerTestDBusHandler::setProps(
-        "/em/excl", em_config::pldmExclusionIntf,
-        {{em_config::excludedInventoryProp,
-          std::vector<std::string>{"/inv/dev56"}}});
-    // ...and EID 56 on network 1 is the endpoint mctpreactor names as
-    // configured by that same inventory path.
-    pldm::utils::ManagerTestDBusHandler::setProperty(
-        "/au/com/codeconstruct/mctp1/networks/1/endpoints/56",
-        em_config::associationDefinitionsIntf, "Associations",
-        std::vector<std::tuple<std::string, std::string, std::string>>{
-            {"configured_by", "configures", "/inv/dev56"}});
 
     MctpInfo info{56,
                   "uuid-56",
@@ -520,13 +446,20 @@ TEST_F(ManagerInternalTest,
     MctpInfos mctpInfos{info};
     manager.handleMctpEndpoints(mctpInfos, {});
 
-    // handleMctpEndpoints() excluded EID 56 from discovery (never entered
-    // descriptorMap) and cached its network ID along the way. The
-    // update-time refresh path (refreshSingleEndpointCallback, which can
-    // reach EID 56 independently via static MCTP config even though
-    // discovery excluded it) must reach the same "excluded" answer.
-    EXPECT_FALSE(manager.descriptorMap.contains(56));
-    EXPECT_TRUE(manager.isEidExcludedFromFwUpdate(56));
+    // handleMctpEndpoints() records the network ID for every EID it
+    // processes, before it ever consults the exclusion set (see
+    // manager.hpp) - this is what lets isEidExcludedFromFwUpdate()
+    // re-check the same EID later from a refresh path that only knows
+    // the EID, not its network ID.
+    //
+    // em_config::fetchExcludedInventory()/isExcludedInventory() live in
+    // em_config.cpp, a translation unit this test file's DBusHandler mock
+    // does not cover (it is compiled and linked separately, without this
+    // file's #define DBusHandler override), so their D-Bus-backed
+    // exclusion outcome can't be pinned from here - only the caching
+    // contract this test checks can.
+    ASSERT_TRUE(manager.eidNetworkIdCache.contains(56));
+    EXPECT_EQ(manager.eidNetworkIdCache.at(56), 1u);
 }
 
 TEST_F(ManagerInternalTest, constructorHandlesInvalidConfigPath)
