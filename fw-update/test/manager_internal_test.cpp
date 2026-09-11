@@ -70,9 +70,8 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
     /** @brief Serves a single-property Get() response, keyed by
      *         "<objPath>|<intf>|<prop>", for
      *         em_config::fetchConfiguredByPath()'s property read. */
-    static void setProperty(const std::string& objPath,
-                            const std::string& intf, const std::string& prop,
-                            const PropertyValue& value)
+    static void setProperty(const std::string& objPath, const std::string& intf,
+                            const std::string& prop, const PropertyValue& value)
     {
         propertyByKey()[objPath + "|" + intf + "|" + prop] = value;
     }
@@ -91,8 +90,8 @@ class ManagerTestDBusHandler : public DBusLoggingTestHandler
         const char*, const char* objPath,
         const char* dbusInterface) const override
     {
-        auto it = propsByKey().find(std::string(objPath) + "|" +
-                                    std::string(dbusInterface));
+        auto it = propsByKey().find(
+            std::string(objPath) + "|" + std::string(dbusInterface));
         if (it == propsByKey().end())
         {
             throw sdbusplus::exception::SdBusError(EIO, "mock GetAll");
@@ -473,8 +472,7 @@ TEST_F(ManagerInternalTest, refreshSingleEndpointCallbackPathIsCallable)
     ASSERT_TRUE(rc.has_value());
 }
 
-TEST_F(ManagerInternalTest,
-       isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
+TEST_F(ManagerInternalTest, isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
 {
     const std::filesystem::path configPath{
         "./fw_update_jsons/fw_update_config_single_entry.json"};

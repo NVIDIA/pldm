@@ -81,35 +81,36 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                      std::bind_front(&Manager::createInventory, this),
                      std::bind_front(&Manager::updateInventory, this),
                      descriptorMap, downstreamDescriptorMap, componentInfoMap),
-        updateManager(event, handler, instanceIdDb, descriptorMap,
-                      componentInfoMap, componentNameMap, fwDebug,
-                      // manager_internal_test.cpp triggers false-positive
-                      // clang-analyzer-unix.Malloc and
-                      // clang-analyzer-cplusplus.NewDeleteLeaks diagnostics.
-                      // NOLINTNEXTLINE
-                      [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
-                          // The update-time refresh set is seeded from
-                          // static MCTP config as well as descriptorMap, so
-                          // it can include an EID handleMctpEndpoints()
-                          // already excluded from firmware update (that EID
-                          // never made it into descriptorMap, but can still
-                          // have a StaticEndpointID or fall in a bridge
-                          // pool range). Re-check here so an excluded EID
-                          // never receives a live PLDM command from this
-                          // path either.
-                          if (isEidExcludedFromFwUpdate(eid))
-                          {
-                              info(
-                                  "EID {EID} excluded from PLDM firmware update by configuration; not refreshing",
-                                  "EID", eid);
-                              co_return PLDM_SUCCESS;
-                          }
-                          dbus::MctpInterfaces mctpInterfaces;
-                          getMctpInterfaces(mctpInterfaces);
+        updateManager(
+            event, handler, instanceIdDb, descriptorMap, componentInfoMap,
+            componentNameMap, fwDebug,
+            // manager_internal_test.cpp triggers false-positive
+            // clang-analyzer-unix.Malloc and
+            // clang-analyzer-cplusplus.NewDeleteLeaks diagnostics.
+            // NOLINTNEXTLINE
+            [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
+                // The update-time refresh set is seeded from
+                // static MCTP config as well as descriptorMap, so
+                // it can include an EID handleMctpEndpoints()
+                // already excluded from firmware update (that EID
+                // never made it into descriptorMap, but can still
+                // have a StaticEndpointID or fall in a bridge
+                // pool range). Re-check here so an excluded EID
+                // never receives a live PLDM command from this
+                // path either.
+                if (isEidExcludedFromFwUpdate(eid))
+                {
+                    info(
+                        "EID {EID} excluded from PLDM firmware update by configuration; not refreshing",
+                        "EID", eid);
+                    co_return PLDM_SUCCESS;
+                }
+                dbus::MctpInterfaces mctpInterfaces;
+                getMctpInterfaces(mctpInterfaces);
 
-                          co_return co_await inventoryMgr.refreshSingleEndpoint(
-                              eid, mctpInterfaces, isTarget);
-                      }),
+                co_return co_await inventoryMgr.refreshSingleEndpoint(
+                    eid, mctpInterfaces, isTarget);
+            }),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap, componentNameMap)
     {
@@ -256,8 +257,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             return false;
         }
-        return em_config::isExcludedInventory(*excludedInventoryCache,
-                                              mctpEid, it->second);
+        return em_config::isExcludedInventory(*excludedInventoryCache, mctpEid,
+                                              it->second);
     }
 
     /** @brief Create firmware inventory and write the device UUID +
@@ -389,6 +390,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void handleRemovedMctpEndpoints(const MctpInfos& mctpInfos) override
     {
         inventoryMgr.removeFDs(mctpInfos);
+        // Drop the cached network ID too: if this EID is reused before the
+        // next handleMctpEndpoints() call refreshes it,
+        // isEidExcludedFromFwUpdate() must not evaluate exclusion against
+        // the old endpoint's network.
+        for (const auto& mctpInfo : mctpInfos)
+        {
+            eidNetworkIdCache.erase(std::get<eid>(mctpInfo));
+        }
     }
 
     /** @brief Helper function to invoke registered handlers for
