@@ -1542,9 +1542,9 @@ TEST(QueryDownstreamIdentifiers, CreateRequestMsgWithOptions)
     QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
                                    sub);
 
-    parseArgs(app, {"test", "test", "--data_transfer_handle", "305419896",
-                    "--transfer_operation_flag",
-                    std::to_string(PLDM_GET_NEXTPART)});
+    parseArgs(app,
+              {"test", "test", "--data_transfer_handle", "305419896",
+               "--transfer_operation_flag", std::to_string(PLDM_GET_NEXTPART)});
 
     auto [rc, requestMsg] = cmd.createRequestMsg();
     ASSERT_EQ(rc, PLDM_SUCCESS);
@@ -1662,6 +1662,7 @@ TEST(QueryDownstreamIdentifiers, ParseResponseMsgVendorDefinedAscii)
     auto sub = app.add_subcommand("test", "test");
     QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
                                    sub);
+    parseArgs(app, {"test", "test", "--convert_ascii"});
 
     // A vendor defined descriptor whose title and value are both ASCII, plus
     // one whose value is binary and so is reported as hex.
@@ -1718,6 +1719,58 @@ TEST(QueryDownstreamIdentifiers, ParseResponseMsgVendorDefinedAscii)
     EXPECT_NE(output.find("\"PN\": \"" + value + "\""), std::string::npos);
     EXPECT_NE(output.find("\"B\": \"dead\""), std::string::npos);
     EXPECT_NE(output.find("\"FWMajor\": \"2e\""), std::string::npos);
+}
+
+// `ParseResponseMsgVendorDefinedHexByDefault`: without --convert_ascii, a
+// vendor defined value that could be rendered as ASCII is still reported as
+// hex - the caller has to opt in.
+TEST(QueryDownstreamIdentifiers, ParseResponseMsgVendorDefinedHexByDefault)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    const std::string title{"PN"};
+    const std::string value{"692-9F0FZ-0000-0R0"};
+
+    std::vector<uint8_t> ascii;
+    ascii.push_back(PLDM_STR_TYPE_ASCII);
+    ascii.push_back(static_cast<uint8_t>(title.size()));
+    appendBytes(ascii, {title.begin(), title.end()});
+    appendBytes(ascii, {value.begin(), value.end()});
+
+    std::vector<uint8_t> devices;
+    appendLE<uint16_t>(devices, 1); // DownstreamDeviceIndex
+    devices.push_back(1);           // DownstreamDescriptorCount
+    appendLE<uint16_t>(devices, PLDM_FWUP_VENDOR_DEFINED);
+    appendLE<uint16_t>(devices, ascii.size());
+    appendBytes(devices, ascii);
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint32_t>(payload, 0);        // NextDataTransferHandle
+    payload.push_back(PLDM_START_AND_END); // TransferFlag
+    appendLE<uint32_t>(payload, devices.size());
+    appendLE<uint16_t>(payload, 1);        // NumberOfDownstreamDevices
+    appendBytes(payload, devices);
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(output.find("\"PN\": \"" + value + "\""), std::string::npos);
+    std::ostringstream hexValue;
+    for (uint8_t byte : value)
+    {
+        hexValue << std::setfill('0') << std::setw(2) << std::hex
+                 << static_cast<unsigned>(byte);
+    }
+    EXPECT_NE(output.find("\"PN\": \"" + hexValue.str() + "\""),
+              std::string::npos);
 }
 
 TEST(QueryDownstreamIdentifiers, ParseResponseMsgDecodeError)

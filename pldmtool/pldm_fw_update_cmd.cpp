@@ -516,6 +516,16 @@ class QueryDeviceIdentifiers : public CommandInterface
     QueryDeviceIdentifiers& operator=(const QueryDeviceIdentifiers&) = delete;
     QueryDeviceIdentifiers& operator=(QueryDeviceIdentifiers&&) = delete;
 
+    explicit QueryDeviceIdentifiers(const char* type, const char* name,
+                                    CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_flag(
+            "--convert_ascii", asciiConvert,
+            "Render vendor defined descriptor values as ASCII text when\n"
+            "every byte is printable, instead of hex.");
+    }
+
     /**
      * @brief Implementation of createRequestMsg for QueryDeviceIdentifiers
      *
@@ -530,15 +540,18 @@ class QueryDeviceIdentifiers : public CommandInterface
      * @param[in] payloadLength
      */
     void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override;
-    using CommandInterface::CommandInterface;
+
+  private:
+    bool asciiConvert = false;
 };
 
 /*
- * Render a vendor defined descriptor value. DSP0267 leaves the value opaque,
- * but devices populate it with text such as a part or serial number, so
- * report it as ASCII whenever every byte is printable. Values which are not
- * text, and therefore would not survive the conversion, keep their hex
- * encoding.
+ * Render a vendor defined descriptor value as ASCII. DSP0267 leaves the
+ * value opaque, but devices populate it with text such as a part or serial
+ * number; callers opt into this with --convert_ascii, since not every value
+ * is text and hex is otherwise the safe default. Values which are not text,
+ * and therefore would not survive the conversion, keep their hex encoding
+ * even when the caller opted in.
  *
  * A single byte is left as hex as well. Devices use one byte descriptors for
  * numbers rather than text, e.g. a firmware major version of 46 arrives as
@@ -581,11 +594,15 @@ static std::string vendorDefinedDescriptorValue(const DescriptorData& descData,
  *  @param[in,out] descriptors - descriptor json response
  *  @param[in] descriptorType - descriptor type
  *  @param[in] descriptorVal - descriptor value
+ *  @param[in] asciiConvert - render a vendor defined descriptor value as
+ *             ASCII when every byte is printable, per --convert_ascii;
+ *             otherwise it is always reported as hex
  */
 static void updateDescriptor(
     ordered_json& descriptors, const DescriptorType& descriptorType,
     const std::variant<DescriptorData, VendorDefinedDescriptorInfo>&
-        descriptorVal)
+        descriptorVal,
+    bool asciiConvert)
 {
     std::ostringstream descDataStream;
     DescriptorData descData;
@@ -604,7 +621,7 @@ static void updateDescriptor(
     }
 
     std::string descValue = descDataStream.str();
-    if (descriptorType == PLDM_FWUP_VENDOR_DEFINED)
+    if (descriptorType == PLDM_FWUP_VENDOR_DEFINED && asciiConvert)
     {
         descValue = vendorDefinedDescriptorValue(descData, descValue);
     }
@@ -714,7 +731,8 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
         {
             std::vector<uint8_t> descData(
                 descriptorData.ptr, descriptorData.ptr + descriptorData.length);
-            updateDescriptor(descriptors, descriptorType, descData);
+            updateDescriptor(descriptors, descriptorType, descData,
+                             asciiConvert);
         }
         else
         {
@@ -740,7 +758,8 @@ void QueryDeviceIdentifiers::parseResponseMsg(pldm_msg* responsePtr,
                 vendorDefinedDescriptorData.ptr +
                     vendorDefinedDescriptorData.length);
             updateDescriptor(descriptors, descriptorType,
-                             std::make_tuple(vendorDescTitle, vendorDescData));
+                             std::make_tuple(vendorDescTitle, vendorDescData),
+                             asciiConvert);
         }
         auto nextDescriptorOffset =
             sizeof(pldm_descriptor_tlv().descriptor_type) +
@@ -1600,6 +1619,11 @@ class QueryDownstreamIdentifiers : public CommandInterface
             "The operation flag that indicates whether this is the start\n"
             "of the transfer.\nCommon values\n"
             "{GetNextPart = 0x0, GetFirstPart = 0x1}");
+
+        app->add_flag(
+            "--convert_ascii", asciiConvert,
+            "Render vendor defined descriptor values as ASCII text when\n"
+            "every byte is printable, instead of hex.");
     }
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
@@ -1725,7 +1749,8 @@ class QueryDownstreamIdentifiers : public CommandInterface
         {
             std::vector<uint8_t> descData(
                 descriptorData, descriptorData + desc.descriptor_length);
-            updateDescriptor(descriptors, desc.descriptor_type, descData);
+            updateDescriptor(descriptors, desc.descriptor_type, descData,
+                             asciiConvert);
             return true;
         }
 
@@ -1749,7 +1774,8 @@ class QueryDownstreamIdentifiers : public CommandInterface
             vendorDefinedDescriptorData.ptr +
                 vendorDefinedDescriptorData.length);
         updateDescriptor(descriptors, desc.descriptor_type,
-                         std::make_tuple(vendorDescTitle, vendorDescData));
+                         std::make_tuple(vendorDescTitle, vendorDescData),
+                         asciiConvert);
         return true;
     }
 
@@ -1759,6 +1785,7 @@ class QueryDownstreamIdentifiers : public CommandInterface
     // this must accept any value the caller passes rather than restrict it
     // to {GetNextPart, GetFirstPart}.
     uint16_t transferOperationFlagValue = PLDM_GET_FIRSTPART;
+    bool asciiConvert = false;
 };
 
 void registerCommand(CLI::App& app)
