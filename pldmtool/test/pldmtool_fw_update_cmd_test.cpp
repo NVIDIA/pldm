@@ -1543,7 +1543,8 @@ TEST(QueryDownstreamIdentifiers, CreateRequestMsgWithOptions)
                                    sub);
 
     parseArgs(app, {"test", "test", "--data_transfer_handle", "305419896",
-                    "--transfer_operation_flag", "GETNEXTPART"});
+                    "--transfer_operation_flag",
+                    std::to_string(PLDM_GET_NEXTPART)});
 
     auto [rc, requestMsg] = cmd.createRequestMsg();
     ASSERT_EQ(rc, PLDM_SUCCESS);
@@ -1554,6 +1555,25 @@ TEST(QueryDownstreamIdentifiers, CreateRequestMsgWithOptions)
     EXPECT_EQ(req->payload[2], 0x34);
     EXPECT_EQ(req->payload[3], 0x12);
     EXPECT_EQ(req->payload[4], PLDM_GET_NEXTPART);
+}
+
+// pldmtool is used to validate device conformance, including how a device
+// responds to an out-of-range transfer operation flag, so the CLI must not
+// reject a value outside {GetNextPart, GetFirstPart} itself.
+TEST(QueryDownstreamIdentifiers, CreateRequestMsgAcceptsUnvalidatedFlag)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    QueryDownstreamIdentifiers cmd("fw_update", "QueryDownstreamIdentifiers",
+                                   sub);
+
+    parseArgs(app, {"test", "test", "--transfer_operation_flag", "255"});
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    ASSERT_EQ(rc, PLDM_SUCCESS);
+
+    auto* req = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    EXPECT_EQ(req->payload[4], 0xff);
 }
 
 TEST(QueryDownstreamIdentifiers, ParseResponseMsgSuccess)

@@ -84,8 +84,6 @@ const std::map<DescriptorType, const char*> descriptorName{
     {PLDM_FWUP_UUID, "UUID"},
     {PLDM_FWUP_PNP_VENDOR_ID, "PnP Vendor ID"},
     {PLDM_FWUP_ACPI_VENDOR_ID, "ACPI Vendor ID"},
-    // DSP0267 Table 7: valid initial descriptor for a Downstream or
-    // Individual Device only, not for the FD itself.
     {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, "IEEE Assigned Company ID"},
     {PLDM_FWUP_SCSI_VENDOR_ID, "SCSI Vendor ID"},
     {PLDM_FWUP_PCI_DEVICE_ID, "PCI Device ID"},
@@ -101,11 +99,6 @@ const std::map<std::string, transfer_resp_flag> transferRespFlag{
     {"MIDDLE", PLDM_MIDDLE},
     {"END", PLDM_END},
     {"STARTANDEND", PLDM_START_AND_END},
-};
-
-const std::map<std::string, transfer_op_flag> transferOperationFlag{
-    {"GETNEXTPART", PLDM_GET_NEXTPART},
-    {"GETFIRSTPART", PLDM_GET_FIRSTPART},
 };
 
 const std::map<uint8_t, const char*> transferFlagName{
@@ -1603,12 +1596,10 @@ class QueryDownstreamIdentifiers : public CommandInterface
             "transfer operation flag is set to GetFirstPart.");
 
         app->add_option(
-               "--transfer_operation_flag", transferOperationFlagValue,
-               "The operation flag that indicates whether this is the start\n"
-               "of the transfer.\nPossible values\n"
-               "{GetNextPart = 0x0, GetFirstPart = 0x1}")
-            ->transform(CLI::CheckedTransformer(transferOperationFlag,
-                                                CLI::ignore_case));
+            "--transfer_operation_flag", transferOperationFlagValue,
+            "The operation flag that indicates whether this is the start\n"
+            "of the transfer.\nCommon values\n"
+            "{GetNextPart = 0x0, GetFirstPart = 0x1}");
     }
 
     std::pair<int, std::vector<uint8_t>> createRequestMsg() override
@@ -1763,7 +1754,11 @@ class QueryDownstreamIdentifiers : public CommandInterface
     }
 
     uint32_t dataTransferHandle = 0;
-    transfer_op_flag transferOperationFlagValue = PLDM_GET_FIRSTPART;
+    // Not a checked enum: pldmtool is used to validate device conformance,
+    // including how a device responds to an out-of-range operation flag, so
+    // this must accept any value the caller passes rather than restrict it
+    // to {GetNextPart, GetFirstPart}.
+    uint16_t transferOperationFlagValue = PLDM_GET_FIRSTPART;
 };
 
 void registerCommand(CLI::App& app)
