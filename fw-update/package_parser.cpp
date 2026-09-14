@@ -205,6 +205,16 @@ size_t PackageParser::parseCompImageInfoArea(
             // Skipping component opaque data length field
             sizeOfCompImageInfo += sizeof(CompOpaqueDataLength);
         }
+        // Guard the size_t subtraction: an oversized (locally recomputed)
+        // sizeOfCompImageInfo would underflow pkgHdrRemainingSize and walk
+        // offset past pkgHdr into an OOB decode.
+        if (sizeOfCompImageInfo > pkgHdrRemainingSize)
+        {
+            error(
+                "Component image information size '{SIZE}' exceeds remaining package header size '{REMAINING}'",
+                "SIZE", sizeOfCompImageInfo, "REMAINING", pkgHdrRemainingSize);
+            throw InternalFailure();
+        }
         offset += sizeOfCompImageInfo;
         pkgHdrRemainingSize -= sizeOfCompImageInfo;
     }

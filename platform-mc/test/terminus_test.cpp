@@ -3708,7 +3708,9 @@ TEST_F(TerminusTest, repeatedParseAndStateSetPointerCoverage)
         static_cast<unsigned char>(PLDM_STATESET_ID_LINKSTATE),
         0x00};
     std::vector<StateSetData> stateSets;
-    terminus.parseStateSetInfo(stateInfoData.data(), 1, stateSets);
+    terminus.parseStateSetInfo(stateInfoData.data(), 1,
+                               stateInfoData.data() + stateInfoData.size(),
+                               stateSets);
     ASSERT_EQ(1u, stateSets.size());
 
     const std::array<unsigned char, 8> multiStateInfoData{
@@ -3721,7 +3723,9 @@ TEST_F(TerminusTest, repeatedParseAndStateSetPointerCoverage)
         0x1,
         0x03};
     stateSets.clear();
-    terminus.parseStateSetInfo(multiStateInfoData.data(), 2, stateSets);
+    terminus.parseStateSetInfo(
+        multiStateInfoData.data(), 2,
+        multiStateInfoData.data() + multiStateInfoData.size(), stateSets);
     ASSERT_EQ(2u, stateSets.size());
     EXPECT_EQ(2u, std::get<1>(stateSets[0]).size());
     EXPECT_EQ(2u, std::get<1>(stateSets[1]).size());

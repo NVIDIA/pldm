@@ -321,7 +321,12 @@ TEST(PackageParserStubErrorTest, parseCompImageFr04AddsOpaqueDataLengthToOffset)
     stubMode = StubMode::success;
     PackageParserProbe parser(64, "v", 8,
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
-    std::vector<uint8_t> data(8, 0);
+    // Size the buffer to exactly one component-image-info entry so the parser
+    // consumes it without advancing past the buffer (which parseCompImageInfo
+    // now rejects to prevent an OOB read).
+    std::vector<uint8_t> data(sizeof(pldm_component_image_information) + 1 +
+                                  sizeof(CompOpaqueDataLength),
+                              0);
 
     auto offset = parser.callParseComp(
         1, data, 0, PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);

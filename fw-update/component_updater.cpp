@@ -434,7 +434,13 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         return response;
     }
 
-    if (offset + length > compSize + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
+    // Compute offset+length in 64-bit: a hostile offset near UINT32_MAX would
+    // otherwise wrap the uint32_t sum, bypassing the DATA_OUT_OF_RANGE check
+    // below and driving a wrapped package seek/read (OOB file access).
+    const uint64_t endOffset = static_cast<uint64_t>(offset) + length;
+
+    if (endOffset >
+        static_cast<uint64_t>(compSize) + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
     {
         error("RequestFirmwareData reported PLDM_FWUP_DATA_OUT_OF_RANGE, "
               "EID={EID}, offset={OFFSET}, length={LENGTH}",
@@ -450,7 +456,7 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
         }
         return response;
     }
-    else if (offset + length >= compSize)
+    else if (endOffset >= compSize)
     {
         info("Last chunk of firmware data sent for EID={EID}, "
              "ComponentIndex={COMPONENTINDEX}. Starting UA_T6 timer.",
@@ -474,9 +480,9 @@ Response ComponentUpdater::requestFwData(const pldm_msg* request,
     handleLogging(offset, length);
 
     size_t padBytes = 0;
-    if (offset + length > compSize)
+    if (endOffset > compSize)
     {
-        padBytes = offset + length - compSize;
+        padBytes = endOffset - compSize;
     }
 
     response.resize(sizeof(pldm_msg_hdr) + sizeof(completionCode) + length);
