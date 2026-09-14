@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstddef>
 #include <filesystem>
 #include <format>
 
@@ -652,7 +653,12 @@ bool Terminus::isPdrAlreadyApplied(const std::vector<uint8_t>& pdr)
         case PLDM_STATE_SENSOR_PDR:
         {
             std::vector<uint8_t> copy = pdr;
-            uint16_t id = std::get<0>(parseStateSensorPDR(copy));
+            auto parsed = parseStateSensorPDR(copy);
+            if (!parsed)
+            {
+                return false;
+            }
+            uint16_t id = std::get<0>(*parsed);
             for (const auto& s : stateSensors)
             {
                 if (s && s->sensorId == id)
@@ -682,7 +688,12 @@ bool Terminus::isPdrAlreadyApplied(const std::vector<uint8_t>& pdr)
         case PLDM_STATE_EFFECTER_PDR:
         {
             std::vector<uint8_t> copy = pdr;
-            uint16_t id = std::get<0>(parseStateEffecterPDR(copy));
+            auto parsed = parseStateEffecterPDR(copy);
+            if (!parsed)
+            {
+                return false;
+            }
+            uint16_t id = std::get<0>(*parsed);
             for (const auto& e : stateEffecters)
             {
                 if (e && e->effecterId == id)
@@ -799,7 +810,10 @@ bool Terminus::parseOnePdrIntoCache(std::vector<uint8_t>& pdr)
     else if (pdrHdr->type == PLDM_STATE_SENSOR_PDR)
     {
         auto parsedPdr = parseStateSensorPDR(pdr);
-        stateSensorPdrs.emplace_back(std::move(parsedPdr));
+        if (parsedPdr)
+        {
+            stateSensorPdrs.emplace_back(std::move(*parsedPdr));
+        }
     }
     else if (pdrHdr->type == PLDM_PDR_ENTITY_ASSOCIATION)
     {
@@ -808,14 +822,19 @@ bool Terminus::parseOnePdrIntoCache(std::vector<uint8_t>& pdr)
     else if (pdrHdr->type == PLDM_STATE_EFFECTER_PDR)
     {
         auto parsedPdr = parseStateEffecterPDR(pdr);
-        stateEffecterPdrs.emplace_back(std::move(parsedPdr));
+        if (parsedPdr)
+        {
+            stateEffecterPdrs.emplace_back(std::move(*parsedPdr));
+        }
     }
     else if (pdrHdr->type == PLDM_OEM_PDR)
     {
         auto parsedPdr = parseOemPDR(pdr);
 #ifdef OEM_NVIDIA
-        if (static_cast<nvidia::NvidiaOemPdrType>(std::get<2>(parsedPdr)[2]) ==
-            nvidia::NvidiaOemPdrType::NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
+        if (std::get<2>(parsedPdr).size() > 2 &&
+            static_cast<nvidia::NvidiaOemPdrType>(std::get<2>(parsedPdr)[2]) ==
+                nvidia::NvidiaOemPdrType::
+                    NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
         {
             auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
                 std::get<2>(parsedPdr));
@@ -946,7 +965,12 @@ void Terminus::removeModifiedPdrObjects(
         else if (type == PLDM_STATE_SENSOR_PDR)
         {
             std::vector<uint8_t> copy = raw;
-            uint16_t id = std::get<0>(parseStateSensorPDR(copy));
+            auto parsed = parseStateSensorPDR(copy);
+            if (!parsed)
+            {
+                continue;
+            }
+            uint16_t id = std::get<0>(*parsed);
             std::erase_if(stateSensors, [id](const auto& s) {
                 return s && s->sensorId == id;
             });
@@ -971,7 +995,12 @@ void Terminus::removeModifiedPdrObjects(
         else if (type == PLDM_STATE_EFFECTER_PDR)
         {
             std::vector<uint8_t> copy = raw;
-            uint16_t id = std::get<0>(parseStateEffecterPDR(copy));
+            auto parsed = parseStateEffecterPDR(copy);
+            if (!parsed)
+            {
+                continue;
+            }
+            uint16_t id = std::get<0>(*parsed);
             std::erase_if(stateEffecters, [id](const auto& e) {
                 return e && e->effecterId == id;
             });
@@ -1362,8 +1391,23 @@ std::shared_ptr<EffecterAuxiliaryNames>
 
 void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
 {
+    // Ensure the fixed part of the entity-association PDR (header + container +
+    // num_children, up to the first child) is actually present before the
+    // reinterpret_cast reads those fields.
+    constexpr size_t minLen =
+        sizeof(struct pldm_pdr_hdr) +
+        offsetof(struct pldm_pdr_entity_association, children);
+    if (pdrData.size() < minLen)
+    {
+        lg2::error("Entity association PDR too short: TID:{TID}", "TID", tid);
+        return;
+    }
     auto pdr = reinterpret_cast<const struct pldm_pdr_entity_association*>(
         pdrData.data() + sizeof(struct pldm_pdr_hdr));
+    // num_children is wire-declared; cap the loop at how many child records
+    // actually fit in the received buffer so children[i] cannot read OOB.
+    const size_t maxChildren =
+        (pdrData.size() - minLen) / sizeof(pdr->children[0]);
     ContainerID containerId{pdr->container_id};
     EntityInfo container{pdr->container.entity_container_id,
                          pdr->container.entity_type,
@@ -1385,7 +1429,7 @@ void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
     }
 
     auto& containedEntities{entityAssociations[containerId].second};
-    for (int i = 0; i < pdr->num_children; ++i)
+    for (size_t i = 0; i < pdr->num_children && i < maxChildren; ++i)
     {
         EntityInfo entityInfo{pdr->children[i].entity_container_id,
                               pdr->children[i].entity_type,
@@ -1451,16 +1495,22 @@ std::shared_ptr<pldm_numeric_effecter_value_pdr>
     return parsedPdr;
 }
 
-std::tuple<SensorID, StateSetInfo> Terminus::parseStateSensorPDR(
+std::optional<std::tuple<SensorID, StateSetInfo>> Terminus::parseStateSensorPDR(
     std::vector<uint8_t>& stateSensorPdr)
 {
+    if (stateSensorPdr.size() < sizeof(pldm_state_sensor_pdr))
+    {
+        lg2::error("State sensor PDR too short: TID:{TID}", "TID", tid);
+        return std::nullopt;
+    }
     auto pdr =
         reinterpret_cast<const pldm_state_sensor_pdr*>(stateSensorPdr.data());
     std::vector<StateSetData> stateSets{};
     auto statesPtr = pdr->possible_states;
     auto compositeSensorCount = pdr->composite_sensor_count;
 
-    parseStateSetInfo(statesPtr, compositeSensorCount, stateSets);
+    parseStateSetInfo(statesPtr, compositeSensorCount,
+                      stateSensorPdr.data() + stateSensorPdr.size(), stateSets);
 
     auto entityInfo =
         std::make_tuple(static_cast<ContainerID>(pdr->container_id),
@@ -1472,16 +1522,23 @@ std::tuple<SensorID, StateSetInfo> Terminus::parseStateSensorPDR(
     return std::make_tuple(pdr->sensor_id, std::move(stateSetInfo));
 }
 
-std::tuple<EffecterID, StateSetInfo> Terminus::parseStateEffecterPDR(
-    std::vector<uint8_t>& stateEffecterPdr)
+std::optional<std::tuple<EffecterID, StateSetInfo>>
+    Terminus::parseStateEffecterPDR(std::vector<uint8_t>& stateEffecterPdr)
 {
+    if (stateEffecterPdr.size() < sizeof(pldm_state_effecter_pdr))
+    {
+        lg2::error("State effecter PDR too short: TID:{TID}", "TID", tid);
+        return std::nullopt;
+    }
     auto pdr = reinterpret_cast<const pldm_state_effecter_pdr*>(
         stateEffecterPdr.data());
     std::vector<StateSetData> stateSets{};
     auto statesPtr = pdr->possible_states;
     auto compositeSensorCount = pdr->composite_effecter_count;
 
-    parseStateSetInfo(statesPtr, compositeSensorCount, stateSets);
+    parseStateSetInfo(statesPtr, compositeSensorCount,
+                      stateEffecterPdr.data() + stateEffecterPdr.size(),
+                      stateSets);
 
     auto entityInfo =
         std::make_tuple(static_cast<ContainerID>(pdr->container_id),
@@ -1492,14 +1549,30 @@ std::tuple<EffecterID, StateSetInfo> Terminus::parseStateEffecterPDR(
     return std::make_tuple(pdr->effecter_id, std::move(stateSetInfo));
 }
 
-void Terminus::parseStateSetInfo(const unsigned char* statesPtr,
-                                 uint8_t compositeSensorCount,
-                                 std::vector<StateSetData>& stateSets)
+void Terminus::parseStateSetInfo(
+    const unsigned char* statesPtr, uint8_t compositeSensorCount,
+    const unsigned char* end, std::vector<StateSetData>& stateSets)
 {
     while (compositeSensorCount--)
     {
+        // The fixed part of the record (state_set_id + possible_states_size +
+        // states[0]) must be present before we read possible_states_size and
+        // walk the states[] array driven by that wire-declared size.
+        if (statesPtr > end || static_cast<size_t>(end - statesPtr) <
+                                   sizeof(state_sensor_possible_states))
+        {
+            break;
+        }
         auto state =
             reinterpret_cast<const state_sensor_possible_states*>(statesPtr);
+        // states[] is bitfield8_t; compare/subtract in byte units against end.
+        const unsigned char* statesBytes =
+            reinterpret_cast<const unsigned char*>(&state->states[0]);
+        if (statesBytes > end || static_cast<size_t>(end - statesBytes) <
+                                     state->possible_states_size)
+        {
+            break;
+        }
         auto stateSedId = state->state_set_id;
         PossibleStates possibleStates{};
         uint8_t possibleStatesPos{};
@@ -1529,13 +1602,29 @@ void Terminus::parseStateSetInfo(const unsigned char* statesPtr,
 
 OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
 {
-    auto pdr = reinterpret_cast<const pldm_oem_pdr*>(oemPdr.data());
     std::vector<uint8_t> data;
 
+    // Ensure the fixed OEM PDR header (iana, record id, data_length) is present
+    // before it is read via the cast.
+    constexpr size_t fixedLen = offsetof(pldm_oem_pdr, vendor_specific_data);
+    if (oemPdr.size() < fixedLen)
+    {
+        lg2::error("OEM PDR too short: TID:{TID}", "TID", tid);
+        return {};
+    }
+    auto pdr = reinterpret_cast<const pldm_oem_pdr*>(oemPdr.data());
+
     // vendor-specific data bytes starting from 0; 0 = 1 byte, 1 = 2 bytes,
-    // and so on.
-    data.resize(pdr->data_length + 1);
-    memcpy(data.data(), pdr->vendor_specific_data, data.size());
+    // and so on. data_length is wire-declared: cap the copy at the bytes that
+    // are actually present so the memcpy source cannot read past oemPdr.
+    size_t wantBytes = static_cast<size_t>(pdr->data_length) + 1;
+    const size_t availBytes = oemPdr.size() - fixedLen;
+    if (wantBytes > availBytes)
+    {
+        wantBytes = availBytes;
+    }
+    data.resize(wantBytes);
+    memcpy(data.data(), pdr->vendor_specific_data, wantBytes);
     return std::make_tuple(pdr->vendor_iana, pdr->ome_record_id,
                            std::move(data));
 }

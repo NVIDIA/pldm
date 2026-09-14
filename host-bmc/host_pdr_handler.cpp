@@ -148,6 +148,8 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
     uint32_t recordHandle{};
     if (!nextRecordHandle)
     {
+        // Start of a fresh fetch cycle: reset the continuation counter.
+        hostPDRFetchCount = 0;
         if (!pdrRecordHandles.empty())
         {
             recordHandle = pdrRecordHandles.front();
@@ -156,6 +158,17 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
     }
     else
     {
+        // Bound a terminus that keeps returning a non-zero nextRecordHandle so
+        // it cannot stream PDRs into the repo without end (memory-exhaustion
+        // DoS). The ceiling is deliberately generous vs any real PDR repo.
+        static constexpr size_t maxHostPDRFetches = 65535;
+        if (++hostPDRFetchCount > maxHostPDRFetches)
+        {
+            std::cerr << "Aborting GetPDR fetch: exceeded " << maxHostPDRFetches
+                      << " records in one cycle from EID "
+                      << static_cast<unsigned>(mctp_eid) << std::endl;
+            return;
+        }
         recordHandle = nextRecordHandle;
     }
     auto instanceId = instanceIdDb.next(mctp_eid);
@@ -434,6 +447,16 @@ void HostPDRHandler::processHostPDRs(
         }
         else
         {
+            // respCount is wire-declared and sizes the pdr buffer; ensure it is
+            // at least a PDR header before the struct fields below are read
+            // (OOB read / empty-buffer deref otherwise).
+            if (respCount < sizeof(pldm_pdr_hdr))
+            {
+                std::cerr << "GetPDR response too short: respCount="
+                          << respCount << std::endl;
+                return;
+            }
+
             // when nextRecordHandle is 0, we need the recordHandle of the last
             // PDR and not 0-1.
             if (!nextRecordHandle)
@@ -460,6 +483,13 @@ void HostPDRHandler::processHostPDRs(
             {
                 if (pdrHdr->type == PLDM_TERMINUS_LOCATOR_PDR)
                 {
+                    if (respCount < sizeof(pldm_terminus_locator_pdr))
+                    {
+                        std::cerr
+                            << "Terminus locator PDR too short: respCount="
+                            << respCount << std::endl;
+                        return;
+                    }
                     pdrTerminusHandle =
                         extractTerminusHandle<pldm_terminus_locator_pdr>(pdr);
                     auto tlpdr =

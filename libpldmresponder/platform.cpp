@@ -543,10 +543,24 @@ int Handler::pldmPDRRepositoryChgEvent(
                 return PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
             }
 
-            changeRecordData +=
-                dataOffset + (numberOfChangeEntries * sizeof(ChangeEntry));
-            changeRecordDataSize -=
-                dataOffset + (numberOfChangeEntries * sizeof(ChangeEntry));
+            // Bound the wire-declared count/offset for every operation with a
+            // division-based check, so the advance sum cannot wrap and walk
+            // changeRecordData out of bounds into the next decode.
+            if (dataOffset > changeRecordDataSize)
+            {
+                return PLDM_ERROR_INVALID_LENGTH;
+            }
+            const size_t maxEntries =
+                (changeRecordDataSize - dataOffset) / sizeof(ChangeEntry);
+            if (static_cast<size_t>(numberOfChangeEntries) > maxEntries)
+            {
+                return PLDM_ERROR_INVALID_LENGTH;
+            }
+            size_t changeRecordAdvance =
+                dataOffset + (static_cast<size_t>(numberOfChangeEntries) *
+                              sizeof(ChangeEntry));
+            changeRecordData += changeRecordAdvance;
+            changeRecordDataSize -= changeRecordAdvance;
         }
     }
     if (hostPDRHandler)
