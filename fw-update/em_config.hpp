@@ -78,11 +78,7 @@ struct DeviceComponentInfo
 std::optional<DeviceComponentInfo> fetchComponentInfo(
     const Configurations& configurations, pldm::eid mctpEid);
 
-/** @brief entity-manager interface carrying the firmware-update opt-out.
- *
- *  Exposed so callers needing the raw property name (e.g. to build a canned
- *  D-Bus response in a test) do not have to duplicate it.
- */
+/** @brief entity-manager interface carrying the firmware-update opt-out. */
 constexpr auto pldmExclusionIntf =
     "xyz.openbmc_project.Configuration.PLDMExclusion";
 
@@ -92,23 +88,8 @@ constexpr auto excludedInventoryProp = "ExcludedInventory";
 /** @brief Read the inventory paths currently excluded from PLDM T5 firmware
  *         update, unioned across every publishing entity-manager object.
  *
- *  entity-manager publishes the opt-out as a Configuration.PLDMExclusion
- *  object carrying a flat `ExcludedInventory` array of inventory object
- *  paths (a flat array survives PlatformExposes flattening, where a nested
- *  object array would not). Every object publishing the interface
- *  contributes, so a platform may split the list across several
- *  entity-manager configuration fragments.
- *
- *  Stateless: each call re-queries ObjectMapper rather than caching
- *  internally, which keeps this unit testable in isolation. The caller (see
- *  Manager::handleMctpEndpoints()) is the one that caches, invoking this at
- *  most once - entity-manager's configuration is assumed to already be on
- *  the bus by the first discovery batch, so there is no late-arriving case
- *  to track incrementally, and nothing a later call could learn that the
- *  first one didn't.
- *
- *  Never throws: an absent configuration, an unreadable object, or an
- *  unusable array element yields (or contributes) nothing.
+ *  Stateless: each call re-queries ObjectMapper rather than caching. The
+ *  caller (see Manager::handleMctpEndpoints()) caches the result instead.
  *
  *  @return the effective excluded-inventory set; empty when nothing is
  *          excluded
@@ -118,27 +99,14 @@ ExcludedInventoryPaths fetchExcludedInventory();
 /** @brief D-Bus interface publishing the configured_by/configures
  *         associations that identify a device to firmware update.
  *
- *  Published by mctpreactor directly on the MCTP endpoint object
- *  (`.../networks/<n>/endpoints/<eid>`), on its own D-Bus service - not by
- *  entity-manager, and not the same connection that owns the endpoint object
- *  itself.
+ *  Published by mctpreactor on the MCTP endpoint object itself, not by
+ *  entity-manager.
  */
 constexpr auto associationDefinitionsIntf =
     "xyz.openbmc_project.Association.Definitions";
 
 /** @brief Read the configured_by association target directly off one MCTP
  *         endpoint's own Association.Definitions.
- *
- *  mctpreactor publishes the endpoint's identity as a forward "configured_by"
- *  association naming the entity-manager inventory object that configures
- *  it (e.g.
- *  "/xyz/openbmc_project/inventory/system/platform/.../IO_Board_SMA_2"),
- *  independent of any interface that object happens to carry. This is the
- *  exact string PLDMExclusion's ExcludedInventory entries are meant to name.
- *
- *  Never throws: an endpoint with no configured_by association yet (or
- *  ever, if mctpreactor does not name it), or an unreadable property,
- *  yields nullopt.
  *
  *  @param[in] mctpEid - MCTP endpoint
  *  @param[in] networkId - the endpoint's MCTP network index
@@ -149,10 +117,6 @@ std::optional<dbus::ObjectPath> fetchConfiguredByPath(pldm::eid mctpEid,
 
 /** @brief Whether an MCTP endpoint's own configured_by target is in the
  *         given excluded-inventory set.
- *
- *  An endpoint with no resolvable configured_by association is never
- *  excluded by this: there is nothing to match, so it is treated as not
- *  (yet) opted out rather than conservatively excluded.
  *
  *  @param[in] excludedPaths - the effective excluded-inventory set (see
  *             fetchExcludedInventory())

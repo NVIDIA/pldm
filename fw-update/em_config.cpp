@@ -324,9 +324,7 @@ ExcludedInventoryPaths fetchExcludedInventory()
     }
     catch (const std::exception&)
     {
-        // Platforms that need no opt-out publish no exclusion config at all,
-        // and GetSubTree reports that as an error. That is the common case,
-        // so it is not traced.
+        // No PLDMExclusion config published; nothing excluded.
         return excluded;
     }
 
@@ -383,18 +381,15 @@ ExcludedInventoryPaths fetchExcludedInventory()
 
 namespace
 {
-/** @brief The forward association name mctpreactor publishes on an MCTP
- *         endpoint's Association.Definitions to name the entity-manager
- *         inventory object that configures it. */
+/** @brief The forward association name naming the entity-manager inventory
+ *         object that configures an MCTP endpoint. */
 constexpr auto configuredByAssociationName = "configured_by";
 
 /** @brief Property carrying the (forward, reverse, endpoint) triples on
  *         @ref associationDefinitionsIntf. */
 constexpr auto associationsProp = "Associations";
 
-/** @brief mctpreactor's own service path for the MCTP endpoint object this
- *         reads Association.Definitions from - the MCTP control service
- *         path, not an entity-manager one. */
+/** @brief mctpreactor's MCTP control service path for an endpoint object. */
 constexpr auto mctpNetworksPath = "/au/com/codeconstruct/mctp1/networks/";
 
 } // namespace
@@ -414,9 +409,7 @@ std::optional<dbus::ObjectPath> fetchConfiguredByPath(pldm::eid mctpEid,
     }
     catch (const std::exception&)
     {
-        // The common case for an endpoint mctpreactor has not (yet, or
-        // ever) named: no Association.Definitions published at all, which
-        // GetProperty reports as an error rather than an empty array.
+        // No Association.Definitions published for this endpoint.
         return std::nullopt;
     }
 
