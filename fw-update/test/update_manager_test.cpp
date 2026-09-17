@@ -39,9 +39,11 @@
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <array>
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <set>
@@ -2009,6 +2011,73 @@ TEST_F(UpdateManagerTest, requestedTargetsUseSpecificApplicabilityMessages)
     EXPECT_EQ(
         connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
         "TargetNotInPackage," + updateManager.parser->pkgVersion);
+}
+
+TEST_F(UpdateManagerTest, updateComponentUsesComponentOnlyMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+    const auto& imageInfos = updateManager.parser->getComponentImageInfos();
+    const auto imageIndex = std::get<ApplicableComponents>(record).front();
+    const auto& image = imageInfos[imageIndex];
+    const auto identifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            image);
+    const auto comparisonStamp = std::get<static_cast<size_t>(
+        ComponentImageInfoPos::CompComparisonStampPos)>(image);
+    std::ostringstream stamp;
+    stamp << "0x" << std::uppercase << std::hex << std::setw(8)
+          << std::setfill('0') << comparisonStamp;
+    componentNameMap = {{7, {{identifier, "ComponentA"}}}};
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    struct TestCase
+    {
+        uint8_t responseCode;
+        std::string messageId;
+        std::string arguments;
+    };
+    const auto commonArguments =
+        "ComponentA," + updateManager.parser->pkgVersion;
+    const std::array cases{
+        TestCase{PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL,
+                 "NvidiaUpdate.1.3.ComponentImageIdentical",
+                 commonArguments + "," + stamp.str()},
+        TestCase{PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER,
+                 "NvidiaUpdate.1.3.ComponentDowngradeRejected",
+                 commonArguments + "," + stamp.str()},
+    };
+
+    for (const auto& test : cases)
+    {
+        SCOPED_TRACE(test.messageId + test.arguments);
+        connection->reset();
+        updateManager.createUpdateComponentResponseMessage(7, record, 0,
+                                                           test.responseCode);
+        EXPECT_EQ(connection->loggingCalls.size(), 1U);
+        EXPECT_EQ(connection->loggingCalls.front().messageId, test.messageId);
+        EXPECT_EQ(connection->loggingCalls.front()
+                      .additionalData["REDFISH_MESSAGE_ARGS"],
+                  test.arguments);
+    }
+
+    for (const uint8_t responseCode : std::array<uint8_t, 7>{
+             PLDM_CCRC_VENDOR_COMP_RESP_CODE_RANGE_MIN,
+             PLDM_CCRC_INCOMPLETE_COMP_IMAGE_SET, PLDM_CCRC_COMP_NOT_SUPPORTED,
+             PLDM_CCRC_COMP_INFO_NO_MATCH, PLDM_CCRC_COMP_VER_STR_IDENTICAL,
+             PLDM_CCRC_COMP_VER_STR_LOWER,
+             PLDM_CCRC_VENDOR_COMP_RESP_CODE_RANGE_MAX})
+    {
+        connection->reset();
+        updateManager.createUpdateComponentResponseMessage(7, record, 0,
+                                                           responseCode);
+        EXPECT_TRUE(connection->loggingCalls.empty());
+    }
 }
 #endif
 

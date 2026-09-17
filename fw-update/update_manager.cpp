@@ -282,6 +282,82 @@ void UpdateManager::createMessageRegistryResourceErrors(
                    overrideSeverity);
 }
 
+void UpdateManager::publishPackageFailure()
+{
+    clearFirmwareUpdatePackage();
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
+}
+
+bool UpdateManager::hasReportableComponent(
+    const FirmwareDeviceIDRecord& fwDeviceIDRecord, size_t compIndex,
+    const char* context) const
+{
+    if (!parser)
+    {
+        error("Parser is not initialized. Cannot report {CONTEXT}.", "CONTEXT",
+              context);
+        return false;
+    }
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    if (compIndex >= applicableComponents.size())
+    {
+        error("Invalid component index while reporting {CONTEXT}: {INDEX}",
+              "CONTEXT", context, "INDEX", compIndex);
+        return false;
+    }
+    return true;
+}
+
+std::string UpdateManager::reportedComponentName(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex)
+{
+    const auto imageIndex =
+        std::get<ApplicableComponents>(fwDeviceIDRecord)[compIndex];
+    const auto identifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            parser->getComponentImageInfos()[imageIndex]);
+    auto name = getComponentName(eid, fwDeviceIDRecord, compIndex);
+    if (name.empty())
+    {
+        name = std::to_string(identifier);
+    }
+    return name;
+}
+
+void UpdateManager::createUpdateComponentResponseMessage(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex, uint8_t compatibilityResponseCode)
+{
+    const auto definition =
+        getUpdateComponentMessageDefinition(compatibilityResponseCode);
+    if (!definition)
+    {
+        return;
+    }
+    if (!hasReportableComponent(fwDeviceIDRecord, compIndex,
+                                "UpdateComponent response"))
+    {
+        return;
+    }
+
+    const auto imageIndex =
+        std::get<ApplicableComponents>(fwDeviceIDRecord)[compIndex];
+    const auto& component = parser->getComponentImageInfos()[imageIndex];
+    const auto& componentVersion =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompVersionPos)>(
+            component);
+    const auto comparisonStamp = std::get<static_cast<size_t>(
+        ComponentImageInfoPos::CompComparisonStampPos)>(component);
+    logFirmwareUpdateMessage(
+        *definition,
+        {.packageVersion = parser->pkgVersion,
+         .component = reportedComponentName(eid, fwDeviceIDRecord, compIndex),
+         .componentVersion = componentVersion,
+         .comparisonStamp = comparisonStamp});
+}
+
 void UpdateManager::handleDuplicateDescriptorMatch(
     mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord)
 {
@@ -1801,12 +1877,6 @@ void UpdateManager::cancelAllUpdates()
 
         deviceUpdaterPtr->handleUpdateTimeout();
     }
-}
-
-void UpdateManager::publishPackageFailure()
-{
-    clearFirmwareUpdatePackage();
-    publishFinalActivationStatus(software::Activation::Activations::Failed);
 }
 
 void UpdateManager::handleInvalidPackageError()

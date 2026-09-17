@@ -330,6 +330,11 @@ class UpdateManager
         const std::string& messageError, const std::string& resolution,
         bool overrideSeverity = false);
 
+    /** @brief Report an UpdateComponent compatibility rejection. */
+    void createUpdateComponentResponseMessage(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex, uint8_t compatibilityResponseCode);
+
     /** @brief Emit an Info-severity ResourceErrorsDetected entry per
      *         applicable component when multiple package records match
      *         the same device.
@@ -697,6 +702,15 @@ class UpdateManager
 
     /** @brief Clear the package and publish activation Failed. */
     void publishPackageFailure();
+
+    /** @brief True when the parser and component index can be reported. */
+    bool hasReportableComponent(const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+                                size_t compIndex, const char* context) const;
+
+    /** @brief Inventory name for a component, or its numeric identifier. */
+    std::string reportedComponentName(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex);
 
     /** @brief Handle invalid firmware package error by logging and setting
      *         activation state

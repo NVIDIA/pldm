@@ -44,15 +44,37 @@ using CompCompatibilityMessageId = std::string;
 using CompCompatibilityMessage = std::string;
 using CompCompatibilityResolution = std::string;
 using MessageMapping = std::pair<OemMessage, OemResolution>;
-using ComponentCompatibilityMessageMapping =
-    std::tuple<CompCompatibilityMessageId, CompCompatibilityMessage,
-               CompCompatibilityResolution>;
+enum class NvidiaUpdateMessage;
+
+struct ComponentCompatibilityMessageMapping
+{
+    CompCompatibilityMessageId messageId;
+    CompCompatibilityMessage message;
+    CompCompatibilityResolution resolution;
+    std::optional<NvidiaUpdateMessage> nvidiaMessage{};
+};
 using ErrorMapping = std::unordered_map<ErrorCode, MessageMapping>;
 using CompCompatibilityMapping =
     std::unordered_map<ErrorCode, ComponentCompatibilityMessageMapping>;
 using CommandMapping = std::map<pldm_firmware_update_commands, ErrorMapping>;
 using CommandToCompCompatibilityMap =
     std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
+
+#ifdef OEM_NVIDIA
+ErrorCode constexpr reqGrantError = 0x70;
+ErrorCode constexpr writeProtectEnabled = 0x71;
+ErrorCode constexpr internalError = 0x72;
+ErrorCode constexpr imageIdentical = 0x90;
+ErrorCode constexpr metadataAuthFailure = 0x91;
+ErrorCode constexpr secVersionCheckFailure = 0x93;
+ErrorCode constexpr secKeysReovked = 0x94;
+ErrorCode constexpr imageAuthFailure = 0x95;
+ErrorCode constexpr skuMismatch = 0x97;
+ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
+ErrorCode constexpr apReqGrantOnHold = 0x99;
+ErrorCode constexpr applyAuthFailure = 0xB0;
+ErrorCode constexpr fwUpdateBlocked = 0xD0;
+#endif
 
 enum class NvidiaUpdateMessage
 {
@@ -69,6 +91,8 @@ enum class NvidiaUpdateMessage
     packageSignatureIntegrityFailed,
     packageSignatureVerificationFailed,
     packageSignatureRequired,
+    componentUpdateSkipped,
+    firmwareComponentComparisonStampLower,
 };
 
 enum class NvidiaUpdateMessageArgumentType
@@ -81,6 +105,8 @@ enum class NvidiaUpdateMessageArgumentType
     packageVersionSignatureVersion,
     target,
     targetPackageVersion,
+    componentPackageVersionComparisonStamp,
+    componentVersionPackageVersionReason,
 };
 
 enum class NvidiaUpdateMessageSeverity
@@ -186,6 +212,20 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                 "Obtain a firmware package signed by an authority trusted by this BMC and containing the required NVIDIA signature header, then retry the update.",
                 NvidiaUpdateMessageArgumentType::packageVersion,
                 NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::componentUpdateSkipped:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageIdentical",
+                "No action is required. To reinstall the same firmware, set the Redfish ForceUpdate parameter to true.",
+                NvidiaUpdateMessageArgumentType::
+                    componentPackageVersionComparisonStamp,
+                NvidiaUpdateMessageSeverity::informational};
+        case NvidiaUpdateMessage::firmwareComponentComparisonStampLower:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentDowngradeRejected",
+                "Use a firmware package containing an upgrade for the installed component. To intentionally downgrade firmware, set the Redfish ForceUpdate parameter to true, then retry the update.",
+                NvidiaUpdateMessageArgumentType::
+                    componentPackageVersionComparisonStamp,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -202,8 +242,12 @@ struct NvidiaUpdateMessageFacts
 {
     std::string_view packageVersion{};
     std::string_view target{};
+    std::string_view component{};
+    std::string_view componentVersion{};
+    std::string_view command{};
     std::string_view reason{};
     std::string_view signatureVersion{};
+    std::optional<uint32_t> comparisonStamp{};
     std::optional<uint32_t> expectedChecksum{};
     std::optional<uint32_t> calculatedChecksum{};
 };
@@ -223,7 +267,6 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
     const auto checksum = [](std::optional<uint32_t> value) {
         return nvidiaUpdateHex(value.value_or(0), 8);
     };
-
     std::string reason{facts.reason};
     if (reason.empty())
     {
@@ -253,6 +296,14 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
         case Arg::targetPackageVersion:
             return {std::string{facts.target},
                     std::string{facts.packageVersion}};
+        case Arg::componentPackageVersionComparisonStamp:
+            return {std::string{facts.component},
+                    std::string{facts.packageVersion},
+                    checksum(facts.comparisonStamp)};
+        case Arg::componentVersionPackageVersionReason:
+            return {std::string{facts.component},
+                    std::string{facts.componentVersion},
+                    std::string{facts.packageVersion}, reason};
     }
     return {};
 }
@@ -308,22 +359,6 @@ inline void logFirmwareUpdateMessage(const NvidiaUpdateMessageDefinition&,
 #endif
 
 constexpr uint8_t maxDecodeFailureRetries = 3;
-
-#ifdef OEM_NVIDIA
-ErrorCode constexpr reqGrantError = 0x70;
-ErrorCode constexpr writeProtectEnabled = 0x71;
-ErrorCode constexpr internalError = 0x72;
-ErrorCode constexpr imageIdentical = 0x90;
-ErrorCode constexpr metadataAuthFailure = 0x91;
-ErrorCode constexpr secVersionCheckFailure = 0x93;
-ErrorCode constexpr secKeysReovked = 0x94;
-ErrorCode constexpr imageAuthFailure = 0x95;
-ErrorCode constexpr skuMismatch = 0x97;
-ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
-ErrorCode constexpr apReqGrantOnHold = 0x99;
-ErrorCode constexpr applyAuthFailure = 0xB0;
-ErrorCode constexpr fwUpdateBlocked = 0xD0;
-#endif
 
 /* request update error mapping */
 static ErrorMapping requestUpdateMapping{
@@ -574,11 +609,13 @@ static ErrorMapping getStatusMapping{
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
     {PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL,
      {"NvidiaUpdate.1.0.ComponentUpdateSkipped", "Component image is identical",
-      "Retry firmware update operation with the force flag"}},
+      "Retry firmware update operation with the force flag",
+      NvidiaUpdateMessage::componentUpdateSkipped}},
     {PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER,
      {"ResourceEvent.1.0.ResourceErrorsDetected",
       "Component comparison stamp is lower than the firmware component comparison stamp in the FD",
-      "Retry firmware update operation with the force flag"}},
+      "Retry firmware update operation with the force flag",
+      NvidiaUpdateMessage::firmwareComponentComparisonStampLower}},
     {PLDM_CCRC_INCOMPLETE_COMP_IMAGE_SET,
      {"ResourceEvent.1.0.ResourceErrorsDetected",
       "Incomplete component image set",
@@ -606,6 +643,31 @@ static const CommandMapping commandMappingTbl = {
 static const CommandToCompCompatibilityMap CommandToCompCompatibilityTbl = {
     {PLDM_UPDATE_COMPONENT, updateComponentResponseCodeMapping},
 };
+
+/** @brief Return the NVIDIA message attached to an existing UpdateComponent
+ *         compatibility mapping. */
+inline std::optional<NvidiaUpdateMessageDefinition>
+    getUpdateComponentMessageDefinition(uint8_t compatibilityResponseCode)
+{
+#ifndef OEM_NVIDIA
+    static_cast<void>(compatibilityResponseCode);
+    return std::nullopt;
+#else
+    const auto command =
+        CommandToCompCompatibilityTbl.find(PLDM_UPDATE_COMPONENT);
+    if (command == CommandToCompCompatibilityTbl.end())
+    {
+        return std::nullopt;
+    }
+    const auto mapping = command->second.find(compatibilityResponseCode);
+    if (mapping == command->second.end() || !mapping->second.nvidiaMessage)
+    {
+        return std::nullopt;
+    }
+    return getNvidiaUpdateMessageDefinition(*mapping->second.nvidiaMessage);
+#endif
+}
+
 
 /**
  * @brief Get the Oem Message for enhanced message registry
@@ -676,9 +738,9 @@ inline std::tuple<bool, std::string, std::string, std::string>
         if (commandMapping->second.contains(errorCode))
         {
             auto errorCodeSearch = commandMapping->second.find(errorCode);
-            messageId = std::get<0>(errorCodeSearch->second);
-            messageError = std::get<1>(errorCodeSearch->second);
-            resolution = std::get<2>(errorCodeSearch->second);
+            messageId = errorCodeSearch->second.messageId;
+            messageError = errorCodeSearch->second.message;
+            resolution = errorCodeSearch->second.resolution;
             status = true;
         }
         else

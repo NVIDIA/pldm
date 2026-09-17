@@ -277,6 +277,8 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
                 eid, fwDeviceIDRecord, componentIndex, oemMessageId,
                 oemMessageError, oemResolution);
         }
+        updateManager->createUpdateComponentResponseMessage(
+            eid, fwDeviceIDRecord, componentIndex, compCompatibilityRespCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         if (compCompatibilityRespCode ==
             PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL)
