@@ -2135,6 +2135,92 @@ TEST_F(UpdateManagerTest, transferFailuresUseComponentOnlyMessages)
             "ComponentA");
     }
 }
+
+TEST_F(UpdateManagerTest, verifyFailuresUseComponentPackageMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+    const auto& imageInfos = updateManager.parser->getComponentImageInfos();
+    const auto imageIndex = std::get<ApplicableComponents>(record).front();
+    const auto& image = imageInfos[imageIndex];
+    const auto identifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            image);
+    const auto& version =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompVersionPos)>(
+            image);
+    componentNameMap = {{7, {{identifier, "ComponentA"}}}};
+
+    struct TestCase
+    {
+        uint8_t result;
+        std::string messageId;
+        std::string reason;
+    };
+    const std::array cases{
+        TestCase{PLDM_FWUP_TIME_OUT,
+                 "NvidiaUpdate.1.3.FirmwareVerificationCompletionTimedOut", ""},
+        TestCase{0x91, "NvidiaUpdate.1.3.ComponentMetadataAuthenticationFailed",
+                 ""},
+        TestCase{0x93, "NvidiaUpdate.1.3.ComponentImageSecurityVersionRejected",
+                 ""},
+        TestCase{0x94, "NvidiaUpdate.1.3.ComponentImageSigningKeyRevoked", ""},
+        TestCase{0x95, "NvidiaUpdate.1.3.ComponentImageAuthenticationFailed",
+                 ""},
+        TestCase{0x97, "NvidiaUpdate.1.3.ComponentImageSkuMismatch", ""},
+        TestCase{0x98, "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                 "image size check failed (VerifyComplete: 0x98)"},
+        TestCase{
+            PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "generic verification failure (VerifyComplete: PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE (0x01))"},
+        TestCase{
+            PLDM_FWUP_VERIFY_FAILED_FD_SECURITY_CHECKS,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "did not pass the device's security checks (VerifyComplete: PLDM_FWUP_VERIFY_FAILED_FD_SECURITY_CHECKS (0x03))"},
+        TestCase{
+            PLDM_FWUP_VERIFY_ERROR_IMAGE_INCOMPLETE,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "image transfer was incomplete (VerifyComplete: PLDM_FWUP_VERIFY_ERROR_IMAGE_INCOMPLETE (0x04))"},
+        TestCase{
+            PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "security version does not meet the device's requirement (VerifyComplete: PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR (0x10))"},
+        TestCase{
+            PLDM_FWUP_GENERIC_ERROR,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "generic verification failure (VerifyComplete: PLDM_FWUP_GENERIC_ERROR (0x0A))"},
+    };
+
+    const auto commonArguments =
+        "ComponentA," + version + "," + updateManager.parser->pkgVersion;
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    for (const auto& test : cases)
+    {
+        SCOPED_TRACE(test.messageId + test.reason);
+        connection->reset();
+        updateManager.createMessageRegistry(7, record, 0, verificationFailed,
+                                            "", PLDM_VERIFY_COMPLETE,
+                                            test.result);
+        ASSERT_EQ(connection->loggingCalls.size(), 3U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, verificationFailed);
+        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
+        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        const auto expectedArguments =
+            test.result == PLDM_FWUP_TIME_OUT
+                ? "ComponentA"
+                : commonArguments +
+                      (test.reason.empty() ? "" : "," + test.reason);
+        EXPECT_EQ(
+            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            expectedArguments);
+    }
+}
 #endif
 
 TEST_F(UpdateManagerTest,
