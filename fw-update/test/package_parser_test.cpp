@@ -628,8 +628,7 @@ TEST(PackageParser, PayloadChecksumMismatchIsRejected)
     auto parser = parsePkgHeader(pkg.data(), pkg.size());
     ASSERT_NE(parser, nullptr);
     EXPECT_THROW(parser->parse(pkg, pkg.size()),
-                 sdbusplus::error::xyz::openbmc_project::software::update::
-                     InvalidSignature);
+                 PackagePayloadChecksumMismatch);
 }
 
 TEST(PackageParser, PackageSmallerThanCalculatedSizeIsRejected)
@@ -685,7 +684,11 @@ TEST(PackageParser, InvalidPkgBadChecksum)
     std::vector<uint8_t> compImage;
     imageGenerate(compImage, pkgImageSize);
     imageInsert(fwPkgHdr, compImage);
-    EXPECT_EQ(parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size()), nullptr);
+    PackageHeaderDiagnostic diagnostic;
+    EXPECT_EQ(parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size(), &diagnostic),
+              nullptr);
+    EXPECT_EQ(diagnostic.error, PackageHeaderError::checksumMismatch);
+    EXPECT_NE(diagnostic.expectedChecksum, diagnostic.calculatedChecksum);
 }
 
 TEST(PackageParser, SkipPackageSizeCheck)

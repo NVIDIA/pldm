@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace pldm
@@ -30,6 +31,33 @@ namespace pldm
 
 namespace fw_update
 {
+
+enum class PackageHeaderError
+{
+    none,
+    unavailable,
+    invalid,
+    checksumMismatch,
+};
+
+struct PackageHeaderDiagnostic
+{
+    PackageHeaderError error{PackageHeaderError::none};
+    uint32_t expectedChecksum{};
+    uint32_t calculatedChecksum{};
+};
+
+class PackagePayloadChecksumMismatch : public std::runtime_error
+{
+  public:
+    PackagePayloadChecksumMismatch(uint32_t expected, uint32_t calculated) :
+        std::runtime_error("PLDM package payload checksum mismatch"),
+        expectedChecksum(expected), calculatedChecksum(calculated)
+    {}
+
+    uint32_t expectedChecksum;
+    uint32_t calculatedChecksum;
+};
 
 /** @class PackageParser
  *
@@ -229,8 +257,8 @@ class PackageParser
  *  @return On success return the PackageParser for the header format version
  *          on failure return nullptr
  */
-std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
-                                              size_t pkgSize);
+std::unique_ptr<PackageParser> parsePkgHeader(
+    const uint8_t* pkgData, size_t pkgSize, PackageHeaderDiagnostic* = nullptr);
 
 } // namespace fw_update
 

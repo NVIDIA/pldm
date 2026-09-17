@@ -714,12 +714,25 @@ exec::task<void> UpdateManager::processPackageData(
         co_return;
     }
 
-    parser = parsePkgHeader(packageData, packageSize);
+    PackageHeaderDiagnostic headerDiagnostic;
+    parser = parsePkgHeader(packageData, packageSize, &headerDiagnostic);
 
     if (parser == nullptr)
     {
         error("Invalid PLDM package header information");
-        handleInvalidPackageHeaderError();
+        if (headerDiagnostic.error == PackageHeaderError::checksumMismatch)
+        {
+            handleHeaderChecksumError(headerDiagnostic.expectedChecksum,
+                                      headerDiagnostic.calculatedChecksum);
+        }
+        else if (headerDiagnostic.error == PackageHeaderError::unavailable)
+        {
+            handleInvalidPackageError();
+        }
+        else
+        {
+            handleInvalidPackageHeaderError();
+        }
         parser.reset();
         co_return;
     }
@@ -727,18 +740,17 @@ exec::task<void> UpdateManager::processPackageData(
     {
         parser->parse({packageData, packageSize}, packageSize);
     }
-    catch (const sdbusplus::error::xyz::openbmc_project::software::update::
-               InvalidSignature&)
+    catch (const PackagePayloadChecksumMismatch& e)
     {
         error("Firmware package checksum validation failed");
-        handlePayloadChecksumError();
+        handlePayloadChecksumError(e.expectedChecksum, e.calculatedChecksum);
         parser.reset();
         co_return;
     }
     catch (const std::exception& e)
     {
         error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
-        handleInvalidPackageError();
+        handleInvalidPackageMetadataError();
         parser.reset();
         co_return;
     }
@@ -2630,40 +2642,65 @@ void UpdateManager::cancelAllUpdates()
     }
 }
 
-void UpdateManager::handleInvalidPackageError()
+void UpdateManager::publishPackageFailure()
 {
-    std::string compName = "Firmware Update Service";
-    std::string messageError = "Invalid FW Package";
-    std::string resolution =
-        "Retry firmware update operation with valid FW package.";
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
     clearFirmwareUpdatePackage();
-
     publishFinalActivationStatus(software::Activation::Activations::Failed);
 }
 
-void UpdateManager::handlePayloadChecksumError()
+void UpdateManager::handleInvalidPackageError()
 {
-    std::string compName = "Firmware Update Service";
-    std::string messageError = "FW package payload checksum validation failed";
-    std::string resolution =
-        "Retry firmware update operation with valid FW package.";
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-    clearFirmwareUpdatePackage();
+    logLegacyFirmwareUpdateServiceError(
+        "Invalid FW Package",
+        "Retry firmware update operation with valid FW package.");
+    logFirmwareUpdateMessage(
+        NvidiaUpdateMessage::firmwarePackageHeaderUnavailable);
+    publishPackageFailure();
+}
 
-    publishFinalActivationStatus(software::Activation::Activations::Failed);
+void UpdateManager::handlePayloadChecksumError(uint32_t expectedChecksum,
+                                               uint32_t calculatedChecksum)
+{
+    logLegacyFirmwareUpdateServiceError(
+        "FW package payload checksum validation failed",
+        "Retry firmware update operation with valid FW package.");
+    logFirmwareUpdateMessage(
+        NvidiaUpdateMessage::packagePayloadChecksumMismatch,
+        {.packageVersion = parser ? parser->pkgVersion : "unknown",
+         .expectedChecksum = expectedChecksum,
+         .calculatedChecksum = calculatedChecksum});
+    publishPackageFailure();
+}
+
+void UpdateManager::handleHeaderChecksumError(uint32_t expectedChecksum,
+                                              uint32_t calculatedChecksum)
+{
+    logLegacyFirmwareUpdateServiceError(
+        "Invalid FW Package header",
+        "Retry firmware update operation with valid FW package.");
+    logFirmwareUpdateMessage(NvidiaUpdateMessage::packageHeaderChecksumMismatch,
+                             {.expectedChecksum = expectedChecksum,
+                              .calculatedChecksum = calculatedChecksum});
+    publishPackageFailure();
 }
 
 void UpdateManager::handleInvalidPackageHeaderError()
 {
-    std::string compName = "Firmware Update Service";
-    std::string messageError = "Invalid FW Package header";
-    std::string resolution =
-        "Retry firmware update operation with valid FW package.";
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-    clearFirmwareUpdatePackage();
+    logLegacyFirmwareUpdateServiceError(
+        "Invalid FW Package header",
+        "Retry firmware update operation with valid FW package.");
+    logFirmwareUpdateMessage(NvidiaUpdateMessage::firmwarePackageHeaderInvalid);
+    publishPackageFailure();
+}
 
-    publishFinalActivationStatus(software::Activation::Activations::Failed);
+void UpdateManager::handleInvalidPackageMetadataError()
+{
+    logLegacyFirmwareUpdateServiceError(
+        "Invalid FW Package",
+        "Retry firmware update operation with valid FW package.");
+    logFirmwareUpdateMessage(
+        NvidiaUpdateMessage::firmwarePackageMetadataInvalid);
+    publishPackageFailure();
 }
 
 } // namespace fw_update

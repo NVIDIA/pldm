@@ -24,8 +24,8 @@
 
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
-#include <xyz/openbmc_project/Software/Update/server.hpp>
 
+#include <cstring>
 #include <memory>
 
 PHOSPHOR_LOG2_USING;
@@ -613,8 +613,7 @@ void PackageParser::parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize)
                 "Payload Checksum Verification failed. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_PAYLOAD_CHECKSUM}'",
                 "CALCULATED_CHECKSUM", calcChecksum, "PACKAGE_PAYLOAD_CHECKSUM",
                 checksum);
-            throw sdbusplus::error::xyz::openbmc_project::software::update::
-                InvalidSignature();
+            throw PackagePayloadChecksumMismatch(checksum, calcChecksum);
         }
     }
 
@@ -625,9 +624,14 @@ void PackageParser::parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize)
 #endif
 }
 
-std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
-                                              size_t pkgSize)
+std::unique_ptr<PackageParser> parsePkgHeader(
+    const uint8_t* pkgData, size_t pkgSize, PackageHeaderDiagnostic* diagnostic)
 {
+    if (diagnostic != nullptr)
+    {
+        *diagnostic = {};
+    }
+
     static const std::map<uint8_t, std::array<uint8_t, PLDM_FWUP_UUID_LENGTH>>
         supportedPackageVersions = {
             {PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H,
@@ -643,6 +647,10 @@ std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
     if (pkgData == nullptr || pkgSize < sizeof(pldm_package_header_information))
     {
         error("Invalid package data or size {SIZE}", "SIZE", pkgSize);
+        if (diagnostic != nullptr)
+        {
+            diagnostic->error = PackageHeaderError::unavailable;
+        }
         return nullptr;
     }
 
@@ -655,6 +663,58 @@ std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
         error(
             "Failed to decode PLDM package header information, response code '{RC}'",
             "RC", rc);
+        // libpldm validates the header CRC while decoding. Recover the more
+        // specific diagnostic before treating a decode failure as a bad header.
+        const auto revision = pkgData[offsetof(pldm_package_header_information,
+                                               package_header_format_version)];
+        const auto supportedVersion = supportedPackageVersions.find(revision);
+        if (supportedVersion != supportedPackageVersions.end() &&
+            std::equal(pkgData, pkgData + PLDM_FWUP_UUID_LENGTH,
+                       supportedVersion->second.begin()))
+        {
+            PackageHeaderSize headerSize{};
+            std::memcpy(&headerSize,
+                        pkgData + offsetof(pldm_package_header_information,
+                                           package_header_size),
+                        sizeof(headerSize));
+            headerSize = le16toh(headerSize);
+            const size_t checksumFieldsSize =
+                sizeof(PackageHeaderChecksum) +
+                (revision >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H
+                     ? sizeof(PackagePayloadChecksum)
+                     : 0);
+            if (headerSize <= pkgSize &&
+                headerSize >= sizeof(pldm_package_header_information) +
+                                  checksumFieldsSize)
+            {
+                const size_t checksumOffset = headerSize - checksumFieldsSize;
+                uint32_t storedChecksum{};
+                std::memcpy(&storedChecksum, pkgData + checksumOffset,
+                            sizeof(storedChecksum));
+                storedChecksum = le32toh(storedChecksum);
+                const uint32_t calculatedChecksum =
+                    pldm_edac_crc32(pkgData, checksumOffset);
+                if (storedChecksum != calculatedChecksum)
+                {
+                    error(
+                        "Package header checksum mismatch. Calculated checksum '{CALCULATED_CHECKSUM}' and expected checksum '{PACKAGE_HEADER_CHECKSUM}'",
+                        "CALCULATED_CHECKSUM", calculatedChecksum,
+                        "PACKAGE_HEADER_CHECKSUM", storedChecksum);
+                    if (diagnostic != nullptr)
+                    {
+                        diagnostic->error =
+                            PackageHeaderError::checksumMismatch;
+                        diagnostic->expectedChecksum = storedChecksum;
+                        diagnostic->calculatedChecksum = calculatedChecksum;
+                    }
+                    return nullptr;
+                }
+            }
+        }
+        if (diagnostic != nullptr)
+        {
+            diagnostic->error = PackageHeaderError::invalid;
+        }
         return nullptr;
     }
 
@@ -668,14 +728,47 @@ std::unique_ptr<PackageParser> parsePkgHeader(const uint8_t* pkgData,
                         expectedUUID.begin(), expectedUUID.end()))
         {
             error("PLDM package UUID does not match format version");
+            if (diagnostic != nullptr)
+            {
+                diagnostic->error = PackageHeaderError::invalid;
+            }
             return nullptr;
         }
         PackageHeaderSize pkgHdrSize = pkgHeader.package_header_size;
+        const size_t checksumFieldsSize =
+            sizeof(PackageHeaderChecksum) +
+            (pkgHeader.package_header_format_version >=
+                     PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H
+                 ? sizeof(PackagePayloadChecksum)
+                 : 0);
+        const size_t minimumHeaderSize =
+            sizeof(pldm_package_header_information) + pkgVersion.length +
+            sizeof(DeviceIDRecordCount) + sizeof(ComponentImageCount) +
+            (pkgHeader.package_header_format_version >=
+                     PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR03H
+                 ? sizeof(DownstreamDeviceIDRecordCount)
+                 : 0) +
+            checksumFieldsSize;
+        if (pkgHdrSize > pkgSize || pkgHdrSize < minimumHeaderSize)
+        {
+            error("Invalid PLDM package header size {SIZE}", "SIZE",
+                  pkgHdrSize);
+            if (diagnostic != nullptr)
+            {
+                diagnostic->error = PackageHeaderError::invalid;
+            }
+            return nullptr;
+        }
+
         ComponentBitmapBitLength componentBitmapBitLength =
             pkgHeader.component_bitmap_bit_length;
         return std::make_unique<PackageParser>(
             pkgHdrSize, utils::toString(pkgVersion), componentBitmapBitLength,
             pkgHeader.package_header_format_version);
+    }
+    if (diagnostic != nullptr)
+    {
+        diagnostic->error = PackageHeaderError::invalid;
     }
     return nullptr;
 }

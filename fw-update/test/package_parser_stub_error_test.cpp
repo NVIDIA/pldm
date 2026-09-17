@@ -37,6 +37,7 @@ enum class StubMode
     headerDecodeError,
     headerInvalidUuid,
     headerUnsupportedVersion,
+    headerMissingCountFields,
     payloadChecksumMismatch,
 };
 
@@ -208,7 +209,11 @@ int decode_pldm_package_header_info(
         headerInfo->package_header_format_version =
             PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H;
     }
-    headerInfo->package_header_size = 64;
+    headerInfo->package_header_size =
+        stubMode == StubMode::headerMissingCountFields
+            ? sizeof(pldm_package_header_information) + sizeof(version) +
+                  sizeof(PackageHeaderChecksum)
+            : 64;
     headerInfo->component_bitmap_bit_length = 8;
 
     packageVersionStr->ptr = version;
@@ -506,6 +511,20 @@ TEST(PackageParserStubErrorTest, parsePkgHeaderInvalidUuidReturnsNull)
     stubMode = StubMode::headerInvalidUuid;
     std::vector<uint8_t> data(sizeof(pldm_package_header_information), 0);
     EXPECT_EQ(parsePkgHeader(data.data(), data.size()), nullptr);
+}
+
+TEST(PackageParserStubErrorTest,
+     parsePkgHeaderRejectsHeaderWithoutMandatoryCountFields)
+{
+    stubMode = StubMode::headerMissingCountFields;
+    constexpr size_t truncatedHeaderSize =
+        sizeof(pldm_package_header_information) + 1 +
+        sizeof(PackageHeaderChecksum);
+    std::vector<uint8_t> data(truncatedHeaderSize, 0);
+    PackageHeaderDiagnostic diagnostic;
+
+    EXPECT_EQ(parsePkgHeader(data.data(), data.size(), &diagnostic), nullptr);
+    EXPECT_EQ(diagnostic.error, PackageHeaderError::invalid);
 }
 
 TEST(PackageParserStubErrorTest,

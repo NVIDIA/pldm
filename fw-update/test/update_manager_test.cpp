@@ -1144,6 +1144,72 @@ TEST_F(UpdateManagerTest,
                  sdbusplus::exception::SdBusError);
 }
 
+#ifdef OEM_NVIDIA
+TEST_F(UpdateManagerTest, packageValidationHandlersUseSpecificMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto packageVersion = updateManager.parser->pkgVersion;
+    updateManager.objPath = "/xyz/openbmc_project/software/package_errors";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+
+    connection->reset();
+    updateManager.handleInvalidPackageError();
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.FirmwarePackageHeaderUnavailable");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+
+    connection->reset();
+    updateManager.handleInvalidPackageHeaderError();
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.FirmwarePackageHeaderInvalid");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+
+    connection->reset();
+    updateManager.handleHeaderChecksumError(0x12AB34CD, 0x56EF7890);
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.PackageHeaderChecksumMismatch");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        "0x12AB34CD,0x56EF7890");
+
+    connection->reset();
+    updateManager.handlePayloadChecksumError(0xA1B2C3D4, 0x5E6F7081);
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.PackagePayloadChecksumMismatch");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        packageVersion + ",0xA1B2C3D4,0x5E6F7081");
+
+    connection->reset();
+    updateManager.handleInvalidPackageMetadataError();
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.FirmwarePackageMetadataInvalid");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+}
+#endif
+
 TEST_F(UpdateManagerTest, performSecurityChecksAsyncInvokesCallbackOrError)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
