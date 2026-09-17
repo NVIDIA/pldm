@@ -240,6 +240,21 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
          ArgumentType::componentPackageVersionComparisonStamp,
          Severity::critical,
          {}},
+        {Message::firmwareDownloadTimedOut,
+         "NvidiaUpdate.1.3.FirmwareDownloadTimedOut",
+         ArgumentType::componentTransferProgress,
+         Severity::critical,
+         {}},
+        {Message::firmwareUpdateBlockedByWriteProtection,
+         "NvidiaUpdate.1.3.FirmwareUpdateBlockedByWriteProtection",
+         ArgumentType::component,
+         Severity::critical,
+         {}},
+        {Message::firmwareTransferCompletionTimedOut,
+         "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut",
+         ArgumentType::component,
+         Severity::critical,
+         {}},
     };
 
     for (const auto& testCase : testCases)
@@ -296,5 +311,34 @@ TEST(error_handling, getUpdateComponentMessageDefinition)
         EXPECT_FALSE(
             getUpdateComponentMessageDefinition(responseCode).has_value());
     }
+}
+
+TEST(error_handling, getNvidiaCommandMessageDefinition)
+{
+    struct TestCase
+    {
+        pldm_firmware_update_commands command;
+        uint8_t result;
+        std::string_view messageId;
+    };
+
+    static constexpr TestCase testCases[]{
+        {PLDM_TRANSFER_COMPLETE, writeProtectEnabled,
+         "NvidiaUpdate.1.3.FirmwareUpdateBlockedByWriteProtection"},
+        {PLDM_TRANSFER_COMPLETE, PLDM_FWUP_TIME_OUT,
+         "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut"},
+    };
+
+    for (const auto& testCase : testCases)
+    {
+        SCOPED_TRACE(static_cast<unsigned>(testCase.command));
+        const auto definition = getNvidiaCommandMessageDefinition(
+            testCase.command, testCase.result);
+        ASSERT_TRUE(definition.has_value());
+        EXPECT_EQ(definition->messageId, testCase.messageId);
+    }
+
+    EXPECT_FALSE(getNvidiaCommandMessageDefinition(PLDM_TRANSFER_COMPLETE, 0xFF)
+                     .has_value());
 }
 #endif

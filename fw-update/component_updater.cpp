@@ -1084,9 +1084,18 @@ void ComponentUpdater::createRequestFwDataTimer()
             bool logged = queryDeviceStatusAndLog(eid);
             if (!logged)
             {
+                const auto& applicableComponents =
+                    std::get<ApplicableComponents>(fwDeviceIDRecord);
+                const auto& component =
+                    compImageInfos[applicableComponents[componentIndex]];
+                const auto componentSize = std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompSizePos)>(component);
                 updateManager->createMessageRegistry(
                     eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
                     PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
+                updateManager->createFirmwareDownloadTimeoutMessage(
+                    eid, fwDeviceIDRecord, componentIndex,
+                    std::min(nextExpectedOffset, componentSize), componentSize);
             }
             else
             {

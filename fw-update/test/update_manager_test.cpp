@@ -2111,6 +2111,62 @@ TEST_F(UpdateManagerTest, updateComponentUsesComponentOnlyMessages)
         EXPECT_TRUE(connection->loggingCalls.empty());
     }
 }
+
+TEST_F(UpdateManagerTest, transferFailuresUseComponentOnlyMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+    const auto& imageInfos = updateManager.parser->getComponentImageInfos();
+    const auto imageIndex = std::get<ApplicableComponents>(record).front();
+    const auto identifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            imageInfos[imageIndex]);
+    componentNameMap = {{7, {{identifier, "ComponentA"}}}};
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+
+    connection->reset();
+    updateManager.createFirmwareDownloadTimeoutMessage(7, record, 0, 1024,
+                                                       4096);
+    EXPECT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              "NvidiaUpdate.1.3.FirmwareDownloadTimedOut");
+    EXPECT_EQ(
+        connection->loggingCalls.front().additionalData["REDFISH_MESSAGE_ARGS"],
+        "ComponentA,1024,4096");
+
+    struct TestCase
+    {
+        uint8_t result;
+        std::string messageId;
+    };
+    const std::array cases{
+        TestCase{0x71,
+                 "NvidiaUpdate.1.3.FirmwareUpdateBlockedByWriteProtection"},
+        TestCase{PLDM_FWUP_TIME_OUT,
+                 "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut"},
+    };
+    for (const auto& test : cases)
+    {
+        SCOPED_TRACE(test.messageId);
+        connection->reset();
+        updateManager.createMessageRegistry(7, record, 0, transferFailed, "",
+                                            PLDM_TRANSFER_COMPLETE,
+                                            test.result);
+        ASSERT_EQ(connection->loggingCalls.size(), 3U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, transferFailed);
+        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
+        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        EXPECT_EQ(
+            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            "ComponentA");
+    }
+}
 #endif
 
 TEST_F(UpdateManagerTest,

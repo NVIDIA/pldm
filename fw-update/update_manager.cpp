@@ -545,6 +545,11 @@ void UpdateManager::createMessageRegistry(
                 oemResolution);
         }
     }
+
+    // The NVIDIA registry entry is additive. The established Update and
+    // ResourceErrorsDetected entries above remain unchanged.
+    createNvidiaCommandResponseMessage(eid, fwDeviceIDRecord, compIndex,
+                                       commandType, errorCode);
 }
 
 void UpdateManager::createMessageRegistryResourceErrors(
@@ -665,6 +670,54 @@ void UpdateManager::createUpdateComponentResponseMessage(
          .component = reportedComponentName(eid, fwDeviceIDRecord, compIndex),
          .componentVersion = componentVersion,
          .comparisonStamp = comparisonStamp});
+}
+
+void UpdateManager::createNvidiaCommandResponseMessage(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex, pldm_firmware_update_commands commandType,
+    uint8_t errorCode)
+{
+    const auto definition =
+        getNvidiaCommandMessageDefinition(commandType, errorCode);
+    if (!definition || !hasReportableComponent(fwDeviceIDRecord, compIndex,
+                                               "PLDM command response"))
+    {
+        return;
+    }
+    const auto imageIndex =
+        std::get<ApplicableComponents>(fwDeviceIDRecord)[compIndex];
+    const auto& component = parser->getComponentImageInfos()[imageIndex];
+    const auto& componentVersion =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompVersionPos)>(
+            component);
+    logFirmwareUpdateMessage(
+        *definition,
+        {.packageVersion = parser->pkgVersion,
+         .component = reportedComponentName(eid, fwDeviceIDRecord, compIndex),
+         .componentVersion = componentVersion,
+         .command = commandType == PLDM_GET_STATUS ? "GetStatus" : ""});
+}
+
+void UpdateManager::createFirmwareDownloadTimeoutMessage(
+    mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+    size_t compIndex, uint32_t bytesTransferred, uint32_t componentSize)
+{
+    const auto definition = getNvidiaUpdateMessageDefinition(
+        NvidiaUpdateMessage::firmwareDownloadTimedOut);
+    if (!definition)
+    {
+        return;
+    }
+    if (!hasReportableComponent(fwDeviceIDRecord, compIndex,
+                                "firmware download timeout"))
+    {
+        return;
+    }
+    logFirmwareUpdateMessage(
+        *definition,
+        {.component = reportedComponentName(eid, fwDeviceIDRecord, compIndex),
+         .bytesTransferred = bytesTransferred,
+         .componentSize = componentSize});
 }
 
 void UpdateManager::handleDuplicateDescriptorMatch(
