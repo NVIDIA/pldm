@@ -763,14 +763,6 @@ void UpdateManager::packageIntegrityCheckAsync(
     std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
-    const static std::string compName = "Firmware Update Service";
-    const static std::string messageError =
-        "Integrity check failed for FW Package";
-    const static std::string messageErrorParseSignatureHeader =
-        "Failed to parse FW Package signature header";
-    const static std::string resolution =
-        "Retry firmware update using a valid package.";
-
     const auto calcPkgSize = parser->calculatePackageSize();
     std::vector<uint8_t> pkgSignHdrData;
 
@@ -782,14 +774,21 @@ void UpdateManager::packageIntegrityCheckAsync(
     catch (const std::exception& e)
     {
         error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
+        logLegacyFirmwareUpdateServiceError(
+            "Integrity check failed for FW Package",
+            "Retry firmware update using a valid package.");
+        logFirmwareUpdateMessage(
+            NvidiaUpdateMessage::signatureHeaderMalformed,
+            {.packageVersion = parser->pkgVersion,
+             .reason = "signature header size is invalid"});
         onComplete(false);
         return;
     }
 
     if (pkgSignHdrData.size())
     {
+        const auto signatureVersion =
+            PackageSignature::getSignatureVersion(pkgSignHdrData);
         try
         {
             packageSignatureParser =
@@ -798,7 +797,11 @@ void UpdateManager::packageIntegrityCheckAsync(
         catch (const std::exception& e)
         {
             info("Failed to create signature header parser.");
-
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::signatureHeaderVersionUnsupported,
+                {.packageVersion = parser->pkgVersion,
+                 .signatureVersion =
+                     std::to_string(static_cast<unsigned>(signatureVersion))});
             onComplete(false);
             return;
         }
@@ -810,8 +813,17 @@ void UpdateManager::packageIntegrityCheckAsync(
         catch (const std::exception& e)
         {
             error("Failed to parse signature header.", "ERROR", e);
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorParseSignatureHeader, resolution);
+            auto reason = packageSignatureParser->getValidationErrorReason();
+            if (reason.empty())
+            {
+                reason = "signature header content is invalid";
+            }
+            logLegacyFirmwareUpdateServiceError(
+                "Failed to parse FW Package signature header",
+                "Retry firmware update using a valid package.");
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::signatureHeaderMalformed,
+                {.packageVersion = parser->pkgVersion, .reason = reason});
 
             onComplete(false);
             return;
@@ -821,7 +833,7 @@ void UpdateManager::packageIntegrityCheckAsync(
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
         packageSignatureParser->integrityCheckAsync(
             updater->getImageStream(), sizeOfSignedData,
-            [onComplete](bool integritycheckResult) {
+            [this, onComplete](bool integritycheckResult) {
                 if (integritycheckResult)
                 {
                     info("Integrity check successful for FW Package");
@@ -829,12 +841,21 @@ void UpdateManager::packageIntegrityCheckAsync(
                 }
                 else
                 {
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
+                    logLegacyFirmwareUpdateServiceError(
+                        "Integrity check failed for FW Package",
+                        "Retry firmware update using a valid package.");
+                    logFirmwareUpdateMessage(
+                        NvidiaUpdateMessage::packageSignatureIntegrityFailed,
+                        {.packageVersion = parser->pkgVersion});
                     onComplete(false);
                 }
             },
-            onError);
+            [this, onError](const std::string& errorMessage) {
+                logFirmwareUpdateMessage(
+                    NvidiaUpdateMessage::packageSignatureIntegrityFailed,
+                    {.packageVersion = parser->pkgVersion});
+                onError(errorMessage);
+            });
 
         return;
     }
@@ -844,26 +865,12 @@ void UpdateManager::packageIntegrityCheckAsync(
         onComplete(true);
         return;
     }
-
-    createLogEntry(resourceErrorDetected, compName, messageError, resolution);
-
-    onComplete(false);
 }
 
 void UpdateManager::verifyPackageAsync(
     std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
-    const static std::string compName = "Firmware Update Service";
-    const static std::string messageError =
-        "Validating FW Package signature failed";
-    const static std::string messageErrorParseSignatureHeader =
-        "Failed to parse FW Package signature header";
-    const static std::string messageErrorUnsupportedVersion =
-        "Unsupported version of package signature";
-    const static std::string resolution =
-        "Retry firmware update operation with correctly signed FW package.";
-
     uintmax_t calcPkgSize = parser->calculatePackageSize();
     std::vector<uint8_t> pkgSignHdrData;
 
@@ -875,13 +882,20 @@ void UpdateManager::verifyPackageAsync(
     catch (const std::exception& e)
     {
         lg2::error("Failed to get signature header.");
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
+        logLegacyFirmwareUpdateServiceError(
+            "Validating FW Package signature failed",
+            "Retry firmware update operation with correctly signed FW package.");
+        logFirmwareUpdateMessage(
+            NvidiaUpdateMessage::signatureHeaderMalformed,
+            {.packageVersion = parser->pkgVersion,
+             .reason = "signature header size is invalid"});
         onComplete(false);
         return;
     }
     if (pkgSignHdrData.size())
     {
+        const auto signatureVersion =
+            PackageSignature::getSignatureVersion(pkgSignHdrData);
         try
         {
             packageSignatureParser =
@@ -891,8 +905,14 @@ void UpdateManager::verifyPackageAsync(
         {
             lg2::error("Failed to create signature header parser.");
 
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorUnsupportedVersion, resolution);
+            logLegacyFirmwareUpdateServiceError(
+                "Unsupported version of package signature",
+                "Retry firmware update operation with correctly signed FW package.");
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::signatureHeaderVersionUnsupported,
+                {.packageVersion = parser->pkgVersion,
+                 .signatureVersion =
+                     std::to_string(static_cast<unsigned>(signatureVersion))});
             onComplete(false);
 
             return;
@@ -905,8 +925,17 @@ void UpdateManager::verifyPackageAsync(
         catch (const std::exception& e)
         {
             lg2::error("Failed to parse signature header.", "ERROR", e);
-            createLogEntry(resourceErrorDetected, compName,
-                           messageErrorParseSignatureHeader, resolution);
+            auto reason = packageSignatureParser->getValidationErrorReason();
+            if (reason.empty())
+            {
+                reason = "signature header content is invalid";
+            }
+            logLegacyFirmwareUpdateServiceError(
+                "Failed to parse FW Package signature header",
+                "Retry firmware update operation with correctly signed FW package.");
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::signatureHeaderMalformed,
+                {.packageVersion = parser->pkgVersion, .reason = reason});
 
             onComplete(false);
             return;
@@ -918,7 +947,7 @@ void UpdateManager::verifyPackageAsync(
         packageSignatureParser->verifyAsync(
             updater->getImageStream(), PLDM_PACKAGE_VERIFICATION_KEY,
             sizeOfSignedData,
-            [onComplete](bool verificationCheckResult) {
+            [this, onComplete](bool verificationCheckResult) {
                 if (verificationCheckResult)
                 {
                     lg2::info("FW package signature was successfully verified");
@@ -926,23 +955,32 @@ void UpdateManager::verifyPackageAsync(
                 }
                 else
                 {
-                    createLogEntry(resourceErrorDetected, compName,
-                                   messageError, resolution);
+                    logLegacyFirmwareUpdateServiceError(
+                        "Validating FW Package signature failed",
+                        "Retry firmware update operation with correctly signed FW package.");
+                    logFirmwareUpdateMessage(
+                        NvidiaUpdateMessage::packageSignatureVerificationFailed,
+                        {.packageVersion = parser->pkgVersion});
                     onComplete(false);
                 }
             },
-            onError);
+            [this, onError](const std::string& errorMessage) {
+                logFirmwareUpdateMessage(
+                    NvidiaUpdateMessage::packageSignatureVerificationFailed,
+                    {.packageVersion = parser->pkgVersion});
+                onError(errorMessage);
+            });
 
         return;
     }
     else
     {
 #ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
-        std::string messageErrorNotContainSignatureHeader =
-            "Package does not contain signature header";
-
-        createLogEntry(resourceErrorDetected, compName,
-                       messageErrorNotContainSignatureHeader, resolution);
+        logLegacyFirmwareUpdateServiceError(
+            "Package does not contain signature header",
+            "Retry firmware update operation with correctly signed FW package.");
+        logFirmwareUpdateMessage(NvidiaUpdateMessage::packageSignatureRequired,
+                                 {.packageVersion = parser->pkgVersion});
 
         onComplete(false);
 #else

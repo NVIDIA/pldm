@@ -259,6 +259,7 @@ bool PackageSignature::verify(std::istream& package,
 
 void PackageSignatureV3::parseHeader()
 {
+    validationErrorReason.clear();
     auto signatureHeader =
         reinterpret_cast<struct PldmSignatureHeaderInformationV3*>(
             packageSignData.data());
@@ -272,6 +273,7 @@ void PackageSignatureV3::parseHeader()
     if (!std::equal(magic, endOfMagic, hdrSignatureMagic.begin(),
                     hdrSignatureMagic.end()))
     {
+        validationErrorReason = "signature header identifier is invalid";
         error(
             "Parsing signature header failed, Signature Header does not contain PackageSignatureIdentifier");
         throw InternalFailure();
@@ -281,6 +283,7 @@ void PackageSignatureV3::parseHeader()
 
     if (version != packageSignatureVersion3)
     {
+        validationErrorReason = "signature header version is unsupported";
         error(
             "Parsing signature header failed, version={VERSION} is not supported",
             "VERSION", version);
@@ -298,6 +301,7 @@ void PackageSignatureV3::parseHeader()
 
     if (signatureType != 0)
     {
+        validationErrorReason = "signature type is not supported";
         error(
             "Parsing signature header failed, signatureType={SIGNATURE_TYPE} is not supported",
             "SIGNATURE_TYPE", signatureType);
@@ -309,6 +313,7 @@ void PackageSignatureV3::parseHeader()
     if (offsetToPublicKey >
         pldmFwupSignaturePackageSize - pldmFwupPublicKeySizeLength)
     {
+        validationErrorReason = "public-key offset is outside the header";
         error(
             "Parsing signature header failed, offsetToPublicKey is out of bounds");
         throw InternalFailure();
@@ -326,6 +331,7 @@ void PackageSignatureV3::parseHeader()
     if (publicKeyEnd >
         pldmFwupSignaturePackageSize - pldmFwupSignatureSizeLength)
     {
+        validationErrorReason = "public-key size is outside the header";
         error(
             "Parsing signature header failed, publicKeySize is out of bounds");
         throw InternalFailure();
@@ -343,6 +349,7 @@ void PackageSignatureV3::parseHeader()
     if (signatureSize < signatureSha->minimumSignatureSize ||
         signatureSize > signatureSha->maximumSignatureSize)
     {
+        validationErrorReason = "signature size is invalid";
         error("Parsing signature header failed, signatureSize is incorrect");
         throw InternalFailure();
     }
@@ -354,6 +361,7 @@ void PackageSignatureV3::parseHeader()
     if (signatureEnd > pldmFwupSignaturePackageSize ||
         signatureBegin > signatureEnd)
     {
+        validationErrorReason = "signature offset is outside the header";
         error(
             "Parsing signature header failed, signature offset/size is out of bounds");
         throw InternalFailure();

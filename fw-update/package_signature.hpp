@@ -315,6 +315,12 @@ class PackageSignature
     static std::unique_ptr<PackageSignature> createPackageSignatureParser(
         std::vector<uint8_t>& pkgSignData);
 
+    /** @brief Human-readable reason set when signature-header parsing fails. */
+    const std::string& getValidationErrorReason() const
+    {
+        return validationErrorReason;
+    }
+
   protected:
     /** @brief SHA hash */
     std::unique_ptr<PackageSignatureShaBase> signatureSha;
@@ -354,6 +360,9 @@ class PackageSignature
 
     /** @brief Public key */
     PackageSignaturePublicKey publicKeyData;
+
+    /** @brief Bounded reason for the most recent header validation failure. */
+    std::string validationErrorReason;
 };
 
 class PackageSignatureV3 : public PackageSignature

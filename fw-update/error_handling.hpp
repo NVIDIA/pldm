@@ -64,6 +64,11 @@ enum class NvidiaUpdateMessage
     packageHeaderChecksumMismatch,
     packagePayloadChecksumMismatch,
     firmwarePackageMetadataInvalid,
+    signatureHeaderMalformed,
+    signatureHeaderVersionUnsupported,
+    packageSignatureIntegrityFailed,
+    packageSignatureVerificationFailed,
+    packageSignatureRequired,
 };
 
 enum class NvidiaUpdateMessageArgumentType
@@ -72,6 +77,8 @@ enum class NvidiaUpdateMessageArgumentType
     packageVersion,
     checksumPair,
     packageVersionChecksumPair,
+    packageVersionReason,
+    packageVersionSignatureVersion,
     target,
     targetPackageVersion,
 };
@@ -149,6 +156,36 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                 "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::none,
                 NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::signatureHeaderMalformed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.SignatureHeaderMalformed",
+                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                NvidiaUpdateMessageArgumentType::packageVersionReason,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::signatureHeaderVersionUnsupported:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.SignatureHeaderVersionUnsupported",
+                "Obtain a firmware package that uses an NVIDIA signature-header version supported by this platform, then retry the update.",
+                NvidiaUpdateMessageArgumentType::packageVersionSignatureVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::packageSignatureIntegrityFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PackageSignatureIntegrityFailed",
+                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                NvidiaUpdateMessageArgumentType::packageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::packageSignatureVerificationFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PackageSignatureVerificationFailed",
+                "Obtain a firmware package signed by an authority trusted by this BMC, then retry the update. If signature verification still fails with a known-good package, verify that the BMC is provisioned with the required verification key. If the issue persists, collect the logs and contact support.",
+                NvidiaUpdateMessageArgumentType::packageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::packageSignatureRequired:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PackageSignatureRequired",
+                "Obtain a firmware package signed by an authority trusted by this BMC and containing the required NVIDIA signature header, then retry the update.",
+                NvidiaUpdateMessageArgumentType::packageVersion,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -165,6 +202,8 @@ struct NvidiaUpdateMessageFacts
 {
     std::string_view packageVersion{};
     std::string_view target{};
+    std::string_view reason{};
+    std::string_view signatureVersion{};
     std::optional<uint32_t> expectedChecksum{};
     std::optional<uint32_t> calculatedChecksum{};
 };
@@ -185,6 +224,12 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
         return nvidiaUpdateHex(value.value_or(0), 8);
     };
 
+    std::string reason{facts.reason};
+    if (reason.empty())
+    {
+        reason.assign(definition.reason);
+    }
+
     switch (definition.argumentType)
     {
         case Arg::none:
@@ -198,6 +243,11 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
             return {std::string{facts.packageVersion},
                     checksum(facts.expectedChecksum),
                     checksum(facts.calculatedChecksum)};
+        case Arg::packageVersionReason:
+            return {std::string{facts.packageVersion}, reason};
+        case Arg::packageVersionSignatureVersion:
+            return {std::string{facts.packageVersion},
+                    std::string{facts.signatureVersion}};
         case Arg::target:
             return {std::string{facts.target}};
         case Arg::targetPackageVersion:
