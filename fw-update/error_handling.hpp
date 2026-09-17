@@ -43,9 +43,14 @@ using OemResolution = std::string;
 using CompCompatibilityMessageId = std::string;
 using CompCompatibilityMessage = std::string;
 using CompCompatibilityResolution = std::string;
-using MessageMapping = std::pair<OemMessage, OemResolution>;
 enum class NvidiaUpdateMessage;
 
+struct MessageMapping
+{
+    OemMessage message;
+    OemResolution resolution;
+    std::optional<NvidiaUpdateMessage> nvidiaMessage{};
+};
 struct ComponentCompatibilityMessageMapping
 {
     CompCompatibilityMessageId messageId;
@@ -61,16 +66,16 @@ using CommandToCompCompatibilityMap =
     std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
 
 #ifdef OEM_NVIDIA
-ErrorCode constexpr reqGrantError = 0x70;
 ErrorCode constexpr writeProtectEnabled = 0x71;
-ErrorCode constexpr internalError = 0x72;
-ErrorCode constexpr imageIdentical = 0x90;
 ErrorCode constexpr metadataAuthFailure = 0x91;
 ErrorCode constexpr secVersionCheckFailure = 0x93;
 ErrorCode constexpr secKeysReovked = 0x94;
 ErrorCode constexpr imageAuthFailure = 0x95;
 ErrorCode constexpr skuMismatch = 0x97;
 ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
+ErrorCode constexpr reqGrantError = 0x70;
+ErrorCode constexpr internalError = 0x72;
+ErrorCode constexpr imageIdentical = 0x90;
 ErrorCode constexpr apReqGrantOnHold = 0x99;
 ErrorCode constexpr applyAuthFailure = 0xB0;
 ErrorCode constexpr fwUpdateBlocked = 0xD0;
@@ -93,6 +98,9 @@ enum class NvidiaUpdateMessage
     packageSignatureRequired,
     componentUpdateSkipped,
     firmwareComponentComparisonStampLower,
+    firmwareDownloadTimedOut,
+    firmwareUpdateBlockedByWriteProtection,
+    firmwareTransferCompletionTimedOut,
 };
 
 enum class NvidiaUpdateMessageArgumentType
@@ -107,6 +115,8 @@ enum class NvidiaUpdateMessageArgumentType
     targetPackageVersion,
     componentPackageVersionComparisonStamp,
     componentVersionPackageVersionReason,
+    componentTransferProgress,
+    component,
 };
 
 enum class NvidiaUpdateMessageSeverity
@@ -226,6 +236,24 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                 NvidiaUpdateMessageArgumentType::
                     componentPackageVersionComparisonStamp,
                 NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareDownloadTimedOut:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwareDownloadTimedOut",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::componentTransferProgress,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareUpdateBlockedByWriteProtection:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwareUpdateBlockedByWriteProtection",
+                "Disable write protection on the device, then retry the firmware update.",
+                NvidiaUpdateMessageArgumentType::component,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareTransferCompletionTimedOut:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::component,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -250,6 +278,8 @@ struct NvidiaUpdateMessageFacts
     std::optional<uint32_t> comparisonStamp{};
     std::optional<uint32_t> expectedChecksum{};
     std::optional<uint32_t> calculatedChecksum{};
+    std::optional<uint32_t> bytesTransferred{};
+    std::optional<uint32_t> componentSize{};
 };
 
 #ifdef OEM_NVIDIA
@@ -304,6 +334,12 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
             return {std::string{facts.component},
                     std::string{facts.componentVersion},
                     std::string{facts.packageVersion}, reason};
+        case Arg::componentTransferProgress:
+            return {std::string{facts.component},
+                    std::to_string(facts.bytesTransferred.value_or(0)),
+                    std::to_string(facts.componentSize.value_or(0))};
+        case Arg::component:
+            return {std::string{facts.component}};
     }
     return {};
 }
@@ -464,7 +500,8 @@ static ErrorMapping transferCompleteMapping{
      {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
      {"The device did not send the request indicating that the component data transfer was complete within the operation timeout, so the update failed.",
-      "Retry firmware update operation"}},
+      "Retry firmware update operation",
+      NvidiaUpdateMessage::firmwareTransferCompletionTimedOut}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted request for the component transfer status; so the update failed.",
       "Retry firmware update operation"}},
@@ -499,7 +536,8 @@ static ErrorMapping transferCompleteMapping{
     {writeProtectEnabled,
      {"Write Protect Enabled",
       "Disable write protect on the device and retry the firmware update"
-      " operation."}},
+      " operation.",
+      NvidiaUpdateMessage::firmwareUpdateBlockedByWriteProtection}},
     {internalError, {"Internal Error", "Retry firmware update operation"}},
 #endif
 };
@@ -668,6 +706,42 @@ inline std::optional<NvidiaUpdateMessageDefinition>
 #endif
 }
 
+/** @brief Return the optional NVIDIA message attached to an existing
+ *         command/error mapping. */
+inline std::optional<NvidiaUpdateMessage> nvidiaCommandMessage(
+    pldm_firmware_update_commands commandType, uint8_t result)
+{
+#ifndef OEM_NVIDIA
+    static_cast<void>(commandType);
+    static_cast<void>(result);
+    return std::nullopt;
+#else
+    const auto command = commandMappingTbl.find(commandType);
+    if (command == commandMappingTbl.end())
+    {
+        return std::nullopt;
+    }
+    const auto mapping = command->second.find(result);
+    if (mapping == command->second.end())
+    {
+        return std::nullopt;
+    }
+    return mapping->second.nvidiaMessage;
+#endif
+}
+
+/** @brief Return a specific message for a PLDM command result. */
+inline std::optional<NvidiaUpdateMessageDefinition>
+    getNvidiaCommandMessageDefinition(pldm_firmware_update_commands commandType,
+                                      uint8_t result)
+{
+    const auto message = nvidiaCommandMessage(commandType, result);
+    if (!message)
+    {
+        return std::nullopt;
+    }
+    return getNvidiaUpdateMessageDefinition(*message);
+}
 
 /**
  * @brief Get the Oem Message for enhanced message registry
@@ -694,8 +768,8 @@ inline std::tuple<bool, std::string, std::string, std::string> getOemMessage(
         if (commandMapping->second.contains(errorCode))
         {
             auto errorCodeSearch = commandMapping->second.find(errorCode);
-            oemMessageError = errorCodeSearch->second.first;
-            oemResolution = errorCodeSearch->second.second;
+            oemMessageError = errorCodeSearch->second.message;
+            oemResolution = errorCodeSearch->second.resolution;
             status = true;
         }
         else

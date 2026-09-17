@@ -335,6 +335,21 @@ class UpdateManager
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         size_t compIndex, uint8_t compatibilityResponseCode);
 
+    /** @brief Add the NVIDIA message for a PLDM command result. */
+    void createNvidiaCommandResponseMessage(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex, pldm_firmware_update_commands commandType,
+        uint8_t errorCode);
+
+    /** @brief Report that a device stopped requesting component data.
+     *
+     *  Byte counts retain the 32-bit component-size width defined by PLDM.
+     */
+    void createFirmwareDownloadTimeoutMessage(
+        mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
+        size_t compIndex, uint32_t bytesTransferred,
+        uint32_t componentSize);
+
     /** @brief Emit an Info-severity ResourceErrorsDetected entry per
      *         applicable component when multiple package records match
      *         the same device.
