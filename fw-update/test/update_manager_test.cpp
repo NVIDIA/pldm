@@ -1021,8 +1021,15 @@ TEST_F(UpdateManagerTest, processStreamDefer_noMatchingDevices)
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
-                                                     false, {}, false));
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+
+    EXPECT_NO_THROW(updateManager.processStreamDefer(
+        package, packageSize, false, {}, false));
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              resourceErrorDetected);
 }
 
 TEST_F(UpdateManagerTest,
@@ -1800,10 +1807,59 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateReturnsFailedWhenNoDevicesOrImages)
     updateManager.debugToken =
         std::make_unique<DebugToken>(busMock, &updateManager);
     updateManager.objPath = "/xyz/openbmc_project/software/non_pldm_none";
+    updateManager.parser = std::make_unique<PackageParser>(
+        static_cast<PackageHeaderSize>(1), std::string{"1.0.0"},
+        static_cast<ComponentBitmapBitLength>(8), 1);
     updateManager.createProgressUpdateTimer();
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
 
     auto state = updateManager.startNonPLDMUpdate();
     EXPECT_EQ(state, Server::Activation::Activations::Failed);
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.FirmwarePackageNoMatchingDevices");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        "1.0.0");
+}
+
+TEST_F(UpdateManagerTest, requestedTargetsUseSpecificApplicabilityMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+
+    updateManager.requestedTargets = {{"TargetUnavailable", 9}};
+    connection->reset();
+    updateManager.logUnupdatedTargets({});
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.RequestedTargetUnavailableForUpdate");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        "TargetUnavailable");
+
+    descriptorMap.emplace(9, Descriptors{});
+    updateManager.requestedTargets = {{"TargetNotInPackage", 9}};
+    connection->reset();
+    updateManager.logUnupdatedTargets({});
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.RequestedTargetNotSupportedByPackage");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        "TargetNotInPackage," + updateManager.parser->pkgVersion);
 }
 #endif
 

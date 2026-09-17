@@ -64,6 +64,13 @@ static std::optional<std::string> extractTargetName(
     return pathStr.substr(pathStr.find_last_of('/') + 1);
 }
 
+static void logLegacyFirmwareUpdateServiceError(std::string_view message,
+                                                std::string_view resolution)
+{
+    createLogEntry(resourceErrorDetected, "Firmware Update Service",
+                   std::string(message), std::string(resolution));
+}
+
 /** @brief Check if package descriptors are a subset of device descriptor
  *
  *  Determines whether a firmware package is applicable to a device by
@@ -352,13 +359,9 @@ std::string UpdateManager::processStreamDefer(
     {
         error("No devices found for firmware update");
 
-        std::string compName = "Firmware Update Service";
-        std::string messageError = "No Matching Devices";
-        std::string resolution =
-            "Verify the FW package has devices that are listed in the"
-            " Redfish FW Inventory";
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
+        logLegacyFirmwareUpdateServiceError(
+            "No Matching Devices",
+            "Verify the FW package has devices that are listed in the Redfish FW Inventory");
 
         publishFinalActivationStatus(software::Activation::Activations::Failed);
 
@@ -1104,16 +1107,6 @@ void UpdateManager::logUnupdatedTargets(
         scheduledEids.insert(eid);
     }
 
-    const std::string messageError =
-        "No matching firmware image in package for the requested target";
-    const std::string resolution =
-        "Verify the firmware package contains a matching image for the "
-        "specified target and retry the update.";
-    const std::string unreachableError = "Target endpoint is unreachable";
-    const std::string unreachableResolution =
-        "Verify the target endpoint is powered on and responsive, then "
-        "retry the update.";
-
     for (const auto& [name, eid] : requestedTargets)
     {
         if (scheduledEids.contains(eid))
@@ -1122,11 +1115,22 @@ void UpdateManager::logUnupdatedTargets(
         }
         if (!descriptorMap.contains(eid))
         {
-            createLogEntry(resourceErrorDetected, name, unreachableError,
-                           unreachableResolution);
+            createLogEntry(
+                resourceErrorDetected, name, "Target endpoint is unreachable",
+                "Verify the target endpoint is powered on and responsive, then retry the update.");
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::requestedTargetUnavailableForUpdate,
+                {.target = name});
             continue;
         }
-        createLogEntry(resourceErrorDetected, name, messageError, resolution);
+        createLogEntry(
+            resourceErrorDetected, name,
+            "No matching firmware image in package for the requested target",
+            "Verify the firmware package contains a matching image for the specified target and retry the update.");
+        logFirmwareUpdateMessage(
+            NvidiaUpdateMessage::requestedTargetNotSupportedByPackage,
+            {.packageVersion = parser ? parser->pkgVersion : "unknown",
+             .target = name});
     }
 
     requestedTargets.clear();
@@ -1424,13 +1428,15 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
             return software::Activation::Activations::Active;
         }
 #endif
-        std::string compName = "Firmware Update Service";
-        std::string messageError = "No Matching Devices";
-        std::string resolution =
-            "Verify the FW package has devices that are listed in the"
-            " Redfish FW Inventory";
-        createLogEntry(resourceErrorDetected, compName, messageError,
-                       resolution);
+        logLegacyFirmwareUpdateServiceError(
+            "No Matching Devices",
+            "Verify the FW package has devices that are listed in the Redfish FW Inventory");
+        if (parser)
+        {
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::firmwarePackageNoMatchingDevices,
+                {.packageVersion = parser->pkgVersion});
+        }
         activationBlocksTransition.reset();
         clearFirmwareUpdatePackage();
         return software::Activation::Activations::Failed;
@@ -1502,10 +1508,12 @@ void UpdateManager::updatePackageCompletion()
             otherDeviceUpdateManager->noTargetedUpdateStarted();
         if (noMatchingDevices)
         {
-            createLogEntry(resourceErrorDetected, "Firmware Update Service",
-                           "No Matching Devices",
-                           "Verify the FW package has devices that are listed"
-                           " in the Redfish FW Inventory");
+            logLegacyFirmwareUpdateServiceError(
+                "No Matching Devices",
+                "Verify the FW package has devices that are listed in the Redfish FW Inventory");
+            logFirmwareUpdateMessage(
+                NvidiaUpdateMessage::firmwarePackageNoMatchingDevices,
+                {.packageVersion = parser->pkgVersion});
         }
 
         const auto finalState =
