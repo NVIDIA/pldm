@@ -695,6 +695,9 @@ class UpdateManager
      */
     std::unique_ptr<sdeventplus::source::Defer> updateDeferHandler;
 
+    /** @brief Clear the package and publish activation Failed. */
+    void publishPackageFailure();
+
     /** @brief Handle invalid firmware package error by logging and setting
      *         activation state
      *
@@ -713,7 +716,12 @@ class UpdateManager
      *  error message, clears the firmware update package, and sets the
      *  activation state to Invalid.
      */
-    void handlePayloadChecksumError();
+    void handlePayloadChecksumError(uint32_t expectedChecksum = 0,
+                                    uint32_t calculatedChecksum = 0);
+
+    /** @brief Handle package-header checksum validation failure. */
+    void handleHeaderChecksumError(uint32_t expectedChecksum,
+                                   uint32_t calculatedChecksum);
 
     /** @brief Handle header parse failures by logging and setting the
      *         activation state
@@ -724,6 +732,9 @@ class UpdateManager
      *  activation state to Invalid.
      */
     void handleInvalidPackageHeaderError();
+
+    /** @brief Handle structurally invalid package metadata. */
+    void handleInvalidPackageMetadataError();
 };
 
 } // namespace fw_update

@@ -25,6 +25,7 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -58,11 +59,19 @@ enum class NvidiaUpdateMessage
     firmwarePackageNoMatchingDevices,
     requestedTargetUnavailableForUpdate,
     requestedTargetNotSupportedByPackage,
+    firmwarePackageHeaderUnavailable,
+    firmwarePackageHeaderInvalid,
+    packageHeaderChecksumMismatch,
+    packagePayloadChecksumMismatch,
+    firmwarePackageMetadataInvalid,
 };
 
 enum class NvidiaUpdateMessageArgumentType
 {
+    none,
     packageVersion,
+    checksumPair,
+    packageVersionChecksumPair,
     target,
     targetPackageVersion,
 };
@@ -110,6 +119,36 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                 "Verify that the firmware package is intended for this platform and contains an image compatible with the requested target, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::targetPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwarePackageHeaderUnavailable:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwarePackageHeaderUnavailable",
+                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                NvidiaUpdateMessageArgumentType::none,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwarePackageHeaderInvalid:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwarePackageHeaderInvalid",
+                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                NvidiaUpdateMessageArgumentType::none,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::packageHeaderChecksumMismatch:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PackageHeaderChecksumMismatch",
+                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                NvidiaUpdateMessageArgumentType::checksumPair,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::packagePayloadChecksumMismatch:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PackagePayloadChecksumMismatch",
+                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                NvidiaUpdateMessageArgumentType::packageVersionChecksumPair,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwarePackageMetadataInvalid:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwarePackageMetadataInvalid",
+                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                NvidiaUpdateMessageArgumentType::none,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -126,20 +165,39 @@ struct NvidiaUpdateMessageFacts
 {
     std::string_view packageVersion{};
     std::string_view target{};
+    std::optional<uint32_t> expectedChecksum{};
+    std::optional<uint32_t> calculatedChecksum{};
 };
 
 #ifdef OEM_NVIDIA
+
+inline std::string nvidiaUpdateHex(uint32_t value, int width)
+{
+    return std::format("0x{:0{}X}", value, width);
+}
 
 inline std::vector<std::string> nvidiaUpdateMessageArguments(
     const NvidiaUpdateMessageDefinition& definition,
     const NvidiaUpdateMessageFacts& facts)
 {
     using Arg = NvidiaUpdateMessageArgumentType;
+    const auto checksum = [](std::optional<uint32_t> value) {
+        return nvidiaUpdateHex(value.value_or(0), 8);
+    };
 
     switch (definition.argumentType)
     {
+        case Arg::none:
+            return {};
         case Arg::packageVersion:
             return {std::string{facts.packageVersion}};
+        case Arg::checksumPair:
+            return {checksum(facts.expectedChecksum),
+                    checksum(facts.calculatedChecksum)};
+        case Arg::packageVersionChecksumPair:
+            return {std::string{facts.packageVersion},
+                    checksum(facts.expectedChecksum),
+                    checksum(facts.calculatedChecksum)};
         case Arg::target:
             return {std::string{facts.target}};
         case Arg::targetPackageVersion:
