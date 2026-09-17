@@ -1115,6 +1115,32 @@ TEST_F(UpdateManagerTest, createMessageRegistryPathsAreCallable)
     });
 }
 
+TEST_F(UpdateManagerTest, commandFailurePreservesEstablishedMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+    updateManager.createMessageRegistry(1, record, 0, applyFailed, "",
+                                        PLDM_GET_STATUS, COMMAND_TIMEOUT);
+
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 3U);
+    EXPECT_EQ(connection->loggingCalls[2].messageId,
+              "NvidiaUpdate.1.3.PLDMCommandTimedOut");
+#else
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+#endif
+    EXPECT_EQ(connection->loggingCalls[0].messageId, applyFailed);
+    EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
+}
+
 TEST_F(UpdateManagerTest, handleInvalidPackageErrorCreatesAndReusesActivation)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
@@ -2251,6 +2277,54 @@ TEST_F(UpdateManagerTest, verifyFailuresUseComponentPackageMessages)
         EXPECT_EQ(
             connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
             expectedArguments);
+    }
+}
+
+TEST_F(UpdateManagerTest, applyAndGetStatusTimeoutsUseSpecificMessages)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+    const auto& imageInfos = updateManager.parser->getComponentImageInfos();
+    const auto imageIndex = std::get<ApplicableComponents>(record).front();
+    const auto identifier =
+        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
+            imageInfos[imageIndex]);
+    componentNameMap = {{7, {{identifier, "ComponentA"}}}};
+
+    struct TestCase
+    {
+        pldm_firmware_update_commands command;
+        uint8_t result;
+        std::string messageId;
+        std::string arguments;
+    };
+    const std::array cases{
+        TestCase{PLDM_APPLY_COMPLETE, PLDM_FWUP_TIME_OUT,
+                 "NvidiaUpdate.1.3.ApplyCompleteTimedOut", "ComponentA"},
+        TestCase{PLDM_GET_STATUS, COMMAND_TIMEOUT,
+                 "NvidiaUpdate.1.3.PLDMCommandTimedOut",
+                 "GetStatus,ComponentA"},
+    };
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    for (const auto& test : cases)
+    {
+        SCOPED_TRACE(test.messageId);
+        connection->reset();
+        updateManager.createMessageRegistry(7, record, 0, applyFailed, "",
+                                            test.command, test.result);
+        ASSERT_EQ(connection->loggingCalls.size(), 3U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, applyFailed);
+        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
+        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        EXPECT_EQ(
+            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            test.arguments);
     }
 }
 #endif

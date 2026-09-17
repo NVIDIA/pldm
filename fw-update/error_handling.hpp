@@ -113,6 +113,8 @@ enum class NvidiaUpdateMessage
     firmwareImageTransferIncomplete,
     firmwareImageSecurityRevisionFailed,
     firmwareImageGenericError,
+    applyCompleteTimedOut,
+    pldmCommandTimedOut,
 };
 
 enum class NvidiaUpdateMessageArgumentType
@@ -130,6 +132,7 @@ enum class NvidiaUpdateMessageArgumentType
     componentTransferProgress,
     component,
     componentVersionPackageVersion,
+    commandComponent,
 };
 
 enum class NvidiaUpdateMessageSeverity
@@ -351,6 +354,18 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
                 "generic verification failure (VerifyComplete: PLDM_FWUP_GENERIC_ERROR (0x0A))"};
+        case NvidiaUpdateMessage::applyCompleteTimedOut:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ApplyCompleteTimedOut",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::component,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::pldmCommandTimedOut:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.PLDMCommandTimedOut",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::commandComponent,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -441,6 +456,8 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
             return {std::string{facts.component},
                     std::string{facts.componentVersion},
                     std::string{facts.packageVersion}};
+        case Arg::commandComponent:
+            return {std::string{facts.command}, std::string{facts.component}};
     }
     return {};
 }
@@ -716,7 +733,8 @@ static ErrorMapping verifyCompleteMapping{
 static ErrorMapping applyCompleteMapping{
     {PLDM_FWUP_TIME_OUT,
      {"The device did not send the request indicating that the component image was applied within the operation timeout, so the update failed.",
-      "Retry firmware update operation"}},
+      "Retry firmware update operation",
+      NvidiaUpdateMessage::applyCompleteTimedOut}},
     {PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE,
      {"Applying the image failed due to write operation failure",
       "Retry firmware update operation."}},
@@ -752,7 +770,8 @@ static ErrorMapping activateFirmwareMapping{
 static ErrorMapping getStatusMapping{
     {COMMAND_TIMEOUT,
      {"The device did not respond to the device status request, and the communication timed out.",
-      "Retry firmware update operation."}},
+      "Retry firmware update operation.",
+      NvidiaUpdateMessage::pldmCommandTimedOut}},
     {PLDM_ERROR,
      {"Received an invalid or corrupted response for the device status request; so the update failed.",
       "Retry firmware update operation."}}};

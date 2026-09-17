@@ -1712,6 +1712,8 @@ TEST_F(ComponentUpdaterTest, applyCompleteSuccessSchedulesGetStatusPath)
     initializeFromParsedPackage();
     componentUpdater.componentUpdaterState.set(
         ComponentUpdaterSequence::ApplyComplete);
+    componentUpdater.createCompleteCommandsTimeoutTimer();
+    ASSERT_NE(componentUpdater.completeCommandsTimeoutTimer, nullptr);
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_apply_complete_req)>
         applyCompleteReq{0x00, 0x00, 0x18, 0x00, 0x00, 0x00};
@@ -1725,10 +1727,9 @@ TEST_F(ComponentUpdaterTest, applyCompleteSuccessSchedulesGetStatusPath)
     EXPECT_EQ(componentUpdater.pldmRequest, nullptr);
     componentUpdater.onResponseSendComplete(true);
     ASSERT_NE(componentUpdater.pldmRequest, nullptr);
-    EXPECT_NO_THROW({
-        runEvent();
-        runEvent();
-    });
+    EXPECT_NO_THROW({ runEvent(); });
+    EXPECT_EQ(componentUpdater.completeCommandsTimeoutTimer, nullptr);
+    EXPECT_NO_THROW({ runEvent(); });
     waitForGetStatusTask();
     runEvent();
     waitForDiscoverTask();

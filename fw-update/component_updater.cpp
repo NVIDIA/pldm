@@ -26,6 +26,7 @@
 #include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <functional>
@@ -990,6 +991,14 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 return;
             }
 
+            // ApplyComplete was received and acknowledged. UA_T6 no longer
+            // applies; the post-apply GetStatus request has its own timeout.
+            if (completeCommandsTimeoutTimer)
+            {
+                completeCommandsTimeoutTimer->stop();
+                completeCommandsTimeoutTimer.reset();
+            }
+
             componentUpdaterState.nextState(componentUpdaterState.current);
             GetStatus(validateApplyStatusSuccess);
         };
@@ -1409,17 +1418,18 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
             bool logged = queryDeviceStatusAndLog(eid);
             if (!logged)
             {
+                auto [messageStatus, oemMessageId, oemMessageError,
+                      oemResolution] =
+                    getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+                if (messageStatus)
                 {
-                    auto [messageStatus, oemMessageId, oemMessageError,
-                          oemResolution] =
-                        getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
-                    if (messageStatus)
-                    {
-                        updateManager->createMessageRegistryResourceErrors(
-                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                            oemMessageError, oemResolution);
-                    }
+                    updateManager->createMessageRegistryResourceErrors(
+                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                        oemMessageError, oemResolution);
                 }
+                updateManager->createNvidiaCommandResponseMessage(
+                    eid, fwDeviceIDRecord, componentIndex, PLDM_GET_STATUS,
+                    COMMAND_TIMEOUT);
             }
         }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);

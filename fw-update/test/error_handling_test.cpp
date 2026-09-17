@@ -309,6 +309,16 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
          ArgumentType::componentVersionPackageVersionReason, Severity::critical,
          "generic verification failure (VerifyComplete: PLDM_FWUP_GENERIC_ERROR (0x0A))"},
+        {Message::applyCompleteTimedOut,
+         "NvidiaUpdate.1.3.ApplyCompleteTimedOut",
+         ArgumentType::component,
+         Severity::critical,
+         {}},
+        {Message::pldmCommandTimedOut,
+         "NvidiaUpdate.1.3.PLDMCommandTimedOut",
+         ArgumentType::commandComponent,
+         Severity::critical,
+         {}},
     };
 
     for (const auto& testCase : testCases)
@@ -405,6 +415,10 @@ TEST(error_handling, getNvidiaCommandMessageDefinition)
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed"},
         {PLDM_VERIFY_COMPLETE, PLDM_FWUP_GENERIC_ERROR,
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed"},
+        {PLDM_APPLY_COMPLETE, PLDM_FWUP_TIME_OUT,
+         "NvidiaUpdate.1.3.ApplyCompleteTimedOut"},
+        {PLDM_GET_STATUS, COMMAND_TIMEOUT,
+         "NvidiaUpdate.1.3.PLDMCommandTimedOut"},
     };
 
     for (const auto& testCase : testCases)
