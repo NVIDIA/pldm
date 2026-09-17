@@ -66,16 +66,16 @@ using CommandToCompCompatibilityMap =
     std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
 
 #ifdef OEM_NVIDIA
+ErrorCode constexpr reqGrantError = 0x70;
 ErrorCode constexpr writeProtectEnabled = 0x71;
+ErrorCode constexpr internalError = 0x72;
+ErrorCode constexpr imageIdentical = 0x90;
 ErrorCode constexpr metadataAuthFailure = 0x91;
 ErrorCode constexpr secVersionCheckFailure = 0x93;
 ErrorCode constexpr secKeysReovked = 0x94;
 ErrorCode constexpr imageAuthFailure = 0x95;
 ErrorCode constexpr skuMismatch = 0x97;
 ErrorCode constexpr firmwarePackageSizeFailure = 0x98;
-ErrorCode constexpr reqGrantError = 0x70;
-ErrorCode constexpr internalError = 0x72;
-ErrorCode constexpr imageIdentical = 0x90;
 ErrorCode constexpr apReqGrantOnHold = 0x99;
 ErrorCode constexpr applyAuthFailure = 0xB0;
 ErrorCode constexpr fwUpdateBlocked = 0xD0;
@@ -101,6 +101,18 @@ enum class NvidiaUpdateMessage
     firmwareDownloadTimedOut,
     firmwareUpdateBlockedByWriteProtection,
     firmwareTransferCompletionTimedOut,
+    firmwareVerificationCompletionTimedOut,
+    firmwareMetadataAuthenticationFailed,
+    firmwareImageSecurityVersionRejected,
+    firmwareImageSigningKeyRevoked,
+    firmwareImageAuthenticationFailed,
+    firmwareImageSkuMismatch,
+    firmwareImageSizeVerificationFailed,
+    firmwareImageGenericVerificationFailed,
+    firmwareImageSecurityChecksFailed,
+    firmwareImageTransferIncomplete,
+    firmwareImageSecurityRevisionFailed,
+    firmwareImageGenericError,
 };
 
 enum class NvidiaUpdateMessageArgumentType
@@ -117,6 +129,7 @@ enum class NvidiaUpdateMessageArgumentType
     componentVersionPackageVersionReason,
     componentTransferProgress,
     component,
+    componentVersionPackageVersion,
 };
 
 enum class NvidiaUpdateMessageSeverity
@@ -254,6 +267,90 @@ inline std::optional<NvidiaUpdateMessageDefinition>
                 "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::component,
                 NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareVerificationCompletionTimedOut:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwareVerificationCompletionTimedOut",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::component,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareMetadataAuthenticationFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentMetadataAuthenticationFailed",
+                "Obtain the correct firmware package for the target device from a trusted source, then retry the firmware update. If the failure persists, verify the target device's trusted-key provisioning and collect the BMC and target-device logs.",
+                NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareImageSecurityVersionRejected:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageSecurityVersionRejected",
+                "Use a firmware image with a security version that meets or exceeds the device's current security version, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareImageSigningKeyRevoked:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageSigningKeyRevoked",
+                "Verify the contents of the FW package. In production systems, this error suggests that a debug-signed image update was attempted without the debug token being installed. To resolve this, verify the debug token installation status using the LogService.CollectDiagnosticData API with the DebugTokenStatus parameter. If the tokens are not installed, follow the debug token installation steps and retry the update.",
+                NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareImageAuthenticationFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageAuthenticationFailed",
+                "Obtain a correctly signed firmware package for the target device from a trusted source, then retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareImageSkuMismatch:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageSkuMismatch",
+                "Use a firmware package containing an image for the target SKU, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::firmwareImageSizeVerificationFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "image size check failed (VerifyComplete: 0x98)"};
+        case NvidiaUpdateMessage::firmwareImageGenericVerificationFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "generic verification failure (VerifyComplete: PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE (0x01))"};
+        case NvidiaUpdateMessage::firmwareImageSecurityChecksFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Use a firmware package authorized for the target device and satisfying its security policy, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "did not pass the device's security checks (VerifyComplete: PLDM_FWUP_VERIFY_FAILED_FD_SECURITY_CHECKS (0x03))"};
+        case NvidiaUpdateMessage::firmwareImageTransferIncomplete:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and investigate the component-transfer path.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "image transfer was incomplete (VerifyComplete: PLDM_FWUP_VERIFY_ERROR_IMAGE_INCOMPLETE (0x04))"};
+        case NvidiaUpdateMessage::firmwareImageSecurityRevisionFailed:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Use a firmware image with a security version that meets or exceeds the device's requirement, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "security version does not meet the device's requirement (VerifyComplete: PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR (0x10))"};
+        case NvidiaUpdateMessage::firmwareImageGenericError:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                NvidiaUpdateMessageArgumentType::
+                    componentVersionPackageVersionReason,
+                NvidiaUpdateMessageSeverity::critical,
+                "generic verification failure (VerifyComplete: PLDM_FWUP_GENERIC_ERROR (0x0A))"};
         default:
             break;
     }
@@ -340,6 +437,10 @@ inline std::vector<std::string> nvidiaUpdateMessageArguments(
                     std::to_string(facts.componentSize.value_or(0))};
         case Arg::component:
             return {std::string{facts.component}};
+        case Arg::componentVersionPackageVersion:
+            return {std::string{facts.component},
+                    std::string{facts.componentVersion},
+                    std::string{facts.packageVersion}};
     }
     return {};
 }
@@ -548,35 +649,42 @@ static ErrorMapping verifyCompleteMapping{
      {"Version mismatch", "Verify the contents of the FW package"}},
     {PLDM_FWUP_TIME_OUT,
      {"The device did not send the request indicating that the verification of the component image was complete within the operation timeout, so the update failed.",
-      "Retry firmware update operation"}},
+      "Retry firmware update operation",
+      NvidiaUpdateMessage::firmwareVerificationCompletionTimedOut}},
+    // PLDM_ERROR and PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE both use
+    // 0x01. Preserve the legacy decode-error text while attaching the NVIDIA
+    // message selected for the VerifyComplete result.
     {PLDM_ERROR,
      {"Received an invalid or corrupted request for the component verification status; so the update failed.",
-      "Retry firmware update operation"}},
-    {PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE,
-     {"Component image verification failed",
-      "Verify the contents of the FW package"}},
+      "Retry firmware update operation",
+      NvidiaUpdateMessage::firmwareImageGenericVerificationFailed}},
     {PLDM_FWUP_VERIFY_FAILED_FD_SECURITY_CHECKS,
      {"Component image verification failed due to device security checks",
-      "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageSecurityChecksFailed}},
     {PLDM_FWUP_VERIFY_ERROR_IMAGE_INCOMPLETE,
      {"Component image verification failed due to incomplete image transfer",
-      "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageTransferIncomplete}},
     {PLDM_FWUP_VERIFY_FAILURE_SECURITY_REVISION_ERROR,
      {"Component image verification failed due to security revision error",
-      "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageSecurityRevisionFailed}},
     {PLDM_FWUP_GENERIC_ERROR,
      {"Component image verification failed with a generic error.",
-      "Retry firmware update operation"}},
+      "Retry firmware update operation",
+      NvidiaUpdateMessage::firmwareImageGenericError}},
 #ifdef OEM_NVIDIA
     {imageIdentical,
      {"Component image is identical",
       "Retry firmware update operation with the force flag"}},
     {metadataAuthFailure,
      {"MetaData authentication failure",
-      "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareMetadataAuthenticationFailed}},
     {secVersionCheckFailure,
-     {"Security version check failed",
-      "Verify the contents of the FW package"}},
+     {"Security version check failed", "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageSecurityVersionRejected}},
     {secKeysReovked,
      {"Image authentication failed because security keys used to sign the"
       " image has been revoked",
@@ -586,14 +694,19 @@ static ErrorMapping verifyCompleteMapping{
       " verify the debug token installation status using the "
       "LogService.CollectDiagnosticData API with the DebugTokenStatus parameter."
       " If the tokens are not installed, follow the debug token installation"
-      " steps and retry the update."}},
+      " steps and retry the update.",
+      NvidiaUpdateMessage::firmwareImageSigningKeyRevoked}},
     {imageAuthFailure,
      {"Component image authentication check failed",
-      "Verify the contents of the FW package"}},
-    {skuMismatch, {"SKU mismatch", "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageAuthenticationFailed}},
+    {skuMismatch,
+     {"SKU mismatch", "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageSkuMismatch}},
     {firmwarePackageSizeFailure,
      {"Firmware image size is incorrect",
-      "Verify the contents of the FW package"}},
+      "Verify the contents of the FW package",
+      NvidiaUpdateMessage::firmwareImageSizeVerificationFailed}},
     {apReqGrantOnHold,
      {"AP request grant on hold", "Retry firmware update operation"}}
 #endif
