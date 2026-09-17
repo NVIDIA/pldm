@@ -28,7 +28,7 @@
 namespace pldm::utils
 {
 
-class ManagerTestDBusHandler : public DBusLoggingTestHandler
+class ManagerTestDBusHandler : public DBusHandler
 {
   public:
     static auto& getBus()

@@ -17,11 +17,18 @@
 #pragma once
 
 #include "common/types.hpp"
+#include "dbusutil.hpp"
 
 #include <libpldm/base.h>
 #include <libpldm/firmware_update.h>
 
 #include <phosphor-logging/lg2.hpp>
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 PHOSPHOR_LOG2_USING;
 
@@ -45,6 +52,112 @@ using CompCompatibilityMapping =
 using CommandMapping = std::map<pldm_firmware_update_commands, ErrorMapping>;
 using CommandToCompCompatibilityMap =
     std::map<pldm_firmware_update_commands, CompCompatibilityMapping>;
+
+enum class NvidiaUpdateMessage
+{
+};
+
+enum class NvidiaUpdateMessageArgumentType
+{
+};
+
+enum class NvidiaUpdateMessageSeverity
+{
+    informational,
+    critical,
+};
+
+struct NvidiaUpdateMessageDefinition
+{
+    std::string_view messageId;
+    std::string_view resolution;
+    NvidiaUpdateMessageArgumentType argumentType;
+    NvidiaUpdateMessageSeverity severity;
+    std::string_view reason{};
+};
+
+/** @brief Return the Redfish definition for a typed NVIDIA update failure. */
+inline std::optional<NvidiaUpdateMessageDefinition>
+    getNvidiaUpdateMessageDefinition(
+        [[maybe_unused]] NvidiaUpdateMessage message)
+{
+#ifndef OEM_NVIDIA
+    return std::nullopt;
+#else
+    switch (message)
+    {
+        default:
+            break;
+    }
+#endif
+    return std::nullopt;
+}
+
+/** @brief Facts a caller can supply for a Redfish update message.
+ *
+ *  logNvidiaUpdateMessage orders the arguments from argumentType.
+ *  Set only the fields that message uses.
+ */
+struct NvidiaUpdateMessageFacts
+{};
+
+#ifdef OEM_NVIDIA
+
+inline std::vector<std::string> nvidiaUpdateMessageArguments(
+    const NvidiaUpdateMessageDefinition&, const NvidiaUpdateMessageFacts&)
+{
+    return {};
+}
+
+inline void logNvidiaUpdateMessage(
+    const NvidiaUpdateMessageDefinition& definition,
+    const NvidiaUpdateMessageFacts& facts)
+{
+    const auto level =
+        definition.severity == NvidiaUpdateMessageSeverity::informational
+            ? LogLevel::Informational
+            : LogLevel::Critical;
+    createLogEntry(std::string{definition.messageId},
+                   nvidiaUpdateMessageArguments(definition, facts),
+                   std::string{definition.resolution}, "FWUpdate", level);
+}
+
+inline void logNvidiaUpdateMessage(NvidiaUpdateMessage message,
+                                   const NvidiaUpdateMessageFacts& facts = {})
+{
+    const auto definition = getNvidiaUpdateMessageDefinition(message);
+    if (!definition)
+    {
+        error("No Redfish definition for NVIDIA update message {MSG}", "MSG",
+              static_cast<unsigned>(message));
+        return;
+    }
+    logNvidiaUpdateMessage(*definition, facts);
+}
+
+inline void logFirmwareUpdateMessage(NvidiaUpdateMessage message,
+                                     const NvidiaUpdateMessageFacts& facts = {})
+{
+    logNvidiaUpdateMessage(message, facts);
+}
+
+inline void logFirmwareUpdateMessage(
+    const NvidiaUpdateMessageDefinition& definition,
+    const NvidiaUpdateMessageFacts& facts)
+{
+    logNvidiaUpdateMessage(definition, facts);
+}
+#else
+
+inline void logFirmwareUpdateMessage(NvidiaUpdateMessage,
+                                     const NvidiaUpdateMessageFacts& = {})
+{}
+
+inline void logFirmwareUpdateMessage(const NvidiaUpdateMessageDefinition&,
+                                     const NvidiaUpdateMessageFacts&)
+{}
+
+#endif
 
 constexpr uint8_t maxDecodeFailureRetries = 3;
 

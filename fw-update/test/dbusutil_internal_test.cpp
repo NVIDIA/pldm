@@ -97,26 +97,6 @@ struct FakeBus
     void call_noreply(const FakeMethodCall&) {}
 };
 
-struct FakeAsioConnection
-{
-    boost::system::error_code nextError{};
-    std::string lastMessageId{};
-    std::string lastSeverity{};
-    std::map<std::string, std::string> lastAddData{};
-
-    template <typename Callback>
-    void async_method_call(Callback&& cb, const char*, const char*, const char*,
-                           const char*, const std::string& messageId,
-                           const std::string& severity,
-                           const std::map<std::string, std::string>& addData)
-    {
-        lastMessageId = messageId;
-        lastSeverity = severity;
-        lastAddData = addData;
-        cb(nextError);
-    }
-};
-
 } // namespace dbusutil_test
 
 namespace pldm::utils
@@ -131,21 +111,9 @@ class DBusUtilMockHandler : public DBusHandler
         return bus;
     }
 
-    static std::shared_ptr<dbusutil_test::FakeAsioConnection>& fakeConn()
-    {
-        static auto conn =
-            std::make_shared<dbusutil_test::FakeAsioConnection>();
-        return conn;
-    }
-
     static auto& getBus()
     {
         return fakeBus();
-    }
-
-    static auto& getAsioConnection()
-    {
-        return fakeConn();
     }
 };
 
@@ -184,11 +152,8 @@ class DBusUtilInternalTest : public testing::Test
         bus.mapperResponse = {
             {"xyz.openbmc_project.Logging", {"com.nvidia.State.DeviceState"}}};
 
-        auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
-        conn->nextError.clear();
-        conn->lastMessageId.clear();
-        conn->lastSeverity.clear();
-        conn->lastAddData.clear();
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection()
+            ->reset();
     }
 };
 
@@ -224,7 +189,8 @@ class AsyncDbusObjectServer
 
 TEST_F(DBusUtilInternalTest, createLogEntrySeverityCallbackErrorPath)
 {
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
     conn->nextError =
         boost::system::errc::make_error_code(boost::system::errc::io_error);
 
@@ -238,6 +204,55 @@ TEST_F(DBusUtilInternalTest, createLogEntryDirectOverloadHandlesEmptyFields)
     createLogEntry("Update.1.0.TransferFailed", "GPU0,1.0", "", "",
                    sdbusplus::xyz::openbmc_project::Logging::server::Entry::
                        Level::Informational);
+}
+
+TEST_F(DBusUtilInternalTest,
+       createLogEntryVectorOverloadPreservesPositionsAndMetadata)
+{
+    using Level =
+        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+
+    struct TestCase
+    {
+        std::vector<std::string> arguments;
+        std::string serializedArguments;
+    };
+    const std::vector<TestCase> testCases{
+        {{}, ""},
+        {{""}, ""},
+        {{"", "x"}, ",x"},
+        {{"x", ""}, "x,"},
+        {{"component", "1.0", "package-1.0"}, "component,1.0,package-1.0"},
+    };
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    for (const auto& testCase : testCases)
+    {
+        connection->reset();
+        createLogEntry(transferFailed, testCase.arguments, "Retry", "FWUpdate",
+                       Level::Informational, {{"TEST_KEY", "test-value"}});
+
+        ASSERT_EQ(connection->loggingCalls.size(), 1U);
+        EXPECT_TRUE(connection->unmatchedCalls.empty());
+        const auto& call = connection->loggingCalls.front();
+        EXPECT_EQ(call.service, "xyz.openbmc_project.Logging");
+        EXPECT_EQ(call.path, "/xyz/openbmc_project/logging");
+        EXPECT_EQ(call.interface, "xyz.openbmc_project.Logging.Create");
+        EXPECT_EQ(call.method, "Create");
+        EXPECT_EQ(call.messageId, transferFailed);
+        EXPECT_EQ(
+            call.severity,
+            sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+                Level::Informational));
+        EXPECT_EQ(call.additionalData.at("REDFISH_MESSAGE_ARGS"),
+                  testCase.serializedArguments);
+        EXPECT_EQ(call.additionalData.at(
+                      "xyz.openbmc_project.Logging.Entry.Resolution"),
+                  "Retry");
+        EXPECT_EQ(call.additionalData.at("namespace"), "FWUpdate");
+        EXPECT_EQ(call.additionalData.at("TEST_KEY"), "test-value");
+    }
 }
 
 TEST_F(DBusUtilInternalTest, createLogEntryMessageIdBranchCoverage)
@@ -391,18 +406,22 @@ TEST_F(DBusUtilInternalTest,
 {
     constexpr auto critical =
         "xyz.openbmc_project.Logging.Entry.Level.Critical";
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
 
     createLogEntry(firmwarePackageComponentImageMissing, "HGX_FW_CPLD_0", "",
                    "");
-    EXPECT_EQ(conn->lastMessageId, firmwarePackageComponentImageMissing);
-    EXPECT_EQ(conn->lastSeverity, critical);
-    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "HGX_FW_CPLD_0");
+    EXPECT_EQ(conn->loggingCalls.back().messageId,
+              firmwarePackageComponentImageMissing);
+    EXPECT_EQ(conn->loggingCalls.back().severity, critical);
+    EXPECT_EQ(conn->loggingCalls.back().additionalData["REDFISH_MESSAGE_ARGS"],
+              "HGX_FW_CPLD_0");
 
     createLogEntry(preUpdateValidationFailed, "", "", "");
-    EXPECT_EQ(conn->lastMessageId, preUpdateValidationFailed);
-    EXPECT_EQ(conn->lastSeverity, critical);
-    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "");
+    EXPECT_EQ(conn->loggingCalls.back().messageId, preUpdateValidationFailed);
+    EXPECT_EQ(conn->loggingCalls.back().severity, critical);
+    EXPECT_EQ(conn->loggingCalls.back().additionalData["REDFISH_MESSAGE_ARGS"],
+              "");
 }
 
 TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorReturnsEmptyOnCallFailure)
@@ -684,22 +703,26 @@ TEST_F(DBusUtilInternalTest,
            {"REDFISH_MESSAGE_ARGS", "GPU1, 2.0 "},
            {"REDFISH_RESOLUTION", "Wait"}}}});
 
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
 
     EXPECT_TRUE(queryDeviceStatusAndLog(8, true));
-    EXPECT_EQ(conn->lastMessageId, "Update.1.0.AwaitToActivate");
+    EXPECT_EQ(conn->loggingCalls.back().messageId,
+              "Update.1.0.AwaitToActivate");
     EXPECT_EQ(
-        conn->lastSeverity,
+        conn->loggingCalls.back().severity,
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
             Level::Critical));
-    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "2.0,GPU1");
+    EXPECT_EQ(conn->loggingCalls.back().additionalData["REDFISH_MESSAGE_ARGS"],
+              "2.0,GPU1");
 }
 
 TEST_F(DBusUtilInternalTest, createLogEntryReplayedIdHonorsSeverityOverride)
 {
     using Level =
         sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
 
     for (const auto& messageId :
          {deviceDriverErrorsDetected, bmcDriverErrorsDetected})
@@ -707,16 +730,17 @@ TEST_F(DBusUtilInternalTest, createLogEntryReplayedIdHonorsSeverityOverride)
         createLogEntry(messageId, "SetEndpointID", "GPU0,unreachable",
                        "Power cycle.", "FWUpdate", true);
         EXPECT_EQ(
-            conn->lastSeverity,
+            conn->loggingCalls.back().severity,
             sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
                 Level::Informational));
-        EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"],
-                  "SetEndpointID,GPU0,unreachable");
+        EXPECT_EQ(
+            conn->loggingCalls.back().additionalData["REDFISH_MESSAGE_ARGS"],
+            "SetEndpointID,GPU0,unreachable");
 
         createLogEntry(messageId, "SetEndpointID", "GPU0,unreachable",
                        "Power cycle.", "FWUpdate", false);
         EXPECT_EQ(
-            conn->lastSeverity,
+            conn->loggingCalls.back().severity,
             sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
                 Level::Critical));
     }
@@ -726,20 +750,21 @@ TEST_F(DBusUtilInternalTest, createLogEntryUnknownIdHonorsSeverityOverride)
 {
     using Level =
         sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
 
     // Catch-all: an ID from a registry pldm does not model at all.
     createLogEntry("SomeOther.1.0.MessageId", "GPU0", "detail", "Retry.",
                    "FWUpdate", true);
     EXPECT_EQ(
-        conn->lastSeverity,
+        conn->loggingCalls.back().severity,
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
             Level::Informational));
 
     createLogEntry("SomeOther.1.0.MessageId", "GPU0", "detail", "Retry.",
                    "FWUpdate", false);
     EXPECT_EQ(
-        conn->lastSeverity,
+        conn->loggingCalls.back().severity,
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
             Level::Critical));
 }
@@ -748,14 +773,15 @@ TEST_F(DBusUtilInternalTest, createLogEntryRecoveryKeepsSeverityOverride)
 {
     using Level =
         sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
 
     // Recovery entries are committed at Critical by their producer; a device
     // that is not an update target must still report Informational.
     createLogEntry(firmwareInRecovery, "", "GPU0", "Perform device FW recovery",
                    "FWUpdate", true);
     EXPECT_EQ(
-        conn->lastSeverity,
+        conn->loggingCalls.back().severity,
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
             Level::Informational));
 }

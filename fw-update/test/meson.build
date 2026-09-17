@@ -99,7 +99,10 @@ foreach t : tests
     # Make coroutine D-Bus awaitables (coGetSubTree / coGetDbusProperty /
     # coGetServiceMap) become trivial no-op stubs in test builds. Without
     # this the awaitables would call into asio and try to drive the bus.
-    test_cpp_args = ['-DMOCK_DBUS_ASYNC_UTILS']
+    test_cpp_args = [
+        '-DMOCK_DBUS_ASYNC_UTILS',
+        '-DPLDM_FW_UPDATE_ASIO_CONNECTION_PROVIDER=pldm::utils::RecordingAsioConnectionProvider',
+    ]
     test_include_dirs = ['../../pldmd']
     test_link_args = []
     if t == 'config_internal_test'
@@ -125,9 +128,7 @@ foreach t : tests
         ]
     endif
 
-    if t != 'dbusutil_internal_test'
-        test_include_dirs += 'include'
-    endif
+    test_include_dirs += 'include'
 
     test(
         t,

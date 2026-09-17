@@ -42,7 +42,7 @@ namespace pldm::utils
  *  getDbusPropertiesVariant is keyed by "<objPath>|<interface>"; a missing
  *  key throws, which is also how the Components<N> probe loop terminates.
  */
-class EmConfigTestDBusHandler : public DBusLoggingTestHandler
+class EmConfigTestDBusHandler : public DBusHandler
 {
   public:
     static void reset()

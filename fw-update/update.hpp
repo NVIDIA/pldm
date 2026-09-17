@@ -37,18 +37,19 @@ class Update : public UpdateIntf
      */
     Update(sdbusplus::bus_t& bus, const std::string& path,
            UpdateManager* updateManager) :
-        UpdateIntf(bus, path.c_str()), updateManager(updateManager),
-        objPath(path)
+        UpdateIntf(bus, path.c_str(), UpdateIntf::action::defer_emit),
+        updateManager(updateManager), objPath(path)
     {
-        allowedForceUpdate(true);
+        allowedForceUpdate(true, true);
         // Supported only on platforms with a known updatable device scope.
         // On develop that scope (EM configurations, MCTP static config,
         // discovered endpoints) arrives asynchronously after construction,
         // so start at false; the firmware update Manager republishes it via
         // UpdateManager::refreshAllowedPreUpdateValidation() whenever the
         // scope state changes.
-        allowedPreUpdateValidation(false);
-        allowedTargets(true);
+        allowedPreUpdateValidation(false, true);
+        allowedTargets(true, true);
+        emit_object_added();
     }
 
     sdbusplus::object_path startUpdate(

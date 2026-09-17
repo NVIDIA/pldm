@@ -52,7 +52,7 @@ namespace pldm::utils
  *  "<objPath>|<interface>"; a missing key throws, exercising the skip
  *  branches of seedRefreshEidsFromStaticConfig.
  */
-class UpdateManagerTestDBusHandler : public DBusLoggingTestHandler
+class UpdateManagerTestDBusHandler : public DBusHandler
 {
   public:
     static void reset()

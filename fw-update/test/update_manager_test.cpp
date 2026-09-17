@@ -120,6 +120,12 @@ class UpdateManagerTest : public testing::Test
                    milliseconds(100))
     {}
 
+    void SetUp() override
+    {
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection()
+            ->reset();
+    }
+
     void waitEventExpiry(milliseconds timeout)
     {
         while (1)

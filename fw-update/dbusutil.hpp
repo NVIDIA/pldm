@@ -33,6 +33,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 PHOSPHOR_LOG2_USING;
 
@@ -54,9 +55,9 @@ const std::string targetDetermined{"Update.1.0.TargetDetermined"};
 const std::string resourceErrorDetected{
     "ResourceEvent.1.0.ResourceErrorsDetected"};
 const std::string preUpdateValidationFailed{
-    "NvidiaUpdate.1.2.PreUpdateValidationFailed"};
+    "NvidiaUpdate.1.3.PreUpdateValidationFailed"};
 const std::string firmwarePackageComponentImageMissing{
-    "NvidiaUpdate.1.2.FirmwarePackageComponentImageMissing"};
+    "NvidiaUpdate.1.3.FirmwarePackageComponentImageMissing"};
 const std::string componentUpdateSkipped{
     "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
@@ -68,6 +69,23 @@ const std::string deviceDriverErrorsDetected{
     "NvidiaResourceEvent.1.0.DeviceDriverErrorsDetected"};
 const std::string bmcDriverErrorsDetected{
     "NvidiaResourceEvent.1.0.BmcDriverErrorsDetected"};
+
+namespace pldm::fw_update::detail
+{
+
+inline auto& getAsioConnection()
+{
+    // Unit tests inject a recording connection provider so async D-Bus calls
+    // can be verified without using the process-wide production connection.
+#ifdef PLDM_FW_UPDATE_ASIO_CONNECTION_PROVIDER
+    return PLDM_FW_UPDATE_ASIO_CONNECTION_PROVIDER::getAsioConnection();
+#else
+    return pldm::utils::DBusHandler::getAsioConnection();
+#endif
+}
+
+} // namespace pldm::fw_update::detail
+
 /**
  * @brief Get the D-Bus service using mapper lookup
  *
@@ -168,7 +186,7 @@ inline void setDBusPropertyAsync(std::string_view objectPath,
 
     try
     {
-        auto asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+        auto asioConnection = pldm::fw_update::detail::getAsioConnection();
         pldm::utils::PropertyValue dbusValue{value};
 
         asioConnection->async_method_call(
@@ -281,7 +299,7 @@ inline void createLogEntry(
         addData[key] = value;
     }
 
-    auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+    auto& asioConnection = pldm::fw_update::detail::getAsioConnection();
     auto severity =
         sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
             level);
@@ -297,6 +315,43 @@ inline void createLogEntry(
         "xyz.openbmc_project.Logging", "/xyz/openbmc_project/logging",
         "xyz.openbmc_project.Logging.Create", "Create", messageID, severity,
         addData);
+}
+
+/** @brief Create a log entry with arguments in registry-template order.
+ *
+ *  Unlike the legacy two-argument overload, this overload does not consult
+ *  the MessageId-specific argument swap table and does not infer severity
+ *  from the MessageId. Caller-supplied argument order and severity are used
+ *  exactly as provided. Empty arguments retain their positional slots during
+ *  serialization; for example, {"", "x"} is serialized as ",x".
+ *
+ *  @param[in] messageID - Message ID
+ *  @param[in] messageArgs - Message arguments in registry-template order
+ *  @param[in] resolution - Resolution field
+ *  @param[in] logNamespace - Logging namespace
+ *  @param[in] level - Final severity for the log entry
+ *  @param[in] extraData - Optional additional key/value pairs to merge into
+ *                         AdditionalData (e.g. DEVICE_NAME, ERROR_ID). Keys
+ *                         here override any defaults populated by the
+ *                         delegated string overload.
+ */
+inline void createLogEntry(
+    const std::string& messageID, const std::vector<std::string>& messageArgs,
+    const std::string& resolution, const std::string& logNamespace,
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
+    const std::map<std::string, std::string>& extraData = {})
+{
+    std::string serializedArgs;
+    for (size_t index = 0; index < messageArgs.size(); ++index)
+    {
+        if (index > 0)
+        {
+            serializedArgs += ',';
+        }
+        serializedArgs += messageArgs[index];
+    }
+    createLogEntry(messageID, serializedArgs, resolution, logNamespace, level,
+                   extraData);
 }
 
 /** @brief Create the D-Bus log entry for message registry
