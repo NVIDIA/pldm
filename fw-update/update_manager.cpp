@@ -1617,7 +1617,7 @@ void UpdateManager::publishFinalActivationStatus(
             std::chrono::seconds(5))
             .count();
 
-    auto& asioConnection = pldm::utils::DBusHandler::getAsioConnection();
+    auto& asioConnection = pldm::fw_update::detail::getAsioConnection();
     asioConnection->async_method_call_timed(
         [this, state,
          onPublished = std::move(onPublished)](boost::system::error_code ec) {

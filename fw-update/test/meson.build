@@ -75,7 +75,11 @@ openssl = dependency('openssl', required: true)
 
 foreach t : tests
     test_fw_update_src = fw_update_test_src
-    test_cpp_args = []
+    # Route fw-update async D-Bus calls to the recording connection so the
+    # tests can inspect logged Redfish messages without a bus.
+    test_cpp_args = [
+        '-DPLDM_FW_UPDATE_ASIO_CONNECTION_PROVIDER=pldm::utils::RecordingAsioConnectionProvider',
+    ]
     test_include_dirs = ['../../pldmd']
     if t == 'config_internal_test'
         test_fw_update_src = fw_update_test_src_no_config
@@ -84,12 +88,10 @@ foreach t : tests
     elif t == 'firmware_inventory_internal_thread_test'
         test_fw_update_src = fw_update_test_src_no_firmware_inventory
     elif t == 'debug_token_internal_test' or t == 'other_device_update_manager_test'
-        test_cpp_args = ['-fno-access-control']
+        test_cpp_args += ['-fno-access-control']
     endif
 
-    if t != 'dbusutil_internal_test'
-        test_include_dirs += 'include'
-    endif
+    test_include_dirs += 'include'
 
     test(
         t,
