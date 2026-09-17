@@ -18,6 +18,8 @@
 
 #include "fw-update/error_handling.hpp"
 
+#include <string_view>
+
 #include <gtest/gtest.h>
 
 using namespace pldm;
@@ -144,3 +146,52 @@ TEST(error_handling, getCompCompatibilityMessage_unknown_command)
     EXPECT_TRUE(outoemMessageError.empty());
     EXPECT_TRUE(outoemResolution.empty());
 }
+
+#ifdef OEM_NVIDIA
+TEST(error_handling, getNvidiaUpdateMessageDefinition)
+{
+    using ArgumentType = NvidiaUpdateMessageArgumentType;
+    using Message = NvidiaUpdateMessage;
+    using Severity = NvidiaUpdateMessageSeverity;
+
+    struct TestCase
+    {
+        Message message;
+        std::string_view messageId;
+        ArgumentType argumentType;
+        Severity severity;
+        std::string_view reason;
+    };
+
+    static constexpr TestCase testCases[]{
+        {Message::firmwarePackageNoMatchingDevices,
+         "NvidiaUpdate.1.3.FirmwarePackageNoMatchingDevices",
+         ArgumentType::packageVersion,
+         Severity::critical,
+         {}},
+        {Message::requestedTargetUnavailableForUpdate,
+         "NvidiaUpdate.1.3.RequestedTargetUnavailableForUpdate",
+         ArgumentType::target,
+         Severity::critical,
+         {}},
+        {Message::requestedTargetNotSupportedByPackage,
+         "NvidiaUpdate.1.3.RequestedTargetNotSupportedByPackage",
+         ArgumentType::targetPackageVersion,
+         Severity::critical,
+         {}},
+    };
+
+    for (const auto& testCase : testCases)
+    {
+        SCOPED_TRACE(static_cast<unsigned>(testCase.message));
+        const auto definition =
+            getNvidiaUpdateMessageDefinition(testCase.message);
+        ASSERT_TRUE(definition.has_value());
+        EXPECT_EQ(definition->messageId, testCase.messageId);
+        EXPECT_EQ(definition->argumentType, testCase.argumentType);
+        EXPECT_EQ(definition->severity, testCase.severity);
+        EXPECT_EQ(definition->reason, testCase.reason);
+        EXPECT_FALSE(definition->resolution.empty());
+    }
+}
+#endif

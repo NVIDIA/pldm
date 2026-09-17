@@ -55,10 +55,16 @@ using CommandToCompCompatibilityMap =
 
 enum class NvidiaUpdateMessage
 {
+    firmwarePackageNoMatchingDevices,
+    requestedTargetUnavailableForUpdate,
+    requestedTargetNotSupportedByPackage,
 };
 
 enum class NvidiaUpdateMessageArgumentType
 {
+    packageVersion,
+    target,
+    targetPackageVersion,
 };
 
 enum class NvidiaUpdateMessageSeverity
@@ -86,6 +92,24 @@ inline std::optional<NvidiaUpdateMessageDefinition>
 #else
     switch (message)
     {
+        case NvidiaUpdateMessage::firmwarePackageNoMatchingDevices:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.FirmwarePackageNoMatchingDevices",
+                "Verify that the firmware package is intended for this platform and contains images for the devices in this system, then retry the update.",
+                NvidiaUpdateMessageArgumentType::packageVersion,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::requestedTargetUnavailableForUpdate:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.RequestedTargetUnavailableForUpdate",
+                "Power on the target and verify its management connection, then retry the firmware update. If the target remains unavailable, follow the platform firmware recovery procedure.",
+                NvidiaUpdateMessageArgumentType::target,
+                NvidiaUpdateMessageSeverity::critical};
+        case NvidiaUpdateMessage::requestedTargetNotSupportedByPackage:
+            return NvidiaUpdateMessageDefinition{
+                "NvidiaUpdate.1.3.RequestedTargetNotSupportedByPackage",
+                "Verify that the firmware package is intended for this platform and contains an image compatible with the requested target, then retry the firmware update.",
+                NvidiaUpdateMessageArgumentType::targetPackageVersion,
+                NvidiaUpdateMessageSeverity::critical};
         default:
             break;
     }
@@ -99,13 +123,29 @@ inline std::optional<NvidiaUpdateMessageDefinition>
  *  Set only the fields that message uses.
  */
 struct NvidiaUpdateMessageFacts
-{};
+{
+    std::string_view packageVersion{};
+    std::string_view target{};
+};
 
 #ifdef OEM_NVIDIA
 
 inline std::vector<std::string> nvidiaUpdateMessageArguments(
-    const NvidiaUpdateMessageDefinition&, const NvidiaUpdateMessageFacts&)
+    const NvidiaUpdateMessageDefinition& definition,
+    const NvidiaUpdateMessageFacts& facts)
 {
+    using Arg = NvidiaUpdateMessageArgumentType;
+
+    switch (definition.argumentType)
+    {
+        case Arg::packageVersion:
+            return {std::string{facts.packageVersion}};
+        case Arg::target:
+            return {std::string{facts.target}};
+        case Arg::targetPackageVersion:
+            return {std::string{facts.target},
+                    std::string{facts.packageVersion}};
+    }
     return {};
 }
 
