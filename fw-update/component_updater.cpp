@@ -331,6 +331,8 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
                 eid, fwDeviceIDRecord, componentIndex, oemMessageId,
                 oemMessageError, oemResolution);
         }
+        updateManager->createUpdateComponentResponseMessage(
+            eid, fwDeviceIDRecord, componentIndex, compCompatibilityRespCode);
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,

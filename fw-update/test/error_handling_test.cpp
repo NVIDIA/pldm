@@ -18,6 +18,7 @@
 
 #include "fw-update/error_handling.hpp"
 
+#include <array>
 #include <string_view>
 
 #include <gtest/gtest.h>
@@ -229,6 +230,16 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
          ArgumentType::packageVersion,
          Severity::critical,
          {}},
+        {Message::componentUpdateSkipped,
+         "NvidiaUpdate.1.3.ComponentImageIdentical",
+         ArgumentType::componentPackageVersionComparisonStamp,
+         Severity::informational,
+         {}},
+        {Message::firmwareComponentComparisonStampLower,
+         "NvidiaUpdate.1.3.ComponentDowngradeRejected",
+         ArgumentType::componentPackageVersionComparisonStamp,
+         Severity::critical,
+         {}},
     };
 
     for (const auto& testCase : testCases)
@@ -242,6 +253,48 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
         EXPECT_EQ(definition->severity, testCase.severity);
         EXPECT_EQ(definition->reason, testCase.reason);
         EXPECT_FALSE(definition->resolution.empty());
+    }
+}
+
+TEST(error_handling, getUpdateComponentMessageDefinition)
+{
+    using ArgumentType = NvidiaUpdateMessageArgumentType;
+
+    struct TestCase
+    {
+        std::string_view messageId;
+        ArgumentType argumentType;
+        uint8_t responseCode;
+    };
+
+    static constexpr TestCase testCases[]{
+        {"NvidiaUpdate.1.3.ComponentImageIdentical",
+         ArgumentType::componentPackageVersionComparisonStamp,
+         PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL},
+        {"NvidiaUpdate.1.3.ComponentDowngradeRejected",
+         ArgumentType::componentPackageVersionComparisonStamp,
+         PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER},
+    };
+
+    for (const auto& testCase : testCases)
+    {
+        SCOPED_TRACE(static_cast<unsigned>(testCase.responseCode));
+        const auto definition =
+            getUpdateComponentMessageDefinition(testCase.responseCode);
+        ASSERT_TRUE(definition.has_value());
+        EXPECT_EQ(definition->messageId, testCase.messageId);
+        EXPECT_EQ(definition->argumentType, testCase.argumentType);
+    }
+
+    for (const uint8_t responseCode : std::array<uint8_t, 7>{
+             PLDM_CCRC_VENDOR_COMP_RESP_CODE_RANGE_MIN,
+             PLDM_CCRC_INCOMPLETE_COMP_IMAGE_SET, PLDM_CCRC_COMP_NOT_SUPPORTED,
+             PLDM_CCRC_COMP_INFO_NO_MATCH, PLDM_CCRC_COMP_VER_STR_IDENTICAL,
+             PLDM_CCRC_COMP_VER_STR_LOWER,
+             PLDM_CCRC_VENDOR_COMP_RESP_CODE_RANGE_MAX})
+    {
+        EXPECT_FALSE(
+            getUpdateComponentMessageDefinition(responseCode).has_value());
     }
 }
 #endif
