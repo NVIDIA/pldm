@@ -94,7 +94,7 @@ TEST_F(DebugTokenInternalTest, activateReturnsFalseWhenDbusSetPropertyFails)
 {
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath =
-        "/xyz/openbmc_project/software/HGX_FW_Debug_Token_Erase";
+        "/xyz/openbmc_project/software/Debug_Token_Erase";
 
     auto status = debugToken.activate();
 
@@ -124,7 +124,7 @@ TEST_F(DebugTokenInternalTest,
        onActivationChangedMsgIgnoresSignalForDifferentObjectPath)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -153,7 +153,7 @@ TEST_F(DebugTokenInternalTest, startTimerReturnsWhenTokenAlreadyCompleted)
 {
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath =
-        "/xyz/openbmc_project/software/HGX_FW_Debug_Token_Erase";
+        "/xyz/openbmc_project/software/Debug_Token_Erase";
     debugToken.tokenVersion = "0.0";
     debugToken.tokenStatus = true;
 
@@ -179,7 +179,7 @@ TEST_F(DebugTokenInternalTest, startTimerTimeoutForErasePathTriggersUpdate)
 
     DebugToken debugToken(busMock, &updateManager);
     debugToken.tokenPath =
-        "/xyz/openbmc_project/software/HGX_FW_Debug_Token_Erase";
+        "/xyz/openbmc_project/software/Debug_Token_Erase";
     debugToken.tokenVersion = "0.0";
     debugToken.tokenStatus = false;
     debugToken.startTimer(std::chrono::seconds(0));
@@ -203,7 +203,7 @@ TEST_F(DebugTokenInternalTest, startTimerTimeoutForInstallPathTriggersUpdate)
         std::make_unique<DebugToken>(busMock, &updateManager);
 
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenVersion = "1.2.3";
     debugToken.tokenStatus = false;
     debugToken.startTimer(std::chrono::seconds(0));
@@ -262,7 +262,7 @@ TEST_F(DebugTokenInternalTest,
        activateReturnsFalseWhenDbusSetPropertyFailsForInstallToken)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenVersion = "1.2.3";
 
     auto status = debugToken.activate();
@@ -282,7 +282,7 @@ TEST_F(DebugTokenInternalTest, onActivationChangedMsgActiveSetsTokenStatus)
         std::make_unique<DebugToken>(busMock, &updateManager);
 
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -313,7 +313,7 @@ TEST_F(DebugTokenInternalTest, onActivationChangedMsgFailedSetsTokenStatus)
         std::make_unique<DebugToken>(busMock, &updateManager);
 
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -335,7 +335,7 @@ TEST_F(DebugTokenInternalTest,
        onActivationChangedMsgActivatingKeepsTokenStatusFalse)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -357,7 +357,7 @@ TEST_F(DebugTokenInternalTest,
        onActivationChangedMsgWithoutActivationPropertyKeepsTokenStatusFalse)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -511,7 +511,7 @@ TEST_F(DebugTokenInternalTest, activateReturnsTrueWhenDbusSetPropertySucceeds)
 {
     MockdBusHandler dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
 
     EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
     EXPECT_TRUE(debugToken.activate());
@@ -521,7 +521,7 @@ TEST_F(DebugTokenInternalTest, setVersionUsesDbusPropertyWhenAvailable)
 {
     MockdBusHandler dbusHandler;
     DebugToken debugToken(busMock, &updateManager, dbusHandler);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenVersion = "9.9.9";
 
     EXPECT_CALL(dbusHandler, setDbusProperty(testing::_, testing::_)).Times(1);
@@ -706,7 +706,7 @@ TEST_F(DebugTokenInternalTest,
        onActivationChangedMsgDifferentPathKeepsTokenStatusFalse)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -951,7 +951,7 @@ TEST_F(DebugTokenInternalTest,
        onActivationChangedMsgThrowsForNonStringActivationProperty)
 {
     DebugToken debugToken(busMock, &updateManager);
-    debugToken.tokenPath = "/xyz/openbmc_project/software/HGX_FW_Debug_Token";
+    debugToken.tokenPath = "/xyz/openbmc_project/software/Debug_Token_Install";
     debugToken.tokenStatus = false;
 
     pldm::dbus::PropertyMap properties;
@@ -1207,7 +1207,7 @@ TEST_F(DebugTokenInternalTest, updateDebugTokenEraseFailureStaysTerminal)
     EXPECT_CALL(dbusHandler,
                 getSubTreePaths(testing::_, testing::_, testing::_))
         .WillRepeatedly(testing::Return(std::vector<std::string>{
-            "/xyz/openbmc_project/software/other/HGX_FW_Debug_Token_Erase"}));
+            "/xyz/openbmc_project/software/other/Debug_Token_Erase"}));
     EXPECT_CALL(dbusHandler,
                 getDbusPropertyVariant(testing::_, testing::_, testing::_))
         .WillRepeatedly([](const char*, const char* property,

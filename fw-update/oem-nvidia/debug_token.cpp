@@ -70,7 +70,7 @@ bool DebugToken::activate()
               "OBJPATH", tokenPath, "ERROR", e);
 
         auto componentName = std::filesystem::path(tokenPath).filename();
-        if (componentName == "HGX_FW_Debug_Token_Erase")
+        if (componentName == "Debug_Token_Erase")
         {
             auto eraseResolution =
                 "No action required. If there are other"
@@ -237,7 +237,7 @@ void DebugToken::updateDebugToken(
         {
             error("Cannot erase debug token: no D-Bus object for UUID={UUID}",
                   "UUID", EraseTokenUUID);
-            createLogEntry(debugTokenEraseFailed, "HGX_FW_Debug_Token_Erase",
+            createLogEntry(debugTokenEraseFailed, "Debug_Token_Erase",
                            "Debug token service is not ready.",
                            transferFailedResolution);
             startUpdate();
@@ -423,7 +423,7 @@ void DebugToken::startTimer(auto timerExpiryTime)
             activationMatches.clear();
             interfaceAddedMatch.reset();
             auto componentName = std::filesystem::path(tokenPath).filename();
-            if (componentName == "HGX_FW_Debug_Token_Erase")
+            if (componentName == "Debug_Token_Erase")
             {
                 auto eraseMessage = "Operation timed out.";
                 auto eraseResolution =
