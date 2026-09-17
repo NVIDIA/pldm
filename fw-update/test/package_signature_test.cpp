@@ -1750,6 +1750,8 @@ TEST_F(PackageSignatureTest, signatureV3ParseHeaderCorruptedMagic)
             signHeaderV3WithoutPaddingCorruptedMagic);
 
     EXPECT_THROW(packageSignatureParser->parseHeader(), InternalFailure);
+    EXPECT_EQ(packageSignatureParser->getValidationErrorReason(),
+              "signature header identifier is invalid");
 }
 
 TEST_F(PackageSignatureTest, signatureV3ParseHeaderCorruptedMajorVersion)
@@ -1769,6 +1771,8 @@ TEST_F(PackageSignatureTest, signatureV3ParseHeaderCorruptedSignatureType)
             signHeaderV3WithoutPaddingCorruptedSignatureType);
 
     EXPECT_THROW(packageSignatureParser->parseHeader(), InternalFailure);
+    EXPECT_EQ(packageSignatureParser->getValidationErrorReason(),
+              "signature type is not supported");
 }
 
 TEST_F(PackageSignatureTest, signatureV3IntegrityCheck)

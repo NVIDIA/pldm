@@ -1285,6 +1285,11 @@ TEST_F(UpdateManagerTest,
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     bool integrityStatus = true;
+#ifdef OEM_NVIDIA
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.packageIntegrityCheckAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1298,6 +1303,15 @@ TEST_F(UpdateManagerTest,
     {
         EXPECT_FALSE(integrityStatus);
     }
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.PackageSignatureIntegrityFailed");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion);
+#endif
 }
 
 TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncUnsignedPackagePath)
@@ -1355,6 +1369,11 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncFailsWithIncorrectSignature)
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     bool verificationStatus = true;
+#ifdef OEM_NVIDIA
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.verifyPackageAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1368,6 +1387,15 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncFailsWithIncorrectSignature)
     {
         EXPECT_FALSE(verificationStatus);
     }
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.PackageSignatureVerificationFailed");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion);
+#endif
 }
 
 TEST_F(UpdateManagerTest, verifyPackageAsyncUnsignedPackagePath)
@@ -1380,12 +1408,26 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncUnsignedPackagePath)
 
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
+#if defined(OEM_NVIDIA) && defined(PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED)
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.verifyPackageAsync(
         [&](bool) { onCompleteCalled = true; },
         [&](const std::string&) { onErrorCalled = true; });
 
     waitEventExpiry(milliseconds(100));
     EXPECT_TRUE(onCompleteCalled || onErrorCalled);
+#if defined(OEM_NVIDIA) && defined(PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED)
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.PackageSignatureRequired");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion);
+#endif
 }
 
 TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncGetSignatureHeaderFailure)
@@ -1409,6 +1451,11 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncGetSignatureHeaderFailure)
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     bool result = true;
+#ifdef OEM_NVIDIA
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.packageIntegrityCheckAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1420,6 +1467,15 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncGetSignatureHeaderFailure)
     EXPECT_TRUE(onCompleteCalled);
     EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.SignatureHeaderMalformed");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion + ",signature header size is invalid");
+#endif
 }
 
 TEST_F(UpdateManagerTest, verifyPackageAsyncGetSignatureHeaderFailure)
@@ -1483,6 +1539,11 @@ TEST_F(UpdateManagerTest,
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     bool result = true;
+#ifdef OEM_NVIDIA
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.packageIntegrityCheckAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1494,6 +1555,14 @@ TEST_F(UpdateManagerTest,
     EXPECT_TRUE(onCompleteCalled);
     EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
+#ifdef OEM_NVIDIA
+    EXPECT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              "NvidiaUpdate.1.3.SignatureHeaderVersionUnsupported");
+    EXPECT_EQ(
+        connection->loggingCalls.front().additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion + ",255");
+#endif
 }
 
 TEST_F(UpdateManagerTest, verifyPackageAsyncUnsupportedSignatureVersionFails)
@@ -1562,6 +1631,11 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncParseHeaderFailure)
     bool onCompleteCalled = false;
     bool onErrorCalled = false;
     bool result = true;
+#ifdef OEM_NVIDIA
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+#endif
     updateManager.packageIntegrityCheckAsync(
         [&](bool status) {
             onCompleteCalled = true;
@@ -1573,6 +1647,15 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncParseHeaderFailure)
     EXPECT_TRUE(onCompleteCalled);
     EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
+    EXPECT_EQ(connection->loggingCalls[1].messageId,
+              "NvidiaUpdate.1.3.SignatureHeaderMalformed");
+    EXPECT_EQ(
+        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        updateManager.parser->pkgVersion + ",signature type is not supported");
+#endif
 }
 
 TEST_F(UpdateManagerTest, verifyPackageAsyncParseHeaderFailure)
