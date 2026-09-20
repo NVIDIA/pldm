@@ -38,6 +38,7 @@ dep_src_files += [
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
     '../../fw-update/aggregate_update_manager.cpp',
     '../../fw-update/item_update_manager.cpp',
+    '../../fw-update/systemd_interface.cpp',
 ]
 
 dep_src_headers = ['../../requester', '../../oem/nvidia', '../../pldmd']
