@@ -11,12 +11,6 @@ Response AggregateUpdateManager::handleRequest(
     mctp_eid_t eid, uint8_t command, const pldm_msg* request, size_t reqMsgLen)
 {
     Response response;
-    response = UpdateManager::handleRequest(eid, command, request, reqMsgLen);
-    auto responseMsg = std::start_lifetime_as<pldm_msg>(response.data());
-    if (responseMsg->payload[0] != PLDM_FWUP_COMMAND_NOT_EXPECTED)
-    {
-        return response;
-    }
     for (auto& [_, updateManager] : updateManagers)
     {
         response =
@@ -28,13 +22,15 @@ Response AggregateUpdateManager::handleRequest(
             return response;
         }
     }
-    return response;
+    return UpdateManager::handleRequest(eid, command, request, reqMsgLen);
 }
 
 void AggregateUpdateManager::createUpdateManager(
     const SoftwareIdentifier& softwareIdentifier,
     const Descriptors& descriptors, const ComponentInfo& componentInfo,
-    const std::string& updateObjPath, const std::string& generatedId)
+    const std::string& updateObjPath, const std::string& generatedId,
+    const ConditionPaths& conditionPathPair, const std::string& conditionArg,
+    std::function<void()> taskCompletionCallback)
 {
     auto eid = softwareIdentifier.first;
 
@@ -46,7 +42,8 @@ void AggregateUpdateManager::createUpdateManager(
     updateManagers[softwareIdentifier] = std::make_unique<ItemUpdateManager>(
         eid, event, handler, instanceIdDb, updateObjPath, generatedId,
         *descriptorMap[softwareIdentifier],
-        *componentInfoMap[softwareIdentifier]);
+        *componentInfoMap[softwareIdentifier], conditionPathPair, conditionArg,
+        std::move(taskCompletionCallback));
 }
 
 void AggregateUpdateManager::eraseUpdateManager(

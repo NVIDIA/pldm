@@ -249,13 +249,18 @@ class FirmwareInventory
      * @param[in] softwareVersion - Active version of the firmware
      * @param[in] associatedEndpoint - D-Bus object path of the endpoint
      * associated with the firmware
-     * @param[in] purpose - Purpose of the software version, default is Unknown
+     * @param[in] descriptors - Descriptors associated with the firmware
+     * @param[in] componentInfo - Component information associated with the
+     * firmware
+     * @param[in] purpose - Purpose of the software version, default is Other
+     * @note The descriptors and componentInfo parameters are reserved for
+     * future use and currently not used in the implementation.
      */
     explicit FirmwareInventory(
         SoftwareIdentifier softwareIdentifier, const std::string& softwarePath,
         const std::string& generatedId, const std::string& softwareVersion,
         const std::string& associatedEndpoint,
-        SoftwareVersionPurpose purpose = SoftwareVersionPurpose::Unknown);
+        SoftwareVersionPurpose purpose = SoftwareVersionPurpose::Other);
 
   private:
     sdbusplus::bus_t& bus = utils::DBusHandler::getBus();

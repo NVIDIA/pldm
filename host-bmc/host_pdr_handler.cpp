@@ -184,7 +184,10 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
         std::bind_front(&HostPDRHandler::processHostPDRs, this));
     if (rc)
     {
-        std::cerr << "Failed to send the GetPDR request to Host \n";
+        instanceIdDb.free(mctp_eid, instanceId);
+        error(
+            "Failed to send the getPDR request to remote terminus, response code '{RC}'",
+            "RC", rc);
     }
 }
 

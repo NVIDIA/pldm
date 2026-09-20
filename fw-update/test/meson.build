@@ -19,6 +19,7 @@ fw_update_test_sources = [
     '../other_device_update_manager.cpp',
     '../fw_update_utility.cpp',
     '../oem-nvidia/debug_token.cpp',
+    '../systemd_interface.cpp',
 ]
 
 fw_update_test_sources_no_config = []

@@ -4,6 +4,8 @@ if get_option('libpldmresponder').enabled()
     install_subdir('events', install_dir: package_datadir)
 endif
 
+install_subdir('fw-update-conditions', install_dir: package_datadir)
+
 if get_option('oem-ibm').disabled()
     if get_option('libpldmresponder').enabled()
         install_data('fru_master.json', install_dir: package_datadir)

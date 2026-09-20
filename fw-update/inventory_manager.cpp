@@ -22,6 +22,8 @@
 #include <exec/start_detached.hpp>
 #include <phosphor-logging/lg2.hpp>
 
+#include <format>
+
 PHOSPHOR_LOG2_USING;
 
 namespace pldm

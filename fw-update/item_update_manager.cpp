@@ -1,8 +1,10 @@
 #include "item_update_manager.hpp"
 
 #include "activation.hpp"
+#include "common/start_lifetime_as.hpp"
 #include "common/utils.hpp"
 #include "package_parser.hpp"
+#include "systemd_interface.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -56,7 +58,7 @@ bool ItemUpdateManager::processPackage()
     }
     try
     {
-        parser->parse(buffer, buffer.size());
+        parser->parse(buffer);
     }
     catch (const std::exception& e)
     {
@@ -91,10 +93,38 @@ bool ItemUpdateManager::processPackage()
         compImageInfos, componentInfo, emptyCompIdNameMap,
         MAXIMUM_TRANSFER_SIZE, this);
     inProgressActivation->activation(software::Activation::Activations::Ready);
-    activationProgress = std::make_unique<ActivationProgress>(
-        pldm::utils::DBusHandler::getBus(), objPathWithSwId);
-    inProgressActivation->activation(
-        software::Activation::Activations::Activating);
+    if (!preConditionPath.empty())
+    {
+        SystemdInterface::getInstance(pldm::utils::DBusHandler::getBus())
+            .execute(preConditionPath, conditionArg,
+                     [this, alive = std::weak_ptr(aliveToken)](bool success) {
+                         if (alive.expired())
+                         {
+                             // This manager was erased while the condition was
+                             // running
+                             return;
+                         }
+
+                         if (!updateInProgress)
+                         {
+                             return;
+                         }
+
+                         if (!success)
+                         {
+                             error("Pre-update condition failed for {PATH}",
+                                   "PATH", preConditionPath);
+                             completeUpdate(false);
+                             return;
+                         }
+
+                         startFirmwareUpdate();
+                     });
+
+        return true;
+    }
+
+    startFirmwareUpdate();
 
     return true;
 }
@@ -120,16 +150,13 @@ std::string ItemUpdateManager::processFd(int fd)
         catch (const std::exception& e)
         {
             error("Failed to mmap package file, error - {ERROR}", "ERROR", e);
-            updateInProgress = false;
-            this->dupFd.reset();
+            teardownUpdate();
             throw sdbusplus::xyz::openbmc_project::Common::Error::Unavailable();
         }
         if (!processPackage())
         {
             error("Failed to process firmware update package");
-            updateInProgress = false;
-            packageMap.reset();
-            this->dupFd.reset();
+            teardownUpdate();
             throw sdbusplus::xyz::openbmc_project::Common::Error::Unavailable();
         }
     });
@@ -157,67 +184,130 @@ std::optional<DeviceIDRecordOffset> ItemUpdateManager::associatePkgToDevice(
 void ItemUpdateManager::updateDeviceCompletion(
     mctp_eid_t /*eid*/, bool status, std::vector<std::string> /*compNames*/)
 {
-    activationProgress->progress(100);
-    packageMap.reset();
-    dupFd.reset();
+    if (!postConditionPath.empty() && status == true)
+    {
+        SystemdInterface::getInstance(pldm::utils::DBusHandler::getBus())
+            .execute(postConditionPath, conditionArg,
+                     [this, status, alive = std::weak_ptr(aliveToken)](
+                         bool conditionSuccess) {
+                         if (alive.expired())
+                         {
+                             // This manager was erased while the condition was
+                             // running
+                             return;
+                         }
 
-    auto endTime = std::chrono::steady_clock::now();
-    auto dur =
-        std::chrono::duration<double, std::milli>(endTime - startTime).count();
-    info("Firmware update time: {DURATION}ms", "DURATION", dur);
-    activationProgress.reset();
+                         if (!updateInProgress)
+                         {
+                             return;
+                         }
+
+                         if (!conditionSuccess)
+                         {
+                             error("Post-update condition failed for {PATH}",
+                                   "PATH", postConditionPath);
+                         }
+
+                         completeUpdate(status && conditionSuccess);
+                     });
+        return;
+    }
+
+    completeUpdate(status);
+}
+
+void ItemUpdateManager::startFirmwareUpdate()
+{
+    if (!updateInProgress)
+    {
+        return;
+    }
+
+    activationProgress = std::make_unique<ActivationProgress>(
+        pldm::utils::DBusHandler::getBus(), objPathWithSwId);
+    inProgressActivation->activation(
+        software::Activation::Activations::Activating);
+}
+
+void ItemUpdateManager::completeUpdate(bool status)
+{
+    if (!updateInProgress)
+    {
+        return;
+    }
+
+    // A failing pre-update condition completes the update before the firmware
+    // update flow starts, so neither the progress interface nor the start time
+    // is necessarily available here.
+    if (activationProgress)
+    {
+        activationProgress->progress(100);
+        activationProgress.reset();
+    }
+
+    if (startTime)
+    {
+        auto dur = std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - *startTime)
+                       .count();
+        info("Firmware update time: {DURATION}ms", "DURATION", dur);
+    }
+
     inProgressActivation->activation(
         status ? software::Activation::Activations::Active
                : software::Activation::Activations::Failed);
+    teardownUpdate();
+    if (taskCompletionCallback)
+    {
+        taskCompletionCallback();
+    }
+}
+
+void ItemUpdateManager::teardownUpdate()
+{
     deviceUpdater.reset();
     packageDataStream.reset();
     packageMap.reset();
     dupFd.reset();
     updateInProgress = false;
-    return;
 }
 
-Response ItemUpdateManager::handleRequest(mctp_eid_t /*eid*/, uint8_t command,
-                                          const pldm_msg* request,
-                                          size_t reqMsgLen)
+Response ItemUpdateManager::handleRequest(
+    mctp_eid_t eid, uint8_t command, const pldm_msg* request, size_t reqMsgLen)
 {
     Response response(sizeof(pldm_msg), 0);
-    if (deviceUpdater)
+    if (eid != this->eid || !deviceUpdater)
     {
-        if (command == PLDM_REQUEST_FIRMWARE_DATA)
-        {
-            return deviceUpdater->requestFwData(request, reqMsgLen);
-        }
-        else if (command == PLDM_TRANSFER_COMPLETE)
-        {
-            return deviceUpdater->transferComplete(request, reqMsgLen);
-        }
-        else if (command == PLDM_VERIFY_COMPLETE)
-        {
-            return deviceUpdater->verifyComplete(request, reqMsgLen);
-        }
-        else if (command == PLDM_APPLY_COMPLETE)
-        {
-            return deviceUpdater->applyComplete(request, reqMsgLen);
-        }
-        else
-        {
-            auto ptr = new (response.data()) pldm_msg;
-            auto rc = encode_cc_only_resp(
-                request->hdr.instance_id, request->hdr.type,
-                request->hdr.command, PLDM_ERROR_INVALID_DATA, ptr);
-            assert(rc == PLDM_SUCCESS);
-        }
-    }
-    else
-    {
-        auto ptr = new (response.data()) pldm_msg;
+        auto ptr = std::start_lifetime_as<pldm_msg>(response.data());
         auto rc = encode_cc_only_resp(request->hdr.instance_id,
-                                      request->hdr.type, +request->hdr.command,
+                                      request->hdr.type, request->hdr.command,
                                       PLDM_FWUP_COMMAND_NOT_EXPECTED, ptr);
         assert(rc == PLDM_SUCCESS);
+        return response;
     }
 
+    if (command == PLDM_REQUEST_FIRMWARE_DATA)
+    {
+        return deviceUpdater->requestFwData(request, reqMsgLen);
+    }
+    else if (command == PLDM_TRANSFER_COMPLETE)
+    {
+        return deviceUpdater->transferComplete(request, reqMsgLen);
+    }
+    else if (command == PLDM_VERIFY_COMPLETE)
+    {
+        return deviceUpdater->verifyComplete(request, reqMsgLen);
+    }
+    else if (command == PLDM_APPLY_COMPLETE)
+    {
+        return deviceUpdater->applyComplete(request, reqMsgLen);
+    }
+
+    auto ptr = std::start_lifetime_as<pldm_msg>(response.data());
+    auto rc =
+        encode_cc_only_resp(request->hdr.instance_id, request->hdr.type,
+                            request->hdr.command, PLDM_ERROR_INVALID_DATA, ptr);
+    assert(rc == PLDM_SUCCESS);
     return response;
 }
 
@@ -265,8 +355,33 @@ sdbusplus::object_path ItemUpdateManager::startUpdate(
         throw sdbusplus::xyz::openbmc_project::Common::Error::Unavailable();
     }
     updateInProgress = true;
+    this->applyTime = applyTime;
+
+    // Every parameterized condition service receives all supported named
+    // arguments, so the requested apply time is always appended here.
+    conditionArg = baseConditionArg;
+    if (!conditionArg.empty())
+    {
+        conditionArg += ",";
+    }
+    conditionArg +=
+        std::format("{}={}", APPLY_TIME_ARG_KEY, applyTimeToString());
 
     return processFd(image.fd);
+}
+
+std::string ItemUpdateManager::applyTimeToString() const
+{
+    constexpr std::string_view applyTimePrefix =
+        "xyz.openbmc_project.Software.ApplyTime.RequestedApplyTimes.";
+    auto applyTimeStr =
+        ApplyTimeIntf::convertRequestedApplyTimesToString(applyTime);
+    if (applyTimeStr.starts_with(applyTimePrefix))
+    {
+        return applyTimeStr.substr(applyTimePrefix.size());
+    }
+
+    return applyTimeStr;
 }
 
 } // namespace pldm::fw_update

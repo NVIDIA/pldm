@@ -293,6 +293,11 @@ conf_data.set_quoted(
     'PLATFORM_CHASSIS_PATH',
     get_option('platform-chassis-object-path'),
 )
+# Firmware update targets JSON path
+conf_data.set_quoted(
+    'FW_UPDATE_TARGETS_JSON',
+    get_option('fw-update-targets-json'),
+)
 
 configure_file(output: 'config.h', configuration: conf_data)
 
@@ -454,6 +459,7 @@ source_files = [
     'fw-update/package_parser.cpp',
     'fw-update/component_updater.cpp',
     'fw-update/device_updater.cpp',
+    'fw-update/systemd_interface.cpp',
     'fw-update/update.cpp',
     'fw-update/update_manager.cpp',
     'fw-update/other_device_update_manager.cpp',

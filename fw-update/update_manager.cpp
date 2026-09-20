@@ -293,6 +293,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         pldm::utils::DBusHandler::getBus(), this,
         std::vector<sdbusplus::object_path>{});
 
+    updateInProgress = true;
     activation = std::make_unique<Activation>(
         pldm::utils::DBusHandler::getBus(), objPath,
         software::Activation::Activations::Ready, this);
@@ -1438,6 +1439,7 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
 
 void UpdateManager::clearActivationInfo()
 {
+    updateInProgress = false;
     activation.reset();
     activationProgress.reset();
     activationBlocksTransition.reset();

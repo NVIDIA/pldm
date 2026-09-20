@@ -63,14 +63,13 @@ class PackageParser
         formatVersion(formatVersion)
     {}
 
-    /** @brief Parse the firmware update package header
+    /** @brief Parse the firmware update package
      *
-     *  @param[in] pkgData - Raw pointer to package data
-     *  @param[in] pkgSize - Size of the firmware update package
+     *  @param[in] pkgHdr - Package
      *
      *  @note Throws exception is parsing fails
      */
-    void parse(const std::vector<uint8_t>& pkgHdr, uintmax_t pkgSize);
+    void parse(const std::vector<uint8_t>& pkgHdr);
 
     /** @brief Get firmware device ID records from the package
      *

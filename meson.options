@@ -443,3 +443,9 @@ option(
     description: 'Disable the creation of EDPp effecters and their association with CPU power controls',
     value: 'disabled',
 )
+option(
+    'fw-update-targets-json',
+    type: 'string',
+    value: '/var/lib/pldmd/fw-update-targets.json',
+    description: 'Path to firmware update targets configuration JSON file',
+)

@@ -684,3 +684,39 @@ TEST_F(TestBIOSEnumAttribute, updateAttrValWrongVariantCoverage)
                                     PropertyValue{static_cast<uint8_t>(7)}),
         std::bad_variant_access);
 }
+
+TEST_F(TestBIOSEnumAttribute, GetValueIndexThrowsOnUnknownValue)
+{
+    auto json = R"({
+         "attribute_name" : "CodeUpdatePolicy",
+         "possible_values" : [ "Concurrent", "Disruptive" ],
+         "value_names" : [ "Concurrent", "Disruptive" ],
+         "default_values" : [ "Concurrent" ],
+         "read_only" : true,
+         "help_text" : "HelpText",
+         "display_name" : "DisplayName"
+      })"_json;
+
+    BIOSEnumAttribute attr{json, nullptr};
+    EXPECT_THROW(getValueIndex(attr, "unknown", {"Concurrent", "Disruptive"}),
+                 std::invalid_argument);
+}
+
+TEST_F(TestBIOSEnumAttribute, GetValueIndexReturnsCorrectIndex)
+{
+    auto json = R"({
+         "attribute_name" : "CodeUpdatePolicy",
+         "possible_values" : [ "Concurrent", "Disruptive" ],
+         "value_names" : [ "Concurrent", "Disruptive" ],
+         "default_values" : [ "Concurrent" ],
+         "read_only" : true,
+         "help_text" : "HelpText",
+         "display_name" : "DisplayName"
+      })"_json;
+
+    BIOSEnumAttribute attr{json, nullptr};
+    EXPECT_EQ(getValueIndex(attr, "Concurrent", {"Concurrent", "Disruptive"}),
+              0);
+    EXPECT_EQ(getValueIndex(attr, "Disruptive", {"Concurrent", "Disruptive"}),
+              1);
+}

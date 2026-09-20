@@ -426,6 +426,16 @@ using PackageSignatureOffsetToPublicKey = uint16_t;
 using PackageSignaturePublicKeySize = uint16_t;
 using PackageSignaturePublicKey = std::vector<uint8_t>;
 
+// Pre/Post condition
+using ConditionIdentifier = SoftwareName;
+using ConditionArg = std::string;
+using ConditionPath = std::string;
+using ConditionPaths = std::pair<ConditionPath, ConditionPath>;
+using PrePostCondition = std::pair<ConditionIdentifier, ConditionPaths>;
+using PrePostConditionMap =
+    std::unordered_map<ConditionIdentifier, ConditionPaths>;
+using ConditionConfig = std::pair<ConditionIdentifier, ConditionArg>;
+
 } // namespace fw_update
 
 namespace pdr
