@@ -160,7 +160,7 @@ TEST_F(FirmwareInventoryManagerCoverageTest, DeleteFirmwareEntryRemovesEntries)
                                      updateManager);
     SoftwareIdentifier id{endpointId, 100};
     mgr.createFirmwareEntry(id, SoftwareName{"TestDevice"}, "1.0.0",
-                            Descriptors{}, ComponentInfo{});
+                            Descriptors{}, ComponentInfo{}, nullptr);
     ASSERT_TRUE(mgr.getSoftwareMap().contains(id));
 
     mgr.deleteFirmwareEntry(endpointId);
@@ -180,7 +180,7 @@ TEST_F(FirmwareInventoryManagerCoverageTest,
                                      updateManager);
     SoftwareIdentifier id{99, 100};
     mgr.createFirmwareEntry(id, SoftwareName{"NoConfigDev"}, "1.0.0",
-                            Descriptors{}, ComponentInfo{});
+                            Descriptors{}, ComponentInfo{}, nullptr);
     ASSERT_TRUE(mgr.getSoftwareMap().contains(id));
 
     const auto* inventory = static_cast<FirmwareInventoryTestInstance*>(
