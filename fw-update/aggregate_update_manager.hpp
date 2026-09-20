@@ -29,10 +29,7 @@ class AggregateUpdateManager : public UpdateManager
         Event& event,
         pldm::requester::Handler<pldm::requester::Request>& handler,
         InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
-        const ComponentInfoMap& componentInfoMap,
-        const ConditionPaths& conditionPathPair = ConditionPaths{},
-        const std::string& conditionArg = std::string{},
-        std::function<void()> taskCompletionCallback = nullptr) :
+        const ComponentInfoMap& componentInfoMap) :
         UpdateManager(event, handler, instanceIdDb, descriptorMap,
                       componentInfoMap, emptyComponentNameMap(), false, {})
     {}

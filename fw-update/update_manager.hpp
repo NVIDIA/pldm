@@ -475,6 +475,7 @@ class UpdateManager : public UpdateManagerBase
     const ComponentInfoMap& componentInfoMap;
     const ComponentNameMap& componentNameMap;
 
+    bool updateInProgress = false;
     std::unique_ptr<Activation> activation;
 #ifdef FW_UPDATE_INOTIFY_ENABLED
     Watch watch;

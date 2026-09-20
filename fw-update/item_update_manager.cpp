@@ -25,6 +25,8 @@ PHOSPHOR_LOG2_USING;
 namespace pldm::fw_update
 {
 
+constexpr auto APPLY_TIME_ARG_KEY = "applyTime";
+
 ItemUpdateManager::~ItemUpdateManager() = default;
 
 bool ItemUpdateManager::processPackage()

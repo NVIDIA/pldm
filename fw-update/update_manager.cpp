@@ -610,7 +610,7 @@ exec::task<void> UpdateManager::processStream(
     }
     try
     {
-        parser->parse(packageData, packageSize);
+        parser->parse(packageData);
     }
     catch (const sdbusplus::error::xyz::openbmc_project::software::update::
                InvalidSignature&)
