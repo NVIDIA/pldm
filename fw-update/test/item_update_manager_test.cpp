@@ -82,7 +82,7 @@ class ItemUpdateManagerTest : public testing::Test
         auto parser = parsePkgHeader(packageBytes.data(), packageBytes.size());
         if (parser)
         {
-            parser->parse(packageBytes, packageBytes.size());
+            parser->parse(packageBytes);
             const auto& records = parser->getFwDeviceIDRecords();
             if (!records.empty())
             {
