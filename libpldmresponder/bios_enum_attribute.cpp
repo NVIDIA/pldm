@@ -32,6 +32,15 @@ BIOSEnumAttribute::BIOSEnumAttribute(const Json& entry,
     {
         defaultValues.emplace_back(val);
     }
+
+    if (entry.contains("value_names"))
+    {
+        Json vdn = entry.at("value_names");
+        for (auto& val : vdn)
+        {
+            valueDisplayNames.emplace_back(val);
+        }
+    }
     assert(defaultValues.size() == 1);
     defaultValue = defaultValues[0];
     if (dBusMap.has_value())
@@ -214,6 +223,14 @@ void BIOSEnumAttribute::setAttrValueOnDbus(
     }
 
     dbusHandler->setDbusProperty(*dBusMap, it->first);
+}
+
+void BIOSEnumAttribute::populateValueDisplayNamesMap(uint16_t attrHandle)
+{
+    for (auto& vdn : valueDisplayNames)
+    {
+        valueDisplayNamesMap[attrHandle].push_back(vdn);
+    }
 }
 
 void BIOSEnumAttribute::constructEntry(

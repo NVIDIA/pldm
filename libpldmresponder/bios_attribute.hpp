@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@ namespace bios
 {
 
 using Json = nlohmann::json;
+using ValueDisplayNamesMap = std::map<uint16_t, std::vector<std::string>>;
 
 /** @class BIOSAttribute
  *  @brief Provide interfaces to implement specific types of attributes
@@ -97,6 +99,8 @@ class BIOSAttribute
     const std::string displayName;
 
     const std::string helpText;
+
+    ValueDisplayNamesMap valueDisplayNamesMap;
 
   protected:
     /** @brief dbus backend, nullopt if this attribute is read-only*/
