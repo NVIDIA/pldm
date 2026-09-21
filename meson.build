@@ -110,6 +110,10 @@ conf_data.set(
     get_option('number-of-request-retries'),
 )
 conf_data.set(
+    'COMPLETE_COMMANDS_TIMEOUT_SECONDS',
+    get_option('complete-commands-timeout-seconds'),
+)
+conf_data.set(
     'NUMBER_OF_COMMAND_ATTEMPTS',
     get_option('number-of-command-attempts'),
 )
