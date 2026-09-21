@@ -328,6 +328,14 @@ option(
 )
 
 option(
+    'complete-commands-timeout-seconds',
+    type: 'integer',
+    min: 1,
+    value: 600,
+    description: 'Complete commands timeout (UA_T6) in seconds',
+)
+
+option(
     'update-timeout-seconds',
     type: 'integer',
     min: 60,

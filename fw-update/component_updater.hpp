@@ -451,9 +451,9 @@ class ComponentUpdater
      */
     void updateComponentComplete(ComponentUpdateStatus status);
 
-    /* Complete commands timout(UA_T6) in seconds. Default value is 600 as per
-     * the spec*/
-    auto static constexpr completeCommandsTimeoutSeconds = 600;
+    /** @brief Complete commands timeout (UA_T6) in seconds */
+    auto static constexpr completeCommandsTimeoutSeconds =
+        COMPLETE_COMMANDS_TIMEOUT_SECONDS;
     /**
      * @brief Complete Commands Timeout Timer handler
      *
