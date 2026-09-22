@@ -1841,3 +1841,172 @@ TEST(QueryDownstreamIdentifiers, ParseResponseMsgUnsupportedCommand)
                           "support this command"),
               std::string::npos);
 }
+
+// ===== RequestDownstreamDeviceUpdate Tests =====
+
+TEST(RequestDownstreamDeviceUpdate, CreateRequestMsg)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    parseArgs(app, {"test", "test", "--max-transfer-size", "1024",
+                    "--max-outstanding-transfer-requests", "1",
+                    "--package-data-length", "0"});
+
+    auto [rc, requestMsg] = cmd.createRequestMsg();
+    ASSERT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_EQ(requestMsg.size(),
+              sizeof(pldm_msg_hdr) +
+                  PLDM_DOWNSTREAM_DEVICE_UPDATE_REQUEST_BYTES);
+
+    auto* req = reinterpret_cast<pldm_msg*>(requestMsg.data());
+    EXPECT_EQ(req->payload[0], 0x00); // MaximumDownstreamDeviceTransferSize
+    EXPECT_EQ(req->payload[1], 0x04);
+    EXPECT_EQ(req->payload[2], 0x00);
+    EXPECT_EQ(req->payload[3], 0x00);
+    EXPECT_EQ(req->payload[4], 0x01); // MaximumOutstandingTransferRequests
+    EXPECT_EQ(req->payload[5], 0x00); // DownstreamDevicePackageDataLength
+    EXPECT_EQ(req->payload[6], 0x00);
+}
+
+TEST(RequestDownstreamDeviceUpdate, ParseArgsInvalidMaxTransferSize)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    std::vector<const char*> argv = {
+        "test",
+        "test",
+        "--max-transfer-size",
+        "1",
+        "--max-outstanding-transfer-requests",
+        "1",
+        "--package-data-length",
+        "0"};
+    EXPECT_THROW(app.parse(static_cast<int>(argv.size()), argv.data()),
+                 CLI::ValidationError);
+}
+
+TEST(RequestDownstreamDeviceUpdate, ParseArgsInvalidMaxOutstandingRequests)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    std::vector<const char*> argv = {
+        "test",
+        "test",
+        "--max-transfer-size",
+        "1024",
+        "--max-outstanding-transfer-requests",
+        "0",
+        "--package-data-length",
+        "0"};
+    EXPECT_THROW(app.parse(static_cast<int>(argv.size()), argv.data()),
+                 CLI::ValidationError);
+}
+
+TEST(RequestDownstreamDeviceUpdate, ParseArgsInvalidPackageDataLength)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    std::vector<const char*> argv = {
+        "test",
+        "test",
+        "--max-transfer-size",
+        "1024",
+        "--max-outstanding-transfer-requests",
+        "1",
+        "--package-data-length",
+        "65536"};
+    EXPECT_THROW(app.parse(static_cast<int>(argv.size()), argv.data()),
+                 CLI::ConversionError);
+}
+
+TEST(RequestDownstreamDeviceUpdate, ParseResponseMsgSuccess)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    std::vector<uint8_t> payload;
+    payload.push_back(PLDM_SUCCESS);
+    appendLE<uint16_t>(payload, 10);  // DownstreamDeviceMetaDataLength
+    payload.push_back(2);             // DownstreamDeviceWillSendGetPackageData
+    appendLE<uint16_t>(payload, 512); // GetPackageDataMaximumTransferSize
+
+    auto responseData = toResponse(payload);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payload.size());
+    std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("\"DownstreamDeviceMetaDataLength\": 10"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"DDWillSendGetPackageDataCommand\": 2"),
+              std::string::npos);
+    EXPECT_NE(output.find("\"GetPackageDataMaximumTransferSize\": 512"),
+              std::string::npos);
+}
+
+TEST(RequestDownstreamDeviceUpdate, ParseResponseMsgDecodeError)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    // Truncated payload: shorter than the fixed-size response fields.
+    const size_t payloadLen = 2;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = PLDM_SUCCESS;
+
+    testing::internal::CaptureStderr();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_NE(output.find("Response Message Error: rc="), std::string::npos);
+}
+
+class RequestDownstreamDeviceUpdateCompletionCode :
+    public testing::TestWithParam<std::pair<uint8_t, const char*>>
+{};
+
+TEST_P(RequestDownstreamDeviceUpdateCompletionCode, ReportedAsJson)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    RequestDownstreamDeviceUpdate cmd("fw_update",
+                                      "RequestDownstreamDeviceUpdate", sub);
+
+    const size_t payloadLen = 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto* resp = reinterpret_cast<pldm_msg*>(responseData.data());
+    resp->payload[0] = GetParam().first;
+
+    testing::internal::CaptureStdout();
+    cmd.parseResponseMsg(resp, payloadLen);
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find(
+                  std::format("\"CompletionCode\": \"{}\"", GetParam().second)),
+              std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CompletionCodes, RequestDownstreamDeviceUpdateCompletionCode,
+    testing::Values(
+        std::pair<uint8_t, const char*>{PLDM_ERROR, "ERROR"},
+        std::pair<uint8_t, const char*>{PLDM_ERROR_UNSUPPORTED_PLDM_CMD,
+                                        "ERROR_UNSUPPORTED_PLDM_CMD"},
+        std::pair<uint8_t, const char*>{PLDM_FWUP_UNABLE_TO_INITIATE_UPDATE,
+                                        "UNABLE_TO_INITIATE_UPDATE"}));

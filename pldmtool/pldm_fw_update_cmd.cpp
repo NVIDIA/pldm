@@ -1788,6 +1788,94 @@ class QueryDownstreamIdentifiers : public CommandInterface
     bool asciiConvert = false;
 };
 
+class RequestDownstreamDeviceUpdate : public CommandInterface
+{
+  public:
+    ~RequestDownstreamDeviceUpdate() = default;
+    RequestDownstreamDeviceUpdate() = delete;
+    RequestDownstreamDeviceUpdate(const RequestDownstreamDeviceUpdate&) =
+        delete;
+    RequestDownstreamDeviceUpdate(RequestDownstreamDeviceUpdate&&) = delete;
+    RequestDownstreamDeviceUpdate& operator=(
+        const RequestDownstreamDeviceUpdate&) = delete;
+    RequestDownstreamDeviceUpdate& operator=(RequestDownstreamDeviceUpdate&&) =
+        delete;
+
+    explicit RequestDownstreamDeviceUpdate(const char* type, const char* name,
+                                           CLI::App* app) :
+        CommandInterface(type, name, app)
+    {
+        app->add_option("--max-transfer-size", maxTransferSize,
+                        "Maximum downstream device transfer size in bytes")
+            ->required()
+            ->check(CLI::Range(
+                static_cast<uint32_t>(PLDM_FWUP_BASELINE_TRANSFER_SIZE),
+                std::numeric_limits<uint32_t>::max()));
+        app->add_option("--max-outstanding-transfer-requests",
+                        maxOutstandingRequests,
+                        "Maximum number of outstanding transfer requests")
+            ->required()
+            ->check(CLI::Range(1, +std::numeric_limits<uint8_t>::max()));
+        app->add_option("--package-data-length", packageDataLength,
+                        "Downstream device package data length in bytes")
+            ->required();
+    }
+
+    std::pair<int, std::vector<uint8_t>> createRequestMsg() override
+    {
+        std::vector<uint8_t> requestMsg(
+            sizeof(pldm_msg_hdr) + PLDM_DOWNSTREAM_DEVICE_UPDATE_REQUEST_BYTES);
+        auto request = new (requestMsg.data()) pldm_msg;
+
+        struct pldm_request_downstream_device_update_req req = {};
+        req.maximum_downstream_device_transfer_size = maxTransferSize;
+        req.maximum_outstanding_transfer_requests = maxOutstandingRequests;
+        req.downstream_device_package_data_length = packageDataLength;
+
+        size_t payloadLength = PLDM_DOWNSTREAM_DEVICE_UPDATE_REQUEST_BYTES;
+        auto rc = encode_request_downstream_device_update_req(
+            instanceId, &req, request, &payloadLength);
+        return {rc, requestMsg};
+    }
+
+    void parseResponseMsg(pldm_msg* responsePtr, size_t payloadLength) override
+    {
+        struct pldm_request_downstream_device_update_resp resp = {};
+
+        auto rc = decode_request_downstream_device_update_resp(
+            responsePtr, payloadLength, &resp);
+        if (rc)
+        {
+            std::cerr << "Response Message Error: rc=" << rc
+                      << ",cc=" << unsigned(resp.completion_code) << "\n";
+            return;
+        }
+
+        ordered_json data;
+        fillCompletionCode(resp.completion_code, data, PLDM_FWUP);
+        if (resp.completion_code != PLDM_SUCCESS)
+        {
+            DisplayInJson(data);
+            return;
+        }
+
+        data["EID"] = getMCTPEID();
+        data["DownstreamDeviceMetaDataLength"] =
+            resp.downstream_device_meta_data_length;
+        data["DDWillSendGetPackageDataCommand"] =
+            resp.downstream_device_will_send_get_package_data;
+        data["GetPackageDataMaximumTransferSize"] =
+            resp.get_package_data_maximum_transfer_size;
+
+        DisplayInJson(data);
+    }
+
+  private:
+    uint32_t maxTransferSize = 0;
+    uint8_t maxOutstandingRequests = 0;
+    uint16_t packageDataLength = 0;
+};
+
 void registerCommand(CLI::App& app)
 {
     auto fwUpdate =
@@ -1858,6 +1946,13 @@ void registerCommand(CLI::App& app)
         "To query the firmware identifiers of the downstream devices of the FDP");
     commands.push_back(std::make_unique<QueryDownstreamIdentifiers>(
         "fw_update", "QueryDownstreamIdentifiers", queryDownstreamIdentifiers));
+
+    auto requestDownstreamDeviceUpdate = fwUpdate->add_subcommand(
+        "RequestDownstreamDeviceUpdate",
+        "To request updating a downstream device behind the FD");
+    commands.push_back(std::make_unique<RequestDownstreamDeviceUpdate>(
+        "fw_update", "RequestDownstreamDeviceUpdate",
+        requestDownstreamDeviceUpdate));
 }
 
 } // namespace fw_update
