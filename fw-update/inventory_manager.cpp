@@ -242,6 +242,37 @@ exec::task<int> InventoryManager::startFirmwareDiscoveryFlow(
                 }
             }
         }
+        co_return rc;
+    }
+
+    // The device has reported its own identifiers and component parameters,
+    // so it is now known to speak PLDM T5 well enough to be asked about the
+    // devices it proxies. Downstream inventory is additive and optional: a
+    // failure here leaves the inventory built above untouched.
+    co_await startDownstreamDiscoveryFlow(eid);
+
+    co_return PLDM_SUCCESS;
+}
+
+exec::task<int> InventoryManager::startDownstreamDiscoveryFlow(mctp_eid_t eid)
+{
+    // Unlike the commands above this one is not retried. QueryDownstreamDevices
+    // is optional (DSP0267 Table 14), and the overwhelmingly common answer is
+    // ERROR_UNSUPPORTED_PLDM_CMD from a device that proxies nothing. Retrying
+    // that would put numAttempts round trips on the wire for every endpoint on
+    // every discovery to learn what the first response already said.
+    auto rc = co_await queryDownstreamDevices(eid);
+    if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
+    {
+        info(
+            "Skipping downstream device firmware inventory for endpoint ID {EID}, QueryDownstreamDevices is unsupported",
+            "EID", eid);
+    }
+    else if (rc)
+    {
+        error(
+            "Skipping downstream device firmware inventory for endpoint ID {EID}, response code {RC}",
+            "EID", eid, "RC", rc);
     }
 
     co_return rc;
@@ -324,6 +355,7 @@ void InventoryManager::cleanUpResources(mctp_eid_t eid)
     descriptorMap.erase(eid);
     downstreamDescriptorMap.erase(eid);
     componentInfoMap.erase(eid);
+    downstreamComponentInfoMap.erase(eid);
     firmwareDeviceNameMap.erase(eid);
     mctpInfoMap.clear();
 }
@@ -813,7 +845,7 @@ sdbusplus::async::task<int> InventoryManager::queryDownstreamDevices(
     rc = co_await parseQueryDownstreamDevicesResponse(eid, responseMsg,
                                                       responseLen);
 
-    if (rc)
+    if (rc && rc != PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
     {
         error("parseQueryDownstreamDeviceResponse failed, EID={EID}, RC={RC} ",
               "EID", eid, "RC", rc);
@@ -847,7 +879,7 @@ sdbusplus::async::task<int>
              */
             info("Endpoint ID {EID} does not support QueryDownstreamDevices",
                  "EID", eid);
-            co_return PLDM_ERROR;
+            co_return PLDM_ERROR_UNSUPPORTED_PLDM_CMD;
         default:
             error(
                 "QueryDownstreamDevices response failed with error completion code for endpoint ID {EID} with completion code {CC}",
@@ -855,12 +887,12 @@ sdbusplus::async::task<int>
             co_return PLDM_ERROR;
     }
 
-    error("DownstreamDevicesResp.downstream_device_update_supported: {X}", "X",
-          downstreamDevicesResp.downstream_device_update_supported);
-    error("PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_SUPPORTED: {X}", "X",
-          PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_SUPPORTED);
-    error("PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_NOT_SUPPORTED: {X}", "X",
-          PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_NOT_SUPPORTED);
+    if (downstreamDevicesResp.number_of_downstream_devices == 0)
+    {
+        info("Endpoint ID {EID} reports zero downstream devices", "EID", eid);
+        co_return PLDM_SUCCESS;
+    }
+
     switch (downstreamDevicesResp.downstream_device_update_supported)
     {
         case PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_SUPPORTED:
@@ -880,13 +912,23 @@ sdbusplus::async::task<int>
             break;
         }
         case PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_NOT_SUPPORTED:
+        {
             /* The FDP does not support firmware updates but may report
              * inventory information on downstream devices.
              * In this scenario, sends only GetDownstreamFirmwareParameters
              * to the FDP.
              * The definition can be found at Table 15 of DSP0267_1.1.0
              */
+            auto rc = co_await getDownstreamFirmwareParameters(
+                eid, 0x0, PLDM_GET_FIRSTPART);
+            if (rc)
+            {
+                error(
+                    "Failed to send GetDownstreamFirmwareParameters request for endpoint ID {EID}",
+                    "EID", eid);
+            }
             break;
+        }
         default:
             error(
                 "Unknown response of DownstreamDeviceUpdateSupported from endpoint ID {EID} with value {VALUE}",
@@ -1184,12 +1226,38 @@ sdbusplus::async::task<int>
         co_return PLDM_ERROR;
     }
 
+    // The parameter table is spread across the parts of a multipart transfer.
+    // The first part starts a fresh table, later parts accumulate into the one
+    // already cached, mirroring parseQueryDownstreamIdentifiersResponse.
+    DownstreamComponentInfo initialDownstreamComponents{};
+    DownstreamComponentInfo* downstreamComponents;
+    if (!downstreamComponentInfoMap.contains(eid) ||
+        resp.transfer_flag == PLDM_START ||
+        resp.transfer_flag == PLDM_START_AND_END)
+    {
+        downstreamComponents = &initialDownstreamComponents;
+    }
+    else
+    {
+        downstreamComponents = &downstreamComponentInfoMap.at(eid);
+    }
+
+    std::ostringstream paramsLog{};
     foreach_pldm_downstream_device_parameters_entry(params, entry, rc)
     {
-        // Reserved for upcoming use
-        [[maybe_unused]] variable_field activeCompVerStr{
+        variable_field activeCompVerStr{
             reinterpret_cast<const uint8_t*>(entry.active_comp_ver_str),
             entry.active_comp_ver_str_len};
+
+        downstreamComponents->insert_or_assign(
+            entry.downstream_device_index,
+            std::make_tuple(utils::toString(activeCompVerStr),
+                            entry.comp_activation_methods.value));
+
+        paramsLog << "{Index: " << entry.downstream_device_index
+                  << ", Active Version: " << utils::toString(activeCompVerStr)
+                  << ", ActivationMethods: 0x" << std::hex
+                  << entry.comp_activation_methods.value << std::dec << "}, ";
     }
     if (rc)
     {
@@ -1199,9 +1267,15 @@ sdbusplus::async::task<int>
         co_return PLDM_ERROR;
     }
 
+    lg2::info("EID={EID} Downstream Device Parameters: {PARAMS}", "EID", eid,
+              "PARAMS", paramsLog.str());
+
     switch (resp.transfer_flag)
     {
         case PLDM_START:
+            downstreamComponentInfoMap.insert_or_assign(
+                eid, std::move(initialDownstreamComponents));
+            [[fallthrough]];
         case PLDM_MIDDLE:
         {
             auto rc = co_await getDownstreamFirmwareParameters(
@@ -1211,9 +1285,27 @@ sdbusplus::async::task<int>
                 error(
                     "Failed to send GetDownstreamFirmwareParameters request for endpoint ID {EID}",
                     "EID", eid);
+                co_return rc;
             }
             break;
         }
+        case PLDM_START_AND_END:
+            downstreamComponentInfoMap.insert_or_assign(
+                eid, std::move(initialDownstreamComponents));
+            [[fallthrough]];
+        case PLDM_END:
+            // The table is complete, so the downstream devices can be given
+            // their Software.Version objects.
+            if (createDownstreamInventoryCallBack)
+            {
+                createDownstreamInventoryCallBack(eid);
+            }
+            break;
+        default:
+            error(
+                "Unknown transfer flag from GetDownstreamFirmwareParameters response for endpoint ID {EID} with value {VALUE}",
+                "EID", eid, "VALUE", resp.transfer_flag);
+            co_return PLDM_ERROR;
     }
     co_return PLDM_SUCCESS;
 }
@@ -1379,6 +1471,11 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     info("Successfully refreshed firmware inventory for endpoint ID {EID}",
          "EID", eid);
     co_return PLDM_SUCCESS;
+}
+
+exec::task<int> InventoryManager::refreshDownstreamInventory(mctp_eid_t eid)
+{
+    co_return co_await startDownstreamDiscoveryFlow(eid);
 }
 
 void InventoryManager::obtainFirmwareDeviceName(pldm::eid eid,

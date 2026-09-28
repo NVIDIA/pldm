@@ -66,6 +66,14 @@ void setDBusPropertyAsyncSwIdMock(
 using namespace pldm;
 using namespace pldm::fw_update;
 using namespace pldm::fw_update::fw_inventory;
+
+namespace
+{
+// Downstream inventory has its own coverage; these empty maps satisfy
+// the Manager constructor for the component-focused tests here.
+const DownstreamComponentInfoMap downstreamComponentInfoMap{};
+const DownstreamDeviceFwInvNameMap downstreamDeviceNameMap{};
+} // namespace
 using ::testing::IsNull;
 using ::testing::StrEq;
 
@@ -95,7 +103,8 @@ TEST(FirmwareInventoryInternalThreadTest, updateSwIdOnSignalRunsDetachedLambda)
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     manager.updateSwId(objPath, "0x0123");
@@ -129,7 +138,8 @@ TEST(FirmwareInventoryInternalThreadTest,
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     manager.compIdentifierLookup.emplace(objPath, "0x0123");
@@ -161,7 +171,8 @@ TEST(FirmwareInventoryInternalThreadTest,
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     sdbusplus::object_path signalPath{objPath};
@@ -189,7 +200,8 @@ TEST(FirmwareInventoryInternalThreadTest, createEntryAndUpdatePathsEarlyReturns)
     ComponentInfoMap componentInfoMap{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     dbus::MctpInterfaces mctpInterfaces{};
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
@@ -217,7 +229,8 @@ TEST(FirmwareInventoryInternalThreadTest, updateFWVersionUpdatesExistingEntry)
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
@@ -250,7 +263,8 @@ TEST(FirmwareInventoryInternalThreadTest, updateEntryUpdatesMappedInventory)
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName2"};
     EXPECT_CALL(sdbusMock, sd_bus_emit_object_added(IsNull(), StrEq(objPath)))
@@ -278,7 +292,8 @@ TEST(FirmwareInventoryInternalThreadTest,
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const std::string objPath{"/xyz/openbmc_project/software/CompName1"};
     manager.updateSwId(objPath, "0x0456");
@@ -328,7 +343,8 @@ TEST(FirmwareInventoryInternalThreadTest,
 
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -367,7 +383,8 @@ TEST(FirmwareInventoryInternalThreadTest,
         .Times(1);
 
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -394,7 +411,8 @@ TEST(FirmwareInventoryInternalThreadTest,
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     EXPECT_NO_THROW({ manager.updateFWVersion(eid1); });
 }
@@ -412,7 +430,8 @@ TEST(FirmwareInventoryInternalThreadTest,
     FirmwareInventoryInfo fwInventoryInfo{};
     ComponentNameMap componentNameMap{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     EXPECT_NO_THROW({ manager.updateFWVersion(eid1); });
 }
@@ -453,7 +472,8 @@ TEST(FirmwareInventoryInternalThreadTest,
         .Times(1);
 
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 

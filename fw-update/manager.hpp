@@ -80,7 +80,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         inventoryMgr(dbusHandler, handler, instanceIdDb,
                      std::bind_front(&Manager::createInventory, this),
                      std::bind_front(&Manager::updateInventory, this),
-                     descriptorMap, downstreamDescriptorMap, componentInfoMap),
+                     std::bind_front(&Manager::createDownstreamInventory, this),
+                     descriptorMap, downstreamDescriptorMap, componentInfoMap,
+                     downstreamComponentInfoMap),
         updateManager(
             event, handler, instanceIdDb, descriptorMap, componentInfoMap,
             componentNameMap, fwDebug,
@@ -105,7 +107,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                     eid, mctpInterfaces, isTarget);
             }),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
-                           componentInfoMap, componentNameMap)
+                           componentInfoMap, componentNameMap,
+                           downstreamComponentInfoMap, downstreamDeviceNameMap)
     {
         try
         {
@@ -274,6 +277,51 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         }
     }
 
+    /** @brief Create the firmware inventory of the downstream devices behind
+     *         a Firmware Device Proxy
+     *
+     *  Runs once GetDownstreamFirmwareParameters has delivered the whole
+     *  parameter table. Downstream devices carry no entity-manager
+     *  configuration of their own, so each is named after the FDP that proxies
+     *  it: "<targetName>_DownstreamDevice_<index>", falling back to a name
+     *  generated from the endpoint when the FDP has no configured_by target
+     *  name. This mirrors the component naming in createInventory().
+     *
+     *  @param[in] eid - MCTP endpoint of the FDP
+     */
+    void createDownstreamInventory(eid eid)
+    {
+        if (!downstreamComponentInfoMap.contains(eid))
+        {
+            return;
+        }
+
+        const auto targetName =
+            em_config::targetNameForEid(configurations, eid);
+        auto& deviceIndexNameMap = downstreamDeviceNameMap[eid];
+        // Rebuilt from scratch on every call: a reused EID can be a
+        // different physical device or a different EM target name, so a
+        // cached name from an earlier discovery must not be allowed to
+        // stick around and be reused for the new device at the same index.
+        deviceIndexNameMap.clear();
+        for (const auto& [deviceIndex, compInfo] :
+             downstreamComponentInfoMap.at(eid))
+        {
+            if (!targetName.empty())
+            {
+                deviceIndexNameMap[deviceIndex] = std::format(
+                    "{}_DownstreamDevice_{}", targetName, deviceIndex);
+            }
+            else
+            {
+                deviceIndexNameMap[deviceIndex] = std::format(
+                    "PLDM_Device_Firmware_Device_{}_DownstreamDevice_{}",
+                    static_cast<int>(eid), deviceIndex);
+            }
+        }
+        fwInventoryManager.createDownstreamEntries(eid);
+    }
+
     /** @brief Update firmware inventory based on refreshed descriptor and
      *         firmware parameter information, and re-write the device
      *         EC-SKU/AP-SKU to the entity-manager-owned RoT chassis.
@@ -327,6 +375,39 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         catch (const std::exception& e)
         {
             error("Error while updating Firmware version.", "ERROR", e);
+        }
+    }
+
+    /** @brief Refresh downstream device inventory for the given eid
+     *
+     *  Called when an already-discovered endpoint comes back Available.
+     *  updateFWInventory() only refreshes the endpoint's own firmware
+     *  version and does not rediscover the devices it proxies, so a
+     *  downstream population change while the endpoint was offline would
+     *  otherwise leave stale or missing downstream Software.Version objects
+     *  until the next full discovery.
+     *
+     *  @param[in] eid - MCTP endpoint
+     */
+    void refreshDownstreamInventory(eid eid)
+    {
+        try
+        {
+            exec::start_detached(stdexec::on(
+                stdexec::inline_scheduler{},
+                inventoryMgr.refreshDownstreamInventory(eid) |
+                    stdexec::then([eid](int rc) {
+                        if (rc)
+                        {
+                            info(
+                                "Downstream inventory refresh skipped for endpoint ID {EID}, RC={RC}",
+                                "EID", eid, "RC", rc);
+                        }
+                    })));
+        }
+        catch (const std::exception& e)
+        {
+            error("Error while refreshing downstream inventory.", "ERROR", e);
         }
     }
 
@@ -400,6 +481,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                             [[maybe_unused]] const eid& eid) override
     {
         this->updateFWInventory(eid);
+        this->refreshDownstreamInventory(eid);
     }
 
     void offlineMctpEndpoint([[maybe_unused]] const UUID& uuid,
@@ -526,6 +608,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
     /** @brief Component information to create message registries */
     ComponentNameMap componentNameMap;
+
+    /** @brief Component information of the downstream devices of the managed
+     *         FDPs */
+    DownstreamComponentInfoMap downstreamComponentInfoMap;
+
+    /** @brief D-Bus object names of the downstream devices, derived from the
+     *         name of the FDP that proxies them */
+    DownstreamDeviceFwInvNameMap downstreamDeviceNameMap;
 
     /** @brief PLDM firmware inventory/discovery manager */
     InventoryManager inventoryMgr;

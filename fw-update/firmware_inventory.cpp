@@ -65,10 +65,91 @@ void Entry::setVersion(const std::string& versionStr)
 Manager::Manager(sdbusplus::bus_t& bus,
                  const FirmwareInventoryInfo& firmwareInventoryInfo,
                  const ComponentInfoMap& componentInfoMap,
-                 const ComponentNameMap& componentNameMap) :
+                 const ComponentNameMap& componentNameMap,
+                 const DownstreamComponentInfoMap& downstreamComponentInfoMap,
+                 const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap) :
     bus(bus), firmwareInventoryInfo(firmwareInventoryInfo),
-    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap)
+    componentInfoMap(componentInfoMap), componentNameMap(componentNameMap),
+    downstreamComponentInfoMap(downstreamComponentInfoMap),
+    downstreamDeviceNameMap(downstreamDeviceNameMap)
 {}
+
+void Manager::createDownstreamEntries(pldm::eid eid)
+{
+    auto compInfoSearch = downstreamComponentInfoMap.find(eid);
+    if (compInfoSearch == downstreamComponentInfoMap.end())
+    {
+        lg2::info(
+            "Skipping downstream inventory creation: no downstream component info available, EID={EID}",
+            "EID", eid);
+        return;
+    }
+
+    auto nameSearch = downstreamDeviceNameMap.find(eid);
+    if (nameSearch == downstreamDeviceNameMap.end())
+    {
+        lg2::info(
+            "Skipping downstream inventory creation: no downstream device names available, EID={EID}",
+            "EID", eid);
+        return;
+    }
+
+    for (const auto& [deviceIndex, compInfo] : compInfoSearch->second)
+    {
+        auto nameIt = nameSearch->second.find(deviceIndex);
+        if (nameIt == nameSearch->second.end())
+        {
+            continue;
+        }
+
+        const auto& version = std::get<CompVersion>(compInfo);
+        const auto key = std::make_pair(eid, deviceIndex);
+
+        // Downstream devices come and go with the FDP that proxies them, and
+        // re-registering an existing path throws (-EEXIST), so refresh the
+        // object in place when it is already known.
+        if (auto existing = downstreamInventoryMap.find(key);
+            existing != downstreamInventoryMap.end())
+        {
+            existing->second->setVersion(version);
+            lg2::info(
+                "Refreshed downstream software D-Bus object: path={PATH}, version={VERSION}",
+                "PATH", swBasePath + "/" + nameIt->second, "VERSION", version);
+            continue;
+        }
+
+        // SoftwareId is intentionally left unset: bmcweb only surfaces the
+        // property on Redfish when it is non-empty, and downstream devices
+        // were decided not to expose it there.
+        const std::string objPath = swBasePath + "/" + nameIt->second;
+        auto entry =
+            std::make_unique<Entry>(bus, objPath, version, "", "NVIDIA");
+
+        lg2::info(
+            "Created downstream software D-Bus object: path={PATH}, downstream_device_index={INDEX}, version={VERSION}",
+            "PATH", objPath, "INDEX", deviceIndex, "VERSION", version);
+
+        downstreamInventoryMap.emplace(key, std::move(entry));
+    }
+
+    // A device no longer reported by this FDP (e.g. unplugged since the
+    // last discovery) leaves a stale entry with no counterpart in the
+    // fresh compInfoSearch->second: drop it so a withdrawn downstream
+    // device doesn't linger as a D-Bus object.
+    for (auto it = downstreamInventoryMap.begin();
+         it != downstreamInventoryMap.end();)
+    {
+        if (it->first.first == eid &&
+            !compInfoSearch->second.contains(it->first.second))
+        {
+            it = downstreamInventoryMap.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
 
 void Manager::createEntry(pldm::eid eid, const pldm::UUID& uuid,
                           dbus::MctpInterfaces& mctpInterfaces)

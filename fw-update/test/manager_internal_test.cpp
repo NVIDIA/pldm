@@ -414,6 +414,36 @@ TEST_F(ManagerInternalTest, refreshSingleEndpointCallbackPathIsCallable)
     ASSERT_TRUE(rc.has_value());
 }
 
+// downstreamDeviceNameMap is keyed by EID only, not (EID, discovery). A
+// device withdrawn between two discoveries of the same EID must not leave
+// its old name cached, or a later device reusing that index would be named
+// after a device that no longer exists.
+TEST_F(ManagerInternalTest,
+       createDownstreamInventoryDropsStaleNamesOnRediscovery)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    const pldm::eid eid = 7;
+    manager.downstreamComponentInfoMap[eid] = DownstreamComponentInfo{
+        {0, DownstreamCompInfo{"v1", 0}},
+        {1, DownstreamCompInfo{"v1", 0}},
+    };
+    manager.createDownstreamInventory(eid);
+    ASSERT_TRUE(manager.downstreamDeviceNameMap.contains(eid));
+    EXPECT_TRUE(manager.downstreamDeviceNameMap[eid].contains(0));
+    EXPECT_TRUE(manager.downstreamDeviceNameMap[eid].contains(1));
+
+    // Device index 1 is gone on the next discovery of the same EID.
+    manager.downstreamComponentInfoMap[eid] = DownstreamComponentInfo{
+        {0, DownstreamCompInfo{"v2", 0}},
+    };
+    manager.createDownstreamInventory(eid);
+    EXPECT_TRUE(manager.downstreamDeviceNameMap[eid].contains(0));
+    EXPECT_FALSE(manager.downstreamDeviceNameMap[eid].contains(1));
+}
+
 TEST_F(ManagerInternalTest, isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
 {
     const std::filesystem::path configPath{

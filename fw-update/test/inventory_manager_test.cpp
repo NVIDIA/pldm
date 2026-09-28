@@ -36,8 +36,9 @@ class InventoryManagerTest : public testing::Test
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         inventoryManager(&dBusHandler, reqHandler, instanceIdDb, nullptr,
-                         nullptr, outDescriptorMap, outDownstreamDescriptorMap,
-                         outComponentInfoMap)
+                         nullptr, nullptr, outDescriptorMap,
+                         outDownstreamDescriptorMap, outComponentInfoMap,
+                         outDownstreamComponentInfoMap)
     {}
 
     int fd = -1;
@@ -48,6 +49,7 @@ class InventoryManagerTest : public testing::Test
     DescriptorMap outDescriptorMap{};
     DownstreamDescriptorMap outDownstreamDescriptorMap{};
     ComponentInfoMap outComponentInfoMap{};
+    DownstreamComponentInfoMap outDownstreamComponentInfoMap{};
     InventoryManager inventoryManager;
     std::string messageError;
     std::string resolution;
@@ -181,6 +183,49 @@ TEST_F(InventoryManagerTest, handleQueryDownstreamIdentifierResponseErrorCC)
     stdexec::sync_wait(std::move(co));
 
     ASSERT_EQ(outDownstreamDescriptorMap.size(), 0);
+}
+
+// DSP0267 Table 14: QueryDownstreamDevices is optional, and a device that
+// proxies nothing answers ERROR_UNSUPPORTED_PLDM_CMD. That must be treated
+// as "no downstream devices" rather than retried or logged as a failure.
+TEST_F(InventoryManagerTest, handleQueryDownstreamDevicesResponseUnsupportedCmd)
+{
+    constexpr size_t respPayloadLength = 10;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength>
+        queryDownstreamDevicesResp{0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto responseMsg = new (
+        const_cast<unsigned char*>(queryDownstreamDevicesResp.data())) pldm_msg;
+
+    [[maybe_unused]] auto co =
+        inventoryManager.parseQueryDownstreamDevicesResponse(1, responseMsg,
+                                                             respPayloadLength);
+    stdexec::sync_wait(std::move(co));
+
+    EXPECT_TRUE(outDownstreamComponentInfoMap.empty());
+}
+
+// DSP0267 Table 15: a SUCCESS completion code with
+// NumberOfDownstreamDevices=0 means the FDP proxies nothing this round, even
+// though it reports update support. Neither QueryDownstreamIdentifiers nor
+// GetDownstreamFirmwareParameters should be issued for a table that is
+// already known to be empty.
+TEST_F(InventoryManagerTest, handleQueryDownstreamDevicesResponseZeroCount)
+{
+    constexpr size_t respPayloadLength = 10;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength>
+        queryDownstreamDevicesResp{0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+                                   0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto responseMsg = new (
+        const_cast<unsigned char*>(queryDownstreamDevicesResp.data())) pldm_msg;
+
+    auto co = inventoryManager.parseQueryDownstreamDevicesResponse(
+        1, responseMsg, respPayloadLength);
+    auto rc = stdexec::sync_wait(std::move(co));
+
+    EXPECT_EQ(std::get<0>(rc.value()), PLDM_SUCCESS);
+    EXPECT_TRUE(outDownstreamComponentInfoMap.empty());
+    EXPECT_TRUE(outDownstreamDescriptorMap.empty());
 }
 
 TEST_F(InventoryManagerTest, getFirmwareParametersResponse)
