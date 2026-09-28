@@ -14,11 +14,11 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <iostream>
 #include <map>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace sdbusplus::match_rules;
@@ -34,113 +34,23 @@ pldm::utils::DBusHandlerInterface& MctpDiscovery::defaultDbusHandler()
     return handler;
 }
 
-namespace
-{
-
-/** @brief Resolve the bus-owner service name implementing MCTPInterface at
- *         the MCTPPath subtree via ObjectMapper.GetSubTree.
- *
- *  Per unify-mctp_discovery_guidelines.md § 2.1 Phase 1.A and § 2.4
- *  Anti-patterns, consumers MUST resolve the bus-owner dynamically and use
- *  the resolved name in the `sender=` filter for subscription matches —
- *  not hardcode a constant. Today the only owner is
- *  `au.com.codeconstruct.MCTP1`, but pinning to that constant locks the
- *  daemon to a specific upstream choice; resolution at startup keeps the
- *  consumer bus-owner-implementation-agnostic.
- *
- *  Falls back to the legacy `MCTPService` constant on any failure so the
- *  constructor's match-rule initialisers can still proceed. Bounded retry
- *  on mapper failure lands in a later commit in this series.
- */
-std::string resolveBusOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
-{
-    try
-    {
-        auto resp = dbusHandler.getSubtree(
-            pldm::MCTPPath, /*depth=*/0,
-            std::vector<std::string>({pldm::MCTPInterface}));
-        if (!resp.empty() && !resp.begin()->second.empty())
-        {
-            return resp.begin()->second.begin()->first;
-        }
-        info("resolveBusOwner: mapper returned no service for MCTP subtree; "
-             "falling back to legacy service constant {SERVICE}",
-             "SERVICE", std::string(pldm::MCTPService));
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        error("resolveBusOwner: getSubtree threw; falling back to legacy "
-              "service constant {SERVICE}, error - {ERROR}",
-              "SERVICE", std::string(pldm::MCTPService), "ERROR", e);
-    }
-    catch (const std::exception& e)
-    {
-        error("resolveBusOwner: unexpected error; falling back to legacy "
-              "service constant {SERVICE}, error - {ERROR}",
-              "SERVICE", std::string(pldm::MCTPService), "ERROR", e.what());
-    }
-    return pldm::MCTPService;
-}
-
-/** @brief Resolve the service publishing endpoint identity — the
- *         Association.Definitions (configured_by) objects under the MCTP
- *         subtree — via ObjectMapper.GetSubTree, mirroring resolveBusOwner.
- *
- *  Discovery is driven by the identity publisher's InterfacesAdded signal,
- *  so the `sender=` filter must name whichever service owns those objects
- *  (today mctpreactor) rather than hardcode it.
- *
- *  At pldmd startup the publisher may not have configured any endpoint yet,
- *  so an empty mapper response is expected — fall back to the
- *  MCTPReactorService constant. Sender matching by well-known name applies
- *  once the name is owned, so the fallback works even when the publisher
- *  starts later.
- */
-std::string resolveIdentityOwner(pldm::utils::DBusHandlerInterface& dbusHandler)
-{
-    try
-    {
-        auto resp = dbusHandler.getSubtree(
-            pldm::MCTPPath, /*depth=*/0,
-            std::vector<std::string>({pldm::MCTPReactorConfiguredInterface}));
-        if (!resp.empty() && !resp.begin()->second.empty())
-        {
-            return resp.begin()->second.begin()->first;
-        }
-        info("resolveIdentityOwner: no configured endpoints published yet; "
-             "falling back to service constant {SERVICE}",
-             "SERVICE", std::string(pldm::MCTPReactorService));
-    }
-    catch (const std::exception& e)
-    {
-        error("resolveIdentityOwner: lookup failed; falling back to service "
-              "constant {SERVICE}, error - {ERROR}",
-              "SERVICE", std::string(pldm::MCTPReactorService), "ERROR",
-              e.what());
-    }
-    return pldm::MCTPReactorService;
-}
-
-} // namespace
-
 MctpDiscovery::MctpDiscovery(
     sdbusplus::bus_t& bus,
     std::initializer_list<MctpDiscoveryHandlerIntf*> list,
     const std::filesystem::path& staticEidTablePath,
     pldm::utils::DBusHandlerInterface& dbusHandler,
     const std::vector<std::chrono::milliseconds>& retryBackoffOverride) :
-    bus(bus), resolvedMctpService(resolveBusOwner(dbusHandler)),
+    bus(bus), mctpService(pldm::MCTPService),
     mctpEndpointRemovedSignal(
-        bus,
-        interfacesRemovedAtPath(MCTPNetworksPath) + sender(resolvedMctpService),
+        bus, interfacesRemovedAtPath(MCTPNetworksPath) + sender(mctpService),
         [this](sdbusplus::message_t& msg) { this->removeEndpoints(msg); }),
-    resolvedIdentityService(resolveIdentityOwner(dbusHandler)),
-    mctpReactorConfiguredSignal(bus,
-                                interfacesAddedAtPath(MCTPNetworksPath) +
-                                    sender(resolvedIdentityService),
-                                [this](sdbusplus::message_t& msg) {
-                                    this->onMctpReactorConfigured(msg);
-                                }),
+    mctpReactorService(pldm::MCTPReactorService),
+    mctpReactorConfiguredSignal(
+        bus,
+        interfacesAddedAtPath(MCTPNetworksPath) + sender(mctpReactorService),
+        [this](sdbusplus::message_t& msg) {
+            this->onMctpReactorConfigured(msg);
+        }),
     handlers(list), staticEidTablePath(staticEidTablePath),
     dbusHandler(dbusHandler)
 {
@@ -165,14 +75,13 @@ MctpDiscovery::MctpDiscovery(
     }
     loadStaticEndpoints(existingMctpInfos);
 
-    // Per unify-mctp_discovery_guidelines.md mandatory item 6
-    // ("daemon does not publish an empty / partial inventory before at
-    // least one GetManagedObjects round succeeds"), only invoke
-    // handleMctpEndpoints if mapper enumeration succeeded — including the
-    // mapper-healthy-but-no-endpoints case (mapperOk=true, empty list is
-    // the truth). When mapperOk=false the daemon stays in a "waiting for
-    // endpoints" state; subsequent endpoints arriving via the
-    // InterfacesAdded signal will then publish via discoverEndpoints.
+    // Only invoke handleMctpEndpoints if mapper enumeration succeeded --
+    // including the mapper-healthy-but-no-endpoints case (mapperOk=true,
+    // empty list is the truth) -- so we never publish an empty/partial
+    // inventory ahead of a real GetManagedObjects round. When mapperOk=false
+    // the daemon stays in a "waiting for endpoints" state; subsequent
+    // endpoints arriving via the InterfacesAdded signal will then publish
+    // via discoverEndpoints.
     if (mapperOk)
     {
         handleMctpEndpoints(existingMctpInfos);
@@ -190,8 +99,7 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
     // Enumerate the endpoints mctpreactor has configured (those exposing its
     // configured_by association); endpoint properties are read from mctpd.
     //
-    // Per unify-mctp_discovery_guidelines.md mandatory item 7, retry on
-    // mapper failure with bounded exponential backoff. Schedule is taken
+    // Retries on mapper failure with bounded exponential backoff, taken
     // from the retryBackoff member so the TestMctpDiscovery fixture can
     // shrink it for unit-test runtime.
     pldm::utils::GetSubTreeResponse mapperResponse;
@@ -236,21 +144,7 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
         // every path here is an endpoint mctpreactor has configured. Every
         // endpoint property is still read from the mctpd object at this path.
         const std::string& path = mapperEntry.first;
-        std::string service;
-        try
-        {
-            service = dbusHandler.getService(path.c_str(), MCTPInterface);
-        }
-        catch (const sdbusplus::exception_t& e)
-        {
-            // mctpreactor configured this endpoint but mctpd has not (yet)
-            // published the MCTP.Endpoint object; a later InterfacesAdded
-            // signal will pick it up.
-            error(
-                "getMctpInfos: no mctpd MCTP.Endpoint at path '{PATH}', error - {ERROR}",
-                "PATH", path, "ERROR", e);
-            continue;
-        }
+        const std::string& service = mctpService;
 
         const MctpEndpointProps& epProps = getMctpEndpointProps(service, path);
         const UUID& uuid = getEndpointUUIDProp(service, path);
@@ -365,7 +259,11 @@ void MctpDiscovery::bindStaticEidConfigurations(
     }
 
     // 2. Enumerate live mctpd endpoints; bind any whose EID matches a StaticEID
-    //    and is not already resolved via configured_by.
+    //    and is not already resolved via configured_by. Queried fresh every
+    //    call rather than reusing any earlier capture: on the startup path
+    //    this runs after the per-endpoint searchConfigurationWithRetry loop
+    //    in getMctpInfos(), which can sleep across a retry backoff, so an
+    //    endpoint mctpd publishes in that window must still be seen here.
     pldm::utils::GetSubTreeResponse epSubtree;
     try
     {
@@ -1159,9 +1057,9 @@ void MctpDiscovery::refreshEndpoints(sdbusplus::message::message& msg)
     // Outer try-catch belt: msg.read() can throw sdbusplus::exception_t on
     // malformed payloads; std::get<std::string>(prop->second) can throw
     // std::bad_variant_access if the Connectivity variant arrives with a
-    // non-string alternative. Per unify-mctp_discovery_guidelines.md § 2.2
-    // mandatory item 5, no uncaught exception may escape this callback —
-    // that would propagate to sd-event and cause std::terminate.
+    // non-string alternative. No exception may escape this callback --
+    // it's invoked from sd-event's dispatch loop, and an uncaught
+    // exception there calls std::terminate.
     try
     {
         std::string interface;

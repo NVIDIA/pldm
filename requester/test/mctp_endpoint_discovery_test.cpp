@@ -1550,9 +1550,9 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropWrongTypeReturnsEmpty)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(properties));
 
-    // Post-Commit 5: typed accessor returns nullopt on wrong-typed variant
-    // instead of throwing std::bad_variant_access. The caller observes the
-    // emptyUUID fallback — same as the missing-key path.
+    // Typed accessor returns nullopt on a wrong-typed variant instead of
+    // throwing std::bad_variant_access; caller observes the emptyUUID
+    // fallback, same as the missing-key path.
     EXPECT_EQ(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
                                                      "/test/path"),
               pldm::emptyUUID);
@@ -1906,7 +1906,7 @@ TEST(MctpEndpointDiscoveryTest, constructorUsesInjectedDbusHandler)
     pldm::MockManager manager;
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
@@ -2237,7 +2237,7 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropBadVariantReturnsEmpty)
     EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
         .WillOnce(testing::Return(badUuidProps));
 
-    // Post-Commit 5: typed accessor returns nullopt instead of throwing.
+    // Typed accessor returns nullopt instead of throwing.
     EXPECT_EQ(TestMctpDiscovery::getEndpointUUIDProp(*disc, "test.service",
                                                      "/test/path"),
               pldm::emptyUUID);
@@ -2288,9 +2288,9 @@ TEST(MctpEndpointDiscoveryTest,
     EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
         .WillOnce(testing::Return(pldm::utils::PropertyValue{uint64_t(99)}));
 
-    // Post-Commit 5: typed accessor returns nullopt instead of throwing.
-    // The bool result is `false` because the Connectivity check returned
-    // nullopt -> not Available -> Availability=false.
+    // Typed accessor returns nullopt instead of throwing. The bool result
+    // is `false` because the Connectivity check returned nullopt -> not
+    // Available -> Availability=false.
     EXPECT_FALSE(
         TestMctpDiscovery::getEndpointConnectivityProp(*disc, "/test/path"));
 }
@@ -2310,8 +2310,6 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosWithEndpoints)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
         .WillOnce(testing::Return(subtree));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc));
 
     // Mock getDbusPropertiesVariant: first for MCTP.Endpoint, then for UUID
     pldm::utils::PropertyMap epProps{
@@ -2368,9 +2366,9 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosSubtreeException)
     pldm::MockManager manager;
 
     auto disc = makeDiscoveryWithMock(mockedDbusHandler, &manager);
-    // Post-Commit 3: getMctpInfos now retries bounded times on mapper
-    // failure. Shrink the schedule so the explicit getMctpInfos call below
-    // exits in milliseconds, not ~9s.
+    // getMctpInfos retries a bounded number of times on mapper failure;
+    // shrink the schedule so the explicit getMctpInfos call below exits in
+    // milliseconds, not ~9s.
     TestMctpDiscovery::setFastRetryBackoff(*disc);
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
@@ -2403,9 +2401,6 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosDuplicatePathNoDuplicateMatch)
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
         .Times(2)
         .WillRepeatedly(testing::Return(subtree));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc))
-        .WillOnce(testing::Return(svc));
 
     pldm::utils::PropertyMap epProps{
         {"NetworkId", uint32_t(1)},
@@ -2467,8 +2462,6 @@ TEST(MctpEndpointDiscoveryTest, getMctpInfosNonPldmType)
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
         .WillOnce(testing::Return(subtree));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc));
 
     // Endpoint with no PLDM type (type 0 only, not 1)
     pldm::utils::PropertyMap epProps{
@@ -3363,17 +3356,11 @@ TEST(MctpEndpointDiscoveryTest, ReactorConfiguredResolvedPublishesNamedEndpoint)
 }
 
 // ---------------------------------------------------------------------------
-// unify-mctp regression test pack (Commit 0)
+// MCTP discovery regression pack
 //
-// Locks in the current pldmd MCTP discovery behaviour observable to handlers
-// BEFORE the unify-mctp refactor begins. Subsequent commits must keep these
-// tests green; any test that needs to be updated is a red flag indicating a
-// behaviour-changing refactor. Tests are explicitly named with a
-// `UnifyMctpRegression_` prefix so the bar at refactor time is obvious.
-//
-// Reference: unify-mctp_discovery_guidelines.md verification mandatory items
-// 1–7 + recommended 10–12; work order
-// openbmc-automation/skills/unify-mctp/work-orders/pldm.md § 5 Commit 0.
+// Locks in pldmd's MCTP discovery behaviour observable to handlers. A test
+// here needing to change is a signal that discovery behaviour changed --
+// treat that as a flag to double-check, not just update the assertion.
 // ---------------------------------------------------------------------------
 
 namespace
@@ -3442,13 +3429,14 @@ TEST(UnifyMctpRegression, Startup_SingleEndpoint_Available)
         {epPath, {{svc, {pldm::MCTPInterface}}}}};
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(subtree));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
         .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc));
+    // The endpoint owner is the hardcoded mctpService constant,
+    // so no per-endpoint GetObject is issued at startup.
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
 
     pldm::utils::PropertyMap epProps{
         {"NetworkId", uint32_t(1)},
@@ -3503,14 +3491,14 @@ TEST(UnifyMctpRegression, Startup_MultipleEndpoints_MixedAvailability)
         {degrPath, {{svc, {pldm::MCTPInterface}}}}};
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(subtree));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
         .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc))
-        .WillOnce(testing::Return(svc));
+    // Both endpoint owners are the hardcoded mctpService constant,
+    // so neither endpoint costs a per-endpoint GetObject at startup.
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
 
     pldm::utils::PropertyMap availEpProps{
         {"NetworkId", uint32_t(1)},
@@ -3576,7 +3564,7 @@ TEST(UnifyMctpRegression, Startup_StaticEndpoints_LoadedAfterDynamic)
     auto& bus = mockedDbusHandler.getBus();
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
@@ -3824,17 +3812,11 @@ TEST(UnifyMctpRegression, InterfacesRemoved_NonMCTPInterface_Ignored)
     EXPECT_TRUE(std::ranges::contains(disc->existingMctpInfos, endpoint));
 }
 
-// Tests 13 + 14 — REMOVED by Commit 1 (P5).
-// The top-level propertiesChangedNamespace subscription was redundant with
-// the per-endpoint matches in `enableMatches`. After Commit 1 these tests
-// no longer apply; replaced by
-// `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel` below, which asserts the
-// subscription is gone.
-
-// Test 13 (post-Commit 1) — `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`
-// Asserts that after Commit 1 the discovery object no longer installs the
-// top-level mctpEndpointPropChangedSignal subscription. Per-endpoint matches
-// in enableMatches are the contract.
+// `PerEndpoint_Connectivity_NoLongerRoutedToTopLevel`:
+// The discovery object installs no top-level mctpEndpointPropChangedSignal
+// subscription -- per-endpoint matches in `enableMatches` are the contract,
+// since a top-level propertiesChangedNamespace subscription would be
+// redundant with them.
 TEST(UnifyMctpRegression, PerEndpoint_Connectivity_NoLongerRoutedToTopLevel)
 {
     MockdBusHandler mockedDbusHandler;
@@ -3884,11 +3866,10 @@ TEST(UnifyMctpRegression, PerEndpoint_ConnectivityChange_CallsRefreshEndpoints)
     EXPECT_EQ(handler.lastOfflineEid, 60);
 }
 
-// Test 16 (post-Commit 3) — `GetMctpInfos_MapperFails_ReturnsFalse`
-// After Commit 3, getMctpInfos returns bool: true on success, false when all
-// bounded-retry attempts to ObjectMapper.GetSubTree fail. The result map is
-// not mutated on the failure path. Updated from the pre-refactor
-// "silent empty" regression.
+// `GetMctpInfos_MapperFails_ReturnsFalse`:
+// getMctpInfos returns bool: true on success, false when all bounded-retry
+// attempts to ObjectMapper.GetSubTree fail. The result map is not mutated
+// on the failure path.
 TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsFalse)
 {
     MockdBusHandler mockedDbusHandler;
@@ -3913,66 +3894,19 @@ TEST(UnifyMctpRegression, GetMctpInfos_MapperFails_ReturnsFalse)
 }
 
 // ---------------------------------------------------------------------------
-// unify-mctp Commit 2 (P1) — Cache resolved bus-owner name
+// mctpService/mctpReactorService are hardcoded constants,
+// never mapper-resolved, at startup.
 // ---------------------------------------------------------------------------
 
-// `BusOwnerResolve_MapperReturnsServiceName_UsedInFilter`:
-// Mapper returns au.com.codeconstruct.MCTP1; resolvedMctpService must hold
-// that name.
-TEST(UnifyMctpRegression, BusOwnerResolve_MapperReturnsServiceName_UsedInFilter)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-    auto& bus = mockedDbusHandler.getBus();
-
-    const std::string svc = "au.com.codeconstruct.MCTP1";
-    const std::string epPath =
-        "/au/com/codeconstruct/mctp1/networks/0/endpoints/0";
-    pldm::utils::GetSubTreeResponse subtree{
-        {epPath, {{svc, {pldm::MCTPInterface}}}}};
-
-    EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
-        .WillRepeatedly(testing::Return(subtree));
-    EXPECT_CALL(mockedDbusHandler,
-                getSubtree("/xyz/openbmc_project/inventory", 0, _))
-        .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(svc));
-
-    // EID=0 in the mapper response is non-PLDM (no SupportedMessageTypes
-    // entry of 1), so the endpoint enumeration walk skips it and no
-    // associated-subtree query fires. Provide minimal stub responses for
-    // the property reads getMctpInfos will perform.
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(0)},
-        {"EID", uint8_t(0)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("00000000-0000-0000-0000-000000000001")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
-
-    auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
-        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
-        kFastRetry);
-
-    EXPECT_EQ(disc->resolvedMctpService, svc);
-}
-
-// `BusOwnerResolve_MapperReturnsAlternateName_UsedInFilter`:
-// Mapper returns com.nvidia.MCTP1; resolvedMctpService must reflect that —
-// the daemon is now bus-owner-agnostic.
+// `BusOwnerResolve_AlwaysUsesHardcodedConstants_NoMapperCallsForResolution`:
+// mctpService/mctpReactorService come from the pldm::MCTPService
+// / pldm::MCTPReactorService constants unconditionally, even when the
+// (unused for this purpose) mapper stub would return something else.
+// getMctpInfos' single MCTPReactorConfiguredInterface subtree call is the
+// only startup GetSubTree against MCTPPath - no GetObject at all, since the
+// per-endpoint getService() call in getMctpInfos was also removed.
 TEST(UnifyMctpRegression,
-     BusOwnerResolve_MapperReturnsAlternateName_UsedInFilter)
+     BusOwnerResolve_AlwaysUsesHardcodedConstants_NoMapperCallsForResolution)
 {
     MockdBusHandler mockedDbusHandler;
     TrackingMctpHandler handler;
@@ -3985,44 +3919,27 @@ TEST(UnifyMctpRegression,
         {epPath, {{altSvc, {pldm::MCTPInterface}}}}};
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(subtree));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
         .WillOnce(testing::Return(pldm::utils::GetSubTreeResponse{}));
-    EXPECT_CALL(mockedDbusHandler, getService(_, _))
-        .WillOnce(testing::Return(altSvc));
-
-    pldm::utils::PropertyMap epProps{
-        {"NetworkId", uint32_t(0)},
-        {"EID", uint8_t(0)},
-        {"SupportedMessageTypes", std::vector<uint8_t>{}},
-        {"MediumType", std::string("SMBus")}};
-    pldm::utils::PropertyMap uuidProps{
-        {"UUID", std::string("00000000-0000-0000-0000-000000000002")}};
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(testing::Return(epProps))
-        .WillOnce(testing::Return(uuidProps));
-    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("MctpOverSMBus")}))
-        .WillOnce(testing::Return(
-            pldm::utils::PropertyValue{std::string("Available")}));
+    EXPECT_CALL(mockedDbusHandler, getService(_, _)).Times(0);
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
         bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
         "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
         kFastRetry);
 
-    EXPECT_EQ(disc->resolvedMctpService, altSvc);
-    EXPECT_NE(disc->resolvedMctpService, std::string(pldm::MCTPService));
+    EXPECT_EQ(disc->mctpService, std::string(pldm::MCTPService));
+    EXPECT_EQ(disc->mctpReactorService, std::string(pldm::MCTPReactorService));
 }
 
-// `BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant`:
-// Mapper throws; resolveBusOwner returns the legacy MCTPService constant
-// so the constructor's match-rule initialisers can still proceed.
+// `BusOwnerResolve_MapperThrows_StillUsesHardcodedConstant`:
+// Mapper throws on the configured_by enumeration; mctpService is
+// unaffected since it was never mapper-derived.
 TEST(UnifyMctpRegression,
-     BusOwnerResolve_MapperThrows_FallsBackToLegacyConstant)
+     BusOwnerResolve_MapperThrows_StillUsesHardcodedConstant)
 {
     MockdBusHandler mockedDbusHandler;
     TrackingMctpHandler handler;
@@ -4041,24 +3958,11 @@ TEST(UnifyMctpRegression,
         "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
         kFastRetry);
 
-    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
-}
-
-// `BusOwnerResolve_MapperReturnsEmpty_FallsBackToLegacyConstant`:
-// Mapper returns an empty subtree; resolveBusOwner cannot pick a name —
-// falls back to the legacy MCTPService constant.
-TEST(UnifyMctpRegression,
-     BusOwnerResolve_MapperReturnsEmpty_FallsBackToLegacyConstant)
-{
-    MockdBusHandler mockedDbusHandler;
-    TrackingMctpHandler handler;
-    auto disc = makeDiscoveryWithMock(mockedDbusHandler, &handler);
-
-    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
+    EXPECT_EQ(disc->mctpService, std::string(pldm::MCTPService));
 }
 
 // ---------------------------------------------------------------------------
-// unify-mctp Commit 3 (P3) — Bounded retry + don't-publish-empty-inventory
+// Bounded retry + don't-publish-empty-inventory
 // ---------------------------------------------------------------------------
 
 // `GetMctpInfos_MapperRetries_OnFirstFailure_RecoversOnSecond`:
@@ -4132,7 +4036,7 @@ TEST(UnifyMctpRegression,
     auto& bus = mockedDbusHandler.getBus();
 
     EXPECT_CALL(mockedDbusHandler, getSubtree(pldm::MCTPPath, 0, _))
-        .Times(3)
+        .Times(1)
         .WillRepeatedly(testing::Return(pldm::utils::GetSubTreeResponse{}));
     EXPECT_CALL(mockedDbusHandler,
                 getSubtree("/xyz/openbmc_project/inventory", 0, _))
@@ -4177,20 +4081,20 @@ TEST(UnifyMctpRegression, Constructor_MapperFailed_DoesNotPublishEmpty)
 
     EXPECT_EQ(handler.handleMctpEndpointsCalls, 0);
     EXPECT_TRUE(disc->existingMctpInfos.empty());
-    // resolveBusOwner fell back to MCTPService (legacy constant) because
-    // resolveBusOwner does not retry (deferred to a future MR — see README).
-    EXPECT_EQ(disc->resolvedMctpService, std::string(pldm::MCTPService));
+    // mctpService is the hardcoded MCTPService constant regardless
+    // of mapper health — no resolve step exists to fall back from.
+    EXPECT_EQ(disc->mctpService, std::string(pldm::MCTPService));
 }
 
 // ---------------------------------------------------------------------------
-// unify-mctp Commit 4 (P4) — try-catch audit on remaining mapper / msg.read
+// try-catch audit on remaining mapper / msg.read call sites
 // ---------------------------------------------------------------------------
 
 // `RefreshEndpoints_BadMessage_DoesNotThrow`:
 // Feed refreshEndpoints a malformed message (wrong signature). Without the
-// outer try-catch added in Commit 4, msg.read() would throw
-// sdbusplus::exception_t and escape to the sd-event loop, terminating the
-// daemon. Asserts no exception escapes.
+// outer try-catch, msg.read() would throw sdbusplus::exception_t and
+// escape to the sd-event loop, terminating the daemon. Asserts no
+// exception escapes.
 TEST(UnifyMctpRegression, RefreshEndpoints_BadMessage_DoesNotThrow)
 {
     MockdBusHandler mockedDbusHandler;
@@ -4240,15 +4144,14 @@ TEST(UnifyMctpRegression, RefreshEndpoints_BadUUIDVariant_DoesNotThrow)
 }
 
 // ---------------------------------------------------------------------------
-// unify-mctp Commit 5 (P6) — Typed optional<T> accessors
+// Typed optional<T> accessors
 // ---------------------------------------------------------------------------
 
 // `Migration_TypedAccessor_VariantWrongType_ReturnsNullopt_SkipsEndpoint`:
 // Feed getEndpointUUIDProp a properties map where "UUID" holds a uint8_t
-// rather than the expected std::string. After Commit 5, the typed accessor
-// returns std::nullopt; getEndpointUUIDProp logs and returns emptyUUID —
-// observably identical to the missing-key path. Pre-Commit-5 this would
-// have thrown std::bad_variant_access.
+// rather than the expected std::string. The typed accessor returns
+// std::nullopt; getEndpointUUIDProp logs and returns emptyUUID --
+// observably identical to the missing-key path.
 TEST(UnifyMctpRegression,
      Migration_TypedAccessor_VariantWrongType_ReturnsNullopt_SkipsEndpoint)
 {
@@ -4440,4 +4343,243 @@ TEST(UnifyMctpRegression, BindStaticEid_ConfigSubtreeThrows_NoBinding)
         TestMctpDiscovery::bindStaticEidConfigurations(*disc, infoMap));
     EXPECT_TRUE(TestMctpDiscovery::getConfigurations(*disc).empty());
     EXPECT_TRUE(infoMap.empty());
+}
+
+// ---------------------------------------------------------------------------
+// ObjectMapper call budget at MctpDiscovery startup.
+//
+// mctpService/mctpReactorService are the pldm::MCTPService /
+// pldm::MCTPReactorService constants, assigned directly with no GetSubTree
+// call. getMctpInfos() also no longer re-derives each endpoint's owning
+// service with a per-endpoint GetObject — the service is already known.
+// Startup cost is just getMctpInfos()'s own configured_by enumeration
+// query, independent of endpoint count. The static-EID bind pass still
+// issues its own fresh MCTPInterface subtree query, since it runs after a
+// per-endpoint retry loop that can sleep for seconds. These tests pin the
+// budget so it cannot silently regress.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+/** @brief Tally of the mapper traffic a single construction generates. */
+struct MapperCallBudget
+{
+    int mctpPathSubtree = 0;  // GetSubTree(MCTPPath, ...)
+    int inventorySubtree = 0; // GetSubTree(/xyz/openbmc_project/inventory,...)
+    int getObject = 0;        // GetObject(path, [MCTP.Endpoint])
+};
+} // namespace
+
+// `Startup_MapperCallBudget_NoRedundantQueries`:
+// Three PLDM-capable endpoints are published. Startup must cost exactly one
+// MCTPPath subtree query (getMctpInfos' configured_by enumeration - no
+// ownership probes remain), one inventory subtree query (the static-EID
+// config sweep) and zero GetObject calls — the last being the count that
+// previously scaled linearly with endpoint count.
+TEST(UnifyMctpRegression, Startup_MapperCallBudget_NoRedundantQueries)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string svc = "au.com.codeconstruct.MCTP1";
+    const std::map<std::string, uint8_t> epPaths{
+        {"/au/com/codeconstruct/mctp1/networks/1/endpoints/10", 10},
+        {"/au/com/codeconstruct/mctp1/networks/1/endpoints/11", 11},
+        {"/au/com/codeconstruct/mctp1/networks/1/endpoints/12", 12}};
+
+    pldm::utils::GetSubTreeResponse epSubtree;
+    for (const auto& [p, _] : epPaths)
+    {
+        epSubtree.emplace_back(p,
+                               pldm::utils::MapperServiceMap{
+                                   {svc, {std::string(pldm::MCTPInterface)}}});
+    }
+
+    MapperCallBudget budget;
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillRepeatedly(
+            [&](const std::string& path, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                if (path == pldm::MCTPPath)
+                {
+                    ++budget.mctpPathSubtree;
+                    return epSubtree;
+                }
+                ++budget.inventorySubtree;
+                return {};
+            });
+    EXPECT_CALL(mockedDbusHandler, getService(_, _))
+        .WillRepeatedly([&](const char*, const char*) -> std::string {
+            ++budget.getObject;
+            return svc;
+        });
+
+    // Endpoint / UUID property reads are per-endpoint by nature and are not
+    // part of the mapper budget under test; serve them generically.
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillRepeatedly([&](const char*, const char* objPath,
+                            const char* iface) -> pldm::utils::PropertyMap {
+            const std::string interface(iface);
+            const auto entry = epPaths.find(std::string(objPath));
+            if (interface == pldm::MCTPInterface && entry != epPaths.end())
+            {
+                return {{"NetworkId", uint32_t(1)},
+                        {"EID", entry->second},
+                        {"SupportedMessageTypes", std::vector<uint8_t>{1}},
+                        {"MediumType", std::string("SMBus")}};
+            }
+            if (interface == pldm::EndpointUUID && entry != epPaths.end())
+            {
+                return {
+                    {"UUID", std::string("aaaa1111-1111-1111-1111-1111111111") +
+                                 std::to_string(entry->second)}};
+            }
+            return {{"Name", std::string("MockedDevice")}};
+        });
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillRepeatedly([](const char*, const char* prop,
+                           const char*) -> pldm::utils::PropertyValue {
+            if (std::string(prop) == pldm::MCTPConnectivityProp)
+            {
+                return std::string("Available");
+            }
+            return std::string("MctpOverSMBus");
+        });
+    EXPECT_CALL(mockedDbusHandler, getAssociatedSubTree(_, _, _, _))
+        .WillRepeatedly(testing::Return(pldm::utils::GetAssociatedSubTreeResponse{
+            {"/xyz/openbmc_project/inventory/system/board/Mocked_Board/Device",
+             {{"xyz.openbmc_project.EntityManager",
+               {"xyz.openbmc_project.Configuration.MCTPI2CTarget"}}}}}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
+
+    // No ownership probes - only getMctpInfos' own configured_by
+    // enumeration query. (bindStaticEidConfigurations() would issue a
+    // second MCTPPath query if this platform declared a StaticEID config,
+    // but this fixture does not, so it short-circuits before reaching its
+    // own subtree query.)
+    EXPECT_EQ(budget.mctpPathSubtree, 1);
+    // The static-EID config sweep. Its empty result short-circuits before the
+    // endpoint enumeration, so no second MCTPPath query is issued.
+    EXPECT_EQ(budget.inventorySubtree, 1);
+    // The endpoint owner is the hardcoded mctpService constant, so
+    // no per-endpoint GetObject is issued at startup.
+    EXPECT_EQ(budget.getObject, 0);
+
+    // Discovery itself is unchanged: all three endpoints were published.
+    EXPECT_EQ(disc->existingMctpInfos.size(), epPaths.size());
+}
+
+// `GetMctpInfos_AlwaysQueriesFresh_NoStartupStateToOutliveConstruction`:
+// Confirm a post-startup getMctpInfos() call still issues its own fresh
+// MCTPPath query, same as the constructor's did.
+TEST(UnifyMctpRegression,
+     GetMctpInfos_AlwaysQueriesFresh_NoStartupStateToOutliveConstruction)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    int mctpPathSubtree = 0;
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillRepeatedly(
+            [&](const std::string& path, int, const std::vector<std::string>&)
+                -> pldm::utils::GetSubTreeResponse {
+                if (path == pldm::MCTPPath)
+                {
+                    ++mctpPathSubtree;
+                }
+                return {};
+            });
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
+
+    ASSERT_EQ(mctpPathSubtree, 1);
+
+    // Post-startup call must re-query: the configured-endpoint subtree plus
+    // the static-EID endpoint enumeration are both driven from the mapper
+    // again (the latter only if a StaticEID config exists, which it does not
+    // here, so exactly one further MCTPPath query).
+    std::map<pldm::MctpInfo, pldm::Availability> infoMap;
+    EXPECT_TRUE(TestMctpDiscovery::getMctpInfos(*disc, infoMap));
+    EXPECT_EQ(mctpPathSubtree, 2);
+}
+
+// `BindStaticEid_SeesEndpointPublishedAfterStartupProbes`:
+// A StaticEID endpoint must be bound via bindStaticEidConfigurations()'s own
+// fresh MCTPInterface subtree query - the sole MCTPInterface-filtered
+// lookup in the constructor path. Confirm it alone is sufficient to see
+// and bind the endpoint.
+TEST(UnifyMctpRegression, BindStaticEid_SeesEndpointPublishedAfterStartupProbes)
+{
+    MockdBusHandler mockedDbusHandler;
+    TrackingMctpHandler handler;
+    auto& bus = mockedDbusHandler.getBus();
+
+    const std::string cfgPath = "/xyz/openbmc_project/inventory/system/vr0";
+    const std::string epPath =
+        "/au/com/codeconstruct/mctp1/networks/1/endpoints/42";
+    constexpr auto fwDeviceIntf =
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+    int mctpInterfaceSubtreeCalls = 0;
+    EXPECT_CALL(mockedDbusHandler, getSubtree(_, _, _))
+        .WillRepeatedly([&](const std::string&, int,
+                            const std::vector<std::string>& ifaceFilter)
+                            -> pldm::utils::GetSubTreeResponse {
+            if (!ifaceFilter.empty() && ifaceFilter.front() == fwDeviceIntf)
+            {
+                return {{cfgPath, {{"em-service", {fwDeviceIntf}}}}};
+            }
+            if (!ifaceFilter.empty() &&
+                ifaceFilter.front() == std::string(pldm::MCTPInterface))
+            {
+                // The sole MCTPInterface-filtered query is
+                // bindStaticEidConfigurations()'s own fresh lookup, which
+                // sees endpoint 42 already published.
+                ++mctpInterfaceSubtreeCalls;
+                return {
+                    {epPath,
+                     {{"mctpd-service", {std::string(pldm::MCTPInterface)}}}}};
+            }
+            // Association.Definitions (identity) subtree: no configured_by
+            // endpoints - this device is StaticEID-only.
+            return {};
+        });
+
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertiesVariant(_, _, _))
+        .WillRepeatedly([&](const char*, const char* objPath,
+                            const char*) -> pldm::utils::PropertyMap {
+            if (std::string(objPath) == cfgPath)
+            {
+                return {{"StaticEID", std::string("42")},
+                        {"MCTPTargetName", std::string("VR_0")}};
+            }
+            return {{"NetworkId", pldm::NetworkId{1}},
+                    {"EID", uint8_t{42}},
+                    {"SupportedMessageTypes", std::vector<uint8_t>{0x01}},
+                    {"MediumType",
+                     std::string("xyz.openbmc_project.MCTP.Endpoint."
+                                 "MediaTypes.SMBus")}};
+        });
+    EXPECT_CALL(mockedDbusHandler, getDbusPropertyVariant(_, _, _))
+        .WillRepeatedly(testing::Return(pldm::utils::PropertyValue{std::string(
+            "xyz.openbmc_project.MCTP.Endpoint."
+            "BindingTypes.SMBus")}));
+
+    auto disc = std::make_unique<pldm::MctpDiscovery>(
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        "/tmp/mctp-discovery-no-static-endpoints.json", mockedDbusHandler,
+        kFastRetry);
+
+    const auto& configurations = TestMctpDiscovery::getConfigurations(*disc);
+    ASSERT_TRUE(configurations.contains(cfgPath));
+    EXPECT_EQ(std::get<pldm::eid>(configurations.at(cfgPath)), 42);
 }
