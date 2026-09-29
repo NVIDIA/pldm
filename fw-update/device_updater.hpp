@@ -249,13 +249,42 @@ class DeviceUpdater
      *                               payload allowed to be requested by the FD
      *  @param[in] updateManager - To update the status of fw update of the
      *                             device
+     *  @param[in] downstreamJob - When set, this DeviceUpdater runs a
+     *                             downstream device update job (DSP0267
+     *                             §12.17) against the FDP at eid, instead of
+     *                             a direct FD update. fwDeviceIDRecord must
+     *                             then carry exactly one applicable
+     *                             component (a downstream device reports
+     *                             exactly one component).
+     *  @param[in] downstreamComponentInfo - Component info of the downstream
+     *                                      devices behind this FDP, keyed by
+     *                                      DownstreamDeviceIndex; required
+     *                                      when downstreamJob is set.
      */
     explicit DeviceUpdater(
         mctp_eid_t eid, const uint8_t* package, size_t packageSize,
         const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         const ComponentImageInfos& compImageInfos,
         const ComponentInfo& compInfo, const ComponentIdNameMap& compIdNameInfo,
-        uint32_t maxTransferSize, UpdateManagerBase* updateManager);
+        uint32_t maxTransferSize, UpdateManagerBase* updateManager,
+        std::optional<DownstreamUpdateJob> downstreamJob = std::nullopt,
+        const DownstreamComponentInfo* downstreamComponentInfo = nullptr);
+
+    /** @brief True when this DeviceUpdater runs a downstream device update
+     *         job instead of a direct FD update. */
+    bool isDownstreamUpdate() const noexcept
+    {
+        return downstreamJob.has_value();
+    }
+
+    /** @brief The downstream update job this DeviceUpdater is running.
+     *
+     *  @note Only valid when isDownstreamUpdate() is true.
+     */
+    const DownstreamUpdateJob& getDownstreamJob() const
+    {
+        return downstreamJob.value();
+    }
 
     /** @brief Get the progress of updating this device as percentage
      *
@@ -414,6 +443,27 @@ class DeviceUpdater
      */
     exec::task<int> sendRequestUpdate(uint8_t retryCount = 0);
 
+    /** @brief Send RequestDownstreamDeviceUpdate command request (DSP0267
+     *         §12.17), the downstream counterpart of sendRequestUpdate().
+     *
+     *  @param[in] retryCount - retry count for decode failures
+     *  @return exec::task<int>
+     */
+    exec::task<int> sendRequestDownstreamDeviceUpdate(uint8_t retryCount = 0);
+
+    /**
+     * @brief process RequestDownstreamDeviceUpdate response
+     *
+     * @param[in] eid - mctp end point
+     * @param[in] response - pldm response
+     * @param[in] respMsgLen - response length
+     * @param[in] retryCount - retry count for decode failures
+     * @return exec::task<int>
+     */
+    exec::task<int> processRequestDownstreamDeviceUpdateResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+        uint8_t retryCount);
+
     /**
      * @brief process request update response
      *
@@ -500,6 +550,14 @@ class DeviceUpdater
 
     /** @brief To update the status of fw update of the FD */
     UpdateManagerBase* updateManager;
+
+    /** @brief Set iff this DeviceUpdater is running a downstream device
+     *         update job rather than a direct FD update. */
+    std::optional<DownstreamUpdateJob> downstreamJob;
+
+    /** @brief Component info of the downstream devices behind this FDP;
+     *         only valid (non-null) when downstreamJob is set. */
+    const DownstreamComponentInfo* downstreamComponentInfo = nullptr;
 
     /** @brief Component index is used to track the current component being
      *         updated if multiple components are applicable for the FD.

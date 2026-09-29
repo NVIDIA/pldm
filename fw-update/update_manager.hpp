@@ -37,6 +37,7 @@
 #include <xyz/openbmc_project/Software/ApplyTime/server.hpp>
 
 #include <chrono>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -214,7 +215,13 @@ class UpdateManager : public UpdateManagerBase
         IsEidExcludedCallback isEidExcludedCallback = {},
         TargetNameCallback targetNameCallback = {},
         ConfiguredTargetsCallback configuredTargetsCallback = {},
-        StaticEidTargetsCallback staticEidTargetsCallback = {});
+        StaticEidTargetsCallback staticEidTargetsCallback = {},
+        const DownstreamDescriptorMap& downstreamDescriptorMap =
+            emptyDownstreamDescriptorMap(),
+        const DownstreamComponentInfoMap& downstreamComponentInfoMap =
+            emptyDownstreamComponentInfoMap(),
+        const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap =
+            emptyDownstreamDeviceFwInvNameMap());
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -412,6 +419,78 @@ class UpdateManager : public UpdateManagerBase
      */
     static std::string getSwId();
 
+    /** @brief Resolve Redfish Targets to (eid of the proxying FDP,
+     *         downstream device index), the downstream counterpart of
+     *         getComponentTargetList().
+     */
+    DownstreamTargetList getDownstreamTargetList(
+        const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap,
+        const std::vector<sdbusplus::object_path>& objectPaths);
+
+    /** @brief Match downstream device ID records in the package against the
+     *         downstream devices behind each discovered FDP, and build one
+     *         DownstreamUpdateJob per resulting update (DSP0267 §12.17):
+     *
+     *         - An FDP already matched for its own FD update is excluded
+     *           (§12.17: an FDP can't be in update mode for itself and its
+     *           downstream devices at once).
+     *         - Matching devices behind an FDP are grouped by identical
+     *           descriptor sets.
+     *         - With no Redfish targeting, each descriptor-group becomes one
+     *           broadcast job (ComponentClassificationIndex=0xFF, updating
+     *           every device in the group); a device whose descriptors
+     *           don't match any other gets its own single-device job
+     *           (0x00).
+     *         - With Redfish targeting, matches are filtered to the
+     *           targeted devices; if targeting selects more than one device
+     *           under the same FDP, each gets its own single-device (0x00)
+     *           job rather than collapsing to a 0xFF broadcast (which would
+     *           also hit non-targeted devices sharing the same
+     *           descriptors).
+     *
+     *  Every job always addresses exactly one PassComponentTable component
+     *  with TransferFlag=StartAndEnd (a downstream device reports exactly
+     *  one component). One synthetic FirmwareDeviceIDRecord is appended to
+     *  outFwDeviceIDRecords per job.
+     *
+     *  @param[in] downstreamDeviceIDRecords - Downstream device ID records
+     *                                        parsed from the package
+     *  @param[in] downstreamDescriptorMap - Downstream device descriptors of
+     *                                      all discovered FDPs
+     *  @param[in] compImageInfos - Component image information in the
+     *                             package
+     *  @param[in] downstreamTargetList - Redfish targets resolved to
+     *                                   (eid, deviceIndex)
+     *  @param[in] objectPaths - Raw Redfish target object paths (used only
+     *                          to tell "no targeting at all" apart from
+     *                          "targeting resolved to zero downstream
+     *                          devices")
+     *  @param[in] matchedFDPEids - eids already matched by
+     *                             associatePkgToDevices() for their own FD
+     *                             update; excluded from downstream matching
+     *  @param[out] outFwDeviceIDRecords - Synthetic FirmwareDeviceIDRecords
+     *                                    are appended here, one per job
+     *  @param[out] outDownstreamJobByRecordOffset - Job metadata for each
+     *                                              appended synthetic
+     *                                              record, keyed by its
+     *                                              offset in
+     *                                              outFwDeviceIDRecords
+     *  @param[in,out] totalNumComponentUpdates - Incremented by one per job
+     *
+     *  @return one DeviceUpdaterInfo per job, possibly several per eid
+     */
+    DeviceUpdaterInfos associatePkgToDownstreamDevices(
+        const DownstreamDeviceIDRecords& downstreamDeviceIDRecords,
+        const DownstreamDescriptorMap& downstreamDescriptorMap,
+        const ComponentImageInfos& compImageInfos,
+        const DownstreamTargetList& downstreamTargetList,
+        const std::vector<sdbusplus::object_path>& objectPaths,
+        const std::unordered_set<mctp_eid_t>& matchedFDPEids,
+        FirmwareDeviceIDRecords& outFwDeviceIDRecords,
+        std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>&
+            outDownstreamJobByRecordOffset,
+        TotalComponentUpdates& totalNumComponentUpdates);
+
     const std::string swRootPath{"/xyz/openbmc_project/software/"};
     Event& event;
     pldm::requester::Handler<pldm::requester::Request>& handler;
@@ -518,10 +597,55 @@ class UpdateManager : public UpdateManagerBase
     RefreshSingleEndpointCallback refreshSingleEndpointCallback;
 
   private:
+    static const DownstreamDescriptorMap& emptyDownstreamDescriptorMap()
+    {
+        static DownstreamDescriptorMap map{};
+        return map;
+    }
+    static const DownstreamComponentInfoMap& emptyDownstreamComponentInfoMap()
+    {
+        static DownstreamComponentInfoMap map{};
+        return map;
+    }
+    static const DownstreamDeviceFwInvNameMap&
+        emptyDownstreamDeviceFwInvNameMap()
+    {
+        static DownstreamDeviceFwInvNameMap map{};
+        return map;
+    }
+
     /** @brief Record explicitly targeted endpoints that are no longer present
      *         in the live descriptor map after refresh.
      */
     void recordUnavailableTargetEids(const ComponentTargetList& compTargetList);
+
+    /** @brief Construct and start the DeviceUpdater for (eid, recordOffset)
+     *         against activePackageData/activePackageSize, and emit its targetDetermined
+     *         message registry entries.
+     *
+     *  Shared by the initial per-eid construction in processStream() and by
+     *  startNextDownstreamJob() when sequencing a later job queued for an
+     *  eid with more than one downstream update job: RequestDownstreamDevice
+     *  Update addresses one FDP at a time, so multiple jobs for the same
+     *  FDP run as successive DeviceUpdater instances rather than
+     *  concurrently.
+     */
+    void startDeviceUpdater(mctp_eid_t eid, DeviceIDRecordOffset recordOffset);
+
+    /** @brief If eid has more downstream update jobs queued, pop and start
+     *         the next one in place of recording eid's overall completion.
+     *
+     *  @param[in] status - completion status of the job that just finished
+     *  @param[in] successCompNames - components the just-finished job
+     *                                updated successfully
+     *  @return true if a queued job was started (caller must not also
+     *          record eid's overall completion), false if there was
+     *          nothing queued (eid's completion should be recorded
+     *          normally, using the accumulated status/successCompNames
+     *          across every job that ran for eid)
+     */
+    bool startNextDownstreamJob(mctp_eid_t eid, bool status,
+                                std::vector<std::string>& successCompNames);
 
     /** @brief Emit a Critical ResourceErrorsDetected log entry for each
      *         user-requested PLDM target whose image is not in the package.
@@ -609,6 +733,46 @@ class UpdateManager : public UpdateManagerBase
     const DescriptorMap& descriptorMap;
     const ComponentInfoMap& componentInfoMap;
     const ComponentNameMap& componentNameMap;
+    const DownstreamDescriptorMap& downstreamDescriptorMap;
+    const DownstreamComponentInfoMap& downstreamComponentInfoMap;
+    const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap;
+
+    /** @brief Maximum size in bytes of the variable payload a DeviceUpdater
+     *         may request; shared by the initial per-eid construction loop
+     *         in processStream() and by startDeviceUpdater(). */
+    static constexpr uint32_t maxTransferSize = 4096;
+
+    /** @brief The current package data and size, set at the top of
+     *         processPackageData() and used by startDeviceUpdater() when it
+     *         runs later (from startNextDownstreamJob(), driven by a
+     *         DeviceUpdater completion callback). The mapping outlives the
+     *         activation. */
+    const uint8_t* activePackageData = nullptr;
+    size_t activePackageSize = 0;
+
+    /** @brief Downstream update job metadata for each synthetic
+     *         FirmwareDeviceIDRecord downstream-matching produced, keyed by
+     *         its offset in fwDeviceIDRecords. */
+    std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>
+        downstreamJobByRecordOffset;
+
+    /** @brief Downstream update jobs (record offsets) queued per FDP eid
+     *         beyond the one currently running; popped and started one at a
+     *         time as each job's DeviceUpdater completes, since
+     *         RequestDownstreamDeviceUpdate addresses one FDP at a time. */
+    std::unordered_map<mctp_eid_t, std::deque<DeviceIDRecordOffset>>
+        pendingDownstreamJobs;
+
+    /** @brief True once any job in an eid's downstream update sequence has
+     *         failed, so the eid's single recorded completion status
+     *         reflects the whole sequence rather than just its last job. */
+    std::unordered_map<mctp_eid_t, bool> downstreamJobFailed;
+
+    /** @brief Component names successfully updated, accumulated across
+     *         every downstream job run for an eid before the final
+     *         updateDeviceCompletion() call for that eid. */
+    std::unordered_map<mctp_eid_t, std::vector<std::string>>
+        downstreamJobSuccessCompNames;
 
     bool updateInProgress = false;
     /** @brief Expected (updatable) component identifiers per endpoint,
@@ -681,6 +845,16 @@ class UpdateManager : public UpdateManagerBase
      *         logUnupdatedTargets() at terminal state.
      */
     std::unordered_map<std::string, mctp_eid_t> requestedTargets;
+
+    /** @brief The downstream-device counterpart of requestedTargets, keyed
+     *         by (eid, deviceIndex) rather than just eid -- a single FDP
+     *         eid can proxy several downstream devices, only some of which
+     *         may end up scheduled, so logUnupdatedTargets() needs
+     *         per-device granularity here that eid alone can't provide.
+     *         Drained by logUnupdatedTargets() at terminal state. */
+    std::unordered_map<std::string,
+                       std::pair<mctp_eid_t, DownstreamDeviceIndex>>
+        requestedDownstreamTargets;
 
     std::unordered_map<std::string, bool> otherDeviceComponents;
     std::unordered_map<std::string, bool> otherDeviceCompleted;

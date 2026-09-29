@@ -220,6 +220,68 @@ using ComponentImageInfos = std::vector<ComponentImageInfo>;
 
 using DownstreamDeviceIDRecordCount = uint8_t;
 
+// DownstreamDeviceIDRecords (DSP0267 v1.3.0 Table 5), parsed from a
+// package's DownstreamDeviceIdentificationArea. Not to be confused with
+// DownstreamDeviceInfo/DownstreamDescriptorMap above, which hold the
+// MCTP-discovered inventory of what a live FDP actually proxies -- this is
+// what a firmware package *claims* to update.
+using DownstreamDeviceUpdateOptionFlags = std::bitset<32>;
+using DownstreamApplicableComponents = std::vector<size_t>;
+using DownstreamPackageData = std::vector<uint8_t>;
+using DownstreamDeviceIDRecord = std::tuple<DownstreamDeviceUpdateOptionFlags,
+                                            DownstreamApplicableComponents,
+                                            Descriptors, DownstreamPackageData>;
+using DownstreamDeviceIDRecords = std::vector<DownstreamDeviceIDRecord>;
+
+enum class DownstreamDeviceIDRecordPos : size_t
+{
+    UpdateOptionFlagsPos = 0,
+    ApplicableComponentsPos = 1,
+    DescriptorsPos = 2,
+    PackageDataPos = 3,
+};
+
+/** @brief Addressing mode of a downstream update job's PassComponentTable /
+ *         UpdateComponent ComponentClassificationIndex field (DSP0267
+ *         Table 15/17, redefined when ComponentClassification == 0xFFFF). */
+enum class DownstreamUpdateAddressMode : CompClassificationIndex
+{
+    /** @brief Update only the single device named by deviceIndex. */
+    SingleDevice = 0x00,
+    /** @brief Update every downstream device behind the FDP whose
+     *         descriptors match this job's package record; deviceIndex is
+     *         a representative member of that group, not exclusive. */
+    AllMatchingDevices = 0xFF,
+};
+
+/** @brief One full RequestDownstreamDeviceUpdate-through-ActivateFirmware
+ *         sequence to run against a single FDP. A downstream update always
+ *         addresses exactly one component per job (DSP0267: a downstream
+ *         device reports exactly one component), so PassComponentTable is
+ *         always sent with TransferFlag=StartAndEnd for a job. */
+struct DownstreamUpdateJob
+{
+    /** @brief Representative downstream device index: the sole target when
+     *         mode is SingleDevice, or one member of the matching group
+     *         when mode is AllMatchingDevices. */
+    DownstreamDeviceIndex deviceIndex;
+    DownstreamUpdateAddressMode mode;
+    /** @brief Every downstream device index actually affected by this job
+     *         -- exactly {deviceIndex} for SingleDevice, all group members
+     *         for AllMatchingDevices. Used for post-update inventory
+     *         refresh/target bookkeeping, not for wire encoding. */
+    std::vector<DownstreamDeviceIndex> affectedDeviceIndices;
+};
+using DownstreamUpdateJobs = std::vector<DownstreamUpdateJob>;
+/** @brief Downstream update jobs to run for an FDP, keyed by its eid. */
+using DownstreamUpdateJobsMap = std::unordered_map<eid, DownstreamUpdateJobs>;
+
+/** @brief Redfish Targets resolved to (eid of the proxying FDP,
+ *         downstream device index), the downstream counterpart of
+ *         ComponentTargetList. */
+using DownstreamTargetList =
+    std::unordered_map<eid, std::vector<DownstreamDeviceIndex>>;
+
 // Shared inventory helper types. RoT chassis objects are owned by
 // entity-manager via Configuration.PLDMDeviceInventory.
 using DeviceObjPath = std::string;

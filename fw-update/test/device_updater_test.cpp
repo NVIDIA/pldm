@@ -284,6 +284,31 @@ TEST_F(DeviceUpdaterTest, requestUpdate)
     });
 }
 
+TEST_F(DeviceUpdaterTest, processRequestDownstreamDeviceUpdateResponseShort)
+{
+    // DSP0267 12.17: GetPackageDataMaximumTransferSize is only present when
+    // DownstreamDeviceWillSendGetPackageDataCommand is set. A real FDP that
+    // reports it unset sends only the 4-byte short form (CompletionCode +
+    // DownstreamDeviceMetaDataLength + DDWillSendGetPackageDataCommand),
+    // which libpldm's fixed-size decode_request_downstream_device_update_resp
+    // rejects as too short -- this exercises the short-form fallback in
+    // processRequestDownstreamDeviceUpdateResponse() instead of the
+    // full 6-byte libpldm decode.
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 4> resp{
+        0x0A, 0x05, 0x20, 0x00, 0x00, 0x00, 0x00};
+
+    auto responseMsg = reinterpret_cast<const pldm_msg*>(resp.data());
+    uint8_t retryCount = 0;
+
+    EXPECT_NO_THROW({
+        auto co = deviceUpdater.processRequestDownstreamDeviceUpdateResponse(
+            eid, responseMsg, 4, retryCount);
+        auto rc = stdexec::sync_wait(std::move(co));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(std::get<0>(rc.value()), PLDM_SUCCESS);
+    });
+}
+
 TEST_F(DeviceUpdaterTest,
        private_method_sendPassCompTableRequest_PLDM_START_AND_END)
 {
@@ -877,6 +902,46 @@ TEST_F(DeviceUpdaterTest,
     localUpdater.componentActivationModifications.value = 0;
 
     EXPECT_FALSE(localUpdater.isLiveActivationSupported());
+}
+
+||||||| parent of 49b22409 (fw-update: drop vendor name from comments)
+TEST_F(
+    DeviceUpdaterTest,
+    isLiveActivationSupportedReturnsTrueForDownstreamDeviceSupportingOnlySelfContained)
+{
+    // A downstream device that advertises ComponentActivationMethods == only
+    // bit[1] (Self-Contained, e.g. 0x2, no Automatic/reset/reboot/power-cycle
+    // bits at all) has no other way to complete an update. If the package
+    // also requests self-contained activation for that component, the UA
+    // must request it -- this is the exact scenario observed against the
+    // Google transceiver rig (nvbug 6727528 follow-up): ActivateFirmware was
+    // sent with SelfContainedActivationRequest=0 despite the device
+    // advertising ActivationMethods=0x2 and the package's
+    // RequestedComponentActivationMethod requesting self-contained.
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::OnReset);
+
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    std::get<static_cast<size_t>(
+        ComponentImageInfoPos::ReqCompActivationMethodPos)>(
+        localCompImageInfos[0])
+        .set(PLDM_ACTIVATION_SELF_CONTAINED);
+
+    DownstreamComponentInfo downstreamComponentInfo{
+        {0, std::make_tuple(
+                std::string("v"),
+                static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED))}};
+    DownstreamUpdateJob job{0, DownstreamUpdateAddressMode::SingleDevice, {0}};
+
+    ComponentInfo emptyCompInfo{};
+    DeviceUpdater localUpdater(
+        eid, package, fwDeviceIDRecord, localCompImageInfos, emptyCompInfo,
+        compIdNameInfo, 512, &updateManager, job, &downstreamComponentInfo);
+    localUpdater.componentActivationModifications.value = 0;
+
+    EXPECT_TRUE(localUpdater.isLiveActivationSupported());
 }
 
 TEST_F(DeviceUpdaterTest,

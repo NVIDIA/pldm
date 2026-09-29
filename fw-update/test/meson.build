@@ -86,6 +86,7 @@ tests = [
     'package_parser_test',
     'package_signature_test',
     'update_and_utility_test',
+    'update_manager_downstream_pkg_association_test',
     'update_manager_internal_test',
     'update_manager_pkg_association_test',
     'update_manager_test',

@@ -39,6 +39,71 @@ namespace fw_update
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
+Descriptors PackageParser::parseRecordDescriptors(
+    uint8_t descriptorCount, variable_field& recordDescriptors)
+{
+    Descriptors descriptors{};
+    while (descriptorCount-- && (recordDescriptors.length > 0))
+    {
+        uint16_t descriptorType = 0;
+        variable_field descriptorData{};
+
+        auto rc = decode_descriptor_type_length_value(
+            recordDescriptors.ptr, recordDescriptors.length, &descriptorType,
+            &descriptorData);
+        if (rc)
+        {
+            error(
+                "Failed to decode descriptor type value of type '{TYPE}' and  length '{LENGTH}', response code '{RC}'",
+                "TYPE", descriptorType, "LENGTH", recordDescriptors.length,
+                "RC", rc);
+            throw InternalFailure();
+        }
+
+        if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
+        {
+            descriptors.emplace(
+                descriptorType,
+                DescriptorData{descriptorData.ptr,
+                               descriptorData.ptr + descriptorData.length});
+        }
+        else
+        {
+            uint8_t descTitleStrType = 0;
+            variable_field descTitleStr{};
+            variable_field vendorDefinedDescData{};
+
+            rc = decode_vendor_defined_descriptor_value(
+                descriptorData.ptr, descriptorData.length, &descTitleStrType,
+                &descTitleStr, &vendorDefinedDescData);
+            if (rc)
+            {
+                error(
+                    "Failed to decode vendor-defined descriptor value of type '{TYPE}' and  length '{LENGTH}', response code '{RC}'",
+                    "TYPE", descriptorType, "LENGTH", recordDescriptors.length,
+                    "RC", rc);
+                throw InternalFailure();
+            }
+
+            descriptors.emplace(
+                descriptorType,
+                std::make_tuple(utils::toString(descTitleStr),
+                                VendorDefinedDescriptorData{
+                                    vendorDefinedDescData.ptr,
+                                    vendorDefinedDescData.ptr +
+                                        vendorDefinedDescData.length}));
+        }
+
+        auto nextDescriptorOffset =
+            sizeof(pldm_descriptor_tlv().descriptor_type) +
+            sizeof(pldm_descriptor_tlv().descriptor_length) +
+            descriptorData.length;
+        recordDescriptors.ptr += nextDescriptorOffset;
+        recordDescriptors.length -= nextDescriptorOffset;
+    }
+    return descriptors;
+}
+
 size_t PackageParser::parseFDIdentificationArea(
     DeviceIDRecordCount deviceIdRecCount, std::span<const uint8_t> pkgHdr,
     size_t offset, uint8_t formatVersion)
@@ -66,66 +131,8 @@ size_t PackageParser::parseFDIdentificationArea(
             throw InternalFailure();
         }
 
-        Descriptors descriptors{};
-        while (deviceIdRecHeader.descriptor_count-- &&
-               (recordDescriptors.length > 0))
-        {
-            uint16_t descriptorType = 0;
-            variable_field descriptorData{};
-
-            rc = decode_descriptor_type_length_value(
-                recordDescriptors.ptr, recordDescriptors.length,
-                &descriptorType, &descriptorData);
-            if (rc)
-            {
-                error(
-                    "Failed to decode descriptor type value of type '{TYPE}' and  length '{LENGTH}', response code '{RC}'",
-                    "TYPE", descriptorType, "LENGTH", recordDescriptors.length,
-                    "RC", rc);
-                throw InternalFailure();
-            }
-
-            if (descriptorType != PLDM_FWUP_VENDOR_DEFINED)
-            {
-                descriptors.emplace(
-                    descriptorType,
-                    DescriptorData{descriptorData.ptr,
-                                   descriptorData.ptr + descriptorData.length});
-            }
-            else
-            {
-                uint8_t descTitleStrType = 0;
-                variable_field descTitleStr{};
-                variable_field vendorDefinedDescData{};
-
-                rc = decode_vendor_defined_descriptor_value(
-                    descriptorData.ptr, descriptorData.length,
-                    &descTitleStrType, &descTitleStr, &vendorDefinedDescData);
-                if (rc)
-                {
-                    error(
-                        "Failed to decode vendor-defined descriptor value of type '{TYPE}' and  length '{LENGTH}', response code '{RC}'",
-                        "TYPE", descriptorType, "LENGTH",
-                        recordDescriptors.length, "RC", rc);
-                    throw InternalFailure();
-                }
-
-                descriptors.emplace(
-                    descriptorType,
-                    std::make_tuple(utils::toString(descTitleStr),
-                                    VendorDefinedDescriptorData{
-                                        vendorDefinedDescData.ptr,
-                                        vendorDefinedDescData.ptr +
-                                            vendorDefinedDescData.length}));
-            }
-
-            auto nextDescriptorOffset =
-                sizeof(pldm_descriptor_tlv().descriptor_type) +
-                sizeof(pldm_descriptor_tlv().descriptor_length) +
-                descriptorData.length;
-            recordDescriptors.ptr += nextDescriptorOffset;
-            recordDescriptors.length -= nextDescriptorOffset;
-        }
+        Descriptors descriptors = parseRecordDescriptors(
+            deviceIdRecHeader.descriptor_count, recordDescriptors);
 
         DeviceUpdateOptionFlags deviceUpdateOptionFlags =
             deviceIdRecHeader.device_update_option_flags.value;
@@ -154,6 +161,186 @@ size_t PackageParser::parseFDIdentificationArea(
                 fwDevicePkgData.ptr + fwDevicePkgData.length}));
         offset += deviceIdRecHeader.record_length;
         pkgHdrRemainingSize -= deviceIdRecHeader.record_length;
+    }
+
+    return offset;
+}
+
+namespace
+{
+
+/** @brief Bounds-checked little-endian field readers over a byte range,
+ *         used by parseDownstreamIdentificationArea() below. libpldm has no
+ *         flat decode entry point for DSP0267 Table 5 (only the newer
+ *         iterator-based struct pldm_package API, which this class's
+ *         flat-decode style predates), so this area is read directly. */
+uint8_t readU8(const uint8_t* base, size_t recLen, size_t& pos)
+{
+    if (pos + sizeof(uint8_t) > recLen)
+    {
+        throw sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure();
+    }
+    return base[pos++];
+}
+
+uint16_t readU16(const uint8_t* base, size_t recLen, size_t& pos)
+{
+    if (pos + sizeof(uint16_t) > recLen)
+    {
+        throw sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure();
+    }
+    uint16_t value = le16toh(base[pos] | (base[pos + 1] << 8));
+    pos += sizeof(uint16_t);
+    return value;
+}
+
+uint32_t readU32(const uint8_t* base, size_t recLen, size_t& pos)
+{
+    if (pos + sizeof(uint32_t) > recLen)
+    {
+        throw sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure();
+    }
+    uint32_t value = le32toh(static_cast<uint32_t>(base[pos]) |
+                             (static_cast<uint32_t>(base[pos + 1]) << 8) |
+                             (static_cast<uint32_t>(base[pos + 2]) << 16) |
+                             (static_cast<uint32_t>(base[pos + 3]) << 24));
+    pos += sizeof(uint32_t);
+    return value;
+}
+
+/** @brief Advance pos past a byte range of the given length, throwing if it
+ *         would run past recLen. Returns a variable_field over that range. */
+variable_field readBytes(const uint8_t* base, size_t recLen, size_t& pos,
+                         size_t len)
+{
+    if (pos + len > recLen)
+    {
+        throw sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure();
+    }
+    variable_field field{base + pos, len};
+    pos += len;
+    return field;
+}
+
+} // namespace
+
+size_t PackageParser::parseDownstreamIdentificationArea(
+    DownstreamDeviceIDRecordCount downstreamDeviceIdRecCount,
+    std::span<const uint8_t> pkgHdr, size_t offset, uint8_t formatVersion)
+{
+    size_t pkgHdrRemainingSize = pkgHdr.size() - offset;
+    const size_t applicableComponentsSize = (componentBitmapBitLength + 7) / 8;
+
+    while (downstreamDeviceIdRecCount-- && (pkgHdrRemainingSize > 0))
+    {
+        const uint8_t* recBase = pkgHdr.data() + offset;
+        size_t pos = 0;
+
+        // RecordLength is authoritative for how far to advance `offset`
+        // afterwards; every other field below is read relative to `pos`
+        // within [recBase, recBase + recordLength).
+        uint16_t recordLength = readU16(recBase, pkgHdrRemainingSize, pos);
+        if (recordLength > pkgHdrRemainingSize)
+        {
+            error(
+                "Downstream device ID record length '{LENGTH}' exceeds remaining package header size '{REMAINING}'",
+                "LENGTH", recordLength, "REMAINING", pkgHdrRemainingSize);
+            throw InternalFailure();
+        }
+
+        uint8_t descriptorCount = readU8(recBase, recordLength, pos);
+        DownstreamDeviceUpdateOptionFlags updateOptionFlags =
+            readU32(recBase, recordLength, pos);
+        // SelfContainedActivationMinVersionStringType is read but not
+        // retained: matching/job-building only needs the descriptors and
+        // applicable-components bitmap below.
+        readU8(recBase, recordLength, pos);
+        uint8_t selfContainedActivationMinVersionStringLength =
+            readU8(recBase, recordLength, pos);
+        uint16_t downstreamDevicePackageDataLength =
+            readU16(recBase, recordLength, pos);
+
+        uint32_t referenceManifestLength = 0;
+        bool hasReferenceManifestLength = false;
+        if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H)
+        {
+            referenceManifestLength = readU32(recBase, recordLength, pos);
+            hasReferenceManifestLength = true;
+        }
+
+        variable_field applicableComponentsField =
+            readBytes(recBase, recordLength, pos, applicableComponentsSize);
+
+        // SelfContainedActivationMinVersionString is written unconditionally
+        // by this project's package creator tool (zero length when option
+        // flag bit 0 is unset), so it is always read using the length field
+        // above.
+        readBytes(recBase, recordLength, pos,
+                  selfContainedActivationMinVersionStringLength);
+
+        // The comparison stamp only exists when option flag bit 0 is set.
+        if (updateOptionFlags[0])
+        {
+            readU32(recBase, recordLength, pos);
+        }
+
+        variable_field recordDescriptorsField =
+            readBytes(recBase, recordLength, pos,
+                      recordLength > pos ? recordLength - pos : 0);
+        Descriptors descriptors =
+            parseRecordDescriptors(descriptorCount, recordDescriptorsField);
+
+        DownstreamApplicableComponents componentsList;
+        for (size_t varBitfieldIdx = 0;
+             varBitfieldIdx < applicableComponentsField.length;
+             varBitfieldIdx++)
+        {
+            std::bitset<8> entry{
+                *(applicableComponentsField.ptr + varBitfieldIdx)};
+            for (size_t idx = 0; idx < entry.size(); idx++)
+            {
+                if (entry[idx])
+                {
+                    componentsList.emplace_back(
+                        idx + (varBitfieldIdx * entry.size()));
+                }
+            }
+        }
+
+        // recordDescriptorsField was handed every byte left in the record
+        // (package data + reference manifest data live past the
+        // descriptors), so recover where the descriptors actually ended by
+        // re-deriving pos from how much parseRecordDescriptors consumed.
+        pos = static_cast<size_t>(recordDescriptorsField.ptr - recBase);
+
+        DownstreamPackageData downstreamPackageData;
+        if (downstreamDevicePackageDataLength > 0)
+        {
+            auto pkgDataField = readBytes(recBase, recordLength, pos,
+                                          downstreamDevicePackageDataLength);
+            downstreamPackageData.assign(
+                pkgDataField.ptr, pkgDataField.ptr + pkgDataField.length);
+        }
+
+        if (hasReferenceManifestLength && referenceManifestLength > 0)
+        {
+            readBytes(recBase, recordLength, pos, referenceManifestLength);
+        }
+
+        if (pos != recordLength)
+        {
+            error(
+                "Downstream device ID record consumed '{CONSUMED}' bytes but declared RecordLength '{LENGTH}'",
+                "CONSUMED", pos, "LENGTH", recordLength);
+            throw InternalFailure();
+        }
+
+        downstreamDeviceIDRecords.emplace_back(std::make_tuple(
+            updateOptionFlags, std::move(componentsList),
+            std::move(descriptors), std::move(downstreamPackageData)));
+
+        offset += recordLength;
+        pkgHdrRemainingSize -= recordLength;
     }
 
     return offset;
@@ -301,19 +488,29 @@ void PackageParser::parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize)
 
     if (formatVersion >= PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR03H)
     {
-        DownstreamDeviceIDRecordCount downstreamDeviceIdRecCount =
-            pkgHdr[offset];
-
-        // Downstream devices are not supported on OEM NVIDIA platforms
-        if (downstreamDeviceIdRecCount != 0)
+        if (offset + sizeof(DownstreamDeviceIDRecordCount) > pkgHeaderSize)
         {
-            error(
-                "Unexpected DownstreamDeviceIDRecordCount '{COUNT}' (expected 0)",
-                "COUNT", downstreamDeviceIdRecCount);
+            error("Failed to parse package header of size '{PKG_HDR_SIZE}'",
+                  "PKG_HDR_SIZE", pkgHeaderSize);
             throw InternalFailure();
         }
-
+        DownstreamDeviceIDRecordCount downstreamDeviceIdRecCount =
+            pkgHdr[offset];
         offset += sizeof(DownstreamDeviceIDRecordCount);
+
+        if (downstreamDeviceIdRecCount != 0)
+        {
+            offset = parseDownstreamIdentificationArea(
+                downstreamDeviceIdRecCount, pkgHdr, offset, formatVersion);
+            if (downstreamDeviceIdRecCount != downstreamDeviceIDRecords.size())
+            {
+                error(
+                    "Expected '{EXPECTED}' DownstreamDeviceIDRecordCount entries but parsed '{PARSED}'",
+                    "EXPECTED", downstreamDeviceIdRecCount, "PARSED",
+                    downstreamDeviceIDRecords.size());
+                throw InternalFailure();
+            }
+        }
     }
 
     if (offset + sizeof(ComponentImageCount) >= pkgHeaderSize)
@@ -354,6 +551,27 @@ void PackageParser::parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize)
         {
             error(
                 "Dropping FirmwareDeviceIDRecord with no valid applicable components after sanitization");
+            return true;
+        }
+        return false;
+    });
+
+    std::erase_if(downstreamDeviceIDRecords, [&](auto& ddr) {
+        auto& applicable = std::get<DownstreamApplicableComponents>(ddr);
+        const auto removed = std::erase_if(applicable, [&](const auto& idx) {
+            if (idx >= componentImageInfos.size())
+            {
+                error(
+                    "Dropping out-of-range applicable-component index '{IDX}' (componentImageInfos size '{SIZE}')",
+                    "IDX", idx, "SIZE", componentImageInfos.size());
+                return true;
+            }
+            return false;
+        });
+        if (removed > 0 && applicable.empty())
+        {
+            error(
+                "Dropping DownstreamDeviceIDRecord with no valid applicable components after sanitization");
             return true;
         }
         return false;

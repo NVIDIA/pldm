@@ -92,6 +92,17 @@ class PackageParser
         return componentImageInfos;
     }
 
+    /** @brief Get downstream device ID records from the package
+     *
+     *  @return if parsing the package is successful, return downstream
+     *          device ID records (DSP0267 v1.3.0 Table 5); empty if the
+     *          package carries none
+     */
+    const DownstreamDeviceIDRecords& getDownstreamDeviceIDRecords() const
+    {
+        return downstreamDeviceIDRecords;
+    }
+
     /** @brief Device identifiers of the managed FDs */
     const PackageHeaderSize pkgHeaderSize;
 
@@ -128,6 +139,42 @@ class PackageParser
                                      std::span<const uint8_t> pkgHdr,
                                      size_t offset, uint8_t formatVersion);
 
+    /** @brief Parse the downstream device identification area
+     *
+     *  DSP0267 v1.3.0 Table 5. Each record's RecordDescriptors field is
+     *  encoded identically to a firmware device ID record's (Table 7), so
+     *  the descriptor-list decode is shared via parseRecordDescriptors().
+     *
+     *  @param[in] downstreamDeviceIdRecCount - count of downstream device ID
+     *                                         records
+     *  @param[in] pkgHdr - firmware package header
+     *  @param[in] offset - offset in package header which is the start of
+     *                      the downstream device identification area
+     *  @param[in] formatVersion - Package header format version
+     *
+     *  @return On success return the offset which is the end of the
+     *          downstream device identification area, on error throw
+     *          exception.
+     */
+    size_t parseDownstreamIdentificationArea(
+        DownstreamDeviceIDRecordCount downstreamDeviceIdRecCount,
+        std::span<const uint8_t> pkgHdr, size_t offset, uint8_t formatVersion);
+
+    /** @brief Decode a RecordDescriptors field (DSP0267 Table 7), shared by
+     *         firmware device and downstream device ID records
+     *
+     *  @param[in] descriptorCount - number of descriptors to decode
+     *  @param[in,out] recordDescriptors - remaining RecordDescriptors bytes;
+     *                                    advanced past the decoded
+     *                                    descriptors on return
+     *
+     *  @return the decoded descriptors
+     *
+     *  @note Throws exception if decoding fails
+     */
+    Descriptors parseRecordDescriptors(uint8_t descriptorCount,
+                                       variable_field& recordDescriptors);
+
     /** @brief Parse the component image information area
      *
      *  @param[in] compImageCount - component image count
@@ -159,6 +206,9 @@ class PackageParser
 
     /** @brief Component Image Information in the package */
     ComponentImageInfos componentImageInfos;
+
+    /** @brief Downstream Device ID Records in the package */
+    DownstreamDeviceIDRecords downstreamDeviceIDRecords;
 
     /** @brief The number of bits that will be used to represent the bitmap in
      *         the ApplicableComponents field for matching device. The value

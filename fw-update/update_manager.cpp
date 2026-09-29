@@ -343,7 +343,10 @@ UpdateManager::UpdateManager(
     IsEidExcludedCallback isEidExcludedCallback,
     TargetNameCallback targetNameCallback,
     ConfiguredTargetsCallback configuredTargetsCallback,
-    StaticEidTargetsCallback staticEidTargetsCallback) :
+    StaticEidTargetsCallback staticEidTargetsCallback,
+    const DownstreamDescriptorMap& downstreamDescriptorMap,
+    const DownstreamComponentInfoMap& downstreamComponentInfoMap,
+    const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap) :
     UpdateManagerBase(event, handler, instanceIdDb, fwDebug), event(event),
     handler(handler), instanceIdDb(instanceIdDb),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
@@ -353,7 +356,10 @@ UpdateManager::UpdateManager(
     isEidExcludedCallback(std::move(isEidExcludedCallback)),
     targetNameCallback(std::move(targetNameCallback)),
     configuredTargetsCallback(std::move(configuredTargetsCallback)),
-    staticEidTargetsCallback(std::move(staticEidTargetsCallback))
+    staticEidTargetsCallback(std::move(staticEidTargetsCallback)),
+    downstreamDescriptorMap(downstreamDescriptorMap),
+    downstreamComponentInfoMap(downstreamComponentInfoMap),
+    downstreamDeviceNameMap(downstreamDeviceNameMap)
 #ifdef FW_UPDATE_INOTIFY_ENABLED
     ,
     watch(event.get(), [this](std::string& packageFilePath) {
@@ -676,6 +682,12 @@ exec::task<void> UpdateManager::processPackageData(
 {
     startTime = std::chrono::steady_clock::now();
     unavailableTargetEids.clear();
+    activePackageData = packageData;
+    activePackageSize = packageSize;
+    downstreamJobByRecordOffset.clear();
+    pendingDownstreamJobs.clear();
+    downstreamJobFailed.clear();
+    downstreamJobSuccessCompNames.clear();
 
     if (packageData == nullptr)
     {
@@ -764,6 +776,38 @@ exec::task<void> UpdateManager::processPackageData(
         if (resolvedEid.has_value())
         {
             requestedTargets[*name] = *resolvedEid;
+        }
+    }
+
+    // Same snapshot for downstream device targets, keyed by (eid,
+    // deviceIndex) since a request for one downstream device behind an FDP
+    // must not be considered "scheduled" just because a different device
+    // behind the same FDP got an update job.
+    requestedDownstreamTargets.clear();
+    for (const auto& path : targets)
+    {
+        auto name = extractTargetName(path);
+        if (!name.has_value())
+        {
+            continue;
+        }
+
+        for (const auto& [eid, deviceIndexNameMap] : downstreamDeviceNameMap)
+        {
+            bool found = false;
+            for (const auto& [deviceIndex, devName] : deviceIndexNameMap)
+            {
+                if (devName == *name)
+                {
+                    requestedDownstreamTargets[*name] = {eid, deviceIndex};
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+            {
+                break;
+            }
         }
     }
 
@@ -924,6 +968,22 @@ exec::task<void> UpdateManager::processPackageData(
         co_return;
     }
 
+    std::unordered_set<mctp_eid_t> matchedFDPEids;
+    for (const auto& [eid, offset] : deviceUpdaterInfos)
+    {
+        matchedFDPEids.insert(eid);
+    }
+    DownstreamTargetList downstreamTargetList =
+        getDownstreamTargetList(downstreamDeviceNameMap, targets);
+    auto downstreamDeviceUpdaterInfos = associatePkgToDownstreamDevices(
+        parser->getDownstreamDeviceIDRecords(), downstreamDescriptorMap,
+        compImageInfos, downstreamTargetList, targets, matchedFDPEids,
+        fwDeviceIDRecords, downstreamJobByRecordOffset,
+        totalNumComponentUpdates);
+    deviceUpdaterInfos.insert(deviceUpdaterInfos.end(),
+                              downstreamDeviceUpdaterInfos.begin(),
+                              downstreamDeviceUpdaterInfos.end());
+
     // Emit per-target ResourceErrorsDetected entries for requested targets
     // whose image isn't in the package BEFORE any update transfer starts.
     // Running this here (rather than at terminal-state) ensures the Critical
@@ -975,31 +1035,26 @@ exec::task<void> UpdateManager::processPackageData(
             "No matching devices found with the PLDM firmware update package");
     }
 
-    static constexpr uint32_t maxTransferSize = 4096;
-    for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
+    // Group by eid: a direct FD update always has exactly one offset here
+    // (associatePkgToDevices keeps only the first matching record per eid),
+    // but a downstream update can have several jobs queued for the same
+    // FDP. RequestDownstreamDeviceUpdate addresses one FDP at a time, so
+    // only the first job's DeviceUpdater is constructed now; the rest are
+    // queued and started one at a time as each prior job completes (see
+    // startNextDownstreamJob(), driven from updateDeviceCompletion()).
+    std::unordered_map<mctp_eid_t, std::vector<DeviceIDRecordOffset>>
+        offsetsByEid;
+    for (const auto& [eid, offset] : deviceUpdaterInfos)
     {
-        const auto& fwDeviceIDRecord =
-            fwDeviceIDRecords[deviceUpdaterInfo.second];
-        auto search = componentInfoMap.find(deviceUpdaterInfo.first);
-        if (search == componentInfoMap.end())
+        offsetsByEid[eid].push_back(offset);
+    }
+    for (auto& [eid, offsets] : offsetsByEid)
+    {
+        startDeviceUpdater(eid, offsets.front());
+        for (size_t i = 1; i < offsets.size(); ++i)
         {
-            continue;
+            pendingDownstreamJobs[eid].push_back(offsets[i]);
         }
-
-        auto compIdNameInfoSearch =
-            componentNameMap.find(deviceUpdaterInfo.first);
-        ComponentIdNameMap compIdNameInfo{};
-        if (compIdNameInfoSearch != componentNameMap.end())
-        {
-            compIdNameInfo = compIdNameInfoSearch->second;
-        }
-
-        deviceUpdaterMap.emplace(
-            deviceUpdaterInfo.first,
-            std::make_unique<DeviceUpdater>(
-                deviceUpdaterInfo.first, packageData, packageSize,
-                fwDeviceIDRecord, compImageInfos, search->second,
-                compIdNameInfo, maxTransferSize, this));
     }
 
     // delay activation object creation if there are non-pldm updates
@@ -1403,6 +1458,214 @@ DeviceUpdaterInfos UpdateManager::associatePkgToDevices(
     return deviceUpdaterInfos;
 }
 
+DownstreamTargetList UpdateManager::getDownstreamTargetList(
+    const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap,
+    const std::vector<sdbusplus::object_path>& objectPaths)
+{
+    DownstreamTargetList downstreamTargetList{};
+
+    if (objectPaths.empty())
+    {
+        return downstreamTargetList;
+    }
+
+    auto targets =
+        objectPaths | std::views::filter([](std::string path) {
+            return path.starts_with("/xyz/openbmc_project/software/");
+        }) |
+        std::views::transform([](std::string path) {
+            return path.substr(path.find_last_of('/') + 1);
+        });
+
+    for (const auto& [eid, deviceIndexNameMap] : downstreamDeviceNameMap)
+    {
+        for (const auto& [deviceIndex, name] : deviceIndexNameMap)
+        {
+            if (std::find(targets.begin(), targets.end(), name) !=
+                targets.end())
+            {
+                downstreamTargetList[eid].emplace_back(deviceIndex);
+            }
+        }
+    }
+
+    return downstreamTargetList;
+}
+
+DeviceUpdaterInfos UpdateManager::associatePkgToDownstreamDevices(
+    const DownstreamDeviceIDRecords& downstreamDeviceIDRecords,
+    const DownstreamDescriptorMap& downstreamDescriptorMap,
+    [[maybe_unused]] const ComponentImageInfos& compImageInfos,
+    const DownstreamTargetList& downstreamTargetList,
+    const std::vector<sdbusplus::object_path>& objectPaths,
+    const std::unordered_set<mctp_eid_t>& matchedFDPEids,
+    FirmwareDeviceIDRecords& outFwDeviceIDRecords,
+    std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>&
+        outDownstreamJobByRecordOffset,
+    TotalComponentUpdates& totalNumComponentUpdates)
+{
+    DeviceUpdaterInfos deviceUpdaterInfos;
+    const bool hasTargeting = !objectPaths.empty();
+
+    // First package record whose descriptors match a given downstream
+    // device wins, mirroring associatePkgToDevices' "first match per spec"
+    // rule but tracked at (eid, deviceIndex) granularity since multiple
+    // downstream devices behind the same FDP can be matched independently.
+    std::set<std::pair<mctp_eid_t, DownstreamDeviceIndex>> claimedDevices;
+
+    for (size_t index = 0; index < downstreamDeviceIDRecords.size(); ++index)
+    {
+        const auto& pkgDescriptors =
+            std::get<Descriptors>(downstreamDeviceIDRecords[index]);
+
+        for (const auto& [eid, deviceInfo] : downstreamDescriptorMap)
+        {
+            if (matchedFDPEids.contains(eid))
+            {
+                // DSP0267 §12.17: an FDP cannot be in update mode for
+                // itself and its downstream devices simultaneously, so an
+                // FDP already scheduled for its own FD update is not a
+                // candidate for a downstream update in the same session.
+                continue;
+            }
+
+            std::vector<DownstreamDeviceIndex> matchedIndices;
+            for (const auto& [deviceIndex, deviceDescriptors] : deviceInfo)
+            {
+                if (claimedDevices.contains({eid, deviceIndex}))
+                {
+                    continue;
+                }
+                if (descriptorsMatch(deviceDescriptors, pkgDescriptors))
+                {
+                    matchedIndices.push_back(deviceIndex);
+                }
+            }
+            if (matchedIndices.empty())
+            {
+                continue;
+            }
+
+            // A device with no parameter-table entry can't be updated: there
+            // is no version/activation-method info to drive the flow.
+            auto compInfoSearch = downstreamComponentInfoMap.find(eid);
+            std::erase_if(matchedIndices, [&](DownstreamDeviceIndex idx) {
+                return compInfoSearch == downstreamComponentInfoMap.end() ||
+                       !compInfoSearch->second.contains(idx);
+            });
+            if (matchedIndices.empty())
+            {
+                continue;
+            }
+
+            if (hasTargeting)
+            {
+                auto targetSearch = downstreamTargetList.find(eid);
+                if (targetSearch == downstreamTargetList.end())
+                {
+                    continue;
+                }
+                const auto& targeted = targetSearch->second;
+                std::erase_if(matchedIndices, [&](DownstreamDeviceIndex idx) {
+                    return std::find(targeted.begin(), targeted.end(), idx) ==
+                           targeted.end();
+                });
+                if (matchedIndices.empty())
+                {
+                    continue;
+                }
+            }
+
+            for (const auto& idx : matchedIndices)
+            {
+                claimedDevices.insert({eid, idx});
+            }
+
+            // Group matched devices by identical descriptor sets: a group
+            // can share one 0xFF broadcast job only when there is no
+            // explicit Redfish targeting. Explicit targeting of more than
+            // one device under the same FDP always gets one 0x00 job per
+            // device -- a 0xFF broadcast would also hit non-targeted
+            // devices that happen to share the same descriptors.
+            std::vector<std::vector<DownstreamDeviceIndex>> groups;
+            if (hasTargeting)
+            {
+                for (const auto& idx : matchedIndices)
+                {
+                    groups.push_back({idx});
+                }
+            }
+            else
+            {
+                for (const auto& idx : matchedIndices)
+                {
+                    bool placed = false;
+                    for (auto& group : groups)
+                    {
+                        // Descriptor equality alone isn't enough: job.
+                        // deviceIndex (the group's representative) is what
+                        // downstreamComponentInfoMap gets looked up with
+                        // later (isLiveActivationSupported()), so a group
+                        // mixing devices with different parameter-table
+                        // entries could apply the wrong device's
+                        // version/activation-method capability to the rest
+                        // of the group.
+                        if (deviceInfo.at(group.front()) ==
+                                deviceInfo.at(idx) &&
+                            compInfoSearch->second.at(group.front()) ==
+                                compInfoSearch->second.at(idx))
+                        {
+                            group.push_back(idx);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed)
+                    {
+                        groups.push_back({idx});
+                    }
+                }
+            }
+
+            for (const auto& group : groups)
+            {
+                DownstreamUpdateJob job;
+                job.deviceIndex = group.front();
+                job.mode = group.size() > 1
+                               ? DownstreamUpdateAddressMode::AllMatchingDevices
+                               : DownstreamUpdateAddressMode::SingleDevice;
+                job.affectedDeviceIndices = group;
+
+                // Synthesize a FirmwareDeviceIDRecord for this job: same
+                // shape associatePkgToDevices() uses for real FD records, so
+                // the rest of the update flow (DeviceUpdater, message
+                // registry lookups, ...) doesn't need to know the record
+                // came from a DownstreamDeviceIDRecord instead. Downstream
+                // records carry no ComponentImageSetVersionString and no
+                // FD-style DeviceUpdateOptionFlags (see DSP0267 Table 5 vs
+                // Table 4), so those fields are left default.
+                outFwDeviceIDRecords.emplace_back(std::make_tuple(
+                    DeviceUpdateOptionFlags{},
+                    std::get<DownstreamApplicableComponents>(
+                        downstreamDeviceIDRecords[index]),
+                    ComponentImageSetVersion{}, pkgDescriptors,
+                    FirmwareDevicePackageData{
+                        std::get<DownstreamPackageData>(
+                            downstreamDeviceIDRecords[index])
+                            .begin(),
+                        std::get<DownstreamPackageData>(
+                            downstreamDeviceIDRecords[index])
+                            .end()}));
+                auto recordOffset = outFwDeviceIDRecords.size() - 1;
+                outDownstreamJobByRecordOffset.emplace(recordOffset, job);
+                deviceUpdaterInfos.emplace_back(eid, recordOffset);
+                totalNumComponentUpdates += 1;
+            }
+        }
+    }
+    return deviceUpdaterInfos;
+}
+
 void UpdateManager::recordUnavailableTargetEids(
     const ComponentTargetList& compTargetList)
 {
@@ -1418,16 +1681,26 @@ void UpdateManager::recordUnavailableTargetEids(
 void UpdateManager::logUnupdatedTargets(
     const DeviceUpdaterInfos& deviceUpdaterInfos)
 {
-    if (requestedTargets.empty())
+    if (requestedTargets.empty() && requestedDownstreamTargets.empty())
     {
         return;
     }
 
     std::unordered_set<mctp_eid_t> scheduledEids;
+    std::set<std::pair<mctp_eid_t, DownstreamDeviceIndex>>
+        scheduledDownstreamDevices;
     scheduledEids.reserve(deviceUpdaterInfos.size());
-    for (const auto& [eid, _] : deviceUpdaterInfos)
+    for (const auto& [eid, offset] : deviceUpdaterInfos)
     {
         scheduledEids.insert(eid);
+        auto jobIt = downstreamJobByRecordOffset.find(offset);
+        if (jobIt != downstreamJobByRecordOffset.end())
+        {
+            for (const auto& idx : jobIt->second.affectedDeviceIndices)
+            {
+                scheduledDownstreamDevices.insert({eid, idx});
+            }
+        }
     }
 
     const std::string messageError =
@@ -1454,8 +1727,132 @@ void UpdateManager::logUnupdatedTargets(
         }
         createLogEntry(resourceErrorDetected, name, messageError, resolution);
     }
-
     requestedTargets.clear();
+
+    for (const auto& [name, eidIndex] : requestedDownstreamTargets)
+    {
+        const auto& [eid, deviceIndex] = eidIndex;
+        if (scheduledDownstreamDevices.contains({eid, deviceIndex}))
+        {
+            continue;
+        }
+        if (!descriptorMap.contains(eid))
+        {
+            createLogEntry(resourceErrorDetected, name, unreachableError,
+                           unreachableResolution);
+            continue;
+        }
+        createLogEntry(resourceErrorDetected, name, messageError, resolution);
+    }
+    requestedDownstreamTargets.clear();
+}
+
+void UpdateManager::startDeviceUpdater(mctp_eid_t eid,
+                                       DeviceIDRecordOffset recordOffset)
+{
+    const auto& compImageInfos = parser->getComponentImageInfos();
+    const auto& fwDeviceIDRecord = fwDeviceIDRecords[recordOffset];
+
+    auto jobIt = downstreamJobByRecordOffset.find(recordOffset);
+    bool isDownstream = jobIt != downstreamJobByRecordOffset.end();
+
+    static const ComponentInfo emptyComponentInfo{};
+    const ComponentInfo* compInfo = &emptyComponentInfo;
+    auto compInfoSearch = componentInfoMap.find(eid);
+    if (compInfoSearch != componentInfoMap.end())
+    {
+        compInfo = &compInfoSearch->second;
+    }
+    else if (!isDownstream)
+    {
+        // The direct-FD path requires real component info for this eid;
+        // nothing to update without it. A downstream update's FDP may
+        // legitimately have zero components of its own and still proxy
+        // downstream device updates.
+        return;
+    }
+
+    auto compIdNameInfoSearch = componentNameMap.find(eid);
+    ComponentIdNameMap compIdNameInfo{};
+    if (compIdNameInfoSearch != componentNameMap.end())
+    {
+        compIdNameInfo = compIdNameInfoSearch->second;
+    }
+
+    std::optional<DownstreamUpdateJob> downstreamJob;
+    const DownstreamComponentInfo* downstreamCompInfo = nullptr;
+    if (isDownstream)
+    {
+        downstreamJob = jobIt->second;
+        auto downstreamSearch = downstreamComponentInfoMap.find(eid);
+        if (downstreamSearch != downstreamComponentInfoMap.end())
+        {
+            downstreamCompInfo = &downstreamSearch->second;
+        }
+    }
+
+    deviceUpdaterMap[eid] = std::make_unique<DeviceUpdater>(
+        eid, activePackageData, activePackageSize, fwDeviceIDRecord, compImageInfos, *compInfo,
+        compIdNameInfo, maxTransferSize, this, downstreamJob,
+        downstreamCompInfo);
+}
+
+bool UpdateManager::startNextDownstreamJob(
+    mctp_eid_t eid, bool status, std::vector<std::string>& successCompNames)
+{
+    auto pendingSearch = pendingDownstreamJobs.find(eid);
+    if (pendingSearch == pendingDownstreamJobs.end() ||
+        pendingSearch->second.empty())
+    {
+        return false;
+    }
+
+    // This job's own progress tick: updateDeviceCompletion() below would
+    // normally account for it, but the early return for a still-queued
+    // sequence skips that call entirely.
+    markComponentUpdateCompleted();
+
+    if (!status)
+    {
+        downstreamJobFailed[eid] = true;
+    }
+    if (!successCompNames.empty())
+    {
+        auto& accumulated = downstreamJobSuccessCompNames[eid];
+        accumulated.insert(accumulated.end(), successCompNames.begin(),
+                           successCompNames.end());
+    }
+
+    auto nextOffset = pendingSearch->second.front();
+    pendingSearch->second.pop_front();
+    if (pendingSearch->second.empty())
+    {
+        pendingDownstreamJobs.erase(pendingSearch);
+    }
+
+    startDeviceUpdater(eid, nextOffset);
+    auto deviceUpdaterSearch = deviceUpdaterMap.find(eid);
+    if (deviceUpdaterSearch == deviceUpdaterMap.end())
+    {
+        // Shouldn't happen for a downstream job (always has component info
+        // by construction), but fall through to normal completion
+        // recording for eid rather than silently dropping the rest of the
+        // queued sequence.
+        return false;
+    }
+
+    const auto& fwDeviceIDRecord =
+        deviceUpdaterSearch->second->fwDeviceIDRecord;
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(fwDeviceIDRecord);
+    for (size_t compIndex = 0; compIndex < applicableComponents.size();
+         compIndex++)
+    {
+        createMessageRegistry(eid, fwDeviceIDRecord, compIndex,
+                              targetDetermined);
+    }
+    deviceUpdaterSearch->second->startFwUpdateFlow();
+    return true;
 }
 
 bool UpdateManager::runPreUpdateValidationGate(
@@ -1600,6 +1997,31 @@ bool UpdateManager::runPreUpdateValidationGate(
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status, std::vector<std::string> successCompNames)
 {
+    if (startNextDownstreamJob(eid, status, successCompNames))
+    {
+        return;
+    }
+
+    // Fold in the outcome of any earlier jobs already run for this eid's
+    // downstream update sequence (startNextDownstreamJob accumulates them
+    // rather than recording each job's completion individually), so a
+    // single failure anywhere in the sequence still marks the eid failed
+    // even though its last job succeeded.
+    auto failedSearch = downstreamJobFailed.find(eid);
+    if (failedSearch != downstreamJobFailed.end())
+    {
+        status = status && !failedSearch->second;
+        downstreamJobFailed.erase(failedSearch);
+    }
+    auto namesSearch = downstreamJobSuccessCompNames.find(eid);
+    if (namesSearch != downstreamJobSuccessCompNames.end())
+    {
+        successCompNames.insert(successCompNames.end(),
+                                namesSearch->second.begin(),
+                                namesSearch->second.end());
+        downstreamJobSuccessCompNames.erase(namesSearch);
+    }
+
     const auto [it, inserted] = deviceUpdateCompletionMap.emplace(eid, status);
     if (!inserted)
     {
@@ -1609,8 +2031,14 @@ void UpdateManager::updateDeviceCompletion(
         return;
     }
 
-    // Update listCompNames with the components successfully updated
-    if (status && !successCompNames.empty())
+    // Update listCompNames with the components successfully updated.
+    // successCompNames only ever holds components that actually completed
+    // successfully (see DeviceUpdater::updateComponentCompletion), so a
+    // later failure elsewhere in the same eid's sequence -- e.g. a
+    // downstream job after this one failing, which folds into `status`
+    // above -- must not drop these already-succeeded names from the
+    // summary.
+    if (!successCompNames.empty())
     {
         for (const auto& compName : successCompNames)
         {

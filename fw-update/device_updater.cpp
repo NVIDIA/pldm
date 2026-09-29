@@ -43,11 +43,15 @@ DeviceUpdater::DeviceUpdater(
     const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     const ComponentImageInfos& compImageInfos, const ComponentInfo& compInfo,
     const ComponentIdNameMap& compIdNameInfo, uint32_t maxTransferSize,
-    UpdateManagerBase* updateManager) :
+    UpdateManagerBase* updateManager,
+    std::optional<DownstreamUpdateJob> downstreamJob,
+    const DownstreamComponentInfo* downstreamComponentInfo) :
     fwDeviceIDRecord(fwDeviceIDRecord), deviceUpdaterState(), eid(eid),
     package(package), packageSize(packageSize), compImageInfos(compImageInfos),
     compInfo(compInfo), compIdNameInfo(compIdNameInfo),
-    maxTransferSize(maxTransferSize), updateManager(updateManager)
+    maxTransferSize(maxTransferSize), updateManager(updateManager),
+    downstreamJob(downstreamJob),
+    downstreamComponentInfo(downstreamComponentInfo)
 {}
 
 void DeviceUpdater::startFwUpdateFlow()
@@ -82,12 +86,26 @@ exec::task<int> DeviceUpdater::startDeviceUpdate()
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     size_t numComponents = applicableComponents.size();
-    auto rc = co_await sendRequestUpdate();
-    if (rc)
+    int rc = 0;
+    if (isDownstreamUpdate())
     {
-        error("Error while sending RequestUpdate.");
-        updateManager->updateDeviceCompletion(eid, false);
-        co_return PLDM_ERROR;
+        rc = co_await sendRequestDownstreamDeviceUpdate();
+        if (rc)
+        {
+            error("Error while sending RequestDownstreamDeviceUpdate.");
+            updateManager->updateDeviceCompletion(eid, false);
+            co_return PLDM_ERROR;
+        }
+    }
+    else
+    {
+        rc = co_await sendRequestUpdate();
+        if (rc)
+        {
+            error("Error while sending RequestUpdate.");
+            updateManager->updateDeviceCompletion(eid, false);
+            co_return PLDM_ERROR;
+        }
     }
     for (size_t compIndex = 0; compIndex < numComponents; compIndex++)
     {
@@ -313,6 +331,161 @@ exec::task<int> DeviceUpdater::processRequestUpdateResponse(
     co_return PLDM_SUCCESS;
 }
 
+exec::task<int> DeviceUpdater::sendRequestDownstreamDeviceUpdate(
+    uint8_t retryCount)
+{
+    auto instanceIdResult = updateManager->instanceIdDb.next(eid);
+    if (!instanceIdResult)
+    {
+        throw pldm::InstanceIdError(instanceIdResult.error());
+    }
+    auto instanceId = instanceIdResult.value();
+    numComponents = std::get<ApplicableComponents>(fwDeviceIDRecord).size();
+    const auto& fwDevicePkgData =
+        std::get<FirmwareDevicePackageData>(fwDeviceIDRecord);
+
+    pldm_request_downstream_device_update_req reqData{};
+    reqData.maximum_downstream_device_transfer_size = maxTransferSize;
+    reqData.maximum_outstanding_transfer_requests =
+        PLDM_FWUP_MIN_OUTSTANDING_REQ;
+    reqData.downstream_device_package_data_length =
+        static_cast<uint16_t>(fwDevicePkgData.size());
+
+    Request request(
+        sizeof(pldm_msg_hdr) + PLDM_DOWNSTREAM_DEVICE_UPDATE_REQUEST_BYTES);
+    auto requestMsg = new (request.data()) pldm_msg;
+    const pldm_msg* response = nullptr;
+    size_t respMsgLen = 0;
+    size_t payloadLength = PLDM_DOWNSTREAM_DEVICE_UPDATE_REQUEST_BYTES;
+
+    auto rc = encode_request_downstream_device_update_req(
+        instanceId, &reqData, requestMsg, &payloadLength);
+    if (rc)
+    {
+        updateManager->instanceIdDb.free(eid, instanceId);
+        error(
+            "encode_request_downstream_device_update_req failed, EID={EID}, RC={RC}",
+            "EID", eid, "RC", rc);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
+    }
+
+    printBuffer(pldm::utils::Tx, request,
+                ("Send RequestDownstreamDeviceUpdate for EID=" +
+                 std::to_string(eid)));
+    rc = co_await sendRecvPldmMsgOverMctp(updateManager->handler, eid, request,
+                                          &response, &respMsgLen);
+    if (rc)
+    {
+        error(
+            "Failed to send RequestDownstreamDeviceUpdate for endpoint ID '{EID}', response code '{RC}'",
+            "EID", eid, "RC", rc);
+
+        if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
+        {
+            handleTransportError(updateManager->handler, eid,
+                                 "RequestDownstreamDeviceUpdate");
+        }
+        else
+        {
+            queryDeviceStatusAndLog(eid);
+        }
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return rc;
+    }
+    rc = co_await processRequestDownstreamDeviceUpdateResponse(
+        eid, response, respMsgLen, retryCount);
+    if (rc == PLDM_ERROR_INVALID_DATA && retryCount < maxDecodeFailureRetries)
+    {
+        warning(
+            "Decode failure for RequestDownstreamDeviceUpdate, retry {RETRY} of {MAX}, EID={EID}",
+            "RETRY", retryCount + 1, "MAX", maxDecodeFailureRetries, "EID",
+            eid);
+        co_return co_await sendRequestDownstreamDeviceUpdate(retryCount + 1);
+    }
+    if (rc)
+    {
+        error("Error while processing RequestDownstreamDeviceUpdate response");
+    }
+    co_return rc;
+}
+
+exec::task<int> DeviceUpdater::processRequestDownstreamDeviceUpdateResponse(
+    mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen,
+    uint8_t retryCount)
+{
+    printBuffer(pldm::utils::Rx, response, respMsgLen,
+                ("Received RequestDownstreamDeviceUpdate Response from EID=" +
+                 std::to_string(eid)));
+
+    pldm_request_downstream_device_update_resp respData{};
+    int rc = 0;
+    // DSP0267 §12.17: GetPackageDataMaximumTransferSize is only present
+    // when DownstreamDeviceWillSendGetPackageDataCommand is set, but
+    // libpldm's decode_request_downstream_device_update_resp requires the
+    // full fixed PLDM_DOWNSTREAM_DEVICE_UPDATE_RESPONSE_BYTES (6)
+    // regardless (it doesn't implement the conditional trailing field),
+    // which rejects a spec-compliant FDP response that correctly omits it
+    // -- observed against a real transceiver FDP, which always
+    // reports will_send_get_package_data=0 and a 4-byte response. Decode
+    // the short form directly in that case instead of failing the whole
+    // update over a libpldm decode gap.
+    constexpr size_t shortRespBytes = 4;
+    if (respMsgLen >= PLDM_DOWNSTREAM_DEVICE_UPDATE_RESPONSE_BYTES)
+    {
+        rc = decode_request_downstream_device_update_resp(response, respMsgLen,
+                                                          &respData);
+    }
+    else if (respMsgLen >= shortRespBytes)
+    {
+        const uint8_t* p = response->payload;
+        respData.completion_code = p[0];
+        respData.downstream_device_meta_data_length =
+            static_cast<uint16_t>(p[1] | (p[2] << 8));
+        respData.downstream_device_will_send_get_package_data = p[3];
+        respData.get_package_data_maximum_transfer_size = 0;
+    }
+    else
+    {
+        rc = PLDM_ERROR_INVALID_DATA;
+    }
+    if (rc)
+    {
+        if (retryCount >= maxDecodeFailureRetries)
+        {
+            error(
+                "Failed to decode RequestDownstreamDeviceUpdate response for endpoint ID '{EID}', response code '{RC}'",
+                "EID", eid, "RC", rc);
+            updateManager->updateDeviceCompletion(eid, false);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        }
+        co_return PLDM_ERROR_INVALID_DATA;
+    }
+    if (respData.completion_code)
+    {
+        const auto& applicableComponents =
+            std::get<ApplicableComponents>(fwDeviceIDRecord);
+        for (size_t compIndex = 0; compIndex < applicableComponents.size();
+             compIndex++)
+        {
+            updateManager->createMessageRegistry(
+                eid, fwDeviceIDRecord, compIndex, transferFailed, "",
+                PLDM_REQUEST_DOWNSTREAM_DEVICE_UPDATE,
+                respData.completion_code);
+        }
+        error(
+            "Failure in RequestDownstreamDeviceUpdate response for endpoint ID '{EID}', completion code '{CC}'",
+            "EID", eid, "CC", respData.completion_code);
+        updateManager->updateDeviceCompletion(eid, false);
+        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+        co_return PLDM_ERROR;
+    }
+
+    deviceUpdaterState.nextState(deviceUpdaterState.current, componentIndex,
+                                 numComponents);
+    co_return PLDM_SUCCESS;
+}
+
 exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
                                                         uint8_t retryCount)
 {
@@ -347,36 +520,54 @@ exec::task<int> DeviceUpdater::sendPassCompTableRequest(size_t offset,
         transferFlag = PLDM_MIDDLE;
     }
     const auto& comp = compImageInfos[applicableComponents[offset]];
-    CompClassification compClassification = std::get<static_cast<size_t>(
-        ComponentImageInfoPos::CompClassificationPos)>(comp);
-    CompIdentifier compIdentifier =
-        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
-            comp);
+    CompClassification compClassification{};
+    CompIdentifier compIdentifier{};
     CompClassificationIndex compClassificationIndex{};
-    auto compKey = std::make_pair(compClassification, compIdentifier);
-    if (compInfo.contains(compKey))
+    if (isDownstreamUpdate())
     {
-        auto search = compInfo.find(compKey);
-        compClassificationIndex = std::get<0>(search->second);
+        // DSP0267 Table 15: when ComponentClassification is the reserved
+        // downstream-device value, ComponentIdentifier and
+        // ComponentClassificationIndex are redefined as the
+        // DownstreamDeviceIndex and the single-device (0x00) /
+        // all-matching-devices (0xFF) selector, respectively.
+        const auto& job = getDownstreamJob();
+        compClassification = PLDM_COMP_DOWNSTREAM_DEVICE;
+        compIdentifier = job.deviceIndex;
+        compClassificationIndex =
+            static_cast<CompClassificationIndex>(job.mode);
     }
     else
     {
-        updateManager->instanceIdDb.free(eid, instanceId);
-        error("Failed to find component classification '{CLASSIFICATION}' and "
-              "identifier '{IDENTIFIER}'",
-              "CLASSIFICATION", compClassification, "IDENTIFIER",
-              compIdentifier);
-        auto errorMsg =
-            "The component information in the firmware package does "
-            "not match with the device";
-        auto resolution =
-            "Verify the FW package has devices that are listed in "
-            "the Redfish FW Inventory.";
-        updateManager->createMessageRegistryResourceErrors(
-            eid, fwDeviceIDRecord, componentIndex, resourceErrorDetected,
-            errorMsg, resolution);
-        deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
-        co_return PLDM_ERROR;
+        compClassification = std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompClassificationPos)>(comp);
+        compIdentifier = std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompIdentifierPos)>(comp);
+        auto compKey = std::make_pair(compClassification, compIdentifier);
+        if (compInfo.contains(compKey))
+        {
+            auto search = compInfo.find(compKey);
+            compClassificationIndex = std::get<0>(search->second);
+        }
+        else
+        {
+            updateManager->instanceIdDb.free(eid, instanceId);
+            error(
+                "Failed to find component classification '{CLASSIFICATION}' and "
+                "identifier '{IDENTIFIER}'",
+                "CLASSIFICATION", compClassification, "IDENTIFIER",
+                compIdentifier);
+            auto errorMsg =
+                "The component information in the firmware package does "
+                "not match with the device";
+            auto resolution =
+                "Verify the FW package has devices that are listed in "
+                "the Redfish FW Inventory.";
+            updateManager->createMessageRegistryResourceErrors(
+                eid, fwDeviceIDRecord, componentIndex, resourceErrorDetected,
+                errorMsg, resolution);
+            deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
+            co_return PLDM_ERROR;
+        }
     }
     CompComparisonStamp compComparisonStamp = std::get<static_cast<size_t>(
         ComponentImageInfoPos::CompComparisonStampPos)>(comp);
@@ -1061,7 +1252,29 @@ bool DeviceUpdater::isLiveActivationSupported() const
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
 
-    if (compInfo.empty())
+    if (isDownstreamUpdate())
+    {
+        // A downstream device's activation-method capability lives in
+        // downstreamComponentInfoMap (populated from
+        // GetDownstreamFirmwareParameters), not in compInfo -- compInfo is
+        // always empty for a downstream update (see UpdateManager::
+        // processStream). Look the device's real advertised methods up
+        // there instead of unconditionally requesting self-contained
+        // activation.
+        const auto& job = getDownstreamJob();
+        if (!downstreamComponentInfo ||
+            !downstreamComponentInfo->contains(job.deviceIndex))
+        {
+            return false;
+        }
+        auto activationMethods =
+            std::get<1>(downstreamComponentInfo->at(job.deviceIndex));
+        if (!(activationMethods & (1 << PLDM_ACTIVATION_SELF_CONTAINED)))
+        {
+            return false;
+        }
+    }
+    else if (compInfo.empty())
     {
         return false;
     }
@@ -1072,22 +1285,26 @@ bool DeviceUpdater::isLiveActivationSupported() const
     for (const auto& compIndex : applicableComponents)
     {
         const auto& comp = compImageInfos[compIndex];
-        auto compClassification = std::get<static_cast<size_t>(
-            ComponentImageInfoPos::CompClassificationPos)>(comp);
-        auto compIdentifier = std::get<static_cast<size_t>(
-            ComponentImageInfoPos::CompIdentifierPos)>(comp);
-        auto compKey = std::make_pair(compClassification, compIdentifier);
 
-        auto compInfoIter = compInfo.find(compKey);
-        if (compInfoIter == compInfo.end())
+        if (!isDownstreamUpdate())
         {
-            return false;
-        }
+            auto compClassification = std::get<static_cast<size_t>(
+                ComponentImageInfoPos::CompClassificationPos)>(comp);
+            auto compIdentifier = std::get<static_cast<size_t>(
+                ComponentImageInfoPos::CompIdentifierPos)>(comp);
+            auto compKey = std::make_pair(compClassification, compIdentifier);
 
-        auto activationMethods = std::get<2>(compInfoIter->second);
-        if (!(activationMethods & (1 << PLDM_ACTIVATION_SELF_CONTAINED)))
-        {
-            return false;
+            auto compInfoIter = compInfo.find(compKey);
+            if (compInfoIter == compInfo.end())
+            {
+                return false;
+            }
+
+            auto activationMethods = std::get<2>(compInfoIter->second);
+            if (!(activationMethods & (1 << PLDM_ACTIVATION_SELF_CONTAINED)))
+            {
+                return false;
+            }
         }
 
         auto reqCompActivationMethod = std::get<static_cast<size_t>(

@@ -19,6 +19,7 @@
 #include "libpldm/firmware_update.h"
 
 #include "activation.hpp"
+#include "device_updater.hpp"
 #include "error_handling.hpp"
 #include "fw_update_utility.hpp"
 #include "update_manager.hpp"
@@ -91,27 +92,42 @@ exec::task<int> ComponentUpdater::sendUpdateComponentRequest(size_t offset,
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
     const auto& comp = compImageInfos[applicableComponents[offset]];
-    // ComponentClassification
-    CompClassification compClassification = std::get<static_cast<size_t>(
-        ComponentImageInfoPos::CompClassificationPos)>(comp);
-    // ComponentIdentifier
-    CompIdentifier compIdentifier =
-        std::get<static_cast<size_t>(ComponentImageInfoPos::CompIdentifierPos)>(
-            comp);
+    // ComponentClassification / ComponentIdentifier /
     // ComponentClassificationIndex
+    CompClassification compClassification{};
+    CompIdentifier compIdentifier{};
     CompClassificationIndex compClassificationIndex{};
-    auto compKey = std::make_pair(compClassification, compIdentifier);
-    if (compInfo.contains(compKey))
+    if (deviceUpdater->isDownstreamUpdate())
     {
-        auto search = compInfo.find(compKey);
-        compClassificationIndex = std::get<0>(search->second);
+        // DSP0267 Table 17: same field redefinition as PassComponentTable
+        // (see DeviceUpdater::sendPassCompTableRequest) when
+        // ComponentClassification is the reserved downstream-device value.
+        const auto& job = deviceUpdater->getDownstreamJob();
+        compClassification = PLDM_COMP_DOWNSTREAM_DEVICE;
+        compIdentifier = job.deviceIndex;
+        compClassificationIndex =
+            static_cast<CompClassificationIndex>(job.mode);
     }
     else
     {
-        // Handle error scenario
-        error(
-            "Failed to find component classification '{CLASSIFICATION}' and identifier '{IDENTIFIER}'",
-            "CLASSIFICATION", compClassification, "IDENTIFIER", compIdentifier);
+        compClassification = std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompClassificationPos)>(comp);
+        compIdentifier = std::get<static_cast<size_t>(
+            ComponentImageInfoPos::CompIdentifierPos)>(comp);
+        auto compKey = std::make_pair(compClassification, compIdentifier);
+        if (compInfo.contains(compKey))
+        {
+            auto search = compInfo.find(compKey);
+            compClassificationIndex = std::get<0>(search->second);
+        }
+        else
+        {
+            // Handle error scenario
+            error(
+                "Failed to find component classification '{CLASSIFICATION}' and identifier '{IDENTIFIER}'",
+                "CLASSIFICATION", compClassification, "IDENTIFIER",
+                compIdentifier);
+        }
     }
 
     const auto& compOptions =

@@ -116,7 +116,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 return em_config::targetNameForEid(configurations, eid);
             },
             [this]() { return configuredFirmwareTargets(); },
-            []() { return em_config::fetchStaticEidTargetNames(); }),
+            []() { return em_config::fetchStaticEidTargetNames(); },
+            downstreamDescriptorMap, downstreamComponentInfoMap,
+            downstreamDeviceNameMap),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap, componentNameMap,
                            downstreamComponentInfoMap, downstreamDeviceNameMap)
