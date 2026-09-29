@@ -37,6 +37,9 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -90,7 +93,8 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // clang-analyzer-unix.Malloc and
             // clang-analyzer-cplusplus.NewDeleteLeaks diagnostics.
             // NOLINTNEXTLINE
-            [this](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
+            [this](mctp_eid_t eid, bool isTarget,
+                   bool preUpdateValidation) -> exec::task<int> {
                 // The update-time refresh set can include an EID already
                 // excluded from firmware update; re-check here too.
                 if (isEidExcludedFromFwUpdate(eid))
@@ -104,8 +108,15 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 getMctpInterfaces(mctpInterfaces);
 
                 co_return co_await inventoryMgr.refreshSingleEndpoint(
-                    eid, mctpInterfaces, isTarget);
-            }),
+                    eid, mctpInterfaces, isTarget, preUpdateValidation);
+            },
+            expectedComponentIdsByEid,
+            [this](mctp_eid_t eid) { return isEidExcludedFromFwUpdate(eid); },
+            [this](mctp_eid_t eid) {
+                return em_config::targetNameForEid(configurations, eid);
+            },
+            [this]() { return configuredFirmwareTargets(); },
+            []() { return em_config::fetchStaticEidTargetNames(); }),
         fwInventoryManager(pldm::utils::DBusHandler::getBus(), fwInventoryInfo,
                            componentInfoMap, componentNameMap,
                            downstreamComponentInfoMap, downstreamDeviceNameMap)
@@ -195,6 +206,10 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                 }
             }
         }
+
+        // Endpoint delivery grows the discovered device scope; republish the
+        // AllowedPreUpdateValidation capability.
+        updateManager.refreshAllowedPreUpdateValidation();
     }
 
     /** @brief Whether an EID is currently excluded from PLDM firmware
@@ -205,21 +220,46 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *  can reach an EID handleMctpEndpoints() has already excluded. The
      *  exclusion set is fetched once and reused here. An EID with no
      *  cached network ID (never seen by handleMctpEndpoints()) is treated
-     *  as not excluded.
+     *  as not excluded, and does not trigger that fetch, so a check ahead
+     *  of the first handleMctpEndpoints() cannot cache the set early.
      *
      *  @param[in] mctpEid - MCTP endpoint
      *  @return true if the endpoint is excluded from firmware update
      */
+    /** @brief The configured PLDM firmware devices the pre-update
+     *         validation gate requires to be reachable.
+     *
+     *  Every entity-manager PLDMFirmwareDevice with an updatable component,
+     *  minus devices excluded from firmware update. Exclusion is matched
+     *  through the endpoints currently known in configurations; a device
+     *  excluded by configuration but never discovered stays in scope.
+     *
+     *  @return the configured, non-excluded device names
+     */
+    std::set<std::string> configuredFirmwareTargets()
+    {
+        auto targets = em_config::fetchConfiguredFirmwareTargets();
+        for (const auto& [emPath, mctpInfo] : configurations)
+        {
+            const auto& name = std::get<std::optional<std::string>>(mctpInfo);
+            if (name && isEidExcludedFromFwUpdate(std::get<eid>(mctpInfo)))
+            {
+                targets.erase(*name);
+            }
+        }
+        return targets;
+    }
+
     bool isEidExcludedFromFwUpdate(eid mctpEid)
     {
-        if (!excludedInventoryCache)
-        {
-            excludedInventoryCache = em_config::fetchExcludedInventory();
-        }
         auto it = eidNetworkIdCache.find(mctpEid);
         if (it == eidNetworkIdCache.end())
         {
             return false;
+        }
+        if (!excludedInventoryCache)
+        {
+            excludedInventoryCache = em_config::fetchExcludedInventory();
         }
         return em_config::isExcludedInventory(*excludedInventoryCache, mctpEid,
                                               it->second);
@@ -415,6 +455,11 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     {
         this->configurations = configurations;
         inventoryMgr.setConfigurations(configurations);
+
+        // EM configuration delivery is when the updatable device scope
+        // becomes (or stops being) known, so republish the
+        // AllowedPreUpdateValidation capability here.
+        updateManager.refreshAllowedPreUpdateValidation();
     }
 
     /** @brief Helper function to invoke registered handlers for
@@ -592,6 +637,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     /** Configuration bindings from the Entity Manager */
     Configurations configurations;
 
+    /** @brief Expected (updatable) component identifiers per endpoint,
+     *         derived from the entity-manager
+     *         Configuration.PLDMFirmwareDevice.Components metadata
+     *         (populated alongside componentNameMap in
+     *         populateComponentInfoFromEM); consumed by the pre-update
+     *         validation gate */
+    ExpectedComponentIdsByEid expectedComponentIdsByEid;
+
     /** @brief Cached result of em_config::fetchExcludedInventory(). */
     std::optional<ExcludedInventoryPaths> excludedInventoryCache;
 
@@ -641,6 +694,9 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      */
     bool populateComponentInfoFromEM(eid eid)
     {
+        // Drop any previous expectation first, so a reused EID or changed EM
+        // Components metadata cannot leave stale component IDs behind.
+        expectedComponentIdsByEid.erase(eid);
         auto info = em_config::fetchComponentInfo(configurations, eid);
         if (!info)
         {
@@ -649,6 +705,18 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         fwInventoryManager.setEmComponentObjects(eid, info->emComponents);
         if (!info->idNameMap.empty())
         {
+            // Record the expected (updatable) component identifiers for the
+            // pre-update validation gate from the same EM Components
+            // metadata. Inventory-only components (only an "active"
+            // association, e.g. InfoROM) are not expected: no package
+            // carries an image for them. Excluded EIDs never reach this
+            // point (handleMctpEndpoints skips them), so the map stays
+            // exclusion-clean.
+            auto expected = em_config::expectedComponentIds(info->emComponents);
+            if (!expected.empty())
+            {
+                expectedComponentIdsByEid[eid] = std::move(expected);
+            }
             componentNameMap[eid] = std::move(info->idNameMap);
         }
         return true;

@@ -370,7 +370,8 @@ void InventoryManager::removeFDs(const MctpInfos& mctpInfos)
 }
 
 exec::task<int> InventoryManager::queryDeviceIdentifiers(
-    mctp_eid_t eid, std::string& messageError, std::string& resolution)
+    mctp_eid_t eid, std::string& messageError, std::string& resolution,
+    bool logCritical)
 {
     auto instanceIdResult = instanceIdDb.next(eid);
     if (!instanceIdResult)
@@ -410,7 +411,8 @@ exec::task<int> InventoryManager::queryDeviceIdentifiers(
         }
         else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            handleTransportError(handler, eid, "QueryDeviceIdentifiers");
+            handleTransportError(handler, eid, "QueryDeviceIdentifiers",
+                                 PLDM_FWUP, logCritical);
         }
         co_return rc;
     }
@@ -562,7 +564,8 @@ exec::task<int> InventoryManager::parseQueryDeviceIdentifiersResponse(
 
 exec::task<int> InventoryManager::getFirmwareParameters(
     mctp_eid_t eid, std::string& messageError, std::string& resolution,
-    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly)
+    dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly,
+    bool logCritical)
 {
     auto instanceIdResult = instanceIdDb.next(eid);
     if (!instanceIdResult)
@@ -603,7 +606,8 @@ exec::task<int> InventoryManager::getFirmwareParameters(
         }
         else if (rc == PLDM_REQUESTER_MCTP_TRANSPORT_ERROR)
         {
-            handleTransportError(handler, eid, "GetFirmwareParameters");
+            handleTransportError(handler, eid, "GetFirmwareParameters",
+                                 PLDM_FWUP, logCritical);
         }
         co_return rc;
     }
@@ -1366,8 +1370,12 @@ void InventoryManager::logDiscoveryFailedMessage(
 }
 
 exec::task<int> InventoryManager::refreshSingleEndpoint(
-    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget)
+    mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget,
+    bool logCritical)
 {
+    // Critical failures reject the whole request (pre-update validation).
+    const bool forceInformational = !isTarget && !logCritical;
+
     std::string messageError{};
     // discoveryResolution captures the resolution message from discovery
     // functions (queryDeviceIdentifiers/getFirmwareParameters). It is not
@@ -1406,15 +1414,16 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
 
     info("Refreshing descriptors for endpoint ID {EID}", "EID", eid);
 
-    auto rc =
-        co_await queryDeviceIdentifiers(eid, messageError, discoveryResolution);
+    auto rc = co_await queryDeviceIdentifiers(eid, messageError,
+                                              discoveryResolution, logCritical);
     if (rc != PLDM_SUCCESS)
     {
-        if (rc == PLDM_ERROR_INVALID_DATA or
-            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+        if (rc == PLDM_ERROR_INVALID_DATA ||
+            !logDeviceStatusErrors(eid, forceInformational, "FWUpdate"))
         {
             logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces, "FWUpdate", !isTarget);
+                                      mctpInterfaces, "FWUpdate",
+                                      forceInformational);
             if (isTarget)
             {
                 error(
@@ -1434,14 +1443,15 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
     }
 
     rc = co_await getFirmwareParameters(eid, messageError, discoveryResolution,
-                                        mctpInterfaces, true);
+                                        mctpInterfaces, true, logCritical);
     if (rc != PLDM_SUCCESS)
     {
-        if (rc == PLDM_ERROR_INVALID_DATA or
-            !logDeviceStatusErrors(eid, !isTarget, "FWUpdate"))
+        if (rc == PLDM_ERROR_INVALID_DATA ||
+            !logDeviceStatusErrors(eid, forceInformational, "FWUpdate"))
         {
             logDiscoveryFailedMessage(eid, messageError, resolution,
-                                      mctpInterfaces, "FWUpdate", !isTarget);
+                                      mctpInterfaces, "FWUpdate",
+                                      forceInformational);
             if (isTarget)
             {
                 error(

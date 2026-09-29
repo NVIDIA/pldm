@@ -297,10 +297,12 @@ class InventoryManager
      *  @param[in] eid - MCTP endpoint to refresh
      *  @param[in] mctpInterfaces - MCTP interface information
      *  @param[in] isTarget - Whether this endpoint is a target for update
+     *  @param[in] logCritical - log failure with critical severity
      *  @return PLDM_SUCCESS on success, error code otherwise
      */
     exec::task<int> refreshSingleEndpoint(
-        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget);
+        mctp_eid_t eid, dbus::MctpInterfaces& mctpInterfaces, bool isTarget,
+        bool logCritical = false);
 
     /** @brief Cleans up mctpEidMap and descriptorMap
      *
@@ -404,9 +406,11 @@ class InventoryManager
      *  @param[in] eid - Remote MCTP endpoint
      *  @param[in] messageError - message error
      *  @param[in] resolution - recommended resolution
+     *  @param[in] logCritical - log failure with critical severity
      */
     exec::task<int> queryDeviceIdentifiers(
-        mctp_eid_t eid, std::string& messageError, std::string& resolution);
+        mctp_eid_t eid, std::string& messageError, std::string& resolution,
+        bool logCritical = false);
 
     /** @brief Obtain Firmware Device Name from configuration or descriptors.
      */
@@ -420,11 +424,12 @@ class InventoryManager
      *  @param[in] resolution - recommended resolution
      *  @param[in] refreshFWVersionOnly - a boolean flag to update firmware
      * version after receiving platform event
+     *  @param[in] logCritical - log failure with critical severity
      */
     exec::task<int> getFirmwareParameters(
         mctp_eid_t eid, std::string& messageError, std::string& resolution,
-        dbus::MctpInterfaces& mctpInterfaces,
-        bool refreshFWVersionOnly = false);
+        dbus::MctpInterfaces& mctpInterfaces, bool refreshFWVersionOnly = false,
+        bool logCritical = false);
 
     /** @brief Handler for GetDownstreamFirmwareParameters command response
      *

@@ -99,11 +99,14 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
      *
      * @param[in] image The image file descriptor
      * @param[in] applyTime The requested apply time
+     * @param[in] preUpdateValidation Ignored: an item-level update targets a
+     *            single device, so there is no device scope to validate
      */
     sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-        std::vector<sdbusplus::object_path> targets) override;
+        std::vector<sdbusplus::object_path> targets,
+        bool preUpdateValidation) override;
 
     /**
      * @brief Associate the firmware update package with the target device

@@ -41,13 +41,21 @@ class Update : public UpdateIntf
         objPath(path)
     {
         allowedForceUpdate(true);
+        // Supported only on platforms with a known updatable device scope.
+        // On develop that scope (EM configurations, MCTP static config,
+        // discovered endpoints) arrives asynchronously after construction,
+        // so start at false; the firmware update Manager republishes it via
+        // UpdateManager::refreshAllowedPreUpdateValidation() whenever the
+        // scope state changes.
+        allowedPreUpdateValidation(false);
         allowedTargets(true);
     }
 
     sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-        std::vector<sdbusplus::object_path> targets) override;
+        std::vector<sdbusplus::object_path> targets,
+        bool preUpdateValidation) override;
 
     /** @brief Close the image stream and release the mmap
      *

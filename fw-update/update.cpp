@@ -23,7 +23,7 @@ using InvalidImage =
 sdbusplus::object_path Update::startUpdate(
     sdbusplus::message::unix_fd image,
     ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-    std::vector<sdbusplus::object_path> targets)
+    std::vector<sdbusplus::object_path> targets, bool preUpdateValidation)
 {
     updateManager->clearExistingActivation();
     updateManager->setRequestedApplyTime(applyTime);
@@ -62,7 +62,7 @@ sdbusplus::object_path Update::startUpdate(
     auto packageSize = mmapFile.size();
 
     return sdbusplus::object_path(updateManager->processStreamDefer(
-        *mmapStream, packageSize, forceUpdate, targets));
+        *mmapStream, packageSize, forceUpdate, targets, preUpdateValidation));
 }
 
 } // namespace fw_update

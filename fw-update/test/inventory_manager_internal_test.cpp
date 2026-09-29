@@ -517,6 +517,31 @@ TEST_F(InventoryManagerInternalTest,
     EXPECT_TRUE(manager.mctpEidMap.contains(eid));
 }
 
+TEST_F(InventoryManagerInternalTest,
+       logDiscoveryFailedMessageWithResolvedNameLogs)
+{
+    const pldm::eid eid = 52;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
+    manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
+    manager.firmwareDeviceNameMap[eid] = "HGX_ERoT_BMC_0";
+    dbus::MctpInterfaces mctpInterfaces{{uuid, {}}};
+
+    // The EM-resolved device name path logs a named entry.
+    EXPECT_NO_THROW(manager.logDiscoveryFailedMessage(
+        eid, "test-message",
+        "Retry firmware update operation, if problem persists.", mctpInterfaces,
+        "FWUpdate", false));
+}
+
 TEST(InventoryManagerHeaderInternalTest,
      mctpEidInfoOperatorLessUsesBindingPriorityOnEqualMedium)
 {

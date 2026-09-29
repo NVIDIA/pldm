@@ -38,6 +38,10 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <map>
+#include <set>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -62,8 +66,45 @@ using DeviceIDRecordOffset = size_t;
 using DeviceUpdaterInfo = std::pair<mctp_eid_t, DeviceIDRecordOffset>;
 using DeviceUpdaterInfos = std::vector<DeviceUpdaterInfo>;
 using TotalComponentUpdates = size_t;
+
+/** @brief Refresh one endpoint's firmware inventory.
+ *
+ *  Arguments: (eid, isTarget, preUpdateValidation). isTarget logs a
+ *  refresh failure at error (rather than warning) severity;
+ *  preUpdateValidation emits the existing failure messages at
+ *  Critical severity, since the failure rejects the whole request.
+ */
 using RefreshSingleEndpointCallback =
-    std::function<exec::task<int>(mctp_eid_t, bool)>;
+    std::function<exec::task<int>(mctp_eid_t, bool, bool)>;
+
+/** @brief Default (empty) expected-component map for callers that construct
+ *         an UpdateManager without a parsed firmware update config.
+ */
+inline const ExpectedComponentIdsByEid emptyExpectedComponentIds{};
+
+/** @brief Whether an EID is excluded from PLDM firmware update by
+ *         entity-manager configuration (see
+ *         Manager::isEidExcludedFromFwUpdate()).
+ */
+using IsEidExcludedCallback = std::function<bool(mctp_eid_t)>;
+
+/** @brief Resolve an endpoint to its entity-manager device name (the
+ *         MCTPTargetName join key); empty when not resolvable.
+ */
+using TargetNameCallback = std::function<std::string(mctp_eid_t)>;
+
+/** @brief The names of the configured, non-excluded PLDM firmware devices
+ *         with updatable components (see
+ *         em_config::fetchConfiguredFirmwareTargets()).
+ */
+using ConfiguredTargetsCallback = std::function<std::set<std::string>()>;
+
+/** @brief Device names of the statically addressed MCTP transport
+ *         configurations, keyed by StaticEndpointID (see
+ *         em_config::fetchStaticEidTargetNames()).
+ */
+using StaticEidTargetsCallback =
+    std::function<std::map<mctp_eid_t, std::set<std::string>>()>;
 
 class Activation;
 class ActivationProgress;
@@ -166,7 +207,13 @@ class UpdateManager : public UpdateManagerBase
         InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
         const ComponentInfoMap& componentInfoMap,
         ComponentNameMap& componentNameMap, bool fwDebug,
-        RefreshSingleEndpointCallback refreshSingleEndpointCallback);
+        RefreshSingleEndpointCallback refreshSingleEndpointCallback,
+        const ExpectedComponentIdsByEid& expectedComponentIdsByEid =
+            emptyExpectedComponentIds,
+        IsEidExcludedCallback isEidExcludedCallback = {},
+        TargetNameCallback targetNameCallback = {},
+        ConfiguredTargetsCallback configuredTargetsCallback = {},
+        StaticEidTargetsCallback staticEidTargetsCallback = {});
 
     /** @brief Handle PLDM request for the commands in the FW update
      *         specification
@@ -208,7 +255,8 @@ class UpdateManager : public UpdateManagerBase
      */
     exec::task<void> processStream(
         std::istream& packageStream, uintmax_t packageSize,
-        std::vector<sdbusplus::object_path> targets = {});
+        std::vector<sdbusplus::object_path> targets = {},
+        bool preUpdateValidation = false);
 
     /** @brief Defers processing of the package stream to the event loop
      *
@@ -224,12 +272,16 @@ class UpdateManager : public UpdateManagerBase
      *                           version
      *  @param[in] targets - Optional list of specific target components to
      *                       update
+     *  @param[in] preUpdateValidation - If true, run the preUpdateValidation
+     * readiness gate: reject the entire update before any transfer if any
+     * configured device is unavailable
      *
      *  @return D-Bus object path of the created Software update object
      */
     std::string processStreamDefer(std::istream& packageStream,
                                    uintmax_t packageSize, bool forceUpdate,
-                                   std::vector<sdbusplus::object_path> targets);
+                                   std::vector<sdbusplus::object_path> targets,
+                                   bool preUpdateValidation = false);
 
     /** @brief Set the RequestedApplyTime for the current update session
      *
@@ -252,6 +304,20 @@ class UpdateManager : public UpdateManagerBase
                sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
                    RequestedApplyTimes::Immediate;
     }
+
+    /** @brief Recompute and publish the AllowedPreUpdateValidation
+     *         capability on the Software.Update interface.
+     *
+     *  True iff this BMC has a known updatable device scope: an endpoint in
+     *  the live descriptorMap or a non-excluded statically-configured device
+     *  EID from the MCTP transport config (the same scope processStream()
+     *  gates). On develop this knowledge arrives asynchronously (EM
+     *  configuration delivery, MCTP discovery), so the firmware update
+     *  Manager calls this whenever that state changes, instead of the
+     *  release-branch one-shot derivation from fw_update_config.json at
+     *  Update construction.
+     */
+    void refreshAllowedPreUpdateValidation();
 
     /** @brief Update firmware update completion status of each device
      *
@@ -396,6 +462,9 @@ class UpdateManager : public UpdateManagerBase
     /** @brief Clear the firmware update package stream and free resources */
     void clearFirmwareUpdatePackage() override;
 
+    /** @brief preUpdateValidation flag for the current update session */
+    bool preUpdateValidation{};
+
     /** @brief start pldm firmware update */
     void startPLDMUpdate();
 
@@ -467,6 +536,71 @@ class UpdateManager : public UpdateManagerBase
      */
     void logUnupdatedTargets(const DeviceUpdaterInfos& deviceUpdaterInfos);
 
+    /** @brief Run the pre-update validation readiness gate.
+     *
+     *  Rejects the whole bundle before any transfer when a configured PLDM
+     *  device is unreachable after the pre-update refresh or the package
+     *  lacks an image for an expected component. On rejection the coverage
+     *  and summary messages are emitted, the package is released, and
+     *  Activation is published as Failed - the same terminal handling as
+     *  the package checksum failure path. Whole-system only; non-PLDM
+     *  (item-updater) components are outside the gate.
+     *
+     *  @param[in] configEids - The validated device scope: the pre-update
+     *                           refresh set (live descriptorMap keys union
+     *                           the static-config seed) minus excluded EIDs
+     *  @param[in] deviceUpdaterInfos - Package-to-PLDM-device associations
+     *  @param[in] unansweredTargets - Configured device names that no live
+     *                                  endpoint answers for after the
+     *                                  refresh (e.g. a device that left MCTP)
+     *  @return true when validation passed and the update may proceed
+     */
+    bool runPreUpdateValidationGate(
+        const std::vector<mctp_eid_t>& configEids,
+        const DeviceUpdaterInfos& deviceUpdaterInfos,
+        const std::set<std::string>& unansweredTargets = {});
+
+    /** @brief Device names an endpoint answers for.
+     *
+     *  The configured_by-resolved name, plus the names of the static
+     *  transport configurations at this EID - so a reachable endpoint whose
+     *  configured_by association was not (re)published still answers for
+     *  its device.
+     *
+     *  @param[in] eid - MCTP endpoint
+     *  @param[in] staticTargets - StaticEndpointID → transport config Names
+     *  @return the device names, empty when none resolves
+     */
+    std::set<std::string> namesForEid(
+        mctp_eid_t eid,
+        const std::map<mctp_eid_t, std::set<std::string>>& staticTargets) const;
+
+    /** @brief Configured firmware devices that no endpoint in liveEids
+     *         answers for.
+     *
+     *  @param[in] configuredTargets - Configured device names
+     *  @param[in] liveEids - Endpoints reachable after the refresh
+     *  @param[in] staticTargets - StaticEndpointID → transport config Names
+     *  @return the configured names with no reachable endpoint
+     */
+    std::set<std::string> findUnansweredTargets(
+        const std::set<std::string>& configuredTargets,
+        const std::set<mctp_eid_t>& liveEids,
+        const std::map<mctp_eid_t, std::set<std::string>>& staticTargets = {})
+        const;
+
+    /** @brief Drop EIDs excluded from PLDM firmware update from a
+     *         pre-update validation device scope.
+     *
+     *  Only EIDs absent from descriptorMap are checked: Manager filters
+     *  exclusions before discovery, so a discovered EID is never excluded,
+     *  and this keeps the per-EID D-Bus exclusion lookup off the common
+     *  path.
+     *
+     *  @param[in,out] scopeEids - device scope to filter
+     */
+    void eraseExcludedEids(std::set<mctp_eid_t>& scopeEids) const;
+
     /** @brief Requested apply time for the current update session */
     sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
         RequestedApplyTimes requestedApplyTime;
@@ -474,6 +608,39 @@ class UpdateManager : public UpdateManagerBase
     const DescriptorMap& descriptorMap;
     const ComponentInfoMap& componentInfoMap;
     const ComponentNameMap& componentNameMap;
+
+    /** @brief Expected (updatable) component identifiers per endpoint,
+     *         derived from the entity-manager
+     *         Configuration.PLDMFirmwareDevice.Components metadata;
+     *         consumed by the pre-update validation gate */
+    const ExpectedComponentIdsByEid& expectedComponentIdsByEid;
+
+    /** @brief Exclusion check for the pre-update validation device scope.
+     *
+     *  descriptorMap never holds an excluded EID (Manager filters them
+     *  before discovery), but the static-config seed can, so the scope is
+     *  filtered through this before gating. Unset means nothing is excluded.
+     */
+    IsEidExcludedCallback isEidExcludedCallback;
+
+    /** @brief EID → entity-manager device name, for the pre-update
+     *         validation gate. Unset means names are not resolvable. */
+    TargetNameCallback targetNameCallback;
+
+    /** @brief Configured firmware devices the pre-update validation gate
+     *         requires to be reachable, including devices no longer on
+     *         MCTP. Unset means the scope is the discovered and statically
+     *         configured endpoints only. */
+    ConfiguredTargetsCallback configuredTargetsCallback;
+
+    /** @brief StaticEndpointID → device names, the fallback that resolves a
+     *         reachable static endpoint whose configured_by association is
+     *         missing. Unset means no fallback. */
+    StaticEidTargetsCallback staticEidTargetsCallback;
+
+    /** @brief The static-EID names read for the current gated request, so
+     *         the gate names an unreachable static endpoint the same way. */
+    std::map<mctp_eid_t, std::set<std::string>> gateStaticTargets;
 
     std::unique_ptr<Activation> activation;
 #ifdef FW_UPDATE_INOTIFY_ENABLED
@@ -497,9 +664,10 @@ class UpdateManager : public UpdateManagerBase
      *         references the exact component the user asked for rather than
      *         a differently-named component on the same EID). Each name is
      *         resolved to its owning PLDM EID once at processStream time
-     *         against the live componentNameMap; names that don't resolve to
-     *         a PLDM EID (e.g. non-PLDM targets) are intentionally omitted.
-     *         Drained by logUnupdatedTargets() at terminal state.
+     *         from configured metadata, with the live componentNameMap as a
+     *         fallback; names that don't resolve to a PLDM EID (e.g. non-PLDM
+     *         targets) are intentionally omitted. Drained by
+     *         logUnupdatedTargets() at terminal state.
      */
     std::unordered_map<std::string, mctp_eid_t> requestedTargets;
 

@@ -141,11 +141,15 @@ MctpError createMctpErrorObject(mctp_eid_t destEid, int errorCode,
  *                        - 1: RX (MCTP_DIR_RX)
  * @param[in] logNamespace - Namespace for the Redfish event (default:
  * "FWUpdate")
+ * @param[in] critical - Emit the event at Critical severity instead of the
+ * default Informational. Set only for endpoints validated by a
+ * PreUpdateValidation update request, where the failure rejects the whole
+ * request.
  */
 void createMctpTransportRedfishEvent(
     mctp_eid_t eid, const std::string& commandName, uint32_t errorCode,
     uint8_t binding, uint8_t direction,
-    const std::string& logNamespace = "FWUpdate");
+    const std::string& logNamespace = "FWUpdate", bool critical = false);
 
 } // namespace transport
 } // namespace pldm

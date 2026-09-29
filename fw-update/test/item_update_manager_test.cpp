@@ -184,10 +184,10 @@ TEST_F(ItemUpdateManagerTest, StartUpdateGuardRejectsBadFd)
                               emptyDescriptors, componentInfo);
 
     sdbusplus::message::unix_fd badFd{-1};
-    EXPECT_THROW(
-        manager.startUpdate(
-            badFd, ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {}),
-        sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
+    EXPECT_THROW(manager.startUpdate(
+                     badFd, ApplyTimeIntf::RequestedApplyTimes::Immediate,
+                     false, {}, false),
+                 sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
 }
 
 TEST_F(ItemUpdateManagerTest, StartUpdateGuardRejectsConcurrentUpdate)
@@ -200,10 +200,10 @@ TEST_F(ItemUpdateManagerTest, StartUpdateGuardRejectsConcurrentUpdate)
     int fd = open("./test_pkg", O_RDONLY);
     ASSERT_GE(fd, 0);
     sdbusplus::message::unix_fd wrapped{fd};
-    EXPECT_THROW(
-        manager.startUpdate(
-            wrapped, ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {}),
-        sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
+    EXPECT_THROW(manager.startUpdate(
+                     wrapped, ApplyTimeIntf::RequestedApplyTimes::Immediate,
+                     false, {}, false),
+                 sdbusplus::xyz::openbmc_project::Common::Error::Unavailable);
     close(fd);
 }
 
@@ -320,7 +320,8 @@ TEST_F(ItemUpdateManagerTest, StartUpdateDeferredProcessesPackage)
     sdbusplus::message::unix_fd wrapped{fd};
 
     auto objPath = manager.startUpdate(
-        wrapped, ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {});
+        wrapped, ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {},
+        false);
     close(fd);
     EXPECT_FALSE(std::string(objPath).empty());
     EXPECT_TRUE(manager.updateInProgress);

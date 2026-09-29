@@ -38,10 +38,15 @@
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
 
+#include <cerrno>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <map>
+#include <set>
 #include <sstream>
 
 #include <gtest/gtest.h>
@@ -76,8 +81,10 @@ static bool mapPackageToUpdater(UpdateManager& updateManager,
     return updateManager.updater->mmapStream->good();
 }
 
-static int processPackageStream(UpdateManager& updateManager,
-                                const std::filesystem::path& packagePath)
+static int processPackageStream(
+    UpdateManager& updateManager, const std::filesystem::path& packagePath,
+    std::vector<sdbusplus::object_path> targets = {},
+    bool preUpdateValidation = false)
 {
     if (!mapPackageToUpdater(updateManager, packagePath))
     {
@@ -91,12 +98,13 @@ static int processPackageStream(UpdateManager& updateManager,
             updateManager.otherDeviceUpdateManager =
                 std::make_unique<OtherDeviceUpdateManager>(
                     pldm::utils::DBusHandler::getBus(), &updateManager,
-                    std::vector<sdbusplus::object_path>{});
+                    targets);
         }
 
-        auto task =
-            updateManager.processStream(*updateManager.updater->mmapStream,
-                                        updateManager.updater->mmapFile.size());
+        auto task = updateManager.processStream(
+            *updateManager.updater->mmapStream,
+            updateManager.updater->mmapFile.size(), std::move(targets),
+            preUpdateValidation);
         auto rc = stdexec::sync_wait(std::move(task));
         if (!rc.has_value() || !updateManager.parser)
         {
@@ -138,9 +146,29 @@ class UpdateManagerTest : public testing::Test
         ASSERT_TRUE(::mapPackageToUpdater(updateManager, packagePath));
     }
 
+    void swapStaticDbusBus()
+    {
+        auto& staticBus = pldm::utils::DBusHandler::getBus();
+        savedStaticBus.emplace(std::move(staticBus));
+        staticBus = sdbusplus::get_mocked_new(&sdbusMock);
+        staticBusSwapped = true;
+    }
+
+    void TearDown() override
+    {
+        if (staticBusSwapped)
+        {
+            pldm::utils::DBusHandler::getBus() = std::move(*savedStaticBus);
+            savedStaticBus.reset();
+            staticBusSwapped = false;
+        }
+    }
+
     testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
     TestInstanceIdDb instanceIdDb;
     sdbusplus::bus_t busMock;
+    std::optional<sdbusplus::bus_t> savedStaticBus{};
+    bool staticBusSwapped = false;
     sdeventplus::Event event;
     requester::Handler<requester::Request> reqHandler;
     DescriptorMap descriptorMap;
@@ -1030,8 +1058,8 @@ TEST_F(UpdateManagerTest, processStreamDefer_noMatchingDevices)
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    EXPECT_NO_THROW(
-        updateManager.processStreamDefer(package, packageSize, false, {}));
+    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
+                                                     false, {}, false));
 }
 
 TEST_F(UpdateManagerTest,
@@ -1043,7 +1071,7 @@ TEST_F(UpdateManagerTest,
     UpdateManager updateManager(
         event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
         componentNameMap, true,
-        [](mctp_eid_t, bool) -> exec::task<int> { co_return 0; });
+        [](mctp_eid_t, bool, bool) -> exec::task<int> { co_return 0; });
 
     mapPackageToUpdater(updateManager, "./test_pkg");
     auto& package = *updateManager.updater->mmapStream;
@@ -1052,8 +1080,8 @@ TEST_F(UpdateManagerTest,
         sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
             RequestedApplyTimes::Immediate);
 
-    EXPECT_NO_THROW(
-        updateManager.processStreamDefer(package, packageSize, false, {}));
+    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
+                                                     false, {}, false));
     EXPECT_GE(sd_event_run(event.get(), 500000), 0);
     EXPECT_GE(sd_event_run(event.get(), 500000), 0);
 }
@@ -1982,18 +2010,374 @@ TEST_F(UpdateManagerTest, processPackageInvokesRefreshCallbackWhenConfigured)
 {
     DescriptorMap localDescriptorMap;
     localDescriptorMap.emplace(1, Descriptors{});
-    std::vector<std::pair<mctp_eid_t, bool>> refreshCalls;
+    std::vector<std::tuple<mctp_eid_t, bool, bool>> refreshCalls{};
 
     UpdateManager updateManager(
         event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
         componentNameMap, true,
-        [&refreshCalls](mctp_eid_t eid, bool isTarget) -> exec::task<int> {
-            refreshCalls.emplace_back(eid, isTarget);
+        [&refreshCalls](mctp_eid_t eid, bool isTarget,
+                        bool preUpdateValidation) -> exec::task<int> {
+            refreshCalls.emplace_back(eid, isTarget, preUpdateValidation);
             co_return 0;
         });
 
     EXPECT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
-    EXPECT_FALSE(refreshCalls.empty());
+    ASSERT_FALSE(refreshCalls.empty());
+    EXPECT_TRUE(std::ranges::all_of(refreshCalls, [](const auto& call) {
+        return !std::get<2>(call);
+    }));
+}
+
+TEST_F(UpdateManagerTest, targetedRequestIgnoresPreUpdateValidationOption)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{
+        {1, {{PLDM_FWUP_UUID, packageUuid}}},
+        {2,
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+                                0x0F}}}}};
+    ComponentNameMap localComponentNames{
+        {1, {{100, "TargetComponent"}}},
+        {2, {{200, "NonTargetComponent"}}},
+    };
+    std::vector<std::tuple<mctp_eid_t, bool, bool>> refreshCalls{};
+
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        localComponentNames, true,
+        [&refreshCalls](mctp_eid_t eid, bool isTarget,
+                        bool preUpdateValidation) -> exec::task<int> {
+            refreshCalls.emplace_back(eid, isTarget, preUpdateValidation);
+            co_return 0;
+        });
+    std::vector<sdbusplus::object_path> targets{sdbusplus::object_path(
+        "/xyz/openbmc_project/software/TargetComponent")};
+
+    // processStream() parses only pldm::MmapStream packages, so feed the
+    // package through the updater's mmap exactly as Update::startUpdate does.
+    ASSERT_TRUE(::mapPackageToUpdater(updateManager, "./test_pkg"));
+    auto& package = *updateManager.updater->mmapStream;
+    const size_t packageSize = updateManager.updater->mmapFile.size();
+    // OnReset: the test verifies the refresh scope only; Immediate would
+    // auto-activate the package, which needs production-only state.
+    updateManager.setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes::OnReset);
+
+    // Pre-update validation is whole-system only: a non-empty Targets makes
+    // processStreamDefer ignore the option entirely, so no endpoint - not
+    // even the requested target - is validated and the gate never runs.
+    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
+                                                     false, targets, true));
+    EXPECT_FALSE(updateManager.preUpdateValidation);
+    // Drop the activation object before pumping the loop: the test verifies
+    // the refresh scope only, and a present activation would auto-start the
+    // update at the end of processStream(), which needs production-only
+    // state (debug token, device updaters driving real requests).
+    updateManager.activation.reset();
+    updateManager.activationProgress.reset();
+    EXPECT_GE(sd_event_run(event.get(), 500000), 0);
+    EXPECT_GE(sd_event_run(event.get(), 500000), 0);
+    EXPECT_THAT(refreshCalls, testing::UnorderedElementsAre(
+                                  std::make_tuple(1, true, false),
+                                  std::make_tuple(2, false, false)));
+}
+
+TEST_F(UpdateManagerTest, wholePreUpdateValidationIgnoredWithoutDeviceScope)
+{
+    // Develop derives the validation scope from the pre-update refresh set
+    // (live descriptorMap union the static-config seed). With neither a
+    // discovered endpoint nor a reachable static MCTP config (no mapper in
+    // the test environment), the scope is empty: the option is ignored with
+    // a journal note and the gate never rejects the request — the
+    // develop-branch equivalent of the release "empty fw_update_config.json
+    // device scope" ignore.
+    DescriptorMap emptyDescriptorMap{};
+    UpdateManager updateManager(event, reqHandler, instanceIdDb,
+                                emptyDescriptorMap, componentInfoMap,
+                                componentNameMap, true, nullptr);
+    // processStreamDefer would have recorded the session flag; set it here
+    // since the helper drives processStream() directly, and verify the
+    // empty-scope downgrade clears it.
+    updateManager.preUpdateValidation = true;
+
+    EXPECT_EQ(processPackageStream(updateManager, "./test_pkg", {}, true), 0);
+    EXPECT_FALSE(updateManager.preUpdateValidation);
+    // The gate did not run/reject: the parsed package survives.
+    EXPECT_NE(updateManager.parser, nullptr);
+}
+
+// EIDs 1 and 2 reach the same device. Runs a whole-system PreUpdateValidation
+// update whose refresh of EID 2 drops it from descriptorMap and returns
+// refreshRc; returns processPackageStream's result (0: package survived the
+// gate, -1: gate rejected the request).
+static int runGateWithSecondPathRefresh(
+    sdeventplus::Event& event,
+    requester::Handler<requester::Request>& reqHandler,
+    pldm::InstanceIdDb& instanceIdDb, const ComponentInfoMap& componentInfoMap,
+    ComponentNameMap& componentNameMap, int refreshRc)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{
+        {1, {{PLDM_FWUP_UUID, packageUuid}}},
+        {2, {{PLDM_FWUP_UUID, packageUuid}}},
+    };
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        componentNameMap, true,
+        [&localDescriptorMap,
+         refreshRc](mctp_eid_t eid, bool /*isTarget*/,
+                    bool /*preUpdateValidation*/) -> exec::task<int> {
+            if (eid == 2)
+            {
+                localDescriptorMap.erase(eid);
+                co_return refreshRc;
+            }
+            co_return PLDM_SUCCESS;
+        });
+    updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
+    updateManager.setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes::OnReset);
+    updateManager.preUpdateValidation = true;
+    return processPackageStream(updateManager, "./test_pkg", {}, true);
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationSkipsDeduplicatedDuplicatePathEndpoint)
+{
+    // The refresh deduplicates EID 2 (another path is the selected fastest
+    // path): it succeeds but drops the EID from descriptorMap. That duplicate
+    // is not an unreachable device, so the gate passes.
+    EXPECT_EQ(runGateWithSecondPathRefresh(event, reqHandler, instanceIdDb,
+                                           componentInfoMap, componentNameMap,
+                                           PLDM_SUCCESS),
+              0);
+}
+
+TEST_F(UpdateManagerTest, wholePreUpdateValidationRejectsFailedRefreshEndpoint)
+{
+    // Control: EID 2 failing its refresh is unreachable, so the gate rejects
+    // the request and drops the package.
+    EXPECT_EQ(runGateWithSecondPathRefresh(event, reqHandler, instanceIdDb,
+                                           componentInfoMap, componentNameMap,
+                                           PLDM_ERROR),
+              -1);
+}
+
+// Runs a whole-system PreUpdateValidation update with EID 1 discovered and
+// healthy (named HGX_GPU_SMA_0) against the given configured device names;
+// returns processPackageStream's result (0: package survived the gate, -1:
+// gate rejected the request).
+static int runGateWithConfiguredTargets(
+    sdeventplus::Event& event,
+    requester::Handler<requester::Request>& reqHandler,
+    pldm::InstanceIdDb& instanceIdDb, const ComponentInfoMap& componentInfoMap,
+    ComponentNameMap& componentNameMap,
+    const std::set<std::string>& configuredTargets)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{{1, {{PLDM_FWUP_UUID, packageUuid}}}};
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        componentNameMap, true,
+        [](mctp_eid_t, bool, bool) -> exec::task<int> {
+            co_return PLDM_SUCCESS;
+        },
+        emptyExpectedComponentIds, {},
+        [](mctp_eid_t eid) {
+            return eid == 1 ? std::string("HGX_GPU_SMA_0") : std::string{};
+        },
+        [configuredTargets]() { return configuredTargets; });
+    updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
+    updateManager.setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes::OnReset);
+    updateManager.preUpdateValidation = true;
+    return processPackageStream(updateManager, "./test_pkg", {}, true);
+}
+
+TEST_F(UpdateManagerTest, wholePreUpdateValidationPassesWhenConfiguredAnswer)
+{
+    // Every configured firmware device answers through a live endpoint.
+    EXPECT_EQ(runGateWithConfiguredTargets(event, reqHandler, instanceIdDb,
+                                           componentInfoMap, componentNameMap,
+                                           {"HGX_GPU_SMA_0"}),
+              0);
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationRejectsVanishedConfiguredDevice)
+{
+    // HGX_GPU_0 is configured but has no endpoint at all (it left MCTP in
+    // recovery mode, so it is neither discovered nor statically seeded). It
+    // must still count as unreachable and reject the request.
+    EXPECT_EQ(runGateWithConfiguredTargets(event, reqHandler, instanceIdDb,
+                                           componentInfoMap, componentNameMap,
+                                           {"HGX_GPU_SMA_0", "HGX_GPU_0"}),
+              -1);
+}
+
+// EID 14 (HGX_CPU_0) is reachable and refreshed, but its configured_by
+// association was not republished after a re-add, so the configured_by name
+// lookup does not resolve it. Returns processPackageStream's result (0:
+// package survived the gate, -1: gate rejected the request).
+static int runGateWithUnresolvedStaticEndpoint(
+    sdeventplus::Event& event,
+    requester::Handler<requester::Request>& reqHandler,
+    pldm::InstanceIdDb& instanceIdDb, const ComponentInfoMap& componentInfoMap,
+    ComponentNameMap& componentNameMap, StaticEidTargetsCallback staticTargets)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{
+        {1, {{PLDM_FWUP_UUID, packageUuid}}},
+        {14, {{PLDM_FWUP_UUID, packageUuid}}},
+    };
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        componentNameMap, true,
+        [](mctp_eid_t, bool, bool) -> exec::task<int> {
+            co_return PLDM_SUCCESS;
+        },
+        emptyExpectedComponentIds, {},
+        [](mctp_eid_t eid) {
+            return eid == 1 ? std::string("HGX_GPU_SMA_0") : std::string{};
+        },
+        []() { return std::set<std::string>{"HGX_GPU_SMA_0", "HGX_CPU_0"}; },
+        std::move(staticTargets));
+    updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
+    updateManager.setRequestedApplyTime(
+        sdbusplus::xyz::openbmc_project::Software::server::ApplyTime::
+            RequestedApplyTimes::OnReset);
+    updateManager.preUpdateValidation = true;
+    return processPackageStream(updateManager, "./test_pkg", {}, true);
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationResolvesStaticEndpointWithoutConfiguredBy)
+{
+    // The static transport configuration names EID 14, so the reachable
+    // endpoint answers for HGX_CPU_0 and the gate passes.
+    EXPECT_EQ(runGateWithUnresolvedStaticEndpoint(
+                  event, reqHandler, instanceIdDb, componentInfoMap,
+                  componentNameMap,
+                  []() {
+                      return std::map<mctp_eid_t, std::set<std::string>>{
+                          {14, {"HGX_CPU_0"}}};
+                  }),
+              0);
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationUnresolvedEndpointWithoutStaticNameRejects)
+{
+    // Without a name source for EID 14, HGX_CPU_0 has no answering endpoint.
+    EXPECT_EQ(runGateWithUnresolvedStaticEndpoint(
+                  event, reqHandler, instanceIdDb, componentInfoMap,
+                  componentNameMap, {}),
+              -1);
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationUsesProvidedPlatformEidFallbackScope)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{{7, {{PLDM_FWUP_UUID, packageUuid}}}};
+    UpdateManager updateManager(event, reqHandler, instanceIdDb,
+                                localDescriptorMap, componentInfoMap,
+                                componentNameMap, true, nullptr);
+    // The gate dereferences the parser (guaranteed by processStream), so
+    // parse a real package before overriding the records under test.
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    updateManager.fwDeviceIDRecords = {{1, {0}, "Version", Descriptors{}, {}}};
+    // The gate's reject path publishes the final activation status, which
+    // registers an Activation object at objPath; give it a valid path since
+    // this test calls the gate without going through processStreamDefer().
+    updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
+    const std::vector<mctp_eid_t> fallbackConfigEids{7};
+
+    EXPECT_TRUE(updateManager.runPreUpdateValidationGate(
+        fallbackConfigEids, DeviceUpdaterInfos{{7, 0}}));
+
+    std::get<ApplicableComponents>(updateManager.fwDeviceIDRecords.front())
+        .clear();
+    EXPECT_FALSE(updateManager.runPreUpdateValidationGate(
+        fallbackConfigEids, DeviceUpdaterInfos{{7, 0}}));
+
+    EXPECT_FALSE(
+        updateManager.runPreUpdateValidationGate(fallbackConfigEids, {}));
+}
+
+TEST_F(UpdateManagerTest,
+       wholePreUpdateValidationCoverageIsCheckedForEveryDeviceOnSharedEid)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{
+        {9, {{PLDM_FWUP_UUID, packageUuid}}},
+    };
+    ComponentNameMap emptyComponentNames{};
+    // The Manager owns the expected-component map in production and the
+    // UpdateManager holds a reference to it; mirror that here so the
+    // expectation can be varied between gate runs.
+    ExpectedComponentIdsByEid expectation{};
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        emptyComponentNames, true, nullptr, expectation);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    ASSERT_EQ(updateManager.fwDeviceIDRecords.size(), 1U);
+    // The failing-coverage call below rejects the request and publishes the
+    // final activation status; that needs a valid object path (normally set
+    // by processStreamDefer, which this test bypasses).
+    updateManager.objPath = "/xyz/openbmc_project/software/testupdate";
+
+    const auto& applicableComponents =
+        std::get<ApplicableComponents>(updateManager.fwDeviceIDRecords.front());
+    ASSERT_FALSE(applicableComponents.empty());
+    const auto& componentImageInfos =
+        updateManager.parser->getComponentImageInfos();
+    std::set<CompIdentifier> packagedIds{};
+    for (const auto componentIndex : applicableComponents)
+    {
+        packagedIds.insert(std::get<static_cast<size_t>(
+                               ComponentImageInfoPos::CompIdentifierPos)>(
+            componentImageInfos[componentIndex]));
+    }
+    const auto coveredId = *packagedIds.begin();
+    CompIdentifier uncoveredId = 0;
+    while (packagedIds.contains(uncoveredId))
+    {
+        ASSERT_NE(uncoveredId, std::numeric_limits<CompIdentifier>::max());
+        ++uncoveredId;
+    }
+
+    // Control: every configured component covered by the package.
+    expectation = {{9, {{"CoveredComponent", {coveredId}}}}};
+    EXPECT_TRUE(updateManager.runPreUpdateValidationGate(
+        {9}, DeviceUpdaterInfos{{9, 0}}));
+
+    // A second configured component on the same EID with no image in the
+    // package must fail coverage even though the EID itself is covered.
+    expectation = {{9,
+                    {{"CoveredComponent", {coveredId}},
+                     {"UncoveredComponent", {uncoveredId}}}}};
+    EXPECT_FALSE(updateManager.runPreUpdateValidationGate(
+        {9}, DeviceUpdaterInfos{{9, 0}}));
 }
 
 TEST_F(UpdateManagerTest, getComponentTargetListMergesComponentsForSameEid)
