@@ -162,6 +162,12 @@ static const std::vector<std::chrono::milliseconds> kFastRetry{
     std::chrono::milliseconds(1), std::chrono::milliseconds(1),
     std::chrono::milliseconds(1)};
 
+// The real D-Bus handler the constructor would default to, named so the
+// cases that drive MctpDiscovery against the unit-test bus can pass
+// kFastRetry: that bus has no ObjectMapper, so the production schedule
+// would add ~9s to every such constructor.
+static pldm::utils::DBusHandler realDbusHandler;
+
 static std::unique_ptr<pldm::MctpDiscovery> makeDiscoveryWithMock(
     MockdBusHandler& mockedDbusHandler, pldm::MctpDiscoveryHandlerIntf* handler)
 {
@@ -636,7 +642,8 @@ TEST_F(DbusBackedMctpDiscoveryTest,
     TrackingMctpHandler handler;
 
     auto discovery = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     EXPECT_TRUE(
         containsEid(discovery->existingMctpInfos, env->onlinePldm().eid));
@@ -667,7 +674,8 @@ TEST_F(DbusBackedMctpDiscoveryTest, propertiesChangedCbCoversDefaultDbusPath)
     TrackingMctpHandler handler;
 
     auto discovery = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     discovery->existingMctpInfos.clear();
     handler.handleMctpEndpointsCalls = 0;
@@ -699,7 +707,8 @@ TEST_F(DbusBackedMctpDiscoveryTest, refreshEndpointsReadsUuidAndEidFromDbus)
     TrackingMctpHandler handler;
 
     auto discovery = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     handler.onlineCalls = 0;
     handler.offlineCalls = 0;
@@ -727,7 +736,8 @@ TEST(MctpEndpointDiscoveryTest, ZeroHandleMctpEndpoint)
     EXPECT_CALL(manager, handleMctpEndpoints(_, _)).Times(0);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     mctpDiscoveryHandler = nullptr;
 }
 
@@ -741,8 +751,10 @@ TEST(MctpEndpointDiscoveryTest, MultipleHandleMctpEndpoints)
     EXPECT_CALL(manager2, handleMctpEndpoints(_, _)).Times(0);
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 &manager1, &manager2});
+        bus,
+        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
+            &manager1, &manager2},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     mctpDiscoveryHandler = nullptr;
 }
 
@@ -753,7 +765,8 @@ TEST(MctpEndpointDiscoveryTest, goodGetMctpInfos)
     std::map<pldm::MctpInfo, pldm::Availability> currentMctpInfoMap;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     mctpDiscoveryHandler->getMctpInfos(currentMctpInfoMap);
     EXPECT_EQ(currentMctpInfoMap.size(), 0);
 }
@@ -769,7 +782,8 @@ TEST(MctpEndpointDiscoveryTest, goodAddToExistingMctpInfos)
                        std::nullopt)};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
     EXPECT_EQ(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
     pldm::MctpInfo mctpInfo = mctpDiscoveryHandler->existingMctpInfos.back();
@@ -786,7 +800,8 @@ TEST(MctpEndpointDiscoveryTest, badAddToExistingMctpInfos)
         11, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     mctpDiscoveryHandler->addToExistingMctpInfos(mctpInfos);
     EXPECT_NE(mctpDiscoveryHandler->existingMctpInfos.size(), 2);
 }
@@ -903,7 +918,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithPldmType)
 
     // Construct with default (non-existent) path first
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Now point staticEidTablePath to our test fixture and call manually
     mctpDiscoveryHandler->staticEidTablePath = "static_eid_table.json";
@@ -929,7 +945,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsFileNotFound)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Point to a non-existent path and call manually
     mctpDiscoveryHandler->staticEidTablePath = "/nonexistent_file.json";
@@ -951,7 +968,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithoutPldmType)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     mctpDiscoveryHandler->staticEidTablePath = nonPldmJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -973,7 +991,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsMixedTypes)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     mctpDiscoveryHandler->staticEidTablePath = mixedJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -996,7 +1015,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithoutEndpointsKey)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     mctpDiscoveryHandler->staticEidTablePath = noEndpointsJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -1018,7 +1038,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsWithEmptyEndpointsArray)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     mctpDiscoveryHandler->staticEidTablePath = emptyEndpointsJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -1042,7 +1063,8 @@ TEST(MctpEndpointDiscoveryTest, loadStaticEndpointsInvalidJson)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     mctpDiscoveryHandler->staticEidTablePath = invalidJsonPath;
     pldm::MctpInfos mctpInfos;
@@ -1060,8 +1082,10 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsWithMultipleHandlers)
     pldm::MockManager manager2;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 &manager1, &manager2});
+        bus,
+        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
+            &manager1, &manager2},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1079,7 +1103,8 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsEmpty)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     const pldm::MctpInfos emptyInfos;
 
@@ -1095,7 +1120,8 @@ TEST(MctpEndpointDiscoveryTest, handleRemovedMctpEndpoints)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     const pldm::MctpInfos removedInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1111,7 +1137,8 @@ TEST(MctpEndpointDiscoveryTest, updateMctpEndpointAvailability)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     pldm::MctpInfo mctpInfo(30, pldm::emptyUUID, "", 1, std::nullopt, "",
                             std::nullopt);
@@ -1129,7 +1156,8 @@ TEST(MctpEndpointDiscoveryTest, addDuplicateToExistingMctpInfos)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         11, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1293,7 +1321,8 @@ TEST(MctpEndpointDiscoveryTest, handleMctpEndpointsCallsHandleConfigurations)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     const pldm::MctpInfos mctpInfos = {pldm::MctpInfo(
         30, pldm::emptyUUID, "", 1, std::nullopt, "", std::nullopt)};
@@ -1441,7 +1470,8 @@ TEST(MctpEndpointDiscoveryTest, getMctpEndpointPropsException)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Call with non-existent service/path - D-Bus call throws, hits catch block
     auto result = TestMctpDiscovery::getMctpEndpointProps(
@@ -1458,7 +1488,8 @@ TEST(MctpEndpointDiscoveryTest, getEndpointUUIDPropException)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Call with non-existent service/path - D-Bus call throws, hits catch block
     auto result = TestMctpDiscovery::getEndpointUUIDProp(
@@ -1474,7 +1505,8 @@ TEST(MctpEndpointDiscoveryTest, getEndpointConnectivityPropException)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Call with non-existent path - D-Bus call throws, hits catch block
     auto result = TestMctpDiscovery::getEndpointConnectivityProp(
@@ -1490,7 +1522,8 @@ TEST(MctpEndpointDiscoveryTest, discoverEndpointsInvalidMsg)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Create a dummy D-Bus message - msg.read() in getAddedMctpInfos will fail
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
@@ -1512,7 +1545,8 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbInvalidMsg)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Create a dummy D-Bus message - msg.read() in propertiesChangedCb fails
     sdbusplus::message_t msg = sdbusplus::bus::new_default().new_method_call(
@@ -1533,7 +1567,8 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbValidMsgDbusException)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Create a message with proper PropertiesChanged content
     auto rawBus = sdbusplus::bus::new_default();
@@ -1564,7 +1599,8 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbNonConnectivityProperty)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     auto rawBus = sdbusplus::bus::new_default();
     auto msg = rawBus.new_method_call(
@@ -1589,7 +1625,8 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbEmptyProperties)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     auto rawBus = sdbusplus::bus::new_default();
     auto msg = rawBus.new_method_call(
@@ -1613,7 +1650,8 @@ TEST(MctpEndpointDiscoveryTest, propertiesChangedCbMultipleNonConnectivityProps)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     auto rawBus = sdbusplus::bus::new_default();
     auto msg = rawBus.new_method_call(
@@ -1639,7 +1677,8 @@ TEST(MctpEndpointDiscoveryTest, getAddedMctpInfosValidMsgGetServiceFails)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Construct InterfacesAdded message: object_path + interfaces map
     auto rawBus = sdbusplus::bus::new_default();
@@ -1676,7 +1715,8 @@ TEST(MctpEndpointDiscoveryTest, refreshEndpointsValidMsg)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Construct PropertiesChanged message with Connectivity property
     auto rawBus = sdbusplus::bus::new_default();
@@ -1708,7 +1748,8 @@ TEST(MctpEndpointDiscoveryTest, refreshEndpointsNoConnectivityProp)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     // Construct PropertiesChanged message without Connectivity property
     auto rawBus = sdbusplus::bus::new_default();
@@ -1738,7 +1779,8 @@ TEST(MctpEndpointDiscoveryTest, refreshEndpointsConnectivityWrongTypeThrows)
     pldm::MockManager manager;
 
     auto mctpDiscoveryHandler = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     auto rawBus = sdbusplus::bus::new_default();
     auto msg = rawBus.new_method_call(
@@ -1770,7 +1812,8 @@ TEST(MctpEndpointDiscoveryTest, liveMapperConstructorDiscoversAvailableEndpoint)
     TrackingMctpHandler handler;
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     EXPECT_GE(handler.handleMctpEndpointsCalls, 0);
     EXPECT_GE(disc->existingMctpInfos.size(), 0u);
@@ -1781,7 +1824,8 @@ TEST(MctpEndpointDiscoveryTest, liveMapperPropertiesChangedCbReturnsForNonPldm)
     auto& bus = pldm::utils::DBusHandler::getBus();
     TrackingMctpHandler handler;
     auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     auto endpoint = findEndpointByPldmType(*disc, false);
     if (!endpoint.has_value())
     {
@@ -1804,7 +1848,8 @@ TEST(MctpEndpointDiscoveryTest, liveMapperPropertiesChangedCbAddAndUpdatePaths)
     TrackingMctpHandler handler;
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     auto endpoint = findEndpointByPldmType(*disc, true);
     if (!endpoint.has_value())
     {
@@ -1832,7 +1877,8 @@ TEST(MctpEndpointDiscoveryTest, liveMapperRefreshEndpointsOnlineAndOffline)
     TrackingMctpHandler handler;
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler});
+        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{&handler},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
     auto endpoint = findEndpointByPldmType(*disc, true);
     if (!endpoint.has_value())
     {
@@ -3042,8 +3088,10 @@ TEST(MctpEndpointDiscoveryTest, NullHandlersAreSkipped)
     pldm::MockManager manager;
 
     auto disc = std::make_unique<pldm::MctpDiscovery>(
-        bus, std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
-                 nullptr, &manager});
+        bus,
+        std::initializer_list<pldm::MctpDiscoveryHandlerIntf*>{
+            nullptr, &manager},
+        STATIC_EID_TABLE_PATH, realDbusHandler, kFastRetry);
 
     testing::Mock::VerifyAndClearExpectations(&manager);
 
