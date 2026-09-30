@@ -21,6 +21,7 @@
 #include <phosphor-logging/lg2.hpp>
 #include <tal.hpp>
 
+#include <cmath>
 #include <limits>
 #include <regex>
 
@@ -669,7 +670,7 @@ double NumericSensor::conversionFormula(double value)
 
 double NumericSensor::unitModifier(double value)
 {
-    return value * std::pow(10, baseUnitModifier);
+    return utils::applyUnitModifier(value, baseUnitModifier);
 }
 
 void NumericSensor::updateReading(bool available, bool functional, double value)

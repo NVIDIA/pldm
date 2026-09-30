@@ -192,10 +192,7 @@ double NumericEffecter::unitToRaw(double value)
 
 double NumericEffecter::unitToBase(double value)
 {
-    double convertedValue = value;
-    convertedValue *= std::pow(10, unitModifier);
-
-    return convertedValue;
+    return utils::applyUnitModifier(value, unitModifier);
 }
 
 double NumericEffecter::baseToUnit(double value)

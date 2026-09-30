@@ -478,6 +478,15 @@ class DBusHandlerBusMockTest : public DBusMockTestHelpers
 
 } // namespace
 
+TEST(ApplyUnitModifierTest, AvoidsReciprocalRounding)
+{
+    EXPECT_EQ(21.9, applyUnitModifier(219.0, -1));
+    EXPECT_EQ(-21.9, applyUnitModifier(-219.0, -1));
+    EXPECT_EQ(2.19, applyUnitModifier(219.0, -2));
+    EXPECT_EQ(219.0, applyUnitModifier(219.0, 0));
+    EXPECT_EQ(2190.0, applyUnitModifier(219.0, 1));
+}
+
 TEST(GetNumPadBytesTest, NoPaddingNeeded)
 {
     EXPECT_EQ(getNumPadBytes(0), 0);

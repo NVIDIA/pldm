@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -253,6 +254,12 @@ uint8_t getNumPadBytes(uint32_t data)
     pad = ((data % 4) ? (4 - data % 4) : 0);
     return pad;
 } // end getNumPadBytes
+
+double applyUnitModifier(double value, int8_t modifier)
+{
+    return modifier < 0 ? value / std::pow(10.0, -modifier)
+                        : value * std::pow(10.0, modifier);
+}
 
 bool uintToDate(uint64_t data, uint16_t* year, uint8_t* month, uint8_t* day,
                 uint8_t* hour, uint8_t* min, uint8_t* sec)

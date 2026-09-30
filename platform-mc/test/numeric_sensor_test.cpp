@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <limits>
 #include <new>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -549,6 +550,134 @@ TEST_F(NumericSensorTest, conversionFormula)
 
     // (40*1.5 + 1.0 ) * 10^1 = 610
     EXPECT_EQ(610, convertedValue);
+}
+
+TEST_F(NumericSensorTest, updateReadingScalesDecimalUnits)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    auto pdr = makeNumericSensorValuePdr(
+        PLDM_SENSOR_DATA_SIZE_UINT16, PLDM_RANGE_FIELD_FORMAT_UINT16,
+        PLDM_SENSOR_UNIT_WATTS, -1, false);
+    pdr->resolution = 1.0f;
+    pdr->offset = 0.0f;
+    pdr->max_readable.value_u16 = 65535;
+    pdr->min_readable.value_u16 = 0;
+
+    std::string sensorName{"decimal_power_sensor"};
+    NumericSensor sensor(0x01, false, pdr, sensorName, inventoryPath, nullptr);
+    EXPECT_EQ(6553.5, sensor.valueIntf->maxValue());
+    EXPECT_EQ(0.0, sensor.valueIntf->minValue());
+
+    const std::array<std::pair<double, double>, 4> readings{
+        {{219.0, 21.9}, {217.0, 21.7}, {227.0, 22.7}, {232.0, 23.2}}};
+    for (const auto& [raw, expected] : readings)
+    {
+        SCOPED_TRACE(raw);
+        sensor.updateReading(true, true, raw);
+        // A one-ULP difference can expose unwanted digits in Redfish.
+        EXPECT_EQ(expected, sensor.getReading());
+    }
+}
+
+TEST_F(NumericSensorTest, updateReadingPreservesPdrConversion)
+{
+    struct TestCase
+    {
+        float resolution;
+        float offset;
+        int8_t modifier;
+        double raw;
+        double expected;
+    };
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const std::array<TestCase, 8> cases{{
+        {1.0f, 0.0f, -4, 219.0, 0.0219},
+        {1.0f, 0.0f, -1, -219.0, -21.9},
+        {1.0f, 0.0f, 0, 219.0, 219.0},
+        {1.0f, 0.0f, 2, 219.0, 21900.0},
+        {0.25f, 0.125f, -1, 219.0, 5.4875},
+        {0.25f, 0.125f, -1, -219.0, -5.4625},
+        {nan, nan, -1, 219.0, 21.9},
+        {std::nextafter(1.0f, 2.0f), 0.0f, 0, 219.0, 219.00002610683441},
+    }};
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    for (const auto& test : cases)
+    {
+        SCOPED_TRACE(static_cast<int>(test.modifier));
+        SCOPED_TRACE(test.raw);
+        auto pdr = makeNumericSensorValuePdr(
+            PLDM_SENSOR_DATA_SIZE_SINT16, PLDM_RANGE_FIELD_FORMAT_SINT16,
+            PLDM_SENSOR_UNIT_DEGRESS_C, test.modifier, false);
+        pdr->resolution = test.resolution;
+        pdr->offset = test.offset;
+        std::string sensorName{"scaled_temperature_sensor"};
+        NumericSensor sensor(0x01, false, pdr, sensorName, inventoryPath,
+                             nullptr);
+        sensor.updateReading(true, true, test.raw);
+        EXPECT_EQ(test.expected, sensor.getReading());
+    }
+}
+
+TEST_F(NumericSensorTest, decimalThresholdBoundaries)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    auto pdr = makeNumericSensorValuePdr(
+        PLDM_SENSOR_DATA_SIZE_UINT16, PLDM_RANGE_FIELD_FORMAT_UINT16,
+        PLDM_SENSOR_UNIT_WATTS, -1, true);
+    pdr->resolution = 1.0f;
+    pdr->offset = 0.0f;
+    pdr->hysteresis.value_u16 = 3;
+    pdr->warning_high.value_u16 = 219;
+    pdr->critical_high.value_u16 = 227;
+    pdr->fatal_high.value_u16 = 232;
+    pdr->warning_low.value_u16 = 217;
+    pdr->critical_low.value_u16 = 207;
+    pdr->fatal_low.value_u16 = 197;
+    std::string sensorName{"decimal_threshold_sensor"};
+    NumericSensor sensor(0x01, false, pdr, sensorName, inventoryPath, nullptr);
+
+    ASSERT_NE(nullptr, sensor.thresholdWarningIntf);
+    ASSERT_NE(nullptr, sensor.thresholdCriticalIntf);
+    ASSERT_NE(nullptr, sensor.thresholdFatalIntf);
+    EXPECT_EQ(21.9, sensor.thresholdWarningIntf->warningHigh());
+    EXPECT_EQ(22.7, sensor.thresholdCriticalIntf->criticalHigh());
+    EXPECT_EQ(23.2, sensor.thresholdFatalIntf->hardShutdownHigh());
+    EXPECT_EQ(21.7, sensor.thresholdWarningIntf->warningLow());
+    EXPECT_EQ(20.7, sensor.thresholdCriticalIntf->criticalLow());
+    EXPECT_EQ(19.7, sensor.thresholdFatalIntf->hardShutdownLow());
+
+    sensor.updateReading(true, true, 218.0);
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmLow());
+    sensor.updateReading(true, true, 219.0);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    sensor.updateReading(true, true, 227.0);
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    sensor.updateReading(true, true, 232.0);
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    sensor.updateReading(true, true, 218.0);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    sensor.updateReading(true, true, 215.0);
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_FALSE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    sensor.updateReading(true, true, 217.0);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmLow());
+    sensor.updateReading(true, true, 207.0);
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmLow());
+    sensor.updateReading(true, true, 197.0);
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmLow());
+    sensor.updateReading(true, true, 218.0);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmLow());
+    sensor.updateReading(true, true, 221.0);
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmLow());
+    EXPECT_FALSE(sensor.thresholdCriticalIntf->criticalAlarmLow());
+    EXPECT_FALSE(sensor.thresholdFatalIntf->hardShutdownAlarmLow());
 }
 
 TEST_F(NumericSensorTest, checkThreshold)

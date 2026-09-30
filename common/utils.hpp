@@ -121,6 +121,18 @@ struct CustomFD
  */
 uint8_t getNumPadBytes(uint32_t data);
 
+/** @brief Apply a PDR unit modifier (power of ten) to a value.
+ *
+ *  A negative modifier divides by 10^-modifier rather than multiplying by the
+ *  rounded reciprocal, so e.g. 219 with modifier -1 yields the nearest double
+ *  to 21.9 instead of 21.900000000000002.
+ *
+ *  @param[in] value - value to scale
+ *  @param[in] modifier - PDR unit modifier
+ *  @return double - scaled value
+ */
+double applyUnitModifier(double value, int8_t modifier);
+
 /** @brief Convert uint64 to date
  *
  *  @param[in] data - time date of uint64
