@@ -68,7 +68,9 @@ class Entry : public Ifaces
      *  @param[in] bus  - Bus to attach to
      *  @param[in] objPath - D-Bus object path
      *  @param[in] version - Version string
-     *  @param[in] swId - Software ID
+     *  @param[in] swId - Software ID. Pass an empty string to leave the
+     *                     property unset; bmcweb only surfaces SoftwareId on
+     *                     Redfish when it is non-empty.
      *  @param[in] manufacturer - Manufacturer string
      */
     explicit Entry(sdbusplus::bus_t& bus, const std::string& objPath,
@@ -119,11 +121,19 @@ class Manager
      *  @param[in] firmwareInventoryInfo - Config info for firmware inventory
      *  @param[in] componentInfoMap - Component information of managed FDs
      *  @param[in] componentNameMap - Component name map for D-Bus paths
+     *  @param[in] downstreamComponentInfoMap - Component information of the
+     *                                          downstream devices of managed
+     *                                          FDPs
+     *  @param[in] downstreamDeviceNameMap - Downstream device name map for
+     *                                       D-Bus paths
      */
-    explicit Manager(sdbusplus::bus_t& bus,
-                     const FirmwareInventoryInfo& firmwareInventoryInfo,
-                     const ComponentInfoMap& componentInfoMap,
-                     const ComponentNameMap& componentNameMap);
+    explicit Manager(
+        sdbusplus::bus_t& bus,
+        const FirmwareInventoryInfo& firmwareInventoryInfo,
+        const ComponentInfoMap& componentInfoMap,
+        const ComponentNameMap& componentNameMap,
+        const DownstreamComponentInfoMap& downstreamComponentInfoMap,
+        const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap);
 
     /** @brief Create firmware inventory object
      *
@@ -142,6 +152,19 @@ class Manager
      */
     void updateEntry(pldm::eid eid, const pldm::UUID& uuid,
                      dbus::MctpInterfaces& mctpInterfaces);
+
+    /** @brief Create the firmware inventory objects of the downstream devices
+     *         behind a Firmware Device Proxy
+     *
+     *  One Software.Version object per downstream device, named after the FDP
+     *  so the objects read as belonging to it. The objects are inventory only:
+     *  they carry no updateable association, because pldmd drives updates
+     *  through the FDP's own components and not through
+     *  RequestDownstreamDeviceUpdate.
+     *
+     *  @param[in] eid - MCTP endpointID of the FDP
+     */
+    void createDownstreamEntries(pldm::eid eid);
 
     /** @brief Update firmware version
      *
@@ -182,6 +205,13 @@ class Manager
     /** @brief Component name map for D-Bus object paths */
     const ComponentNameMap& componentNameMap;
 
+    /** @brief Component information of the downstream devices of managed FDPs
+     */
+    const DownstreamComponentInfoMap& downstreamComponentInfoMap;
+
+    /** @brief Downstream device name map for D-Bus object paths */
+    const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap;
+
     /** @brief Per-endpoint component metadata sourced from entity-manager
      *         Configuration.PLDMFirmwareDevice.Components.
      */
@@ -190,6 +220,11 @@ class Manager
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<eid, CompIdentifier>, std::unique_ptr<Entry>>
         firmwareInventoryMap;
+
+    /** @brief Map to store the firmware inventory objects of the downstream
+     *         devices, keyed by the FDP endpoint and the device index */
+    std::map<std::pair<eid, DownstreamDeviceIndex>, std::unique_ptr<Entry>>
+        downstreamInventoryMap;
 
     /** @brief D-Bus signal match for objects to be updated with SoftwareID*/
     std::vector<sdbusplus::bus::match_t> updateFwMatch;

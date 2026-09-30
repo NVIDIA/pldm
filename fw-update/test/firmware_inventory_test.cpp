@@ -42,6 +42,14 @@ using namespace pldm;
 using namespace pldm::fw_update;
 using namespace pldm::fw_update::fw_inventory;
 
+namespace
+{
+// Downstream inventory has its own coverage; these empty maps satisfy
+// the Manager constructor for the component-focused tests here.
+const DownstreamComponentInfoMap downstreamComponentInfoMap{};
+const DownstreamDeviceFwInvNameMap downstreamDeviceNameMap{};
+} // namespace
+
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Invoke;
@@ -153,7 +161,8 @@ TEST(Manager, SingleMatch)
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces = {
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -205,7 +214,8 @@ TEST(Manager, SingleMatchTwoComponents)
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces;
 
     manager.createEntry(eid, uuid, mctpInterfaces);
@@ -319,7 +329,8 @@ TEST(Manager, MulipleMatch)
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid1, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid1}}}}},
         {uuid2, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid2}}}}}};
@@ -374,7 +385,8 @@ TEST(Manager, test_private_method_updateSwId)
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     EXPECT_NO_THROW({ manager.updateSwId(objPath, compName1); });
 }
@@ -393,7 +405,8 @@ TEST(Manager, test_private_method_updateSwId_emptyObjPath)
 
     ComponentNameMap componentNameMap;
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     EXPECT_NO_THROW({ manager.updateSwId(emptyObjPath, compName1); });
 }
@@ -489,7 +502,8 @@ TEST(ManagerCoverage, CreateEntrySkippedWhenNoComponentInfo)
     ComponentNameMap componentNameMap{};
     FirmwareInventoryInfo fwInventoryInfo{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     dbus::MctpInterfaces mctpInterfaces{};
@@ -511,7 +525,8 @@ TEST(ManagerCoverage, CreateEntryUsesComponentNameMapWhenNoConfigMatch)
     // Empty inventory info => matchInventoryEntry() returns false.
     FirmwareInventoryInfo fwInventoryInfo{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     const UUID uuid{"ad4c8360-c54c-11eb-8529-0242ac130003"};
     dbus::MctpInterfaces mctpInterfaces{
@@ -523,7 +538,8 @@ TEST(ManagerCoverage, CreateEntryUsesComponentNameMapWhenNoConfigMatch)
     // Second call refreshes the preserved objects in place (setVersion path).
     auto refreshedInfoMap = makeTwoComponentInfoMap("v9.0", "v9.1");
     Manager refreshManager(busMock, fwInventoryInfo, refreshedInfoMap,
-                           componentNameMap);
+                           componentNameMap, downstreamComponentInfoMap,
+                           downstreamDeviceNameMap);
     refreshManager.createEntry(testEid, uuid, mctpInterfaces);
     refreshManager.createEntry(testEid, uuid, mctpInterfaces);
     EXPECT_EQ(refreshManager.firmwareInventoryMap.size(), 2U);
@@ -545,7 +561,8 @@ TEST(ManagerCoverage, CreateEntryUpdateOnlyComponentStampsSwId)
         {{{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}},
           {{{testCompIdentifier1, updateOnlyObj}}, {}}}});
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -573,7 +590,8 @@ TEST(ManagerCoverage, CreateEntryStampsSwIdForUpdateComponentNames)
           {{{testCompIdentifier1, compObj1}},
            {{testCompIdentifier2, "UpdateName2"}}}}});
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
     dbus::MctpInterfaces mctpInterfaces{
         {uuid, {{"xyz.openbmc_project.Common.UUID", {{"UUID", uuid}}}}}};
 
@@ -594,7 +612,8 @@ TEST(ManagerCoverage, CreateEntryEmConfigCreatesObjects)
     ComponentNameMap componentNameMap{};
     FirmwareInventoryInfo fwInventoryInfo{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     CreateComponentIdNameMap emComponents{
         {testCompIdentifier1, makeComponentObject("EmComp1")},
@@ -630,7 +649,8 @@ TEST(ManagerCoverage, CreateEntryEmConfigUpdateOnlyAndFallbackAndSkip)
         {testEid, {{testCompIdentifier2, "FallbackComp2"}}}};
     FirmwareInventoryInfo fwInventoryInfo{};
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     CreateComponentIdNameMap emComponents{
         {testCompIdentifier1, makeComponentObject("EmUpdateOnly", true)}};
@@ -662,7 +682,8 @@ TEST(ManagerCoverage, UpdateEntryPaths)
         ComponentInfoMap emptyInfo{};
         ComponentNameMap componentNameMap{};
         FirmwareInventoryInfo fwInventoryInfo{};
-        Manager manager(busMock, fwInventoryInfo, emptyInfo, componentNameMap);
+        Manager manager(busMock, fwInventoryInfo, emptyInfo, componentNameMap,
+                        downstreamComponentInfoMap, downstreamDeviceNameMap);
         EXPECT_NO_THROW(manager.updateEntry(testEid, uuid, mctpInterfaces));
     }
 
@@ -672,7 +693,8 @@ TEST(ManagerCoverage, UpdateEntryPaths)
         ComponentNameMap componentNameMap{};
         FirmwareInventoryInfo fwInventoryInfo{};
         Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                        componentNameMap);
+                        componentNameMap, downstreamComponentInfoMap,
+                        downstreamDeviceNameMap);
         EXPECT_NO_THROW(manager.updateEntry(testEid, uuid, mctpInterfaces));
     }
 
@@ -685,7 +707,8 @@ TEST(ManagerCoverage, UpdateEntryPaths)
               {testCompIdentifier2, "GenName2"}}}};
         FirmwareInventoryInfo fwInventoryInfo{};
         Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                        componentNameMap);
+                        componentNameMap, downstreamComponentInfoMap,
+                        downstreamDeviceNameMap);
         manager.createEntry(testEid, uuid, mctpInterfaces);
         ASSERT_EQ(manager.firmwareInventoryMap.size(), 2U);
         EXPECT_NO_THROW(manager.updateEntry(testEid, uuid, mctpInterfaces));
@@ -707,7 +730,8 @@ TEST(ManagerCoverage, UpdateFWVersionPaths)
         ComponentInfoMap emptyInfo{};
         ComponentNameMap componentNameMap{};
         FirmwareInventoryInfo fwInventoryInfo{};
-        Manager manager(busMock, fwInventoryInfo, emptyInfo, componentNameMap);
+        Manager manager(busMock, fwInventoryInfo, emptyInfo, componentNameMap,
+                        downstreamComponentInfoMap, downstreamDeviceNameMap);
         EXPECT_NO_THROW(manager.updateFWVersion(testEid));
     }
 
@@ -720,7 +744,8 @@ TEST(ManagerCoverage, UpdateFWVersionPaths)
               {testCompIdentifier2, "GenName2"}}}};
         FirmwareInventoryInfo fwInventoryInfo{};
         Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                        componentNameMap);
+                        componentNameMap, downstreamComponentInfoMap,
+                        downstreamDeviceNameMap);
         manager.createEntry(testEid, uuid, mctpInterfaces);
         ASSERT_EQ(manager.firmwareInventoryMap.size(), 2U);
         EXPECT_NO_THROW(manager.updateFWVersion(testEid));
@@ -745,7 +770,8 @@ TEST(ManagerCoverage, CreateEntryJsonConfigRefreshInPlace)
 
     auto componentInfoMap = makeTwoComponentInfoMap("orig1", "orig2");
     Manager manager(busMock, fwInventoryInfo, componentInfoMap,
-                    componentNameMap);
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
 
     manager.createEntry(testEid, uuid, mctpInterfaces);
     ASSERT_EQ(manager.firmwareInventoryMap.size(), 1U);
@@ -753,4 +779,156 @@ TEST(ManagerCoverage, CreateEntryJsonConfigRefreshInPlace)
     // Second call finds the existing entry and refreshes its version in place.
     manager.createEntry(testEid, uuid, mctpInterfaces);
     EXPECT_EQ(manager.firmwareInventoryMap.size(), 1U);
+}
+
+// No downstream component info for the EID: nothing is created.
+TEST(ManagerCoverage, CreateDownstreamEntriesSkippedWhenNoComponentInfo)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamComponentInfoMap,
+                    downstreamDeviceNameMap);
+
+    manager.createDownstreamEntries(testEid);
+    EXPECT_TRUE(manager.downstreamInventoryMap.empty());
+}
+
+// Downstream component info exists but the name map has no entry for the
+// EID yet (createDownstreamInventory() races createDownstreamEntries()):
+// nothing is created.
+TEST(ManagerCoverage, CreateDownstreamEntriesSkippedWhenNoNameMap)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid, {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap emptyNameMap{};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, emptyNameMap);
+
+    manager.createDownstreamEntries(testEid);
+    EXPECT_TRUE(manager.downstreamInventoryMap.empty());
+}
+
+// A device index present in the component info but missing from the name
+// map (name resolution failed for that one index) is skipped individually.
+TEST(ManagerCoverage, CreateDownstreamEntriesSkipsIndexMissingFromNameMap)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid,
+         {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})},
+          {1, std::make_tuple(CompVersion{"2.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid, {{0, "FDP_DownstreamDevice_0"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+    EXPECT_TRUE(
+        manager.downstreamInventoryMap.contains(std::make_pair(testEid, 0)));
+}
+
+// Creating downstream entries does not stamp a SoftwareId: the decision was
+// to not expose SoftwareId for downstream devices on Redfish, and bmcweb
+// only surfaces the property when it is non-empty.
+TEST(ManagerCoverage, CreateDownstreamEntriesLeavesSoftwareIdEmpty)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid, {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid, {{0, "FDP_DownstreamDevice_0"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+    const auto& entry =
+        manager.downstreamInventoryMap.at(std::make_pair(testEid, 0));
+    EXPECT_EQ(entry->softwareId(), "");
+}
+
+// Re-running createDownstreamEntries() for the same EID refreshes the
+// version of an already-known device in place instead of throwing on a
+// duplicate object path.
+TEST(ManagerCoverage, CreateDownstreamEntriesRefreshesInPlace)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid, {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid, {{0, "FDP_DownstreamDevice_0"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+
+    downstreamInfo.at(testEid).at(0) =
+        std::make_tuple(CompVersion{"2.0"}, uint16_t{0});
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+    const auto& entry =
+        manager.downstreamInventoryMap.at(std::make_pair(testEid, 0));
+    EXPECT_EQ(entry->version(), "2.0");
+}
+
+// A device no longer reported by the FDP on a later discovery (e.g.
+// unplugged) is dropped from downstreamInventoryMap so a withdrawn
+// downstream device does not linger as a D-Bus object.
+TEST(ManagerCoverage, CreateDownstreamEntriesPrunesStaleDevice)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid,
+         {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})},
+          {1, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid,
+         {{0, "FDP_DownstreamDevice_0"}, {1, "FDP_DownstreamDevice_1"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 2U);
+
+    // Device index 1 is no longer reported.
+    downstreamInfo.at(testEid).erase(1);
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+    EXPECT_TRUE(
+        manager.downstreamInventoryMap.contains(std::make_pair(testEid, 0)));
+    EXPECT_FALSE(
+        manager.downstreamInventoryMap.contains(std::make_pair(testEid, 1)));
 }

@@ -10,6 +10,7 @@
 #include <xyz/openbmc_project/MCTP/Endpoint/client.hpp>
 
 #include <initializer_list>
+#include <optional>
 #include <vector>
 
 using MCTPEndpoint = sdbusplus::common::xyz::openbmc_project::mctp::Endpoint;
@@ -113,35 +114,24 @@ class MctpDiscovery
     /** @brief reference to the systemd bus */
     sdbusplus::bus_t& bus;
 
-    /** @brief Cached bus-owner service name resolved from
-     *         ObjectMapper.GetSubTree(MCTPPath, [MCTPInterface]) at
-     *         construction. Used as the `sender=` filter for the
-     *         InterfacesRemoved match rule so the daemon does NOT
-     *         hardcode `au.com.codeconstruct.MCTP1` (or any future
-     *         alternative bus-owner name) in its source.
-     *
-     *         If the mapper lookup fails or returns no matching service the
-     *         fallback is the legacy `MCTPService` constant — see
-     *         resolveBusOwner() in the .cpp.
+    /** @brief Bus-owner service name used as the `sender=` filter for the
+     *         InterfacesRemoved match rule below.
      *
      *         Declared BEFORE the match members so it is initialised first
      *         in the constructor initialiser list. */
-    const std::string resolvedMctpService;
+    const std::string mctpService;
 
     /** @brief Used to watch for the removed MCTP endpoints */
     sdbusplus::bus::match_t mctpEndpointRemovedSignal;
 
-    /** @brief Cached service name of the endpoint-identity publisher — the
-     *         owner of the Association.Definitions (configured_by) objects
-     *         under the MCTP subtree (today mctpreactor) — resolved at
-     *         construction via resolveIdentityOwner() in the .cpp; falls
-     *         back to the MCTPReactorService constant when no endpoint is
-     *         configured yet. Used as the `sender=` filter for the discovery
-     *         match below.
+    /** @brief Service name of the endpoint-identity publisher — the owner
+     *         of the Association.Definitions (configured_by) objects under
+     *         the MCTP subtree (today mctpreactor) — used as the `sender=`
+     *         filter for the discovery match below.
      *
      *         Declared BEFORE the match member so it is initialised first
      *         in the constructor initialiser list. */
-    const std::string resolvedIdentityService;
+    const std::string mctpReactorService;
 
     /** @brief The runtime endpoint-discovery trigger: the identity publisher
      *         (mctpreactor) adding the configured_by association on an
@@ -228,10 +218,9 @@ class MctpDiscovery
 
     /** @brief Get list of MctpInfos in MCTP control interface.
      *
-     *  Per unify-mctp_discovery_guidelines.md § 2.2 mandatory items 6 + 7,
-     *  this function retries on ObjectMapper.GetSubTree failure with bounded
-     *  backoff and reports the mapper-health outcome to the caller via the
-     *  return value. The constructor uses the return value to suppress an
+     *  Retries on ObjectMapper.GetSubTree failure with bounded backoff and
+     *  reports the mapper-health outcome to the caller via the return
+     *  value. The constructor uses the return value to suppress an
      *  empty-inventory publication when the mapper was unhealthy.
      *
      *  @param[in] mctpInfoMap - information of discovered MCTP endpoints
@@ -298,6 +287,12 @@ class MctpDiscovery
      *  consumed by getTargetNameForEid) and mctpInfoMap (so the endpoint is
      *  processed). An EID already resolved via configured_by is left untouched
      *  — configured_by remains authoritative.
+     *
+     *  Always issues its own GetSubTree(MCTPPath, [MCTPInterface]) rather
+     *  than reusing any earlier capture: on the startup path this runs
+     *  after getMctpInfos()'s per-endpoint searchConfigurationWithRetry
+     *  loop, which can sleep across a retry backoff, so an earlier capture
+     *  could have gone stale by the time this executes.
      *
      *  @param[in,out] mctpInfoMap - discovered endpoint -> availability map
      */

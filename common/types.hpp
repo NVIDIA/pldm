@@ -171,6 +171,20 @@ using CompInfo =
 using ComponentInfo = std::map<CompKey, CompInfo>;
 using ComponentInfoMap = std::unordered_map<eid, ComponentInfo>;
 
+// Downstream device component information
+// A downstream device reports exactly one component, so its parameter table
+// entry is keyed by the DownstreamDeviceIndex that QueryDownstreamIdentifiers
+// assigned to it rather than by a CompKey.
+using DownstreamCompInfo = std::tuple<CompVersion, CompActivationMethods>;
+using DownstreamComponentInfo =
+    std::map<DownstreamDeviceIndex, DownstreamCompInfo>;
+using DownstreamComponentInfoMap =
+    std::unordered_map<eid, DownstreamComponentInfo>;
+
+/** @brief D-Bus object names of the downstream devices behind an FDP */
+using DownstreamDeviceFwInvNameMap =
+    std::unordered_map<eid, std::map<DownstreamDeviceIndex, SoftwareName>>;
+
 // PackageHeaderInformation
 using PackageHeaderSize = size_t;
 using PackageVersion = std::string;

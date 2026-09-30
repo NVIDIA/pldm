@@ -39,6 +39,7 @@ using CreateInventoryCallBack =
     std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
 using UpdateInventoryCallBack =
     std::function<void(eid, UUID, dbus::MctpInterfaces& mctpInterfaces)>;
+using CreateDownstreamInventoryCallBack = std::function<void(eid)>;
 using UpdateFWVersionCallBack = std::function<void(eid)>;
 using MctpEidMap =
     std::unordered_map<eid, std::tuple<UUID, MctpMedium, MctpBinding>>;
@@ -142,12 +143,19 @@ class InventoryManager
      *                                       create device/firmware inventory
      *  @param[in] updateInventoryCallBack - Optional callback function to
      *                                       update device/firmware inventory
+     *  @param[in] createDownstreamInventoryCallBack - Optional callback
+     *                                       function to create the firmware
+     *                                       inventory of the downstream
+     *                                       devices behind an FDP
      *  @param[out] descriptorMap - Populate the firmware identifers for the
      *                              FDs managed by the BMC.
      *  @param[out] downstreamDescriptorMap - Populate the downstream
      *                                        identifiers for the FDs managed
      *                                        by the BMC.
      *  @param[out] componentInfoMap - Populate the component info for the FDs
+     *                                 managed by the BMC.
+     *  @param[out] downstreamComponentInfoMap - Populate the component info of
+     *                                 the downstream devices of the FDPs
      *                                 managed by the BMC.
      *  @param[in] numAttempts - number of command attempts
      */
@@ -157,17 +165,22 @@ class InventoryManager
         InstanceIdDb& instanceIdDb,
         CreateInventoryCallBack createInventoryCallBack,
         UpdateInventoryCallBack updateInventoryCallBack,
+        CreateDownstreamInventoryCallBack createDownstreamInventoryCallBack,
         DescriptorMap& descriptorMap,
         DownstreamDescriptorMap& downstreamDescriptorMap,
         ComponentInfoMap& componentInfoMap,
+        DownstreamComponentInfoMap& downstreamComponentInfoMap,
         uint8_t numAttempts =
             static_cast<uint8_t>(NUMBER_OF_COMMAND_ATTEMPTS)) :
         handler(handler), instanceIdDb(instanceIdDb),
         createInventoryCallBack(createInventoryCallBack),
         updateInventoryCallBack(updateInventoryCallBack),
+        createDownstreamInventoryCallBack(createDownstreamInventoryCallBack),
         descriptorMap(descriptorMap),
         downstreamDescriptorMap(downstreamDescriptorMap),
-        componentInfoMap(componentInfoMap), numAttempts(numAttempts)
+        componentInfoMap(componentInfoMap),
+        downstreamComponentInfoMap(downstreamComponentInfoMap),
+        numAttempts(numAttempts)
     {}
 
     /** @brief Destructor
@@ -267,6 +280,15 @@ class InventoryManager
     virtual sdbusplus::async::task<int> parseQueryDownstreamIdentifiersResponse(
         mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
 
+    /** @brief Handler for QueryDownstreamDevices command response
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *  @param[in] response - PLDM response message
+     *  @param[in] respMsgLen - Response message length
+     */
+    virtual sdbusplus::async::task<int> parseQueryDownstreamDevicesResponse(
+        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
+
     /** @brief Refresh descriptors for a single endpoint
      *
      *  Helper function to refresh QueryDeviceIdentifiers and
@@ -286,6 +308,25 @@ class InventoryManager
      */
     void cleanUpResources(mctp_eid_t eid);
 
+    /** @brief Refresh downstream device inventory for an already-discovered
+     *         endpoint
+     *
+     *  Called when an endpoint that was previously discovered transitions
+     *  back to Available. The endpoint's own firmware version refresh
+     *  (initiateGetActiveFirmwareVersion) does not rediscover the devices it
+     *  proxies, so a downstream population change while the endpoint was
+     *  offline would otherwise leave stale or missing downstream
+     *  Software.Version objects until the next full discovery. Public
+     *  wrapper around startDownstreamDiscoveryFlow for that path.
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *
+     *  @return PLDM_SUCCESS when the FDP reported its downstream devices,
+     *          an error code when it does not support the commands or the
+     *          exchange failed. The caller treats either as non-fatal.
+     */
+    exec::task<int> refreshDownstreamInventory(mctp_eid_t eid);
+
   private:
     /** @brief A collection of coroutine handlers used to register PLDM request
      * message handlers */
@@ -297,6 +338,22 @@ class InventoryManager
      */
     exec::task<int> startFirmwareDiscoveryFlow(
         mctp_eid_t eid, dbus::MctpInterfaces mctpInterfaces);
+
+    /** @brief Starts the downstream device inventory flow
+     *
+     *  Runs QueryDownstreamDevices, which chains QueryDownstreamIdentifiers
+     *  and GetDownstreamFirmwareParameters for an FDP that reports downstream
+     *  devices. Only meaningful once QueryDeviceIdentifiers and
+     *  GetFirmwareParameters have completed, so it is driven from the tail of
+     *  startFirmwareDiscoveryFlow.
+     *
+     *  @param[in] eid - Remote MCTP endpoint
+     *
+     *  @return PLDM_SUCCESS when the FDP reported its downstream devices,
+     *          an error code when it does not support the commands or the
+     *          exchange failed. The caller treats either as non-fatal.
+     */
+    exec::task<int> startDownstreamDiscoveryFlow(mctp_eid_t eid);
 
     /** @brief Starts get Active Firmware Version Flow
      *
@@ -369,15 +426,6 @@ class InventoryManager
         dbus::MctpInterfaces& mctpInterfaces,
         bool refreshFWVersionOnly = false);
 
-    /** @brief Handler for QueryDownstreamDevices command response
-     *
-     *  @param[in] eid - Remote MCTP endpoint
-     *  @param[in] response - PLDM response message
-     *  @param[in] respMsgLen - Response message length
-     */
-    virtual sdbusplus::async::task<int> parseQueryDownstreamDevicesResponse(
-        mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen);
-
     /** @brief Handler for GetDownstreamFirmwareParameters command response
      *
      *  @param[in] eid - Remote MCTP endpoint
@@ -422,6 +470,10 @@ class InventoryManager
     /** @brief Optional callback function to update device/firmware inventory*/
     UpdateInventoryCallBack updateInventoryCallBack;
 
+    /** @brief Optional callback function to create the firmware inventory of
+     *         the downstream devices behind an FDP */
+    CreateDownstreamInventoryCallBack createDownstreamInventoryCallBack;
+
     /** @brief Device identifiers of the managed FDs */
     DescriptorMap& descriptorMap;
 
@@ -433,6 +485,10 @@ class InventoryManager
 
     /** @brief Component information needed for the update of the managed FDs */
     ComponentInfoMap& componentInfoMap;
+
+    /** @brief Component information of the downstream devices of the managed
+     *         FDPs */
+    DownstreamComponentInfoMap& downstreamComponentInfoMap;
 
     /** @brief MCTP endpoint to MCTP UUID mapping*/
     MctpEidMap mctpEidMap;

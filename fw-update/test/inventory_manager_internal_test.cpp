@@ -135,6 +135,7 @@ class InventoryManagerInternalTest : public testing::Test
     DescriptorMap descriptorMap{};
     DownstreamDescriptorMap downstreamDescriptorMap{};
     ComponentInfoMap componentInfoMap{};
+    DownstreamComponentInfoMap downstreamComponentInfoMap{};
 };
 
 TEST_F(InventoryManagerInternalTest,
@@ -159,7 +160,8 @@ TEST_F(InventoryManagerInternalTest,
         [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
             updateCallbackCalled = true;
         },
-        descriptorMap, downstreamDescriptorMap, componentInfoMap);
+        nullptr, descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     dbus::MctpInterfaces mctpInterfaces{{uuid, {}}};
@@ -201,7 +203,8 @@ TEST_F(InventoryManagerInternalTest,
             EXPECT_EQ(callbackEid, eid);
             EXPECT_EQ(callbackUuid, uuid);
         },
-        descriptorMap, downstreamDescriptorMap, componentInfoMap);
+        nullptr, descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     MCTPEidInfoPriorityQueue queue;
@@ -238,8 +241,9 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.mctpEidMap[slowEid] =
         std::make_tuple(uuid, slowMedium, slowBinding);
@@ -284,8 +288,9 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.SMBus";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.mctpEidMap[newFastEid] =
         std::make_tuple(uuid, fastMedium, fastBinding);
@@ -318,8 +323,9 @@ TEST_F(InventoryManagerInternalTest,
 TEST_F(InventoryManagerInternalTest, discoverFDsHandlesEmptyEndpointList)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     MctpInfos mctpInfos{};
     dbus::MctpInterfaces mctpInterfaces{};
@@ -336,8 +342,9 @@ TEST_F(InventoryManagerInternalTest, discoverFDsHandlesEmptyEndpointList)
 TEST_F(InventoryManagerInternalTest, discoverFDsReturnsEarlyWhenTaskPending)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.discoverFDsTaskHandle.emplace();
     MctpInfos mctpInfos{};
@@ -354,8 +361,9 @@ TEST_F(InventoryManagerInternalTest, discoverFDsReturnsEarlyWhenTaskPending)
 TEST_F(InventoryManagerInternalTest, discoverFDsResetsCompletedTaskHandle)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     auto& [scope, rcOpt] = manager.discoverFDsTaskHandle.emplace();
     (void)scope;
@@ -372,8 +380,9 @@ TEST_F(InventoryManagerInternalTest, discoverFDsResetsCompletedTaskHandle)
 TEST_F(InventoryManagerInternalTest, discoverFDsTaskPopsQueuedEntry)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.queuedMctpInfos.emplace(MctpInfos{}, dbus::MctpInterfaces{});
     auto co = manager.discoverFDsTask();
@@ -399,8 +408,9 @@ TEST_F(InventoryManagerInternalTest, discoverFDsTaskContainsDiscoveryExceptions)
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     // Exhaust every instance ID for this EID so the first PLDM request issued
     // by startFirmwareDiscoveryFlow throws pldm::InstanceIdError.
@@ -429,8 +439,9 @@ TEST_F(InventoryManagerInternalTest, cleanUpResourcesErasesTrackedMaps)
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     descriptorMap.emplace(
@@ -446,8 +457,9 @@ TEST_F(InventoryManagerInternalTest, cleanUpResourcesErasesTrackedMaps)
 TEST_F(InventoryManagerInternalTest, logDeviceStatusErrorsReturnsFalse)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     EXPECT_FALSE(manager.logDeviceStatusErrors(1));
 }
@@ -473,8 +485,9 @@ TEST_F(InventoryManagerInternalTest,
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     EXPECT_TRUE(manager.logDeviceStatusErrors(8, true, "CoverageFW"));
 }
@@ -490,8 +503,9 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     dbus::MctpInterfaces mctpInterfaces{{uuid, {}}};
 
@@ -626,8 +640,9 @@ TEST_F(InventoryManagerInternalTest,
 {
     EXPECT_NO_THROW({
         InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                                 nullptr, descriptorMap,
-                                 downstreamDescriptorMap, componentInfoMap);
+                                 nullptr, nullptr, descriptorMap,
+                                 downstreamDescriptorMap, componentInfoMap,
+                                 downstreamComponentInfoMap);
 
         manager.inventoryCoRoutineHandlers.emplace(8, std::noop_coroutine());
         manager.inventoryCoRoutineHandlers.emplace(9, std::noop_coroutine());
@@ -648,7 +663,8 @@ TEST_F(InventoryManagerInternalTest,
         [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
             updateCallbackCalled = true;
         },
-        descriptorMap, downstreamDescriptorMap, componentInfoMap);
+        nullptr, descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        downstreamComponentInfoMap);
 
     std::string messageError;
     std::string resolution;
@@ -687,7 +703,8 @@ TEST_F(InventoryManagerInternalTest,
         [&](pldm::eid, UUID, dbus::MctpInterfaces&) {
             updateCallbackCalled = true;
         },
-        descriptorMap, downstreamDescriptorMap, componentInfoMap);
+        nullptr, descriptorMap, downstreamDescriptorMap, componentInfoMap,
+        downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     std::string messageError;
@@ -718,8 +735,9 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     std::string messageError;
@@ -748,8 +766,9 @@ TEST_F(InventoryManagerInternalTest,
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     MCTPEidInfoPriorityQueue queue;
@@ -774,8 +793,9 @@ TEST_F(InventoryManagerInternalTest,
 TEST_F(InventoryManagerInternalTest, transportWrapperPathsReturnErrors)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     uint64_t supportedTypes = 0;
     auto getTypes = manager.getPLDMTypes(1, supportedTypes);
@@ -833,8 +853,9 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
         "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe";
 
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
     manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
     descriptorMap.emplace(
         eid, Descriptors{{PLDM_FWUP_IANA_ENTERPRISE_ID,
@@ -870,8 +891,9 @@ TEST_F(InventoryManagerInternalTest, activeVersionAndRefreshPathsReturnErrors)
 TEST_F(InventoryManagerInternalTest, downstreamParserErrorPaths)
 {
     InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
-                             nullptr, descriptorMap, downstreamDescriptorMap,
-                             componentInfoMap);
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 1> invalidResp{
         0x00, 0x00, 0x00, 0x01};
@@ -889,4 +911,71 @@ TEST_F(InventoryManagerInternalTest, downstreamParserErrorPaths)
     auto parseFwRc = stdexec::sync_wait(std::move(parseFw));
     ASSERT_TRUE(parseFwRc.has_value());
     EXPECT_NE(std::get<0>(parseFwRc.value()), PLDM_SUCCESS);
+}
+
+// DSP0267 Table 15: an FDP that does not support downstream updates
+// (DownstreamDeviceUpdateSupported = 0) may still report inventory on the
+// devices it proxies, so this branch must still send
+// GetDownstreamFirmwareParameters rather than dropping the inventory
+// silently. Proven here by exhausting the EID's instance IDs first so that
+// the request this branch is expected to issue throws InstanceIdError; a
+// no-op branch would return PLDM_SUCCESS without throwing.
+TEST_F(InventoryManagerInternalTest,
+       downstreamDeviceUpdateNotSupportedStillFetchesFirmwareParameters)
+{
+    const pldm::eid eid = 12;
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
+
+    for (uintmax_t i = 0; i < pldmMaxInstanceIds; ++i)
+    {
+        auto id = instanceIdDb.next(eid);
+        ASSERT_TRUE(id.has_value());
+    }
+
+    // completion_code = PLDM_SUCCESS, downstream_device_update_supported =
+    // PLDM_FWUP_DOWNSTREAM_DEVICE_UPDATE_NOT_SUPPORTED,
+    // number_of_downstream_devices = 1 (this branch is only reached at all
+    // when the FDP actually reports proxying something), remaining fields 0.
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 10> resp{
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto* response = reinterpret_cast<const pldm_msg*>(resp.data());
+
+    EXPECT_THROW(stdexec::sync_wait(manager.parseQueryDownstreamDevicesResponse(
+                     eid, response, 10)),
+                 pldm::InstanceIdError);
+}
+
+// Code review on MR 2818: onlineMctpEndpoint() only called
+// updateFWInventory(), which refreshes direct firmware versions but never
+// re-runs downstream discovery, so a proxy that changes its downstream set
+// while coming back online could keep stale/missing downstream inventory
+// until an unrelated full discovery happened. refreshDownstreamInventory()
+// is the public entry point Manager::onlineMctpEndpoint() now calls to close
+// that gap. Proven the same way as the sibling test above: exhaust the EID's
+// instance IDs first so the QueryDownstreamDevices request this method is
+// expected to issue throws InstanceIdError; a no-op would return
+// PLDM_SUCCESS without throwing.
+TEST_F(InventoryManagerInternalTest,
+       refreshDownstreamInventoryIssuesQueryDownstreamDevices)
+{
+    const pldm::eid eid = 13;
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
+
+    for (uintmax_t i = 0; i < pldmMaxInstanceIds; ++i)
+    {
+        auto id = instanceIdDb.next(eid);
+        ASSERT_TRUE(id.has_value());
+    }
+
+    EXPECT_THROW(stdexec::sync_wait(manager.refreshDownstreamInventory(eid)),
+                 pldm::InstanceIdError);
 }
