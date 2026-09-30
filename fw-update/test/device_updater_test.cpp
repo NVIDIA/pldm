@@ -878,9 +878,18 @@ TEST_F(DeviceUpdaterTest,
     EXPECT_TRUE(localUpdater.isLiveActivationSupported());
 }
 
-TEST_F(DeviceUpdaterTest,
-       isLiveActivationSupportedReturnsFalseWhenActivationModBitNotSet)
+TEST_F(
+    DeviceUpdaterTest,
+    isLiveActivationSupportedReturnsTrueWhenActivationModUnsetButDeviceAndPackageAgree)
 {
+    // ComponentActivationMethodsModifications is only populated by the FD
+    // when ApplyComplete reports
+    // PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD (DSP0267 Table 26) --
+    // an explicit runtime change from what GetFirmwareParameters originally
+    // advertised. The common case (plain PLDM_FWUP_APPLY_SUCCESS) leaves it
+    // unset, and that must not veto self-contained activation when the
+    // device already advertised self-contained support and the package
+    // requests it.
     using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
         ApplyTime::RequestedApplyTimes;
 
@@ -901,10 +910,39 @@ TEST_F(DeviceUpdaterTest,
         &updateManager);
     localUpdater.componentActivationModifications.value = 0;
 
+    EXPECT_TRUE(localUpdater.isLiveActivationSupported());
+}
+
+TEST_F(
+    DeviceUpdaterTest,
+    isLiveActivationSupportedReturnsFalseWhenActivationModExplicitlyExcludesSelfContained)
+{
+    // When the FD *does* report an explicit activation-method modification
+    // (nonzero) that does not include self-contained, that explicit signal
+    // must still veto self-contained activation.
+    using ApplyTimes = sdbusplus::xyz::openbmc_project::Software::server::
+        ApplyTime::RequestedApplyTimes;
+
+    updateManager.setRequestedApplyTime(ApplyTimes::Immediate);
+    ComponentInfo selfContainedCompInfo{};
+    selfContainedCompInfo[{10, 100}] = std::make_tuple(
+        static_cast<uint8_t>(1), std::string("v"),
+        static_cast<uint16_t>(1 << PLDM_ACTIVATION_SELF_CONTAINED));
+    ComponentImageInfos localCompImageInfos = compImageInfos;
+    std::get<static_cast<size_t>(
+        ComponentImageInfoPos::ReqCompActivationMethodPos)>(
+        localCompImageInfos[0])
+        .set(PLDM_ACTIVATION_SELF_CONTAINED);
+
+    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
+                               localCompImageInfos, selfContainedCompInfo,
+                               compIdNameInfo, 512, &updateManager);
+    localUpdater.componentActivationModifications.value =
+        (1 << PLDM_ACTIVATION_AUTOMATIC);
+
     EXPECT_FALSE(localUpdater.isLiveActivationSupported());
 }
 
-||||||| parent of 49b22409 (fw-update: drop vendor name from comments)
 TEST_F(
     DeviceUpdaterTest,
     isLiveActivationSupportedReturnsTrueForDownstreamDeviceSupportingOnlySelfContained)
@@ -913,8 +951,8 @@ TEST_F(
     // bit[1] (Self-Contained, e.g. 0x2, no Automatic/reset/reboot/power-cycle
     // bits at all) has no other way to complete an update. If the package
     // also requests self-contained activation for that component, the UA
-    // must request it -- this is the exact scenario observed against the
-    // Google transceiver rig (nvbug 6727528 follow-up): ActivateFirmware was
+    // must request it -- this is the exact scenario observed against a
+    // transceiver rig (nvbug 6727528 follow-up): ActivateFirmware was
     // sent with SelfContainedActivationRequest=0 despite the device
     // advertising ActivationMethods=0x2 and the package's
     // RequestedComponentActivationMethod requesting self-contained.

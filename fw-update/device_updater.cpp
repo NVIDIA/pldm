@@ -1315,7 +1315,21 @@ bool DeviceUpdater::isLiveActivationSupported() const
         }
     }
 
-    if (!(componentActivationModifications.value &
+    // ComponentActivationMethodsModifications is only populated by the FD
+    // when ApplyComplete reports PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD
+    // (DSP0267 Table 26), i.e. an explicit runtime change to the
+    // originally-advertised ComponentActivationMethods. In the common case
+    // (plain PLDM_FWUP_APPLY_SUCCESS) it stays zero/unset, and self-contained
+    // support already established above from the device's advertised
+    // ComponentActivationMethods must not be vetoed by an unpopulated
+    // modifications field -- only an explicit modification that excludes
+    // self-contained should override that earlier determination. Without
+    // this check, a device that advertises only self-contained support (no
+    // other activation method available at all) could never have its update
+    // completed, since the alternative methods it doesn't support could
+    // never be used either.
+    if (componentActivationModifications.value != 0 &&
+        !(componentActivationModifications.value &
           (1 << PLDM_ACTIVATION_SELF_CONTAINED)))
     {
         return false;
