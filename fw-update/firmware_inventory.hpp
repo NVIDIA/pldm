@@ -157,9 +157,8 @@ class Manager
      *         behind a Firmware Device Proxy
      *
      *  One Software.Version object per downstream device, named after the FDP
-     *  so the objects read as belonging to it. The objects are inventory only:
-     *  they carry no updateable association, because pldmd drives updates
-     *  through the FDP's own components and not through
+     *  so the objects read as belonging to it. Each carries the updateable
+     *  association, since pldmd updates a downstream device through
      *  RequestDownstreamDeviceUpdate.
      *
      *  @param[in] eid - MCTP endpointID of the FDP

@@ -124,6 +124,7 @@ void Manager::createDownstreamEntries(pldm::eid eid)
         const std::string objPath = swBasePath + "/" + nameIt->second;
         auto entry =
             std::make_unique<Entry>(bus, objPath, version, "", "NVIDIA");
+        entry->createUpdateableAssociation(swBasePath);
 
         lg2::info(
             "Created downstream software D-Bus object: path={PATH}, downstream_device_index={INDEX}, version={VERSION}",

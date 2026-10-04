@@ -869,6 +869,33 @@ TEST(ManagerCoverage, CreateDownstreamEntriesLeavesSoftwareIdEmpty)
     EXPECT_EQ(entry->softwareId(), "");
 }
 
+// Downstream devices are updatable, so each entry carries the updateable
+// association that bmcweb maps to the Redfish Updateable property.
+TEST(ManagerCoverage, CreateDownstreamEntriesAddsUpdateableAssociation)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid, {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid, {{0, "FDP_DownstreamDevice_0"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    manager.createDownstreamEntries(testEid);
+    ASSERT_EQ(manager.downstreamInventoryMap.size(), 1U);
+    const auto& entry =
+        manager.downstreamInventoryMap.at(std::make_pair(testEid, 0));
+    auto assocs = entry->associations();
+    ASSERT_EQ(assocs.size(), 1U);
+    EXPECT_EQ(std::get<0>(assocs[0]), "software_version");
+    EXPECT_EQ(std::get<1>(assocs[0]), "updateable");
+}
+
 // Re-running createDownstreamEntries() for the same EID refreshes the
 // version of an already-known device in place instead of throwing on a
 // duplicate object path.
