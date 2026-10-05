@@ -429,11 +429,12 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief Match downstream device ID records in the package against the
      *         downstream devices behind each discovered FDP, and build one
-     *         DownstreamUpdateJob per resulting update (DSP0267 §12.17):
+     *         DownstreamUpdateJob per resulting update:
      *
-     *         - An FDP already matched for its own FD update is excluded
-     *           (§12.17: an FDP can't be in update mode for itself and its
-     *           downstream devices at once).
+     *         - An FDP that is also matched for its own FD update is still
+     *           a candidate; sequenceDeviceUpdaterInfos() orders the two
+     *           since an FD in update mode rejects another request to
+     *           enter it (DSP0267 §12.1).
      *         - Matching devices behind an FDP are grouped by identical
      *           descriptor sets.
      *         - With no Redfish targeting, each descriptor-group becomes one
@@ -465,9 +466,6 @@ class UpdateManager : public UpdateManagerBase
      *                          to tell "no targeting at all" apart from
      *                          "targeting resolved to zero downstream
      *                          devices")
-     *  @param[in] matchedFDPEids - eids already matched by
-     *                             associatePkgToDevices() for their own FD
-     *                             update; excluded from downstream matching
      *  @param[out] outFwDeviceIDRecords - Synthetic FirmwareDeviceIDRecords
      *                                    are appended here, one per job
      *  @param[out] outDownstreamJobByRecordOffset - Job metadata for each
@@ -475,7 +473,9 @@ class UpdateManager : public UpdateManagerBase
      *                                              record, keyed by its
      *                                              offset in
      *                                              outFwDeviceIDRecords
-     *  @param[in,out] totalNumComponentUpdates - Incremented by one per job
+     *  @param[in,out] totalNumComponentUpdates - Incremented by the number
+     *                                           of applicable components
+     *                                           per job
      *
      *  @return one DeviceUpdaterInfo per job, possibly several per eid
      */
@@ -485,11 +485,43 @@ class UpdateManager : public UpdateManagerBase
         const ComponentImageInfos& compImageInfos,
         const DownstreamTargetList& downstreamTargetList,
         const std::vector<sdbusplus::object_path>& objectPaths,
-        const std::unordered_set<mctp_eid_t>& matchedFDPEids,
         FirmwareDeviceIDRecords& outFwDeviceIDRecords,
         std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>&
             outDownstreamJobByRecordOffset,
         TotalComponentUpdates& totalNumComponentUpdates);
+
+    /** @brief Order each eid's update jobs by the package's component image
+     *         area, so a package listing a downstream device image, then
+     *         the FDP's own image, then another downstream device image
+     *         updates them in that order.
+     *
+     *  An FD in update mode rejects another RequestUpdate or
+     *  RequestDownstreamDeviceUpdate (DSP0267 §12.1), so the jobs of one
+     *  eid run strictly one after another; different eids are unaffected. A
+     * record whose components are interleaved with another record's is split
+     * into one job per contiguous run: each split job is a copy of the record
+     *  limited to that run, appended to records (and, for a downstream job,
+     *  to jobByRecordOffset). Jobs of one record that share a position (a
+     *  downstream record matching several device groups) stay in their
+     *  given order. An FD record sorts ahead of a downstream record for the
+     *  same component image.
+     *
+     *  Must run before any DeviceUpdater is constructed, since those hold
+     *  references into records.
+     *
+     *  @param[in] deviceUpdaterInfos - FD and downstream jobs from the
+     *                                  association functions
+     *  @param[in,out] records - Split records are appended here
+     *  @param[in,out] jobByRecordOffset - Job metadata for appended
+     *                                     downstream records is added here
+     *
+     *  @return the jobs grouped by eid, each eid's in execution order
+     */
+    DeviceUpdaterInfos sequenceDeviceUpdaterInfos(
+        const DeviceUpdaterInfos& deviceUpdaterInfos,
+        FirmwareDeviceIDRecords& records,
+        std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>&
+            jobByRecordOffset);
 
     const std::string swRootPath{"/xyz/openbmc_project/software/"};
     Event& event;
@@ -616,33 +648,45 @@ class UpdateManager : public UpdateManagerBase
      */
     void recordUnavailableTargetEids(const ComponentTargetList& compTargetList);
 
-    /** @brief Construct and start the DeviceUpdater for (eid, recordOffset)
-     *         against activePackageData/activePackageSize, and emit its targetDetermined
-     *         message registry entries.
+    /** @brief Construct the DeviceUpdater for (eid, recordOffset) against
+     *         activePackageData/activePackageSize, replacing eid's previous
+     *         one.
      *
      *  Shared by the initial per-eid construction in processStream() and by
-     *  startNextDownstreamJob() when sequencing a later job queued for an
-     *  eid with more than one downstream update job: RequestDownstreamDevice
-     *  Update addresses one FDP at a time, so multiple jobs for the same
-     *  FDP run as successive DeviceUpdater instances rather than
-     *  concurrently.
+     *  startNextJob() when sequencing a later job queued for an eid: an
+     *  FDP runs its own update and its downstream device updates as
+     *  successive DeviceUpdater instances rather than concurrently.
+     *
+     *  @return false if the job can't run (a direct FD update needs the
+     *          eid's component info) and no DeviceUpdater was constructed
      */
-    void startDeviceUpdater(mctp_eid_t eid, DeviceIDRecordOffset recordOffset);
+    bool startDeviceUpdater(mctp_eid_t eid, DeviceIDRecordOffset recordOffset);
 
-    /** @brief If eid has more downstream update jobs queued, pop and start
-     *         the next one in place of recording eid's overall completion.
+    /** @brief Pop eid's queued jobs until one yields a DeviceUpdater.
+     *
+     *  @param[in] failSkippedJobs - mark eid's sequence failed and account
+     *                               the progress of each job that can't be
+     *                               started, rather than dropping it
+     *                               silently
+     *  @return true if a DeviceUpdater was constructed; its flow is not
+     *          started
+     */
+    bool startNextJob(mctp_eid_t eid, bool failSkippedJobs);
+
+    /** @brief If eid has more jobs queued, start the next one in place of
+     *         recording eid's overall completion.
      *
      *  @param[in] status - completion status of the job that just finished
      *  @param[in] successCompNames - components the just-finished job
      *                                updated successfully
      *  @return true if a queued job was started (caller must not also
      *          record eid's overall completion), false if there was
-     *          nothing queued (eid's completion should be recorded
+     *          nothing to start (eid's completion should be recorded
      *          normally, using the accumulated status/successCompNames
      *          across every job that ran for eid)
      */
-    bool startNextDownstreamJob(mctp_eid_t eid, bool status,
-                                std::vector<std::string>& successCompNames);
+    bool advanceJobSequence(mctp_eid_t eid, bool status,
+                            std::vector<std::string>& successCompNames);
 
     /** @brief Emit a Critical ResourceErrorsDetected log entry for each
      *         user-requested PLDM target whose image is not in the package.
@@ -741,7 +785,7 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief The current package data and size, set at the top of
      *         processPackageData() and used by startDeviceUpdater() when it
-     *         runs later (from startNextDownstreamJob(), driven by a
+     *         runs later (from advanceJobSequence(), driven by a
      *         DeviceUpdater completion callback). The mapping outlives the
      *         activation. */
     const uint8_t* activePackageData = nullptr;
@@ -753,23 +797,28 @@ class UpdateManager : public UpdateManagerBase
     std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>
         downstreamJobByRecordOffset;
 
-    /** @brief Downstream update jobs (record offsets) queued per FDP eid
-     *         beyond the one currently running; popped and started one at a
-     *         time as each job's DeviceUpdater completes, since
-     *         RequestDownstreamDeviceUpdate addresses one FDP at a time. */
+    /** @brief Update jobs (record offsets), FD and downstream, queued per
+     *         eid in component image area order; popped and started one at
+     *         a time as each job's DeviceUpdater completes, since an FD in
+     *         update mode rejects another update request. */
     std::unordered_map<mctp_eid_t, std::deque<DeviceIDRecordOffset>>
-        pendingDownstreamJobs;
+        pendingUpdateJobs;
 
-    /** @brief True once any job in an eid's downstream update sequence has
-     *         failed, so the eid's single recorded completion status
-     *         reflects the whole sequence rather than just its last job. */
-    std::unordered_map<mctp_eid_t, bool> downstreamJobFailed;
+    /** @brief True once any job in an eid's update sequence has failed, so
+     *         the eid's single recorded completion status reflects the
+     *         whole sequence rather than just its last job. */
+    std::unordered_map<mctp_eid_t, bool> jobSequenceFailed;
 
     /** @brief Component names successfully updated, accumulated across
-     *         every downstream job run for an eid before the final
+     *         every job run for an eid before the final
      *         updateDeviceCompletion() call for that eid. */
     std::unordered_map<mctp_eid_t, std::vector<std::string>>
-        downstreamJobSuccessCompNames;
+        jobSequenceSuccessCompNames;
+
+    /** @brief DeviceUpdaters replaced by a later job for the same eid. A
+     *         finished DeviceUpdater is still executing when it triggers
+     *         its successor, so it is kept until the activation clears. */
+    std::vector<std::unique_ptr<DeviceUpdater>> retiredDeviceUpdaters;
 
     bool updateInProgress = false;
     /** @brief Expected (updatable) component identifiers per endpoint,

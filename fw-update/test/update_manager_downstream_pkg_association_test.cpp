@@ -43,6 +43,7 @@ class DownstreamPackageAssociation : public testing::Test
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, false, nullptr,
+                      emptyExpectedComponentIds, {}, {}, {}, {},
                       downstreamDescriptorMap, downstreamComponentInfoMap,
                       downstreamDeviceNameMap)
     {}
@@ -86,7 +87,6 @@ class DownstreamPackageAssociation : public testing::Test
     };
 
     std::vector<sdbusplus::object_path> noTargets;
-    std::unordered_set<mctp_eid_t> noMatchedFDPEids;
 };
 
 TEST_F(DownstreamPackageAssociation, NoTargetingIdenticalDescriptorsBroadcasts)
@@ -103,7 +103,7 @@ TEST_F(DownstreamPackageAssociation, NoTargetingIdenticalDescriptorsBroadcasts)
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDownstreamDevices(
         downstreamDeviceIDRecords, downstreamDescriptorMap, compImageInfos,
-        downstreamTargetList, noTargets, noMatchedFDPEids, outFwDeviceIDRecords,
+        downstreamTargetList, noTargets, outFwDeviceIDRecords,
         outDownstreamJobByRecordOffset, totalNumComponentUpdates);
 
     ASSERT_EQ(deviceUpdaterInfos.size(), 1u);
@@ -141,7 +141,7 @@ TEST_F(DownstreamPackageAssociation,
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDownstreamDevices(
         downstreamDeviceIDRecords, downstreamDescriptorMap, compImageInfos,
-        downstreamTargetList, targets, noMatchedFDPEids, outFwDeviceIDRecords,
+        downstreamTargetList, targets, outFwDeviceIDRecords,
         outDownstreamJobByRecordOffset, totalNumComponentUpdates);
 
     // Even though both targeted devices share identical descriptors, an
@@ -179,7 +179,7 @@ TEST_F(DownstreamPackageAssociation, TargetingSingleDeviceYieldsOneJob)
 
     auto deviceUpdaterInfos = updateManager.associatePkgToDownstreamDevices(
         downstreamDeviceIDRecords, downstreamDescriptorMap, compImageInfos,
-        downstreamTargetList, targets, noMatchedFDPEids, outFwDeviceIDRecords,
+        downstreamTargetList, targets, outFwDeviceIDRecords,
         outDownstreamJobByRecordOffset, totalNumComponentUpdates);
 
     ASSERT_EQ(deviceUpdaterInfos.size(), 1u);
@@ -189,27 +189,232 @@ TEST_F(DownstreamPackageAssociation, TargetingSingleDeviceYieldsOneJob)
     EXPECT_EQ(job.deviceIndex, device0);
 }
 
-TEST_F(DownstreamPackageAssociation, FDPMatchedForOwnFDUpdateIsExcluded)
+TEST_F(DownstreamPackageAssociation, FDPMatchedForOwnFDUpdateStillGetsJobs)
 {
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>
         outDownstreamJobByRecordOffset;
     TotalComponentUpdates totalNumComponentUpdates = 0;
 
-    std::unordered_set<mctp_eid_t> matchedFDPEids{fdpEid};
-
     DownstreamTargetList downstreamTargetList =
         updateManager.getDownstreamTargetList(downstreamDeviceNameMap,
                                               noTargets);
     auto deviceUpdaterInfos = updateManager.associatePkgToDownstreamDevices(
         downstreamDeviceIDRecords, downstreamDescriptorMap, compImageInfos,
-        downstreamTargetList, noTargets, matchedFDPEids, outFwDeviceIDRecords,
+        downstreamTargetList, noTargets, outFwDeviceIDRecords,
         outDownstreamJobByRecordOffset, totalNumComponentUpdates);
 
-    // DSP0267 §12.17: an FDP already in update mode for its own firmware
-    // cannot simultaneously be in update mode for its downstream devices.
-    EXPECT_TRUE(deviceUpdaterInfos.empty());
-    EXPECT_EQ(totalNumComponentUpdates, 0u);
+    ASSERT_EQ(deviceUpdaterInfos.size(), 1u);
+    EXPECT_EQ(deviceUpdaterInfos[0].first, fdpEid);
+    EXPECT_EQ(totalNumComponentUpdates, 1u);
+    EXPECT_EQ(outDownstreamJobByRecordOffset.at(deviceUpdaterInfos[0].second)
+                  .sourceRecordIndex,
+              0u);
+}
+
+/** @brief Fixture for sequenceDeviceUpdaterInfos(), which only looks at
+ *         record offsets, applicable components and job source records. */
+class JobSequencing : public testing::Test
+{
+  protected:
+    JobSequencing() :
+        event(sdeventplus::Event::get_default()),
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
+        updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                      componentInfoMap, componentNameMap, false, nullptr)
+    {}
+
+    static constexpr eid fdpEid = 61;
+    static constexpr eid otherFdpEid = 71;
+
+    DeviceIDRecordOffset addFdRecord(ApplicableComponents components)
+    {
+        records.emplace_back(DeviceUpdateOptionFlags{}, components,
+                             ComponentImageSetVersion{}, Descriptors{},
+                             FirmwareDevicePackageData{});
+        return records.size() - 1;
+    }
+
+    DeviceIDRecordOffset addDownstreamJob(ApplicableComponents components,
+                                          size_t sourceRecordIndex,
+                                          DownstreamDeviceIndex deviceIndex = 0)
+    {
+        auto offset = addFdRecord(components);
+        DownstreamUpdateJob job;
+        job.deviceIndex = deviceIndex;
+        job.mode = DownstreamUpdateAddressMode::SingleDevice;
+        job.affectedDeviceIndices = {deviceIndex};
+        job.sourceRecordIndex = sourceRecordIndex;
+        jobs.emplace(offset, job);
+        return offset;
+    }
+
+    DeviceUpdaterInfos sequence(const DeviceUpdaterInfos& infos)
+    {
+        return updateManager.sequenceDeviceUpdaterInfos(infos, records, jobs);
+    }
+
+    const ApplicableComponents& componentsAt(DeviceIDRecordOffset offset)
+    {
+        return std::get<ApplicableComponents>(records[offset]);
+    }
+
+    sdeventplus::Event event;
+    TestInstanceIdDb instanceIdDb;
+    requester::Handler<requester::Request> reqHandler;
+    const DescriptorMap descriptorMap;
+    const ComponentInfoMap componentInfoMap;
+    ComponentNameMap componentNameMap;
+    UpdateManager updateManager;
+
+    FirmwareDeviceIDRecords records;
+    std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob> jobs;
+};
+
+TEST_F(JobSequencing, DownstreamThenFdpThenDownstream)
+{
+    auto fd = addFdRecord({1});
+    auto downstream1 = addDownstreamJob({0}, 0);
+    auto downstream2 = addDownstreamJob({2}, 1);
+
+    auto sequenced =
+        sequence({{fdpEid, fd}, {fdpEid, downstream1}, {fdpEid, downstream2}});
+
+    EXPECT_THAT(sequenced,
+                testing::ElementsAre(testing::Pair(fdpEid, downstream1),
+                                     testing::Pair(fdpEid, fd),
+                                     testing::Pair(fdpEid, downstream2)));
+    EXPECT_EQ(records.size(), 3u);
+}
+
+TEST_F(JobSequencing, FdpThenDownstreamKeepsRecordsUntouched)
+{
+    auto fd = addFdRecord({0, 1});
+    auto downstream = addDownstreamJob({2}, 0);
+
+    auto sequenced = sequence({{fdpEid, fd}, {fdpEid, downstream}});
+
+    EXPECT_THAT(sequenced,
+                testing::ElementsAre(testing::Pair(fdpEid, fd),
+                                     testing::Pair(fdpEid, downstream)));
+    EXPECT_EQ(records.size(), 2u);
+}
+
+TEST_F(JobSequencing, DownstreamThenFdp)
+{
+    auto fd = addFdRecord({1});
+    auto downstream = addDownstreamJob({0}, 0);
+
+    auto sequenced = sequence({{fdpEid, fd}, {fdpEid, downstream}});
+
+    EXPECT_THAT(sequenced,
+                testing::ElementsAre(testing::Pair(fdpEid, downstream),
+                                     testing::Pair(fdpEid, fd)));
+}
+
+TEST_F(JobSequencing, DownstreamInsideFdRecordSplitsTheFdRecord)
+{
+    auto fd = addFdRecord({0, 2});
+    auto downstream = addDownstreamJob({1}, 0);
+
+    auto sequenced = sequence({{fdpEid, fd}, {fdpEid, downstream}});
+
+    ASSERT_EQ(sequenced.size(), 3u);
+    EXPECT_EQ(componentsAt(sequenced[0].second), ApplicableComponents({0}));
+    EXPECT_EQ(sequenced[1], DeviceUpdaterInfo(fdpEid, downstream));
+    EXPECT_EQ(componentsAt(sequenced[2].second), ApplicableComponents({2}));
+    EXPECT_NE(sequenced[0].second, sequenced[2].second);
+    EXPECT_FALSE(jobs.contains(sequenced[0].second));
+    EXPECT_FALSE(jobs.contains(sequenced[2].second));
+}
+
+TEST_F(JobSequencing, FdInsideDownstreamRecordSplitsTheDownstreamJob)
+{
+    auto fd = addFdRecord({1});
+    auto downstream = addDownstreamJob({0, 2}, 0, 5);
+
+    auto sequenced = sequence({{fdpEid, fd}, {fdpEid, downstream}});
+
+    ASSERT_EQ(sequenced.size(), 3u);
+    EXPECT_EQ(componentsAt(sequenced[0].second), ApplicableComponents({0}));
+    EXPECT_EQ(sequenced[1], DeviceUpdaterInfo(fdpEid, fd));
+    EXPECT_EQ(componentsAt(sequenced[2].second), ApplicableComponents({2}));
+    for (size_t i : {0u, 2u})
+    {
+        ASSERT_TRUE(jobs.contains(sequenced[i].second));
+        EXPECT_EQ(jobs.at(sequenced[i].second).deviceIndex, 5);
+    }
+}
+
+TEST_F(JobSequencing, DeviceGroupsOfOneRecordStayTogetherAroundAnFdImage)
+{
+    auto fd = addFdRecord({1});
+    auto groupA = addDownstreamJob({0, 2}, 0, 0);
+    auto groupB = addDownstreamJob({0, 2}, 0, 1);
+
+    auto sequenced =
+        sequence({{fdpEid, fd}, {fdpEid, groupA}, {fdpEid, groupB}});
+
+    ASSERT_EQ(sequenced.size(), 5u);
+    EXPECT_EQ(jobs.at(sequenced[0].second).deviceIndex, 0);
+    EXPECT_EQ(jobs.at(sequenced[1].second).deviceIndex, 1);
+    EXPECT_EQ(sequenced[2], DeviceUpdaterInfo(fdpEid, fd));
+    EXPECT_EQ(jobs.at(sequenced[3].second).deviceIndex, 0);
+    EXPECT_EQ(jobs.at(sequenced[4].second).deviceIndex, 1);
+    for (size_t i : {0u, 1u})
+    {
+        EXPECT_EQ(componentsAt(sequenced[i].second), ApplicableComponents({0}));
+    }
+    for (size_t i : {3u, 4u})
+    {
+        EXPECT_EQ(componentsAt(sequenced[i].second), ApplicableComponents({2}));
+    }
+}
+
+TEST_F(JobSequencing, SameComponentFdBeforeDownstream)
+{
+    auto fd = addFdRecord({0});
+    auto downstream = addDownstreamJob({0}, 0);
+
+    auto sequenced = sequence({{fdpEid, downstream}, {fdpEid, fd}});
+
+    EXPECT_THAT(sequenced,
+                testing::ElementsAre(testing::Pair(fdpEid, fd),
+                                     testing::Pair(fdpEid, downstream)));
+}
+
+TEST_F(JobSequencing, DownstreamRecordsOrderedByComponentNotPackageRecord)
+{
+    auto later = addDownstreamJob({3}, 0);
+    auto earlier = addDownstreamJob({1}, 1);
+
+    auto sequenced = sequence({{fdpEid, later}, {fdpEid, earlier}});
+
+    EXPECT_THAT(sequenced, testing::ElementsAre(testing::Pair(fdpEid, earlier),
+                                                testing::Pair(fdpEid, later)));
+}
+
+TEST_F(JobSequencing, EidsAreSequencedIndependently)
+{
+    auto fd = addFdRecord({1});
+    auto downstream1 = addDownstreamJob({0}, 0);
+    auto otherFd = addFdRecord({0});
+    auto otherDownstream = addDownstreamJob({1}, 1);
+
+    auto sequenced = sequence({{fdpEid, fd},
+                               {otherFdpEid, otherFd},
+                               {fdpEid, downstream1},
+                               {otherFdpEid, otherDownstream}});
+
+    std::vector<DeviceIDRecordOffset> fdpOrder;
+    std::vector<DeviceIDRecordOffset> otherOrder;
+    for (const auto& [eid, offset] : sequenced)
+    {
+        (eid == fdpEid ? fdpOrder : otherOrder).push_back(offset);
+    }
+    EXPECT_THAT(fdpOrder, testing::ElementsAre(downstream1, fd));
+    EXPECT_THAT(otherOrder, testing::ElementsAre(otherFd, otherDownstream));
 }
 
 TEST(DownstreamPackageAssociationNoComponentInfo,
@@ -246,12 +451,11 @@ TEST(DownstreamPackageAssociationNoComponentInfo,
         {0, {0}, makeDescriptors(0x01), {}},
     };
     std::vector<sdbusplus::object_path> noTargets;
-    std::unordered_set<mctp_eid_t> noMatchedFDPEids;
 
-    UpdateManager um(event, reqHandler, instanceIdDb, descriptorMap,
-                     componentInfoMap, componentNameMap, false, nullptr,
-                     downstreamDescriptorMap, noComponentInfo,
-                     downstreamDeviceNameMap);
+    UpdateManager um(
+        event, reqHandler, instanceIdDb, descriptorMap, componentInfoMap,
+        componentNameMap, false, nullptr, emptyExpectedComponentIds, {}, {}, {},
+        {}, downstreamDescriptorMap, noComponentInfo, downstreamDeviceNameMap);
 
     FirmwareDeviceIDRecords outFwDeviceIDRecords;
     std::unordered_map<DeviceIDRecordOffset, DownstreamUpdateJob>
@@ -262,7 +466,7 @@ TEST(DownstreamPackageAssociationNoComponentInfo,
         um.getDownstreamTargetList(downstreamDeviceNameMap, noTargets);
     auto deviceUpdaterInfos = um.associatePkgToDownstreamDevices(
         downstreamDeviceIDRecords, downstreamDescriptorMap, compImageInfos,
-        downstreamTargetList, noTargets, noMatchedFDPEids, outFwDeviceIDRecords,
+        downstreamTargetList, noTargets, outFwDeviceIDRecords,
         outDownstreamJobByRecordOffset, totalNumComponentUpdates);
 
     // Neither device has a parameter-table entry (GetDownstreamFirmware
@@ -281,10 +485,11 @@ TEST(UpdateManagerRefreshCallback, IsVisibleThroughUpdateManagerBase)
     const ComponentInfoMap componentInfoMap;
     ComponentNameMap componentNameMap;
 
-    UpdateManager um(
-        event, reqHandler, instanceIdDb, descriptorMap, componentInfoMap,
-        componentNameMap, false,
-        [](mctp_eid_t, bool) -> exec::task<int> { co_return PLDM_SUCCESS; });
+    UpdateManager um(event, reqHandler, instanceIdDb, descriptorMap,
+                     componentInfoMap, componentNameMap, false,
+                     [](mctp_eid_t, bool, bool) -> exec::task<int> {
+                         co_return PLDM_SUCCESS;
+                     });
 
     // DeviceUpdater reads the callback through an UpdateManagerBase*.
     const UpdateManagerBase& base = um;

@@ -271,6 +271,10 @@ struct DownstreamUpdateJob
      *         for AllMatchingDevices. Used for post-update inventory
      *         refresh/target bookkeeping, not for wire encoding. */
     std::vector<DownstreamDeviceIndex> affectedDeviceIndices;
+    /** @brief Index of the package's downstream device ID record this job
+     *         was built from. Jobs sharing a record are ordered as one unit
+     *         against other records by component image area position. */
+    size_t sourceRecordIndex = 0;
 };
 using DownstreamUpdateJobs = std::vector<DownstreamUpdateJob>;
 /** @brief Downstream update jobs to run for an FDP, keyed by its eid. */

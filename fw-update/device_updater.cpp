@@ -1010,10 +1010,10 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                     }
                 }
 
+                co_await refreshInventoryAfterActivation();
+
                 updateManager->updateDeviceCompletion(eid, true,
                                                       successCompNames);
-
-                co_await refreshInventoryAfterActivation();
 
                 deviceUpdaterState.nextState(deviceUpdaterState.current,
                                              componentIndex, numComponents);

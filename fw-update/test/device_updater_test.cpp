@@ -247,9 +247,13 @@ class DeviceUpdaterTest : public testing::Test
 TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationInvokesCallback)
 {
     std::vector<std::pair<mctp_eid_t, bool>> calls;
+    bool preUpdateValidationSeen = true;
     updateManager.refreshSingleEndpointCallback =
-        [&calls](mctp_eid_t e, bool isTarget) -> exec::task<int> {
+        [&calls, &preUpdateValidationSeen](
+            mctp_eid_t e, bool isTarget,
+            bool preUpdateValidation) -> exec::task<int> {
         calls.emplace_back(e, isTarget);
+        preUpdateValidationSeen = preUpdateValidation;
         co_return PLDM_SUCCESS;
     };
 
@@ -259,6 +263,7 @@ TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationInvokesCallback)
     ASSERT_TRUE(rc.has_value());
     ASSERT_EQ(calls.size(), 1U);
     EXPECT_EQ(calls[0], std::make_pair(eid, true));
+    EXPECT_FALSE(preUpdateValidationSeen);
 }
 
 TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationWithoutCallbackIsNoop)
