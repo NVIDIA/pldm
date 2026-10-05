@@ -270,3 +270,23 @@ TEST(DownstreamPackageAssociationNoComponentInfo,
     // activation-method info to drive an update -- nothing should match.
     EXPECT_TRUE(deviceUpdaterInfos.empty());
 }
+
+TEST(UpdateManagerRefreshCallback, IsVisibleThroughUpdateManagerBase)
+{
+    sdeventplus::Event event = sdeventplus::Event::get_default();
+    TestInstanceIdDb instanceIdDb;
+    requester::Handler<requester::Request> reqHandler(
+        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
+    const DescriptorMap descriptorMap;
+    const ComponentInfoMap componentInfoMap;
+    ComponentNameMap componentNameMap;
+
+    UpdateManager um(
+        event, reqHandler, instanceIdDb, descriptorMap, componentInfoMap,
+        componentNameMap, false,
+        [](mctp_eid_t, bool) -> exec::task<int> { co_return PLDM_SUCCESS; });
+
+    // DeviceUpdater reads the callback through an UpdateManagerBase*.
+    const UpdateManagerBase& base = um;
+    EXPECT_TRUE(static_cast<bool>(base.refreshSingleEndpointCallback));
+}

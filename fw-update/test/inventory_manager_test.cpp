@@ -224,8 +224,38 @@ TEST_F(InventoryManagerTest, handleQueryDownstreamDevicesResponseZeroCount)
     auto rc = stdexec::sync_wait(std::move(co));
 
     EXPECT_EQ(std::get<0>(rc.value()), PLDM_SUCCESS);
-    EXPECT_TRUE(outDownstreamComponentInfoMap.empty());
-    EXPECT_TRUE(outDownstreamDescriptorMap.empty());
+    // An empty entry is recorded for the EID rather than none, so a device
+    // that previously had downstream devices does not keep a stale entry.
+    ASSERT_TRUE(outDownstreamComponentInfoMap.contains(1));
+    EXPECT_TRUE(outDownstreamComponentInfoMap.at(1).empty());
+    ASSERT_TRUE(outDownstreamDescriptorMap.contains(1));
+    EXPECT_TRUE(outDownstreamDescriptorMap.at(1).empty());
+}
+
+TEST_F(InventoryManagerTest,
+       handleQueryDownstreamDevicesResponseZeroCountNotifiesInventory)
+{
+    constexpr size_t respPayloadLength = 10;
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + respPayloadLength>
+        queryDownstreamDevicesResp{0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+                                   0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto responseMsg = new (
+        const_cast<unsigned char*>(queryDownstreamDevicesResp.data())) pldm_msg;
+
+    std::vector<eid> notified;
+    InventoryManager manager(
+        &dBusHandler, reqHandler, instanceIdDb, nullptr, nullptr,
+        [&notified](eid e) { notified.push_back(e); }, outDescriptorMap,
+        outDownstreamDescriptorMap, outComponentInfoMap,
+        outDownstreamComponentInfoMap);
+
+    auto co = manager.parseQueryDownstreamDevicesResponse(
+        1, responseMsg, respPayloadLength);
+    auto rc = stdexec::sync_wait(std::move(co));
+
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(rc.value()), PLDM_SUCCESS);
+    EXPECT_EQ(notified, std::vector<eid>{1});
 }
 
 TEST_F(InventoryManagerTest, getFirmwareParametersResponse)

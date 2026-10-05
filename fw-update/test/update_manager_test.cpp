@@ -3054,3 +3054,28 @@ TEST_F(UpdateManagerTest,
     EXPECT_NE(updateManager.activationBlocksTransition, nullptr);
     updateManager.progressTimer->stop();
 }
+
+TEST_F(UpdateManagerTest,
+       logUnupdatedTargetsKeepsDirectTargetBehindProxyReported)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    descriptorMap[61] = {};
+    updateManager.requestedTargets = {{"CX_0", 61}};
+    updateManager.requestedDownstreamTargets = {{"XCVR_0", {61, 0}},
+                                                {"XCVR_1", {62, 1}}};
+    updateManager.downstreamJobByRecordOffset[7] =
+        DownstreamUpdateJob{0, DownstreamUpdateAddressMode::SingleDevice, {0}};
+
+    updateManager.logUnupdatedTargets({{61, 7}});
+
+    EXPECT_TRUE(updateManager.requestedTargets.empty());
+    EXPECT_TRUE(updateManager.requestedDownstreamTargets.empty());
+
+    updateManager.requestedTargets = {{"CX_0", 61}};
+    updateManager.requestedDownstreamTargets = {{"XCVR_0", {61, 0}}};
+    updateManager.logUnupdatedTargets({{61, 8}});
+    EXPECT_TRUE(updateManager.requestedTargets.empty());
+    EXPECT_TRUE(updateManager.requestedDownstreamTargets.empty());
+}

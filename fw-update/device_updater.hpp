@@ -636,6 +636,17 @@ class DeviceUpdater
      *  @return exec::task<ActivationPollStatus> - The current activation status
      */
     exec::task<ActivationPollStatus> pollSelfContainedActivationStatus();
+
+    /** @brief Re-query firmware inventory after a successful self-contained
+     *         activation so D-Bus reflects the now-running version without
+     *         waiting on a full rediscovery or an aux power cycle.
+     *
+     *  Calls updateManager->refreshSingleEndpointCallback(eid, true), which
+     *  refreshes this eid's own inventory and then its downstream devices,
+     *  covering a direct FD activation and a downstream device activation
+     *  (isDownstreamUpdate()) with one call.
+     */
+    exec::task<void> refreshInventoryAfterActivation();
 };
 
 } // namespace fw_update

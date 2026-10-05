@@ -19,7 +19,6 @@
 #include "libpldm/firmware_update.h"
 
 #include "activation.hpp"
-#include "device_updater.hpp"
 #include "error_handling.hpp"
 #include "fw_update_utility.hpp"
 #include "update_manager.hpp"

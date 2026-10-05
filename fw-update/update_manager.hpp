@@ -593,9 +593,6 @@ class UpdateManager : public UpdateManagerBase
 
     std::unique_ptr<PackageSignature> packageSignatureParser;
 
-    /** @brief Callback to refresh a single endpoint's descriptors */
-    RefreshSingleEndpointCallback refreshSingleEndpointCallback;
-
   private:
     static const DownstreamDescriptorMap& emptyDownstreamDescriptorMap()
     {

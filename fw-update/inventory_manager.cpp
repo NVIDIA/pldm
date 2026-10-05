@@ -895,6 +895,13 @@ sdbusplus::async::task<int>
 
     if (downstreamDevicesResp.number_of_downstream_devices == 0)
     {
+        downstreamDescriptorMap.insert_or_assign(eid, DownstreamDeviceInfo{});
+        downstreamComponentInfoMap.insert_or_assign(eid,
+                                                    DownstreamComponentInfo{});
+        if (createDownstreamInventoryCallBack)
+        {
+            createDownstreamInventoryCallBack(eid);
+        }
         info("Endpoint ID {EID} reports zero downstream devices", "EID", eid);
         co_return PLDM_SUCCESS;
     }
@@ -1479,6 +1486,10 @@ exec::task<int> InventoryManager::refreshSingleEndpoint(
              eid, "UUID", uuid);
         updateInventoryCallBack(eid, uuid, mctpInterfaces);
     }
+
+    // The FD-level refresh above doesn't touch the downstream devices an
+    // FDP proxies, whose versions only move when they are rediscovered.
+    co_await startDownstreamDiscoveryFlow(eid);
 
     info("Successfully refreshed firmware inventory for endpoint ID {EID}",
          "EID", eid);

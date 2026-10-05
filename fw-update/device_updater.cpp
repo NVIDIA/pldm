@@ -1013,15 +1013,7 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
                 updateManager->updateDeviceCompletion(eid, true,
                                                       successCompNames);
 
-                if (updateManager &&
-                    updateManager->refreshSingleEndpointCallback)
-                {
-                    info("Refreshing firmware version for EID={EID} after "
-                         "activation",
-                         "EID", eid);
-                    co_await updateManager->refreshSingleEndpointCallback(
-                        eid, true, false);
-                }
+                co_await refreshInventoryAfterActivation();
 
                 deviceUpdaterState.nextState(deviceUpdaterState.current,
                                              componentIndex, numComponents);
@@ -1402,14 +1394,7 @@ exec::task<void> DeviceUpdater::waitForSelfContainedActivation(
                 }
             }
 
-            if (updateManager && updateManager->refreshSingleEndpointCallback)
-            {
-                info("Refreshing firmware version for EID={EID} after "
-                     "activation",
-                     "EID", eid);
-                co_await updateManager->refreshSingleEndpointCallback(
-                    eid, true, false);
-            }
+            co_await refreshInventoryAfterActivation();
 
             updateManager->updateDeviceCompletion(eid, true, successCompNames);
             deviceUpdaterState.nextState(deviceUpdaterState.current,
@@ -1570,6 +1555,24 @@ exec::task<ActivationPollStatus>
           "EID", eid, "STATE", currentState, "AUXSTATE", auxState, "AUXSTATUS",
           auxStateStatus);
     co_return ActivationPollStatus::Failed;
+}
+
+exec::task<void> DeviceUpdater::refreshInventoryAfterActivation()
+{
+    // refreshSingleEndpointCallback (InventoryManager::refreshSingleEndpoint)
+    // refreshes this eid's own FD descriptors/parameters and then, mirroring
+    // startFirmwareDiscoveryFlow(), attempts the downstream probe too. That
+    // covers both a direct FD activation and a downstream device activation
+    // (isDownstreamUpdate()) with a single call: for the latter, this eid is
+    // the FDP whose downstream software inventory needs the refresh.
+    if (!updateManager || !updateManager->refreshSingleEndpointCallback)
+    {
+        co_return;
+    }
+
+    info("Refreshing firmware inventory for EID={EID} after activation", "EID",
+         eid);
+    co_await updateManager->refreshSingleEndpointCallback(eid, true, false);
 }
 
 void DeviceUpdater::handleUpdateTimeout()

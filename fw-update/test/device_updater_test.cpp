@@ -244,6 +244,43 @@ class DeviceUpdaterTest : public testing::Test
     DeviceUpdater deviceUpdater;
 };
 
+TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationInvokesCallback)
+{
+    std::vector<std::pair<mctp_eid_t, bool>> calls;
+    updateManager.refreshSingleEndpointCallback =
+        [&calls](mctp_eid_t e, bool isTarget) -> exec::task<int> {
+        calls.emplace_back(e, isTarget);
+        co_return PLDM_SUCCESS;
+    };
+
+    auto rc =
+        stdexec::sync_wait(deviceUpdater.refreshInventoryAfterActivation());
+
+    ASSERT_TRUE(rc.has_value());
+    ASSERT_EQ(calls.size(), 1U);
+    EXPECT_EQ(calls[0], std::make_pair(eid, true));
+}
+
+TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationWithoutCallbackIsNoop)
+{
+    updateManager.refreshSingleEndpointCallback = nullptr;
+
+    auto rc =
+        stdexec::sync_wait(deviceUpdater.refreshInventoryAfterActivation());
+
+    EXPECT_TRUE(rc.has_value());
+}
+
+TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationWithoutManagerIsNoop)
+{
+    DeviceUpdater orphan(eid, package, fwDeviceIDRecord, compImageInfos,
+                         compInfo, compIdNameInfo, 512, nullptr);
+
+    auto rc = stdexec::sync_wait(orphan.refreshInventoryAfterActivation());
+
+    EXPECT_TRUE(rc.has_value());
+}
+
 TEST_F(DeviceUpdaterTest, validatePackage)
 {
     constexpr uintmax_t testPkgSize = 1163;

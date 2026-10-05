@@ -371,7 +371,13 @@ UpdateManager::UpdateManager(
         std::make_unique<Update>(pldm::utils::DBusHandler::getBus(),
                                  "/xyz/openbmc_project/software/pldm", this))
 #endif
-{}
+{
+    // Assigned to the inherited member: DeviceUpdater reads it through an
+    // UpdateManagerBase*, so a same-named member declared in this class
+    // would stay empty there.
+    this->refreshSingleEndpointCallback =
+        std::move(refreshSingleEndpointCallback);
+}
 
 UpdateManager::~UpdateManager() = default;
 
@@ -1686,13 +1692,12 @@ void UpdateManager::logUnupdatedTargets(
         return;
     }
 
-    std::unordered_set<mctp_eid_t> scheduledEids;
+    std::unordered_set<mctp_eid_t> scheduledDirectEids;
     std::set<std::pair<mctp_eid_t, DownstreamDeviceIndex>>
         scheduledDownstreamDevices;
-    scheduledEids.reserve(deviceUpdaterInfos.size());
+    scheduledDirectEids.reserve(deviceUpdaterInfos.size());
     for (const auto& [eid, offset] : deviceUpdaterInfos)
     {
-        scheduledEids.insert(eid);
         auto jobIt = downstreamJobByRecordOffset.find(offset);
         if (jobIt != downstreamJobByRecordOffset.end())
         {
@@ -1700,6 +1705,10 @@ void UpdateManager::logUnupdatedTargets(
             {
                 scheduledDownstreamDevices.insert({eid, idx});
             }
+        }
+        else
+        {
+            scheduledDirectEids.insert(eid);
         }
     }
 
@@ -1715,7 +1724,7 @@ void UpdateManager::logUnupdatedTargets(
 
     for (const auto& [name, eid] : requestedTargets)
     {
-        if (scheduledEids.contains(eid))
+        if (scheduledDirectEids.contains(eid))
         {
             continue;
         }
