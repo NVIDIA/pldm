@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include "libpldm/firmware_update.h"
+
 #include "common/types.hpp"
 #include "common/utils.hpp"
 
@@ -383,6 +385,108 @@ TEST_F(EmConfigInternalTest, fetchComponentInfoUnpacksComponents)
     EXPECT_EQ(manufacturer8, "NVIDIA"); // wrong-typed Manufacturer → default
     EXPECT_FALSE(updateOnly8);          // wrong-typed UpdateOnly → default
     EXPECT_TRUE(assocs8.empty());       // endpoint list unreadable → zip to 0
+}
+
+TEST_F(EmConfigInternalTest, fetchComponentInfoUnpacksDownstreamDeviceEntry)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "CX_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("CX_0")}});
+
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(devPath, base + "0",
+                                      {{"Name", std::string("FW_CX_0")},
+                                       {"ComponentIdentifier", uint16_t{1}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "1",
+        {{"Name", std::string("Optical_Transceiver_0")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"DownstreamDeviceIndex", uint64_t{1}},
+         {"ManufacturerNameSource", std::string("VendorPN")},
+         {"AssociationForward", std::vector<std::string>{"network_adapter"}},
+         {"AssociationBackward", std::vector<std::string>{"sfp_transceivers"}},
+         {"AssociationEndpoint",
+          std::vector<std::string>{"/inv/network_adapter/CX_0"}}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+
+    // The 0xFFFF entry describes downstream devices, not an FD component.
+    EXPECT_EQ(info->emComponents.size(), 1u);
+    EXPECT_FALSE(info->emComponents.contains(0xFFFF));
+    EXPECT_FALSE(info->idNameMap.contains(0xFFFF));
+
+    ASSERT_EQ(info->downstreamDevices.size(), 1u);
+    ASSERT_TRUE(info->downstreamDevices.contains(1));
+    const auto& device = info->downstreamDevices.at(1);
+    EXPECT_EQ(device.index, 1);
+    EXPECT_EQ(device.name, "Optical_Transceiver_0");
+    EXPECT_EQ(device.manufacturerNameSource, "VendorPN");
+    ASSERT_EQ(device.associations.size(), 1u);
+    EXPECT_EQ(device.associations[0],
+              std::make_tuple(std::string("network_adapter"),
+                              std::string("sfp_transceivers"),
+                              std::string("/inv/network_adapter/CX_0")));
+}
+
+TEST_F(EmConfigInternalTest, fetchComponentInfoSkipsDownstreamEntryWithoutIndex)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "CX_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("CX_0")}});
+
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "0",
+        {{"Name", std::string("Optical_Transceiver_0")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"ManufacturerNameSource", std::string("VendorPN")}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_TRUE(info->downstreamDevices.empty());
+    EXPECT_TRUE(info->emComponents.empty());
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerFromVendorPN)
+{
+    const DownstreamDeviceConfig config{
+        0, "Optical_Transceiver_0", {}, "VendorPN"};
+    const std::vector<uint8_t> pn{'T', '-', 'R', 'S', '8', 0, 0};
+    const Descriptors descriptors{
+        {PLDM_FWUP_VENDOR_DEFINED, VendorDefinedDescriptorInfo{"Other", {'x'}}},
+        {PLDM_FWUP_VENDOR_DEFINED,
+         VendorDefinedDescriptorInfo{"VendorPN", pn}}};
+
+    EXPECT_EQ(em_config::downstreamManufacturer(config, descriptors), "T-RS8");
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerUnavailable)
+{
+    const Descriptors withPn{{PLDM_FWUP_VENDOR_DEFINED,
+                              VendorDefinedDescriptorInfo{"VendorPN", {'A'}}}};
+
+    // Source not configured or unsupported.
+    EXPECT_EQ(em_config::downstreamManufacturer({0, "n", {}, ""}, withPn),
+              std::nullopt);
+    EXPECT_EQ(em_config::downstreamManufacturer({0, "n", {}, "Other"}, withPn),
+              std::nullopt);
+    // Descriptor absent or empty.
+    EXPECT_EQ(em_config::downstreamManufacturer({0, "n", {}, "VendorPN"}, {}),
+              std::nullopt);
+    const Descriptors emptyPn{{PLDM_FWUP_VENDOR_DEFINED,
+                               VendorDefinedDescriptorInfo{"VendorPN", {0}}}};
+    EXPECT_EQ(
+        em_config::downstreamManufacturer({0, "n", {}, "VendorPN"}, emptyPn),
+        std::nullopt);
 }
 
 TEST_F(EmConfigInternalTest, fetchExcludedInventorySubtreeThrowIsEmpty)

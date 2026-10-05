@@ -105,9 +105,22 @@ void Manager::createDownstreamEntries(pldm::eid eid)
         const auto& version = std::get<CompVersion>(compInfo);
         const auto key = std::make_pair(eid, deviceIndex);
 
+        Manufacturer manufacturer = "NVIDIA";
+        const Associations* assocs = nullptr;
+        if (auto metaEid = downstreamDeviceMetaMap.find(eid);
+            metaEid != downstreamDeviceMetaMap.end())
+        {
+            if (auto meta = metaEid->second.find(deviceIndex);
+                meta != metaEid->second.end())
+            {
+                manufacturer = meta->second.manufacturer;
+                assocs = &meta->second.associations;
+            }
+        }
+
         // Downstream devices come and go with the FDP that proxies them, and
         // re-registering an existing path throws (-EEXIST), so refresh the
-        // object in place when it is already known.
+        // version when the object is already known.
         if (auto existing = downstreamInventoryMap.find(key);
             existing != downstreamInventoryMap.end())
         {
@@ -123,8 +136,16 @@ void Manager::createDownstreamEntries(pldm::eid eid)
         // were decided not to expose it there.
         const std::string objPath = swBasePath + "/" + nameIt->second;
         auto entry =
-            std::make_unique<Entry>(bus, objPath, version, "", "NVIDIA");
+            std::make_unique<Entry>(bus, objPath, version, "", manufacturer);
         entry->createUpdateableAssociation(swBasePath);
+        if (assocs != nullptr)
+        {
+            for (const auto& assoc : *assocs)
+            {
+                entry->createAssociation(std::get<0>(assoc), std::get<1>(assoc),
+                                         std::get<2>(assoc));
+            }
+        }
 
         lg2::info(
             "Created downstream software D-Bus object: path={PATH}, downstream_device_index={INDEX}, version={VERSION}",

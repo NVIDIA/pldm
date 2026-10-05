@@ -307,6 +307,23 @@ using ComponentObject =
 using CreateComponentIdNameMap =
     std::unordered_map<CompIdentifier, ComponentObject>;
 using UpdateComponentIdNameMap = ComponentIdNameMap;
+
+/** @brief Entity-manager description of one downstream device behind an FDP,
+ *         taken from a Components entry whose ComponentIdentifier is 0xFFFF.
+ */
+struct DownstreamDeviceConfig
+{
+    /** @brief Index the FDP reports the device under; only the device with
+     *         this index takes the configuration */
+    DownstreamDeviceIndex index;
+    /** @brief Name of the downstream device's software object */
+    ComponentName name;
+    /** @brief Associations copied onto each downstream device's object */
+    Associations associations;
+    /** @brief Descriptor title the Manufacturer is taken from (e.g. VendorPN);
+     *         empty when not configured */
+    std::string manufacturerNameSource;
+};
 using FirmwareInfo =
     std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>;
 using MatchFirmwareInfo = std::vector<std::tuple<DBusIntfMatch, FirmwareInfo>>;

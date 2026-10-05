@@ -323,9 +323,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         a Firmware Device Proxy
      *
      *  Runs once GetDownstreamFirmwareParameters has delivered the whole
-     *  parameter table. Downstream devices carry no entity-manager
-     *  configuration of their own, so each is named after the FDP that proxies
-     *  it: "<targetName>_DownstreamDevice_<index>", falling back to a name
+     *  parameter table. When the FDP's entity-manager entry has a Components
+     *  element with ComponentIdentifier 0xFFFF whose DownstreamDeviceIndex
+     *  matches the device's index, the device is named after that element's
+     *  Name and takes its Associations and ManufacturerNameSource. Any other
+     *  device is named after the FDP that proxies it:
+     *  "<targetName>_DownstreamDevice_<index>", falling back to a name
      *  generated from the endpoint when the FDP has no configured_by target
      *  name. This mirrors the component naming in createInventory().
      *
@@ -346,10 +349,40 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         // cached name from an earlier discovery must not be allowed to
         // stick around and be reused for the new device at the same index.
         deviceIndexNameMap.clear();
+        fw_inventory::Manager::DownstreamDeviceMetaMap deviceMeta;
         for (const auto& [deviceIndex, compInfo] :
              downstreamComponentInfoMap.at(eid))
         {
-            if (!targetName.empty())
+            const DownstreamDeviceConfig* config = nullptr;
+            if (auto eidIt = downstreamDeviceConfigMap.find(eid);
+                eidIt != downstreamDeviceConfigMap.end())
+            {
+                if (auto it = eidIt->second.find(deviceIndex);
+                    it != eidIt->second.end())
+                {
+                    config = &it->second;
+                }
+            }
+
+            if (config != nullptr)
+            {
+                deviceIndexNameMap[deviceIndex] = config->name;
+
+                Manufacturer manufacturer = "NVIDIA";
+                if (auto descs = downstreamDescriptorMap.find(eid);
+                    descs != downstreamDescriptorMap.end())
+                {
+                    if (auto dev = descs->second.find(deviceIndex);
+                        dev != descs->second.end())
+                    {
+                        manufacturer = em_config::downstreamManufacturer(
+                                           *config, dev->second)
+                                           .value_or(manufacturer);
+                    }
+                }
+                deviceMeta[deviceIndex] = {config->associations, manufacturer};
+            }
+            else if (!targetName.empty())
             {
                 deviceIndexNameMap[deviceIndex] = std::format(
                     "{}_DownstreamDevice_{}", targetName, deviceIndex);
@@ -361,6 +394,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
                     static_cast<int>(eid), deviceIndex);
             }
         }
+        fwInventoryManager.setDownstreamDeviceMeta(eid, std::move(deviceMeta));
         fwInventoryManager.createDownstreamEntries(eid);
     }
 
@@ -672,6 +706,12 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
      *         name of the FDP that proxies them */
     DownstreamDeviceFwInvNameMap downstreamDeviceNameMap;
 
+    /** @brief Entity-manager downstream device configuration of each FDP, by
+     *         downstream device index */
+    std::unordered_map<eid,
+                       std::map<DownstreamDeviceIndex, DownstreamDeviceConfig>>
+        downstreamDeviceConfigMap;
+
     /** @brief PLDM firmware inventory/discovery manager */
     InventoryManager inventoryMgr;
 
@@ -699,12 +739,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         // Drop any previous expectation first, so a reused EID or changed EM
         // Components metadata cannot leave stale component IDs behind.
         expectedComponentIdsByEid.erase(eid);
+        // A reused EID must not inherit the previous device's downstream
+        // naming when the new one has no entity-manager entry.
+        downstreamDeviceConfigMap.erase(eid);
         auto info = em_config::fetchComponentInfo(configurations, eid);
         if (!info)
         {
             return false;
         }
         fwInventoryManager.setEmComponentObjects(eid, info->emComponents);
+        if (!info->downstreamDevices.empty())
+        {
+            downstreamDeviceConfigMap[eid] = std::move(info->downstreamDevices);
+        }
         if (!info->idNameMap.empty())
         {
             // Record the expected (updatable) component identifiers for the

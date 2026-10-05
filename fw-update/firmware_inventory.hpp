@@ -190,6 +190,29 @@ class Manager
         emComponentObjectMap[eid] = components;
     }
 
+    /** @brief Per-downstream-device metadata sourced from entity-manager and
+     *         the device's descriptors */
+    struct DownstreamDeviceMeta
+    {
+        Associations associations;
+        Manufacturer manufacturer;
+    };
+    using DownstreamDeviceMetaMap =
+        std::map<DownstreamDeviceIndex, DownstreamDeviceMeta>;
+
+    /** @brief Provide the Associations and Manufacturer of the downstream
+     *         devices behind an FDP; createDownstreamEntries() applies them.
+     *         Devices without an entry get no associations and the default
+     *         Manufacturer.
+     *
+     *  @param[in] eid - MCTP endpoint of the FDP
+     *  @param[in] meta - downstream device index → metadata
+     */
+    void setDownstreamDeviceMeta(pldm::eid eid, DownstreamDeviceMetaMap meta)
+    {
+        downstreamDeviceMetaMap[eid] = std::move(meta);
+    }
+
     const std::string swBasePath = "/xyz/openbmc_project/software";
 
   private:
@@ -215,6 +238,9 @@ class Manager
      *         Configuration.PLDMFirmwareDevice.Components.
      */
     std::unordered_map<eid, CreateComponentIdNameMap> emComponentObjectMap;
+
+    /** @brief Metadata of the downstream devices behind each FDP */
+    std::unordered_map<eid, DownstreamDeviceMetaMap> downstreamDeviceMetaMap;
 
     /** @brief Map to store firmware inventory objects */
     std::map<std::pair<eid, CompIdentifier>, std::unique_ptr<Entry>>

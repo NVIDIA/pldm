@@ -18,6 +18,7 @@
 
 #include "common/types.hpp"
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <set>
@@ -60,7 +61,26 @@ struct DeviceComponentInfo
     CreateComponentIdNameMap emComponents;
     /** @brief id → Name (for target filtering / name fallback) */
     ComponentIdNameMap idNameMap;
+    /** @brief Downstream device configuration by downstream device index,
+     *         from the Components entries with ComponentIdentifier
+     *         downstreamDeviceComponentId */
+    std::map<DownstreamDeviceIndex, DownstreamDeviceConfig> downstreamDevices;
 };
+
+/** @brief ComponentIdentifier of a Components entry that describes a
+ *         downstream device rather than a component of the FD itself. */
+constexpr uint16_t downstreamDeviceComponentId = 0xFFFF;
+
+/** @brief Manufacturer of a downstream device, per ManufacturerNameSource.
+ *
+ *  @param[in] config - downstream device entity-manager configuration
+ *  @param[in] descriptors - descriptors reported by the downstream device
+ *  @return the data of the vendor-defined descriptor titled
+ *          ManufacturerNameSource, std::nullopt when the source is unset or
+ *          unsupported, or the descriptor is absent or empty
+ */
+std::optional<std::string> downstreamManufacturer(
+    const DownstreamDeviceConfig& config, const Descriptors& descriptors);
 
 /** @brief Fetch per-component naming/Associations/Manufacturer from the
  *         entity-manager Configuration.PLDMFirmwareDevice.Components array.

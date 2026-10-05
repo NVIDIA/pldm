@@ -16,6 +16,8 @@
  */
 #include "em_config.hpp"
 
+#include "libpldm/firmware_update.h"
+
 #include "common/utils.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -106,11 +108,15 @@ uint16_t extractUint16(const pldm::utils::PropertyValue& v)
  *                             name
  *  @param[out] emComponents - id → {Name, Associations, Manufacturer}
  *  @param[out] idNameMap    - id → Name (for target filtering / fallback)
+ *  @param[out] downstreamDevices - index → configuration, from the entries
+ *                             whose ComponentIdentifier is
+ *                             downstreamDeviceComponentId
  */
-void unpackComponents(const std::string& service, const std::string& objPath,
-                      const std::string& baseIntf,
-                      CreateComponentIdNameMap& emComponents,
-                      ComponentIdNameMap& idNameMap)
+void unpackComponents(
+    const std::string& service, const std::string& objPath,
+    const std::string& baseIntf, CreateComponentIdNameMap& emComponents,
+    ComponentIdNameMap& idNameMap,
+    std::map<DownstreamDeviceIndex, DownstreamDeviceConfig>& downstreamDevices)
 {
     // Probe contiguous child interfaces Components0, Components1, ... until
     // one is absent (GetAll throws), mirroring how EM numbers them.
@@ -201,6 +207,44 @@ void unpackComponents(const std::string& service, const std::string& objPath,
         for (size_t i = 0; i < nAssoc; ++i)
         {
             compAssocs.emplace_back(fwd[i], bwd[i], endp[i]);
+        }
+
+        // A 0xFFFF entry describes a downstream device behind this FD, not a
+        // component of the FD, so it never joins emComponents.
+        if (compId == downstreamDeviceComponentId)
+        {
+            auto indexIt = cprops.find("DownstreamDeviceIndex");
+            if (indexIt == cprops.end())
+            {
+                lg2::error(
+                    "Downstream device entry has no DownstreamDeviceIndex: name={NAME}",
+                    "NAME", compName);
+                continue;
+            }
+            DownstreamDeviceIndex deviceIndex = 0;
+            try
+            {
+                deviceIndex = extractUint16(indexIt->second);
+            }
+            catch (const std::exception&)
+            {
+                lg2::error(
+                    "Downstream device entry has an invalid DownstreamDeviceIndex: name={NAME}",
+                    "NAME", compName);
+                continue;
+            }
+            DownstreamDeviceConfig config{
+                deviceIndex, compName, std::move(compAssocs), {}};
+            if (auto it = cprops.find("ManufacturerNameSource");
+                it != cprops.end())
+            {
+                if (const auto* src = std::get_if<std::string>(&it->second))
+                {
+                    config.manufacturerNameSource = *src;
+                }
+            }
+            downstreamDevices[deviceIndex] = std::move(config);
+            continue;
         }
 
         // UpdateOnly: the component's Software.Version object is owned by
@@ -308,7 +352,7 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
 
         DeviceComponentInfo info;
         unpackComponents(service, objPath, pldmFwDeviceIntf, info.emComponents,
-                         info.idNameMap);
+                         info.idNameMap, info.downstreamDevices);
         return info;
     }
     return std::nullopt;
@@ -401,8 +445,10 @@ std::set<std::string> fetchConfiguredFirmwareTargets()
 
         CreateComponentIdNameMap emComponents;
         ComponentIdNameMap idNameMap;
+        std::map<DownstreamDeviceIndex, DownstreamDeviceConfig>
+            downstreamDevices;
         unpackComponents(service, objPath, pldmFwDeviceIntf, emComponents,
-                         idNameMap);
+                         idNameMap, downstreamDevices);
         if (!expectedComponentIds(emComponents).empty())
         {
             targets.insert(*targetName);
@@ -472,6 +518,35 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
         }
     }
     return names;
+}
+
+std::optional<std::string> downstreamManufacturer(
+    const DownstreamDeviceConfig& config, const Descriptors& descriptors)
+{
+    if (config.manufacturerNameSource != "VendorPN")
+    {
+        return std::nullopt;
+    }
+
+    auto [first, last] = descriptors.equal_range(PLDM_FWUP_VENDOR_DEFINED);
+    for (auto it = first; it != last; ++it)
+    {
+        const auto* info =
+            std::get_if<VendorDefinedDescriptorInfo>(&it->second);
+        if (info == nullptr || std::get<VendorDefinedDescriptorTitle>(*info) !=
+                                   config.manufacturerNameSource)
+        {
+            continue;
+        }
+        const auto& data = std::get<VendorDefinedDescriptorData>(*info);
+        std::string value(data.begin(), data.end());
+        value.erase(std::find(value.begin(), value.end(), '\0'), value.end());
+        if (!value.empty())
+        {
+            return value;
+        }
+    }
+    return std::nullopt;
 }
 
 ExcludedInventoryPaths fetchExcludedInventory()
