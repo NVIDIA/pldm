@@ -361,6 +361,25 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
     co_return PLDM_SUCCESS;
 }
 
+void TerminusManager::markRediscovered(const MctpInfo& mctpInfo)
+{
+    auto tid = toTid(mctpInfo);
+    if (!tid)
+    {
+        return;
+    }
+    auto it = termini.find(*tid);
+    if (it == termini.end() || !it->second || !it->second->offline)
+    {
+        return;
+    }
+    // The MCTP endpoint of a known terminus was published again, so the
+    // device is reachable: let the polling restart after discovery resume it.
+    it->second->offline = false;
+    lg2::info("Terminus {TID} endpoint rediscovered; clearing offline state.",
+              "TID", *tid);
+}
+
 exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
     mctp_eid_t eid = std::get<0>(mctpInfo);

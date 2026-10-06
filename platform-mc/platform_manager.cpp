@@ -29,6 +29,14 @@ exec::task<int> PlatformManager::initTerminus()
 {
     for (auto& [tid, terminus] : termini)
     {
+        // Skip termini whose MCTP endpoint is offline: this pass runs after
+        // every discovery, and the device behind an offline endpoint may
+        // still be booting (or gone). It is re-initialised when it comes
+        // back via setOnline()/rediscovery.
+        if (terminus && terminus->offline)
+        {
+            continue;
+        }
         co_await initTerminusImpl(tid, terminus);
     }
     co_return PLDM_SUCCESS;

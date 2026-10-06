@@ -2701,6 +2701,7 @@ void Terminus::setOnline()
         stateEffecter->needUpdate = true;
     }
 
+    offline = false;
     lg2::info("Terminus {TID} is online", "TID", tid);
 }
 
@@ -2730,6 +2731,7 @@ size_t Terminus::rearmTrackedEffecters()
 
 void Terminus::setOffline()
 {
+    offline = true;
     resumed = false;
     for (auto numericSensor : numericSensors)
     {

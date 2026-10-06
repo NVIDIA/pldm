@@ -72,6 +72,14 @@ class TerminusManager
      */
     void discoverMctpTerminus(const MctpInfos& mctpInfos);
 
+    /** @brief Clear the offline state of an already-known terminus whose MCTP
+     *         endpoint has just been (re)published. No-op for unknown or
+     *         online termini.
+     *
+     *  @param[in] mctpInfo - MCTP endpoint that was published again
+     */
+    void markRediscovered(const MctpInfo& mctpInfo);
+
     /** @brief Load static PLDM terminus configuration from JSON file
      *
      *  @param[in] configPath - path to the configuration JSON file

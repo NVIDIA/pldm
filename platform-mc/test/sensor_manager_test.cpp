@@ -99,8 +99,10 @@ TEST_F(SensorManagerTest, sensorManagerControlPathCoverage)
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
 
+    // One call from setOnline(tid) below; the Enable interface's
+    // startPolling() at the end must not touch the then-offline terminus.
     EXPECT_CALL(sensorManager, doSensorPolling(tid))
-        .Times(2)
+        .Times(1)
         .WillRepeatedly(Return());
 
     sensorManager.startPolling(0x99);
@@ -123,7 +125,49 @@ TEST_F(SensorManagerTest, sensorManagerControlPathCoverage)
     sensorManager.checkAllTerminiReady();
 
     sensorManager.enableIntf->enabled(true);
+    EXPECT_TRUE(termini[tid]->stopPolling);
     sensorManager.enableIntf->enabled(false);
+}
+
+TEST_F(SensorManagerTest, startPollingSkipsOfflineTermini)
+{
+    // Regression for a stale terminus being revived by an unrelated
+    // discovery: startPolling() (all termini) must leave a terminus whose
+    // MCTP endpoint is offline alone; only setOnline() resumes it.
+    constexpr pldm::tid_t onlineTid = 0x71;
+    constexpr pldm::tid_t offlineTid = 0x72;
+    std::string onlineUuid("00000000-0000-0000-0000-000000000071");
+    std::string offlineUuid("00000000-0000-0000-0000-000000000072");
+    termini[onlineTid] = std::make_shared<pldm::platform_mc::Terminus>(
+        onlineTid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, onlineUuid,
+        terminusManager);
+    termini[offlineTid] = std::make_shared<pldm::platform_mc::Terminus>(
+        offlineTid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, offlineUuid,
+        terminusManager);
+
+    sensorManager.setOffline(offlineTid);
+    EXPECT_TRUE(termini[offlineTid]->offline);
+    EXPECT_TRUE(termini[offlineTid]->stopPolling);
+    EXPECT_FALSE(termini[onlineTid]->offline);
+
+    // Simulates discoverMctpTerminusTask() finishing for some other endpoint.
+    EXPECT_CALL(sensorManager, doSensorPolling(onlineTid))
+        .Times(1)
+        .WillOnce(Return());
+    EXPECT_CALL(sensorManager, doSensorPolling(offlineTid)).Times(0);
+    sensorManager.startPolling();
+    EXPECT_FALSE(termini[onlineTid]->stopPolling);
+    EXPECT_TRUE(termini[offlineTid]->stopPolling);
+    EXPECT_TRUE(termini[offlineTid]->offline);
+    ::testing::Mock::VerifyAndClearExpectations(&sensorManager);
+
+    // Connectivity=Available for the endpoint itself resumes polling.
+    EXPECT_CALL(sensorManager, doSensorPolling(offlineTid))
+        .Times(1)
+        .WillOnce(Return());
+    sensorManager.setOnline(offlineTid);
+    EXPECT_FALSE(termini[offlineTid]->offline);
+    EXPECT_FALSE(termini[offlineTid]->stopPolling);
 }
 
 static std::vector<uint8_t> makeNumericSensorPdr(uint16_t sensorId)

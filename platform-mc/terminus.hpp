@@ -291,6 +291,14 @@ class Terminus
 
     bool stopPolling = false;
 
+    /** @brief The MCTP endpoint behind this terminus is currently
+     *         unavailable (Connectivity != Available) or has been removed.
+     *         Set by setOffline(), cleared by setOnline() or when the
+     *         endpoint is rediscovered. While set, system-wide polling and
+     *         re-initialisation passes skip this terminus so that an
+     *         unrelated endpoint's discovery cannot revive traffic to it. */
+    bool offline = false;
+
     /** @brief Return code of the sensor polling task */
     std::optional<int> sensorPollingTaskRc{0};
 

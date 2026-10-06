@@ -85,6 +85,14 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
     void handleMctpEndpoints(const MctpInfos& mctpInfos,
                              const dbus::MctpInterfaces&) override
     {
+        // Counterpart of handleRemovedMctpEndpoints(): an endpoint that is
+        // published again is reachable, so its known terminus may leave the
+        // offline state and be resumed by the polling restart that follows
+        // discovery.
+        for (const auto& mctpInfo : mctpInfos)
+        {
+            terminusManager.markRediscovered(mctpInfo);
+        }
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 

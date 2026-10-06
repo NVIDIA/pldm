@@ -135,6 +135,16 @@ void SensorManager::startPolling()
 {
     for (const auto& [tid, terminus] : termini)
     {
+        // A terminus whose MCTP endpoint is offline is only resumed by its
+        // own Connectivity=Available (setOnline) or by rediscovery, never
+        // by a polling restart triggered for some other endpoint.
+        if (terminus && terminus->offline)
+        {
+            lg2::info(
+                "TID {TID} endpoint is offline; not resuming sensor polling.",
+                "TID", tid);
+            continue;
+        }
         startPolling(tid);
     }
 
