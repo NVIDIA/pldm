@@ -939,7 +939,7 @@ TEST_F(EventManagerProtectedTest, pcoreDumpEventRejectedWhenTerminusUnresolved)
     // is empty.
     const auto defaultStagingFile =
         std::filesystem::path(pldm::oem_events::PLDM_EVENT_DIR) /
-        "ProcessorModule_0" / pldm::oem_events::PCOREDUMP_FILE;
+        "ProcessorModule_0" / "CPU_0" / pldm::oem_events::PCOREDUMP_FILE;
     const bool stagedBefore = std::filesystem::exists(defaultStagingFile);
 
     for (auto tid : {unnamedTid, nullTerminusTid, unknownTid})
@@ -1044,19 +1044,19 @@ TEST(OemEventsCoverage, validationPaths)
 {
     std::array<uint8_t, 2> tooSmallData{0x1, 0x0};
     EXPECT_FALSE(pldm::oem_events::handleCperErrorCountEvent(
-        "ProcessorModule_0", tooSmallData.data(), tooSmallData.size()));
+        "ProcessorModule_0", 0, tooSmallData.data(), tooSmallData.size()));
 
     std::vector<uint8_t> mismatchData{
         0x02, 0x01, 0x06, 0x00, // version, type, payload size (6)
         0x11, 0x22              // payload too short
     };
     EXPECT_FALSE(pldm::oem_events::handlePcieTelemetryEvent(
-        "../unsafe\\name", mismatchData.data(), mismatchData.size()));
+        "../unsafe\\name", 0, mismatchData.data(), mismatchData.size()));
 
     std::vector<uint8_t> sizeMatchedData{
         0x01, 0x00, 0x01, 0x00, // version, type, payload size (1)
         0x5A                    // payload
     };
     (void)pldm::oem_events::handlePCoreDumpEvent(
-        "ProcessorModule_0", sizeMatchedData.data(), sizeMatchedData.size());
+        "ProcessorModule_0", 0, sizeMatchedData.data(), sizeMatchedData.size());
 }

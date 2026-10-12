@@ -97,14 +97,16 @@ static std::string sanitizeTerminusName(const std::string& terminus)
 }
 
 /**
- * @brief Get the terminus-specific event directory path
+ * @brief Get the per-CPU event directory path
  *
  * @param[in] terminus Terminus name (e.g., "ProcessorModule_0")
- * @return Full path to the terminus event directory
+ * @param[in] cpuIndex CPU index of the sender within the terminus
+ * @return Full path to the per-CPU event directory
  */
-static std::string getEventDir(const std::string& terminus)
+static std::string getEventDir(const std::string& terminus, uint16_t cpuIndex)
 {
-    return std::format("{}/{}", PLDM_EVENT_DIR, sanitizeTerminusName(terminus));
+    return std::format("{}/{}/CPU_{}", PLDM_EVENT_DIR,
+                       sanitizeTerminusName(terminus), cpuIndex);
 }
 
 /**
@@ -122,13 +124,14 @@ static std::string getEventDir(const std::string& terminus)
  * buffer (totalSize) to file without parsing or stripping any header.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
+ * @param[in] cpuIndex      CPU index of the sender within the terminus
  * @param[in] fileName      Event file name
  * @param[in] eventData     Pointer to event data (including header)
  * @param[in] eventDataSize Size of event data in bytes (including header)
  * @param[in] skipHeader    Write the whole buffer verbatim, no header parsing
  * @return true on success, false on failure
  */
-static bool saveEventData(const std::string& terminus,
+static bool saveEventData(const std::string& terminus, uint16_t cpuIndex,
                           const std::string& fileName, const uint8_t* eventData,
                           size_t eventDataSize, bool skipHeader = false)
 {
@@ -192,7 +195,7 @@ static bool saveEventData(const std::string& terminus,
     }
 
     // Ensure the terminus-specific directory exists
-    std::string eventDir = getEventDir(terminus);
+    std::string eventDir = getEventDir(terminus, cpuIndex);
     try
     {
         fs::path dir(eventDir);
@@ -268,37 +271,39 @@ static bool saveEventData(const std::string& terminus,
     }
 }
 
-bool handleCperErrorCountEvent(const std::string& terminus,
+bool handleCperErrorCountEvent(const std::string& terminus, uint16_t cpuIndex,
                                const uint8_t* eventData, size_t eventDataSize)
 {
     lg2::info(
-        "Processing CPER Error Count Event (0xF0), terminus={TERM}, size={SIZE}",
-        "TERM", terminus, "SIZE", eventDataSize);
+        "Processing CPER Error Count Event (0xF0), terminus={TERM}, cpu={CPU}, size={SIZE}",
+        "TERM", terminus, "CPU", cpuIndex, "SIZE", eventDataSize);
 
-    return saveEventData(terminus, CPER_ERROR_COUNT_FILE, eventData,
+    return saveEventData(terminus, cpuIndex, CPER_ERROR_COUNT_FILE, eventData,
                          eventDataSize);
 }
 
-bool handlePCoreDumpEvent(const std::string& terminus, const uint8_t* eventData,
-                          size_t eventDataSize)
+bool handlePCoreDumpEvent(const std::string& terminus, uint16_t cpuIndex,
+                          const uint8_t* eventData, size_t eventDataSize)
 {
-    lg2::info("Processing PCoreDump Event (0xF2), terminus={TERM}, size={SIZE}",
-              "TERM", terminus, "SIZE", eventDataSize);
+    lg2::info(
+        "Processing PCoreDump Event (0xF2), terminus={TERM}, cpu={CPU}, size={SIZE}",
+        "TERM", terminus, "CPU", cpuIndex, "SIZE", eventDataSize);
 
     // The 0xF2 event does not follow the OEM header layout, so save the
     // complete event buffer to file without parsing or stripping a header.
-    return saveEventData(terminus, PCOREDUMP_FILE, eventData, eventDataSize,
+    return saveEventData(terminus, cpuIndex, PCOREDUMP_FILE, eventData,
+                         eventDataSize,
                          /*skipHeader=*/true);
 }
 
-bool handlePcieTelemetryEvent(const std::string& terminus,
+bool handlePcieTelemetryEvent(const std::string& terminus, uint16_t cpuIndex,
                               const uint8_t* eventData, size_t eventDataSize)
 {
     lg2::info(
-        "Processing PCIe Telemetry Event (0xF1), terminus={TERM}, size={SIZE}",
-        "TERM", terminus, "SIZE", eventDataSize);
+        "Processing PCIe Telemetry Event (0xF1), terminus={TERM}, cpu={CPU}, size={SIZE}",
+        "TERM", terminus, "CPU", cpuIndex, "SIZE", eventDataSize);
 
-    return saveEventData(terminus, PCIE_TELEMETRY_FILE, eventData,
+    return saveEventData(terminus, cpuIndex, PCIE_TELEMETRY_FILE, eventData,
                          eventDataSize);
 }
 

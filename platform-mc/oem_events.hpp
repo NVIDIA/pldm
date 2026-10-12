@@ -27,8 +27,9 @@ namespace oem_events
 /**
  * @brief Base directory to store PLDM OEM event data
  *
- * Event files are stored in terminus-specific subdirectories:
- *   /var/lib/pldm_events/<terminus>/
+ * Event files are stored in per-CPU subdirectories, as CPUs can share a
+ * terminus (e.g. VR-C2):
+ *   /var/lib/pldm_events/<terminus>/CPU_<cpuIndex>/
  *
  * This directory is monitored by the pldm-event-dump tool via inotify.
  * When event files are written here, the dump tool processes them.
@@ -63,11 +64,12 @@ constexpr const char* nvidiaInfoInterface = "xyz.openbmc_project.NvidiaInfo";
  * The pldm-event-dump tool monitors this file via inotify.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
+ * @param[in] cpuIndex      CPU index of the sender within the terminus
  * @param[in] eventData     Pointer to event data payload
  * @param[in] eventDataSize Size of event data payload in bytes
  * @return true on success, false on failure
  */
-bool handleCperErrorCountEvent(const std::string& terminus,
+bool handleCperErrorCountEvent(const std::string& terminus, uint16_t cpuIndex,
                                const uint8_t* eventData, size_t eventDataSize);
 
 /**
@@ -77,12 +79,13 @@ bool handleCperErrorCountEvent(const std::string& terminus,
  * The pldm-event-dump tool monitors this file via inotify.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
+ * @param[in] cpuIndex      CPU index of the sender within the terminus
  * @param[in] eventData     Pointer to event data payload
  * @param[in] eventDataSize Size of event data payload in bytes
  * @return true on success, false on failure
  */
-bool handlePCoreDumpEvent(const std::string& terminus, const uint8_t* eventData,
-                          size_t eventDataSize);
+bool handlePCoreDumpEvent(const std::string& terminus, uint16_t cpuIndex,
+                          const uint8_t* eventData, size_t eventDataSize);
 
 /**
  * @brief Handle PCIe Telemetry Event (0xF2)
@@ -91,11 +94,12 @@ bool handlePCoreDumpEvent(const std::string& terminus, const uint8_t* eventData,
  * The pldm-event-dump tool monitors this file via inotify.
  *
  * @param[in] terminus      Terminus name (e.g., "ProcessorModule_0")
+ * @param[in] cpuIndex      CPU index of the sender within the terminus
  * @param[in] eventData     Pointer to event data payload
  * @param[in] eventDataSize Size of event data payload in bytes
  * @return true on success, false on failure
  */
-bool handlePcieTelemetryEvent(const std::string& terminus,
+bool handlePcieTelemetryEvent(const std::string& terminus, uint16_t cpuIndex,
                               const uint8_t* eventData, size_t eventDataSize);
 
 /**
