@@ -690,9 +690,8 @@ exec::task<void> UpdateManager::processPackageData(
     activePackageData = packageData;
     activePackageSize = packageSize;
     downstreamJobByRecordOffset.clear();
-    pendingUpdateJobs.clear();
+    queuedDeviceUpdaters.clear();
     jobSequenceFailed.clear();
-    jobSequenceSuccessCompNames.clear();
     retiredDeviceUpdaters.clear();
 
     if (packageData == nullptr)
@@ -1041,11 +1040,11 @@ exec::task<void> UpdateManager::processPackageData(
     // (DSP0267 §12.1), so only the first startable job's DeviceUpdater is
     // constructed now; the rest are queued
     // and started one at a time as each prior job completes (see
-    // startNextJob(), driven from updateDeviceCompletion()).
+    // createNextDeviceUpdater(), driven from updateDeviceCompletion()).
     std::vector<mctp_eid_t> eids;
     for (const auto& [eid, offset] : deviceUpdaterInfos)
     {
-        auto& queue = pendingUpdateJobs[eid];
+        auto& queue = queuedDeviceUpdaters[eid];
         if (queue.empty())
         {
             eids.push_back(eid);
@@ -1054,7 +1053,7 @@ exec::task<void> UpdateManager::processPackageData(
     }
     for (const auto& eid : eids)
     {
-        startNextJob(eid, false);
+        createNextDeviceUpdater(eid, false);
     }
 
     // delay activation object creation if there are non-pldm updates
@@ -1829,95 +1828,85 @@ void UpdateManager::logUnupdatedTargets(
     requestedDownstreamTargets.clear();
 }
 
-bool UpdateManager::startDeviceUpdater(mctp_eid_t eid,
-                                       DeviceIDRecordOffset recordOffset)
+bool UpdateManager::createNextDeviceUpdater(mctp_eid_t eid,
+                                            bool failSkippedJobs)
 {
     const auto& compImageInfos = parser->getComponentImageInfos();
-    const auto& fwDeviceIDRecord = fwDeviceIDRecords[recordOffset];
-
-    auto jobIt = downstreamJobByRecordOffset.find(recordOffset);
-    bool isDownstream = jobIt != downstreamJobByRecordOffset.end();
-
     static const ComponentInfo emptyComponentInfo{};
-    const ComponentInfo* compInfo = &emptyComponentInfo;
-    auto compInfoSearch = componentInfoMap.find(eid);
-    if (compInfoSearch != componentInfoMap.end())
-    {
-        compInfo = &compInfoSearch->second;
-    }
-    else if (!isDownstream)
-    {
-        // The direct-FD path requires real component info for this eid;
-        // nothing to update without it. A downstream update's FDP may
-        // legitimately have zero components of its own and still proxy
-        // downstream device updates.
-        return false;
-    }
 
-    auto compIdNameInfoSearch = componentNameMap.find(eid);
-    ComponentIdNameMap compIdNameInfo{};
-    if (compIdNameInfoSearch != componentNameMap.end())
+    auto queuedSearch = queuedDeviceUpdaters.find(eid);
+    while (queuedSearch != queuedDeviceUpdaters.end())
     {
-        compIdNameInfo = compIdNameInfoSearch->second;
-    }
-
-    std::optional<DownstreamUpdateJob> downstreamJob;
-    const DownstreamComponentInfo* downstreamCompInfo = nullptr;
-    if (isDownstream)
-    {
-        downstreamJob = jobIt->second;
-        auto downstreamSearch = downstreamComponentInfoMap.find(eid);
-        if (downstreamSearch != downstreamComponentInfoMap.end())
+        auto recordOffset = queuedSearch->second.front();
+        queuedSearch->second.pop_front();
+        if (queuedSearch->second.empty())
         {
-            downstreamCompInfo = &downstreamSearch->second;
-        }
-    }
-
-    // The previous job's DeviceUpdater is still on the call stack when it
-    // reports completion and keeps running afterwards, so it must outlive
-    // the replacement below.
-    auto previous = deviceUpdaterMap.find(eid);
-    if (previous != deviceUpdaterMap.end())
-    {
-        retiredDeviceUpdaters.push_back(std::move(previous->second));
-    }
-
-    deviceUpdaterMap[eid] = std::make_unique<DeviceUpdater>(
-        eid, activePackageData, activePackageSize, fwDeviceIDRecord,
-        compImageInfos, *compInfo, compIdNameInfo, maxTransferSize, this,
-        downstreamJob, downstreamCompInfo);
-    return true;
-}
-
-bool UpdateManager::startNextJob(mctp_eid_t eid, bool failSkippedJobs)
-{
-    auto pendingSearch = pendingUpdateJobs.find(eid);
-    while (pendingSearch != pendingUpdateJobs.end())
-    {
-        auto offset = pendingSearch->second.front();
-        pendingSearch->second.pop_front();
-        if (pendingSearch->second.empty())
-        {
-            pendingUpdateJobs.erase(pendingSearch);
+            queuedDeviceUpdaters.erase(queuedSearch);
         }
 
-        if (startDeviceUpdater(eid, offset))
-        {
-            return true;
-        }
+        const auto& fwDeviceIDRecord = fwDeviceIDRecords[recordOffset];
+        auto jobIt = downstreamJobByRecordOffset.find(recordOffset);
+        const bool isDownstream = jobIt != downstreamJobByRecordOffset.end();
 
-        if (failSkippedJobs)
+        const ComponentInfo* compInfo = &emptyComponentInfo;
+        auto compInfoSearch = componentInfoMap.find(eid);
+        if (compInfoSearch != componentInfoMap.end())
         {
-            jobSequenceFailed[eid] = true;
-            const auto numComponents =
-                std::get<ApplicableComponents>(fwDeviceIDRecords[offset])
-                    .size();
-            for (size_t i = 0; i < numComponents; ++i)
+            compInfo = &compInfoSearch->second;
+        }
+        else if (!isDownstream)
+        {
+            // The direct-FD path requires real component info for this eid;
+            // nothing to update without it. A downstream update's FDP may
+            // legitimately have zero components of its own and still proxy
+            // downstream device updates.
+            if (failSkippedJobs)
             {
-                markComponentUpdateCompleted();
+                jobSequenceFailed[eid] = true;
+                const auto numComponents =
+                    std::get<ApplicableComponents>(fwDeviceIDRecord).size();
+                for (size_t i = 0; i < numComponents; ++i)
+                {
+                    markComponentUpdateCompleted();
+                }
+            }
+            queuedSearch = queuedDeviceUpdaters.find(eid);
+            continue;
+        }
+
+        ComponentIdNameMap compIdNameInfo{};
+        auto compIdNameInfoSearch = componentNameMap.find(eid);
+        if (compIdNameInfoSearch != componentNameMap.end())
+        {
+            compIdNameInfo = compIdNameInfoSearch->second;
+        }
+
+        std::optional<DownstreamUpdateJob> downstreamJob;
+        const DownstreamComponentInfo* downstreamCompInfo = nullptr;
+        if (isDownstream)
+        {
+            downstreamJob = jobIt->second;
+            auto downstreamSearch = downstreamComponentInfoMap.find(eid);
+            if (downstreamSearch != downstreamComponentInfoMap.end())
+            {
+                downstreamCompInfo = &downstreamSearch->second;
             }
         }
-        pendingSearch = pendingUpdateJobs.find(eid);
+
+        // The previous job's DeviceUpdater is still on the call stack when it
+        // reports completion and keeps running afterwards, so it must outlive
+        // the replacement below.
+        auto previous = deviceUpdaterMap.find(eid);
+        if (previous != deviceUpdaterMap.end())
+        {
+            retiredDeviceUpdaters.push_back(std::move(previous->second));
+        }
+
+        deviceUpdaterMap[eid] = std::make_unique<DeviceUpdater>(
+            eid, activePackageData, activePackageSize, fwDeviceIDRecord,
+            compImageInfos, *compInfo, compIdNameInfo, maxTransferSize, this,
+            downstreamJob, downstreamCompInfo);
+        return true;
     }
     return false;
 }
@@ -1925,7 +1914,8 @@ bool UpdateManager::startNextJob(mctp_eid_t eid, bool failSkippedJobs)
 bool UpdateManager::advanceJobSequence(
     mctp_eid_t eid, bool status, std::vector<std::string>& successCompNames)
 {
-    if (!pendingUpdateJobs.contains(eid) || !startNextJob(eid, true))
+    if (!queuedDeviceUpdaters.contains(eid) ||
+        !createNextDeviceUpdater(eid, true))
     {
         return false;
     }
@@ -1939,12 +1929,7 @@ bool UpdateManager::advanceJobSequence(
     {
         jobSequenceFailed[eid] = true;
     }
-    if (!successCompNames.empty())
-    {
-        auto& accumulated = jobSequenceSuccessCompNames[eid];
-        accumulated.insert(accumulated.end(), successCompNames.begin(),
-                           successCompNames.end());
-    }
+    appendListCompNames(successCompNames);
 
     const auto& deviceUpdater = deviceUpdaterMap.at(eid);
     const auto& fwDeviceIDRecord = deviceUpdater->fwDeviceIDRecord;
@@ -2099,6 +2084,19 @@ bool UpdateManager::runPreUpdateValidationGate(
     return false;
 }
 
+void UpdateManager::appendListCompNames(
+    const std::vector<std::string>& compNames)
+{
+    for (const auto& compName : compNames)
+    {
+        if (!listCompNames.empty())
+        {
+            listCompNames += " ";
+        }
+        listCompNames += compName;
+    }
+}
+
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status, std::vector<std::string> successCompNames)
 {
@@ -2108,23 +2106,13 @@ void UpdateManager::updateDeviceCompletion(
     }
 
     // Fold in the outcome of any earlier jobs already run for this eid's
-    // update sequence (advanceJobSequence accumulates them rather than
-    // recording each job's completion individually), so a single failure
-    // anywhere in the sequence still marks the eid failed even though its
-    // last job succeeded.
+    // update sequence, so a single failure anywhere in the sequence still
+    // marks the eid failed even though its last job succeeded.
     auto failedSearch = jobSequenceFailed.find(eid);
     if (failedSearch != jobSequenceFailed.end())
     {
         status = status && !failedSearch->second;
         jobSequenceFailed.erase(failedSearch);
-    }
-    auto namesSearch = jobSequenceSuccessCompNames.find(eid);
-    if (namesSearch != jobSequenceSuccessCompNames.end())
-    {
-        successCompNames.insert(successCompNames.end(),
-                                namesSearch->second.begin(),
-                                namesSearch->second.end());
-        jobSequenceSuccessCompNames.erase(namesSearch);
     }
 
     const auto [it, inserted] = deviceUpdateCompletionMap.emplace(eid, status);
@@ -2136,26 +2124,7 @@ void UpdateManager::updateDeviceCompletion(
         return;
     }
 
-    // Update listCompNames with the components successfully updated.
-    // successCompNames only ever holds components that actually completed
-    // successfully (see DeviceUpdater::updateComponentCompletion), so a
-    // later failure elsewhere in the same eid's sequence -- e.g. a later
-    // job failing, which folds into `status` above -- must not drop these
-    // already-succeeded names from the summary.
-    if (!successCompNames.empty())
-    {
-        for (const auto& compName : successCompNames)
-        {
-            if (listCompNames.empty())
-            {
-                listCompNames += compName;
-            }
-            else
-            {
-                listCompNames += " " + compName;
-            }
-        }
-    }
+    appendListCompNames(successCompNames);
 
     markComponentUpdateCompleted();
     /* Update package completion */
@@ -2321,7 +2290,7 @@ void UpdateManager::clearActivationInfo()
     fwDeviceIDRecords.clear();
     deviceUpdaterMap.clear();
     retiredDeviceUpdaters.clear();
-    pendingUpdateJobs.clear();
+    queuedDeviceUpdaters.clear();
     deviceUpdateCompletionMap.clear();
     unavailableTargetEids.clear();
     parser.reset();
@@ -2612,7 +2581,7 @@ void UpdateManager::cancelAllUpdates()
         "Firmware update timed out and was cancelled";
     static const std::string resolution =
         "Perform force recovery and retry firmware update operation.";
-    for (const auto& [eid, offsets] : pendingUpdateJobs)
+    for (const auto& [eid, offsets] : queuedDeviceUpdaters)
     {
         for (const auto& offset : offsets)
         {
@@ -2629,7 +2598,7 @@ void UpdateManager::cancelAllUpdates()
         }
         jobSequenceFailed[eid] = true;
     }
-    pendingUpdateJobs.clear();
+    queuedDeviceUpdaters.clear();
 
     for (const auto& [eid, deviceUpdaterPtr] : deviceUpdaterMap)
     {

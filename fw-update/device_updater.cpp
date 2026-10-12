@@ -419,36 +419,8 @@ exec::task<int> DeviceUpdater::processRequestDownstreamDeviceUpdateResponse(
                  std::to_string(eid)));
 
     pldm_request_downstream_device_update_resp respData{};
-    int rc = 0;
-    // DSP0267 §12.17: GetPackageDataMaximumTransferSize is only present
-    // when DownstreamDeviceWillSendGetPackageDataCommand is set, but
-    // libpldm's decode_request_downstream_device_update_resp requires the
-    // full fixed PLDM_DOWNSTREAM_DEVICE_UPDATE_RESPONSE_BYTES (6)
-    // regardless (it doesn't implement the conditional trailing field),
-    // which rejects a spec-compliant FDP response that correctly omits it
-    // -- observed against a real transceiver FDP, which always
-    // reports will_send_get_package_data=0 and a 4-byte response. Decode
-    // the short form directly in that case instead of failing the whole
-    // update over a libpldm decode gap.
-    constexpr size_t shortRespBytes = 4;
-    if (respMsgLen >= PLDM_DOWNSTREAM_DEVICE_UPDATE_RESPONSE_BYTES)
-    {
-        rc = decode_request_downstream_device_update_resp(response, respMsgLen,
-                                                          &respData);
-    }
-    else if (respMsgLen >= shortRespBytes)
-    {
-        const uint8_t* p = response->payload;
-        respData.completion_code = p[0];
-        respData.downstream_device_meta_data_length =
-            static_cast<uint16_t>(p[1] | (p[2] << 8));
-        respData.downstream_device_will_send_get_package_data = p[3];
-        respData.get_package_data_maximum_transfer_size = 0;
-    }
-    else
-    {
-        rc = PLDM_ERROR_INVALID_DATA;
-    }
+    auto rc = decode_request_downstream_device_update_resp(
+        response, respMsgLen, &respData);
     if (rc)
     {
         if (retryCount >= maxDecodeFailureRetries)

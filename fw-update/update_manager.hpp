@@ -648,30 +648,28 @@ class UpdateManager : public UpdateManagerBase
      */
     void recordUnavailableTargetEids(const ComponentTargetList& compTargetList);
 
-    /** @brief Construct the DeviceUpdater for (eid, recordOffset) against
-     *         activePackageData/activePackageSize, replacing eid's previous
-     *         one.
+    /** @brief Pop eid's queued jobs until one yields a DeviceUpdater,
+     *         replacing eid's previous one.
      *
-     *  Shared by the initial per-eid construction in processStream() and by
-     *  startNextJob() when sequencing a later job queued for an eid: an
-     *  FDP runs its own update and its downstream device updates as
-     *  successive DeviceUpdater instances rather than concurrently.
-     *
-     *  @return false if the job can't run (a direct FD update needs the
-     *          eid's component info) and no DeviceUpdater was constructed
-     */
-    bool startDeviceUpdater(mctp_eid_t eid, DeviceIDRecordOffset recordOffset);
-
-    /** @brief Pop eid's queued jobs until one yields a DeviceUpdater.
+     *  Used for the initial per-eid construction in processStream() and
+     *  when sequencing a later job queued for an eid: an FDP runs its own
+     *  update and its downstream device updates as successive
+     *  DeviceUpdater instances rather than concurrently. A DeviceUpdater
+     *  is built against activePackageData/activePackageSize.
      *
      *  @param[in] failSkippedJobs - mark eid's sequence failed and account
      *                               the progress of each job that can't be
-     *                               started, rather than dropping it
-     *                               silently
+     *                               started (a direct FD update needs the
+     *                               eid's component info), rather than
+     *                               dropping it silently
      *  @return true if a DeviceUpdater was constructed; its flow is not
      *          started
      */
-    bool startNextJob(mctp_eid_t eid, bool failSkippedJobs);
+    bool createNextDeviceUpdater(mctp_eid_t eid, bool failSkippedJobs);
+
+    /** @brief Append components that updated successfully to the
+     *         listCompNames summary, space separated. */
+    void appendListCompNames(const std::vector<std::string>& compNames);
 
     /** @brief If eid has more jobs queued, start the next one in place of
      *         recording eid's overall completion.
@@ -780,14 +778,13 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief Maximum size in bytes of the variable payload a DeviceUpdater
      *         may request; shared by the initial per-eid construction loop
-     *         in processStream() and by startDeviceUpdater(). */
+     *         in processStream() and by createNextDeviceUpdater(). */
     static constexpr uint32_t maxTransferSize = 4096;
 
     /** @brief The current package data and size, set at the top of
-     *         processPackageData() and used by startDeviceUpdater() when it
-     *         runs later (from advanceJobSequence(), driven by a
-     *         DeviceUpdater completion callback). The mapping outlives the
-     *         activation. */
+     *         processPackageData() and used by createNextDeviceUpdater() when
+     * it runs later (from advanceJobSequence(), driven by a DeviceUpdater
+     * completion callback). The mapping outlives the activation. */
     const uint8_t* activePackageData = nullptr;
     size_t activePackageSize = 0;
 
@@ -802,18 +799,12 @@ class UpdateManager : public UpdateManagerBase
      *         a time as each job's DeviceUpdater completes, since an FD in
      *         update mode rejects another update request. */
     std::unordered_map<mctp_eid_t, std::deque<DeviceIDRecordOffset>>
-        pendingUpdateJobs;
+        queuedDeviceUpdaters;
 
     /** @brief True once any job in an eid's update sequence has failed, so
      *         the eid's single recorded completion status reflects the
      *         whole sequence rather than just its last job. */
     std::unordered_map<mctp_eid_t, bool> jobSequenceFailed;
-
-    /** @brief Component names successfully updated, accumulated across
-     *         every job run for an eid before the final
-     *         updateDeviceCompletion() call for that eid. */
-    std::unordered_map<mctp_eid_t, std::vector<std::string>>
-        jobSequenceSuccessCompNames;
 
     /** @brief DeviceUpdaters replaced by a later job for the same eid. A
      *         finished DeviceUpdater is still executing when it triggers

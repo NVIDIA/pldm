@@ -278,8 +278,9 @@ TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationWithoutCallbackIsNoop)
 
 TEST_F(DeviceUpdaterTest, refreshInventoryAfterActivationWithoutManagerIsNoop)
 {
-    DeviceUpdater orphan(eid, package, fwDeviceIDRecord, compImageInfos,
-                         compInfo, compIdNameInfo, 512, nullptr);
+    DeviceUpdater orphan(eid, packageBytes.data(), packageBytes.size(),
+                         fwDeviceIDRecord, compImageInfos, compInfo,
+                         compIdNameInfo, 512, nullptr);
 
     auto rc = stdexec::sync_wait(orphan.refreshInventoryAfterActivation());
 
@@ -329,13 +330,7 @@ TEST_F(DeviceUpdaterTest, requestUpdate)
 TEST_F(DeviceUpdaterTest, processRequestDownstreamDeviceUpdateResponseShort)
 {
     // DSP0267 12.17: GetPackageDataMaximumTransferSize is only present when
-    // DownstreamDeviceWillSendGetPackageDataCommand is set. A real FDP that
-    // reports it unset sends only the 4-byte short form (CompletionCode +
-    // DownstreamDeviceMetaDataLength + DDWillSendGetPackageDataCommand),
-    // which libpldm's fixed-size decode_request_downstream_device_update_resp
-    // rejects as too short -- this exercises the short-form fallback in
-    // processRequestDownstreamDeviceUpdateResponse() instead of the
-    // full 6-byte libpldm decode.
+    // DDWillSendGetPackageDataCommand is 2, so a 4-byte response is valid.
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 4> resp{
         0x0A, 0x05, 0x20, 0x00, 0x00, 0x00, 0x00};
 
@@ -976,9 +971,10 @@ TEST_F(
         localCompImageInfos[0])
         .set(PLDM_ACTIVATION_SELF_CONTAINED);
 
-    DeviceUpdater localUpdater(eid, package, fwDeviceIDRecord,
-                               localCompImageInfos, selfContainedCompInfo,
-                               compIdNameInfo, 512, &updateManager);
+    DeviceUpdater localUpdater(
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, selfContainedCompInfo, compIdNameInfo, 512,
+        &updateManager);
     localUpdater.componentActivationModifications.value =
         (1 << PLDM_ACTIVATION_AUTOMATIC);
 
@@ -1017,8 +1013,9 @@ TEST_F(
 
     ComponentInfo emptyCompInfo{};
     DeviceUpdater localUpdater(
-        eid, package, fwDeviceIDRecord, localCompImageInfos, emptyCompInfo,
-        compIdNameInfo, 512, &updateManager, job, &downstreamComponentInfo);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        localCompImageInfos, emptyCompInfo, compIdNameInfo, 512, &updateManager,
+        job, &downstreamComponentInfo);
     localUpdater.componentActivationModifications.value = 0;
 
     EXPECT_TRUE(localUpdater.isLiveActivationSupported());
