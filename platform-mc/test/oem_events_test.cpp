@@ -17,15 +17,16 @@ using namespace pldm::oem_events;
 TEST(OemEventsCoverage, oemEventValidationCoverage)
 {
     const std::array<uint8_t, 3> tooSmall{{0x01, 0x00, 0x00}};
-    EXPECT_FALSE(handleCperErrorCountEvent("ProcessorModule_0", tooSmall.data(),
-                                           tooSmall.size()));
+    EXPECT_FALSE(handleCperErrorCountEvent("ProcessorModule_0", 0,
+                                           tooSmall.data(), tooSmall.size()));
 
     const std::array<uint8_t, 4> truncatedPayload{{0x01, 0x00, 0x08, 0x00}};
     const std::array<uint8_t, 0> emptyPayload{};
-    EXPECT_FALSE(handlePCoreDumpEvent("ProcessorModule_1", emptyPayload.data(),
-                                      emptyPayload.size()));
+    EXPECT_FALSE(handlePCoreDumpEvent(
+        "ProcessorModule_1", 0, emptyPayload.data(), emptyPayload.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
-        "ProcessorModule_2", truncatedPayload.data(), truncatedPayload.size()));
+        "ProcessorModule_2", 0, truncatedPayload.data(),
+        truncatedPayload.size()));
 }
 
 TEST(OemEventsCoverage, inventoryAndSmbiosValidationCoverage)
@@ -55,10 +56,10 @@ TEST(OemEventsCoverage, oemEventHeaderMismatchCoverage)
         {0x02, 0x01, 0x08, 0x00, 0x11, 0x22}};
 
     EXPECT_FALSE(handleCperErrorCountEvent(
-        "../unsafe\\terminus", truncatedWithWarnings.data(),
+        "../unsafe\\terminus", 0, truncatedWithWarnings.data(),
         truncatedWithWarnings.size()));
     EXPECT_FALSE(handlePcieTelemetryEvent(
-        "ProcessorModule_6", truncatedWithWarnings.data(),
+        "ProcessorModule_6", 0, truncatedWithWarnings.data(),
         truncatedWithWarnings.size()));
 }
 
@@ -83,13 +84,13 @@ TEST(OemEventsCoverage, validPayloadPermissionFailureCoverage)
     {
         // Non-root: sanitized paths are not writable → operations fail
         EXPECT_FALSE(handleCperErrorCountEvent(
-            "../unsafe\\terminus", validOemPayload.data(),
+            "../unsafe\\terminus", 0, validOemPayload.data(),
             validOemPayload.size()));
-        EXPECT_FALSE(
-            handlePCoreDumpEvent("../unsafe\\terminus", validOemPayload.data(),
-                                 validOemPayload.size()));
+        EXPECT_FALSE(handlePCoreDumpEvent("../unsafe\\terminus", 0,
+                                          validOemPayload.data(),
+                                          validOemPayload.size()));
         EXPECT_FALSE(handlePcieTelemetryEvent(
-            "../unsafe\\terminus", validOemPayload.data(),
+            "../unsafe\\terminus", 0, validOemPayload.data(),
             validOemPayload.size()));
         EXPECT_FALSE(handleInventoryEvent("../unsafe\\terminus",
                                           validInventoryPayload.data(),
@@ -128,12 +129,13 @@ TEST(OemEventsCoverage, sanitizeUnknownAndWarningHeaderCoverage)
     {
         // Non-root: "unknown_terminus" fallback path is not writable → fail
         EXPECT_FALSE(
-            handleCperErrorCountEvent("..", validPayloadWithWarnings.data(),
+            handleCperErrorCountEvent("..", 0, validPayloadWithWarnings.data(),
                                       validPayloadWithWarnings.size()));
-        EXPECT_FALSE(handlePCoreDumpEvent("..", validPayloadWithWarnings.data(),
-                                          validPayloadWithWarnings.size()));
         EXPECT_FALSE(
-            handlePcieTelemetryEvent("..", validPayloadWithWarnings.data(),
+            handlePCoreDumpEvent("..", 0, validPayloadWithWarnings.data(),
+                                 validPayloadWithWarnings.size()));
+        EXPECT_FALSE(
+            handlePcieTelemetryEvent("..", 0, validPayloadWithWarnings.data(),
                                      validPayloadWithWarnings.size()));
     }
 

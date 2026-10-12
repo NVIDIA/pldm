@@ -252,6 +252,12 @@ int EventManager::handlePlatformEvent(
         }
 
         std::string terminusName = resolvedName.value_or(DEFAULT_TERMINUS_NAME);
+        // Stage per CPU; termini without a configured CpuIndex hold one CPU.
+        uint16_t cpuIndex = 0;
+        if (auto it = termini.find(tid); it != termini.end() && it->second)
+        {
+            cpuIndex = it->second->getCpuIndex().value_or(0);
+        }
         bool success = false;
 
         switch (eventClass)
@@ -262,7 +268,7 @@ int EventManager::handlePlatformEvent(
                     "Received CPER Error Counter Event ({EC}) from tid={TID}",
                     "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handleCperErrorCountEvent(
-                    terminusName, eventData, eventDataSize);
+                    terminusName, cpuIndex, eventData, eventDataSize);
                 break;
 
             case PLDM_OEM_EVENT_CLASS_PCIE_TELEMETRY:
@@ -270,7 +276,7 @@ int EventManager::handlePlatformEvent(
                 lg2::info("Received PCIe Telemetry Event ({EC}) from tid={TID}",
                           "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handlePcieTelemetryEvent(
-                    terminusName, eventData, eventDataSize);
+                    terminusName, cpuIndex, eventData, eventDataSize);
                 break;
 
             case PLDM_OEM_EVENT_CLASS_PCIE_PORT_INFO:
@@ -292,7 +298,7 @@ int EventManager::handlePlatformEvent(
                 lg2::info("Received PCoreDump Event ({EC}) from tid={TID}",
                           "EC", lg2::hex, eventClass, "TID", tid);
                 success = oem_events::handlePCoreDumpEvent(
-                    terminusName, eventData, eventDataSize);
+                    terminusName, cpuIndex, eventData, eventDataSize);
                 break;
 
             default:

@@ -264,8 +264,8 @@ TEST_F(OemEventsPrivateTest, sanitizeTerminusNameCoverage)
     EXPECT_EQ("ProcessorModule_0", sanitizeTerminusName("ProcessorModule_0"));
     EXPECT_EQ("_unsafe_name", sanitizeTerminusName("../unsafe\\name"));
     EXPECT_EQ("unknown_terminus", sanitizeTerminusName(".."));
-    EXPECT_EQ((eventRoot() / "_unsafe_name").string(),
-              getEventDir("../unsafe\\name"));
+    EXPECT_EQ((eventRoot() / "_unsafe_name" / "CPU_0").string(),
+              getEventDir("../unsafe\\name", 0));
 }
 
 TEST_F(OemEventsPrivateTest,
@@ -281,17 +281,18 @@ TEST_F(OemEventsPrivateTest, cperEventWriteAndOverwriteCoverage)
     const auto warningPayload =
         makeOemEventPayload(0x02, 0x01, std::vector<uint8_t>{'A', 'B', 'C'});
     const auto filePath =
-        eventRoot() / "_unsafe_module" / CPER_ERROR_COUNT_FILE;
+        eventRoot() / "_unsafe_module" / "CPU_0" / CPER_ERROR_COUNT_FILE;
 
     EXPECT_TRUE(handleCperErrorCountEvent(
-        "../unsafe\\module", warningPayload.data(), warningPayload.size()));
+        "../unsafe\\module", 0, warningPayload.data(), warningPayload.size()));
     EXPECT_EQ(std::vector<uint8_t>({'A', 'B', 'C'}), readBytes(filePath));
     EXPECT_FALSE(fs::exists(filePath.string() + ".tmp"));
 
     const auto overwritePayload =
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{'Z'});
     EXPECT_TRUE(handleCperErrorCountEvent(
-        "../unsafe\\module", overwritePayload.data(), overwritePayload.size()));
+        "../unsafe\\module", 0, overwritePayload.data(),
+        overwritePayload.size()));
     EXPECT_EQ(std::vector<uint8_t>({'Z'}), readBytes(filePath));
 }
 
@@ -301,17 +302,37 @@ TEST_F(OemEventsPrivateTest, pcieEventWriteCoverage)
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x10, 0x20});
     const auto telemetryPayload =
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0xAB});
-    const auto eventDir = eventRoot() / "Processor_Module_0";
+    const auto eventDir = eventRoot() / "Processor_Module_0" / "CPU_0";
 
-    EXPECT_TRUE(handlePCoreDumpEvent("Processor/Module\\0", ltssmPayload.data(),
-                                     ltssmPayload.size()));
-    EXPECT_TRUE(
-        handlePcieTelemetryEvent("Processor/Module\\0", telemetryPayload.data(),
-                                 telemetryPayload.size()));
+    EXPECT_TRUE(handlePCoreDumpEvent("Processor/Module\\0", 0,
+                                     ltssmPayload.data(), ltssmPayload.size()));
+    EXPECT_TRUE(handlePcieTelemetryEvent(
+        "Processor/Module\\0", 0, telemetryPayload.data(),
+        telemetryPayload.size()));
 
     EXPECT_EQ(ltssmPayload, readBytes(eventDir / PCOREDUMP_FILE));
     EXPECT_EQ(std::vector<uint8_t>({0xAB}),
               readBytes(eventDir / PCIE_TELEMETRY_FILE));
+}
+
+TEST_F(OemEventsPrivateTest, cpusSharingTerminusStageSeparately)
+{
+    // VR-C2 has two CPUs behind one terminus; each must get its own file.
+    const auto cpu0 =
+        makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x00});
+    const auto cpu1 =
+        makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x01});
+    const auto dir = eventRoot() / "ProcessorModule_0";
+
+    EXPECT_TRUE(handlePcieTelemetryEvent("ProcessorModule_0", 0, cpu0.data(),
+                                         cpu0.size()));
+    EXPECT_TRUE(handlePcieTelemetryEvent("ProcessorModule_0", 1, cpu1.data(),
+                                         cpu1.size()));
+
+    EXPECT_EQ(std::vector<uint8_t>({0x00}),
+              readBytes(dir / "CPU_0" / PCIE_TELEMETRY_FILE));
+    EXPECT_EQ(std::vector<uint8_t>({0x01}),
+              readBytes(dir / "CPU_1" / PCIE_TELEMETRY_FILE));
 }
 
 TEST_F(OemEventsPrivateTest, pcoreDumpStagingContract)
@@ -328,10 +349,11 @@ TEST_F(OemEventsPrivateTest, pcoreDumpStagingContract)
     // transformation on the way.
     const std::vector<uint8_t> rawPayload{0x00, 0xFF, 0x01, 0x02,
                                           0x03, 0x00, 0x00, 0x7F};
-    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", rawPayload.data(),
+    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", 0, rawPayload.data(),
                                      rawPayload.size()));
 
-    const auto staged = eventRoot() / "ProcessorModule_1" / PCOREDUMP_FILE;
+    const auto staged =
+        eventRoot() / "ProcessorModule_1" / "CPU_0" / PCOREDUMP_FILE;
     EXPECT_EQ(rawPayload, readBytes(staged));
     // Published by rename, so no partial file is ever visible to a watcher.
     EXPECT_FALSE(fs::exists(staged.string() + ".tmp"));
@@ -340,7 +362,7 @@ TEST_F(OemEventsPrivateTest, pcoreDumpStagingContract)
     // makes the staging directory self-cleaning, and why the collector has to
     // copy a payload out before triggering the next selector.
     const std::vector<uint8_t> nextPayload{0xAA, 0xBB};
-    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", nextPayload.data(),
+    EXPECT_TRUE(handlePCoreDumpEvent("ProcessorModule_1", 0, nextPayload.data(),
                                      nextPayload.size()));
     EXPECT_EQ(nextPayload, readBytes(staged));
 }
@@ -354,8 +376,8 @@ TEST_F(OemEventsPrivateTest, saveEventDataFilesystemFailureCoverage)
 
     const auto payload =
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x01});
-    EXPECT_FALSE(
-        handleCperErrorCountEvent("conflict", payload.data(), payload.size()));
+    EXPECT_FALSE(handleCperErrorCountEvent("conflict", 0, payload.data(),
+                                           payload.size()));
 }
 
 TEST_F(OemEventsPrivateTest, saveEventDataRejectsTooSmallBufferCoverage)
@@ -363,9 +385,10 @@ TEST_F(OemEventsPrivateTest, saveEventDataRejectsTooSmallBufferCoverage)
     const std::array<uint8_t, OEM_EVENT_HEADER_SIZE - 1> shortPayload{
         0x01, 0x00, 0x00};
 
-    EXPECT_FALSE(handleCperErrorCountEvent("short", shortPayload.data(),
+    EXPECT_FALSE(handleCperErrorCountEvent("short", 0, shortPayload.data(),
                                            shortPayload.size()));
-    EXPECT_FALSE(fs::exists(eventRoot() / "short" / CPER_ERROR_COUNT_FILE));
+    EXPECT_FALSE(
+        fs::exists(eventRoot() / "short" / "CPU_0" / CPER_ERROR_COUNT_FILE));
 }
 
 TEST_F(OemEventsPrivateTest, saveEventDataRejectsTruncatedPayloadCoverage)
@@ -373,33 +396,33 @@ TEST_F(OemEventsPrivateTest, saveEventDataRejectsTruncatedPayloadCoverage)
     const std::vector<uint8_t> truncatedPayload{0x01, 0x00, 0x04,
                                                 0x00, 0xAA, 0xBB};
 
-    EXPECT_FALSE(
-        handlePcieTelemetryEvent("telemetry_truncated", truncatedPayload.data(),
-                                 truncatedPayload.size()));
-    EXPECT_FALSE(
-        fs::exists(eventRoot() / "telemetry_truncated" / PCIE_TELEMETRY_FILE));
+    EXPECT_FALSE(handlePcieTelemetryEvent(
+        "telemetry_truncated", 0, truncatedPayload.data(),
+        truncatedPayload.size()));
+    EXPECT_FALSE(fs::exists(
+        eventRoot() / "telemetry_truncated" / "CPU_0" / PCIE_TELEMETRY_FILE));
 }
 
 TEST_F(OemEventsPrivateTest, saveEventDataOpenAndRenameFailureCoverage)
 {
     const auto payload =
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x11, 0x22});
-    const auto eventDir = fs::path(getEventDir("existing_file"));
-    fs::create_directories(eventRoot());
+    const auto eventDir = fs::path(getEventDir("existing_file", 0));
+    fs::create_directories(eventDir.parent_path());
 
     {
         std::ofstream notDirectory(eventDir);
         ASSERT_TRUE(notDirectory.is_open());
         notDirectory << "file";
     }
-    EXPECT_FALSE(saveEventData("existing_file", CPER_ERROR_COUNT_FILE,
+    EXPECT_FALSE(saveEventData("existing_file", 0, CPER_ERROR_COUNT_FILE,
                                payload.data(), payload.size()));
 
     fs::remove(eventDir);
     fs::create_directories(eventDir);
     fs::create_directory(eventDir / CPER_ERROR_COUNT_FILE);
 
-    EXPECT_FALSE(saveEventData("existing_file", CPER_ERROR_COUNT_FILE,
+    EXPECT_FALSE(saveEventData("existing_file", 0, CPER_ERROR_COUNT_FILE,
                                payload.data(), payload.size()));
     EXPECT_FALSE(
         fs::exists(eventDir / (std::string(CPER_ERROR_COUNT_FILE) + ".tmp")));
@@ -409,11 +432,11 @@ TEST_F(OemEventsPrivateTest, saveEventDataCloseFailureCoverage)
 {
     const auto payload =
         makeOemEventPayload(0x01, 0x00, std::vector<uint8_t>{0x11, 0x22, 0x33});
-    const auto eventDir = eventRoot() / "close_failure";
+    const auto eventDir = eventRoot() / "close_failure" / "CPU_0";
     ScopedFileSizeLimit fileSizeLimit(1);
     ASSERT_TRUE(fileSizeLimit.ready());
 
-    EXPECT_FALSE(saveEventData("close_failure", CPER_ERROR_COUNT_FILE,
+    EXPECT_FALSE(saveEventData("close_failure", 0, CPER_ERROR_COUNT_FILE,
                                payload.data(), payload.size()));
     EXPECT_FALSE(
         fs::exists(eventDir / (std::string(CPER_ERROR_COUNT_FILE) + ".tmp")));
