@@ -273,13 +273,18 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
         pldm::MctpInfo(12, "", "", 1, std::nullopt, "", std::nullopt));
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(1, termini.size());
+    ASSERT_TRUE(termini.contains(12));
+    EXPECT_TRUE(termini.at(12)->doesSupport(PLDM_BASE));
+    EXPECT_FALSE(termini.at(12)->doesSupport(PLDM_PLATFORM));
+    auto terminus = termini.at(12);
 
-    // 1.discover the same mctp list again
+    // 1.discover the same mctp list again: the known terminus is kept and
+    // asked for its PLDM types again
     rc = mockTerminusManager.clearQueuedResponses();
     EXPECT_EQ(rc, PLDM_SUCCESS);
 
     std::array<uint8_t, sizeof(pldm_msg_hdr) + getTidRespLen> getTidResp1{
-        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x01};
+        0x00, PLDM_BASE, PLDM_GET_TID, 0x00, 0x0c};
     rc = mockTerminusManager.enqueueResponse((pldm_msg*)getTidResp1.data(),
                                              sizeof(getTidResp1));
     EXPECT_EQ(rc, PLDM_SUCCESS);
@@ -292,6 +297,10 @@ TEST_F(TerminusManagerTest, discoverMctpTerminusTest)
 
     mockTerminusManager.discoverMctpTerminus(mctpInfos);
     EXPECT_EQ(1, termini.size());
+    EXPECT_EQ(terminus, termini.at(12));
+    EXPECT_TRUE(terminus->doesSupport(PLDM_BASE));
+    EXPECT_FALSE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_TRUE(mockTerminusManager.responseMsgs.empty());
 }
 
 TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)

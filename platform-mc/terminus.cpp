@@ -625,6 +625,20 @@ bool Terminus::pdrTypeConsumed(uint8_t type)
     }
 }
 
+uint64_t Terminus::updateSupportedTypes(uint64_t types)
+{
+    const std::bitset<64> updatedTypes(types);
+    const auto changedTypes = supportedTypes ^ updatedTypes;
+    supportedTypes = updatedTypes;
+    return changedTypes.to_ullong();
+}
+
+bool Terminus::hasEntities() const
+{
+    return !numericSensors.empty() || !stateSensors.empty() ||
+           !numericEffecters.empty() || !stateEffecters.empty();
+}
+
 bool Terminus::isPdrAlreadyApplied(const std::vector<uint8_t>& pdr)
 {
     if (pdr.size() < sizeof(pldm_pdr_hdr))

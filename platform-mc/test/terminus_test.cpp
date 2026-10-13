@@ -3604,6 +3604,99 @@ TEST_F(TerminusTest, addNewPdrsRetainsUnrecognizedRawPdr)
     EXPECT_TRUE(terminus.stateEffecters.empty());
 }
 
+static std::vector<uint8_t> makeNumericSensorPdrBytes(uint16_t sensorId)
+{
+    return {
+        0x1,
+        0x0,
+        0x0,
+        0x0, // record handle
+        0x1, // PDRHeaderVersion
+        PLDM_NUMERIC_SENSOR_PDR,
+        0x0,
+        0x0, // recordChangeNumber
+        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
+            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
+        0, // dataLength
+        0,
+        0, // PLDMTerminusHandle
+        static_cast<uint8_t>(sensorId & 0xFF),
+        static_cast<uint8_t>((sensorId >> 8) & 0xFF),
+        PLDM_ENTITY_POWER_SUPPLY,
+        0,   // entityType
+        1,
+        0,   // entityInstanceNumber
+        0x1,
+        0x0, // containerID
+        PLDM_NO_INIT,
+        false,
+        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUint
+        1,                          // unitModifier
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        true,
+        PLDM_RANGE_FIELD_FORMAT_SINT8,
+        0,
+        0,
+        0xc0,
+        0x3f, // resolution=1.5
+        0,
+        0,
+        0x80,
+        0x3f, // offset=1.0
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0x80,
+        0x3f,
+        0,
+        0,
+        0x80,
+        0x3f,
+        255,
+        0,
+        PLDM_RANGE_FIELD_FORMAT_UINT8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    };
+}
+
+TEST_F(TerminusTest, hasEntitiesTest)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000530");
+    Terminus terminus(0x53, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("HasEntitiesTerminus");
+
+    EXPECT_FALSE(terminus.hasEntities());
+    terminus.pdrs.emplace_back(makeNumericSensorPdrBytes(0x601));
+    EXPECT_FALSE(terminus.hasEntities());
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericSensors.size());
+    ASSERT_NE(nullptr, terminus.numericSensors.front());
+    EXPECT_TRUE(terminus.hasEntities());
+}
+
 TEST_F(TerminusTest, rearmPolledEffecterOnPdrReapply)
 {
     std::string uuid("00000000-0000-0000-0000-000000000531");

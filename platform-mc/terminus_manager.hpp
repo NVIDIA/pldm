@@ -161,6 +161,11 @@ class TerminusManager
      */
     exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo);
 
+    /** @brief Refresh the cached types of a known terminus and act on a
+     *         PLDM Type 2 change; keep the cache on GetPLDMTypes failure. */
+    exec::task<void> refreshTerminusSupportedTypes(
+        std::shared_ptr<Terminus> terminus, mctp_eid_t eid);
+
     /** @brief Send getTID PLDM command to destination EID and then return the
      *         value of tid in reference parameter.
      *

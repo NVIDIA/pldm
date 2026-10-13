@@ -434,6 +434,9 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     {
         lg2::info("terminus tid={TID} eid={EID} has been initialized.", "TID",
                   tid, "EID", eid);
+        // The terminus has been discovered before. Refresh its capabilities;
+        // on failure the cached types stay in use.
+        co_await refreshTerminusSupportedTypes(it->second, eid);
         co_return PLDM_SUCCESS;
     }
 
@@ -484,6 +487,53 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
 
     co_return PLDM_SUCCESS;
+}
+
+exec::task<void> TerminusManager::refreshTerminusSupportedTypes(
+    std::shared_ptr<Terminus> terminus, mctp_eid_t eid)
+{
+    const auto tid = terminus->getTid();
+    uint64_t supportedTypes = 0;
+    auto rc = co_await getPLDMTypes(tid, supportedTypes);
+    if (rc)
+    {
+        lg2::error(
+            "GetPLDMTypes to known terminus TID={TID} EID={EID} failed, rc={RC}",
+            "TID", tid, "EID", eid, "RC", rc);
+        co_return;
+    }
+
+    const auto changedTypes = terminus->updateSupportedTypes(supportedTypes);
+    if (!(changedTypes & (uint64_t{1} << PLDM_PLATFORM)))
+    {
+        co_return;
+    }
+    if (!terminus->doesSupport(PLDM_PLATFORM))
+    {
+        lg2::info(
+            "Terminus no longer supports PLDM T2, TID={TID} EID={EID} TYPES={TYPES}",
+            "TID", tid, "EID", eid, "TYPES", lg2::hex, supportedTypes);
+        terminus->stopPolling = true;
+        terminus->setOffline();
+        co_return;
+    }
+    lg2::info(
+        "Terminus now supports PLDM T2, TID={TID} EID={EID} TYPES={TYPES}",
+        "TID", tid, "EID", eid, "TYPES", lg2::hex, supportedTypes);
+    if (!terminus->hasEntities())
+    {
+        terminus->initalized = false;
+        // Start like a new terminus; do not resume before initialization.
+        terminus->resumed = true;
+    }
+    else
+    {
+        lg2::warning(
+            "Reusing kept PLDM T2 objects; PDRs are not fetched again, TID={TID} EID={EID}",
+            "TID", tid, "EID", eid);
+    }
+    terminus->initSensorList = true;
+    terminus->setOnline();
 }
 
 exec::task<int> TerminusManager::SendRecvPldmMsgOverMctp(
