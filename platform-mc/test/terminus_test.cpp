@@ -8848,6 +8848,22 @@ static std::vector<uint8_t> makeNumericSensorPdrBytes(uint16_t sensorId)
     };
 }
 
+TEST_F(TerminusTest, hasEntitiesTest)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000530");
+    Terminus terminus(0x53, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    terminus.setTerminusName("HasEntitiesTerminus");
+
+    EXPECT_FALSE(terminus.hasEntities());
+    terminus.pdrs.emplace_back(makeNumericSensorPdrBytes(0x601));
+    EXPECT_FALSE(terminus.hasEntities());
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(1u, terminus.numericSensors.size());
+    ASSERT_NE(nullptr, terminus.numericSensors.front());
+    EXPECT_TRUE(terminus.hasEntities());
+}
+
 TEST_F(TerminusTest, pdrTypeConsumedClassifiesTypes)
 {
     // Types parseOnePdrIntoCache() turns into a cache entry / D-Bus object.

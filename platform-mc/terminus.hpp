@@ -113,6 +113,17 @@ class Terminus
      */
     bool doesSupport(uint8_t type);
 
+    /** @brief Replace the cached PLDM types with a fresh GetPLDMTypes result
+     *
+     *  @param[in] types - PLDM type bitmap returned by GetPLDMTypes
+     *  @return Bitmap of the types that were added or removed, 0 if the
+     *          terminus still supports the same types
+     */
+    uint64_t updateSupportedTypes(uint64_t types);
+
+    /** @brief Whether any sensor or effecter entities are present. */
+    bool hasEntities() const;
+
     /** @brief Parse the PDRs stored in the member variable, pdrs.
      *
      *  @return False if any unsupported PDR is detected.

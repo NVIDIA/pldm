@@ -92,6 +92,44 @@ class TerminusManagerPrivateTest : public testing::Test
         terminusManager.mctpTidDiscoveryMaxAttempts = 1;
     }
 
+    /** Make the terminus of knownInfo (TID 0x22) known, as if discovered
+     *  before while it advertised @a types.
+     */
+    std::shared_ptr<platform_mc::Terminus> addKnownTerminus(uint8_t types)
+    {
+        UUID uuid("00000000-0000-0000-0000-000000000022");
+        EXPECT_TRUE(terminusManager.mapTid(knownInfo, 0x22).has_value());
+        termini[0x22] = std::make_shared<platform_mc::Terminus>(
+            0x22, types, uuid, terminusManager);
+        return termini[0x22];
+    }
+
+    /** Rediscover knownInfo, answering GetTID and, when @a types is given,
+     *  GetPLDMTypes. Without @a types, GetPLDMTypes gets no response.
+     */
+    void rediscover(std::optional<uint8_t> types)
+    {
+        auto getTidResp = makeGetTidResp(0x22);
+        ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(getTidResp));
+        if (types)
+        {
+            auto typesResp = makeGetPldmTypesResp(*types);
+            ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(typesResp));
+        }
+        auto rc =
+            stdexec::sync_wait(terminusManager.initMctpTerminus(knownInfo));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+        EXPECT_TRUE(terminusManager.responseMsgs.empty());
+    }
+
+    static constexpr uint8_t baseTypes = 1 << PLDM_BASE;
+    static constexpr uint8_t platformTypes = baseTypes | (1 << PLDM_PLATFORM);
+    const MctpInfo knownInfo = MctpInfo(
+        22, "12345678-0000-0000-0000-000000000022",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+
     sdeventplus::Event event;
     TestInstanceIdDb instanceIdDb;
     requester::Handler<requester::Request> reqHandler;
@@ -241,28 +279,6 @@ TEST_F(TerminusManagerPrivateTest, initMctpTerminusInternalCoverage)
     EXPECT_EQ(std::nullopt, terminusManager.toTid(failureInfo));
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.clearQueuedResponses());
 
-    const MctpInfo existingInfo(
-        22, "12345678-0000-0000-0000-000000000022",
-        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
-        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
-    std::string existingUuid("00000000-0000-0000-0000-000000000022");
-    ASSERT_TRUE(terminusManager.mapTid(existingInfo, 0x22).has_value());
-    termini[0x22] = std::make_shared<platform_mc::Terminus>(
-        0x22, 1 << PLDM_BASE, existingUuid, terminusManager);
-
-    auto existingGetTidResp = makeGetTidResp(0x22);
-    ASSERT_EQ(PLDM_SUCCESS,
-              terminusManager.enqueueResponse(existingGetTidResp));
-    auto existingSetTidResp = makeSetTidResp();
-    ASSERT_EQ(PLDM_SUCCESS,
-              terminusManager.enqueueResponse(existingSetTidResp));
-    auto initExistingRc =
-        stdexec::sync_wait(terminusManager.initMctpTerminus(existingInfo));
-    ASSERT_TRUE(initExistingRc.has_value());
-    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*initExistingRc));
-    EXPECT_EQ(existingUuid, termini[0x22]->getUuid());
-    ASSERT_EQ(PLDM_SUCCESS, terminusManager.clearQueuedResponses());
-
     const MctpInfo configuredInfo(
         23, "12345678-0000-0000-0000-000000000023",
         "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
@@ -292,6 +308,87 @@ TEST_F(TerminusManagerPrivateTest, initMctpTerminusInternalCoverage)
     ASSERT_TRUE(termini[23]->getInstance().has_value());
     EXPECT_EQ(7, termini[23]->getInstance().value());
     EXPECT_EQ("12345678-0000-0000-0000-000000000023", termini[23]->getUuid());
+}
+
+TEST_F(TerminusManagerPrivateTest, knownTerminusRefreshesSupportedTypes)
+{
+    // First discovered without Type 2, as when booted into a recovery image.
+    auto terminus = addKnownTerminus(baseTypes);
+
+    // Type 2 gained: its PDRs are still to be fetched for the first time.
+    terminus->initalized = true;
+    terminus->initSensorList = false;
+    ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
+    EXPECT_EQ(terminus, termini[0x22]);
+    EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_FALSE(terminus->initalized);
+    EXPECT_TRUE(terminus->initSensorList);
+
+    // As after initTerminus() and the first polling round.
+    terminus->initalized = true;
+    terminus->initSensorList = false;
+
+    // GetPLDMTypes fails: the cached types and the terminus state are kept.
+    ASSERT_NO_FATAL_FAILURE(rediscover(std::nullopt));
+    EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_TRUE(terminus->initalized);
+    EXPECT_FALSE(terminus->initSensorList);
+
+    // The same types again, or a type other than Type 2 changing, leave the
+    // terminus as it is.
+    ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
+    ASSERT_NO_FATAL_FAILURE(
+        rediscover(static_cast<uint8_t>(platformTypes | (1 << PLDM_FRU))));
+    EXPECT_EQ(terminus, termini[0x22]);
+    EXPECT_TRUE(terminus->doesSupport(PLDM_FRU));
+    EXPECT_TRUE(terminus->initalized);
+    EXPECT_FALSE(terminus->initSensorList);
+    EXPECT_TRUE(terminus->resumed);
+    EXPECT_FALSE(terminus->stopPolling);
+}
+
+TEST_F(TerminusManagerPrivateTest, knownTerminusFollowsPlatformSupport)
+{
+    auto terminus = addKnownTerminus(platformTypes);
+    // As after initTerminus() and the first polling round.
+    terminus->initalized = true;
+    terminus->initSensorList = false;
+
+    // Type 2 dropped: polling stops and the terminus goes offline, keeping
+    // its objects.
+    ASSERT_NO_FATAL_FAILURE(rediscover(baseTypes));
+    EXPECT_FALSE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_TRUE(terminus->stopPolling);
+    EXPECT_FALSE(terminus->resumed);
+    EXPECT_TRUE(terminus->initalized);
+
+    // Type 2 back with objects: keep them without fetching PDRs again.
+    terminus->numericSensors.push_back(nullptr);
+    terminus->initalized = true;
+    terminus->initSensorList = false;
+    ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
+    EXPECT_EQ(terminus, termini[0x22]);
+    EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_TRUE(terminus->initalized);
+    EXPECT_TRUE(terminus->initSensorList);
+    // No Manager here to restart polling/resume after discovery.
+    EXPECT_FALSE(terminus->resumed);
+    EXPECT_TRUE(terminus->stopPolling);
+
+    // Remove the placeholder before setOffline() touches sensor objects.
+    terminus->numericSensors.clear();
+    ASSERT_NO_FATAL_FAILURE(rediscover(baseTypes));
+    EXPECT_FALSE(terminus->resumed);
+
+    // Type 2 back without objects: initialize like a new terminus.
+    terminus->initalized = true;
+    terminus->initSensorList = false;
+    ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
+    EXPECT_EQ(terminus, termini[0x22]);
+    EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
+    EXPECT_FALSE(terminus->initalized);
+    EXPECT_TRUE(terminus->initSensorList);
+    EXPECT_TRUE(terminus->resumed);
 }
 
 TEST_F(TerminusManagerPrivateTest, mappingLookupAdditionalCoverage)
