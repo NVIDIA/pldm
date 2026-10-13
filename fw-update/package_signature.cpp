@@ -24,6 +24,7 @@
 #include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -40,12 +41,9 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
 std::vector<uint8_t> PackageSignature::getSignatureHeader(
-    std::istream& package, uintmax_t sizeOfPkgWithoutSignHdr)
+    const uint8_t* package, size_t packageSize,
+    uintmax_t sizeOfPkgWithoutSignHdr)
 {
-    package.seekg(0, std::ios_base::end);
-
-    uintmax_t packageSize = package.tellg();
-
     if (sizeOfPkgWithoutSignHdr == packageSize)
     {
         info("Package Signature: package does not have Signature Header");
@@ -61,8 +59,8 @@ std::vector<uint8_t> PackageSignature::getSignatureHeader(
     std::vector<uint8_t> pkgSignData;
     pkgSignData.resize(pldmFwupSignaturePackageSize);
 
-    package.seekg(sizeOfPkgWithoutSignHdr);
-    package.read(reinterpret_cast<char*>(&pkgSignData[0]), pkgSignData.size());
+    std::memcpy(pkgSignData.data(), package + sizeOfPkgWithoutSignHdr,
+                pkgSignData.size());
 
     return pkgSignData;
 }
@@ -104,7 +102,7 @@ std::unique_ptr<PackageSignature>
 }
 
 void PackageSignature::verifyAsync(
-    std::istream& package, const std::string& publicKey,
+    const uint8_t* package, const std::string& publicKey,
     uintmax_t lengthOfSignedData, std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
@@ -187,7 +185,7 @@ void PackageSignature::verifyAsync(
         [onError](const std::string& errorMsg) { onError(errorMsg); });
 }
 
-bool PackageSignature::verify(std::istream& package,
+bool PackageSignature::verify(const uint8_t* package,
                               const std::string& publicKey,
                               uintmax_t lengthOfSignedData)
 {
@@ -371,7 +369,7 @@ uintmax_t PackageSignatureV3::calculateSizeOfSignedData(
 }
 
 void PackageSignature::integrityCheckAsync(
-    std::istream& package, uintmax_t lengthOfSignedData,
+    const uint8_t* package, uintmax_t lengthOfSignedData,
     std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
@@ -405,7 +403,7 @@ void PackageSignature::integrityCheckAsync(
     }
 }
 
-bool PackageSignature::integrityCheck(std::istream& package,
+bool PackageSignature::integrityCheck(const uint8_t* package,
                                       uintmax_t lengthOfSignedData)
 {
     std::string publicKeyString(publicKeyData.begin(), publicKeyData.end());
@@ -424,12 +422,10 @@ bool PackageSignature::integrityCheck(std::istream& package,
 }
 
 void PackageSignatureSha384::calculateDigestAsync(
-    std::istream& package, uintmax_t lengthOfSignedData,
+    const uint8_t* package, uintmax_t lengthOfSignedData,
     std::function<void(std::vector<unsigned char>)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
 {
-    package.seekg(0);
-
     if (useChunks)
     {
         lg2::info(
@@ -457,7 +453,7 @@ void PackageSignatureSha384::calculateDigestAsync(
 
         // Initialize all data required to perform digest calculations using
         // chunks
-        this->package = &package;
+        this->package = package;
         this->hash = std::make_shared<std::vector<unsigned char>>(digestLength);
         this->chunkNumber = 0;
         this->ctxMdctxPtr = ctxMdctxPtr;
@@ -486,8 +482,7 @@ void PackageSignatureSha384::calculateDigestAsync(
         try
         {
             std::vector<uint8_t> packageVector(lengthOfSignedData);
-            package.read(reinterpret_cast<char*>(packageVector.data()),
-                         lengthOfSignedData);
+            std::memcpy(packageVector.data(), package, lengthOfSignedData);
 
             std::vector<unsigned char> buffer(digestLength);
             unsigned char* digest =
@@ -544,8 +539,8 @@ void PackageSignatureSha384::handleChunkProcessing()
         }
 
         std::vector<uint8_t> buffer(currentChunkSize, 0);
-        this->package->read(reinterpret_cast<char*>(buffer.data()),
-                            buffer.size());
+        std::memcpy(buffer.data(), this->package + processedLength,
+                    currentChunkSize);
 
         if (!EVP_DigestUpdate(this->ctxMdctxPtr.get(), buffer.data(),
                               currentChunkSize))
@@ -570,10 +565,8 @@ void PackageSignatureSha384::handleChunkProcessing()
 }
 
 std::vector<unsigned char> PackageSignatureSha384::calculateDigest(
-    std::istream& package, uintmax_t lengthOfSignedData)
+    const uint8_t* package, uintmax_t lengthOfSignedData)
 {
-    package.seekg(0);
-
     if (useChunks)
     {
         std::vector<unsigned char> hash(digestLength);
@@ -607,10 +600,11 @@ std::vector<unsigned char> PackageSignatureSha384::calculateDigest(
         int chunkNumber = 0;
         size_t currentChunkSize = 0;
 
-        while (!package.eof())
+        while (true)
         {
             chunkNumber++;
-            package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+            uintmax_t chunkOffset =
+                static_cast<uintmax_t>(chunkNumber - 1) * buffer.size();
 
             if ((static_cast<uintmax_t>(chunkNumber) * buffer.size()) <=
                 lengthOfSignedData)
@@ -622,6 +616,8 @@ std::vector<unsigned char> PackageSignatureSha384::calculateDigest(
                 currentChunkSize =
                     lengthOfSignedData - ((chunkNumber - 1) * buffer.size());
             }
+
+            std::memcpy(buffer.data(), package + chunkOffset, currentChunkSize);
 
             if (!EVP_DigestUpdate(
                     mdctx,
@@ -649,8 +645,7 @@ std::vector<unsigned char> PackageSignatureSha384::calculateDigest(
         std::vector<uint8_t> packageVector;
         packageVector.resize(lengthOfSignedData);
 
-        package.read(reinterpret_cast<char*>(&packageVector[0]),
-                     lengthOfSignedData);
+        std::memcpy(packageVector.data(), package, lengthOfSignedData);
 
         std::vector<unsigned char> buffer(digestLength);
 

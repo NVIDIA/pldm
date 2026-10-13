@@ -16,7 +16,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <span>
-#include <spanstream>
 #include <string>
 #include <system_error>
 
@@ -47,9 +46,8 @@ bool ItemUpdateManager::processPackage()
         return false;
     }
 
-    auto buffer = std::vector<uint8_t>(packageMap->getBytes().begin(),
-                                       packageMap->getBytes().end());
-    parser = parsePkgHeader(buffer.data(), buffer.size());
+    const auto packageBytes = packageMap->getBytes();
+    parser = parsePkgHeader(packageBytes.data(), packageBytes.size());
     if (parser == nullptr)
     {
         error("Invalid PLDM package header information");
@@ -60,7 +58,7 @@ bool ItemUpdateManager::processPackage()
     }
     try
     {
-        parser->parse(buffer);
+        parser->parse(packageBytes, packageBytes.size());
     }
     catch (const std::exception& e)
     {
@@ -86,14 +84,11 @@ bool ItemUpdateManager::processPackage()
     const auto& fwDeviceIDRecords = parser->getFwDeviceIDRecords();
     const auto& compImageInfos = parser->getComponentImageInfos();
 
-    auto packageSpan = packageMap->getChars();
-    packageDataStream =
-        std::make_unique<std::ispanstream>(packageSpan, std::ios::binary);
     static const ComponentIdNameMap emptyCompIdNameMap{};
     deviceUpdater = std::make_unique<DeviceUpdater>(
-        eid, *packageDataStream, fwDeviceIDRecords[*deviceIdRecordOffset],
-        compImageInfos, componentInfo, emptyCompIdNameMap,
-        MAXIMUM_TRANSFER_SIZE, this);
+        eid, packageBytes.data(), packageBytes.size(),
+        fwDeviceIDRecords[*deviceIdRecordOffset], compImageInfos, componentInfo,
+        emptyCompIdNameMap, MAXIMUM_TRANSFER_SIZE, this);
     inProgressActivation->activation(software::Activation::Activations::Ready);
     if (!preConditionPath.empty())
     {
@@ -268,7 +263,6 @@ void ItemUpdateManager::completeUpdate(bool status)
 void ItemUpdateManager::teardownUpdate()
 {
     deviceUpdater.reset();
-    packageDataStream.reset();
     packageMap.reset();
     dupFd.reset();
     updateInProgress = false;
@@ -344,7 +338,8 @@ void ItemUpdateManager::markComponentUpdateCompleted()
 sdbusplus::object_path ItemUpdateManager::startUpdate(
     sdbusplus::message::unix_fd image,
     ApplyTimeIntf::RequestedApplyTimes /*applyTime*/, bool /*forceUpdate*/,
-    std::vector<sdbusplus::object_path> /*targets*/)
+    std::vector<sdbusplus::object_path> /*targets*/,
+    bool /*preUpdateValidation*/)
 {
     if (updateInProgress)
     {

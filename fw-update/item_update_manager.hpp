@@ -9,7 +9,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <spanstream>
 #include <variant>
 
 namespace pldm::fw_update
@@ -107,15 +106,15 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
      * D-Bus method implementation for starting the update process
      *
      * @param[in] image The image file descriptor
-     * @param[in] applyTime The requested apply time (Immediate, OnReset,
-     * OnStart, etc.) This will be passed to post-condition services to allow
-     *                       conditional handling (e.g., skip reset if not
-     * immediate)
+     * @param[in] applyTime The requested apply time
+     * @param[in] preUpdateValidation Ignored: an item-level update targets a
+     *            single device, so there is no device scope to validate
      */
     sdbusplus::object_path startUpdate(
         sdbusplus::message::unix_fd image,
         ApplyTimeIntf::RequestedApplyTimes applyTime, bool forceUpdate,
-        std::vector<sdbusplus::object_path> targets) override;
+        std::vector<sdbusplus::object_path> targets,
+        bool preUpdateValidation) override;
 
     /**
      * @brief Associate the firmware update package with the target device
@@ -152,11 +151,6 @@ class ItemUpdateManager : public UpdateManagerBase, public ItemUpdateIntf
      * @brief The package data for the firmware update
      */
     std::unique_ptr<pldm::utils::MMapHandler> packageMap;
-
-    /**
-     * @brief The package data stream for the firmware update
-     */
-    std::unique_ptr<std::ispanstream> packageDataStream;
 
     /**
      * @brief Process the firmware update package

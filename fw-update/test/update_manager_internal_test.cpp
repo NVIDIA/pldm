@@ -208,6 +208,28 @@ TEST_F(UpdateManagerInternalTest, seedRefreshCollectsStaticAndBridgePoolEids)
     EXPECT_EQ(eids, (std::set<mctp_eid_t>{30, 31, 40, 41, 42}));
 }
 
+TEST_F(UpdateManagerInternalTest, seedWithoutBridgePoolsCollectsStaticEidsOnly)
+{
+    // The pre-update validation scope seeds without bridge pools: a pool is
+    // an address range, so its unpopulated slots are not devices.
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        usbIntf, {{"/inv/usb0", {{"svc", {usbIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb0", usbIntf, {{"StaticEndpointID", uint64_t{30}}});
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        spiIntf, {{"/inv/spi0", {{"svc", {spiIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/spi0", spiIntf,
+        {{"StaticEndpointID", uint64_t{12}},
+         {"BridgePoolStartEid", uint64_t{40}},
+         {"BridgePoolEndEID", uint64_t{42}}});
+
+    std::set<mctp_eid_t> eids;
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids, false);
+
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{12, 30}));
+}
+
 TEST_F(UpdateManagerInternalTest, seedRefreshIgnoresInvalidEidsAndPools)
 {
     // Out-of-range StaticEndpointID is rejected by readOptionalEidProperty.

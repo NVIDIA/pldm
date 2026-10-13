@@ -31,7 +31,6 @@
 #include <sdeventplus/source/event.hpp>
 
 #include <array>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -95,13 +94,13 @@ struct PackageSignatureShaBase
 
     /** @brief Calculate digest bases on concrete SHA algorithm.
      *
-     *  @param[in] package - package to generate digest
+     *  @param[in] package - pointer to package data to generate digest
      *  @param[in] lengthOfSignedData - size of signed part of package
      *
      *  @return digest
      */
     virtual std::vector<unsigned char> calculateDigest(
-        std::istream& package, uintmax_t lengthOfSignedData) = 0;
+        const uint8_t* package, uintmax_t lengthOfSignedData) = 0;
 
     /** @brief Asynchronously calculate digest based on a concrete SHA
      * algorithm.
@@ -109,7 +108,7 @@ struct PackageSignatureShaBase
      *  This function performs the digest calculation asynchronously, allowing
      *  for non-blocking operations.
      *
-     *  @param[in] package - package to generate digest
+     *  @param[in] package - pointer to package data to generate digest
      *  @param[in] lengthOfSignedData - size of the signed part of the package
      *  @param[in] onComplete - callback to invoke upon successful digest
      * calculation, with the resulting digest as the argument
@@ -117,7 +116,7 @@ struct PackageSignatureShaBase
      * calculation, with an exception message
      */
     virtual void calculateDigestAsync(
-        std::istream& package, uintmax_t lengthOfSignedData,
+        const uint8_t* package, uintmax_t lengthOfSignedData,
         std::function<void(std::vector<unsigned char>)> onComplete,
         std::function<void(const std::string& errorMsg)> onError) = 0;
 
@@ -125,7 +124,7 @@ struct PackageSignatureShaBase
     std::string digestName;
     size_t chunkSize = CALCULATE_DIGEST_CHUNK_SIZE;
     uint32_t chunkTimerInterval = CALCULATE_DIGEST_TIMER_INTERVAL;
-    std::istream* package;
+    const uint8_t* package = nullptr;
     std::shared_ptr<std::vector<unsigned char>> hash;
     int chunkNumber;
     std::shared_ptr<EVP_MD_CTX> ctxMdctxPtr;
@@ -155,9 +154,9 @@ struct PackageSignatureSha384 : public PackageSignatureShaBase
     }
 
     std::vector<unsigned char> calculateDigest(
-        std::istream& package, uintmax_t lengthOfSignedData) override;
+        const uint8_t* package, uintmax_t lengthOfSignedData) override;
     void calculateDigestAsync(
-        std::istream& package, uintmax_t lengthOfSignedData,
+        const uint8_t* package, uintmax_t lengthOfSignedData,
         std::function<void(std::vector<unsigned char>)> onComplete,
         std::function<void(const std::string& errorMsg)> onError) override;
 
@@ -199,7 +198,7 @@ class PackageSignature
      *
      *  @return true if signature verification was successful, false if not
      */
-    virtual bool verify(std::istream& package, const std::string& publicKey,
+    virtual bool verify(const uint8_t* package, const std::string& publicKey,
                         uintmax_t lengthOfSignedData);
 
     /** @brief Asynchronous package signature verification function.
@@ -208,7 +207,7 @@ class PackageSignature
      *  enabling non-blocking operations. The function invokes a callback
      *  upon completion or error, providing the result of the verification.
      *
-     *  @param[in] package - The input stream containing the package to verify.
+     *  @param[in] package - Pointer to the package data to verify.
      *  @param[in] publicKey - The public key to use for signature verification.
      *  @param[in] lengthOfSignedData - The size of the signed portion of the
      * package.
@@ -219,7 +218,7 @@ class PackageSignature
      * information.
      */
     virtual void verifyAsync(
-        std::istream& package, const std::string& publicKey,
+        const uint8_t* package, const std::string& publicKey,
         uintmax_t lengthOfSignedData, std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
 
@@ -232,7 +231,7 @@ class PackageSignature
      *
      *  @return true if integrity check was successful, false if not
      */
-    virtual bool integrityCheck(std::istream& package,
+    virtual bool integrityCheck(const uint8_t* package,
                                 uintmax_t lengthOfSignedData);
 
     /** @brief Asynchronous package signature integrity check function.
@@ -242,7 +241,7 @@ class PackageSignature
      *  Signature Header" section, ensuring content authenticity and integrity.
      *  The function uses callbacks to report the result or errors.
      *
-     *  @param[in] package - The input stream containing the package to verify.
+     *  @param[in] package - Pointer to the package data to verify.
      *  @param[in] lengthOfSignedData - The size of the signed portion of the
      * package.
      *  @param[in] onComplete - Callback to invoke with the result of the
@@ -252,7 +251,7 @@ class PackageSignature
      *                       information.
      */
     virtual void integrityCheckAsync(
-        std::istream& package, uintmax_t lengthOfSignedData,
+        const uint8_t* package, uintmax_t lengthOfSignedData,
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
 
@@ -288,14 +287,16 @@ class PackageSignature
 
     /** @brief Get Package Signature Header
      *
-     *  @param[in] package - package with signature part
+     *  @param[in] package - pointer to package data with signature part
+     *  @param[in] packageSize - total size of the package data
      *  @param[in] sizeOfPkgWithoutSignHdr - size of package without signature
      *  part
      *
      *  @return Package Signature Header as a vector
      */
     static std::vector<uint8_t> getSignatureHeader(
-        std::istream& package, uintmax_t sizeOfPkgWithoutSignHdr);
+        const uint8_t* package, size_t packageSize,
+        uintmax_t sizeOfPkgWithoutSignHdr);
 
     /** @brief Get Version of Package Signature Format
      *

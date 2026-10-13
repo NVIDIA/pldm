@@ -40,7 +40,7 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
 size_t PackageParser::parseFDIdentificationArea(
-    DeviceIDRecordCount deviceIdRecCount, const std::vector<uint8_t>& pkgHdr,
+    DeviceIDRecordCount deviceIdRecCount, std::span<const uint8_t> pkgHdr,
     size_t offset, uint8_t formatVersion)
 {
     size_t pkgHdrRemainingSize = pkgHdr.size() - offset;
@@ -160,7 +160,7 @@ size_t PackageParser::parseFDIdentificationArea(
 }
 
 size_t PackageParser::parseCompImageInfoArea(
-    ComponentImageCount compImageCount, const std::vector<uint8_t>& pkgHdr,
+    ComponentImageCount compImageCount, std::span<const uint8_t> pkgHdr,
     size_t offset, uint8_t formatVersion)
 {
     size_t pkgHdrRemainingSize = pkgHdr.size() - offset;
@@ -204,6 +204,16 @@ size_t PackageParser::parseCompImageInfoArea(
         {
             // Skipping component opaque data length field
             sizeOfCompImageInfo += sizeof(CompOpaqueDataLength);
+        }
+        // Guard the size_t subtraction: an oversized (locally recomputed)
+        // sizeOfCompImageInfo would underflow pkgHdrRemainingSize and walk
+        // offset past pkgHdr into an OOB decode.
+        if (sizeOfCompImageInfo > pkgHdrRemainingSize)
+        {
+            error(
+                "Component image information size '{SIZE}' exceeds remaining package header size '{REMAINING}'",
+                "SIZE", sizeOfCompImageInfo, "REMAINING", pkgHdrRemainingSize);
+            throw InternalFailure();
         }
         offset += sizeOfCompImageInfo;
         pkgHdrRemainingSize -= sizeOfCompImageInfo;
@@ -260,7 +270,7 @@ void PackageParser::validatePkgTotalSize(uintmax_t pkgSize)
     }
 }
 
-void PackageParser::parse(const std::vector<uint8_t>& pkgHdr)
+void PackageParser::parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize)
 {
     const uintmax_t pkgSize = pkgHdr.size();
 

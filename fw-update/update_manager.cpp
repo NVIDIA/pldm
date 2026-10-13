@@ -20,9 +20,12 @@
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
+#include "dbusutil.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
+
+#include <fcntl.h>
 
 #include <exec/async_scope.hpp>
 #include <exec/start_detached.hpp>
@@ -30,6 +33,7 @@
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
+#include <algorithm>
 #include <bitset>
 #include <cassert>
 #include <cmath>
@@ -126,8 +130,13 @@ static bool configIgnoresPldm(const pldm::utils::PropertyMap& props)
  *  D-Bus read failures are logged and skipped; never thrown.
  *
  *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
+ *  @param[in] includeBridgePools - also seed each bridge's downstream EID
+ *             pool. The pre-update validation scope passes false: a pool is
+ *             an address range, not a device list, so an unpopulated slot
+ *             would otherwise read as an unreachable device.
  */
-static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
+static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
+                                            bool includeBridgePools = true)
 {
     for (const char* intf : {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
                              "xyz.openbmc_project.Configuration.MCTPI2CTarget",
@@ -185,6 +194,10 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet)
             }
             // Bridge entries declare a downstream EID pool; refresh the whole
             // range so bridged devices are covered even before discovery.
+            if (!includeBridgePools)
+            {
+                continue;
+            }
             auto poolStart = pldm::utils::readOptionalEidProperty(
                 props, "BridgePoolStartEid");
             auto poolEnd =
@@ -267,9 +280,8 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     clearExistingActivation();
 
-    std::ifstream package(packageFilePath,
-                          std::ios::binary | std::ios::in | std::ios::ate);
-    if (!package.good())
+    int fd = open(packageFilePath.c_str(), O_RDONLY);
+    if (fd < 0)
     {
         error("Failed to open the PLDM fw update package file '{FILE}', "
               "error - {ERROR}.",
@@ -277,14 +289,21 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
         return -1;
     }
 
-    auto packageSize = static_cast<uintmax_t>(package.tellg());
-    package.seekg(0, std::ios::beg);
-    if (!package.good())
+    // Mapped into the packageMmapFile member (not a local) because
+    // DeviceUpdater retains the package pointer for asynchronous
+    // RequestFirmwareData handling that outlives this function call.
+    // map() owns fd from here on and closes it on every failure path.
+    if (!packageMmapFile.map(fd, true /* take ownership of fd */))
     {
-        error("Failed to seek the PLDM fw update package file '{FILE}'.",
+        error("Failed to memory map the PLDM fw update package file '{FILE}' "
+              "(empty file or mmap failure).",
               "FILE", packageFilePath);
         return -1;
     }
+
+    const auto* packageData =
+        static_cast<const uint8_t*>(packageMmapFile.data());
+    auto packageSize = packageMmapFile.size();
 
     objPath = swRootPath + getSwId();
     forceUpdate = false;
@@ -302,7 +321,7 @@ int UpdateManager::processPackage(const std::filesystem::path& packageFilePath)
 
     try
     {
-        stdexec::sync_wait(processStream(package, packageSize, {}));
+        stdexec::sync_wait(processPackageData(packageData, packageSize, {}));
         return 0;
     }
     catch (const std::exception& e)
@@ -319,12 +338,22 @@ UpdateManager::UpdateManager(
     InstanceIdDb& instanceIdDb, const DescriptorMap& descriptorMap,
     const ComponentInfoMap& componentInfoMap,
     ComponentNameMap& componentNameMap, bool fwDebug,
-    RefreshSingleEndpointCallback refreshSingleEndpointCallback) :
+    RefreshSingleEndpointCallback refreshSingleEndpointCallback,
+    const ExpectedComponentIdsByEid& expectedComponentIdsByEid,
+    IsEidExcludedCallback isEidExcludedCallback,
+    TargetNameCallback targetNameCallback,
+    ConfiguredTargetsCallback configuredTargetsCallback,
+    StaticEidTargetsCallback staticEidTargetsCallback) :
     UpdateManagerBase(event, handler, instanceIdDb, fwDebug), event(event),
     handler(handler), instanceIdDb(instanceIdDb),
     refreshSingleEndpointCallback(std::move(refreshSingleEndpointCallback)),
     descriptorMap(descriptorMap), componentInfoMap(componentInfoMap),
-    componentNameMap(componentNameMap)
+    componentNameMap(componentNameMap),
+    expectedComponentIdsByEid(expectedComponentIdsByEid),
+    isEidExcludedCallback(std::move(isEidExcludedCallback)),
+    targetNameCallback(std::move(targetNameCallback)),
+    configuredTargetsCallback(std::move(configuredTargetsCallback)),
+    staticEidTargetsCallback(std::move(staticEidTargetsCallback))
 #ifdef FW_UPDATE_INOTIFY_ENABLED
     ,
     watch(event.get(), [this](std::string& packageFilePath) {
@@ -339,6 +368,78 @@ UpdateManager::UpdateManager(
 {}
 
 UpdateManager::~UpdateManager() = default;
+
+void UpdateManager::refreshAllowedPreUpdateValidation()
+{
+#ifndef FW_UPDATE_INOTIFY_ENABLED
+    if (!updater)
+    {
+        return;
+    }
+    // A known updatable device scope exists when an endpoint has been
+    // discovered (descriptorMap) or the MCTP transport config statically
+    // declares a (non-excluded) device EID — the same scope
+    // processPackageData() gates. Bridge pools are address ranges, not devices,
+    // so they count only once discovered.
+    std::set<mctp_eid_t> scopeEids;
+    {
+        auto keys = descriptorMap | std::views::keys;
+        scopeEids.insert(keys.begin(), keys.end());
+    }
+    seedRefreshEidsFromStaticConfig(scopeEids, false);
+    eraseExcludedEids(scopeEids);
+    bool allowed = !scopeEids.empty() || (configuredTargetsCallback &&
+                                          !configuredTargetsCallback().empty());
+    updater->allowedPreUpdateValidation(allowed);
+#endif
+}
+
+std::set<std::string> UpdateManager::namesForEid(
+    mctp_eid_t eid,
+    const std::map<mctp_eid_t, std::set<std::string>>& staticTargets) const
+{
+    std::set<std::string> names;
+    if (targetNameCallback)
+    {
+        if (auto name = targetNameCallback(eid); !name.empty())
+        {
+            names.insert(std::move(name));
+        }
+    }
+    if (auto it = staticTargets.find(eid); it != staticTargets.end())
+    {
+        names.insert(it->second.begin(), it->second.end());
+    }
+    return names;
+}
+
+std::set<std::string> UpdateManager::findUnansweredTargets(
+    const std::set<std::string>& configuredTargets,
+    const std::set<mctp_eid_t>& liveEids,
+    const std::map<mctp_eid_t, std::set<std::string>>& staticTargets) const
+{
+    std::set<std::string> unanswered = configuredTargets;
+    for (const auto eid : liveEids)
+    {
+        for (const auto& name : namesForEid(eid, staticTargets))
+        {
+            unanswered.erase(name);
+        }
+    }
+    return unanswered;
+}
+
+void UpdateManager::eraseExcludedEids(std::set<mctp_eid_t>& scopeEids) const
+{
+    if (!isEidExcludedCallback)
+    {
+        return;
+    }
+    std::erase_if(scopeEids, [this](mctp_eid_t scopeEid) {
+        return !descriptorMap.contains(scopeEid) &&
+               isEidExcludedCallback(scopeEid);
+    });
+}
 
 std::string UpdateManager::getActivationMethod(
     bitfield16_t compActivationModification)
@@ -491,17 +592,37 @@ void UpdateManager::handleDuplicateDescriptorMatch(
     }
 }
 
-std::string UpdateManager::processStreamDefer(
-    std::istream& package, uintmax_t packageSize, bool forceUpdateFlag,
-    std::vector<sdbusplus::object_path> targets)
+std::string UpdateManager::processPackageDataDefer(
+    const uint8_t* packageData, size_t packageSize, bool forceUpdateFlag,
+    std::vector<sdbusplus::object_path> targets, bool preUpdateValidation)
 {
     auto swId = getSwId();
     objPath = swRootPath + swId;
     forceUpdate = forceUpdateFlag;
 
+    // Update pre-update validation applies to whole-system requests only. A
+    // targeted request (non-empty Targets) ignores the option and runs the
+    // existing best-effort flow unchanged. Note the aggregating BMC strips the
+    // routing chassis target before forwarding, so a whole-system request
+    // arrives here with an empty Targets list.
+    if (preUpdateValidation && !targets.empty())
+    {
+        info(
+            "PreUpdateValidation ignored: pre-update validation is not supported for targeted requests ({COUNT} target(s) specified); running the default best-effort update",
+            "COUNT", targets.size());
+        preUpdateValidation = false;
+    }
+
+    // The device-scope emptiness check (nothing to gate → ignore the
+    // option) runs in processPackageData(), where the refresh scope — the live
+    // descriptorMap union the static-config seed — is derived.
+
+    this->preUpdateValidation = preUpdateValidation;
+
     info(
-        "Update Parameters: ForceUpdate: {FORCEUPDATE}, ApplyTime: {APPLYTIME}",
-        "FORCEUPDATE", forceUpdate, "APPLYTIME",
+        "Update Parameters: ForceUpdate: {FORCEUPDATE}, PreUpdateValidation: {PRE_UPDATE_VALIDATION}, ApplyTime: {APPLYTIME}",
+        "FORCEUPDATE", forceUpdate, "PRE_UPDATE_VALIDATION",
+        preUpdateValidation, "APPLYTIME",
         sdbusplus::xyz::openbmc_project::Software::server::convertForMessage(
             requestedApplyTime));
 
@@ -535,31 +656,30 @@ std::string UpdateManager::processStreamDefer(
         return objPath;
     }
 
-    auto* packageStream = &package;
     updateDeferHandler = std::make_unique<sdeventplus::source::Defer>(
-        event, [this, packageStream, packageSize,
-                targets](sdeventplus::source::EventBase&) {
-            // Start processStream coroutine in detached mode
+        event, [this, packageData, packageSize, targets,
+                preUpdateValidation = this->preUpdateValidation](
+                   sdeventplus::source::EventBase&) {
+            // Start processPackageData coroutine in detached mode
             exec::start_detached(stdexec::on(
                 stdexec::inline_scheduler{},
-                this->processStream(*packageStream, packageSize, targets)));
+                this->processPackageData(packageData, packageSize, targets,
+                                         preUpdateValidation)));
         });
 
     return objPath;
 }
 
-exec::task<void> UpdateManager::processStream(
-    std::istream& package, uintmax_t packageSize,
-    std::vector<sdbusplus::object_path> targets)
+exec::task<void> UpdateManager::processPackageData(
+    const uint8_t* packageData, size_t packageSize,
+    std::vector<sdbusplus::object_path> targets, bool preUpdateValidation)
 {
     startTime = std::chrono::steady_clock::now();
     unavailableTargetEids.clear();
 
-    package.clear();
-    package.seekg(0, std::ios::beg);
-    if (!package.good())
+    if (packageData == nullptr)
     {
-        error("Package stream is not in a valid state");
+        error("Package data pointer is null");
         handleInvalidPackageError();
         co_return;
     }
@@ -574,32 +694,7 @@ exec::task<void> UpdateManager::processStream(
         co_return;
     }
 
-    std::vector<uint8_t> packageData;
-    const uint8_t* pkgData = nullptr;
-    auto* mmapStream = dynamic_cast<pldm::MmapStream*>(&package);
-    if (mmapStream != nullptr)
-    {
-        pkgData = mmapStream->data();
-        packageSize = mmapStream->size();
-        packageData.assign(pkgData, pkgData + packageSize);
-    }
-    else
-    {
-        packageData.resize(packageSize);
-        package.read(reinterpret_cast<char*>(packageData.data()),
-                     static_cast<std::streamsize>(packageSize));
-        if (package.gcount() != static_cast<std::streamsize>(packageSize))
-        {
-            error("Failed to read the complete PLDM firmware package stream");
-            handleInvalidPackageError();
-            co_return;
-        }
-        pkgData = packageData.data();
-        package.clear();
-        package.seekg(0, std::ios::beg);
-    }
-
-    parser = parsePkgHeader(pkgData, packageSize);
+    parser = parsePkgHeader(packageData, packageSize);
 
     if (parser == nullptr)
     {
@@ -610,7 +705,7 @@ exec::task<void> UpdateManager::processStream(
     }
     try
     {
-        parser->parse(packageData);
+        parser->parse({packageData, packageSize}, packageSize);
     }
     catch (const sdbusplus::error::xyz::openbmc_project::software::update::
                InvalidSignature&)
@@ -686,24 +781,101 @@ exec::task<void> UpdateManager::processStream(
     std::vector<mctp_eid_t> refreshEids(refreshEidSet.begin(),
                                         refreshEidSet.end());
 
+    // The gate validates the devices known before the refresh: every
+    // discovered endpoint plus every StaticEndpointID, minus EIDs excluded
+    // from firmware update (an excluded EID is never contacted by the
+    // refresh, so it would otherwise always read as unreachable). Bridge pool
+    // EIDs are refreshed but not gated until discovered: a pool is an address
+    // range, and an unpopulated slot is not an unreachable device.
+    std::set<mctp_eid_t> gateEidSet;
+    if (preUpdateValidation)
+    {
+        auto keys = descriptorMap | std::views::keys;
+        gateEidSet.insert(keys.begin(), keys.end());
+        seedRefreshEidsFromStaticConfig(gateEidSet, false);
+        eraseExcludedEids(gateEidSet);
+    }
+    std::vector<mctp_eid_t> gateEids(gateEidSet.begin(), gateEidSet.end());
+
+    // Every entity-manager-configured firmware device must also answer,
+    // including one no longer on MCTP (recovery mode, powered off, hung
+    // management path): its EID is gone from descriptorMap and the static
+    // seed, so only the configuration still names it. The names the refresh
+    // set already covers are recorded so the gate does not log a second
+    // per-device message for them.
+    // A statically addressed endpoint also answers through its transport
+    // configuration's Name, in case its configured_by association was not
+    // republished when it was re-added.
+    std::set<std::string> configuredTargets;
+    std::set<std::string> refreshedTargets;
+    std::map<mctp_eid_t, std::set<std::string>> staticTargets;
+    if (preUpdateValidation && configuredTargetsCallback)
+    {
+        configuredTargets = configuredTargetsCallback();
+        if (staticEidTargetsCallback)
+        {
+            staticTargets = staticEidTargetsCallback();
+        }
+        for (const auto eid : refreshEids)
+        {
+            refreshedTargets.merge(namesForEid(eid, staticTargets));
+        }
+    }
+    gateStaticTargets = staticTargets;
+
+    // An empty gate scope (no non-excluded endpoint discovered or statically
+    // configured) means there is no known updatable device scope to gate, so
+    // ignore the option and run the default best-effort update. This is the
+    // develop-branch equivalent of the release check on an empty
+    // fw_update_config.json device scope.
+    if (preUpdateValidation && gateEids.empty() && configuredTargets.empty())
+    {
+        info(
+            "PreUpdateValidation ignored: no known updatable device scope (no discovered or statically-configured endpoints); running the default best-effort update");
+        preUpdateValidation = false;
+        this->preUpdateValidation = false;
+    }
+
     if (refreshSingleEndpointCallback && !refreshEids.empty())
     {
         info("Refreshing firmware inventory for {COUNT} endpoints", "COUNT",
              refreshEids.size());
 
+        // A refresh that succeeds but leaves the EID out of descriptorMap is
+        // a non-selected duplicate path to a device already reached over its
+        // fastest EID (refreshSingleEndpoint's dedup), not a missing device.
+        std::set<mctp_eid_t> duplicatePathEids;
         exec::async_scope refreshScope;
         for (const auto& eid : refreshEids)
         {
             bool isTarget = (compTargetList.empty() && targets.empty()) ||
                             compTargetList.contains(eid);
+            // State is passed as coroutine parameters (copied into the frame)
+            // rather than lambda captures, which would dangle once the
+            // temporary lambda is destroyed at the first suspension.
             refreshScope.spawn(
-                [this, eid, isTarget]() -> exec::task<void> {
-                    [[maybe_unused]] auto rc =
-                        co_await refreshSingleEndpointCallback(eid, isTarget);
-                }(),
+                [](UpdateManager* self, mctp_eid_t eid, bool isTarget,
+                   bool preUpdateValidation,
+                   std::set<mctp_eid_t>* duplicatePathEids)
+                    -> exec::task<void> {
+                    auto rc = co_await self->refreshSingleEndpointCallback(
+                        eid, isTarget, preUpdateValidation);
+                    if (rc == PLDM_SUCCESS &&
+                        !self->descriptorMap.contains(eid))
+                    {
+                        duplicatePathEids->insert(eid);
+                    }
+                }(this, eid, isTarget, preUpdateValidation, &duplicatePathEids),
                 exec::default_task_context<void>(stdexec::inline_scheduler{}));
         }
         co_await refreshScope.on_empty();
+
+        if (!duplicatePathEids.empty())
+        {
+            std::erase_if(gateEids, [&duplicatePathEids](mctp_eid_t eid) {
+                return duplicatePathEids.contains(eid);
+            });
+        }
 
         info("Firmware inventory refresh completed");
     }
@@ -714,6 +886,43 @@ exec::task<void> UpdateManager::processStream(
     auto deviceUpdaterInfos = associatePkgToDevices(
         parser->getFwDeviceIDRecords(), descriptorMap, compImageInfos,
         compTargetList, targets, fwDeviceIDRecords, totalNumComponentUpdates);
+
+    // Run the gate before any DeviceUpdater is constructed so a rejected
+    // package cannot leave a partially-started transfer.
+    std::set<std::string> unansweredTargets;
+    if (preUpdateValidation && !configuredTargets.empty())
+    {
+        auto liveKeys = descriptorMap | std::views::keys;
+        unansweredTargets = findUnansweredTargets(
+            configuredTargets,
+            std::set<mctp_eid_t>(liveKeys.begin(), liveKeys.end()),
+            staticTargets);
+        // A configured device the refresh never contacted has no
+        // per-device message yet; report it the way the refresh path
+        // reports an unreachable endpoint.
+        for (const auto& name : unansweredTargets)
+        {
+            if (refreshedTargets.contains(name))
+            {
+                continue;
+            }
+            error(
+                "PreUpdateValidation: configured firmware device {NAME} has no reachable MCTP endpoint",
+                "NAME", name);
+            createLogEntry(
+                resourceErrorDetected, name,
+                "The device is not reachable over MCTP",
+                "Retry firmware update operation, if problem persists, follow FW upgrade recovery flow.");
+        }
+    }
+
+    if (preUpdateValidation &&
+        !runPreUpdateValidationGate(gateEids, deviceUpdaterInfos,
+                                    unansweredTargets))
+    {
+        parser.reset();
+        co_return;
+    }
 
     // Emit per-target ResourceErrorsDetected entries for requested targets
     // whose image isn't in the package BEFORE any update transfer starts.
@@ -751,14 +960,11 @@ exec::task<void> UpdateManager::processStream(
              deviceUpdaterInfo.second, "COMPIDENTIFIERS", compIdentifiers);
     }
 
-    package.clear();
-    package.seekg(0, std::ios::beg);
-
     // get non-pldm components, add to total component count
     size_t otherDevicesImageCount =
         co_await otherDeviceUpdateManager->extractOtherDevicePkgs(
             parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
-            package);
+            packageData, packageSize);
     totalNumComponentUpdates += otherDevicesImageCount;
 
     // Log if no matching devices found (but don't set activation state -
@@ -768,9 +974,6 @@ exec::task<void> UpdateManager::processStream(
         error(
             "No matching devices found with the PLDM firmware update package");
     }
-
-    package.clear();
-    package.seekg(0, std::ios::beg);
 
     static constexpr uint32_t maxTransferSize = 4096;
     for (const auto& deviceUpdaterInfo : deviceUpdaterInfos)
@@ -794,9 +997,9 @@ exec::task<void> UpdateManager::processStream(
         deviceUpdaterMap.emplace(
             deviceUpdaterInfo.first,
             std::make_unique<DeviceUpdater>(
-                deviceUpdaterInfo.first, package, fwDeviceIDRecord,
-                compImageInfos, search->second, compIdNameInfo, maxTransferSize,
-                this));
+                deviceUpdaterInfo.first, packageData, packageSize,
+                fwDeviceIDRecord, compImageInfos, search->second,
+                compIdNameInfo, maxTransferSize, this));
     }
 
     // delay activation object creation if there are non-pldm updates
@@ -883,7 +1086,7 @@ void UpdateManager::packageIntegrityCheckAsync(
     try
     {
         pkgSignHdrData = PackageSignature::getSignatureHeader(
-            updater->getImageStream(), calcPkgSize);
+            updater->getImageData(), updater->getImageSize(), calcPkgSize);
     }
     catch (const std::exception& e)
     {
@@ -926,7 +1129,7 @@ void UpdateManager::packageIntegrityCheckAsync(
         auto sizeOfSignedData =
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
         packageSignatureParser->integrityCheckAsync(
-            updater->getImageStream(), sizeOfSignedData,
+            updater->getImageData(), sizeOfSignedData,
             [onComplete](bool integritycheckResult) {
                 if (integritycheckResult)
                 {
@@ -976,7 +1179,7 @@ void UpdateManager::verifyPackageAsync(
     try
     {
         pkgSignHdrData = PackageSignature::getSignatureHeader(
-            updater->getImageStream(), calcPkgSize);
+            updater->getImageData(), updater->getImageSize(), calcPkgSize);
     }
     catch (const std::exception& e)
     {
@@ -1022,7 +1225,7 @@ void UpdateManager::verifyPackageAsync(
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
 
         packageSignatureParser->verifyAsync(
-            updater->getImageStream(), PLDM_PACKAGE_VERIFICATION_KEY,
+            updater->getImageData(), PLDM_PACKAGE_VERIFICATION_KEY,
             sizeOfSignedData,
             [onComplete](bool verificationCheckResult) {
                 if (verificationCheckResult)
@@ -1255,6 +1458,145 @@ void UpdateManager::logUnupdatedTargets(
     requestedTargets.clear();
 }
 
+bool UpdateManager::runPreUpdateValidationGate(
+    const std::vector<mctp_eid_t>& configEids,
+    const DeviceUpdaterInfos& deviceUpdaterInfos,
+    const std::set<std::string>& unansweredTargets)
+{
+    const std::set<mctp_eid_t> uniqueConfigEids(configEids.begin(),
+                                                configEids.end());
+    std::set<std::string> noMatchingImageNames{};
+
+    // Readiness == descriptorMap membership after the pre-update refresh.
+    // Unreachable devices are keyed by device name where one resolves, so a
+    // device counted both through its static EID and as an unanswered
+    // configured target is counted once.
+    std::set<std::string> unreachableDevices = unansweredTargets;
+    for (const auto eid : uniqueConfigEids)
+    {
+        if (descriptorMap.contains(eid))
+        {
+            continue;
+        }
+        auto names = namesForEid(eid, gateStaticTargets);
+        if (names.empty())
+        {
+            names.insert("EID " + std::to_string(static_cast<unsigned>(eid)));
+        }
+        unreachableDevices.merge(names);
+    }
+    const size_t unreachableDeviceCount = unreachableDevices.size();
+
+    // Index package coverage by EID. Non-PLDM (item-updater) components are
+    // outside the gate.
+    std::set<mctp_eid_t> packageCoveredEids{};
+    std::unordered_map<mctp_eid_t, std::set<CompIdentifier>>
+        packageComponentIds{};
+    // processPackageData() returns early when the package fails to parse, so
+    // the parser is always valid here.
+    const ComponentImageInfos& componentImageInfos =
+        parser->getComponentImageInfos();
+    for (const auto& [eid, recordOffset] : deviceUpdaterInfos)
+    {
+        if (recordOffset >= fwDeviceIDRecords.size())
+        {
+            continue;
+        }
+        const auto& components =
+            std::get<ApplicableComponents>(fwDeviceIDRecords[recordOffset]);
+        if (components.empty())
+        {
+            continue;
+        }
+        packageCoveredEids.insert(eid);
+        for (const auto componentIndex : components)
+        {
+            if (componentIndex >= componentImageInfos.size())
+            {
+                continue;
+            }
+            packageComponentIds[eid].insert(
+                std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompIdentifierPos)>(
+                    componentImageInfos[componentIndex]));
+        }
+    }
+
+    // Every reachable configured EID must be covered by the package.
+    for (const auto eid : uniqueConfigEids)
+    {
+        if (!descriptorMap.contains(eid))
+        {
+            continue;
+        }
+        const auto expected = expectedComponentIdsByEid.find(eid);
+        if (expected != expectedComponentIdsByEid.end() &&
+            !expected->second.empty())
+        {
+            const auto& packagedIds = packageComponentIds[eid];
+            for (const auto& [name, expectedIds] : expected->second)
+            {
+                bool covered = false;
+                for (const auto componentId : expectedIds)
+                {
+                    if (packagedIds.contains(componentId))
+                    {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (!covered)
+                {
+                    noMatchingImageNames.insert(name);
+                }
+            }
+            continue;
+        }
+        // Without component metadata, any record with a real image covers
+        // the EID.
+        if (packageCoveredEids.contains(eid))
+        {
+            continue;
+        }
+        // Name the coverage gap the way the rest of UpdateManager names
+        // devices: by the (EM-derived) componentNameMap entry, falling back
+        // to the EID when discovery/EM provided no name.
+        if (auto it = componentNameMap.find(eid);
+            it != componentNameMap.end() && !it->second.empty())
+        {
+            noMatchingImageNames.insert(it->second.begin()->second);
+        }
+        else
+        {
+            noMatchingImageNames.insert(
+                "EID " + std::to_string(static_cast<unsigned>(eid)));
+        }
+    }
+
+    if (unreachableDeviceCount == 0 && noMatchingImageNames.empty())
+    {
+        return true;
+    }
+
+    error(
+        "PreUpdateValidation update rejected: {UNREACHABLE} device(s) unreachable, {UNCOVERED} component(s) with no image in the package; no firmware transferred",
+        "UNREACHABLE", unreachableDeviceCount, "UNCOVERED",
+        noMatchingImageNames.size());
+
+    // Only coverage gaps get the gate-specific message; unavailable devices
+    // were already logged at Critical by the refresh path.
+    for (const auto& name : noMatchingImageNames)
+    {
+        createLogEntry(firmwarePackageComponentImageMissing, name, "", "");
+    }
+
+    clearFirmwareUpdatePackage();
+
+    createLogEntry(preUpdateValidationFailed, "", "", "");
+    publishFinalActivationStatus(software::Activation::Activations::Failed);
+    return false;
+}
+
 void UpdateManager::updateDeviceCompletion(
     mctp_eid_t eid, bool status, std::vector<std::string> successCompNames)
 {
@@ -1367,9 +1709,9 @@ software::Activation::Activations UpdateManager::activatePackage()
 #ifdef DEBUG_TOKEN
     debugToken =
         std::make_unique<DebugToken>(pldm::utils::DBusHandler::getBus(), this);
-    debugToken->startTokenUpdate(parser->getFwDeviceIDRecords(),
-                                 parser->getComponentImageInfos(),
-                                 updater->getImageStream());
+    debugToken->startTokenUpdate(
+        parser->getFwDeviceIDRecords(), parser->getComponentImageInfos(),
+        updater->getImageData(), updater->getImageSize());
     return software::Activation::Activations::Activating;
 #endif
     startPLDMUpdate();
@@ -1456,6 +1798,7 @@ void UpdateManager::clearActivationInfo()
     otherDeviceComponents.clear();
     otherDeviceCompleted.clear();
     listCompNames.clear();
+    preUpdateValidation = false;
     if (progressTimer)
     {
         progressTimer->stop();
@@ -1590,8 +1933,9 @@ void UpdateManager::clearFirmwareUpdatePackage()
 {
     if (updater)
     {
-        updater->clearImageStream();
+        updater->clearImageData();
     }
+    packageMmapFile.unmap();
 }
 
 void UpdateManager::publishFinalActivationStatus(

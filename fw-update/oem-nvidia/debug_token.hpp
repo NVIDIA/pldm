@@ -97,24 +97,26 @@ class DebugToken
      *  caller-side parser is reset (e.g. via clearFirmwareUpdatePackage)
      *  while the coroutine is suspended on a D-Bus await.
      *
-     *  `package` is kept as a reference and is only safe to use in the
+     *  `package` is kept as a raw pointer and is only safe to use in the
      *  synchronous prologue (before the first co_await). With the
      *  inline_scheduler used by startTokenUpdate, the prologue runs to the
      *  first suspension while the caller is still on the stack, so the
-     *  stream is guaranteed live during the prologue. Do NOT add reads from
+     *  memory is guaranteed live during the prologue. Do NOT add reads from
      *  `package` after any co_await in this function — those would be a
      *  use-after-free if the caller has since dropped its hold on the
-     *  stream.
+     *  underlying package memory.
      *
      * @param[in] fwDeviceIDRecords - Device records (taken by value)
      * @param[in] componentImageInfos - Image info (taken by value)
-     * @param[in] package - pldm image input stream (synchronous-prologue use
-     *                      only; must outlive startTokenUpdate's call)
+     * @param[in] package - pointer to pldm image data (synchronous-prologue
+     *                      use only; must outlive startTokenUpdate's call)
+     * @param[in] packageSize - size of the pldm image data
      * @return coroutine - debug token install/erase status is ignored
      */
     exec::task<void> updateDebugToken(FirmwareDeviceIDRecords fwDeviceIDRecords,
                                       ComponentImageInfos componentImageInfos,
-                                      std::istream& package);
+                                      const uint8_t* package,
+                                      size_t packageSize);
 
     /**
      * @brief Spawn updateDebugToken as a detached coroutine on the internal
@@ -126,7 +128,7 @@ class DebugToken
      */
     void startTokenUpdate(const FirmwareDeviceIDRecords& fwDeviceIDRecords,
                           const ComponentImageInfos& componentImageInfos,
-                          std::istream& package);
+                          const uint8_t* package, size_t packageSize);
 
     /** @brief Accessor for the async scope owning in-flight token coroutines.
      *  Used by UpdateManager / tests that need to wait for completion before

@@ -41,6 +41,35 @@ using namespace std::chrono;
 namespace
 {
 
+size_t g_transportEventCalls = 0;
+bool g_lastTransportEventCritical = false;
+
+} // namespace
+
+namespace pldm::transport
+{
+
+/** @brief Test double for the libpldmutils definition.
+ *
+ *  The test executable's definition takes precedence over the shared
+ *  library's at link time (same interposition technique as
+ *  unpack_pldm_header in request_test.cpp), so handleTransportError()
+ *  calls land here and the tests can observe the forwarded arguments.
+ */
+void createMctpTransportRedfishEvent(
+    mctp_eid_t /*eid*/, const std::string& /*commandName*/,
+    uint32_t /*errorCode*/, uint8_t /*binding*/, uint8_t /*direction*/,
+    const std::string& /*logNamespace*/, bool critical)
+{
+    ++g_transportEventCalls;
+    g_lastTransportEventCritical = critical;
+}
+
+} // namespace pldm::transport
+
+namespace
+{
+
 int createTempFile(const std::vector<uint8_t>& payload)
 {
     std::array<char, 64> pathTemplate{
@@ -117,7 +146,7 @@ TEST_F(UpdateAndUtilityTest, startUpdate_invalidFdThrowsRuntimeError)
     {
         auto path = update.startUpdate(
             sdbusplus::message::unix_fd{-1},
-            ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {});
+            ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {}, false);
         (void)path;
     }
     catch (const std::runtime_error& e)
@@ -143,7 +172,7 @@ TEST_F(UpdateAndUtilityTest, startUpdate_emptyImageThrowsInvalidImage)
     {
         auto path = update.startUpdate(
             sdbusplus::message::unix_fd{imageFd},
-            ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {});
+            ApplyTimeIntf::RequestedApplyTimes::Immediate, false, {}, false);
         (void)path;
     }
     catch (const sdbusplus::exception::generated_exception& e)
@@ -165,7 +194,7 @@ TEST_F(UpdateAndUtilityTest, startUpdate_validImageReturnsSoftwareObjectPath)
                   &updateManager);
     auto path = update.startUpdate(sdbusplus::message::unix_fd{imageFd},
                                    ApplyTimeIntf::RequestedApplyTimes::OnReset,
-                                   false, {});
+                                   false, {}, false);
 
     close(imageFd);
 
@@ -176,32 +205,27 @@ TEST_F(UpdateAndUtilityTest, startUpdate_validImageReturnsSoftwareObjectPath)
 
 TEST_F(UpdateAndUtilityTest, getImageStream_readsMappedPayload)
 {
-    constexpr std::array<char, 4> expectedBytes{'A', 'B', 'C', 'D'};
-    int imageFd = createTempFile({static_cast<uint8_t>(expectedBytes[0]),
-                                  static_cast<uint8_t>(expectedBytes[1]),
-                                  static_cast<uint8_t>(expectedBytes[2]),
-                                  static_cast<uint8_t>(expectedBytes[3])});
+    constexpr std::array<uint8_t, 4> expectedBytes{'A', 'B', 'C', 'D'};
+    int imageFd = createTempFile({expectedBytes[0], expectedBytes[1],
+                                  expectedBytes[2], expectedBytes[3]});
     ASSERT_GE(imageFd, 0);
 
     Update update(busMock, "/xyz/openbmc_project/software/test_update_stream",
                   &updateManager);
     auto path = update.startUpdate(sdbusplus::message::unix_fd{imageFd},
                                    ApplyTimeIntf::RequestedApplyTimes::OnReset,
-                                   false, {});
+                                   false, {}, false);
     (void)path;
 
-    auto& stream = update.getImageStream();
-    stream.clear();
-    stream.seekg(0, std::ios::beg);
-
-    std::array<char, expectedBytes.size()> actualBytes{};
-    stream.read(actualBytes.data(),
-                static_cast<std::streamsize>(actualBytes.size()));
+    const uint8_t* data = update.getImageData();
+    size_t size = update.getImageSize();
 
     close(imageFd);
 
-    EXPECT_EQ(stream.gcount(),
-              static_cast<std::streamsize>(expectedBytes.size()));
+    ASSERT_EQ(size, expectedBytes.size());
+    std::array<uint8_t, expectedBytes.size()> actualBytes{};
+    std::copy(data, data + size, actualBytes.begin());
+
     EXPECT_EQ(actualBytes, expectedBytes);
 }
 
@@ -212,9 +236,33 @@ TEST_F(UpdateAndUtilityTest, handleTransportError_clearsStoredError)
     reqHandler.storeTransportError(transportError);
     ASSERT_TRUE(reqHandler.hasTransportError(eid));
 
+    g_transportEventCalls = 0;
+    g_lastTransportEventCritical = true;
     handleTransportError(reqHandler, eid, "RequestUpdate", PLDM_FWUP);
 
     EXPECT_FALSE(reqHandler.hasTransportError(eid));
+    EXPECT_EQ(g_transportEventCalls, 1u);
+    EXPECT_FALSE(g_lastTransportEventCritical);
+}
+
+TEST_F(UpdateAndUtilityTest, handleTransportError_criticalModeClearsError)
+{
+    constexpr mctp_eid_t eid = 9;
+    auto transportError = makeTransportError(8, eid, PLDM_FWUP);
+    reqHandler.storeTransportError(transportError);
+    ASSERT_TRUE(reqHandler.hasTransportError(eid));
+
+    // Critical mode (pre-update validation): the same transport
+    // event is emitted, at Critical severity, and the queued error is
+    // cleared exactly as in the default mode.
+    g_transportEventCalls = 0;
+    g_lastTransportEventCritical = false;
+    handleTransportError(reqHandler, eid, "QueryDeviceIdentifiers", PLDM_FWUP,
+                         true);
+
+    EXPECT_FALSE(reqHandler.hasTransportError(eid));
+    EXPECT_EQ(g_transportEventCalls, 1u);
+    EXPECT_TRUE(g_lastTransportEventCritical);
 }
 
 TEST_F(UpdateAndUtilityTest, handleTransportError_keepsMismatchedTypeError)

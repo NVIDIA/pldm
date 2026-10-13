@@ -38,6 +38,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/SKU/server.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -434,7 +435,7 @@ std::optional<std::pair<UUID, SKU>>
 
 TransferPackageState OtherDeviceUpdateManager::txComponentImage(
     const std::string& filePath, const ComponentImageInfo& componentImageInfo,
-    std::istream& package)
+    const uint8_t* package, size_t packageSize)
 {
     // Presence of DeadComponent triggers the Debug Token Install during Update
     // This component needs to be skipped since its handled by
@@ -447,26 +448,25 @@ TransferPackageState OtherDeviceUpdateManager::txComponentImage(
 
     auto compOffset = std::get<5>(componentImageInfo);
     auto compSize = std::get<6>(componentImageInfo);
-    package.seekg(0, std::ios::end);
-    uintmax_t packageSize = package.tellg();
 
     // An enhancement designed to safeguard the package against
     // damage in the event of a truncated component. An attempt to
     // read such a component from the package may lead to an effort
-    // to read a set of bytes beyond the package's boundaries,
-    // triggering the state of the package to be set to
-    // std::ios::failbit. This, in turn, could potentially block the
-    // ability to read other components from the package.
-    if (packageSize <
-        static_cast<uintmax_t>(compOffset) + static_cast<uintmax_t>(compSize))
+    // to read a set of bytes beyond the package's boundaries. Use the
+    // subtraction form (offset <= size && length <= size - offset) rather
+    // than an additive check so this stays overflow-safe regardless of
+    // compOffset/compSize width (AP19 - overflow-safe bounds checks for
+    // buffer offsets).
+    if (static_cast<uintmax_t>(compOffset) > packageSize ||
+        static_cast<uintmax_t>(compSize) >
+            packageSize - static_cast<uintmax_t>(compOffset))
     {
         error("Failed to extract non pldm device component image");
         return TransferPackageState::FAILED;
     }
 
-    package.seekg(compOffset); // SEEK to image offset
     std::vector<uint8_t> buffer(compSize);
-    package.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+    std::memcpy(buffer.data(), package + compOffset, buffer.size());
 
     const auto& version = std::get<7>(componentImageInfo);
     info("Extracting {VERSION} to filePath : {FILENAME}", "VERSION", version,
@@ -481,7 +481,8 @@ TransferPackageState OtherDeviceUpdateManager::txComponentImage(
 
 TransferPackageState OtherDeviceUpdateManager::txSingleComponent(
     const std::string& dirPath, const ComponentImageInfo& componentImageInfo,
-    std::istream& package, const std::string& objPath, const UUID& uuid)
+    const uint8_t* package, size_t packageSize, const std::string& objPath,
+    const UUID& uuid)
 {
     const std::string destinationFilePath =
         dirPath + "/" +
@@ -491,13 +492,14 @@ TransferPackageState OtherDeviceUpdateManager::txSingleComponent(
     const auto& version = std::get<7>(componentImageInfo);
     uuidMappings[uuid] = {version, std::filesystem::path(objPath).filename()};
 
-    return txComponentImage(destinationFilePath, componentImageInfo, package);
+    return txComponentImage(destinationFilePath, componentImageInfo, package,
+                            packageSize);
 }
 
 TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
     const std::string& dirPath, const ApplicableComponents& applicableCompVec,
-    const ComponentImageInfos& componentImageInfos, std::istream& package,
-    const std::string& objPath, const UUID& uuid)
+    const ComponentImageInfos& componentImageInfos, const uint8_t* package,
+    size_t packageSize, const std::string& objPath, const UUID& uuid)
 {
     for (const auto& component : applicableCompVec)
     {
@@ -509,8 +511,9 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
         std::string destinationDir = dirPath;
         destinationDir += "/" + compIdString;
 
-        const auto transferState = txSingleComponent(
-            destinationDir, componentImageInfo, package, objPath, uuid);
+        const auto transferState =
+            txSingleComponent(destinationDir, componentImageInfo, package,
+                              packageSize, objPath, uuid);
         if (transferState == TransferPackageState::FAILED or
             transferState == TransferPackageState::SKIPPED)
         {
@@ -523,7 +526,8 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
 exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
     [[maybe_unused]] const FirmwareDeviceIDRecords& fwDeviceIDRecords,
     [[maybe_unused]] const ComponentImageInfos& componentImageInfos,
-    [[maybe_unused]] std::istream& package)
+    [[maybe_unused]] const uint8_t* package,
+    [[maybe_unused]] size_t packageSize)
 {
 #ifndef NON_PLDM
     co_return 0;
@@ -583,8 +587,9 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
             const auto& componentImageInfo =
                 componentImageInfos[applicableCompVec[0]];
 
-            const auto transferState = txSingleComponent(
-                directoryName, componentImageInfo, package, objPath, uuid);
+            const auto transferState =
+                txSingleComponent(directoryName, componentImageInfo, package,
+                                  packageSize, objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
                 interfaceAddedMatch.reset();
@@ -599,7 +604,7 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
         {
             const auto transferState = txMultipleComponents(
                 directoryName, applicableCompVec, componentImageInfos, package,
-                objPath, uuid);
+                packageSize, objPath, uuid);
             if (transferState == TransferPackageState::FAILED)
             {
                 interfaceAddedMatch.reset();
@@ -755,7 +760,7 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
     // Called synchronously from the constructor — see header comment.
     // The remaining sync reads are bounded to this single call site at
     // startup of an update and intentionally use the sync dbusHandler so
-    // the count is available when UpdateManager::processStreamDefer checks
+    // the count is available when UpdateManager::processPackageDataDefer checks
     // getValidTargets() immediately after construction.
     std::vector<std::string> paths;
 #ifdef NON_PLDM

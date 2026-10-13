@@ -252,6 +252,12 @@ using ComponentNameMap = std::unordered_map<eid, ComponentIdNameMap>;
 using ComponentTargetList =
     std::unordered_map<eid, std::vector<CompIdentifier>>;
 
+/** @brief Expected (updatable) component identifiers by name, per endpoint */
+using ExpectedComponentIdsByName =
+    std::unordered_map<ComponentName, std::set<CompIdentifier>>;
+using ExpectedComponentIdsByEid =
+    std::unordered_map<eid, ExpectedComponentIdsByName>;
+
 // DeviceStatus return type
 using AdditionalData = std::map<std::string, std::string>;
 using DeviceStatusErrorCode = int64_t;

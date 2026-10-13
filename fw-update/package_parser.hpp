@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace pldm
@@ -69,7 +70,7 @@ class PackageParser
      *
      *  @note Throws exception is parsing fails
      */
-    void parse(const std::vector<uint8_t>& pkgHdr);
+    void parse(std::span<const uint8_t> pkgHdr, uintmax_t pkgSize);
 
     /** @brief Get firmware device ID records from the package
      *
@@ -124,7 +125,7 @@ class PackageParser
      *          device identification area, on error throw exception.
      */
     size_t parseFDIdentificationArea(DeviceIDRecordCount deviceIdRecCount,
-                                     const std::vector<uint8_t>& pkgHdr,
+                                     std::span<const uint8_t> pkgHdr,
                                      size_t offset, uint8_t formatVersion);
 
     /** @brief Parse the component image information area
@@ -139,7 +140,7 @@ class PackageParser
      *          image information area, on error throw exception.
      */
     size_t parseCompImageInfoArea(ComponentImageCount compImageCount,
-                                  const std::vector<uint8_t>& pkgHdr,
+                                  std::span<const uint8_t> pkgHdr,
                                   size_t offset, uint8_t formatVersion);
 
     /** @brief Validate the total size of the package

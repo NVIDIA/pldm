@@ -386,6 +386,25 @@ TEST_F(DBusUtilInternalTest,
     EXPECT_TRUE(infos[0].resolution.empty());
 }
 
+TEST_F(DBusUtilInternalTest,
+       createLogEntryPreUpdateValidationMessageIdsBranchCoverage)
+{
+    constexpr auto critical =
+        "xyz.openbmc_project.Logging.Entry.Level.Critical";
+    auto& conn = pldm::utils::DBusUtilMockHandler::fakeConn();
+
+    createLogEntry(firmwarePackageComponentImageMissing, "HGX_FW_CPLD_0", "",
+                   "");
+    EXPECT_EQ(conn->lastMessageId, firmwarePackageComponentImageMissing);
+    EXPECT_EQ(conn->lastSeverity, critical);
+    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "HGX_FW_CPLD_0");
+
+    createLogEntry(preUpdateValidationFailed, "", "", "");
+    EXPECT_EQ(conn->lastMessageId, preUpdateValidationFailed);
+    EXPECT_EQ(conn->lastSeverity, critical);
+    EXPECT_EQ(conn->lastAddData["REDFISH_MESSAGE_ARGS"], "");
+}
+
 TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorReturnsEmptyOnCallFailure)
 {
     auto& bus = pldm::utils::DBusUtilMockHandler::fakeBus();

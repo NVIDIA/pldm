@@ -37,6 +37,9 @@ static bool g_failTimerStart = false;
 static bool g_failTimerStop = false;
 static size_t g_mctpTransportRedfishEventCalls = 0;
 static bool g_throwMctpTransportRedfishEvent = false;
+// Severity passed on the last redfish event; starts true so a test proves the
+// call really passed false rather than reading an untouched default.
+static bool g_lastMctpTransportRedfishEventCritical = true;
 
 namespace pldm::transport
 {
@@ -44,9 +47,10 @@ namespace pldm::transport
 void test_createMctpTransportRedfishEvent(
     mctp_eid_t /*eid*/, const std::string& /*commandName*/,
     uint32_t /*errorCode*/, uint8_t /*binding*/, uint8_t /*direction*/,
-    const std::string& /*logNamespace*/)
+    const std::string& /*logNamespace*/, bool critical)
 {
     ++g_mctpTransportRedfishEventCalls;
+    g_lastMctpTransportRedfishEventCritical = critical;
     if (g_throwMctpTransportRedfishEvent)
     {
         throw std::runtime_error("redfish event failure");
@@ -175,6 +179,7 @@ class RequestIntfTest : public testing::Test
         g_failTimerStop = false;
         g_mctpTransportRedfishEventCalls = 0;
         g_throwMctpTransportRedfishEvent = false;
+        g_lastMctpTransportRedfishEventCritical = true;
     }
 
     /** @brief This function runs the sd_event_run in a loop till all the events
@@ -506,6 +511,9 @@ TEST_F(RequestIntfTest, sendMsgFailFwupNoRetries)
     auto rc = request.start();
     EXPECT_EQ(rc, PLDM_ERROR);
     EXPECT_EQ(g_mctpTransportRedfishEventCalls, 1u);
+    // Request::send() raises the transport event at the default
+    // (non-critical) severity; only pre-update validation escalates.
+    EXPECT_FALSE(g_lastMctpTransportRedfishEventCritical);
 }
 
 TEST_F(RequestIntfTest, sendMsgThrowsPropagates)
@@ -559,6 +567,8 @@ TEST_F(RequestIntfTest, sendMsgFailFwupRedfishEventThrows)
     g_throwMctpTransportRedfishEvent = true;
     EXPECT_THROW(request.start(), std::runtime_error);
     g_throwMctpTransportRedfishEvent = false;
+    EXPECT_EQ(g_mctpTransportRedfishEventCalls, 1u);
+    EXPECT_FALSE(g_lastMctpTransportRedfishEventCritical);
 }
 
 TEST_F(RequestIntfTest, sendMsgFailWithRetries)

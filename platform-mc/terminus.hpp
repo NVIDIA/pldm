@@ -558,14 +558,15 @@ class Terminus
         std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>& out,
         const char* label);
 
-    std::tuple<SensorID, StateSetInfo> parseStateSensorPDR(
+    std::optional<std::tuple<SensorID, StateSetInfo>> parseStateSensorPDR(
         std::vector<uint8_t>& pdr);
 
     void parseStateSetInfo(const unsigned char* statesPtr,
                            uint8_t compositeSensorCount,
+                           const unsigned char* end,
                            std::vector<StateSetData>& stateSets);
 
-    std::tuple<EffecterID, StateSetInfo> parseStateEffecterPDR(
+    std::optional<std::tuple<EffecterID, StateSetInfo>> parseStateEffecterPDR(
         std::vector<uint8_t>& stateEffecterPdr);
 
     OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);

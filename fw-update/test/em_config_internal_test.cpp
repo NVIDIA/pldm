@@ -22,6 +22,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -513,6 +514,167 @@ TEST_F(EmConfigInternalTest,
     // this must not be treated as conservatively excluded.
     const ExcludedInventoryPaths excluded{"/inv/dev99"};
     EXPECT_FALSE(em_config::isExcludedInventory(excluded, 99, 1));
+}
+
+TEST_F(EmConfigInternalTest, expectedComponentIdsGroupsByNameAndSkipsEmpty)
+{
+    // Pre-update validation coverage obligations: every EM-declared
+    // component with a Name is expected; identifiers sharing a Name group
+    // into one alternative set (any one packaged id covers the name).
+    const Associations updatable{
+        {"inventory", "activation", "/xyz/openbmc_project/inventory/gpu0"}};
+    const CreateComponentIdNameMap emComponents{
+        {1, {"GPU_FW", updatable, "NVIDIA", false}},
+        {2, {"GPU_FW", updatable, "NVIDIA", false}},
+        {3, {"CPLD_FW", {}, "NVIDIA", false}},
+        {4, {"", updatable, "NVIDIA", false}}};
+
+    EXPECT_EQ(
+        em_config::expectedComponentIds(emComponents),
+        (ExpectedComponentIdsByName{{"GPU_FW", {1, 2}}, {"CPLD_FW", {3}}}));
+    EXPECT_TRUE(em_config::expectedComponentIds({}).empty());
+}
+
+TEST_F(EmConfigInternalTest, expectedComponentIdsSkipsInventoryOnlyComponents)
+{
+    // An InfoROM-style component carries only the "active" association: it
+    // is reported, never updated, and no package carries an image for it,
+    // so it must not become a coverage obligation.
+    const std::string gpu = "/xyz/openbmc_project/inventory/gpu0";
+    const CreateComponentIdNameMap emComponents{
+        {49152,
+         {"HGX_FW_GPU_0", {{"inventory", "activation", gpu}}, "NVIDIA", false}},
+        {49168,
+         {"HGX_InfoROM_GPU_0",
+          {{"inventory", "active", gpu}},
+          "NVIDIA",
+          false}}};
+
+    EXPECT_EQ(em_config::expectedComponentIds(emComponents),
+              (ExpectedComponentIdsByName{{"HGX_FW_GPU_0", {49152}}}));
+}
+
+TEST_F(EmConfigInternalTest,
+       isFirmwareInventoryOnlyComponentNeedsActivationAbsent)
+{
+    const std::string inv = "/xyz/openbmc_project/inventory/dev";
+    EXPECT_TRUE(em_config::isFirmwareInventoryOnlyComponent(
+        {{"inventory", "active", inv}}));
+    EXPECT_FALSE(em_config::isFirmwareInventoryOnlyComponent(
+        {{"inventory", "activation", inv}}));
+    EXPECT_FALSE(em_config::isFirmwareInventoryOnlyComponent(
+        {{"inventory", "active", inv}, {"inventory", "activation", inv}}));
+    // No associations declared (e.g. an UpdateOnly BMC component): not
+    // classified inventory-only, so it stays a coverage obligation.
+    EXPECT_FALSE(em_config::isFirmwareInventoryOnlyComponent({}));
+}
+
+TEST_F(EmConfigInternalTest, expectedComponentIdsDerivedFromFetchedEmComponents)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "ERoT_GPU_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("ERoT_GPU_0")}});
+
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "0",
+        {{"Name", std::string("GPU_FW")},
+         {"ComponentIdentifier", uint16_t{1}},
+         {"AssociationForward", std::vector<std::string>{"inventory"}},
+         {"AssociationBackward", std::vector<std::string>{"activation"}},
+         {"AssociationEndpoint", std::vector<std::string>{"/inv/gpu0"}}});
+    // UpdateOnly concerns Software.Version object ownership, not
+    // updatability: the component stays a coverage obligation.
+    EmConfigTestDBusHandler::setProps(devPath, base + "1",
+                                      {{"Name", std::string("BMC_FW")},
+                                       {"ComponentIdentifier", uint16_t{16}},
+                                       {"UpdateOnly", true}});
+    // Inventory-only (InfoROM-style): only the "active" association.
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "2",
+        {{"Name", std::string("InfoROM")},
+         {"ComponentIdentifier", uint16_t{17}},
+         {"AssociationForward", std::vector<std::string>{"inventory"}},
+         {"AssociationBackward", std::vector<std::string>{"active"}},
+         {"AssociationEndpoint", std::vector<std::string>{"/inv/gpu0"}}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(em_config::expectedComponentIds(info->emComponents),
+              (ExpectedComponentIdsByName{{"GPU_FW", {1}}, {"BMC_FW", {16}}}));
+}
+
+TEST_F(EmConfigInternalTest, configuredFirmwareTargetsListsUpdatableDevices)
+{
+    // Read straight from the PLDMFirmwareDevice configuration, so a device
+    // with no discovered endpoint (e.g. a GPU that left MCTP) is listed. A
+    // device whose components are all inventory-only is not an update
+    // target; entries without a usable MCTPTargetName are skipped.
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{"/em/gpu0", {{"svc", {fwDeviceIntf}}}},
+         {"/em/inforom", {{"svc", {fwDeviceIntf}}}},
+         {"/em/noname", {{"svc", {fwDeviceIntf}}}},
+         {"/em/throws", {{"svc", {fwDeviceIntf}}}}});
+
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        "/em/gpu0", fwDeviceIntf,
+        {{"MCTPTargetName", std::string("HGX_GPU_0")}});
+    EmConfigTestDBusHandler::setProps(
+        "/em/gpu0", base + "0",
+        {{"Name", std::string("HGX_FW_GPU_0")},
+         {"ComponentIdentifier", uint16_t{49152}},
+         {"AssociationForward", std::vector<std::string>{"inventory"}},
+         {"AssociationBackward", std::vector<std::string>{"activation"}},
+         {"AssociationEndpoint", std::vector<std::string>{"/inv/gpu0"}}});
+
+    EmConfigTestDBusHandler::setProps(
+        "/em/inforom", fwDeviceIntf,
+        {{"MCTPTargetName", std::string("INFOROM_ONLY")}});
+    EmConfigTestDBusHandler::setProps(
+        "/em/inforom", base + "0",
+        {{"Name", std::string("HGX_InfoROM_GPU_0")},
+         {"ComponentIdentifier", uint16_t{49168}},
+         {"AssociationForward", std::vector<std::string>{"inventory"}},
+         {"AssociationBackward", std::vector<std::string>{"active"}},
+         {"AssociationEndpoint", std::vector<std::string>{"/inv/gpu0"}}});
+
+    EmConfigTestDBusHandler::setProps("/em/noname", fwDeviceIntf, {});
+
+    EXPECT_EQ(em_config::fetchConfiguredFirmwareTargets(),
+              (std::set<std::string>{"HGX_GPU_0"}));
+}
+
+TEST_F(EmConfigInternalTest, configuredFirmwareTargetsEmptyWhenSubtreeFails)
+{
+    EmConfigTestDBusHandler::setThrowGetSubtree(true);
+    EXPECT_TRUE(em_config::fetchConfiguredFirmwareTargets().empty());
+}
+
+TEST_F(EmConfigInternalTest, staticEidTargetNamesKeyedByStaticEndpointId)
+{
+    // Only transport configurations carrying both a StaticEndpointID and a
+    // Name are listed; unreadable entries are skipped.
+    constexpr auto usbIntf = "xyz.openbmc_project.Configuration.MCTPUSBDevice";
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{"/em/cpu0", {{"svc", {usbIntf}}}},
+         {"/em/pool", {{"svc", {usbIntf}}}},
+         {"/em/throws", {{"svc", {usbIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        "/em/cpu0", usbIntf,
+        {{"Name", std::string("HGX_CPU_0")},
+         {"StaticEndpointID", std::string("14")}});
+    // A bridge-pool-only entry has no StaticEndpointID.
+    EmConfigTestDBusHandler::setProps("/em/pool", usbIntf,
+                                      {{"Name", std::string("HGX_GPU_0")}});
+
+    const auto names = em_config::fetchStaticEidTargetNames();
+    EXPECT_EQ(names, (std::map<pldm::eid, std::set<std::string>>{
+                         {14, {"HGX_CPU_0"}}}));
 }
 
 } // namespace

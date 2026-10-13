@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <exception>
 #include <limits>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -310,6 +312,166 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
         return info;
     }
     return std::nullopt;
+}
+
+bool isFirmwareInventoryOnlyComponent(const Associations& associations)
+{
+    // Updatable components carry the "activation" backward association to
+    // their inventory item; inventory-only components (InfoROM, NVConfig)
+    // carry only "active". A component with no associations declares
+    // neither, so it is not classified inventory-only.
+    if (associations.empty())
+    {
+        return false;
+    }
+    return std::ranges::none_of(associations, [](const auto& association) {
+        return std::get<1>(association) == "activation";
+    });
+}
+
+ExpectedComponentIdsByName expectedComponentIds(
+    const CreateComponentIdNameMap& emComponents)
+{
+    ExpectedComponentIdsByName expected;
+    for (const auto& [compId, component] : emComponents)
+    {
+        const auto& compName = std::get<0>(component);
+        if (compName.empty() ||
+            isFirmwareInventoryOnlyComponent(std::get<1>(component)))
+        {
+            continue;
+        }
+        expected[compName].insert(compId);
+    }
+    return expected;
+}
+
+std::set<std::string> fetchConfiguredFirmwareTargets()
+{
+    constexpr auto pldmFwDeviceIntf =
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+    std::set<std::string> targets;
+    pldm::utils::GetSubTreeResponse subtree;
+    try
+    {
+        subtree = pldm::utils::DBusHandler().getSubtree(
+            "/xyz/openbmc_project/inventory", 0, {pldmFwDeviceIntf});
+    }
+    catch (const std::exception& e)
+    {
+        warning(
+            "fetchConfiguredFirmwareTargets: GetSubTree for PLDMFirmwareDevice failed, error - {ERROR}",
+            "ERROR", e);
+        return targets;
+    }
+
+    for (const auto& [objPath, serviceMap] : subtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const std::string service = serviceMap.begin()->first;
+
+        pldm::utils::PropertyMap props;
+        try
+        {
+            props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                service.c_str(), objPath.c_str(), pldmFwDeviceIntf);
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "fetchConfiguredFirmwareTargets: reading props at {PATH} failed, error - {ERROR}",
+                "PATH", objPath, "ERROR", e);
+            continue;
+        }
+
+        auto nameIt = props.find("MCTPTargetName");
+        if (nameIt == props.end())
+        {
+            continue;
+        }
+        const auto* targetName = std::get_if<std::string>(&nameIt->second);
+        if (targetName == nullptr || targetName->empty())
+        {
+            continue;
+        }
+
+        CreateComponentIdNameMap emComponents;
+        ComponentIdNameMap idNameMap;
+        unpackComponents(service, objPath, pldmFwDeviceIntf, emComponents,
+                         idNameMap);
+        if (!expectedComponentIds(emComponents).empty())
+        {
+            targets.insert(*targetName);
+        }
+    }
+    return targets;
+}
+
+std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
+{
+    std::map<pldm::eid, std::set<std::string>> names;
+    for (const char* intf :
+         {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
+          "xyz.openbmc_project.Configuration.MCTPUSBTarget",
+          "xyz.openbmc_project.Configuration.MCTPI2CTarget",
+          "xyz.openbmc_project.Configuration.MCTPSPIDevice",
+          "xyz.openbmc_project.Configuration.MCTPXROTTarget"})
+    {
+        pldm::utils::GetSubTreeResponse subtree;
+        try
+        {
+            subtree = pldm::utils::DBusHandler().getSubtree(
+                "/xyz/openbmc_project/inventory", 0, {intf});
+        }
+        catch (const std::exception& e)
+        {
+            warning(
+                "fetchStaticEidTargetNames: GetSubTree for {INTF} failed, error - {ERROR}; skipping",
+                "INTF", intf, "ERROR", e);
+            continue;
+        }
+
+        for (const auto& [objPath, serviceMap] : subtree)
+        {
+            if (serviceMap.empty())
+            {
+                continue;
+            }
+            const std::string service = serviceMap.begin()->first;
+
+            pldm::utils::PropertyMap props;
+            try
+            {
+                props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    service.c_str(), objPath.c_str(), intf);
+            }
+            catch (const std::exception& e)
+            {
+                warning(
+                    "fetchStaticEidTargetNames: reading props at {PATH} failed, error - {ERROR}; skipping",
+                    "PATH", objPath, "ERROR", e);
+                continue;
+            }
+
+            auto staticEid =
+                pldm::utils::readOptionalEidProperty(props, "StaticEndpointID");
+            auto nameIt = props.find("Name");
+            if (!staticEid || nameIt == props.end())
+            {
+                continue;
+            }
+            const auto* name = std::get_if<std::string>(&nameIt->second);
+            if (name != nullptr && !name->empty())
+            {
+                names[*staticEid].insert(*name);
+            }
+        }
+    }
+    return names;
 }
 
 ExcludedInventoryPaths fetchExcludedInventory()

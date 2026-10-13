@@ -18,7 +18,9 @@
 
 #include "common/types.hpp"
 
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 
 /** @brief Read operations on the entity-manager-published PLDM firmware
@@ -77,6 +79,62 @@ struct DeviceComponentInfo
  */
 std::optional<DeviceComponentInfo> fetchComponentInfo(
     const Configurations& configurations, pldm::eid mctpEid);
+
+/** @brief Derive the expected (updatable) component identifiers for the
+ *         pre-update validation gate from a device's EM-declared component
+ *         id → Name map (DeviceComponentInfo::idNameMap).
+ *
+ *  Every EM-declared component with a non-empty Name is expected, except
+ *  inventory-only components (see isFirmwareInventoryOnlyComponent()): a
+ * firmware package never carries an image for them (e.g. GPU InfoROM), so
+ * requiring one would reject every whole-system request. UpdateOnly concerns
+ *  Software.Version object ownership, not updatability, so it does not
+ *  exempt a component.
+ *
+ *  @param[in] emComponents - id → component metadata from fetchComponentInfo()
+ *  @return the ComponentName-grouped expected component identifiers
+ */
+ExpectedComponentIdsByName expectedComponentIds(
+    const CreateComponentIdNameMap& emComponents);
+
+/** @brief The MCTPTargetName of every entity-manager-configured PLDM
+ *         firmware device that has at least one updatable component.
+ *
+ *  Read straight from Configuration.PLDMFirmwareDevice rather than from the
+ *  discovered endpoints, so a configured device that has left MCTP (recovery
+ *  mode, powered off, hung management path) is still listed. Devices whose
+ *  components are all inventory-only are omitted: there is nothing to update
+ *  on them. D-Bus read failures are logged and skipped; never thrown.
+ *
+ *  @return the configured firmware device target names
+ */
+std::set<std::string> fetchConfiguredFirmwareTargets();
+
+/** @brief Device names of the entity-manager MCTP transport configurations,
+ *         keyed by their StaticEndpointID.
+ *
+ *  A fallback for resolving a statically addressed endpoint to its device
+ *  name when its configured_by association is missing (e.g. the reactor
+ *  did not republish it after the endpoint was re-added). Bridge-pool
+ *  devices have no StaticEndpointID and are not listed. D-Bus read failures
+ *  are logged and skipped; never thrown.
+ *
+ *  @return StaticEndpointID → the transport configuration Names using it
+ */
+std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames();
+
+/** @brief Whether an EM-declared component is inventory-only (reported but
+ *         never updated).
+ *
+ *  entity-manager marks updatable components with the "activation" backward
+ *  association to their inventory item; inventory-only components carry
+ *  only "active". A component with no associations is not inventory-only.
+ *
+ *  @param[in] associations - the component's (forward, backward, endpoint)
+ *                            associations
+ *  @return true when associations are declared and none is "activation"
+ */
+bool isFirmwareInventoryOnlyComponent(const Associations& associations);
 
 /** @brief entity-manager interface carrying the firmware-update opt-out. */
 constexpr auto pldmExclusionIntf =

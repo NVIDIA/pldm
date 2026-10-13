@@ -45,6 +45,7 @@
 #include <sdeventplus/test/sdevent.hpp>
 
 #include <filesystem>
+#include <fstream>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -58,6 +59,21 @@ namespace
 {
 void resetEncodeMockControls();
 
+std::vector<uint8_t> readTestPackageFile(const char* path)
+{
+    std::ifstream ifs(path, std::ios::binary | std::ios::in | std::ios::ate);
+    if (!ifs.good())
+    {
+        return {};
+    }
+    auto size = static_cast<size_t>(ifs.tellg());
+    ifs.seekg(0, std::ios::beg);
+    std::vector<uint8_t> data(size);
+    ifs.read(reinterpret_cast<char*>(data.data()),
+             static_cast<std::streamsize>(size));
+    return data;
+}
+
 int processPackageStream(UpdateManager& updateManager,
                          const std::filesystem::path& packagePath)
 {
@@ -66,7 +82,7 @@ int processPackageStream(UpdateManager& updateManager,
         return -1;
     }
 
-    updateManager.updater->clearImageStream();
+    updateManager.updater->clearImageData();
     int imageFd = open(packagePath.c_str(), O_RDONLY);
     if (imageFd < 0)
     {
@@ -74,14 +90,6 @@ int processPackageStream(UpdateManager& updateManager,
     }
 
     if (!updateManager.updater->mmapFile.map(imageFd, true))
-    {
-        return -1;
-    }
-
-    updateManager.updater->mmapStream = std::make_unique<pldm::MmapStream>(
-        updateManager.updater->mmapFile.data(),
-        updateManager.updater->mmapFile.size());
-    if (!updateManager.updater->mmapStream->good())
     {
         return -1;
     }
@@ -96,9 +104,9 @@ int processPackageStream(UpdateManager& updateManager,
                     std::vector<sdbusplus::object_path>{});
         }
 
-        auto task =
-            updateManager.processStream(*updateManager.updater->mmapStream,
-                                        updateManager.updater->mmapFile.size());
+        auto task = updateManager.processPackageData(
+            updateManager.updater->getImageData(),
+            updateManager.updater->getImageSize());
         auto rc = stdexec::sync_wait(std::move(task));
         if (!rc.has_value() || !updateManager.parser)
         {
@@ -117,17 +125,18 @@ class ComponentUpdaterTest : public testing::Test
 {
   protected:
     ComponentUpdaterTest() :
-        package("./test_pkg", std::ios::binary | std::ios::in | std::ios::ate),
+        packageBytes(readTestPackageFile("./test_pkg")),
         event(sdeventplus::Event::get_default()),
         reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
                    milliseconds(100)),
         updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                       componentInfoMap, componentNameMap, true, nullptr),
-        deviceUpdater(0x1, package, fwDeviceIDRecord, compImageInfos, compInfo,
+        deviceUpdater(0x1, packageBytes.data(), packageBytes.size(),
+                      fwDeviceIDRecord, compImageInfos, compInfo,
                       compIdNameInfo, 512, &updateManager),
-        componentUpdater(0x1, package, fwDeviceIDRecord, compImageInfos,
-                         compInfo, compIdNameInfo, 512, &updateManager,
-                         &deviceUpdater, 0)
+        componentUpdater(0x1, packageBytes.data(), packageBytes.size(),
+                         fwDeviceIDRecord, compImageInfos, compInfo,
+                         compIdNameInfo, 512, &updateManager, &deviceUpdater, 0)
     {
         fwDeviceIDRecord = {
             1,
@@ -376,7 +385,7 @@ class ComponentUpdaterTest : public testing::Test
         waitForAsyncHandle(componentUpdater.updateCompletionCoHandle);
     }
 
-    std::ifstream package;
+    std::vector<uint8_t> packageBytes;
     FirmwareDeviceIDRecord fwDeviceIDRecord;
     ComponentImageInfos compImageInfos;
     ComponentInfo compInfo;
@@ -681,7 +690,8 @@ static std::pair<std::vector<uint8_t>, size_t> makeUpdateComponentResp(
 // {
 //     mctp_eid_t eid = 0x1;
 //     size_t componentOffset = 0;
-//     ComponentUpdater componentUpdater(eid, package, fwDeviceIDRecord,
+//     ComponentUpdater componentUpdater(eid, packageBytes.data(),
+//     packageBytes.size(), fwDeviceIDRecord,
 //                                       compImageInfos, compInfo,
 //                                       compIdNameInfo, 512, &updateManager,
 //                                       &deviceUpdater, componentOffset,
@@ -698,8 +708,9 @@ TEST_F(ComponentUpdaterTest, transferComplete)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
 
     // Timer must exist before requestFwData (created in
     // processUpdateComponentResponse in real flow)
@@ -779,8 +790,9 @@ TEST_F(ComponentUpdaterTest, verifyComplete)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
 
     // Timer must exist before requestFwData (created in
     // processUpdateComponentResponse in real flow)
@@ -880,8 +892,9 @@ TEST_F(ComponentUpdaterTest, sendcancelUpdateComponentRequest)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co =
@@ -894,8 +907,9 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent_empty_response)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
 
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> invalidResponse{
         0x80, 0x05, 0x1c};
@@ -914,8 +928,9 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponent)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
         cancelCompUpdateResponse{0x80, 0x05, 0x1c};
 
@@ -935,8 +950,9 @@ TEST_F(ComponentUpdaterTest, cancelUpdateComponentCompletionCodeFailure)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
     constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + sizeof(uint8_t)>
         cancelCompUpdateResponse{0x80, 0x05, 0x1c, 0x01};
 
@@ -1036,8 +1052,9 @@ TEST_F(ComponentUpdaterTest, GetStatusResponse)
     uint8_t progressPercent = 0x65;
     uint8_t retryCount = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
     constexpr std::array<uint8_t,
                          sizeof(pldm_msg_hdr) + sizeof(pldm_get_status_resp)>
         getStatusResponse{0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03,
@@ -1058,8 +1075,9 @@ TEST_F(ComponentUpdaterTest, startComponentUpdater)
     mctp_eid_t eid = 0x1;
     size_t componentOffset = 0;
     ComponentUpdater componentUpdater(
-        eid, package, fwDeviceIDRecord, compImageInfos, compInfo,
-        compIdNameInfo, 512, &updateManager, &deviceUpdater, componentOffset);
+        eid, packageBytes.data(), packageBytes.size(), fwDeviceIDRecord,
+        compImageInfos, compInfo, compIdNameInfo, 512, &updateManager,
+        &deviceUpdater, componentOffset);
 
     EXPECT_NO_THROW({
         [[maybe_unused]] auto co = componentUpdater.startComponentUpdater();

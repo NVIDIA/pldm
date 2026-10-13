@@ -69,10 +69,11 @@ std::string otherDeviceTempPathString(std::string_view relativePath)
 size_t syncExtractOtherDevicePkgs(
     OtherDeviceUpdateManager& otherDeviceUpdateManager,
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    const ComponentImageInfos& compImageInfos, std::istream& package)
+    const ComponentImageInfos& compImageInfos, const uint8_t* package,
+    size_t packageSize)
 {
     auto task = otherDeviceUpdateManager.extractOtherDevicePkgs(
-        fwDeviceIDRecords, compImageInfos, package);
+        fwDeviceIDRecords, compImageInfos, package, packageSize);
     auto result = stdexec::sync_wait(std::move(task));
     if (!result.has_value())
     {
@@ -238,11 +239,11 @@ TEST_F(OtherDeviceUpdateManagerTest, extractOtherDevicePkgs)
     ComponentImageInfos compImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 139, 27, "VersionString2"}};
 
-    std::istringstream dummyStream("10 20 30 40");
+    std::string dummyData("10 20 30 40");
 
-    size_t result =
-        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
-                                   compImageInfos, dummyStream);
+    size_t result = syncExtractOtherDevicePkgs(
+        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos,
+        reinterpret_cast<const uint8_t*>(dummyData.data()), dummyData.size());
 
     EXPECT_EQ(result, expectedResult);
 }
@@ -297,13 +298,15 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageDeadComponentIsSkipped)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    std::istringstream package("0123456789");
+    std::string packageStr("0123456789");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     ComponentImageInfo deadCompInfo = {10, deadComponent,   0xFFFFFFFF, 0, 0, 0,
                                        4,  "VersionString2"};
     auto state = otherDeviceUpdateManager.txComponentImage(
         otherDeviceTempPathString("should_not_be_created"), deadCompInfo,
-        package);
+        package, packageSize);
 
     EXPECT_EQ(state, TransferPackageState::SKIPPED);
 }
@@ -312,12 +315,15 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageTruncatedPackageFails)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    std::istringstream package("1234");
+    std::string packageStr("1234");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     ComponentImageInfo compInfo = {10, 100, 0xFFFFFFFF, 0,
                                    0,  2,   8,          "VersionString2"};
     auto state = otherDeviceUpdateManager.txComponentImage(
-        otherDeviceTempPathString("tx_component_truncated"), compInfo, package);
+        otherDeviceTempPathString("tx_component_truncated"), compInfo, package,
+        packageSize);
 
     EXPECT_EQ(state, TransferPackageState::FAILED);
 }
@@ -326,7 +332,9 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageSuccessWritesBytes)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    std::istringstream package("ABCDEFGH");
+    std::string packageStr("ABCDEFGH");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
     auto outPath = (std::filesystem::temp_directory_path() /
                     "pldm_other_device_tx_component_image_test.bin")
@@ -334,8 +342,8 @@ TEST_F(OtherDeviceUpdateManagerTest, txComponentImageSuccessWritesBytes)
     ComponentImageInfo compInfo = {10, 100, 0xFFFFFFFF, 0,
                                    0,  2,   4,          "VersionString2"};
 
-    auto state =
-        otherDeviceUpdateManager.txComponentImage(outPath, compInfo, package);
+    auto state = otherDeviceUpdateManager.txComponentImage(
+        outPath, compInfo, package, packageSize);
     EXPECT_EQ(state, TransferPackageState::SUCCESS);
 
     std::ifstream written(outPath, std::ios::binary);
@@ -349,7 +357,9 @@ TEST_F(OtherDeviceUpdateManagerTest, txMultipleComponentsReturnsFailedOnSkip)
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    std::istringstream package("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    std::string packageStr("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
     std::string dirPath = std::filesystem::temp_directory_path().string();
 
     ComponentImageInfos compImageInfos = {
@@ -358,7 +368,7 @@ TEST_F(OtherDeviceUpdateManagerTest, txMultipleComponentsReturnsFailedOnSkip)
     ApplicableComponents applicableCompVec = {0, 1};
 
     auto state = otherDeviceUpdateManager.txMultipleComponents(
-        dirPath, applicableCompVec, compImageInfos, package,
+        dirPath, applicableCompVec, compImageInfos, package, packageSize,
         "/xyz/openbmc_project/software/other/test", "TESTUUID");
     EXPECT_EQ(state, TransferPackageState::FAILED);
 }
@@ -368,7 +378,9 @@ TEST_F(OtherDeviceUpdateManagerTest,
 {
     OtherDeviceUpdateManager otherDeviceUpdateManager(busMock, &updateManager,
                                                       updatePolicyTargets);
-    std::istringstream package("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    std::string packageStr("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
     auto rootDir = std::filesystem::temp_directory_path() /
                    "pldm_other_device_tx_multiple_success";
     std::filesystem::create_directories(rootDir / "100");
@@ -381,7 +393,7 @@ TEST_F(OtherDeviceUpdateManagerTest,
 
     auto state = otherDeviceUpdateManager.txMultipleComponents(
         rootDir.string(), applicableCompVec, compImageInfos, package,
-        "/xyz/openbmc_project/software/other/test", "TESTUUID");
+        packageSize, "/xyz/openbmc_project/software/other/test", "TESTUUID");
     EXPECT_EQ(state, TransferPackageState::SUCCESS);
     EXPECT_TRUE(otherDeviceUpdateManager.uuidMappings.contains("TESTUUID"));
     std::filesystem::remove_all(rootDir);
@@ -1345,10 +1357,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
          {0}}};
     ComponentImageInfos compImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
-    std::istringstream package("ABCD1234");
+    std::string packageStr("ABCD1234");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
@@ -1441,10 +1456,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
          {}}};
     ComponentImageInfos compImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 0, 4, "VersionString2"}};
-    std::istringstream package("ABCD1234");
+    std::string packageStr("ABCD1234");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 0);
     std::filesystem::remove_all(otherDeviceTempRoot() / "match2");
@@ -1607,10 +1625,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
          {0}}};
     ComponentImageInfos compImageInfos{
         {10, deadComponent, 0xFFFFFFFF, 0, 0, 0, 4, "DeadVersion"}};
-    std::istringstream package("ABCD1234");
+    std::string packageStr("ABCD1234");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.empty());
@@ -1776,10 +1797,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
     ComponentImageInfos compImageInfos{
         {10, 201, 0xFFFFFFFF, 0, 0, 64, 32, "TruncatedVersion"},
         {10, 200, 0xFFFFFFFF, 0, 0, 0, 4, "LiveVersion"}};
-    std::istringstream package("ABCD1234");
+    std::string packageStr("ABCD1234");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 0);
     EXPECT_TRUE(otherDeviceUpdateManager.uuidMappings.contains(uuid));
@@ -1844,10 +1868,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
     ComponentImageInfos compImageInfos{
         {10, 300, 0xFFFFFFFF, 0, 0, 0, 4, "VersionA"},
         {10, 301, 0xFFFFFFFF, 0, 0, 4, 4, "VersionB"}};
-    std::istringstream package("ABCDEFGH");
+    std::string packageStr("ABCDEFGH");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 1);
     EXPECT_TRUE(otherDeviceUpdateManager.isImageFileProcessed.contains(uuid));
@@ -2089,10 +2116,13 @@ TEST_F(OtherDeviceUpdateManagerTest,
          {0}}};
     ComponentImageInfos compImageInfos{
         {10, 100, 0xFFFFFFFF, 0, 0, 32, 64, "VersionString2"}};
-    std::istringstream package("ABCD");
+    std::string packageStr("ABCD");
+    const auto* package = reinterpret_cast<const uint8_t*>(packageStr.data());
+    size_t packageSize = packageStr.size();
 
-    size_t result = syncExtractOtherDevicePkgs(
-        otherDeviceUpdateManager, fwDeviceIDRecords, compImageInfos, package);
+    size_t result =
+        syncExtractOtherDevicePkgs(otherDeviceUpdateManager, fwDeviceIDRecords,
+                                   compImageInfos, package, packageSize);
 
     EXPECT_EQ(result, 0);
     EXPECT_EQ(otherDeviceUpdateManager.interfaceAddedMatch, nullptr);

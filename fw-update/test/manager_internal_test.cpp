@@ -409,9 +409,26 @@ TEST_F(ManagerInternalTest, refreshSingleEndpointCallbackPathIsCallable)
     Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
 
     ASSERT_TRUE(manager.updateManager.refreshSingleEndpointCallback);
-    auto co = manager.updateManager.refreshSingleEndpointCallback(1, true);
+    auto co =
+        manager.updateManager.refreshSingleEndpointCallback(1, true, false);
     auto rc = stdexec::sync_wait(std::move(co));
     ASSERT_TRUE(rc.has_value());
+}
+
+// A reused EID, or EM Components metadata that changed, must not leave a
+// previous expected-component set behind for the pre-update validation gate.
+TEST_F(ManagerInternalTest, populateComponentInfoFromEmClearsStaleExpectation)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    const pldm::eid eid = 5;
+    manager.expectedComponentIdsByEid[eid] = {{"STALE_COMPONENT", {1}}};
+
+    // No EM PLDMFirmwareDevice entry resolves for the EID any more.
+    EXPECT_FALSE(manager.populateComponentInfoFromEM(eid));
+    EXPECT_FALSE(manager.expectedComponentIdsByEid.contains(eid));
 }
 
 // downstreamDeviceNameMap is keyed by EID only, not (EID, discovery). A
@@ -457,6 +474,10 @@ TEST_F(ManagerInternalTest, isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
     // otherwise silently stop refreshing every EID it seeds purely from
     // static config.
     EXPECT_FALSE(manager.isEidExcludedFromFwUpdate(99));
+    // Nor may it fetch the exclusion set: the pre-update validation
+    // capability refresh can check an EID before the first
+    // handleMctpEndpoints(), ahead of entity-manager publishing it.
+    EXPECT_FALSE(manager.excludedInventoryCache.has_value());
 }
 
 TEST_F(ManagerInternalTest,

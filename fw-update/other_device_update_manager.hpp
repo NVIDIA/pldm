@@ -189,12 +189,14 @@ class OtherDeviceUpdateManager
      *
      * @param fwDeviceIDRecords - Device records
      * @param componentImageInfos - Image info like offset, size
-     * @param package - pldm image input stream
+     * @param package - pointer to pldm image data
+     * @param packageSize - size of the pldm image data
      * @return exec::task yielding the number of other device images
      */
     exec::task<size_t> extractOtherDevicePkgs(
         const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-        const ComponentImageInfos& componentImageInfos, std::istream& package);
+        const ComponentImageInfos& componentImageInfos, const uint8_t* package,
+        size_t packageSize);
 
     /**
      * @brief Get the Number Of Processed Images object
@@ -298,9 +300,9 @@ class OtherDeviceUpdateManager
      * @brief updates the valid target count.
      *
      * TODO: This is the only remaining synchronous D-Bus read in this class.
-     * Its caller (processStreamDefer) is not a coroutine and inspects
+     * Its caller (processPackageDataDefer) is not a coroutine and inspects
      * getValidTargets() synchronously immediately after construction, so
-     * converting it requires restructuring processStreamDefer. Tracked
+     * converting it requires restructuring processPackageDataDefer. Tracked
      * separately.
      */
     void updateValidTargets(void);
@@ -321,25 +323,28 @@ class OtherDeviceUpdateManager
      *
      * @param filePath - Path to the destination of the component image
      * @param componentImageInfo - Image info of the component to transfer
-     * @param package - input stream of the package
+     * @param package - pointer to the package data
+     * @param packageSize - size of the package data
      */
     TransferPackageState txComponentImage(
         const std::string& filePath,
-        const ComponentImageInfo& componentImageInfo, std::istream& package);
+        const ComponentImageInfo& componentImageInfo, const uint8_t* package,
+        size_t packageSize);
 
     /**
      * @brief Handles the transfers of a single component
      *
      * @param dirPath - Path to the directory destination of the component image
      * @param componentImageInfo - Image info of the component to transfer
-     * @param package - input stream of the package
+     * @param package - pointer to the package data
+     * @param packageSize - size of the package data
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
     TransferPackageState txSingleComponent(
         const std::string& dirPath,
-        const ComponentImageInfo& componentImageInfo, std::istream& package,
-        const std::string& objPath, const UUID& uuid);
+        const ComponentImageInfo& componentImageInfo, const uint8_t* package,
+        size_t packageSize, const std::string& objPath, const UUID& uuid);
 
     /**
      * @brief Handles the transfers of multiple components
@@ -349,15 +354,16 @@ class OtherDeviceUpdateManager
      * @param applicableCompVec - Vector of components to transfer
      * @param componentImageInfos - Vector of Image info of the components to
      * transfer
-     * @param package - input stream of the package
+     * @param package - pointer to the package data
+     * @param packageSize - size of the package data
      * @param objPath - Object Path of the Item Updater
      * @param uuid - UUID of the ItemUpdater
      */
     TransferPackageState txMultipleComponents(
         const std::string& dirPath,
         const ApplicableComponents& applicableCompVec,
-        const ComponentImageInfos& componentImageInfos, std::istream& package,
-        const std::string& objPath, const UUID& uuid);
+        const ComponentImageInfos& componentImageInfos, const uint8_t* package,
+        size_t packageSize, const std::string& objPath, const UUID& uuid);
 
     UpdateManager* updateManager;
     pldm::utils::DBusHandlerInterface& dbusHandler;

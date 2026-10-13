@@ -271,7 +271,7 @@ TEST(PackageParserStubErrorTest, parseDescriptorDecodeFailureThrows)
         sizeof(pldm_package_header_information) + parser.pkgVersion.size();
     data[baseOffset] = 1;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
     stubDescriptorCount = 0;
 }
 
@@ -288,7 +288,7 @@ TEST(PackageParserStubErrorTest, parseVendorDescriptorDecodeFailureThrows)
         sizeof(pldm_package_header_information) + parser.pkgVersion.size();
     data[baseOffset] = 1;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
     stubDescriptorCount = 0;
 }
 
@@ -321,7 +321,12 @@ TEST(PackageParserStubErrorTest, parseCompImageFr04AddsOpaqueDataLengthToOffset)
     stubMode = StubMode::success;
     PackageParserProbe parser(64, "v", 8,
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
-    std::vector<uint8_t> data(8, 0);
+    // Size the buffer to exactly one component-image-info entry so the parser
+    // consumes it without advancing past the buffer (which parseCompImageInfo
+    // now rejects to prevent an OOB read).
+    std::vector<uint8_t> data(sizeof(pldm_component_image_information) + 1 +
+                                  sizeof(CompOpaqueDataLength),
+                              0);
 
     auto offset = parser.callParseComp(
         1, data, 0, PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR04H);
@@ -342,7 +347,7 @@ TEST(PackageParserStubErrorTest, parseDetectsDeviceIdRecordCountMismatch)
     data[baseOffset] = 2;
     stubRecordLength = static_cast<uint16_t>(data.size() - (baseOffset + 1));
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, parseRejectsDownstreamDeviceRecords)
@@ -357,7 +362,7 @@ TEST(PackageParserStubErrorTest, parseRejectsDownstreamDeviceRecords)
     data[baseOffset] = 0;
     data[baseOffset + 1] = 1;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, parseRejectsMissingComponentImageCountField)
@@ -372,7 +377,7 @@ TEST(PackageParserStubErrorTest, parseRejectsMissingComponentImageCountField)
     std::vector<uint8_t> data(parser.pkgHeaderSize, 0);
     data[baseOffset] = 0;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, parseRejectsMissingDeviceIdRecordCountField)
@@ -386,7 +391,7 @@ TEST(PackageParserStubErrorTest, parseRejectsMissingDeviceIdRecordCountField)
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H);
     std::vector<uint8_t> data(parser.pkgHeaderSize, 0);
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, parseDetectsComponentCountMismatch)
@@ -406,7 +411,7 @@ TEST(PackageParserStubErrorTest, parseDetectsComponentCountMismatch)
     data[baseOffset + 1] = 0;
     data[baseOffset + 2] = 0;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, parseFr04PayloadChecksumMismatchThrows)
@@ -426,7 +431,7 @@ TEST(PackageParserStubErrorTest, parseFr04PayloadChecksumMismatchThrows)
     data[baseOffset + 3] = 0;
     data[baseOffset + 6] = 1;
 
-    EXPECT_ANY_THROW(parser.parse(data));
+    EXPECT_ANY_THROW(parser.parse(data, data.size()));
 }
 
 TEST(PackageParserStubErrorTest, calculatePackageSizeOffsetMismatchThrows)
@@ -509,5 +514,5 @@ TEST(PackageParserStubErrorTest,
     stubMode = StubMode::success;
     PackageParserProbe parser(64, "v", 8,
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H);
-    EXPECT_ANY_THROW(parser.parse(std::vector<uint8_t>{}));
+    EXPECT_ANY_THROW(parser.parse(std::vector<uint8_t>{}, 8));
 }

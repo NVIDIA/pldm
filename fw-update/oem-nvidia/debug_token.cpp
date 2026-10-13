@@ -34,6 +34,7 @@
 #include <xyz/openbmc_project/Common/UUID/server.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -141,7 +142,8 @@ void DebugToken::onActivationChangedMsg(sdbusplus::message::message& msg)
 
 exec::task<void> DebugToken::updateDebugToken(
     FirmwareDeviceIDRecords fwDeviceIDRecords,
-    ComponentImageInfos componentImageInfos, std::istream& package)
+    ComponentImageInfos componentImageInfos, const uint8_t* package,
+    size_t packageSize)
 {
     // fwDeviceIDRecords and componentImageInfos are taken by value, so the
     // coroutine frame owns them outright — safe to access across co_await.
@@ -203,11 +205,26 @@ exec::task<void> DebugToken::updateDebugToken(
                 }
                 info("Got filepath for install token. FILEPATH={FILEPATH}",
                      "FILEPATH", filepath);
-                package.seekg(
-                    std::get<5>(componentImageInfo)); // SEEK to image offset
-                std::vector<uint8_t> buffer(std::get<6>(componentImageInfo));
-                package.read(reinterpret_cast<char*>(buffer.data()),
-                             buffer.size());
+                const auto compOffset = std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompLocationOffsetPos)>(
+                    componentImageInfo);
+                const auto compSize = std::get<static_cast<size_t>(
+                    ComponentImageInfoPos::CompSizePos)>(componentImageInfo);
+                // compOffset/compSize come from the package's own component
+                // image table, so a corrupted package could claim a range
+                // outside the mapped buffer; validate before copying
+                // (AP19 - overflow-safe bounds checks for buffer offsets).
+                if (static_cast<uint64_t>(compOffset) + compSize > packageSize)
+                {
+                    error(
+                        "Debug token component image range exceeds package bounds, "
+                        "OFFSET={OFFSET}, SIZE={SIZE}, PACKAGESIZE={PACKAGESIZE}",
+                        "OFFSET", compOffset, "SIZE", compSize, "PACKAGESIZE",
+                        packageSize);
+                    continue;
+                }
+                std::vector<uint8_t> buffer(compSize);
+                std::memcpy(buffer.data(), package + compOffset, buffer.size());
 
                 filepath += "/" + boost::uuids::to_string(
                                       boost::uuids::random_generator()())
@@ -377,10 +394,12 @@ void DebugToken::onTokenInterfaceAdded(sdbusplus::message::message& msg)
 
 void DebugToken::startTokenUpdate(
     const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    const ComponentImageInfos& componentImageInfos, std::istream& package)
+    const ComponentImageInfos& componentImageInfos, const uint8_t* package,
+    size_t packageSize)
 {
     tokenScope.spawn(
-        updateDebugToken(fwDeviceIDRecords, componentImageInfos, package),
+        updateDebugToken(fwDeviceIDRecords, componentImageInfos, package,
+                         packageSize),
         exec::default_task_context<void>(stdexec::inline_scheduler{}));
 }
 

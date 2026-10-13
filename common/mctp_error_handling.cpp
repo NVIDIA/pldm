@@ -147,7 +147,8 @@ MctpError createMctpErrorObject(mctp_eid_t destEid, int errorCode,
 
 void createMctpTransportRedfishEvent(
     mctp_eid_t eid, const std::string& commandName, uint32_t errorCode,
-    uint8_t binding, uint8_t direction, const std::string& logNamespace)
+    uint8_t binding, uint8_t direction, const std::string& logNamespace,
+    bool critical)
 {
     // Device identity is not resolved from an EID-keyed lookup. The transport
     // error event below is diagnostic only; the device name is left unresolved
@@ -210,8 +211,9 @@ void createMctpTransportRedfishEvent(
 
         using Level =
             sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
-        createLogEntry(registry->registryId, argsStr, registry->resolution,
-                       logNamespace, Level::Informational, extraData);
+        createLogEntry(
+            registry->registryId, argsStr, registry->resolution, logNamespace,
+            critical ? Level::Critical : Level::Informational, extraData);
     }
 }
 
