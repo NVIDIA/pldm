@@ -78,23 +78,18 @@ TEST(error_handling, getOemMessage_unknown_error_code)
 }
 
 TEST(error_handling,
-     getCompCompatibilityMessage_update_component_identical_comp_stamp)
+     getCompCompatibilityMessage_update_component_identical_has_no_legacy)
 {
-    const std::string oemMessageId = "NvidiaUpdate.1.0.ComponentUpdateSkipped";
-    const std::string oemMessageError = "Component image is identical";
-    const std::string oemResolution =
-        "Retry firmware update operation with the force flag";
-    const bool oemMessageStatus = true;
-
+    // An identical image is reported by ComponentImageIdentical only.
     auto [outmessageStatus, outoemMessageId, outoemMessageError,
           outoemResolution] =
         getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
                                     PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL);
 
-    EXPECT_EQ(outmessageStatus, oemMessageStatus);
-    EXPECT_EQ(outoemMessageId, oemMessageId);
-    EXPECT_EQ(outoemMessageError, oemMessageError);
-    EXPECT_EQ(outoemResolution, oemResolution);
+    EXPECT_FALSE(outmessageStatus);
+    EXPECT_TRUE(outoemMessageId.empty());
+    EXPECT_TRUE(outoemMessageError.empty());
+    EXPECT_TRUE(outoemResolution.empty());
 }
 
 TEST(error_handling,
@@ -230,7 +225,7 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
          ArgumentType::packageVersion,
          Severity::critical,
          {}},
-        {Message::componentUpdateSkipped,
+        {Message::componentImageIdentical,
          "NvidiaUpdate.1.3.ComponentImageIdentical",
          ArgumentType::componentPackageVersionComparisonStamp,
          Severity::informational,
@@ -288,7 +283,7 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
         {Message::firmwareImageSizeVerificationFailed,
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
          ArgumentType::componentVersionPackageVersionReason, Severity::critical,
-         "image size check failed (VerifyComplete: 0x98)"},
+         "image size check failed (VerifyComplete: OEM firmwarePackageSizeFailure (0x98))"},
         {Message::firmwareImageGenericVerificationFailed,
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
          ArgumentType::componentVersionPackageVersionReason, Severity::critical,

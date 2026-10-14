@@ -16,6 +16,7 @@
  */
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
+#include "fw-update/error_handling.hpp"
 #include "fw-update/package_parser.hpp"
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -42,6 +43,7 @@
 #include <array>
 #include <cerrno>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iomanip>
 #include <iterator>
@@ -1027,8 +1029,8 @@ TEST_F(UpdateManagerTest, processStreamDefer_noMatchingDevices)
         pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
     connection->reset();
 
-    EXPECT_NO_THROW(updateManager.processStreamDefer(
-        package, packageSize, false, {}, false));
+    EXPECT_NO_THROW(updateManager.processStreamDefer(package, packageSize,
+                                                     false, {}, false));
     ASSERT_EQ(connection->loggingCalls.size(), 1U);
     EXPECT_EQ(connection->loggingCalls.front().messageId,
               resourceErrorDetected);
@@ -1083,7 +1085,7 @@ TEST_F(UpdateManagerTest, createMessageRegistryPathsAreCallable)
     });
 }
 
-TEST_F(UpdateManagerTest, commandFailurePreservesEstablishedMessages)
+TEST_F(UpdateManagerTest, commandFailureReportsMappedNvidiaMessageAlone)
 {
     UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
                                 componentInfoMap, componentNameMap, true,
@@ -1099,14 +1101,14 @@ TEST_F(UpdateManagerTest, commandFailurePreservesEstablishedMessages)
                                         PLDM_GET_STATUS, COMMAND_TIMEOUT);
 
 #ifdef OEM_NVIDIA
-    ASSERT_EQ(connection->loggingCalls.size(), 3U);
-    EXPECT_EQ(connection->loggingCalls[2].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PLDMCommandTimedOut");
 #else
     ASSERT_EQ(connection->loggingCalls.size(), 2U);
-#endif
     EXPECT_EQ(connection->loggingCalls[0].messageId, applyFailed);
     EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
+#endif
 }
 
 TEST_F(UpdateManagerTest, handleInvalidPackageErrorCreatesAndReusesActivation)
@@ -1159,50 +1161,105 @@ TEST_F(UpdateManagerTest, packageValidationHandlersUseSpecificMessages)
 
     connection->reset();
     updateManager.handleInvalidPackageError();
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.FirmwarePackageHeaderUnavailable");
-    EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+    EXPECT_FALSE(connection->loggingCalls[0].additionalData.contains(
+        "REDFISH_MESSAGE_ARGS"));
 
     connection->reset();
     updateManager.handleInvalidPackageHeaderError();
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.FirmwarePackageHeaderInvalid");
-    EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+    EXPECT_FALSE(connection->loggingCalls[0].additionalData.contains(
+        "REDFISH_MESSAGE_ARGS"));
 
     connection->reset();
     updateManager.handleHeaderChecksumError(0x12AB34CD, 0x56EF7890);
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PackageHeaderChecksumMismatch");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         "0x12AB34CD,0x56EF7890");
 
     connection->reset();
     updateManager.handlePayloadChecksumError(0xA1B2C3D4, 0x5E6F7081);
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PackagePayloadChecksumMismatch");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         packageVersion + ",0xA1B2C3D4,0x5E6F7081");
 
     connection->reset();
     updateManager.handleInvalidPackageMetadataError();
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.FirmwarePackageMetadataInvalid");
+    EXPECT_FALSE(connection->loggingCalls[0].additionalData.contains(
+        "REDFISH_MESSAGE_ARGS"));
+}
+
+TEST_F(UpdateManagerTest, processStreamReportsHeaderChecksumMismatch)
+{
+    // Package header from PackageParser.InvalidPkgBadChecksum: the trailing
+    // checksum does not match the header contents.
+    const std::vector<uint8_t> fwPkgHdr{
+        0xF0, 0x18, 0x87, 0x8C, 0xCB, 0x7D, 0x49, 0x43, 0x98, 0x00, 0xA0, 0x2F,
+        0x05, 0x9A, 0xCA, 0x02, 0x01, 0x8B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x19, 0x0C, 0xE5, 0x07, 0x00, 0x08, 0x00, 0x01, 0x0E,
+        0x56, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x53, 0x74, 0x72, 0x69, 0x6E,
+        0x67, 0x31, 0x01, 0x2E, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0E,
+        0x00, 0x00, 0x01, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x53, 0x74,
+        0x72, 0x69, 0x6E, 0x67, 0x32, 0x02, 0x00, 0x10, 0x00, 0x16, 0x20, 0x23,
+        0xC9, 0x3E, 0xC5, 0x41, 0x15, 0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6,
+        0x75, 0x01, 0x00, 0x0A, 0x00, 0x64, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
+        0x00, 0x00, 0x00, 0x8B, 0x00, 0x00, 0x00, 0x1B, 0x00, 0x00, 0x00, 0x01,
+        0x0E, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x53, 0x74, 0x72, 0x69,
+        0x6E, 0x67, 0x33, 0x4F, 0x96, 0xAE, 0x57};
+    constexpr size_t pkgSize = 166;
+
+    PackageHeaderDiagnostic diagnostic;
+    ASSERT_EQ(parsePkgHeader(fwPkgHdr.data(), fwPkgHdr.size(), &diagnostic),
+              nullptr);
+    ASSERT_EQ(diagnostic.error, PackageHeaderError::checksumMismatch);
+
+    std::vector<uint8_t> package(fwPkgHdr);
+    package.resize(pkgSize, 0xA5);
+    const std::filesystem::path packagePath{"./bad_checksum_pkg"};
+    {
+        std::ofstream out(packagePath, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(package.data()),
+                  static_cast<std::streamsize>(package.size()));
+        ASSERT_TRUE(out);
+        out.close();
+        ASSERT_TRUE(out);
+    }
+
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    updateManager.objPath = "/xyz/openbmc_project/software/bad_checksum";
+    updateManager.activation = std::make_unique<Activation>(
+        busMock, updateManager.objPath,
+        software::Activation::Activations::Ready, &updateManager);
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+    EXPECT_EQ(processPackageStream(updateManager, packagePath), -1);
+    EXPECT_EQ(updateManager.parser, nullptr);
+    std::filesystem::remove(packagePath);
+
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
+              "NvidiaUpdate.1.3.PackageHeaderChecksumMismatch");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"], "");
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
+        std::format("0x{:08X},0x{:08X}", diagnostic.expectedChecksum,
+                    diagnostic.calculatedChecksum));
 }
 #endif
 
@@ -1300,12 +1357,11 @@ TEST_F(UpdateManagerTest,
         EXPECT_FALSE(integrityStatus);
     }
 #ifdef OEM_NVIDIA
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PackageSignatureIntegrityFailed");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         updateManager.parser->pkgVersion);
 #endif
 }
@@ -1384,12 +1440,11 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncFailsWithIncorrectSignature)
         EXPECT_FALSE(verificationStatus);
     }
 #ifdef OEM_NVIDIA
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PackageSignatureVerificationFailed");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         updateManager.parser->pkgVersion);
 #endif
 }
@@ -1416,12 +1471,11 @@ TEST_F(UpdateManagerTest, verifyPackageAsyncUnsignedPackagePath)
     waitEventExpiry(milliseconds(100));
     EXPECT_TRUE(onCompleteCalled || onErrorCalled);
 #if defined(OEM_NVIDIA) && defined(PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED)
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.PackageSignatureRequired");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         updateManager.parser->pkgVersion);
 #endif
 }
@@ -1464,12 +1518,11 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncGetSignatureHeaderFailure)
     EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
 #ifdef OEM_NVIDIA
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.SignatureHeaderMalformed");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         updateManager.parser->pkgVersion + ",signature header size is invalid");
 #endif
 }
@@ -1644,12 +1697,11 @@ TEST_F(UpdateManagerTest, packageIntegrityCheckAsyncParseHeaderFailure)
     EXPECT_FALSE(result);
     EXPECT_FALSE(onErrorCalled);
 #ifdef OEM_NVIDIA
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.SignatureHeaderMalformed");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         updateManager.parser->pkgVersion + ",signature type is not supported");
 #endif
 }
@@ -1995,12 +2047,11 @@ TEST_F(UpdateManagerTest, startNonPLDMUpdateReturnsFailedWhenNoDevicesOrImages)
 
     auto state = updateManager.startNonPLDMUpdate();
     EXPECT_EQ(state, Server::Activation::Activations::Failed);
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.FirmwarePackageNoMatchingDevices");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         "1.0.0");
 }
 
@@ -2018,24 +2069,22 @@ TEST_F(UpdateManagerTest, requestedTargetsUseSpecificApplicabilityMessages)
     updateManager.requestedTargets = {{"TargetUnavailable", 9}};
     connection->reset();
     updateManager.logUnupdatedTargets({});
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.RequestedTargetUnavailableForUpdate");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         "TargetUnavailable");
 
     descriptorMap.emplace(9, Descriptors{});
     updateManager.requestedTargets = {{"TargetNotInPackage", 9}};
     connection->reset();
     updateManager.logUnupdatedTargets({});
-    ASSERT_EQ(connection->loggingCalls.size(), 2U);
-    EXPECT_EQ(connection->loggingCalls[0].messageId, resourceErrorDetected);
-    EXPECT_EQ(connection->loggingCalls[1].messageId,
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId,
               "NvidiaUpdate.1.3.RequestedTargetNotSupportedByPackage");
     EXPECT_EQ(
-        connection->loggingCalls[1].additionalData["REDFISH_MESSAGE_ARGS"],
+        connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
         "TargetNotInPackage," + updateManager.parser->pkgVersion);
 }
 
@@ -2140,7 +2189,7 @@ TEST_F(UpdateManagerTest, transferFailuresUseComponentOnlyMessages)
         std::string messageId;
     };
     const std::array cases{
-        TestCase{0x71,
+        TestCase{writeProtectEnabled,
                  "NvidiaUpdate.1.3.FirmwareUpdateBlockedByWriteProtection"},
         TestCase{PLDM_FWUP_TIME_OUT,
                  "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut"},
@@ -2152,12 +2201,10 @@ TEST_F(UpdateManagerTest, transferFailuresUseComponentOnlyMessages)
         updateManager.createMessageRegistry(7, record, 0, transferFailed, "",
                                             PLDM_TRANSFER_COMPLETE,
                                             test.result);
-        ASSERT_EQ(connection->loggingCalls.size(), 3U);
-        EXPECT_EQ(connection->loggingCalls[0].messageId, transferFailed);
-        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
-        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        ASSERT_EQ(connection->loggingCalls.size(), 1U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, test.messageId);
         EXPECT_EQ(
-            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
             "ComponentA");
     }
 }
@@ -2190,16 +2237,19 @@ TEST_F(UpdateManagerTest, verifyFailuresUseComponentPackageMessages)
     const std::array cases{
         TestCase{PLDM_FWUP_TIME_OUT,
                  "NvidiaUpdate.1.3.FirmwareVerificationCompletionTimedOut", ""},
-        TestCase{0x91, "NvidiaUpdate.1.3.ComponentMetadataAuthenticationFailed",
-                 ""},
-        TestCase{0x93, "NvidiaUpdate.1.3.ComponentImageSecurityVersionRejected",
-                 ""},
-        TestCase{0x94, "NvidiaUpdate.1.3.ComponentImageSigningKeyRevoked", ""},
-        TestCase{0x95, "NvidiaUpdate.1.3.ComponentImageAuthenticationFailed",
-                 ""},
-        TestCase{0x97, "NvidiaUpdate.1.3.ComponentImageSkuMismatch", ""},
-        TestCase{0x98, "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                 "image size check failed (VerifyComplete: 0x98)"},
+        TestCase{metadataAuthFailure,
+                 "NvidiaUpdate.1.3.ComponentMetadataAuthenticationFailed", ""},
+        TestCase{secVersionCheckFailure,
+                 "NvidiaUpdate.1.3.ComponentImageSecurityVersionRejected", ""},
+        TestCase{secKeysReovked,
+                 "NvidiaUpdate.1.3.ComponentImageSigningKeyRevoked", ""},
+        TestCase{imageAuthFailure,
+                 "NvidiaUpdate.1.3.ComponentImageAuthenticationFailed", ""},
+        TestCase{skuMismatch, "NvidiaUpdate.1.3.ComponentImageSkuMismatch", ""},
+        TestCase{
+            firmwarePackageSizeFailure,
+            "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
+            "image size check failed (VerifyComplete: OEM firmwarePackageSizeFailure (0x98))"},
         TestCase{
             PLDM_FWUP_VERIFY_ERROR_VERIFICATION_FAILURE,
             "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
@@ -2233,19 +2283,37 @@ TEST_F(UpdateManagerTest, verifyFailuresUseComponentPackageMessages)
         updateManager.createMessageRegistry(7, record, 0, verificationFailed,
                                             "", PLDM_VERIFY_COMPLETE,
                                             test.result);
-        ASSERT_EQ(connection->loggingCalls.size(), 3U);
-        EXPECT_EQ(connection->loggingCalls[0].messageId, verificationFailed);
-        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
-        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        ASSERT_EQ(connection->loggingCalls.size(), 1U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, test.messageId);
         const auto expectedArguments =
             test.result == PLDM_FWUP_TIME_OUT
                 ? "ComponentA"
                 : commonArguments +
                       (test.reason.empty() ? "" : "," + test.reason);
         EXPECT_EQ(
-            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
             expectedArguments);
     }
+}
+
+TEST_F(UpdateManagerTest, resultsWithoutNvidiaMessageKeepLegacyEntries)
+{
+    UpdateManager updateManager(event, reqHandler, instanceIdDb, descriptorMap,
+                                componentInfoMap, componentNameMap, true,
+                                nullptr);
+    ASSERT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    ASSERT_NE(updateManager.parser, nullptr);
+    const auto& record = updateManager.parser->getFwDeviceIDRecords().front();
+
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
+    updateManager.createMessageRegistry(7, record, 0, applyFailed, "",
+                                        PLDM_APPLY_COMPLETE,
+                                        PLDM_FWUP_APPLY_FAILURE_MEMORY_ISSUE);
+    ASSERT_EQ(connection->loggingCalls.size(), 2U);
+    EXPECT_EQ(connection->loggingCalls[0].messageId, applyFailed);
+    EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
 }
 
 TEST_F(UpdateManagerTest, applyAndGetStatusTimeoutsUseSpecificMessages)
@@ -2286,12 +2354,10 @@ TEST_F(UpdateManagerTest, applyAndGetStatusTimeoutsUseSpecificMessages)
         connection->reset();
         updateManager.createMessageRegistry(7, record, 0, applyFailed, "",
                                             test.command, test.result);
-        ASSERT_EQ(connection->loggingCalls.size(), 3U);
-        EXPECT_EQ(connection->loggingCalls[0].messageId, applyFailed);
-        EXPECT_EQ(connection->loggingCalls[1].messageId, resourceErrorDetected);
-        EXPECT_EQ(connection->loggingCalls[2].messageId, test.messageId);
+        ASSERT_EQ(connection->loggingCalls.size(), 1U);
+        EXPECT_EQ(connection->loggingCalls[0].messageId, test.messageId);
         EXPECT_EQ(
-            connection->loggingCalls[2].additionalData["REDFISH_MESSAGE_ARGS"],
+            connection->loggingCalls[0].additionalData["REDFISH_MESSAGE_ARGS"],
             test.arguments);
     }
 }

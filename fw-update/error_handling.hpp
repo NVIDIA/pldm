@@ -96,7 +96,7 @@ enum class NvidiaUpdateMessage
     packageSignatureIntegrityFailed,
     packageSignatureVerificationFailed,
     packageSignatureRequired,
-    componentUpdateSkipped,
+    componentImageIdentical,
     firmwareComponentComparisonStampLower,
     firmwareDownloadTimedOut,
     firmwareUpdateBlockedByWriteProtection,
@@ -163,7 +163,7 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwarePackageNoMatchingDevices:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwarePackageNoMatchingDevices",
-                "Verify that the firmware package is intended for this platform and contains images for the devices in this system, then retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source that contains images for the devices in this system, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::packageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::requestedTargetUnavailableForUpdate:
@@ -175,70 +175,70 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::requestedTargetNotSupportedByPackage:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.RequestedTargetNotSupportedByPackage",
-                "Verify that the firmware package is intended for this platform and contains an image compatible with the requested target, then retry the firmware update.",
+                "Obtain a valid firmware package for this platform from a trusted source that contains an image for the requested target, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::targetPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwarePackageHeaderUnavailable:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwarePackageHeaderUnavailable",
-                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::none,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwarePackageHeaderInvalid:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwarePackageHeaderInvalid",
-                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::none,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::packageHeaderChecksumMismatch:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PackageHeaderChecksumMismatch",
-                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::checksumPair,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::packagePayloadChecksumMismatch:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PackagePayloadChecksumMismatch",
-                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::packageVersionChecksumPair,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwarePackageMetadataInvalid:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwarePackageMetadataInvalid",
-                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::none,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::signatureHeaderMalformed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.SignatureHeaderMalformed",
-                "Obtain a valid firmware package for this platform from a trusted source, then retry the update. If the failure persists, collect the logs and package details, then contact support.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::packageVersionReason,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::signatureHeaderVersionUnsupported:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.SignatureHeaderVersionUnsupported",
-                "Obtain a firmware package that uses an NVIDIA signature-header version supported by this platform, then retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source that uses a supported NVIDIA signature-header version, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::packageVersionSignatureVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::packageSignatureIntegrityFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PackageSignatureIntegrityFailed",
-                "Download a fresh firmware package from a trusted source, verify it was transferred without corruption, and retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source, verify that it was transferred without corruption, then retry the firmware update. If the failure persists, collect the logs and package details, then contact support.",
                 NvidiaUpdateMessageArgumentType::packageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::packageSignatureVerificationFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PackageSignatureVerificationFailed",
-                "Obtain a firmware package signed by an authority trusted by this BMC, then retry the update. If signature verification still fails with a known-good package, verify that the BMC is provisioned with the required verification key. If the issue persists, collect the logs and contact support.",
+                "Obtain a valid firmware package for this platform from a trusted source that is signed by an authority trusted by this BMC, then retry the firmware update. If verification still fails with a known-good package, verify that the BMC is provisioned with the required verification key, then collect the logs and contact support.",
                 NvidiaUpdateMessageArgumentType::packageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::packageSignatureRequired:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PackageSignatureRequired",
-                "Obtain a firmware package signed by an authority trusted by this BMC and containing the required NVIDIA signature header, then retry the update.",
+                "Obtain a valid firmware package for this platform from a trusted source that is signed by an authority trusted by this BMC and carries the NVIDIA signature header, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::packageVersion,
                 NvidiaUpdateMessageSeverity::critical};
-        case NvidiaUpdateMessage::componentUpdateSkipped:
+        case NvidiaUpdateMessage::componentImageIdentical:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageIdentical",
                 "No action is required. To reinstall the same firmware, set the Redfish ForceUpdate parameter to true.",
@@ -248,14 +248,14 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareComponentComparisonStampLower:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentDowngradeRejected",
-                "Use a firmware package containing an upgrade for the installed component. To intentionally downgrade firmware, set the Redfish ForceUpdate parameter to true, then retry the update.",
+                "Use a firmware package containing an upgrade for the installed component. To intentionally downgrade firmware, set the Redfish ForceUpdate parameter to true, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::
                     componentPackageVersionComparisonStamp,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareDownloadTimedOut:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwareDownloadTimedOut",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::componentTransferProgress,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareUpdateBlockedByWriteProtection:
@@ -267,57 +267,57 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareTransferCompletionTimedOut:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwareTransferCompletionTimedOut",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::component,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareVerificationCompletionTimedOut:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.FirmwareVerificationCompletionTimedOut",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::component,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareMetadataAuthenticationFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentMetadataAuthenticationFailed",
-                "Obtain the correct firmware package for the target device from a trusted source, then retry the firmware update. If the failure persists, verify the target device's trusted-key provisioning and collect the BMC and target-device logs.",
+                "Use a firmware package containing a correctly signed image for the target device, then retry the firmware update. If the failure persists, verify the target device's trusted-key provisioning, then collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareImageSecurityVersionRejected:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageSecurityVersionRejected",
-                "Use a firmware image with a security version that meets or exceeds the device's current security version, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Use a firmware package containing an image whose security version meets or exceeds the device's current security version, then retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareImageSigningKeyRevoked:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageSigningKeyRevoked",
-                "Verify the contents of the FW package. In production systems, this error suggests that a debug-signed image update was attempted without the debug token being installed. To resolve this, verify the debug token installation status using the LogService.CollectDiagnosticData API with the DebugTokenStatus parameter. If the tokens are not installed, follow the debug token installation steps and retry the update.",
+                "Use a firmware package signed with a key that the target device trusts. In production systems, this error indicates that a debug-signed image update was attempted without the debug token installed. Verify the debug token installation status using the LogService.CollectDiagnosticData API with the DebugTokenStatus parameter. If the tokens are not installed, follow the debug token installation steps, then retry the firmware update.",
                 NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareImageAuthenticationFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageAuthenticationFailed",
-                "Obtain a correctly signed firmware package for the target device from a trusted source, then retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
+                "Use a firmware package containing a correctly signed image for the target device, then retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareImageSkuMismatch:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageSkuMismatch",
-                "Use a firmware package containing an image for the target SKU, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Use a firmware package containing an image for the target SKU, then retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::componentVersionPackageVersion,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::firmwareImageSizeVerificationFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
-                "image size check failed (VerifyComplete: 0x98)"};
+                "image size check failed (VerifyComplete: OEM firmwarePackageSizeFailure (0x98))"};
         case NvidiaUpdateMessage::firmwareImageGenericVerificationFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
@@ -325,7 +325,7 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareImageSecurityChecksFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Use a firmware package authorized for the target device and satisfying its security policy, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
@@ -333,7 +333,7 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareImageTransferIncomplete:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and investigate the component-transfer path.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
@@ -341,7 +341,7 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareImageSecurityRevisionFailed:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Use a firmware image with a security version that meets or exceeds the device's requirement, then retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
@@ -349,7 +349,7 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::firmwareImageGenericError:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
-                "Retry the firmware update. If the failure recurs with a known-good package, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update with a known-good firmware package. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::
                     componentVersionPackageVersionReason,
                 NvidiaUpdateMessageSeverity::critical,
@@ -357,13 +357,13 @@ inline std::optional<NvidiaUpdateMessageDefinition>
         case NvidiaUpdateMessage::applyCompleteTimedOut:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.ApplyCompleteTimedOut",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::component,
                 NvidiaUpdateMessageSeverity::critical};
         case NvidiaUpdateMessage::pldmCommandTimedOut:
             return NvidiaUpdateMessageDefinition{
                 "NvidiaUpdate.1.3.PLDMCommandTimedOut",
-                "Retry the firmware update. If the failure recurs, collect the BMC and target-device logs and contact support.",
+                "Retry the firmware update. If the failure persists, collect the BMC and target-device logs and contact support.",
                 NvidiaUpdateMessageArgumentType::commandComponent,
                 NvidiaUpdateMessageSeverity::critical};
         default:
@@ -393,6 +393,43 @@ struct NvidiaUpdateMessageFacts
     std::optional<uint32_t> bytesTransferred{};
     std::optional<uint32_t> componentSize{};
 };
+
+/** @brief Name of a PLDM firmware update command for message arguments. */
+inline std::string_view firmwareUpdateCommandName(
+    pldm_firmware_update_commands command)
+{
+    switch (command)
+    {
+        case PLDM_QUERY_DEVICE_IDENTIFIERS:
+            return "QueryDeviceIdentifiers";
+        case PLDM_GET_FIRMWARE_PARAMETERS:
+            return "GetFirmwareParameters";
+        case PLDM_REQUEST_UPDATE:
+            return "RequestUpdate";
+        case PLDM_PASS_COMPONENT_TABLE:
+            return "PassComponentTable";
+        case PLDM_UPDATE_COMPONENT:
+            return "UpdateComponent";
+        case PLDM_REQUEST_FIRMWARE_DATA:
+            return "RequestFirmwareData";
+        case PLDM_TRANSFER_COMPLETE:
+            return "TransferComplete";
+        case PLDM_VERIFY_COMPLETE:
+            return "VerifyComplete";
+        case PLDM_APPLY_COMPLETE:
+            return "ApplyComplete";
+        case PLDM_ACTIVATE_FIRMWARE:
+            return "ActivateFirmware";
+        case PLDM_GET_STATUS:
+            return "GetStatus";
+        case PLDM_CANCEL_UPDATE_COMPONENT:
+            return "CancelUpdateComponent";
+        case PLDM_CANCEL_UPDATE:
+            return "CancelUpdate";
+        default:
+            return "";
+    }
+}
 
 #ifdef OEM_NVIDIA
 
@@ -777,10 +814,9 @@ static ErrorMapping getStatusMapping{
       "Retry firmware update operation."}}};
 
 static CompCompatibilityMapping updateComponentResponseCodeMapping{
+    // Reported by ComponentImageIdentical alone; no legacy entry.
     {PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL,
-     {"NvidiaUpdate.1.0.ComponentUpdateSkipped", "Component image is identical",
-      "Retry firmware update operation with the force flag",
-      NvidiaUpdateMessage::componentUpdateSkipped}},
+     {{}, {}, {}, NvidiaUpdateMessage::componentImageIdentical}},
     {PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER,
      {"ResourceEvent.1.0.ResourceErrorsDetected",
       "Component comparison stamp is lower than the firmware component comparison stamp in the FD",
@@ -947,7 +983,7 @@ inline std::tuple<bool, std::string, std::string, std::string>
             messageId = errorCodeSearch->second.messageId;
             messageError = errorCodeSearch->second.message;
             resolution = errorCodeSearch->second.resolution;
-            status = true;
+            status = !messageId.empty();
         }
         else
         {

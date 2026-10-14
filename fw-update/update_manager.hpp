@@ -293,6 +293,10 @@ class UpdateManager
 
     /** @brief Create message registry for firmware update
      *
+     *  A command result with a dedicated NvidiaUpdate message is reported by
+     *  that message alone. Other results, and non-NVIDIA builds, log the
+     *  Update message plus the ResourceErrorsDetected entry for the result.
+     *
      *  @param[in] eid - Remote MCTP Endpoint ID
      *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
      *                                package that matches the firmware device
@@ -343,12 +347,13 @@ class UpdateManager
 
     /** @brief Report that a device stopped requesting component data.
      *
-     *  Byte counts retain the 32-bit component-size width defined by PLDM.
+     *  An NVIDIA build logs FirmwareDownloadTimedOut alone. Other builds log
+     *  the TransferFailed and ResourceErrorsDetected entries instead. Byte
+     *  counts retain the 32-bit component-size width defined by PLDM.
      */
     void createFirmwareDownloadTimeoutMessage(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
-        size_t compIndex, uint32_t bytesTransferred,
-        uint32_t componentSize);
+        size_t compIndex, uint32_t bytesTransferred, uint32_t componentSize);
 
     /** @brief Emit an Info-severity ResourceErrorsDetected entry per
      *         applicable component when multiple package records match
@@ -527,6 +532,15 @@ class UpdateManager
     void packageIntegrityCheckAsync(
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
+
+    /** @brief Report the result of the package integrity check. */
+    void onPackageIntegrityCheckResult(
+        const std::function<void(bool)>& onComplete, bool integrityCheckResult);
+
+    /** @brief Report the result of the package signature verification. */
+    void onPackageVerificationResult(
+        const std::function<void(bool)>& onComplete,
+        bool verificationCheckResult);
 
     /**
      * @brief perform security checks

@@ -56,8 +56,6 @@ const std::string preUpdateValidationFailed{
     "NvidiaUpdate.1.3.PreUpdateValidationFailed"};
 const std::string firmwarePackageComponentImageMissing{
     "NvidiaUpdate.1.3.FirmwarePackageComponentImageMissing"};
-const std::string componentUpdateSkipped{
-    "NvidiaUpdate.1.0.ComponentUpdateSkipped"};
 const std::string activateSuccessful{"NvidiaUpdate.1.0.ActivateSuccessful"};
 const std::string debugTokenEraseFailed{
     "NvidiaUpdate.1.0.DebugTokenEraseFailed"};
@@ -128,26 +126,24 @@ inline void setDBusProperty(const pldm::utils::DBusMapping& dbusMap,
     bus.call_noreply(method);
 }
 
-/** @brief Create log entry with explicit severity and pre-formatted args
- *
- *  @param[in] messageID - Message ID
- *  @param[in] messageArgs - Pre-formatted message arguments string
- *  @param[in] resolution - Resolution field
- *  @param[in] logNamespace - Logging namespace
- *  @param[in] level - Severity level for the log entry
- *  @param[in] extraData - Optional additional key/value pairs to merge into
- *                         AdditionalData (e.g. DEVICE_NAME, ERROR_ID). Keys
- *                         here override any defaults set above.
+namespace pldm::fw_update::detail
+{
+
+/** @brief Create the log entry; REDFISH_MESSAGE_ARGS is written only when
+ *         messageArgs holds a value, even if that value is empty.
  */
-inline void createLogEntry(
-    const std::string& messageID, const std::string& messageArgs,
+inline void createLogEntryWithArgs(
+    const std::string& messageID, const std::optional<std::string>& messageArgs,
     const std::string& resolution, const std::string& logNamespace,
     sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
-    const std::map<std::string, std::string>& extraData = {})
+    const std::map<std::string, std::string>& extraData)
 {
     std::map<std::string, std::string> addData;
     addData["REDFISH_MESSAGE_ID"] = messageID;
-    addData["REDFISH_MESSAGE_ARGS"] = messageArgs;
+    if (messageArgs)
+    {
+        addData["REDFISH_MESSAGE_ARGS"] = *messageArgs;
+    }
 
     if (!resolution.empty())
     {
@@ -182,13 +178,47 @@ inline void createLogEntry(
         addData);
 }
 
+} // namespace pldm::fw_update::detail
+
+/** @brief Create log entry with explicit severity and pre-formatted args
+ *
+ *  @param[in] messageID - Message ID
+ *  @param[in] messageArgs - Pre-formatted message arguments string. An empty
+ *                           string omits REDFISH_MESSAGE_ARGS from
+ *                           AdditionalData so the Redfish task renders
+ *                           MessageArgs as an empty list rather than a
+ *                           single empty argument.
+ *  @param[in] resolution - Resolution field
+ *  @param[in] logNamespace - Logging namespace
+ *  @param[in] level - Severity level for the log entry
+ *  @param[in] extraData - Optional additional key/value pairs to merge into
+ *                         AdditionalData (e.g. DEVICE_NAME, ERROR_ID). Keys
+ *                         here override any defaults set above.
+ */
+inline void createLogEntry(
+    const std::string& messageID, const std::string& messageArgs,
+    const std::string& resolution, const std::string& logNamespace,
+    sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level level,
+    const std::map<std::string, std::string>& extraData = {})
+{
+    std::optional<std::string> args;
+    if (!messageArgs.empty())
+    {
+        args = messageArgs;
+    }
+    pldm::fw_update::detail::createLogEntryWithArgs(
+        messageID, args, resolution, logNamespace, level, extraData);
+}
+
 /** @brief Create a log entry with arguments in registry-template order.
  *
  *  Unlike the legacy two-argument overload, this overload does not consult
  *  the MessageId-specific argument swap table and does not infer severity
  *  from the MessageId. Caller-supplied argument order and severity are used
  *  exactly as provided. Empty arguments retain their positional slots during
- *  serialization; for example, {"", "x"} is serialized as ",x".
+ *  serialization; for example, {"", "x"} is serialized as ",x". An empty
+ *  argument list omits REDFISH_MESSAGE_ARGS entirely, while a list holding a
+ *  single empty string keeps it as one empty argument.
  *
  *  @param[in] messageID - Message ID
  *  @param[in] messageArgs - Message arguments in registry-template order
@@ -215,8 +245,13 @@ inline void createLogEntry(
         }
         serializedArgs += messageArgs[index];
     }
-    createLogEntry(messageID, serializedArgs, resolution, logNamespace, level,
-                   extraData);
+    std::optional<std::string> args;
+    if (!messageArgs.empty())
+    {
+        args = std::move(serializedArgs);
+    }
+    pldm::fw_update::detail::createLogEntryWithArgs(
+        messageID, args, resolution, logNamespace, level, extraData);
 }
 
 /** @brief Create the D-Bus log entry for message registry
@@ -246,7 +281,6 @@ inline void createLogEntry(
     Level level = Level::Informational;
 
     if (messageID == targetDetermined || messageID == updateSuccessful ||
-        messageID == componentUpdateSkipped ||
         messageID == componentUpdateTime || messageID == activateSuccessful)
     {
         messageArgs = arg0 + "," + arg1;
