@@ -907,12 +907,11 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         }
         co_return PLDM_ERROR_INVALID_DATA;
     }
-
     // On receiving ActivateFirmware response success/failure make the UA state
     // Invalid to not respond to any more PLDM Type 5 requests from the FD.
     deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
 
-    if (completionCode)
+    if (completionCode && completionCode != PLDM_FWUP_ACTIVATION_NOT_REQUIRED)
     {
         const auto& applicableComponents =
             std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -941,6 +940,15 @@ exec::task<int> DeviceUpdater::processActivateFirmwareResponse(
         updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
+    }
+    if (completionCode == PLDM_FWUP_ACTIVATION_NOT_REQUIRED)
+    {
+        // Firmware is already active, so the device does not need a reboot to
+        // finish activation. A reboot is still required so SPDM measurements
+        // are taken against the new firmware.
+        info(
+            "ActivateFirmware returned ACTIVATION_NOT_REQUIRED for endpoint ID '{EID}'. Firmware is already active; reboot is required for SPDM measurement",
+            "EID", eid);
     }
 
     bool selfContainedActivation = isLiveActivationSupported();
