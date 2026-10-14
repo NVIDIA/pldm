@@ -109,6 +109,16 @@ class NumericSensor
      */
     void handleErrGetSensorReading();
 
+    /** @brief Deassert all threshold alarms. Called when the terminus goes
+     * offline (e.g. its run power is off), so a stale alarm cannot hold the
+     * system off. Read errors while the terminus is online keep the alarms.
+     * The next valid reading re-evaluates the thresholds. The sensor reading
+     * is not changed; the Deasserted signals carry the current reading.
+     *
+     * @return true if at least one alarm was asserted and is now cleared
+     */
+    bool clearThresholdAlarms();
+
     /** @brief Updating the sensor status to D-Bus interface
      */
     void updateReading(bool available, bool functional, double value = 0);

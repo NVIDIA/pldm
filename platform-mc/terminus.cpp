@@ -2797,9 +2797,19 @@ size_t Terminus::rearmTrackedEffecters()
 void Terminus::setOffline()
 {
     resumed = false;
+    const auto mctpInfo = terminusManager.toMctpInfo(tid);
+    const std::string terminusEid =
+        mctpInfo ? std::to_string(std::get<0>(*mctpInfo)) : "unknown";
     for (auto numericSensor : numericSensors)
     {
         numericSensor->handleErrGetSensorReading();
+        if (numericSensor->clearThresholdAlarms())
+        {
+            lg2::info(
+                "Terminus TID {TID} EID {EID} went offline, cleared threshold alarms of sensor {NAME}.",
+                "TID", tid, "EID", terminusEid, "NAME",
+                numericSensor->getSensorName());
+        }
     }
 
     for (auto numericEffecter : numericEffecters)
