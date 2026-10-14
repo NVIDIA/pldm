@@ -915,6 +915,62 @@ void NumericSensor::updateThresholds()
     }
 }
 
+bool NumericSensor::clearThresholdAlarms()
+{
+    auto value = getReading();
+    bool cleared = false;
+
+    if (thresholdWarningIntf)
+    {
+        if (thresholdWarningIntf->warningAlarmHigh())
+        {
+            thresholdWarningIntf->warningAlarmHigh(false);
+            thresholdWarningIntf->warningHighAlarmDeasserted(value);
+            cleared = true;
+        }
+        if (thresholdWarningIntf->warningAlarmLow())
+        {
+            thresholdWarningIntf->warningAlarmLow(false);
+            thresholdWarningIntf->warningLowAlarmDeasserted(value);
+            cleared = true;
+        }
+    }
+
+    if (thresholdCriticalIntf)
+    {
+        if (thresholdCriticalIntf->criticalAlarmHigh())
+        {
+            thresholdCriticalIntf->criticalAlarmHigh(false);
+            thresholdCriticalIntf->criticalHighAlarmDeasserted(value);
+            cleared = true;
+        }
+        if (thresholdCriticalIntf->criticalAlarmLow())
+        {
+            thresholdCriticalIntf->criticalAlarmLow(false);
+            thresholdCriticalIntf->criticalLowAlarmDeasserted(value);
+            cleared = true;
+        }
+    }
+
+    if (thresholdFatalIntf)
+    {
+        if (thresholdFatalIntf->hardShutdownAlarmHigh())
+        {
+            thresholdFatalIntf->hardShutdownAlarmHigh(false);
+            thresholdFatalIntf->hardShutdownHighAlarmDeasserted(value);
+            cleared = true;
+        }
+        if (thresholdFatalIntf->hardShutdownAlarmLow())
+        {
+            thresholdFatalIntf->hardShutdownAlarmLow(false);
+            thresholdFatalIntf->hardShutdownLowAlarmDeasserted(value);
+            cleared = true;
+        }
+    }
+
+    return cleared;
+}
+
 void NumericSensor::updateSensorName(std::string name)
 {
     if (sensorName == name)

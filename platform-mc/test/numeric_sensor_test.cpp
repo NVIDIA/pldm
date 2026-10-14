@@ -619,6 +619,82 @@ TEST_F(NumericSensorTest, constructorCoverageAcrossDataSizesAndRanges)
     }
 }
 
+TEST_F(NumericSensorTest, thresholdAlarmsKeptWhenReadingInvalid)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    auto pdr = makeNumericSensorValuePdr(PLDM_SENSOR_DATA_SIZE_UINT8,
+                                         PLDM_RANGE_FIELD_FORMAT_UINT8);
+    std::string sensorName{"threshold_alarm_keep"};
+    NumericSensor sensor(0x01, false, pdr, sensorName, inventoryPath, nullptr);
+    ASSERT_NE(sensor.thresholdWarningIntf, nullptr);
+    ASSERT_NE(sensor.thresholdCriticalIntf, nullptr);
+    ASSERT_NE(sensor.thresholdFatalIntf, nullptr);
+
+    // 90 * 1.25 + 2 = 114.5, above warning (80), critical (90), fatal (100)
+    sensor.updateReading(true, true, 90);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // A failed read on an online terminus does not clear the alarms: the
+    // device may have stopped answering because it is overheating.
+    sensor.handleErrGetSensorReading();
+    EXPECT_TRUE(std::isnan(sensor.getReading()));
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Same for a sensor reported unavailable by the terminus
+    sensor.updateReading(false, false, 0);
+    EXPECT_TRUE(std::isnan(sensor.getReading()));
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+}
+
+TEST_F(NumericSensorTest, clearThresholdAlarmsDeassertsAllAlarms)
+{
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    auto pdr = makeNumericSensorValuePdr(PLDM_SENSOR_DATA_SIZE_UINT8,
+                                         PLDM_RANGE_FIELD_FORMAT_UINT8);
+    std::string sensorName{"threshold_alarm_clear"};
+    NumericSensor sensor(0x01, false, pdr, sensorName, inventoryPath, nullptr);
+    ASSERT_NE(sensor.thresholdWarningIntf, nullptr);
+    ASSERT_NE(sensor.thresholdCriticalIntf, nullptr);
+    ASSERT_NE(sensor.thresholdFatalIntf, nullptr);
+
+    // No alarm asserted: nothing to clear
+    EXPECT_FALSE(sensor.clearThresholdAlarms());
+    EXPECT_FALSE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // 90 * 1.25 + 2 = 114.5, above warning (80), critical (90), fatal (100)
+    sensor.updateReading(true, true, 90);
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+    EXPECT_TRUE(sensor.clearThresholdAlarms());
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_FALSE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Alarms re-assert once a valid reading is back above the thresholds
+    sensor.updateReading(true, true, 90);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Low side: 0 * 1.25 + 2 = 2, below warning (20), critical (10),
+    // fatal (5)
+    sensor.updateReading(true, true, 0);
+    EXPECT_TRUE(sensor.thresholdWarningIntf->warningAlarmLow());
+    EXPECT_TRUE(sensor.thresholdCriticalIntf->criticalAlarmLow());
+    EXPECT_TRUE(sensor.thresholdFatalIntf->hardShutdownAlarmLow());
+    EXPECT_TRUE(sensor.clearThresholdAlarms());
+    EXPECT_FALSE(sensor.thresholdWarningIntf->warningAlarmLow());
+    EXPECT_FALSE(sensor.thresholdCriticalIntf->criticalAlarmLow());
+    EXPECT_FALSE(sensor.thresholdFatalIntf->hardShutdownAlarmLow());
+}
+
 TEST_F(NumericSensorTest, baseUnitNameUpdateAndPollingCoverage)
 {
     std::string inventoryPath{

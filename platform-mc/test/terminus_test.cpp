@@ -2400,6 +2400,88 @@ TEST_F(TerminusTest, asyncDbusMethodCoverageUnderMockUtils)
 #endif
 }
 
+TEST_F(TerminusTest, setOfflineClearsThresholdAlarms)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000000C9");
+    Terminus terminus(0xC9, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    auto pdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    pdr->sensor_id = 0x35;
+    pdr->entity_type = PLDM_ENTITY_SYS_BOARD;
+    pdr->entity_instance_num = 1;
+    pdr->container_id = 1;
+    pdr->base_unit = PLDM_SENSOR_UNIT_DEGRESS_C;
+    pdr->sensor_data_size = PLDM_SENSOR_DATA_SIZE_UINT8;
+    pdr->max_readable.value_u8 = 150;
+    pdr->min_readable.value_u8 = 0;
+    pdr->hysteresis.value_u8 = 2;
+    pdr->supported_thresholds.bits.bit0 = 1; // warning high
+    pdr->supported_thresholds.bits.bit1 = 1; // critical high
+    pdr->supported_thresholds.bits.bit2 = 1; // fatal high
+    pdr->range_field_support.bits.bit3 = 1;  // warning high
+    pdr->range_field_support.bits.bit4 = 1;  // critical high
+    pdr->range_field_support.bits.bit5 = 1;  // fatal high
+    pdr->range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT8;
+    pdr->warning_high.value_u8 = 80;
+    pdr->critical_high.value_u8 = 90;
+    pdr->fatal_high.value_u8 = 100;
+    pdr->resolution = 1.0f;
+    pdr->offset = 0.0f;
+    pdr->update_interval = 1.0f;
+
+    std::string sensorName{"offline_alarm_sensor"};
+    std::string associationPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis0"};
+    auto sensor = std::make_shared<NumericSensor>(
+        terminus.getTid(), false, pdr, sensorName, associationPath, nullptr);
+    ASSERT_NE(sensor->thresholdWarningIntf, nullptr);
+    ASSERT_NE(sensor->thresholdCriticalIntf, nullptr);
+    ASSERT_NE(sensor->thresholdFatalIntf, nullptr);
+    terminus.numericSensors.emplace_back(sensor);
+
+    // Overheat: every high alarm asserts
+    sensor->updateReading(true, true, 120);
+    ASSERT_TRUE(sensor->thresholdWarningIntf->warningAlarmHigh());
+    ASSERT_TRUE(sensor->thresholdCriticalIntf->criticalAlarmHigh());
+    ASSERT_TRUE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Terminus goes offline (e.g. run power off): no reading and no stale
+    // alarm that could hold the system off at the next power on
+    terminus.setOffline();
+    EXPECT_TRUE(std::isnan(sensor->getReading()));
+    EXPECT_FALSE(sensor->thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Back online: alarms stay clear until a valid reading arrives
+    terminus.setOnline();
+    EXPECT_FALSE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Device still hot: the first valid reading re-asserts the alarms
+    sensor->updateReading(true, true, 120);
+    EXPECT_TRUE(sensor->thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_TRUE(sensor->thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_TRUE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Same with an MCTP EID mapped for the terminus (logged on clear)
+    const pldm::MctpInfo mctpInfo(0x4A, uuid, "usb", 1, std::nullopt,
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+    terminus.setOffline();
+    EXPECT_FALSE(sensor->thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+
+    // Device cooled down instead: alarms stay clear
+    terminus.setOnline();
+    sensor->updateReading(true, true, 50);
+    EXPECT_FALSE(sensor->thresholdWarningIntf->warningAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdCriticalIntf->criticalAlarmHigh());
+    EXPECT_FALSE(sensor->thresholdFatalIntf->hardShutdownAlarmHigh());
+}
+
 TEST_F(TerminusTest, nvidiaEnergyCountOemPdrCoverage)
 {
     constexpr uint16_t sensorId = 0x91;
