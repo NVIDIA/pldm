@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -624,6 +625,12 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
     sd_event_now(event.get(), CLOCK_MONOTONIC, &now);
     numericSensor->setLastUpdatedTimeStamp(now);
     stateSensor->setLastUpdatedTimeStamp(now);
+    // Keep the task from sending any request. After each request it returns
+    // PLDM_ERROR if stopPolling is set, so the result would depend on thread
+    // timing; under valgrind the default intervals elapse during the test.
+    stateSensor->needUpdate = false;
+    numericSensor->updateTime = std::numeric_limits<uint64_t>::max();
+    stateSensor->refreshLimitInUsec = std::numeric_limits<uint64_t>::max();
     numericSensor->setRefreshed(true);
     stateSensor->setRefreshed(false);
 
@@ -639,7 +646,7 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
     });
 
     const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < deadline && !termini[tid]->ready)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
