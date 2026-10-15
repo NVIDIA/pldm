@@ -428,7 +428,6 @@ exec::task<int> DeviceUpdater::processRequestDownstreamDeviceUpdateResponse(
             error(
                 "Failed to decode RequestDownstreamDeviceUpdate response for endpoint ID '{EID}', response code '{RC}'",
                 "EID", eid, "RC", rc);
-            updateManager->updateDeviceCompletion(eid, false);
             deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         }
         co_return PLDM_ERROR_INVALID_DATA;
@@ -448,7 +447,6 @@ exec::task<int> DeviceUpdater::processRequestDownstreamDeviceUpdateResponse(
         error(
             "Failure in RequestDownstreamDeviceUpdate response for endpoint ID '{EID}', completion code '{CC}'",
             "EID", eid, "CC", respData.completion_code);
-        updateManager->updateDeviceCompletion(eid, false);
         deviceUpdaterState.set(DeviceUpdaterSequence::Invalid);
         co_return PLDM_ERROR;
     }

@@ -27,6 +27,7 @@
 #pragma clang diagnostic pop
 #endif
 #include "fw-update/device_updater.hpp"
+#include "fw-update/error_handling.hpp"
 #include "fw-update/package_parser.hpp"
 #include "fw-update/update_manager.hpp"
 #include "mocked_firmware_update_function.hpp"
@@ -344,6 +345,41 @@ TEST_F(DeviceUpdaterTest, processRequestDownstreamDeviceUpdateResponseShort)
         ASSERT_TRUE(rc.has_value());
         EXPECT_EQ(std::get<0>(rc.value()), PLDM_SUCCESS);
     });
+}
+
+TEST_F(
+    DeviceUpdaterTest,
+    processRequestDownstreamDeviceUpdateResponseErrorLeavesCompletionToCaller)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr) + 4> resp{
+        0x0A, 0x05, 0x20, PLDM_ERROR, 0x00, 0x00, 0x00};
+
+    auto responseMsg = reinterpret_cast<const pldm_msg*>(resp.data());
+
+    auto rc = stdexec::sync_wait(
+        deviceUpdater.processRequestDownstreamDeviceUpdateResponse(
+            eid, responseMsg, 4, 0));
+
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(rc.value()), PLDM_ERROR);
+    EXPECT_TRUE(updateManager.deviceUpdateCompletionMap.empty());
+}
+
+TEST_F(
+    DeviceUpdaterTest,
+    processRequestDownstreamDeviceUpdateResponseDecodeFailureLeavesCompletionToCaller)
+{
+    constexpr std::array<uint8_t, sizeof(pldm_msg_hdr)> resp{0x0A, 0x05, 0x20};
+
+    auto responseMsg = reinterpret_cast<const pldm_msg*>(resp.data());
+
+    auto rc = stdexec::sync_wait(
+        deviceUpdater.processRequestDownstreamDeviceUpdateResponse(
+            eid, responseMsg, 0, maxDecodeFailureRetries));
+
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(std::get<0>(rc.value()), PLDM_ERROR_INVALID_DATA);
+    EXPECT_TRUE(updateManager.deviceUpdateCompletionMap.empty());
 }
 
 TEST_F(DeviceUpdaterTest,
