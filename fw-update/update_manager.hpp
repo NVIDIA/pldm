@@ -397,6 +397,21 @@ class UpdateManager : public UpdateManagerBase
         bitfield16_t compActivationModification) override;
 
     /** @brief Create message registry for firmware update
+     *
+     *  A command result with a dedicated NvidiaUpdate message is reported by
+     *  that message alone. Other results, and non-NVIDIA builds, log the
+     *  Update message plus the ResourceErrorsDetected entry for the result.
+     *
+     *  @param[in] eid - Remote MCTP Endpoint ID
+     *  @param[in] fwDeviceIDRecord - FirmwareDeviceIDRecord in the fw update
+     *                                package that matches the firmware device
+     *  @param[in] compIndex - component index
+     *  @param[in] messageID - messageID string
+     *  @param[in] resolution - resolution field for the message registry
+     *                          (optional)
+     *  @param[in] commandType - pldm command type (optional). Default is 0 - no
+     * oem messages will be logged.
+     *  @param[in] errorCode - error code (optional)
      */
     void createMessageRegistry(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
@@ -427,7 +442,9 @@ class UpdateManager : public UpdateManagerBase
 
     /** @brief Report that a device stopped requesting component data.
      *
-     *  Byte counts retain the 32-bit component-size width defined by PLDM.
+     *  An NVIDIA build logs FirmwareDownloadTimedOut alone. Other builds log
+     *  the TransferFailed and ResourceErrorsDetected entries instead. Byte
+     *  counts retain the 32-bit component-size width defined by PLDM.
      */
     void createFirmwareDownloadTimeoutMessage(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
@@ -647,6 +664,15 @@ class UpdateManager : public UpdateManagerBase
     void packageIntegrityCheckAsync(
         std::function<void(bool)> onComplete,
         std::function<void(const std::string& errorMsg)> onError);
+
+    /** @brief Report the result of the package integrity check. */
+    void onPackageIntegrityCheckResult(
+        const std::function<void(bool)>& onComplete, bool integrityCheckResult);
+
+    /** @brief Report the result of the package signature verification. */
+    void onPackageVerificationResult(
+        const std::function<void(bool)>& onComplete,
+        bool verificationCheckResult);
 
     /** @brief perform security checks */
     void performSecurityChecksAsync(

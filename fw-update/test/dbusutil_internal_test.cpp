@@ -245,8 +245,15 @@ TEST_F(DBusUtilInternalTest,
             call.severity,
             sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
                 Level::Informational));
-        EXPECT_EQ(call.additionalData.at("REDFISH_MESSAGE_ARGS"),
-                  testCase.serializedArguments);
+        if (testCase.arguments.empty())
+        {
+            EXPECT_FALSE(call.additionalData.contains("REDFISH_MESSAGE_ARGS"));
+        }
+        else
+        {
+            EXPECT_EQ(call.additionalData.at("REDFISH_MESSAGE_ARGS"),
+                      testCase.serializedArguments);
+        }
         EXPECT_EQ(call.additionalData.at(
                       "xyz.openbmc_project.Logging.Entry.Resolution"),
                   "Retry");
@@ -420,8 +427,8 @@ TEST_F(DBusUtilInternalTest,
     createLogEntry(preUpdateValidationFailed, "", "", "");
     EXPECT_EQ(conn->loggingCalls.back().messageId, preUpdateValidationFailed);
     EXPECT_EQ(conn->loggingCalls.back().severity, critical);
-    EXPECT_EQ(conn->loggingCalls.back().additionalData["REDFISH_MESSAGE_ARGS"],
-              "");
+    EXPECT_FALSE(conn->loggingCalls.back().additionalData.contains(
+        "REDFISH_MESSAGE_ARGS"));
 }
 
 TEST_F(DBusUtilInternalTest, queryDeviceStatusErrorReturnsEmptyOnCallFailure)
@@ -789,7 +796,6 @@ TEST_F(DBusUtilInternalTest, createLogEntryRecoveryKeepsSeverityOverride)
 TEST_F(DBusUtilInternalTest, createLogEntryCoversRemainingKnownMessageIds)
 {
     createLogEntry(updateSuccessful, "GPU0", "1.2.3", "");
-    createLogEntry(componentUpdateSkipped, "GPU0", "AlreadyCurrent", "");
     createLogEntry(verificationFailed, "GPU0", "DigestMismatch", "Retry");
 }
 

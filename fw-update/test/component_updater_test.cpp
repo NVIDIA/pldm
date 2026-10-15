@@ -1621,6 +1621,9 @@ TEST_F(ComponentUpdaterTest,
         makeUpdateComponentResp(PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
                                 PLDM_CCRC_COMP_COMPARISON_STAMP_IDENTICAL);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
 
     auto co = componentUpdater.processUpdateComponentResponse(
         0x1, responseMsg, payloadLen, 0);
@@ -1628,6 +1631,13 @@ TEST_F(ComponentUpdaterTest,
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(std::get<0>(*rc), PLDM_ERROR);
     EXPECT_NE(componentUpdater.pldmRequest, nullptr);
+#ifdef OEM_NVIDIA
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              "NvidiaUpdate.1.3.ComponentImageIdentical");
+#else
+    EXPECT_TRUE(connection->loggingCalls.empty());
+#endif
     runEvent();
     runEvent();
     waitForUpdateCompletionTask();
@@ -1641,6 +1651,9 @@ TEST_F(ComponentUpdaterTest,
         makeUpdateComponentResp(PLDM_SUCCESS, PLDM_CCR_COMP_CANNOT_BE_UPDATED,
                                 PLDM_CCRC_COMP_COMPARISON_STAMP_LOWER);
     auto* responseMsg = reinterpret_cast<const pldm_msg*>(responseBytes.data());
+    auto& connection =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    connection->reset();
 
     auto co = componentUpdater.processUpdateComponentResponse(
         0x1, responseMsg, payloadLen, 0);
@@ -1650,6 +1663,14 @@ TEST_F(ComponentUpdaterTest,
     EXPECT_EQ(componentUpdater.componentUpdaterState.current,
               ComponentUpdaterSequence::Invalid);
     EXPECT_NE(componentUpdater.pldmRequest, nullptr);
+    ASSERT_EQ(connection->loggingCalls.size(), 1U);
+#ifdef OEM_NVIDIA
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              "NvidiaUpdate.1.3.ComponentDowngradeRejected");
+#else
+    EXPECT_EQ(connection->loggingCalls.front().messageId,
+              resourceErrorDetected);
+#endif
     runEvent();
     runEvent();
     waitForUpdateCompletionTask();

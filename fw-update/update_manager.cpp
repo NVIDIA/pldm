@@ -32,11 +32,13 @@
 #include <exec/task.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
 #include <bitset>
 #include <cassert>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <ranges>
@@ -51,6 +53,9 @@ namespace pldm
 
 namespace fw_update
 {
+
+using InternalFailure =
+    sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
 /** @brief Extract a target name from a software D-Bus object path
  *
@@ -220,6 +225,35 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
             }
         }
     }
+}
+
+/** @brief Report a firmware update failure once.
+ *
+ *  An NVIDIA build reports the NvidiaUpdate message alone. Any other build
+ *  keeps the ResourceErrorsDetected entry that predates the NVIDIA registry,
+ *  because logFirmwareUpdateMessage logs nothing there.
+ */
+static void logFailureOnce(
+    [[maybe_unused]] std::string_view legacyArg0,
+    [[maybe_unused]] std::string_view legacyMessage,
+    [[maybe_unused]] std::string_view legacyResolution,
+    [[maybe_unused]] NvidiaUpdateMessage message,
+    [[maybe_unused]] const NvidiaUpdateMessageFacts& facts = {})
+{
+#ifdef OEM_NVIDIA
+    logFirmwareUpdateMessage(message, facts);
+#else
+    createLogEntry(resourceErrorDetected, std::string(legacyArg0),
+                   std::string(legacyMessage), std::string(legacyResolution));
+#endif
+}
+
+static void logFirmwareUpdateServiceFailure(
+    std::string_view legacyMessage, std::string_view legacyResolution,
+    NvidiaUpdateMessage message, const NvidiaUpdateMessageFacts& facts = {})
+{
+    logFailureOnce("Firmware Update Service", legacyMessage, legacyResolution,
+                   message, facts);
 }
 
 /** @brief Check if package descriptors are a subset of device descriptor
@@ -502,6 +536,16 @@ void UpdateManager::createMessageRegistry(
         error("Parser is not initialized. Cannot create message registry.");
         return;
     }
+
+    // A dedicated NvidiaUpdate message replaces the legacy entries.
+    if (commandType != 0 &&
+        getNvidiaCommandMessageDefinition(commandType, errorCode))
+    {
+        createNvidiaCommandResponseMessage(eid, fwDeviceIDRecord, compIndex,
+                                           commandType, errorCode);
+        return;
+    }
+
     const auto& compImageInfos = parser->getComponentImageInfos();
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -545,11 +589,6 @@ void UpdateManager::createMessageRegistry(
                 oemResolution);
         }
     }
-
-    // The NVIDIA registry entry is additive. The established Update and
-    // ResourceErrorsDetected entries above remain unchanged.
-    createNvidiaCommandResponseMessage(eid, fwDeviceIDRecord, compIndex,
-                                       commandType, errorCode);
 }
 
 void UpdateManager::createMessageRegistryResourceErrors(
@@ -695,7 +734,7 @@ void UpdateManager::createNvidiaCommandResponseMessage(
         {.packageVersion = parser->pkgVersion,
          .component = reportedComponentName(eid, fwDeviceIDRecord, compIndex),
          .componentVersion = componentVersion,
-         .command = commandType == PLDM_GET_STATUS ? "GetStatus" : ""});
+         .command = firmwareUpdateCommandName(commandType)});
 }
 
 void UpdateManager::createFirmwareDownloadTimeoutMessage(
@@ -706,6 +745,9 @@ void UpdateManager::createFirmwareDownloadTimeoutMessage(
         NvidiaUpdateMessage::firmwareDownloadTimedOut);
     if (!definition)
     {
+        createMessageRegistry(eid, fwDeviceIDRecord, compIndex, transferFailed,
+                              "", PLDM_REQUEST_FIRMWARE_DATA,
+                              PLDM_FWUP_TIME_OUT);
         return;
     }
     if (!hasReportableComponent(fwDeviceIDRecord, compIndex,
@@ -876,7 +918,7 @@ exec::task<void> UpdateManager::processPackageData(
         parser.reset();
         co_return;
     }
-    catch (const std::exception& e)
+    catch (const InternalFailure& e)
     {
         error("Invalid PLDM package header, error - {ERROR}", "ERROR", e);
         handleInvalidPackageMetadataError();
@@ -1278,13 +1320,12 @@ void UpdateManager::packageIntegrityCheckAsync(
         pkgSignHdrData = PackageSignature::getSignatureHeader(
             updater->getImageData(), updater->getImageSize(), calcPkgSize);
     }
-    catch (const std::exception& e)
+    catch (const InternalFailure& e)
     {
         error("Failed to get signature header.");
-        logLegacyFirmwareUpdateServiceError(
+        logFirmwareUpdateServiceFailure(
             "Integrity check failed for FW Package",
-            "Retry firmware update using a valid package.");
-        logFirmwareUpdateMessage(
+            "Retry firmware update using a valid package.",
             NvidiaUpdateMessage::signatureHeaderMalformed,
             {.packageVersion = parser->pkgVersion,
              .reason = "signature header size is invalid"});
@@ -1301,10 +1342,12 @@ void UpdateManager::packageIntegrityCheckAsync(
             packageSignatureParser =
                 PackageSignature::createPackageSignatureParser(pkgSignHdrData);
         }
-        catch (const std::exception& e)
+        catch (const InternalFailure& e)
         {
             info("Failed to create signature header parser.");
-            logFirmwareUpdateMessage(
+            logFirmwareUpdateServiceFailure(
+                "Unsupported version of package signature",
+                "Retry firmware update using a valid package.",
                 NvidiaUpdateMessage::signatureHeaderVersionUnsupported,
                 {.packageVersion = parser->pkgVersion,
                  .signatureVersion =
@@ -1317,7 +1360,7 @@ void UpdateManager::packageIntegrityCheckAsync(
         {
             packageSignatureParser->parseHeader();
         }
-        catch (const std::exception& e)
+        catch (const InternalFailure& e)
         {
             error("Failed to parse signature header.", "ERROR", e);
             auto reason = packageSignatureParser->getValidationErrorReason();
@@ -1325,10 +1368,9 @@ void UpdateManager::packageIntegrityCheckAsync(
             {
                 reason = "signature header content is invalid";
             }
-            logLegacyFirmwareUpdateServiceError(
+            logFirmwareUpdateServiceFailure(
                 "Failed to parse FW Package signature header",
-                "Retry firmware update using a valid package.");
-            logFirmwareUpdateMessage(
+                "Retry firmware update using a valid package.",
                 NvidiaUpdateMessage::signatureHeaderMalformed,
                 {.packageVersion = parser->pkgVersion, .reason = reason});
 
@@ -1340,25 +1382,12 @@ void UpdateManager::packageIntegrityCheckAsync(
             packageSignatureParser->calculateSizeOfSignedData(calcPkgSize);
         packageSignatureParser->integrityCheckAsync(
             updater->getImageData(), sizeOfSignedData,
-            [this, onComplete](bool integritycheckResult) {
-                if (integritycheckResult)
-                {
-                    info("Integrity check successful for FW Package");
-                    onComplete(true);
-                }
-                else
-                {
-                    logLegacyFirmwareUpdateServiceError(
-                        "Integrity check failed for FW Package",
-                        "Retry firmware update using a valid package.");
-                    logFirmwareUpdateMessage(
-                        NvidiaUpdateMessage::packageSignatureIntegrityFailed,
-                        {.packageVersion = parser->pkgVersion});
-                    onComplete(false);
-                }
-            },
+            std::bind_front(&UpdateManager::onPackageIntegrityCheckResult, this,
+                            onComplete),
             [this, onError](const std::string& errorMessage) {
-                logFirmwareUpdateMessage(
+                logFirmwareUpdateServiceFailure(
+                    "Integrity check failed for FW Package",
+                    "Retry firmware update using a valid package.",
                     NvidiaUpdateMessage::packageSignatureIntegrityFailed,
                     {.packageVersion = parser->pkgVersion});
                 onError(errorMessage);
@@ -1374,6 +1403,23 @@ void UpdateManager::packageIntegrityCheckAsync(
     }
 }
 
+void UpdateManager::onPackageIntegrityCheckResult(
+    const std::function<void(bool)>& onComplete, bool integrityCheckResult)
+{
+    if (integrityCheckResult)
+    {
+        info("Integrity check successful for FW Package");
+        onComplete(true);
+        return;
+    }
+    logFirmwareUpdateServiceFailure(
+        "Integrity check failed for FW Package",
+        "Retry firmware update using a valid package.",
+        NvidiaUpdateMessage::packageSignatureIntegrityFailed,
+        {.packageVersion = parser->pkgVersion});
+    onComplete(false);
+}
+
 void UpdateManager::verifyPackageAsync(
     std::function<void(bool)> onComplete,
     std::function<void(const std::string& errorMsg)> onError)
@@ -1386,13 +1432,12 @@ void UpdateManager::verifyPackageAsync(
         pkgSignHdrData = PackageSignature::getSignatureHeader(
             updater->getImageData(), updater->getImageSize(), calcPkgSize);
     }
-    catch (const std::exception& e)
+    catch (const InternalFailure& e)
     {
         lg2::error("Failed to get signature header.");
-        logLegacyFirmwareUpdateServiceError(
+        logFirmwareUpdateServiceFailure(
             "Validating FW Package signature failed",
-            "Retry firmware update operation with correctly signed FW package.");
-        logFirmwareUpdateMessage(
+            "Retry firmware update operation with correctly signed FW package.",
             NvidiaUpdateMessage::signatureHeaderMalformed,
             {.packageVersion = parser->pkgVersion,
              .reason = "signature header size is invalid"});
@@ -1408,14 +1453,13 @@ void UpdateManager::verifyPackageAsync(
             packageSignatureParser =
                 PackageSignature::createPackageSignatureParser(pkgSignHdrData);
         }
-        catch (const std::exception& e)
+        catch (const InternalFailure& e)
         {
             lg2::error("Failed to create signature header parser.");
 
-            logLegacyFirmwareUpdateServiceError(
+            logFirmwareUpdateServiceFailure(
                 "Unsupported version of package signature",
-                "Retry firmware update operation with correctly signed FW package.");
-            logFirmwareUpdateMessage(
+                "Retry firmware update operation with correctly signed FW package.",
                 NvidiaUpdateMessage::signatureHeaderVersionUnsupported,
                 {.packageVersion = parser->pkgVersion,
                  .signatureVersion =
@@ -1429,7 +1473,7 @@ void UpdateManager::verifyPackageAsync(
         {
             packageSignatureParser->parseHeader();
         }
-        catch (const std::exception& e)
+        catch (const InternalFailure& e)
         {
             lg2::error("Failed to parse signature header.", "ERROR", e);
             auto reason = packageSignatureParser->getValidationErrorReason();
@@ -1437,10 +1481,9 @@ void UpdateManager::verifyPackageAsync(
             {
                 reason = "signature header content is invalid";
             }
-            logLegacyFirmwareUpdateServiceError(
+            logFirmwareUpdateServiceFailure(
                 "Failed to parse FW Package signature header",
-                "Retry firmware update operation with correctly signed FW package.");
-            logFirmwareUpdateMessage(
+                "Retry firmware update operation with correctly signed FW package.",
                 NvidiaUpdateMessage::signatureHeaderMalformed,
                 {.packageVersion = parser->pkgVersion, .reason = reason});
 
@@ -1454,25 +1497,12 @@ void UpdateManager::verifyPackageAsync(
         packageSignatureParser->verifyAsync(
             updater->getImageData(), PLDM_PACKAGE_VERIFICATION_KEY,
             sizeOfSignedData,
-            [this, onComplete](bool verificationCheckResult) {
-                if (verificationCheckResult)
-                {
-                    lg2::info("FW package signature was successfully verified");
-                    onComplete(true);
-                }
-                else
-                {
-                    logLegacyFirmwareUpdateServiceError(
-                        "Validating FW Package signature failed",
-                        "Retry firmware update operation with correctly signed FW package.");
-                    logFirmwareUpdateMessage(
-                        NvidiaUpdateMessage::packageSignatureVerificationFailed,
-                        {.packageVersion = parser->pkgVersion});
-                    onComplete(false);
-                }
-            },
+            std::bind_front(&UpdateManager::onPackageVerificationResult, this,
+                            onComplete),
             [this, onError](const std::string& errorMessage) {
-                logFirmwareUpdateMessage(
+                logFirmwareUpdateServiceFailure(
+                    "Validating FW Package signature failed",
+                    "Retry firmware update operation with correctly signed FW package.",
                     NvidiaUpdateMessage::packageSignatureVerificationFailed,
                     {.packageVersion = parser->pkgVersion});
                 onError(errorMessage);
@@ -1483,11 +1513,11 @@ void UpdateManager::verifyPackageAsync(
     else
     {
 #ifdef PLDM_PACKAGE_VERIFICATION_MUST_BE_SIGNED
-        logLegacyFirmwareUpdateServiceError(
+        logFirmwareUpdateServiceFailure(
             "Package does not contain signature header",
-            "Retry firmware update operation with correctly signed FW package.");
-        logFirmwareUpdateMessage(NvidiaUpdateMessage::packageSignatureRequired,
-                                 {.packageVersion = parser->pkgVersion});
+            "Retry firmware update operation with correctly signed FW package.",
+            NvidiaUpdateMessage::packageSignatureRequired,
+            {.packageVersion = parser->pkgVersion});
 
         onComplete(false);
 #else
@@ -1496,6 +1526,23 @@ void UpdateManager::verifyPackageAsync(
 #endif
         return;
     }
+}
+
+void UpdateManager::onPackageVerificationResult(
+    const std::function<void(bool)>& onComplete, bool verificationCheckResult)
+{
+    if (verificationCheckResult)
+    {
+        lg2::info("FW package signature was successfully verified");
+        onComplete(true);
+        return;
+    }
+    logFirmwareUpdateServiceFailure(
+        "Validating FW Package signature failed",
+        "Retry firmware update operation with correctly signed FW package.",
+        NvidiaUpdateMessage::packageSignatureVerificationFailed,
+        {.packageVersion = parser->pkgVersion});
+    onComplete(false);
 }
 
 ComponentTargetList UpdateManager::getComponentTargetList(
@@ -1974,19 +2021,17 @@ void UpdateManager::logUnupdatedTargets(
         }
         if (!descriptorMap.contains(eid))
         {
-            createLogEntry(
-                resourceErrorDetected, name, "Target endpoint is unreachable",
-                "Verify the target endpoint is powered on and responsive, then retry the update.");
-            logFirmwareUpdateMessage(
+            logFailureOnce(
+                name, "Target endpoint is unreachable",
+                "Verify the target endpoint is powered on and responsive, then retry the update.",
                 NvidiaUpdateMessage::requestedTargetUnavailableForUpdate,
                 {.target = name});
             continue;
         }
-        createLogEntry(
-            resourceErrorDetected, name,
+        logFailureOnce(
+            name,
             "No matching firmware image in package for the requested target",
-            "Verify the firmware package contains a matching image for the specified target and retry the update.");
-        logFirmwareUpdateMessage(
+            "Verify the firmware package contains a matching image for the specified target and retry the update.",
             NvidiaUpdateMessage::requestedTargetNotSupportedByPackage,
             {.packageVersion = parser ? parser->pkgVersion : "unknown",
              .target = name});
@@ -2002,19 +2047,17 @@ void UpdateManager::logUnupdatedTargets(
         }
         if (!descriptorMap.contains(eid))
         {
-            createLogEntry(
-                resourceErrorDetected, name, "Target endpoint is unreachable",
-                "Verify the target endpoint is powered on and responsive, then retry the update.");
-            logFirmwareUpdateMessage(
+            logFailureOnce(
+                name, "Target endpoint is unreachable",
+                "Verify the target endpoint is powered on and responsive, then retry the update.",
                 NvidiaUpdateMessage::requestedTargetUnavailableForUpdate,
                 {.target = name});
             continue;
         }
-        createLogEntry(
-            resourceErrorDetected, name,
+        logFailureOnce(
+            name,
             "No matching firmware image in package for the requested target",
-            "Verify the firmware package contains a matching image for the specified target and retry the update.");
-        logFirmwareUpdateMessage(
+            "Verify the firmware package contains a matching image for the specified target and retry the update.",
             NvidiaUpdateMessage::requestedTargetNotSupportedByPackage,
             {.packageVersion = parser ? parser->pkgVersion : "unknown",
              .target = name});
@@ -2459,14 +2502,19 @@ software::Activation::Activations UpdateManager::startNonPLDMUpdate()
             return software::Activation::Activations::Active;
         }
 #endif
-        logLegacyFirmwareUpdateServiceError(
-            "No Matching Devices",
-            "Verify the FW package has devices that are listed in the Redfish FW Inventory");
         if (parser)
         {
-            logFirmwareUpdateMessage(
+            logFirmwareUpdateServiceFailure(
+                "No Matching Devices",
+                "Verify the FW package has devices that are listed in the Redfish FW Inventory",
                 NvidiaUpdateMessage::firmwarePackageNoMatchingDevices,
                 {.packageVersion = parser->pkgVersion});
+        }
+        else
+        {
+            logLegacyFirmwareUpdateServiceError(
+                "No Matching Devices",
+                "Verify the FW package has devices that are listed in the Redfish FW Inventory");
         }
         activationBlocksTransition.reset();
         clearFirmwareUpdatePackage();
@@ -2535,10 +2583,9 @@ void UpdateManager::updatePackageCompletion()
             otherDeviceUpdateManager->noTargetedUpdateStarted();
         if (noMatchingDevices)
         {
-            logLegacyFirmwareUpdateServiceError(
+            logFirmwareUpdateServiceFailure(
                 "No Matching Devices",
-                "Verify the FW package has devices that are listed in the Redfish FW Inventory");
-            logFirmwareUpdateMessage(
+                "Verify the FW package has devices that are listed in the Redfish FW Inventory",
                 NvidiaUpdateMessage::firmwarePackageNoMatchingDevices,
                 {.packageVersion = parser->pkgVersion});
         }
@@ -2811,10 +2858,9 @@ void UpdateManager::cancelAllUpdates()
 
 void UpdateManager::handleInvalidPackageError()
 {
-    logLegacyFirmwareUpdateServiceError(
+    logFirmwareUpdateServiceFailure(
         "Invalid FW Package",
-        "Retry firmware update operation with valid FW package.");
-    logFirmwareUpdateMessage(
+        "Retry firmware update operation with valid FW package.",
         NvidiaUpdateMessage::firmwarePackageHeaderUnavailable);
     publishPackageFailure();
 }
@@ -2822,10 +2868,9 @@ void UpdateManager::handleInvalidPackageError()
 void UpdateManager::handlePayloadChecksumError(uint32_t expectedChecksum,
                                                uint32_t calculatedChecksum)
 {
-    logLegacyFirmwareUpdateServiceError(
+    logFirmwareUpdateServiceFailure(
         "FW package payload checksum validation failed",
-        "Retry firmware update operation with valid FW package.");
-    logFirmwareUpdateMessage(
+        "Retry firmware update operation with valid FW package.",
         NvidiaUpdateMessage::packagePayloadChecksumMismatch,
         {.packageVersion = parser ? parser->pkgVersion : "unknown",
          .expectedChecksum = expectedChecksum,
@@ -2836,30 +2881,29 @@ void UpdateManager::handlePayloadChecksumError(uint32_t expectedChecksum,
 void UpdateManager::handleHeaderChecksumError(uint32_t expectedChecksum,
                                               uint32_t calculatedChecksum)
 {
-    logLegacyFirmwareUpdateServiceError(
+    logFirmwareUpdateServiceFailure(
         "Invalid FW Package header",
-        "Retry firmware update operation with valid FW package.");
-    logFirmwareUpdateMessage(NvidiaUpdateMessage::packageHeaderChecksumMismatch,
-                             {.expectedChecksum = expectedChecksum,
-                              .calculatedChecksum = calculatedChecksum});
+        "Retry firmware update operation with valid FW package.",
+        NvidiaUpdateMessage::packageHeaderChecksumMismatch,
+        {.expectedChecksum = expectedChecksum,
+         .calculatedChecksum = calculatedChecksum});
     publishPackageFailure();
 }
 
 void UpdateManager::handleInvalidPackageHeaderError()
 {
-    logLegacyFirmwareUpdateServiceError(
+    logFirmwareUpdateServiceFailure(
         "Invalid FW Package header",
-        "Retry firmware update operation with valid FW package.");
-    logFirmwareUpdateMessage(NvidiaUpdateMessage::firmwarePackageHeaderInvalid);
+        "Retry firmware update operation with valid FW package.",
+        NvidiaUpdateMessage::firmwarePackageHeaderInvalid);
     publishPackageFailure();
 }
 
 void UpdateManager::handleInvalidPackageMetadataError()
 {
-    logLegacyFirmwareUpdateServiceError(
+    logFirmwareUpdateServiceFailure(
         "Invalid FW Package",
-        "Retry firmware update operation with valid FW package.");
-    logFirmwareUpdateMessage(
+        "Retry firmware update operation with valid FW package.",
         NvidiaUpdateMessage::firmwarePackageMetadataInvalid);
     publishPackageFailure();
 }

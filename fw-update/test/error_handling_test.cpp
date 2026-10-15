@@ -78,23 +78,18 @@ TEST(error_handling, getOemMessage_unknown_error_code)
 }
 
 TEST(error_handling,
-     getCompCompatibilityMessage_update_component_identical_comp_stamp)
+     getCompCompatibilityMessage_update_component_identical_has_no_legacy)
 {
-    const std::string oemMessageId = "NvidiaUpdate.1.0.ComponentUpdateSkipped";
-    const std::string oemMessageError = "Component image is identical";
-    const std::string oemResolution =
-        "Retry firmware update operation with the force flag";
-    const bool oemMessageStatus = true;
-
+    // An identical image is reported by ComponentImageIdentical only.
     auto [outmessageStatus, outoemMessageId, outoemMessageError,
           outoemResolution] =
         getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
                                     PLDM_CRC_COMP_COMPARISON_STAMP_IDENTICAL);
 
-    EXPECT_EQ(outmessageStatus, oemMessageStatus);
-    EXPECT_EQ(outoemMessageId, oemMessageId);
-    EXPECT_EQ(outoemMessageError, oemMessageError);
-    EXPECT_EQ(outoemResolution, oemResolution);
+    EXPECT_FALSE(outmessageStatus);
+    EXPECT_TRUE(outoemMessageId.empty());
+    EXPECT_TRUE(outoemMessageError.empty());
+    EXPECT_TRUE(outoemResolution.empty());
 }
 
 TEST(error_handling,
@@ -230,7 +225,7 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
          ArgumentType::packageVersion,
          Severity::critical,
          {}},
-        {Message::componentUpdateSkipped,
+        {Message::componentImageIdentical,
          "NvidiaUpdate.1.3.ComponentImageIdentical",
          ArgumentType::componentPackageVersionComparisonStamp,
          Severity::informational,
@@ -288,7 +283,7 @@ TEST(error_handling, getNvidiaUpdateMessageDefinition)
         {Message::firmwareImageSizeVerificationFailed,
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
          ArgumentType::componentVersionPackageVersionReason, Severity::critical,
-         "image size check failed (VerifyComplete: 0x98)"},
+         "image size check failed (VerifyComplete: OEM firmwarePackageSizeFailure (0x98))"},
         {Message::firmwareImageGenericVerificationFailed,
          "NvidiaUpdate.1.3.ComponentImageVerificationFailed",
          ArgumentType::componentVersionPackageVersionReason, Severity::critical,
@@ -434,5 +429,85 @@ TEST(error_handling, getNvidiaCommandMessageDefinition)
                      .has_value());
     EXPECT_FALSE(getNvidiaCommandMessageDefinition(PLDM_VERIFY_COMPLETE, 0x7F)
                      .has_value());
+}
+
+TEST(error_handling, firmwareUpdateCommandNameCoversAllCommands)
+{
+    struct TestCase
+    {
+        pldm_firmware_update_commands command;
+        std::string_view name;
+    };
+
+    static constexpr TestCase testCases[]{
+        {PLDM_QUERY_DEVICE_IDENTIFIERS, "QueryDeviceIdentifiers"},
+        {PLDM_GET_FIRMWARE_PARAMETERS, "GetFirmwareParameters"},
+        {PLDM_REQUEST_UPDATE, "RequestUpdate"},
+        {PLDM_PASS_COMPONENT_TABLE, "PassComponentTable"},
+        {PLDM_UPDATE_COMPONENT, "UpdateComponent"},
+        {PLDM_REQUEST_FIRMWARE_DATA, "RequestFirmwareData"},
+        {PLDM_TRANSFER_COMPLETE, "TransferComplete"},
+        {PLDM_VERIFY_COMPLETE, "VerifyComplete"},
+        {PLDM_APPLY_COMPLETE, "ApplyComplete"},
+        {PLDM_ACTIVATE_FIRMWARE, "ActivateFirmware"},
+        {PLDM_GET_STATUS, "GetStatus"},
+        {PLDM_CANCEL_UPDATE_COMPONENT, "CancelUpdateComponent"},
+        {PLDM_CANCEL_UPDATE, "CancelUpdate"},
+    };
+
+    for (const auto& testCase : testCases)
+    {
+        SCOPED_TRACE(static_cast<unsigned>(testCase.command));
+        EXPECT_EQ(firmwareUpdateCommandName(testCase.command), testCase.name);
+    }
+
+    EXPECT_TRUE(firmwareUpdateCommandName(
+                    static_cast<pldm_firmware_update_commands>(0x7F))
+                    .empty());
+}
+
+TEST(error_handling, unknownNvidiaUpdateMessageHasNoDefinition)
+{
+    // 63 stays inside the enumeration's value range but names no message.
+    const auto unknown = static_cast<NvidiaUpdateMessage>(63);
+    EXPECT_FALSE(getNvidiaUpdateMessageDefinition(unknown).has_value());
+    // Logging an undefined message is dropped instead of reaching D-Bus.
+    EXPECT_NO_THROW(logNvidiaUpdateMessage(unknown));
+
+    // Commands without any NVIDIA mapping yield no definition either.
+    EXPECT_FALSE(
+        getNvidiaCommandMessageDefinition(PLDM_QUERY_DEVICE_IDENTIFIERS, 0)
+            .has_value());
+}
+
+TEST(error_handling, nvidiaUpdateMessageArgumentsUseDefaults)
+{
+    using Arg = NvidiaUpdateMessageArgumentType;
+
+    bool sawChecksumPair = false;
+    for (unsigned value = 0; value < 63; ++value)
+    {
+        const auto definition = getNvidiaUpdateMessageDefinition(
+            static_cast<NvidiaUpdateMessage>(value));
+        if (!definition || definition->argumentType != Arg::checksumPair)
+        {
+            continue;
+        }
+        sawChecksumPair = true;
+        // Missing checksums render as zero rather than being omitted.
+        const auto args = nvidiaUpdateMessageArguments(*definition, {});
+        ASSERT_EQ(args.size(), 2U);
+        EXPECT_EQ(args[0], "0x00000000");
+        EXPECT_EQ(args[1], "0x00000000");
+    }
+    EXPECT_TRUE(sawChecksumPair);
+
+    const auto definition = getNvidiaUpdateMessageDefinition(
+        NvidiaUpdateMessage::firmwarePackageNoMatchingDevices);
+    ASSERT_TRUE(definition.has_value());
+    NvidiaUpdateMessageDefinition unknownArguments = *definition;
+    // 15 stays inside the enumeration's value range but names no layout.
+    unknownArguments.argumentType = static_cast<Arg>(15);
+    EXPECT_TRUE(nvidiaUpdateMessageArguments(unknownArguments, {}).empty());
 }
 #endif

@@ -535,3 +535,30 @@ TEST(PackageParserStubErrorTest,
                               PLDM_PACKAGE_HEADER_FORMAT_REVISION_FR01H);
     EXPECT_ANY_THROW(parser.parse(std::vector<uint8_t>{}, 8));
 }
+
+TEST(PackageParserStubErrorTest, parsePkgHeaderDiagnosticsReportFailureKind)
+{
+    PackageHeaderDiagnostic diagnostic;
+
+    stubMode = StubMode::success;
+    EXPECT_EQ(parsePkgHeader(nullptr, sizeof(pldm_package_header_information),
+                             &diagnostic),
+              nullptr);
+    EXPECT_EQ(diagnostic.error, PackageHeaderError::unavailable);
+
+    std::vector<uint8_t> data(sizeof(pldm_package_header_information), 0);
+    for (const auto mode :
+         {StubMode::headerDecodeError, StubMode::headerUnsupportedVersion,
+          StubMode::headerInvalidUuid, StubMode::headerMissingCountFields})
+    {
+        SCOPED_TRACE(static_cast<int>(mode));
+        stubMode = mode;
+        diagnostic = {};
+        EXPECT_EQ(parsePkgHeader(data.data(), data.size(), &diagnostic),
+                  nullptr);
+        EXPECT_EQ(diagnostic.error, PackageHeaderError::invalid);
+        EXPECT_EQ(diagnostic.expectedChecksum, 0U);
+        EXPECT_EQ(diagnostic.calculatedChecksum, 0U);
+    }
+    stubMode = StubMode::success;
+}

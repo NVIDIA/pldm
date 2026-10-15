@@ -2997,3 +2997,43 @@ TEST_F(PackageSignatureTest, calculateDigestAsyncUseChunksReplacesExistingTimer)
     EXPECT_FALSE(onCompleteCalled);
     EXPECT_FALSE(onErrorCalled);
 }
+
+TEST_F(PackageSignatureTest, signatureV3ParseHeaderPublicKeyOffsetOutOfBounds)
+{
+    auto header = signHeaderV3WithoutPadding;
+    // offsetToPublicKey (big-endian, bytes 14-15) past the 1024-byte header.
+    header[14] = 0x03;
+    header[15] = 0xFF;
+
+    PackageSignatureV3 packageSignatureParser(header);
+    EXPECT_THROW(packageSignatureParser.parseHeader(), InternalFailure);
+    EXPECT_EQ(packageSignatureParser.getValidationErrorReason(),
+              "public-key offset is outside the header");
+}
+
+TEST_F(PackageSignatureTest, signatureV3ParseHeaderPublicKeySizeOutOfBounds)
+{
+    auto header = signHeaderV3WithoutPadding;
+    // publicKeySize (big-endian, bytes 16-17) runs past the header.
+    header[16] = 0x03;
+    header[17] = 0xFF;
+
+    PackageSignatureV3 packageSignatureParser(header);
+    EXPECT_THROW(packageSignatureParser.parseHeader(), InternalFailure);
+    EXPECT_EQ(packageSignatureParser.getValidationErrorReason(),
+              "public-key size is outside the header");
+}
+
+TEST_F(PackageSignatureTest, signatureV3ParseHeaderSignatureOffsetOutOfBounds)
+{
+    auto header = signHeaderV3WithoutPadding;
+    // offsetToSignature (big-endian, bytes 7-8) places the signature past
+    // the header while the signature size itself stays valid.
+    header[7] = 0x03;
+    header[8] = 0xFF;
+
+    PackageSignatureV3 packageSignatureParser(header);
+    EXPECT_THROW(packageSignatureParser.parseHeader(), InternalFailure);
+    EXPECT_EQ(packageSignatureParser.getValidationErrorReason(),
+              "signature offset is outside the header");
+}

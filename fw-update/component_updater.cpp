@@ -323,14 +323,18 @@ exec::task<int> ComponentUpdater::processUpdateComponentResponse(
             "EID", eid, "COMPONENT_VERSION", compVersion, "RESP_CODE",
             compCompatibilityRespCode);
 
-        auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
-            getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
-                                        compCompatibilityRespCode);
-        if (messageStatus)
+        // A NvidiaUpdate message replaces the legacy entries.
+        if (!getUpdateComponentMessageDefinition(compCompatibilityRespCode))
         {
-            updateManager->createMessageRegistryResourceErrors(
-                eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                oemMessageError, oemResolution);
+            auto [messageStatus, oemMessageId, oemMessageError, oemResolution] =
+                getCompCompatibilityMessage(PLDM_UPDATE_COMPONENT,
+                                            compCompatibilityRespCode);
+            if (messageStatus)
+            {
+                updateManager->createMessageRegistryResourceErrors(
+                    eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                    oemMessageError, oemResolution);
+            }
         }
         updateManager->createUpdateComponentResponseMessage(
             eid, fwDeviceIDRecord, componentIndex, compCompatibilityRespCode);
@@ -991,14 +995,6 @@ Response ComponentUpdater::applyComplete(const pldm_msg* request,
                 return;
             }
 
-            // ApplyComplete was received and acknowledged. UA_T6 no longer
-            // applies; the post-apply GetStatus request has its own timeout.
-            if (completeCommandsTimeoutTimer)
-            {
-                completeCommandsTimeoutTimer->stop();
-                completeCommandsTimeoutTimer.reset();
-            }
-
             componentUpdaterState.nextState(componentUpdaterState.current);
             GetStatus(validateApplyStatusSuccess);
         };
@@ -1037,6 +1033,13 @@ void ComponentUpdater::onResponseSendComplete(bool success)
 
     if (success)
     {
+        // ApplyComplete is answered; the post-apply GetStatus has its own
+        // timeout.
+        if (completeCommandsTimeoutTimer)
+        {
+            completeCommandsTimeoutTimer->stop();
+            completeCommandsTimeoutTimer.reset();
+        }
         auto action = std::move(pendingPostResponseAction);
         pldmRequest = std::make_unique<sdeventplus::source::Defer>(
             updateManager->event,
@@ -1099,9 +1102,6 @@ void ComponentUpdater::createRequestFwDataTimer()
                     compImageInfos[applicableComponents[componentIndex]];
                 const auto componentSize = std::get<static_cast<size_t>(
                     ComponentImageInfoPos::CompSizePos)>(component);
-                updateManager->createMessageRegistry(
-                    eid, fwDeviceIDRecord, componentIndex, transferFailed, "",
-                    PLDM_REQUEST_FIRMWARE_DATA, PLDM_FWUP_TIME_OUT);
                 updateManager->createFirmwareDownloadTimeoutMessage(
                     eid, fwDeviceIDRecord, componentIndex,
                     std::min(nextExpectedOffset, componentSize), componentSize);
@@ -1418,18 +1418,25 @@ exec::task<int> ComponentUpdater::sendGetStatusRequest(
             bool logged = queryDeviceStatusAndLog(eid);
             if (!logged)
             {
-                auto [messageStatus, oemMessageId, oemMessageError,
-                      oemResolution] =
-                    getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
-                if (messageStatus)
+                if (getNvidiaCommandMessageDefinition(PLDM_GET_STATUS,
+                                                      COMMAND_TIMEOUT))
                 {
-                    updateManager->createMessageRegistryResourceErrors(
-                        eid, fwDeviceIDRecord, componentIndex, oemMessageId,
-                        oemMessageError, oemResolution);
+                    updateManager->createNvidiaCommandResponseMessage(
+                        eid, fwDeviceIDRecord, componentIndex, PLDM_GET_STATUS,
+                        COMMAND_TIMEOUT);
                 }
-                updateManager->createNvidiaCommandResponseMessage(
-                    eid, fwDeviceIDRecord, componentIndex, PLDM_GET_STATUS,
-                    COMMAND_TIMEOUT);
+                else
+                {
+                    auto [messageStatus, oemMessageId, oemMessageError,
+                          oemResolution] =
+                        getOemMessage(PLDM_GET_STATUS, COMMAND_TIMEOUT);
+                    if (messageStatus)
+                    {
+                        updateManager->createMessageRegistryResourceErrors(
+                            eid, fwDeviceIDRecord, componentIndex, oemMessageId,
+                            oemMessageError, oemResolution);
+                    }
+                }
             }
         }
         componentUpdaterState.set(ComponentUpdaterSequence::Invalid);
