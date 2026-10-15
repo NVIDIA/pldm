@@ -337,7 +337,7 @@ void ItemUpdateManager::markComponentUpdateCompleted()
 
 sdbusplus::object_path ItemUpdateManager::startUpdate(
     sdbusplus::message::unix_fd image,
-    ApplyTimeIntf::RequestedApplyTimes /*applyTime*/, bool /*forceUpdate*/,
+    ApplyTimeIntf::RequestedApplyTimes applyTime, bool /*forceUpdate*/,
     std::vector<sdbusplus::object_path> /*targets*/,
     bool /*preUpdateValidation*/)
 {
