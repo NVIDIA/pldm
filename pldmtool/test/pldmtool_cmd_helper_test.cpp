@@ -750,7 +750,13 @@ TEST(CommandInterface, ExecRequestEncodeFailure)
 
     TestCmd cmd("base", "GetTID", sub);
     testing::internal::CaptureStderr();
-    cmd.exec();
+    // exec() throws CLI::RuntimeError after reporting the encode failure.
+    try
+    {
+        cmd.exec();
+    }
+    catch (const std::exception&)
+    {}
     std::string errOutput = testing::internal::GetCapturedStderr();
 
     EXPECT_NE(errOutput.find("Failed to encode request message"),
@@ -777,7 +783,13 @@ TEST(CommandInterface, ExecRequestEncodeFailureLongNames)
     std::string command(72, 'x');
     TestCmd cmd(type.c_str(), command.c_str(), sub);
     testing::internal::CaptureStderr();
-    cmd.exec();
+    // exec() throws CLI::RuntimeError after reporting the encode failure.
+    try
+    {
+        cmd.exec();
+    }
+    catch (const std::exception&)
+    {}
     std::string errOutput = testing::internal::GetCapturedStderr();
 
     EXPECT_NE(errOutput.find(type), std::string::npos);

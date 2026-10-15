@@ -331,7 +331,8 @@ TEST_F(TestBIOSStringAttribute, constructEntryOptionalValueCoverage)
         dbusHandler,
         getDbusPropertyVariant(StrEq("/xyz/abc/def"), StrEq("Str_example1"),
                                StrEq("xyz.openbmc_project.str_example1.value")))
-        .WillOnce(Return(PropertyValue(std::string("fromdbus"))));
+        .WillOnce(Return(PropertyValue(std::string("fromdbus"))))
+        .WillOnce(Return(PropertyValue(std::string("fromopt"))));
     Table attrTableFromDbus;
     Table attrValueFromDbus;
     stringReadWrite.constructEntry(

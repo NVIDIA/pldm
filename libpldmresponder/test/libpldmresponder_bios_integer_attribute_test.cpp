@@ -502,7 +502,8 @@ TEST_F(TestBIOSIntegerAttribute, constructEntryOptionalValueCoverage)
                 getDbusPropertyVariant(StrEq("/xyz/openbmc_project/avsbus"),
                                        StrEq("Rail"),
                                        StrEq("xyz.openbmc.AvsBus.Manager")))
-        .WillOnce(Return(PropertyValue(uint8_t(6))));
+        .WillOnce(Return(PropertyValue(uint8_t(6))))
+        .WillOnce(Return(PropertyValue(uint8_t(11))));
     Table attrTableFromDbus;
     Table attrValueFromDbus;
     integerReadWrite.constructEntry(

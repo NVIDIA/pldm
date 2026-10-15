@@ -1772,8 +1772,15 @@ TEST_F(TestBIOSConfig,
     auto stringAttrHandle = biosConfig.findAttrHandle("str_example1");
     EXPECT_NE(table::attribute::findByStringHandle(*attrTable, inbandHandle),
               nullptr);
-    EXPECT_EQ(findAttrValueEntryByHandle(*attrValueTable, inbandAttrHandle),
-              nullptr);
+    // An invalid persisted current value ("InvalidOption") is not fatal: the
+    // responder catches the lookup failure and falls back to the attribute's
+    // default value ("Allowed", index 0), so the attribute value entry is
+    // still created.
+    auto* inbandValueEntry =
+        findAttrValueEntryByHandle(*attrValueTable, inbandAttrHandle);
+    ASSERT_NE(inbandValueEntry, nullptr);
+    EXPECT_THAT(table::attribute_value::decodeEnumEntry(inbandValueEntry),
+                ElementsAreArray(std::array<uint8_t, 1>{0}));
     EXPECT_NE(findAttrValueEntryByHandle(*attrValueTable, stringAttrHandle),
               nullptr);
 }

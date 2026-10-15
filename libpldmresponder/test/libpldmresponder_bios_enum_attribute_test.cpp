@@ -693,8 +693,8 @@ TEST_F(TestBIOSEnumAttribute, GetValueIndexThrowsOnUnknownValue)
          "value_names" : [ "Concurrent", "Disruptive" ],
          "default_values" : [ "Concurrent" ],
          "read_only" : true,
-         "help_text" : "HelpText",
-         "display_name" : "DisplayName"
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName"
       })"_json;
 
     BIOSEnumAttribute attr{json, nullptr};
@@ -710,8 +710,8 @@ TEST_F(TestBIOSEnumAttribute, GetValueIndexReturnsCorrectIndex)
          "value_names" : [ "Concurrent", "Disruptive" ],
          "default_values" : [ "Concurrent" ],
          "read_only" : true,
-         "help_text" : "HelpText",
-         "display_name" : "DisplayName"
+         "helpText" : "HelpText",
+         "displayName" : "DisplayName"
       })"_json;
 
     BIOSEnumAttribute attr{json, nullptr};

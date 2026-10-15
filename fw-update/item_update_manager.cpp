@@ -324,7 +324,7 @@ void ItemUpdateManager::resetActivationState()
 
 void ItemUpdateManager::markComponentUpdateCompleted()
 {
-    if (deviceUpdater)
+    if (deviceUpdater && activationProgress)
     {
         auto progress = deviceUpdater->getProgress();
         if (progress != lastProgress)
