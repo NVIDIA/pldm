@@ -999,6 +999,216 @@ TEST(GetPDR, ParseResponseMsgTerminusLocator)
     }
 }
 
+// Drives printRedfishResourcePDR through parseResponseMsg with a fully
+// populated Redfish Resource PDR: all resource-flag bits set (exercises
+// parseRedfishResourcePDRResourceFlags), a versioned major schema, and two
+// AdditionalResource and two OEMName entries so both variable-length loops
+// iterate. Buffer bytes mirror the libpldm decodeRedfishResourcePdr.GoodTest.
+TEST(GetPDR, ParseResponseMsgRedfishResource)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetPDR cmd("platform", "getPDR", sub);
+
+    parseArgs(app, {"test", "-d", "1"});
+
+    std::vector<uint8_t> pdr{
+        // clang-format off
+        0x1, 0x0, 0x0, 0x0,        // record handle
+        0x1,                       // PDRHeaderVersion
+        PLDM_REDFISH_RESOURCE_PDR, // PDRType
+        0x1, 0x0,                  // recordChangeNumber
+        0x76, 0x0,                 // dataLength
+        0x11, 0x22, 0x33, 0x44,    // ResourceID
+        0x7,                       // ResourceFlags (bit0|bit1|bit2)
+        0x1, 0x2, 0x3, 0x4,        // ContainingResourceID
+        0xa, 0x0,                  // ProposedContainingResourceLengthBytes
+        0x54, 0x65, 0x73, 0x74, 0x2e,
+        0x54, 0x65, 0x73, 0x74, 0x0, // "Test.Test"
+        0x8, 0x0,                    // SubURILengthBytes
+        0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x0, // "Metrics"
+        0x2, 0x0,                    // AdditionalResourceIDCount
+        0x1, 0x2, 0x3, 0x4,          // AdditionalResourceID[0]
+        0x7, 0x0,                    // AdditionalResourceSubURILengthBytes[0]
+        0x30, 0x2f, 0x54, 0x65, 0x73, 0x74, 0x0, // "0/Test"
+        0xa, 0xb, 0xc, 0xd,          // AdditionalResourceID[1]
+        0x7, 0x0,                    // AdditionalResourceSubURILengthBytes[1]
+        0x31, 0x2f, 0x54, 0x65, 0x73, 0x74, 0x0, // "1/Test"
+        0x0, 0xf3, 0xf2, 0xf1,       // MajorSchemaVersion (versioned)
+        0x11, 0x22,                  // MajorSchemaDictionaryLengthBytes
+        0xca, 0xfe, 0xbe, 0xef,      // MajorSchemaDictionarySignature
+        0x18,                        // MajorSchemaNameLength
+        0x54, 0x65, 0x73, 0x74, 0x4d, 0x65,
+        0x74, 0x72, 0x69, 0x63, 0x73, 0x2e,
+        0x54, 0x65, 0x73, 0x74, 0x4d, 0x65,
+        0x74, 0x72, 0x69, 0x63, 0x73, 0x00, // "TestMetrics.TestMetrics"
+        0x02, 0x00,                  // OEMCount
+        0x09, 0x00,                  // OEMNameLengthBytes[0]
+        0x4f, 0x45, 0x4d, 0x54, 0x65, 0x73,
+        0x74, 0x30, 0x00,            // "OEMTest0"
+        0x09, 0x00,                  // OEMNameLengthBytes[1]
+        0x4f, 0x45, 0x4d, 0x54, 0x65, 0x73,
+        0x74, 0x31, 0x00,            // "OEMTest1"
+        // clang-format on
+    };
+
+    size_t pdrDataLen = pdr.size();
+    size_t payloadLen = 1 + 4 + 4 + 1 + 2 + pdrDataLen + 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    auto rc = encode_get_pdr_resp(0, PLDM_SUCCESS, 0, 0, PLDM_START_AND_END,
+                                  pdrDataLen, pdr.data(), 0, resp);
+    if (rc == PLDM_SUCCESS)
+    {
+        EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    }
+}
+
+// Drives printRedfishResourcePDR for the complementary branches: no
+// resource-flag bits set (empty flags string -> else branch), an unversioned
+// major schema (0xff fields -> "Unversioned" branch), and zero
+// AdditionalResource and zero OEMName entries so both loops take the empty
+// path. Minimal layout per PLDM_PLATFORM_REDFISH_RESOURCE_PDR_MIN_LENGTH (41).
+TEST(GetPDR, ParseResponseMsgRedfishResourceMinimal)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetPDR cmd("platform", "getPDR", sub);
+
+    parseArgs(app, {"test", "-d", "1"});
+
+    std::vector<uint8_t> pdr{
+        // clang-format off
+        0x2, 0x0, 0x0, 0x0,        // record handle
+        0x1,                       // PDRHeaderVersion
+        PLDM_REDFISH_RESOURCE_PDR, // PDRType
+        0x0, 0x0,                  // recordChangeNumber
+        0x1f, 0x0,                 // dataLength (41 - 10)
+        0x11, 0x22, 0x33, 0x44,    // ResourceID
+        0x0,                       // ResourceFlags (none -> empty string)
+        0x1, 0x2, 0x3, 0x4,        // ContainingResourceID
+        0x1, 0x0,                  // ProposedContainingResourceLengthBytes
+        0x0,                       // ProposedContainingResourceName ""
+        0x1, 0x0,                  // SubURILengthBytes
+        0x0,                       // SubURI ""
+        0x0, 0x0,                  // AdditionalResourceIDCount
+        0xff, 0xff, 0xff, 0xff,    // MajorSchemaVersion (unversioned)
+        0x0, 0x0,                  // MajorSchemaDictionaryLengthBytes
+        0x0, 0x0, 0x0, 0x0,        // MajorSchemaDictionarySignature
+        0x1,                       // MajorSchemaNameLength
+        0x0,                       // MajorSchemaName ""
+        0x0, 0x0,                  // OEMCount
+        // clang-format on
+    };
+
+    size_t pdrDataLen = pdr.size();
+    size_t payloadLen = 1 + 4 + 4 + 1 + 2 + pdrDataLen + 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    auto rc = encode_get_pdr_resp(0, PLDM_SUCCESS, 0, 0, PLDM_START_AND_END,
+                                  pdrDataLen, pdr.data(), 0, resp);
+    if (rc == PLDM_SUCCESS)
+    {
+        EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    }
+}
+
+// Drives printRedfishActionPDR through parseResponseMsg with two
+// RelatedResourceID entries and two Action entries so both variable-length
+// loops iterate. Buffer bytes mirror the libpldm
+// decodeRedfishActionPdr.GoodTest.
+TEST(GetPDR, ParseResponseMsgRedfishAction)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetPDR cmd("platform", "getPDR", sub);
+
+    parseArgs(app, {"test", "-d", "1"});
+
+    std::vector<uint8_t> pdr{
+        // clang-format off
+        0x1, 0x0, 0x0, 0x0,      // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_REDFISH_ACTION_PDR, // PDRType
+        0x1, 0x0,                // recordChangeNumber
+        0x54, 0x0,               // dataLength
+        0x1,                     // ActionPDRIndex
+        0x2, 0x0,                // RelatedResourceCount
+        0x4, 0x3, 0x2, 0x1,      // RelatedResourceID[0]
+        0xf, 0xe, 0xd, 0xc,      // RelatedResourceID[1]
+        0x2,                     // ActionCount
+        0x6,                     // ActionNameLengthBytes[0]
+        0x52, 0x65, 0x73, 0x65, 0x74, 0x0, // "Reset"
+        0x13,                    // ActionPathLengthBytes[0]
+        0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e,
+        0x73, 0x2f, 0x54, 0x65, 0x73, 0x74,
+        0x2e, 0x52, 0x65, 0x73, 0x65, 0x74,
+        0x0,                     // "Actions/Test.Reset"
+        0xf,                     // ActionNameLengthBytes[1]
+        0x52, 0x65, 0x73, 0x65, 0x74, 0x54,
+        0x6f, 0x44, 0x65, 0x66, 0x61, 0x75,
+        0x6c, 0x74, 0x00,        // "ResetToDefault"
+        0x1c,                    // ActionPathLengthBytes[1]
+        0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e,
+        0x73, 0x2f, 0x54, 0x65, 0x73, 0x74,
+        0x2e, 0x52, 0x65, 0x73, 0x65, 0x74,
+        0x54, 0x6f, 0x44, 0x65, 0x66, 0x61,
+        0x75, 0x6c, 0x74, 0x0,   // "Actions/Test.ResetToDefault"
+        // clang-format on
+    };
+
+    size_t pdrDataLen = pdr.size();
+    size_t payloadLen = 1 + 4 + 4 + 1 + 2 + pdrDataLen + 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    auto rc = encode_get_pdr_resp(0, PLDM_SUCCESS, 0, 0, PLDM_START_AND_END,
+                                  pdrDataLen, pdr.data(), 0, resp);
+    if (rc == PLDM_SUCCESS)
+    {
+        EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    }
+}
+
+// Drives printRedfishActionPDR for the empty path: zero RelatedResourceID and
+// zero Action entries so both loops take the empty branch. Minimal layout per
+// PLDM_PLATFORM_REDFISH_ACTION_PDR_MIN_LENGTH (14).
+TEST(GetPDR, ParseResponseMsgRedfishActionMinimal)
+{
+    CLI::App app{"test"};
+    auto sub = app.add_subcommand("test", "test");
+    GetPDR cmd("platform", "getPDR", sub);
+
+    parseArgs(app, {"test", "-d", "1"});
+
+    std::vector<uint8_t> pdr{
+        // clang-format off
+        0x2, 0x0, 0x0, 0x0,      // record handle
+        0x1,                     // PDRHeaderVersion
+        PLDM_REDFISH_ACTION_PDR, // PDRType
+        0x0, 0x0,                // recordChangeNumber
+        0x4, 0x0,                // dataLength (14 - 10)
+        0x0,                     // ActionPDRIndex
+        0x0, 0x0,                // RelatedResourceCount
+        0x0,                     // ActionCount
+        // clang-format on
+    };
+
+    size_t pdrDataLen = pdr.size();
+    size_t payloadLen = 1 + 4 + 4 + 1 + 2 + pdrDataLen + 1;
+    std::vector<uint8_t> responseData(sizeof(pldm_msg_hdr) + payloadLen, 0);
+    auto resp = reinterpret_cast<pldm_msg*>(responseData.data());
+
+    auto rc = encode_get_pdr_resp(0, PLDM_SUCCESS, 0, 0, PLDM_START_AND_END,
+                                  pdrDataLen, pdr.data(), 0, resp);
+    if (rc == PLDM_SUCCESS)
+    {
+        EXPECT_NO_THROW(cmd.parseResponseMsg(resp, payloadLen));
+    }
+}
+
 TEST(GetPDR, ParseGetPDROptionPath)
 {
     CLI::App app{"test"};
