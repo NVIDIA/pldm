@@ -92,6 +92,19 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         terminusManager.discoverMctpTerminus(mctpInfos);
     }
 
+    /** @brief Load the static terminus config of the configured endpoints
+     *         from EM. Called before handleMctpEndpoints() for the same
+     *         endpoints, so the config is in place when the terminus is
+     *         created.
+     *
+     *  @param[in] configurations - EM config path to MctpInfo
+     */
+    void handleConfigurations(const Configurations& configurations) override
+    {
+        terminusManager.loadTerminusConfigFromEm(configurations,
+                                                 pldm::utils::DBusHandler());
+    }
+
     /** @brief Helper function to invoke registered handlers for
      *         the removed MCTP endpoints
      *

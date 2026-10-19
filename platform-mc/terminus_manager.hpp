@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include "common/types.hpp"
+#include "common/utils.hpp"
 #include "requester/handler.hpp"
 #include "terminus.hpp"
 
@@ -71,6 +73,20 @@ class TerminusManager
      *  @param[in] configPath - path to the configuration JSON file
      */
     void loadStaticTerminusConfig(const std::string& configPath);
+
+    /** @brief Load the static terminus config from the EM PLDM device
+     *         records. A record whose MCTPTargetName matches the name of a
+     *         configured endpoint supplies TerminusName, TerminusInstance
+     *         and CpuIndex for that endpoint's EID, replacing an entry
+     *         loaded from the JSON file.
+     *
+     *  @param[in] configurations - EM config path to MctpInfo, with the
+     *                              endpoint name resolved
+     *  @param[in] dbusHandler - D-Bus handler used to read the EM records
+     */
+    void loadTerminusConfigFromEm(
+        const Configurations& configurations,
+        const pldm::utils::DBusHandlerInterface& dbusHandler);
 
     /** @brief Send request PLDM message to tid. The function will
      *         return when received the response message from terminus.

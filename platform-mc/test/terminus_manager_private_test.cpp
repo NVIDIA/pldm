@@ -1,6 +1,7 @@
 #include "libpldm/base.h"
 
 #include "common/instance_id.hpp"
+#include "common/test/mocked_utils.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 #include "test/test_instance_id.hpp"
@@ -501,6 +502,165 @@ TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigEmptyTerminusName)
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
 
     fs::remove(configPath);
+}
+
+namespace
+{
+
+constexpr auto pldmFwDeviceIntf =
+    "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
+
+MctpInfo namedMctpInfo(eid endpointEid, const std::string& name)
+{
+    return MctpInfo(endpointEid, "12345678-0000-0000-0000-0000000000ee",
+                    "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB", 1, name,
+                    "xyz.openbmc_project.MCTP.Binding.BindingTypes.USB",
+                    std::nullopt);
+}
+
+pldm::utils::GetSubTreeResponse pldmRecordSubtree(
+    const std::vector<std::string>& paths)
+{
+    pldm::utils::GetSubTreeResponse subtree;
+    for (const auto& path : paths)
+    {
+        subtree.emplace_back(
+            path,
+            std::vector<std::pair<std::string, std::vector<std::string>>>{
+                {"xyz.openbmc_project.EntityManager", {pldmFwDeviceIntf}}});
+    }
+    return subtree;
+}
+
+} // namespace
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSetsAndDefaults)
+{
+    using ::testing::_;
+    using ::testing::Return;
+    using ::testing::StrEq;
+
+    MockdBusHandler dbus;
+    const std::string cpu0 =
+        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
+    const std::string cpu1 =
+        "/xyz/openbmc_project/inventory/system/board/P/CPU1";
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillOnce(Return(pldmRecordSubtree({cpu0, cpu1})));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(cpu0), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(cpu1), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_1")},
+            {"TerminusName", std::string("ProcessorModule_1")},
+            {"TerminusInstance", uint64_t{1}},
+            {"CpuIndex", uint64_t{2}}}));
+
+    const Configurations configurations{
+        {"/xyz/openbmc_project/inventory/system/board/P/HGX_CPU_0",
+         namedMctpInfo(14, "HGX_CPU_0")},
+        {"/xyz/openbmc_project/inventory/system/board/P/HGX_CPU_1",
+         namedMctpInfo(24, "HGX_CPU_1")}};
+    terminusManager.loadTerminusConfigFromEm(configurations, dbus);
+
+    ASSERT_EQ(2, terminusManager.eidToTerminusConfigMap.size());
+    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
+    EXPECT_EQ(0, std::get<0>(c0));
+    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
+    EXPECT_EQ(std::optional<uint16_t>(0), std::get<2>(c0));
+    const auto& c1 = terminusManager.eidToTerminusConfigMap.at(24);
+    EXPECT_EQ(1, std::get<0>(c1));
+    EXPECT_EQ("ProcessorModule_1", std::get<1>(c1));
+    EXPECT_EQ(std::optional<uint16_t>(2), std::get<2>(c1));
+}
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmOverridesFile)
+{
+    using ::testing::_;
+    using ::testing::Return;
+
+    terminusManager.eidToTerminusConfigMap[14] =
+        std::make_tuple(5, std::string("Stale"), std::optional<uint16_t>(3));
+
+    MockdBusHandler dbus;
+    const std::string cpu0 =
+        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillOnce(Return(pldmRecordSubtree({cpu0})));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")}}));
+
+    terminusManager.loadTerminusConfigFromEm(
+        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
+
+    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
+    EXPECT_EQ(0, std::get<0>(c0));
+    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
+    EXPECT_EQ(std::optional<uint16_t>(0), std::get<2>(c0));
+}
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
+{
+    using ::testing::_;
+    using ::testing::Return;
+    using ::testing::StrEq;
+
+    MockdBusHandler dbus;
+    const std::vector<std::string> paths{
+        "/r/noName", "/r/otherTarget", "/r/emptyName", "/r/badCpuIndex",
+        "/r/badInstance"};
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillOnce(Return(pldmRecordSubtree(paths)));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/noName"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/otherTarget"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_GPU_0")},
+            {"TerminusName", std::string("GPU")}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/emptyName"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("")}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/badCpuIndex"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"CpuIndex", std::string("0")}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/badInstance"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"TerminusInstance", int64_t{-1}}}));
+
+    terminusManager.loadTerminusConfigFromEm(
+        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
+
+    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
+}
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoRecords)
+{
+    using ::testing::_;
+    using ::testing::Throw;
+
+    MockdBusHandler dbus;
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillOnce(Throw(std::runtime_error("no PLDM device records")));
+    terminusManager.loadTerminusConfigFromEm(
+        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
+    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
+
+    // Endpoints without a resolved name do not query D-Bus at all.
+    EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(0);
+    MctpInfo unnamed = namedMctpInfo(15, "");
+    std::get<4>(unnamed) = std::nullopt;
+    terminusManager.loadTerminusConfigFromEm({{"/cfg/X", unnamed}}, dbus);
+    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
 }
 
 TEST_F(TerminusManagerPrivateTest, discoverMctpTerminusCompletedHandleCoverage)

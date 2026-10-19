@@ -23,10 +23,15 @@
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
+#include <utility>
+#include <variant>
 
 namespace pldm
 {
@@ -301,6 +306,158 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
         lg2::error(
             "Exception while loading static PLDM terminus configuration: {ERROR}",
             "ERROR", e.what());
+    }
+}
+
+namespace
+{
+
+/** @brief Read an optional non-negative integer property no larger than max.
+ *
+ *  @return the value, defaultValue when the property is absent, or -1 when
+ *          it is present but not an integer in [0, max]
+ */
+int64_t readUnsignedProperty(const pldm::utils::PropertyMap& props,
+                             const std::string& key, int64_t defaultValue,
+                             int64_t max)
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return defaultValue;
+    }
+    return std::visit(
+        [max](const auto& v) -> int64_t {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
+            {
+                if (std::cmp_greater_equal(v, 0) && std::cmp_less_equal(v, max))
+                {
+                    return static_cast<int64_t>(v);
+                }
+            }
+            return -1;
+        },
+        it->second);
+}
+
+} // namespace
+
+void TerminusManager::loadTerminusConfigFromEm(
+    const Configurations& configurations,
+    const pldm::utils::DBusHandlerInterface& dbusHandler)
+{
+    constexpr std::array pldmRecordIntfs{
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice",
+        "xyz.openbmc_project.Configuration.PLDMDevice"};
+
+    std::map<std::string, mctp_eid_t> nameToEid;
+    for (const auto& [path, mctpInfo] : configurations)
+    {
+        const auto& name = std::get<4>(mctpInfo);
+        if (name.has_value() && !name->empty())
+        {
+            nameToEid.insert_or_assign(*name, std::get<0>(mctpInfo));
+        }
+    }
+    if (nameToEid.empty())
+    {
+        return;
+    }
+
+    pldm::utils::GetSubTreeResponse subtree;
+    try
+    {
+        subtree = dbusHandler.getSubtree(
+            "/xyz/openbmc_project/inventory", 0,
+            {pldmRecordIntfs.begin(), pldmRecordIntfs.end()});
+    }
+    catch (const std::exception&)
+    {
+        // No PLDM device records published; keep the file config.
+        return;
+    }
+
+    for (const auto& [objPath, serviceMap] : subtree)
+    {
+        if (serviceMap.empty())
+        {
+            continue;
+        }
+        const auto& [service, intfs] = *serviceMap.begin();
+        auto intf =
+            std::find_first_of(intfs.begin(), intfs.end(),
+                               pldmRecordIntfs.begin(), pldmRecordIntfs.end());
+        if (intf == intfs.end())
+        {
+            continue;
+        }
+
+        pldm::utils::PropertyMap props;
+        try
+        {
+            props = dbusHandler.getDbusPropertiesVariant(
+                service.c_str(), objPath.c_str(), intf->c_str());
+        }
+        catch (const std::exception& e)
+        {
+            lg2::warning(
+                "Failed to read PLDM device record, PATH={PATH}, ERROR={ERROR}",
+                "PATH", objPath, "ERROR", e);
+            continue;
+        }
+
+        const auto* terminusName =
+            props.contains("TerminusName")
+                ? std::get_if<std::string>(&props.at("TerminusName"))
+                : nullptr;
+        if (terminusName == nullptr)
+        {
+            continue;
+        }
+        const auto* targetName =
+            props.contains("MCTPTargetName")
+                ? std::get_if<std::string>(&props.at("MCTPTargetName"))
+                : nullptr;
+        if (targetName == nullptr)
+        {
+            continue;
+        }
+        auto eidIt = nameToEid.find(*targetName);
+        if (eidIt == nameToEid.end())
+        {
+            continue;
+        }
+        const auto eid = eidIt->second;
+
+        auto inst = readUnsignedProperty(props, "TerminusInstance", 0,
+                                         std::numeric_limits<int>::max());
+        auto cpuIdx = readUnsignedProperty(
+            props, "CpuIndex", 0, std::numeric_limits<uint16_t>::max());
+        if (terminusName->empty() || inst < 0 || cpuIdx < 0)
+        {
+            lg2::warning(
+                "Invalid terminus configuration in PLDM device record, skipping. PATH={PATH}, EID={EID}",
+                "PATH", objPath, "EID", eid);
+            continue;
+        }
+
+        std::tuple<int, std::string, std::optional<uint16_t>> config{
+            static_cast<int>(inst), *terminusName,
+            static_cast<uint16_t>(cpuIdx)};
+        auto existing = eidToTerminusConfigMap.find(eid);
+        if (existing != eidToTerminusConfigMap.end() &&
+            existing->second != config)
+        {
+            lg2::warning(
+                "PLDM device record overrides the static terminus config file, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                "EID", eid, "TERMINUS_NAME", *terminusName);
+        }
+        eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
+        lg2::info(
+            "Loaded terminus config from PLDM device record: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
+            "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", *terminusName,
+            "CPU_INDEX", cpuIdx);
     }
 }
 
