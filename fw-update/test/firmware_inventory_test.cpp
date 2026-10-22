@@ -959,3 +959,50 @@ TEST(ManagerCoverage, CreateDownstreamEntriesPrunesStaleDevice)
     EXPECT_FALSE(
         manager.downstreamInventoryMap.contains(std::make_pair(testEid, 1)));
 }
+
+// A device with metadata takes its Manufacturer and Associations; a device
+// of the same FDP without metadata keeps the default Manufacturer, and an
+// FDP without any metadata gets the defaults throughout.
+TEST(ManagerCoverage, CreateDownstreamEntriesAppliesDeviceMeta)
+{
+    ::testing::NiceMock<sdbusplus::SdBusMock> sdbusMock;
+    auto busMock = sdbusplus::get_mocked_new(&sdbusMock);
+
+    ComponentInfoMap componentInfoMap{};
+    ComponentNameMap componentNameMap{};
+    FirmwareInventoryInfo fwInventoryInfo{};
+    const pldm::eid otherEid = testEid + 1;
+    DownstreamComponentInfoMap downstreamInfo{
+        {testEid,
+         {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})},
+          {1, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}},
+        {otherEid, {{0, std::make_tuple(CompVersion{"1.0"}, uint16_t{0})}}}};
+    DownstreamDeviceFwInvNameMap nameMap{
+        {testEid, {{0, "Optical_Transceiver_0"}, {1, "Plain_1"}}},
+        {otherEid, {{0, "Plain_0"}}}};
+    Manager manager(busMock, fwInventoryInfo, componentInfoMap,
+                    componentNameMap, downstreamInfo, nameMap);
+
+    const Associations assocs{
+        {"inventory", "activation", "/inv/CX_0/Ports/C3_1"},
+        {"inventory", "activation", "/inv/CX_0/Ports/C4_2"}};
+    manager.setDownstreamDeviceMeta(testEid, {{0, {assocs, "Vendor"}}});
+    manager.createDownstreamEntries(testEid);
+    manager.createDownstreamEntries(otherEid);
+
+    const auto& withMeta =
+        manager.downstreamInventoryMap.at(std::make_pair(testEid, 0));
+    EXPECT_EQ(withMeta->manufacturer(), "Vendor");
+    // The updateable association plus the two configured ones.
+    EXPECT_EQ(withMeta->associations().size(), 3U);
+
+    const auto& noDeviceMeta =
+        manager.downstreamInventoryMap.at(std::make_pair(testEid, 1));
+    EXPECT_EQ(noDeviceMeta->manufacturer(), "NVIDIA");
+    EXPECT_EQ(noDeviceMeta->associations().size(), 1U);
+
+    const auto& noEidMeta =
+        manager.downstreamInventoryMap.at(std::make_pair(otherEid, 0));
+    EXPECT_EQ(noEidMeta->manufacturer(), "NVIDIA");
+    EXPECT_EQ(noEidMeta->associations().size(), 1U);
+}

@@ -320,9 +320,12 @@ struct DownstreamDeviceConfig
     ComponentName name;
     /** @brief Associations copied onto each downstream device's object */
     Associations associations;
-    /** @brief Descriptor title the Manufacturer is taken from (e.g. VendorPN);
-     *         empty when not configured */
+    /** @brief Descriptor the Manufacturer is taken from (VendorPN or
+     *         IEEE_OUI); empty when not configured */
     std::string manufacturerNameSource;
+    /** @brief Manufacturer given directly in the configuration; used when
+     *         no ManufacturerNameSource is configured */
+    std::optional<std::string> manufacturer{};
 };
 using FirmwareInfo =
     std::tuple<CreateComponentIdNameMap, UpdateComponentIdNameMap>;

@@ -24,8 +24,10 @@
 
 #include <algorithm>
 #include <exception>
+#include <format>
 #include <limits>
 #include <map>
+#include <ranges>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -241,6 +243,13 @@ void unpackComponents(
                 if (const auto* src = std::get_if<std::string>(&it->second))
                 {
                     config.manufacturerNameSource = *src;
+                }
+            }
+            else if (auto it = cprops.find("Manufacturer"); it != cprops.end())
+            {
+                if (const auto* name = std::get_if<std::string>(&it->second))
+                {
+                    config.manufacturer = *name;
                 }
             }
             downstreamDevices[deviceIndex] = std::move(config);
@@ -520,31 +529,88 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
     return names;
 }
 
-std::optional<std::string> downstreamManufacturer(
-    const DownstreamDeviceConfig& config, const Descriptors& descriptors)
+namespace
 {
-    if (config.manufacturerNameSource != "VendorPN")
-    {
-        return std::nullopt;
-    }
 
+/** @brief IEEE OUI (upper-case hex, in IEEE registry order) → registered
+ *         organization name */
+const std::map<std::string, std::string> ieeeOuiManufacturers{
+    {"48B02D", "NVIDIA Corporation"},
+    {"343607", "PINEWAVE PTE. LTD."},
+    {"E8AC7E", "TERAHOP PTE.LTD."},
+};
+
+std::optional<std::string> manufacturerFromVendorDefined(
+    const std::string& descriptorTitle, const Descriptors& descriptors)
+{
     auto [first, last] = descriptors.equal_range(PLDM_FWUP_VENDOR_DEFINED);
     for (auto it = first; it != last; ++it)
     {
         const auto* info =
             std::get_if<VendorDefinedDescriptorInfo>(&it->second);
-        if (info == nullptr || std::get<VendorDefinedDescriptorTitle>(*info) !=
-                                   config.manufacturerNameSource)
+        if (info == nullptr ||
+            std::get<VendorDefinedDescriptorTitle>(*info) != descriptorTitle)
         {
             continue;
         }
         const auto& data = std::get<VendorDefinedDescriptorData>(*info);
-        std::string value(data.begin(), data.end());
-        value.erase(std::find(value.begin(), value.end(), '\0'), value.end());
+        auto value = utils::toString(variable_field{data.data(), data.size()});
+        value.erase(value.find_last_not_of(' ') + 1);
         if (!value.empty())
         {
             return value;
         }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> manufacturerFromIeeeOui(
+    const Descriptors& descriptors)
+{
+    auto ouis = descriptors.equal_range(PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID);
+    for (auto it = ouis.first; it != ouis.second; ++it)
+    {
+        const auto* data = std::get_if<DescriptorData>(&it->second);
+        if (data == nullptr ||
+            data->size() != PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID_LENGTH)
+        {
+            continue;
+        }
+        // The descriptor carries the OUI least significant byte first;
+        // the IEEE registry lists it most significant byte first.
+        std::string oui;
+        for (auto byte : *data | std::views::reverse)
+        {
+            oui += std::format("{:02X}", byte);
+        }
+        if (auto name = ieeeOuiManufacturers.find(oui);
+            name != ieeeOuiManufacturers.end())
+        {
+            return name->second;
+        }
+        // Unknown OUI: report it as is rather than guess a name.
+        return oui;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+std::optional<std::string> downstreamManufacturer(
+    const DownstreamDeviceConfig& config, const Descriptors& descriptors)
+{
+    if (config.manufacturerNameSource == "VendorPN")
+    {
+        return manufacturerFromVendorDefined(config.manufacturerNameSource,
+                                             descriptors);
+    }
+    if (config.manufacturerNameSource == "IEEE_OUI")
+    {
+        return manufacturerFromIeeeOui(descriptors);
+    }
+    if (config.manufacturerNameSource.empty())
+    {
+        return config.manufacturer;
     }
     return std::nullopt;
 }

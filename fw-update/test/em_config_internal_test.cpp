@@ -456,6 +456,129 @@ TEST_F(EmConfigInternalTest, fetchComponentInfoSkipsDownstreamEntryWithoutIndex)
     EXPECT_TRUE(info->emComponents.empty());
 }
 
+TEST_F(EmConfigInternalTest, fetchComponentInfoSkipsDownstreamEntryBadIndex)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "CX_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("CX_0")}});
+
+    // An index that does not fit in 16 bits cannot name a device.
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "0",
+        {{"Name", std::string("Optical_Transceiver_0")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"DownstreamDeviceIndex", uint64_t{70000}}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_TRUE(info->downstreamDevices.empty());
+}
+
+TEST_F(EmConfigInternalTest, fetchComponentInfoDownstreamEntrySourceOptional)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "CX_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("CX_0")}});
+
+    // No ManufacturerNameSource, and one of the wrong type: both leave the
+    // source unset.
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "0",
+        {{"Name", std::string("Optical_Transceiver_0")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"DownstreamDeviceIndex", uint64_t{0}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "1",
+        {{"Name", std::string("Optical_Transceiver_1")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"DownstreamDeviceIndex", uint64_t{1}},
+         {"ManufacturerNameSource", uint64_t{7}}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+    ASSERT_EQ(info->downstreamDevices.size(), 2u);
+    EXPECT_TRUE(info->downstreamDevices.at(0).manufacturerNameSource.empty());
+    EXPECT_TRUE(info->downstreamDevices.at(1).manufacturerNameSource.empty());
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerSkipsMismatchedDescriptors)
+{
+    // A descriptor of the wanted type but the other variant, one with another
+    // title, and a wrong-sized OUI are passed over for the one that matches.
+    const DownstreamDeviceConfig pnConfig{0, "n", {}, "VendorPN"};
+    const Descriptors pn{
+        {PLDM_FWUP_VENDOR_DEFINED, DescriptorData{'x'}},
+        {PLDM_FWUP_VENDOR_DEFINED, VendorDefinedDescriptorInfo{"Other", {'y'}}},
+        {PLDM_FWUP_VENDOR_DEFINED, VendorDefinedDescriptorInfo{"VendorPN", {}}},
+        {PLDM_FWUP_VENDOR_DEFINED,
+         VendorDefinedDescriptorInfo{"VendorPN", {'P', 'N'}}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(pnConfig, pn), "PN");
+
+    const DownstreamDeviceConfig ouiConfig{0, "n", {}, "IEEE_OUI"};
+    const Descriptors oui{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID,
+         VendorDefinedDescriptorInfo{"VendorPN", {'A'}}},
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x2d, 0xb0}},
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x2d, 0xb0, 0x48}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(ouiConfig, oui),
+              "NVIDIA Corporation");
+    EXPECT_EQ(em_config::downstreamManufacturer(
+                  ouiConfig,
+                  {{PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID,
+                    VendorDefinedDescriptorInfo{"VendorPN", {'A'}}}}),
+              std::nullopt);
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerFromConfig)
+{
+    const DownstreamDeviceConfig config{
+        0, "Optical_Transceiver_0", {}, "", "Vendor"};
+    const Descriptors descriptors{};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, descriptors), "Vendor");
+
+    const DownstreamDeviceConfig unset{0, "Optical_Transceiver_0", {}, ""};
+    EXPECT_FALSE(
+        em_config::downstreamManufacturer(unset, descriptors).has_value());
+
+    const DownstreamDeviceConfig sourced{
+        0, "Optical_Transceiver_0", {}, "VendorPN", "Vendor"};
+    EXPECT_FALSE(
+        em_config::downstreamManufacturer(sourced, descriptors).has_value());
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerReadFromConfigEntry)
+{
+    Configurations configurations;
+    configurations.emplace("/em/dev0", makeMctpInfo(12, "CX_0"));
+
+    EmConfigTestDBusHandler::setSubtreeResponse(
+        {{devPath, {{"svc", {fwDeviceIntf}}}}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("CX_0")}});
+
+    const std::string base = std::string(fwDeviceIntf) + ".Components";
+    EmConfigTestDBusHandler::setProps(
+        devPath, base + "0",
+        {{"Name", std::string("Optical_Transceiver_0")},
+         {"ComponentIdentifier", uint64_t{65535}},
+         {"DownstreamDeviceIndex", uint64_t{0}},
+         {"Manufacturer", std::string("Vendor")}});
+
+    auto info = em_config::fetchComponentInfo(configurations, 12);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->downstreamDevices.at(0).manufacturer, "Vendor");
+}
+
 TEST_F(EmConfigInternalTest, downstreamManufacturerFromVendorPN)
 {
     const DownstreamDeviceConfig config{
@@ -467,6 +590,45 @@ TEST_F(EmConfigInternalTest, downstreamManufacturerFromVendorPN)
          VendorDefinedDescriptorInfo{"VendorPN", pn}}};
 
     EXPECT_EQ(em_config::downstreamManufacturer(config, descriptors), "T-RS8");
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerFromIeeeOui)
+{
+    const DownstreamDeviceConfig config{
+        0, "Optical_Transceiver_0", {}, "IEEE_OUI"};
+    const Descriptors known{
+        {PLDM_FWUP_VENDOR_DEFINED,
+         VendorDefinedDescriptorInfo{"VendorPN", {'A'}}},
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x2d, 0xb0, 0x48}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, known),
+              "NVIDIA Corporation");
+
+    const Descriptors second{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x07, 0x36, 0x34}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, second),
+              "PINEWAVE PTE. LTD.");
+
+    const Descriptors third{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x7e, 0xac, 0xe8}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, third),
+              "TERAHOP PTE.LTD.");
+}
+
+TEST_F(EmConfigInternalTest, downstreamManufacturerIeeeOuiUnknownOrAbsent)
+{
+    const DownstreamDeviceConfig config{0, "n", {}, "IEEE_OUI"};
+
+    // An OUI outside the lookup is reported as upper-case hex, in registry
+    // order.
+    const Descriptors unknown{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x00, 0xab, 0xcd}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, unknown), "CDAB00");
+
+    // Descriptor absent, or not 3 bytes.
+    EXPECT_EQ(em_config::downstreamManufacturer(config, {}), std::nullopt);
+    const Descriptors badSize{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x2d, 0xb0}}};
+    EXPECT_EQ(em_config::downstreamManufacturer(config, badSize), std::nullopt);
 }
 
 TEST_F(EmConfigInternalTest, downstreamManufacturerUnavailable)

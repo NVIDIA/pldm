@@ -75,9 +75,12 @@ constexpr uint16_t downstreamDeviceComponentId = 0xFFFF;
  *
  *  @param[in] config - downstream device entity-manager configuration
  *  @param[in] descriptors - descriptors reported by the downstream device
- *  @return the data of the vendor-defined descriptor titled
- *          ManufacturerNameSource, std::nullopt when the source is unset or
- *          unsupported, or the descriptor is absent or empty
+ *  @return for "VendorPN", the data of the vendor-defined descriptor of
+ *          that title; for "IEEE_OUI", the manufacturer name the IEEE
+ *          Assigned Company ID maps to (the OUI as upper-case hex in registry
+ *          order when it is not in the lookup); with no source configured,
+ *          the configured Manufacturer, if any; std::nullopt when the source
+ *          is unsupported, or the descriptor is absent or empty
  */
 std::optional<std::string> downstreamManufacturer(
     const DownstreamDeviceConfig& config, const Descriptors& descriptors);

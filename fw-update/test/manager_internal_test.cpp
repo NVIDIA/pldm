@@ -461,6 +461,100 @@ TEST_F(ManagerInternalTest,
     EXPECT_FALSE(manager.downstreamDeviceNameMap[eid].contains(1));
 }
 
+// A downstream device with an entity-manager entry takes the configured name
+// and, per its ManufacturerNameSource, a Manufacturer from its descriptors;
+// one without an entry keeps the generated name and gets no metadata.
+TEST_F(ManagerInternalTest, createDownstreamInventoryNamesFromEmConfig)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    const pldm::eid eid = 7;
+    manager.downstreamComponentInfoMap[eid] = DownstreamComponentInfo{
+        {0, DownstreamCompInfo{"v1", 0}},
+        {1, DownstreamCompInfo{"v1", 0}},
+        {2, DownstreamCompInfo{"v1", 0}},
+    };
+    const Associations assocs{{"inventory", "activation", "/inv/CX_0/P1"}};
+    manager.downstreamDeviceConfigMap[eid] = {
+        {0, DownstreamDeviceConfig{0, "Optical_Transceiver_0", assocs,
+                                   "IEEE_OUI"}},
+        {2, DownstreamDeviceConfig{2, "Optical_Transceiver_2", {}, "IEEE_OUI"}},
+    };
+    // Device 0 reports an OUI; device 2 has no descriptors recorded.
+    manager.downstreamDescriptorMap[eid][0] = Descriptors{
+        {PLDM_FWUP_IEEE_ASSIGNED_COMPANY_ID, DescriptorData{0x2d, 0xb0, 0x48}}};
+
+    manager.createDownstreamInventory(eid);
+
+    const auto& names = manager.downstreamDeviceNameMap.at(eid);
+    EXPECT_EQ(names.at(0), "Optical_Transceiver_0");
+    EXPECT_EQ(names.at(1), "PLDM_Device_Firmware_Device_7_DownstreamDevice_1");
+    EXPECT_EQ(names.at(2), "Optical_Transceiver_2");
+
+    const auto& meta =
+        manager.fwInventoryManager.downstreamDeviceMetaMap.at(eid);
+    ASSERT_EQ(meta.size(), 2U);
+    EXPECT_EQ(meta.at(0).manufacturer, "NVIDIA Corporation");
+    EXPECT_EQ(meta.at(0).associations, assocs);
+    // No descriptors for the device: the default Manufacturer stays.
+    EXPECT_EQ(meta.at(2).manufacturer, "NVIDIA");
+    EXPECT_TRUE(meta.at(2).associations.empty());
+}
+
+// The FDP has configuration for devices, but descriptors were recorded for
+// another EID only: the configured name still applies, the Manufacturer stays
+// the default.
+TEST_F(ManagerInternalTest,
+       createDownstreamInventoryConfiguredDeviceWithoutDescriptors)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    const pldm::eid eid = 8;
+    manager.downstreamComponentInfoMap[eid] = DownstreamComponentInfo{
+        {0, DownstreamCompInfo{"v1", 0}},
+    };
+    manager.downstreamDeviceConfigMap[eid] = {
+        {0, DownstreamDeviceConfig{0, "Optical_Transceiver_0", {}, "VendorPN"}},
+    };
+    manager.downstreamDescriptorMap[eid + 1][0] = Descriptors{};
+    manager.createDownstreamInventory(eid);
+
+    EXPECT_EQ(manager.downstreamDeviceNameMap.at(eid).at(0),
+              "Optical_Transceiver_0");
+    EXPECT_EQ(manager.fwInventoryManager.downstreamDeviceMetaMap.at(eid)
+                  .at(0)
+                  .manufacturer,
+              "NVIDIA");
+
+    // Descriptors recorded for the EID, but not for this device index.
+    manager.downstreamDescriptorMap[eid][5] = Descriptors{};
+    manager.createDownstreamInventory(eid);
+    EXPECT_EQ(manager.fwInventoryManager.downstreamDeviceMetaMap.at(eid)
+                  .at(0)
+                  .manufacturer,
+              "NVIDIA");
+}
+
+// A reused EID must not inherit the previous device's downstream naming when
+// the new one has no entity-manager entry.
+TEST_F(ManagerInternalTest, populateComponentInfoFromEmClearsStaleDownstream)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    const pldm::eid eid = 5;
+    manager.downstreamDeviceConfigMap[eid] = {
+        {0, DownstreamDeviceConfig{0, "Stale_Name", {}, "VendorPN"}}};
+
+    EXPECT_FALSE(manager.populateComponentInfoFromEM(eid));
+    EXPECT_FALSE(manager.downstreamDeviceConfigMap.contains(eid));
+}
+
 TEST_F(ManagerInternalTest, isEidExcludedFromFwUpdateUnseenEidIsNeverExcluded)
 {
     const std::filesystem::path configPath{
