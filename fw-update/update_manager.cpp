@@ -558,7 +558,11 @@ void UpdateManager::createMessageRegistry(
             comp);
 
     std::string compName;
-    if (componentNameMap.contains(eid))
+    if (const auto downstreamName = downstreamUpdateName(eid))
+    {
+        compName = *downstreamName;
+    }
+    else if (componentNameMap.contains(eid))
     {
         auto eidSearch = componentNameMap.find(eid);
         const auto& compIdNameInfo = eidSearch->second;
@@ -612,7 +616,11 @@ void UpdateManager::createMessageRegistryResourceErrors(
             comp);
 
     std::string compName;
-    if (componentNameMap.contains(eid))
+    if (const auto downstreamName = downstreamUpdateName(eid))
+    {
+        compName = *downstreamName;
+    }
+    else if (componentNameMap.contains(eid))
     {
         auto eidSearch = componentNameMap.find(eid);
         const auto& compIdNameInfo = eidSearch->second;
@@ -2757,10 +2765,49 @@ void UpdateManager::clearExistingActivation()
     }
 }
 
+std::optional<SoftwareName> UpdateManager::downstreamJobName(
+    mctp_eid_t eid, const std::vector<DownstreamDeviceIndex>& indices) const
+{
+    const auto devices = downstreamDeviceNameMap.find(eid);
+    if (indices.empty() || devices == downstreamDeviceNameMap.end())
+    {
+        return std::nullopt;
+    }
+    SoftwareName names;
+    for (const auto index : indices)
+    {
+        const auto device = devices->second.find(index);
+        if (device == devices->second.end())
+        {
+            return std::nullopt;
+        }
+        names += names.empty() ? "" : " ";
+        names += device->second;
+    }
+    return names;
+}
+
+std::optional<SoftwareName> UpdateManager::downstreamUpdateName(
+    mctp_eid_t eid) const
+{
+    const auto updater = deviceUpdaterMap.find(eid);
+    if (updater == deviceUpdaterMap.end() || !updater->second ||
+        !updater->second->isDownstreamUpdate())
+    {
+        return std::nullopt;
+    }
+    return downstreamJobName(
+        eid, updater->second->getDownstreamJob().affectedDeviceIndices);
+}
+
 ComponentName UpdateManager::getComponentName(
     mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
     size_t compIndex)
 {
+    if (const auto downstreamName = downstreamUpdateName(eid))
+    {
+        return *downstreamName;
+    }
     const auto& compImageInfos = parser->getComponentImageInfos();
     const auto& applicableComponents =
         std::get<ApplicableComponents>(fwDeviceIDRecord);
@@ -2835,11 +2882,20 @@ void UpdateManager::cancelAllUpdates()
             const auto& fwDeviceIDRecord = fwDeviceIDRecords[offset];
             const auto numComponents =
                 std::get<ApplicableComponents>(fwDeviceIDRecord).size();
+            const auto job = downstreamJobByRecordOffset.find(offset);
             for (size_t compIndex = 0; compIndex < numComponents; compIndex++)
             {
+                std::optional<SoftwareName> queuedName;
+                if (job != downstreamJobByRecordOffset.end())
+                {
+                    queuedName = downstreamJobName(
+                        eid, job->second.affectedDeviceIndices);
+                }
                 createLogEntry(
                     resourceErrorDetected,
-                    getComponentName(eid, fwDeviceIDRecord, compIndex),
+                    queuedName
+                        ? *queuedName
+                        : getComponentName(eid, fwDeviceIDRecord, compIndex),
                     errorMessage, resolution);
             }
         }

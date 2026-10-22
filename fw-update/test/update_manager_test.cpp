@@ -847,6 +847,116 @@ TEST_F(UpdateManagerTest, getComponentName)
     EXPECT_EQ(componentNameResult, componentName);
 }
 
+TEST_F(UpdateManagerTest, getComponentNameUsesDownstreamDeviceName)
+{
+    eid eid1 = 0;
+    const std::string componentName{"Component1"};
+    constexpr uint16_t compIdentifier1 = 100;
+    ComponentInfoMap componentInfoMap2{
+        {eid1,
+         {{std::make_pair(static_cast<uint16_t>(10), compIdentifier1),
+           std::make_tuple(static_cast<uint8_t>(20), std::string("Comp1v2.0"),
+                           static_cast<uint16_t>(0))}}}};
+    const DescriptorMap descriptorMap2{
+        {eid1,
+         {{PLDM_FWUP_IANA_ENTERPRISE_ID,
+           std::vector<uint8_t>{0x0a, 0x0b, 0x0c, 0xd}}}}};
+    ComponentNameMap componentNameMap2{
+        {eid1, {{compIdentifier1, componentName}}}};
+    const DownstreamDescriptorMap downstreamDescriptorMap{};
+    const DownstreamComponentInfoMap downstreamComponentInfoMap{};
+    const DownstreamDeviceFwInvNameMap downstreamDeviceNameMap{
+        {eid1, {{0, "Optical_Transceiver_0"}, {1, "Optical_Transceiver_1"}}}};
+
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, descriptorMap2, componentInfoMap2,
+        componentNameMap2, true, nullptr, emptyExpectedComponentIds, {}, {}, {},
+        {}, downstreamDescriptorMap, downstreamComponentInfoMap,
+        downstreamDeviceNameMap);
+
+    FirmwareDeviceIDRecord fwDeviceIDRecord = {
+        1,
+        {0x00},
+        "VersionString2",
+        {{PLDM_FWUP_UUID,
+          std::vector<uint8_t>{0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+                               0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6,
+                               0x75}}},
+        {}};
+    processPackageStream(updateManager, "./test_pkg");
+
+    // No update running for the endpoint: the component's own name.
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              componentName);
+
+    const uint8_t packageByte = 0;
+    auto addUpdater = [&](const DownstreamUpdateJob& job) {
+        updateManager.deviceUpdaterMap[eid1] = std::make_unique<DeviceUpdater>(
+            eid1, &packageByte, sizeof(packageByte), fwDeviceIDRecord,
+            updateManager.parser->getComponentImageInfos(),
+            componentInfoMap2.at(eid1), componentNameMap2.at(eid1), 512,
+            &updateManager, job);
+    };
+
+    updateManager.deviceUpdaterMap[eid1] = nullptr;
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              componentName);
+
+    addUpdater({1, DownstreamUpdateAddressMode::SingleDevice, {1}});
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              "Optical_Transceiver_1");
+
+    // A job covering several devices reports all of their names.
+    addUpdater({0, DownstreamUpdateAddressMode::AllMatchingDevices, {0, 1}});
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              "Optical_Transceiver_0 Optical_Transceiver_1");
+
+    // One unnamed device among several keeps the component's name.
+    addUpdater({1, DownstreamUpdateAddressMode::AllMatchingDevices, {1, 7}});
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              componentName);
+
+    // A device without a configured name keeps the component's name.
+    addUpdater({7, DownstreamUpdateAddressMode::SingleDevice, {7}});
+    EXPECT_EQ(updateManager.getComponentName(eid1, fwDeviceIDRecord, 0),
+              componentName);
+
+    // An update of another endpoint is not affected.
+    addUpdater({1, DownstreamUpdateAddressMode::SingleDevice, {1}});
+    EXPECT_EQ(updateManager.getComponentName(eid1 + 1, fwDeviceIDRecord, 0),
+              std::string{});
+}
+
+TEST_F(UpdateManagerTest, downstreamJobNameIgnoresTheRunningUpdate)
+{
+    eid eid1 = 0;
+    ComponentInfoMap componentInfoMap2{};
+    ComponentNameMap componentNameMap2{};
+    const DescriptorMap descriptorMap2{};
+    const DownstreamDescriptorMap downstreamDescriptorMap{};
+    const DownstreamComponentInfoMap downstreamComponentInfoMap{};
+    const DownstreamDeviceFwInvNameMap downstreamDeviceNameMap{
+        {eid1, {{0, "Optical_Transceiver_0"}, {1, "Optical_Transceiver_1"}}}};
+
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, descriptorMap2, componentInfoMap2,
+        componentNameMap2, true, nullptr, emptyExpectedComponentIds, {}, {}, {},
+        {}, downstreamDescriptorMap, downstreamComponentInfoMap,
+        downstreamDeviceNameMap);
+
+    // A queued job is named from its own devices, whichever job runs.
+    EXPECT_EQ(updateManager.downstreamJobName(eid1, {1}),
+              "Optical_Transceiver_1");
+    EXPECT_EQ(updateManager.downstreamJobName(eid1, {0}),
+              "Optical_Transceiver_0");
+    EXPECT_EQ(updateManager.downstreamJobName(eid1, {0, 1}),
+              "Optical_Transceiver_0 Optical_Transceiver_1");
+
+    EXPECT_EQ(updateManager.downstreamJobName(eid1, {}), std::nullopt);
+    EXPECT_EQ(updateManager.downstreamJobName(eid1, {1, 7}), std::nullopt);
+    EXPECT_EQ(updateManager.downstreamJobName(eid1 + 1, {1}), std::nullopt);
+}
+
 TEST_F(UpdateManagerTest, getComponentName_DoesNotFindComponent)
 {
     eid eid1 = 0;

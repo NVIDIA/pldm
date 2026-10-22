@@ -42,6 +42,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -650,7 +651,9 @@ class UpdateManager : public UpdateManagerBase
     void publishFinalActivationStatus(software::Activation::Activations state,
                                       std::function<void()> onPublished = {});
 
-    /** @brief Get the component name corresponding to the input params */
+    /** @brief Get the component name corresponding to the input params.
+     *         For a downstream device update this is the D-Bus object name
+     *         of each affected downstream device. */
     ComponentName getComponentName(
         mctp_eid_t eid, const FirmwareDeviceIDRecord& fwDeviceIDRecord,
         size_t compIndex) override;
@@ -835,6 +838,29 @@ class UpdateManager : public UpdateManagerBase
     const DownstreamDescriptorMap& downstreamDescriptorMap;
     const DownstreamComponentInfoMap& downstreamComponentInfoMap;
     const DownstreamDeviceFwInvNameMap& downstreamDeviceNameMap;
+
+    /** @brief Object names of the given downstream devices behind eid,
+     *         separated by a space.
+     *
+     *  @param[in] eid - Endpoint ID of the firmware device proxy
+     *  @param[in] indices - Downstream device indices of one update job
+     *
+     *  @return The names, or nullopt when indices is empty or any of them
+     *          has no name
+     */
+    std::optional<SoftwareName> downstreamJobName(
+        mctp_eid_t eid,
+        const std::vector<DownstreamDeviceIndex>& indices) const;
+
+    /** @brief Object names of the downstream devices that the update of eid
+     *         targets, separated by a space.
+     *
+     *  @param[in] eid - Endpoint ID of the firmware device proxy
+     *
+     *  @return The names, or nullopt when eid is not updating downstream
+     *          devices or any of them has no name
+     */
+    std::optional<SoftwareName> downstreamUpdateName(mctp_eid_t eid) const;
 
     /** @brief Maximum size in bytes of the variable payload a DeviceUpdater
      *         may request; shared by the initial per-eid construction loop
