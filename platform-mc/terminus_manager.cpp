@@ -630,9 +630,28 @@ exec::task<int> TerminusManager::setTidOverMctpWithRetry(mctp_eid_t eid,
     co_return rc;
 }
 
+std::optional<uint8_t> TerminusManager::allocateInstanceId(mctp_eid_t eid)
+{
+    try
+    {
+        return instanceIdDb.next(eid);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to allocate PLDM instance ID for eid={EID}: {ERROR}",
+                   "EID", eid, "ERROR", e);
+        return std::nullopt;
+    }
+}
+
 exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = allocateInstanceId(eid);
+    if (!instanceIdResult)
+    {
+        co_return PLDM_ERROR;
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_get_tid_req(instanceId, requestMsg);
@@ -669,7 +688,12 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, tid_t& tid)
 
 exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, tid_t tid)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    auto instanceIdResult = allocateInstanceId(eid);
+    if (!instanceIdResult)
+    {
+        co_return PLDM_ERROR;
+    }
+    auto instanceId = instanceIdResult.value();
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
     auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
     auto rc = encode_set_tid_req(instanceId, tid, requestMsg);
@@ -796,8 +820,13 @@ exec::task<int> TerminusManager::SendRecvPldmMsg(tid_t tid, Request& request,
         }
 
         auto eid = std::get<0>(mctpInfo.value());
+        auto instanceIdResult = allocateInstanceId(eid);
+        if (!instanceIdResult)
+        {
+            co_return PLDM_ERROR;
+        }
         auto requestMsg = reinterpret_cast<pldm_msg*>(request.data());
-        requestMsg->hdr.instance_id = instanceIdDb.next(eid);
+        requestMsg->hdr.instance_id = instanceIdResult.value();
         auto rc = co_await SendRecvPldmMsgOverMctp(eid, request, responseMsg,
                                                    responseLen);
         co_return rc;

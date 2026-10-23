@@ -25,6 +25,7 @@
 #include "requester/mctp_endpoint_discovery.hpp"
 #include "terminus.hpp"
 
+#include <optional>
 #include <queue>
 #include <unordered_map>
 
@@ -234,6 +235,18 @@ class TerminusManager
      *  @return coroutine return_value - PLDM completion code
      */
     exec::task<int> getTerminusUID(tid_t tid, UUID& uuidStr);
+
+    /** @brief Allocate a PLDM instance ID for eid without throwing
+     *
+     *  InstanceIdDb::next() throws when all 32 instance IDs of an EID are
+     *  in use. That can happen while an endpoint is rebooting and several
+     *  requesters keep polling it. The request coroutines run as detached
+     *  tasks, so an escaping exception terminates pldmd.
+     *
+     *  @param[in] eid - Destination EID
+     *  @return the instance ID, or std::nullopt when none is available
+     */
+    std::optional<uint8_t> allocateInstanceId(mctp_eid_t eid);
 
     sdeventplus::Event& event;
     RequesterHandler& handler;
