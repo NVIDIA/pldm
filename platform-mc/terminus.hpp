@@ -26,6 +26,7 @@
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #endif
 
+#include "common/em_device.hpp"
 #include "common/types.hpp"
 #include "entity.hpp"
 #include "numeric_effecter.hpp"
@@ -422,6 +423,11 @@ class Terminus
      *          false - the device inventory doesn't belong to the terminus
      */
     exec::task<int> checkDeviceInventory(const std::string& objPath);
+
+    /** @brief Fill the aux-name and port-info tables from a PLDMDevice
+     *         record of the device at @p objPath. */
+    void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
+                          const std::string& objPath);
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI

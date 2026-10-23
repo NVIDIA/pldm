@@ -84,7 +84,10 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         // must trigger a re-scan just like the NSM variant above.
         if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
             intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation" ||
-            intf == "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
+            intf ==
+                "xyz.openbmc_project.Configuration.MctpEndpointAssociation" ||
+            intf == pldm::em_device::pldmDeviceIntf ||
+            intf == pldm::em_device::nvDeviceIntf)
         {
             interested = true;
         }
@@ -140,6 +143,39 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 
 exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 {
+    // A device described by the platform topology: the chassis object named
+    // after an NvDevice whose EID is this terminus, with the sensor names and
+    // ports in the device's PLDMDevice record.
+    if (objPath.starts_with(pldm::em_device::chassisRoot))
+    {
+        const std::string deviceName =
+            objPath.substr(std::string(pldm::em_device::chassisRoot).size());
+        const std::optional<MctpInfo> mctpInfo =
+            terminusManager.toMctpInfo(tid);
+        auto dev = deviceName.find('/') == std::string::npos
+                       ? pldm::em_device::deviceByName(deviceName)
+                       : std::nullopt;
+        if (mctpInfo && dev && dev->eid && *dev->eid == std::get<0>(*mctpInfo))
+        {
+            if (auto record = pldm::em_device::pldmDevice(deviceName))
+            {
+                // Sensor records that still carry their own config (e.g.
+                // ThermalParameters) are read first; the record adds to them.
+                co_await getSensorAuxNameFromEM(
+                    0, 0, static_cast<uint8_t>(*dev->eid), objPath);
+#ifdef OEM_NVIDIA
+                co_await getPortInfoFromEM(objPath);
+#endif
+                loadDeviceRecord(*record, objPath);
+#ifdef OEM_NVIDIA
+                co_await getInfoForNVSwitchFromEM(objPath);
+                co_await getSensorEventInfoFromEM(objPath);
+#endif
+                co_return PLDM_SUCCESS;
+            }
+        }
+    }
+
     try
     {
         auto getSubTreeResponse = co_await utils::coGetSubTree(
@@ -261,6 +297,38 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
     }
 
     co_return PLDM_FAILED;
+}
+
+void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
+                                const std::string& objPath)
+{
+    for (const auto& [sensorId, name] : record.auxNames)
+    {
+        AuxiliaryNames auxNameTbl;
+        auxNameTbl.push_back({{"en", name}});
+        sensorAuxNameOverwriteTbl[sensorId] =
+            std::make_tuple(auxNameTbl, objPath);
+    }
+#ifdef OEM_NVIDIA
+    for (const auto& [sensorId, port] : record.ports)
+    {
+        std::vector<dbus::PathAssociation> associations;
+        associations.push_back({});
+        auto& assoc = associations.back();
+        assoc.forward = "associated_port";
+        assoc.reverse = "associated_port";
+        assoc.path = objPath + "/NetworkAdapters/" + record.networkAdapter +
+                     "/Ports/" + port;
+        sensorPortInfoOverwriteTbl[sensorId] = std::make_tuple(
+            PortInfoIntf::convertPortTypeFromString(
+                "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType."
+                "BidirectionalPort"),
+            std::string{}, record.portMaxSpeed.value_or(0), associations);
+    }
+#endif
+    lg2::debug("loadDeviceRecord: {AUX} aux names, {PORTS} ports for {PATH}",
+               "AUX", record.auxNames.size(), "PORTS", record.ports.size(),
+               "PATH", objPath);
 }
 
 exec::task<int> Terminus::getSensorAuxNameFromEM(
