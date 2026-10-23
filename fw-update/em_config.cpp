@@ -309,6 +309,11 @@ bool unpackDeviceComponents(const std::string& targetName,
             {
                 compAssocs.emplace_back(rule.forward, rule.backward, endpoint);
             }
+            if (!rule.chassisEndpoint.empty())
+            {
+                compAssocs.emplace_back("inventory_chassis", rule.backward,
+                                        rule.chassisEndpoint);
+            }
         }
         emComponents[compId] = {compName, std::move(compAssocs),
                                 rule.manufacturer, rule.updateOnly};

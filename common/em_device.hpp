@@ -431,6 +431,9 @@ struct ComponentRule
     std::string forward;
     std::string backward;
     std::vector<std::string> endpoints;
+    /** @brief Chassis the component also belongs to, associated by the
+     *         "inventory_chassis" forward name; empty when there is none. */
+    std::string chassisEndpoint;
     std::string manufacturer = "NVIDIA";
     bool updateOnly = false;
 };
@@ -475,7 +478,7 @@ inline ComponentRule componentRule(const Device& dev,
                 chassisRoot + dev.name + "/NetworkAdapters/" +
                 record.networkAdapter);
         }
-        rule.endpoints.push_back(chassisRoot + dev.name);
+        rule.chassisEndpoint = chassisRoot + dev.name;
     }
     else if (dev.kind == "hmc_hpm_sma" && id == hpmCpld)
     {
