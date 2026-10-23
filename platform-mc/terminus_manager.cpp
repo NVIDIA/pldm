@@ -16,6 +16,7 @@
  */
 #include "terminus_manager.hpp"
 
+#include "common/em_device.hpp"
 #include "common/sleep.hpp"
 #include "manager.hpp"
 
@@ -365,6 +366,41 @@ void TerminusManager::loadTerminusConfigFromEm(
         return;
     }
 
+    auto applyConfig = [this](mctp_eid_t eid, int inst,
+                              const std::string& terminusName, uint16_t cpuIdx,
+                              const std::string& source) {
+        std::tuple<int, std::string, std::optional<uint16_t>> config{
+            inst, terminusName, cpuIdx};
+        auto existing = eidToTerminusConfigMap.find(eid);
+        if (existing != eidToTerminusConfigMap.end() &&
+            existing->second != config)
+        {
+            lg2::warning(
+                "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                "SOURCE", source, "EID", eid, "TERMINUS_NAME", terminusName);
+        }
+        eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
+        lg2::info(
+            "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
+            "SOURCE", source, "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
+            terminusName, "CPU_INDEX", cpuIdx);
+    };
+
+    // CPU devices of the platform topology: the terminus config follows from
+    // the device. A PLDM device record below overrides it.
+    const auto platform = pldm::em_device::platformNames(dbusHandler);
+    for (const auto& dev : pldm::em_device::devices(dbusHandler))
+    {
+        auto eidIt = nameToEid.find(dev.name);
+        auto config = pldm::em_device::terminusConfig(dev, platform);
+        if (eidIt == nameToEid.end() || !config || config->name.empty())
+        {
+            continue;
+        }
+        applyConfig(eidIt->second, config->instance, config->name,
+                    config->cpuIndex, "NvDevice " + dev.name);
+    }
+
     pldm::utils::GetSubTreeResponse subtree;
     try
     {
@@ -442,22 +478,8 @@ void TerminusManager::loadTerminusConfigFromEm(
             continue;
         }
 
-        std::tuple<int, std::string, std::optional<uint16_t>> config{
-            static_cast<int>(inst), *terminusName,
-            static_cast<uint16_t>(cpuIdx)};
-        auto existing = eidToTerminusConfigMap.find(eid);
-        if (existing != eidToTerminusConfigMap.end() &&
-            existing->second != config)
-        {
-            lg2::warning(
-                "PLDM device record overrides the static terminus config file, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-                "EID", eid, "TERMINUS_NAME", *terminusName);
-        }
-        eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
-        lg2::info(
-            "Loaded terminus config from PLDM device record: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
-            "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", *terminusName,
-            "CPU_INDEX", cpuIdx);
+        applyConfig(eid, static_cast<int>(inst), *terminusName,
+                    static_cast<uint16_t>(cpuIdx), "PLDM device record");
     }
 }
 
