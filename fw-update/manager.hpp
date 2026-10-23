@@ -18,6 +18,7 @@
 
 #include "activation.hpp"
 #include "aggregate_update_manager.hpp"
+#include "common/em_device.hpp"
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
@@ -293,8 +294,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // component without one gets the fallback
             // "<targetName>_C<ComponentIdentifier>" (or a generated name when
             // no configured_by target name is available).
-            const std::string targetName =
+            std::string targetName =
                 em_config::targetNameForEid(configurations, eid);
+            if (auto record = pldm::em_device::pldmDevice(targetName);
+                record && !record->firmwareName.empty())
+            {
+                targetName = record->firmwareName;
+            }
             auto& componentIdNameMap = componentNameMap[eid];
             for (const auto& [compKey, compInfo] : componentInfoMap[eid])
             {
@@ -807,8 +813,6 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
 
         constexpr auto pldmDeviceInventoryIntf =
             "xyz.openbmc_project.Configuration.PLDMDeviceInventory";
-        constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
-        constexpr auto skuIntf = "xyz.openbmc_project.Inventory.Decorator.SKU";
 
         pldm::utils::GetSubTreeResponse subtree;
         try
@@ -881,54 +885,75 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             {
                 continue;
             }
+            writeIdentityTo(eid, uuid, writeUuid, createPath, updatePath);
+            return;
+        }
 
-            // Extract EC-SKU / AP-SKU from the device's vendor-defined PLDM
-            // descriptors (origin/develop parity).
-            std::string ecsku;
-            std::string apsku;
-            if (auto descIt = descriptorMap.find(eid);
-                descIt != descriptorMap.end())
-            {
-                std::tie(ecsku, apsku) = extractSkus(descIt->second);
-            }
+        // Topology-described device: paths follow from the device kind.
+        auto dev = pldm::em_device::deviceByName(targetName);
+        if (!dev)
+        {
+            return;
+        }
+        auto paths = pldm::em_device::inventoryPaths(
+            *dev, pldm::em_device::platformNames());
+        if (paths)
+        {
+            writeIdentityTo(eid, uuid, writeUuid, paths->create, paths->update);
+        }
+    }
 
-            // Write the device identity onto the EM-owned objects, retrying
-            // when each object/interface appears (never depending on NSM):
-            //   - RoT chassis (CreateInventoryPath): Common.UUID (on inventory
-            //     creation only) + EC-SKU
-            //   - update target (UpdateInventoryPath): AP-SKU
-            // The UUID is written once, when the inventory is created
-            // (writeUuid), never on a refresh. The SKUs are written only when
-            // they differ from the last value written for this EID: pldmd is
-            // the sole authority for them, so an unchanged refresh would
-            // otherwise re-issue an identical blocking D-Bus Set (with its
-            // synchronous ObjectMapper lookup) per object every cycle and stall
-            // the event loop long enough to drop in-flight PLDM responses. A
-            // real SKU change (post-update) differs and still writes;
-            // onInventoryObjectAdded repopulates a re-created object
-            // regardless.
-            auto& lastSku = lastWrittenSkus[eid];
-            if (!createPath.empty())
+    /** @brief Write UUID / EC-SKU onto the RoT chassis (@p createPath) and
+     *         AP-SKU onto the update target (@p updatePath). */
+    void writeIdentityTo(eid eid, const UUID& uuid, bool writeUuid,
+                         const std::string& createPath,
+                         const std::string& updatePath)
+    {
+        constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
+        constexpr auto skuIntf = "xyz.openbmc_project.Inventory.Decorator.SKU";
+
+        // Extract EC-SKU / AP-SKU from the device's vendor-defined PLDM
+        // descriptors (origin/develop parity).
+        std::string ecsku;
+        std::string apsku;
+        if (auto descIt = descriptorMap.find(eid);
+            descIt != descriptorMap.end())
+        {
+            std::tie(ecsku, apsku) = extractSkus(descIt->second);
+        }
+
+        // Write the device identity onto the EM-owned objects, retrying
+        // when each object/interface appears (never depending on NSM):
+        //   - RoT chassis (CreateInventoryPath): Common.UUID (on inventory
+        //     creation only) + EC-SKU
+        //   - update target (UpdateInventoryPath): AP-SKU
+        // The UUID is written once, when the inventory is created
+        // (writeUuid), never on a refresh. The SKUs are written only when
+        // they differ from the last value written for this EID: pldmd is
+        // the sole authority for them, so an unchanged refresh would
+        // otherwise re-issue an identical blocking D-Bus Set (with its
+        // synchronous ObjectMapper lookup) per object every cycle and stall
+        // the event loop long enough to drop in-flight PLDM responses. A
+        // real SKU change (post-update) differs and still writes;
+        // onInventoryObjectAdded repopulates a re-created object
+        // regardless.
+        auto& lastSku = lastWrittenSkus[eid];
+        if (!createPath.empty())
+        {
+            if (writeUuid)
             {
-                if (writeUuid)
-                {
-                    writeInventoryPropWhenReady(createPath, uuidIntf, "UUID",
-                                                uuid);
-                }
-                if (ecsku != lastSku.ecsku)
-                {
-                    writeInventoryPropWhenReady(createPath, skuIntf, "SKU",
-                                                ecsku);
-                    lastSku.ecsku = ecsku;
-                }
+                writeInventoryPropWhenReady(createPath, uuidIntf, "UUID", uuid);
             }
-            if (!updatePath.empty() && apsku != lastSku.apsku)
+            if (ecsku != lastSku.ecsku)
             {
-                writeInventoryPropWhenReady(updatePath, skuIntf, "SKU", apsku);
-                lastSku.apsku = apsku;
+                writeInventoryPropWhenReady(createPath, skuIntf, "SKU", ecsku);
+                lastSku.ecsku = ecsku;
             }
-            // At most one PLDMDeviceInventory entry matches a target.
-            break;
+        }
+        if (!updatePath.empty() && apsku != lastSku.apsku)
+        {
+            writeInventoryPropWhenReady(updatePath, skuIntf, "SKU", apsku);
+            lastSku.apsku = apsku;
         }
     }
 

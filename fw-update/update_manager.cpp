@@ -17,6 +17,7 @@
 #include "update_manager.hpp"
 
 #include "activation.hpp"
+#include "common/em_device.hpp"
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
@@ -222,6 +223,46 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                 {
                     refreshEidSet.insert(static_cast<mctp_eid_t>(e));
                 }
+            }
+        }
+    }
+
+    // Devices described by the platform topology (NvDevice + Transport), with
+    // IgnoreMessageTypes from their MCTPEndpoint override record.
+    for (const auto& dev : pldm::em_device::devices())
+    {
+        const auto medium =
+            pldm::em_device::stringProp(dev.transport, "Medium");
+        if (medium != "usb" && medium != "i2c" && medium != "spi")
+        {
+            continue;
+        }
+        if (dev.eid)
+        {
+            auto overrides = pldm::em_device::endpointOverrides(dev.name);
+            if (overrides && configIgnoresPldm(*overrides))
+            {
+                info(
+                    "seedRefreshEidsFromStaticConfig: skipping EID {EID} of {NAME}: config ignores PLDM (MCTP message type 1)",
+                    "EID", *dev.eid, "NAME", dev.name);
+            }
+            else
+            {
+                refreshEidSet.insert(static_cast<mctp_eid_t>(*dev.eid));
+            }
+        }
+        if (!includeBridgePools)
+        {
+            continue;
+        }
+        auto poolStart =
+            pldm::em_device::numberProp(dev.transport, "PoolStartEID");
+        auto poolEnd = pldm::em_device::numberProp(dev.transport, "PoolEndEID");
+        if (poolStart && poolEnd && *poolStart <= *poolEnd)
+        {
+            for (uint64_t e = *poolStart; e <= *poolEnd; ++e)
+            {
+                refreshEidSet.insert(static_cast<mctp_eid_t>(e));
             }
         }
     }

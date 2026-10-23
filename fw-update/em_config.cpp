@@ -18,6 +18,7 @@
 
 #include "libpldm/firmware_update.h"
 
+#include "common/em_device.hpp"
 #include "common/utils.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -277,6 +278,45 @@ void unpackComponents(
     }
 }
 
+/** @brief Components of the PLDMDevice record of @p targetName (the
+ *         NvDevice name), with associations and policy derived from the
+ *         device kind. False when the device has no PLDMDevice record. */
+bool unpackDeviceComponents(const std::string& targetName,
+                            CreateComponentIdNameMap& emComponents,
+                            ComponentIdNameMap& idNameMap)
+{
+    auto record = pldm::em_device::pldmDevice(targetName);
+    if (!record || record->components.empty())
+    {
+        return false;
+    }
+    auto dev = pldm::em_device::deviceByName(targetName);
+    if (!dev)
+    {
+        warning("No NvDevice named {NAME} for its PLDMDevice record", "NAME",
+                targetName);
+        return false;
+    }
+    const auto platform = pldm::em_device::platformNames();
+    for (const auto& [compId, compName] : record->components)
+    {
+        auto rule =
+            pldm::em_device::componentRule(*dev, platform, *record, compId);
+        Associations compAssocs;
+        if (!rule.updateOnly)
+        {
+            for (const auto& endpoint : rule.endpoints)
+            {
+                compAssocs.emplace_back(rule.forward, rule.backward, endpoint);
+            }
+        }
+        emComponents[compId] = {compName, std::move(compAssocs),
+                                rule.manufacturer, rule.updateOnly};
+        idNameMap[compId] = compName;
+    }
+    return true;
+}
+
 } // namespace
 
 std::string targetNameForEid(const Configurations& configurations,
@@ -362,6 +402,12 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
         DeviceComponentInfo info;
         unpackComponents(service, objPath, pldmFwDeviceIntf, info.emComponents,
                          info.idNameMap, info.downstreamDevices);
+        return info;
+    }
+
+    DeviceComponentInfo info;
+    if (unpackDeviceComponents(targetName, info.emComponents, info.idNameMap))
+    {
         return info;
     }
     return std::nullopt;
@@ -463,6 +509,32 @@ std::set<std::string> fetchConfiguredFirmwareTargets()
             targets.insert(*targetName);
         }
     }
+
+    const std::string suffix(pldm::em_device::pldmSuffix);
+    for (const auto& [objPath, service] :
+         pldm::em_device::objectsWith(pldm::em_device::pldmDeviceIntf))
+    {
+        auto props = pldm::em_device::getAll(service, objPath,
+                                             pldm::em_device::pldmDeviceIntf);
+        if (!props)
+        {
+            continue;
+        }
+        const auto recordName = pldm::em_device::stringProp(*props, "Name");
+        if (!recordName.ends_with(suffix))
+        {
+            continue;
+        }
+        const auto targetName =
+            recordName.substr(0, recordName.size() - suffix.size());
+        CreateComponentIdNameMap emComponents;
+        ComponentIdNameMap idNameMap;
+        if (unpackDeviceComponents(targetName, emComponents, idNameMap) &&
+            !expectedComponentIds(emComponents).empty())
+        {
+            targets.insert(targetName);
+        }
+    }
     return targets;
 }
 
@@ -525,6 +597,17 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
                 names[*staticEid].insert(*name);
             }
         }
+    }
+
+    for (const auto& dev : pldm::em_device::devices())
+    {
+        const auto medium =
+            pldm::em_device::stringProp(dev.transport, "Medium");
+        if (!dev.eid || medium.empty() || medium == "bridge")
+        {
+            continue;
+        }
+        names[static_cast<pldm::eid>(*dev.eid)].insert(dev.name);
     }
     return names;
 }
