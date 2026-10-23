@@ -2582,6 +2582,46 @@ TEST_F(UpdateManagerTest, processPackageInvokesRefreshCallbackWhenConfigured)
     }));
 }
 
+// nvbug 6980417: isTarget decides the severity of what the pre-update refresh
+// reports for an endpoint. A request without Targets is a best-effort update
+// of whatever is reachable, so no endpoint is a target and an endpoint the
+// refresh cannot reach (unreachable, or in recovery) is reported
+// Informational instead of rolling the task up to Critical. The regression
+// treated every endpoint as a target whenever Targets was empty.
+TEST_F(UpdateManagerTest, wholeSystemRequestRefreshesEveryEndpointAsNonTarget)
+{
+    const std::vector<uint8_t> packageUuid{
+        0x16, 0x20, 0x23, 0xC9, 0x3E, 0xC5, 0x41, 0x15,
+        0x95, 0xF4, 0x48, 0x70, 0x1D, 0x49, 0xD6, 0x75};
+    DescriptorMap localDescriptorMap{
+        {1, {{PLDM_FWUP_UUID, packageUuid}}},
+        {2,
+         {{PLDM_FWUP_UUID,
+           std::vector<uint8_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+                                0x0F}}}}};
+    ComponentNameMap localComponentNames{
+        {1, {{100, "PackagedComponent"}}},
+        {2, {{200, "OtherComponent"}}},
+    };
+    std::vector<std::tuple<mctp_eid_t, bool, bool>> refreshCalls{};
+
+    UpdateManager updateManager(
+        event, reqHandler, instanceIdDb, localDescriptorMap, componentInfoMap,
+        localComponentNames, true,
+        [&refreshCalls](mctp_eid_t eid, bool isTarget,
+                        bool preUpdateValidation) -> exec::task<int> {
+            refreshCalls.emplace_back(eid, isTarget, preUpdateValidation);
+            co_return 0;
+        });
+
+    // No Targets: every discovered endpoint is refreshed, none as a target.
+    EXPECT_EQ(processPackageStream(updateManager, "./test_pkg"), 0);
+    EXPECT_THAT(refreshCalls, testing::UnorderedElementsAre(
+                                  std::make_tuple(1, false, false),
+                                  std::make_tuple(2, false, false)));
+}
+
 TEST_F(UpdateManagerTest, targetedRequestIgnoresPreUpdateValidationOption)
 {
     const std::vector<uint8_t> packageUuid{

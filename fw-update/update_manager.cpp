@@ -1083,8 +1083,10 @@ exec::task<void> UpdateManager::processPackageData(
         exec::async_scope refreshScope;
         for (const auto& eid : refreshEids)
         {
-            bool isTarget = (compTargetList.empty() && targets.empty()) ||
-                            compTargetList.contains(eid);
+            // isTarget sets the severity of refresh failures: Critical only
+            // for an endpoint named in Targets. A request without Targets is
+            // best-effort, so its failures are Informational.
+            bool isTarget = compTargetList.contains(eid);
             // State is passed as coroutine parameters (copied into the frame)
             // rather than lambda captures, which would dangle once the
             // temporary lambda is destroyed at the first suspension.

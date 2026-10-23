@@ -17,6 +17,7 @@
 
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
+#include "common/utils.hpp"
 #include "fw-update/fw_update_utility.hpp"
 #include "requester/handler.hpp"
 #include "requester/mctp_endpoint_discovery.hpp"
@@ -44,6 +45,7 @@
 #include <boost/asio/io_context.hpp>
 #include <com/nvidia/State/DeviceState/server.hpp>
 #include <sdbusplus/asio/object_server.hpp>
+#include <xyz/openbmc_project/Logging/Entry/server.hpp>
 
 #include <array>
 #include <chrono>
@@ -490,6 +492,131 @@ TEST_F(InventoryManagerInternalTest,
                              downstreamComponentInfoMap);
 
     EXPECT_TRUE(manager.logDeviceStatusErrors(8, true, "CoverageFW"));
+}
+
+namespace
+{
+
+using LogLevel = sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level;
+
+std::string levelString(LogLevel level)
+{
+    return sdbusplus::xyz::openbmc_project::Logging::server::convertForMessage(
+        level);
+}
+
+constexpr auto firmwareInRecoveryId = "NvidiaUpdate.1.0.FirmwareInRecovery";
+constexpr auto resourceErrorsId = "ResourceEvent.1.0.ResourceErrorsDetected";
+
+// Severity of the recorded FWUpdate log entry carrying messageId, or an
+// empty string when no such entry was recorded.
+std::string recordedSeverity(
+    const std::vector<pldm::utils::RecordedLoggingCall>& calls,
+    const std::string& messageId)
+{
+    for (const auto& call : calls)
+    {
+        auto idIt = call.additionalData.find("REDFISH_MESSAGE_ID");
+        auto nsIt = call.additionalData.find("namespace");
+        if (idIt != call.additionalData.end() && idIt->second == messageId &&
+            nsIt != call.additionalData.end() && nsIt->second == "FWUpdate")
+        {
+            return call.severity;
+        }
+    }
+    return {};
+}
+
+// Publishes a DeviceStatus for eid holding a FirmwareInRecovery entry (as
+// fw-status commits for a device in recovery) next to an MCTP error.
+std::shared_ptr<sdbusplus::asio::dbus_interface> publishRecoveryDeviceStatus(
+    AsyncDbusObjectServer& loggingService, pldm::eid eid)
+{
+    auto statusIface = loggingService.server->add_interface(
+        "/com/nvidia/state/device_status/" + std::to_string(eid),
+        "com.nvidia.State.DeviceState");
+    statusIface->register_property(
+        "DeviceStatus",
+        makeStatusMap(
+            DeviceState::DeviceHealth::Degraded,
+            {{1,
+              DeviceState::ErrorClass::Recovery,
+              {{"REDFISH_MESSAGE_ID", firmwareInRecoveryId},
+               {"REDFISH_MESSAGE_ARGS", "HGX_SBIOS_FMC_0"},
+               {"REDFISH_RESOLUTION", "Perform device FW recovery"}}},
+             {2,
+              DeviceState::ErrorClass::MCTP,
+              {{"REDFISH_MESSAGE_ID", resourceErrorsId},
+               {"REDFISH_MESSAGE_ARGS", "HGX_CPU_0, unreachable"}}}}));
+    statusIface->initialize();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    return statusIface;
+}
+
+} // namespace
+
+// nvbug 6980417: the update-time refresh of an endpoint that is in recovery
+// (so unreachable over PLDM) replays its DeviceStatus onto the FWUpdate task.
+// The replayed severity follows isTarget: a request without Targets refreshes
+// every endpoint as a non-target and must report the recovery precondition
+// Informational, so the partial update proceeds without a Critical task. A
+// named target, and pre-update validation, keep Critical.
+TEST_F(InventoryManagerInternalTest,
+       refreshSingleEndpointReplaysRecoveryStatusBySeverityOfTarget)
+{
+    constexpr pldm::eid eid = 14;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    const MctpMedium medium =
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.USB";
+    const MctpBinding binding =
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.USB";
+    AsyncDbusObjectServer loggingService("xyz.openbmc_project.Logging");
+    auto statusIface = publishRecoveryDeviceStatus(loggingService, eid);
+
+    InventoryManager manager(nullptr, reqHandler, instanceIdDb, nullptr,
+                             nullptr, nullptr, descriptorMap,
+                             downstreamDescriptorMap, componentInfoMap,
+                             downstreamComponentInfoMap);
+    auto& conn =
+        pldm::utils::RecordingAsioConnectionProvider::getAsioConnection();
+    dbus::MctpInterfaces mctpInterfaces;
+
+    auto refreshUnreachable = [&](bool isTarget, bool logCritical) {
+        manager.mctpEidMap[eid] = std::make_tuple(uuid, medium, binding);
+        descriptorMap.emplace(
+            eid, Descriptors{{PLDM_FWUP_IANA_ENTERPRISE_ID,
+                              std::vector<uint8_t>{0x0A, 0x0B, 0x0C, 0x0D}}});
+        conn->reset();
+        auto refresh = manager.refreshSingleEndpoint(eid, mctpInterfaces,
+                                                     isTarget, logCritical);
+        auto rc = stdexec::sync_wait(std::move(refresh));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_NE(std::get<0>(rc.value()), PLDM_SUCCESS);
+        EXPECT_FALSE(descriptorMap.contains(eid));
+    };
+
+    // Request without Targets (the Vera recovery package flow): not a
+    // target, so the replayed entries are Informational.
+    refreshUnreachable(false, false);
+    ASSERT_EQ(conn->loggingCalls.size(), 2U);
+    EXPECT_EQ(recordedSeverity(conn->loggingCalls, firmwareInRecoveryId),
+              levelString(LogLevel::Informational));
+    EXPECT_EQ(recordedSeverity(conn->loggingCalls, resourceErrorsId),
+              levelString(LogLevel::Informational));
+
+    // The request named this device: a Critical the caller asked for.
+    refreshUnreachable(true, false);
+    ASSERT_EQ(conn->loggingCalls.size(), 2U);
+    EXPECT_EQ(recordedSeverity(conn->loggingCalls, firmwareInRecoveryId),
+              levelString(LogLevel::Critical));
+    EXPECT_EQ(recordedSeverity(conn->loggingCalls, resourceErrorsId),
+              levelString(LogLevel::Critical));
+
+    // Pre-update validation rejects the whole request: Critical even though
+    // the endpoint is not a named target.
+    refreshUnreachable(false, true);
+    EXPECT_EQ(recordedSeverity(conn->loggingCalls, firmwareInRecoveryId),
+              levelString(LogLevel::Critical));
 }
 
 TEST_F(InventoryManagerInternalTest,
