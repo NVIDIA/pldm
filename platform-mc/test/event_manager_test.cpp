@@ -43,8 +43,13 @@
 #include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <sys/mman.h>
+#include <unistd.h>
+
+#include <algorithm>
 #include <array>
 #include <filesystem>
+#include <memory>
 
 #include <gtest/gtest.h>
 
@@ -56,6 +61,36 @@ using namespace std::chrono;
 using namespace pldm::platform_mc;
 
 constexpr uint8_t mockTerminusManagerLocalEid = 0x08;
+
+using NamedEvents = std::vector<std::pair<std::string, std::vector<uint8_t>>>;
+
+// Copies data to the end of a page that is followed by an inaccessible page,
+// so that a read past the data faults in any build, not only with ASan.
+static std::shared_ptr<uint8_t> guardedCopy(const std::vector<uint8_t>& data)
+{
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    if (data.size() > page)
+    {
+        return nullptr;
+    }
+    auto* map = static_cast<uint8_t*>(
+        mmap(nullptr, 2 * page, PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    if (map == MAP_FAILED)
+    {
+        return nullptr;
+    }
+    std::shared_ptr<uint8_t> mapping(map, [page](uint8_t* addr) {
+        EXPECT_EQ(0, munmap(addr, 2 * page));
+    });
+    if (mprotect(map + page, page, PROT_NONE) != 0)
+    {
+        return nullptr;
+    }
+    uint8_t* start = map + page - data.size();
+    std::copy(data.begin(), data.end(), start);
+    return {mapping, start};
+}
 
 static std::vector<uint8_t> makeStateSensorPdr(
     uint16_t sensorId, uint16_t entityType, uint16_t entityInstance,
@@ -837,6 +872,135 @@ TEST_F(EventManagerProtectedTest, handlePdrRepositoryChgEventDispatch)
               eventManager.handlePlatformEvent(
                   tid, PLDM_PDR_REPOSITORY_CHG_EVENT, tooShort.data(),
                   tooShort.size(), platformEventStatus));
+}
+
+TEST_F(EventManagerProtectedTest, handlePdrRepositoryChgEventChangeRecordBounds)
+{
+    constexpr pldm::tid_t tid = 0x42;
+    constexpr auto refreshAll = static_cast<uint8_t>(REFRESH_ENTIRE_REPOSITORY);
+    constexpr auto handles = static_cast<uint8_t>(FORMAT_IS_PDR_HANDLES);
+    constexpr auto deleted = static_cast<uint8_t>(PLDM_RECORDS_DELETED);
+    constexpr auto added = static_cast<uint8_t>(PLDM_RECORDS_ADDED);
+    constexpr auto modified = static_cast<uint8_t>(PLDM_RECORDS_MODIFIED);
+
+    std::vector<uint8_t> fullRecord{handles, 1, added, 0xff};
+    fullRecord.resize(fullRecord.size() + (0xff * sizeof(uint32_t)));
+
+    // Change records that fill the event data exactly are accepted.
+    const NamedEvents valid{
+        {"three records, one without entries",
+         {handles, 3, deleted, 1, 0x10, 0, 0, 0, added, 0, added, 1, 0x11, 0, 0,
+          0}},
+        {"one record with the maximum 255 entries", fullRecord},
+    };
+    for (const auto& [name, data] : valid)
+    {
+        SCOPED_TRACE(name);
+        auto guarded = guardedCopy(data);
+        ASSERT_NE(nullptr, guarded);
+        uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
+        EXPECT_EQ(PLDM_SUCCESS,
+                  eventManager.handlePlatformEvent(
+                      tid, PLDM_PDR_REPOSITORY_CHG_EVENT, guarded.get(),
+                      data.size(), platformEventStatus));
+        EXPECT_EQ(PLDM_EVENT_NO_LOGGING, platformEventStatus);
+    }
+
+    // Without the bounds check, the first two events would still be rejected,
+    // but only after a read past the event data, which faults on the guard
+    // page. 0x40 entries need 256 bytes, which wraps to 0 in a uint8_t.
+    const NamedEvents malformed{
+        {"entries past the event data",
+         {handles, 1, added, 0x40, 0x10, 0, 0, 0}},
+        {"entries short by one byte",
+         {handles, 1, added, 2, 0x10, 0, 0, 0, 0x11, 0, 0}},
+        {"fewer records than counted", {handles, 2, added, 1, 0x10, 0, 0, 0}},
+        {"more records than counted",
+         {handles, 1, added, 1, 0x10, 0, 0, 0, modified, 1, 0x11, 0, 0, 0}},
+        {"refreshEntireRepository with a record", {refreshAll, 1, added, 0}},
+        {"refreshEntireRepository with a trailing byte", {refreshAll, 0, 0}},
+    };
+    for (const auto& [name, data] : malformed)
+    {
+        SCOPED_TRACE(name);
+        auto guarded = guardedCopy(data);
+        ASSERT_NE(nullptr, guarded);
+        uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
+        EXPECT_EQ(PLDM_ERROR,
+                  eventManager.handlePlatformEvent(
+                      tid, PLDM_PDR_REPOSITORY_CHG_EVENT, guarded.get(),
+                      data.size(), platformEventStatus));
+        EXPECT_EQ(PLDM_EVENT_LOGGING_REJECTED, platformEventStatus);
+    }
+}
+
+TEST_F(EventManagerPollingTest, handlePdrRepositoryChgEventGetPdrRequests)
+{
+    constexpr pldm::tid_t tid = 0x65;
+    constexpr auto handles = static_cast<uint8_t>(FORMAT_IS_PDR_HANDLES);
+    constexpr auto added = static_cast<uint8_t>(PLDM_RECORDS_ADDED);
+    constexpr auto modified = static_cast<uint8_t>(PLDM_RECORDS_MODIFIED);
+    std::string uuid("00000000-0000-0000-0000-000000000065");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    terminus->initalized = true; // take the incremental GetPDR path
+    termini[tid] = terminus;
+    pldm::MctpInfo mctpInfo(
+        15, "f72d6f90-5675-11ed-9b6a-0242ac120165",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    ASSERT_EQ(tid, terminusManager.mapTid(mctpInfo, tid));
+
+    // A malformed event is rejected before any of its records is processed:
+    // no GetPDR is sent for the valid first record.
+    const NamedEvents malformed{
+        {"bad second record",
+         {handles, 2, added, 1, 0x10, 0, 0, 0, modified, 2, 0x11, 0, 0, 0}},
+        {"more records than counted",
+         {handles, 1, added, 1, 0x10, 0, 0, 0, modified, 1, 0x11, 0, 0, 0}},
+    };
+    for (const auto& [name, data] : malformed)
+    {
+        SCOPED_TRACE(name);
+        uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
+        EXPECT_EQ(PLDM_ERROR,
+                  eventManager.handlePlatformEvent(
+                      tid, PLDM_PDR_REPOSITORY_CHG_EVENT, data.data(),
+                      data.size(), platformEventStatus));
+        EXPECT_EQ(PLDM_EVENT_LOGGING_REJECTED, platformEventStatus);
+        EXPECT_TRUE(terminusManager.requests.empty());
+    }
+
+    // A valid event sends GetPDR for each handle, in order. The handles are at
+    // offsets 6 and 10 of the event data, so not 4-byte aligned.
+    std::vector<uint8_t> unaligned{handles, 2,    added, 0,    added,
+                                   2,       0x78, 0x56,  0x34, 0x12,
+                                   0xef,    0xcd, 0xab,  0x90};
+    uint8_t platformEventStatus = PLDM_EVENT_NO_LOGGING;
+    EXPECT_EQ(PLDM_SUCCESS,
+              eventManager.handlePlatformEvent(
+                  tid, PLDM_PDR_REPOSITORY_CHG_EVENT, unaligned.data(),
+                  unaligned.size(), platformEventStatus));
+    EXPECT_EQ(PLDM_EVENT_NO_LOGGING, platformEventStatus);
+    const std::array<uint32_t, 2> expected{0x12345678, 0x90abcdef};
+    ASSERT_EQ(expected.size(), terminusManager.requests.size());
+    for (std::size_t i = 0; i < expected.size(); ++i)
+    {
+        const auto& request = terminusManager.requests[i];
+        const auto* getPdr = reinterpret_cast<const pldm_msg*>(request.data());
+        EXPECT_EQ(PLDM_GET_PDR, getPdr->hdr.command);
+        uint32_t recordHandle = 0;
+        uint32_t dataTransferHandle = 0;
+        uint8_t transferOpFlag = 0;
+        uint16_t requestCount = 0;
+        uint16_t recordChangeNumber = 0;
+        ASSERT_EQ(PLDM_SUCCESS,
+                  decode_get_pdr_req(
+                      getPdr, request.size() - sizeof(pldm_msg_hdr),
+                      &recordHandle, &dataTransferHandle, &transferOpFlag,
+                      &requestCount, &recordChangeNumber));
+        EXPECT_EQ(expected[i], recordHandle);
+    }
 }
 
 TEST_F(EventManagerProtectedTest, handlePlatformEventAdditionalCoverage)

@@ -20,6 +20,7 @@
 #include "libpldm/utils.h"
 
 #include "common/sleep.hpp"
+#include "common/utils.hpp"
 #include "fw-update/manager.hpp"
 #include "oem_events.hpp"
 #include "platform_manager.hpp"
@@ -397,49 +398,25 @@ int EventManager::handlePlatformEvent(
             return PLDM_ERROR;
         }
 
-        bool refreshAll = (eventDataFormat == REFRESH_ENTIRE_REPOSITORY);
-        std::vector<std::pair<uint8_t, std::vector<uint32_t>>> changeRecords;
-
-        if (!refreshAll && eventDataFormat == FORMAT_IS_PDR_HANDLES)
+        if (eventDataFormat == REFRESH_ENTIRE_REPOSITORY)
         {
-            const uint8_t* recData = eventData + dataOffset;
-            size_t recSize = eventDataSize - dataOffset;
-            while (recSize)
+            // DSP0248: refreshEntireRepository carries no change records.
+            if (numberOfChangeRecords != 0 || eventDataSize != dataOffset)
             {
-                uint8_t op = 0;
-                uint8_t numEntries = 0;
-                size_t recOffset = 0;
-                drc = decode_pldm_pdr_repository_change_record_data(
-                    recData, recSize, &op, &numEntries, &recOffset);
-                if (drc != PLDM_SUCCESS)
-                {
-                    lg2::error(
-                        "PDRRepositoryChgEvent: change-record decode failed, rc={RC}",
-                        "RC", drc);
-                    break;
-                }
-                std::vector<uint32_t> handles;
-                auto handlePtr =
-                    reinterpret_cast<const uint32_t*>(recData + recOffset);
-                handles.reserve(numEntries);
-                for (uint8_t i = 0; i < numEntries; ++i)
-                {
-                    handles.push_back(le32toh(handlePtr[i]));
-                }
-                lg2::info(
-                    "PDRRepositoryChgEvent: tid={TID} changeRecord op={OP} numHandles={N}",
-                    "TID", tid, "OP", op, "N", numEntries);
-                changeRecords.emplace_back(op, std::move(handles));
-                size_t advance = recOffset + (numEntries * sizeof(uint32_t));
-                if (advance == 0 || advance > recSize)
-                {
-                    break;
-                }
-                recData += advance;
-                recSize -= advance;
+                lg2::error(
+                    "PDRRepositoryChgEvent: refreshEntireRepository for tid={TID} has numberOfChangeRecords={N} and {EXTRA} extra bytes",
+                    "TID", tid, "N", numberOfChangeRecords, "EXTRA",
+                    eventDataSize - dataOffset);
+                platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+                return PLDM_ERROR;
             }
+            stdexec::start_detached(
+                processPdrRepositoryChgEvent(tid, true, {}),
+                exec::default_task_context<int>(exec::inline_scheduler{}));
+            return PLDM_SUCCESS;
         }
-        else if (!refreshAll)
+
+        if (eventDataFormat != FORMAT_IS_PDR_HANDLES)
         {
             lg2::error(
                 "PDRRepositoryChgEvent: unsupported eventDataFormat={FMT} for tid={TID}, ignoring",
@@ -448,13 +425,57 @@ int EventManager::handlePlatformEvent(
             return PLDM_ERROR;
         }
 
-        lg2::info(
-            "PDRRepositoryChgEvent: tid={TID}, refreshAll={REFRESH}, changeRecords={N}",
-            "TID", tid, "REFRESH", refreshAll, "N", changeRecords.size());
+        std::vector<std::pair<uint8_t, std::vector<uint32_t>>> changeRecords;
+        const uint8_t* recData = eventData + dataOffset;
+        std::size_t recSize = eventDataSize - dataOffset;
+        for (uint8_t r = 0; r < numberOfChangeRecords; ++r)
+        {
+            uint8_t op = 0;
+            uint8_t numEntries = 0;
+            std::size_t recOffset = 0;
+            drc = decode_pldm_pdr_repository_change_record_data(
+                recData, recSize, &op, &numEntries, &recOffset);
+            // Older libpldm does not check numEntries against recSize.
+            const std::size_t entriesSize =
+                static_cast<std::size_t>(numEntries) * sizeof(uint32_t);
+            if (drc != PLDM_SUCCESS || entriesSize > recSize - recOffset)
+            {
+                lg2::error(
+                    "PDRRepositoryChgEvent: malformed changeRecord for tid={TID}, rc={RC}, numHandles={N}, size={SIZE}",
+                    "TID", tid, "RC", drc, "N", numEntries, "SIZE", recSize);
+                platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+                return PLDM_ERROR;
+            }
+            std::vector<uint32_t> handles;
+            handles.reserve(numEntries);
+            const uint8_t* entry = recData + recOffset;
+            for (uint8_t i = 0; i < numEntries; ++i)
+            {
+                handles.push_back(utils::readLEValue<uint32_t>(entry));
+            }
+            lg2::debug(
+                "PDRRepositoryChgEvent: changeRecord for tid={TID}: operation={OP}, handles={N}",
+                "TID", tid, "OP", op, "N", numEntries);
+            changeRecords.emplace_back(op, std::move(handles));
+            const std::size_t advance = recOffset + entriesSize;
+            recData += advance;
+            recSize -= advance;
+        }
+        // The event must end with the last change record: reject extra bytes.
+        if (recSize != 0)
+        {
+            lg2::error(
+                "PDRRepositoryChgEvent: {EXTRA} extra bytes after the last changeRecord for tid={TID}",
+                "EXTRA", recSize, "TID", tid);
+            platformEventStatus = PLDM_EVENT_LOGGING_REJECTED;
+            return PLDM_ERROR;
+        }
+
+        lg2::info("PDRRepositoryChgEvent: tid={TID}, changeRecords={N}", "TID",
+                  tid, "N", changeRecords.size());
 
         stdexec::start_detached(
-            processPdrRepositoryChgEvent(tid, refreshAll,
-                                         std::move(changeRecords)),
+            processPdrRepositoryChgEvent(tid, false, std::move(changeRecords)),
             exec::default_task_context<int>(exec::inline_scheduler{}));
     }
     else

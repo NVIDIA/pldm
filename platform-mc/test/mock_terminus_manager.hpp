@@ -40,9 +40,10 @@ class MockTerminusManager : public TerminusManager
     {}
 
     exec::task<int> SendRecvPldmMsgOverMctp(
-        mctp_eid_t /*eid*/, Request& /*request*/, const pldm_msg** responseMsg,
+        mctp_eid_t /*eid*/, Request& request, const pldm_msg** responseMsg,
         size_t* responseLen) override
     {
+        requests.push_back(request);
         if (responseMsgs.empty() || responseMsg == nullptr ||
             responseLen == nullptr)
         {
@@ -101,6 +102,7 @@ class MockTerminusManager : public TerminusManager
     std::queue<uint8_t*> responseMsgs;
     std::queue<size_t> responseLens;
     std::queue<std::vector<uint8_t>> responses;
+    std::vector<Request> requests; // every request sent, in order
 };
 
 } // namespace platform_mc
