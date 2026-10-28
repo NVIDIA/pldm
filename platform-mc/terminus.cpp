@@ -49,6 +49,11 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     systemInventoryPath = PLATFORM_CHASSIS_PATH;
     maxBufferSize = EVENT_MESSAGE_BUFFER_SIZE_MAX;
     needRefresh = false;
+#ifdef OEM_NVIDIA
+    // A terminus re-created at a reused TID starts with no entity topology,
+    // instance or name; TerminusManager registers its config next.
+    oem_nvidia::InventoryManager::get().forget(tid);
+#endif
 }
 
 void Terminus::interfaceAdded(sdbusplus::message::message& m)

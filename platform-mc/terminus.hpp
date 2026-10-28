@@ -24,6 +24,7 @@
 #include "libpldm/oem/nvidia/energy_count_numeric_sensor_oem.h"
 
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
+#include "oem/nvidia/platform-mc/inventory_manager.hpp"
 #endif
 
 #include "common/em_device.hpp"
@@ -499,10 +500,14 @@ class Terminus
         return uuid;
     }
 
-    /** @brief The setter to set terminus's name */
+    /** @brief The setter to set terminus's name; also registered with
+     *         InventoryManager. */
     void setTerminusName(const std::string& tName)
     {
         terminusName = tName;
+#ifdef OEM_NVIDIA
+        oem_nvidia::InventoryManager::get().setTerminusName(tid, tName);
+#endif
     }
 
     /** @brief The getter to get terminus's name */
@@ -515,16 +520,24 @@ class Terminus
         return terminusName;
     }
 
-    /** @brief The setter to set terminus's instance */
-    void setInstance(uint16_t inst)
+    /** @brief Register the terminus's configured instance with
+     *         InventoryManager, which matches CPU and ProcessorModule
+     *         inventory by it. No-op without OEM_NVIDIA. */
+    void setInstance([[maybe_unused]] uint16_t inst)
     {
-        instance = inst;
+#ifdef OEM_NVIDIA
+        oem_nvidia::InventoryManager::get().setInstance(tid, inst);
+#endif
     }
 
-    /** @brief The getter to get terminus's instance */
+    /** @brief The instance registered with InventoryManager, if any. */
     std::optional<uint16_t> getInstance()
     {
-        return instance;
+#ifdef OEM_NVIDIA
+        return oem_nvidia::InventoryManager::get().instance(tid);
+#else
+        return std::nullopt;
+#endif
     }
 
     /** @brief The setter to set terminus's CPU index */
@@ -624,9 +637,6 @@ class Terminus
 
     /** @brief Terminus name from configuration */
     std::string terminusName;
-
-    /** @brief Terminus instance from configuration */
-    std::optional<uint16_t> instance;
 
     /** @brief CPU index from configuration */
     std::optional<uint16_t> cpuIndex;
