@@ -148,6 +148,11 @@ bool MctpDiscovery::getMctpInfos(std::map<MctpInfo, Availability>& mctpInfoMap)
             const MctpEndpointProps& epProps =
                 getMctpEndpointProps(service, path);
             const UUID& uuid = getEndpointUUIDProp(service, path);
+            if (isEmptyUUID(uuid))
+            {
+                error("Empty UUID for endpoint {PATH}, skipping", "PATH", path);
+                continue;
+            }
             const Availability& availability =
                 getEndpointConnectivityProp(path);
             auto types = std::get<MCTPMsgTypes>(epProps);
@@ -371,7 +376,7 @@ void MctpDiscovery::getAddedMctpInfos(sdbusplus::message_t& msg,
         return;
     }
 
-    if (uuid == emptyUUID)
+    if (isEmptyUUID(uuid))
     {
         error("Empty UUID for endpoint {PATH}, skipping", "PATH", objPath.str);
         return;
@@ -562,6 +567,12 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
                     return;
                 }
                 const UUID& uuid = getEndpointUUIDProp(service, objPath);
+                if (isEmptyUUID(uuid))
+                {
+                    error("Empty UUID for endpoint {PATH}, skipping", "PATH",
+                          objPath);
+                    return;
+                }
                 const auto& mctpBinding = std::get<4>(epProps);
                 const auto& mctpMedium = std::get<3>(epProps);
                 const auto& mctpLocalEid = std::get<5>(epProps);
