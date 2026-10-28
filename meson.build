@@ -496,6 +496,7 @@ if get_option('pldm-type2').enabled()
         source_files += [
             'oem/nvidia/platform-mc/oem_nvidia.cpp',
             'oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
+            'oem/nvidia/platform-mc/entity_tree.cpp',
             'oem/nvidia/platform-mc/pcie_port_info.cpp',
         ]
     endif
@@ -564,6 +565,9 @@ if get_option('tests').enabled()
     endif
     if get_option('pldm-type2').enabled()
         subdir('platform-mc/test')
+        if get_option('oem-nvidia').enabled()
+            subdir('oem/nvidia/platform-mc/test')
+        endif
     endif
     subdir('pldmtool/test')
     subdir('test')

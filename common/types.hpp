@@ -552,6 +552,9 @@ using TerminusHandle = uint16_t;
 using TerminusID = uint8_t;
 using SensorID = uint16_t;
 using EntityType = uint16_t;
+/** @brief Mask that strips the physical/logical bit (bit 15) from an entity
+ *         type so both spellings compare equal. */
+constexpr EntityType entityTypeMask = 0x7FFF;
 using EntityInstance = uint16_t;
 using ContainerID = uint16_t;
 using StateSetId = uint16_t;
