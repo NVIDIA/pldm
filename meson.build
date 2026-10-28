@@ -254,9 +254,6 @@ if get_option('fw-update-pkg-inotify').allowed()
     conf_data.set('FW_UPDATE_INOTIFY_ENABLED', 1)
 endif
 
-if get_option('platform-prefix') != ''
-    conf_data.set_quoted('PLATFORM_PREFIX', get_option('platform-prefix'))
-endif
 conf_data.set_quoted(
     'PLATFORM_CHASSIS_PATH',
     get_option('platform-chassis-object-path'),

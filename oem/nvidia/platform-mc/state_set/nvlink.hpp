@@ -71,11 +71,7 @@ class StateSetNvlink : public StateSet
     // C2CLink fabric prefix
     const std::string fabricsObjectPath =
         "/xyz/openbmc_project/inventory/system/fabrics/";
-#ifdef PLATFORM_PREFIX
-    const std::string c2clinkFabricPrefix = PLATFORM_PREFIX "_C2CLinkFabric_";
-#else
     const std::string c2clinkFabricPrefix = "C2CLinkFabric_";
-#endif
 
   public:
     StateSetNvlink(uint16_t stateSetId, std::string& objectPath,
@@ -487,9 +483,7 @@ class StateSetNvlink : public StateSet
                     std::make_unique<AssociationDefinitionsInft>(
                         bus, endpointObjectPath.c_str());
                 endpointAssociationDefinitionsIntf->associations(
-                    {{ "entity_link",
-                       "",
-                       stateAssociation.path.c_str() }});
+                    {{"entity_link", "", stateAssociation.path.c_str()}});
             }
         }
         catch (const std::exception& e)

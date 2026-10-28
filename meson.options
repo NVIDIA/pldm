@@ -353,12 +353,6 @@ option(
 )
 
 option(
-    'platform-prefix',
-    type: 'string',
-    value: 'HGX',
-    description: 'Platform prefix',
-)
-option(
     'rr-refresh-limit',
     type: 'integer',
     value: 30000,

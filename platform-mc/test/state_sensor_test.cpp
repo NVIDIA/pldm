@@ -1421,9 +1421,6 @@ TEST_F(StateSensorCoverage, stateSensorEventSuppressionCoverage)
                               PLDM_STATESET_HEALTH_STATE_NORMAL);
 
     std::string entityName{"CPU_23"};
-#ifdef PLATFORM_PREFIX
-    entityName = std::string(PLATFORM_PREFIX) + "_CPU_23";
-#endif
     std::vector<std::string> inventoryPaths{
         "/xyz/openbmc_project/inventory/system/chassis/chassis23/" +
         entityName};
