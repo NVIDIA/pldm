@@ -525,14 +525,10 @@ TransferPackageState OtherDeviceUpdateManager::txMultipleComponents(
 }
 
 exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
-    [[maybe_unused]] const FirmwareDeviceIDRecords& fwDeviceIDRecords,
-    [[maybe_unused]] const ComponentImageInfos& componentImageInfos,
-    [[maybe_unused]] const uint8_t* package,
-    [[maybe_unused]] size_t packageSize)
+    const FirmwareDeviceIDRecords& fwDeviceIDRecords,
+    const ComponentImageInfos& componentImageInfos, const uint8_t* package,
+    size_t packageSize)
 {
-#ifndef NON_PLDM
-    co_return 0;
-#else
     size_t totalNumImages = 0;
     // Fresh package: the max is re-accumulated in interfaceAdded() as Item
     // Updaters publish their activation objects for the transferred images.
@@ -618,7 +614,6 @@ exec::task<size_t> OtherDeviceUpdateManager::extractOtherDevicePkgs(
     }
     startTimer(totalNumImages * UPDATER_ACTIVATION_WAIT_PER_IMAGE_SEC);
     co_return totalNumImages;
-#endif
 }
 
 void OtherDeviceUpdateManager::startTimer(int timerExpiryTime)
@@ -649,18 +644,13 @@ void OtherDeviceUpdateManager::startWatchingInterfaceAddition()
 
 int OtherDeviceUpdateManager::getNumberOfProcessedImages()
 {
-#ifndef NON_PLDM
-    return 0;
-#else
     return isImageFileProcessed.size();
-#endif
 }
 
 exec::task<void> OtherDeviceUpdateManager::buildDeviceDescriptorMap()
 {
     otherDeviceDescriptorMap.clear();
 
-#ifdef NON_PLDM
     const std::string uuidIface{
         sdbusplus::xyz::openbmc_project::Common::server::UUID::interface};
     const std::string skuIface{sdbusplus::xyz::openbmc_project::Inventory::
@@ -737,29 +727,21 @@ exec::task<void> OtherDeviceUpdateManager::buildDeviceDescriptorMap()
     {
         error("buildDeviceDescriptorMap failed: {ERROR}", "ERROR", e);
     }
-#endif
     co_return;
 }
 
 size_t OtherDeviceUpdateManager::getValidTargets(void)
 {
-#ifndef NON_PLDM
-    return 0;
-#endif
     return validTargetCount;
 }
 
 bool OtherDeviceUpdateManager::noTargetedUpdateStarted() const
 {
-#ifndef NON_PLDM
-    return false;
-#else
     if (targets.empty() || isImageFileProcessed.empty())
     {
         return false;
     }
     return !updateStarted;
-#endif
 }
 
 void OtherDeviceUpdateManager::updateValidTargets(void)
@@ -770,7 +752,6 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
     // the count is available when UpdateManager::processPackageDataDefer checks
     // getValidTargets() immediately after construction.
     std::vector<std::string> paths;
-#ifdef NON_PLDM
     try
     {
         paths = dbusHandler.getSubTreePaths(
@@ -784,7 +765,6 @@ void OtherDeviceUpdateManager::updateValidTargets(void)
             "Failed to get software D-Bus objects implementing UUID interface, ERROR={ERROR}",
             "ERROR", e);
     }
-#endif
     validTargetCount = 0;
     for (auto& obj : paths)
     {

@@ -382,13 +382,6 @@ option(
 )
 
 option(
-    'non-pldm',
-    type: 'feature',
-    value: 'enabled',
-    description: 'Support for non pldm devices',
-)
-
-option(
     'pldm-package-verification-calculate-digest-chunk-size',
     type: 'integer',
     min: 256,

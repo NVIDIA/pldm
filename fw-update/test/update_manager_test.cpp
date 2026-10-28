@@ -3951,7 +3951,7 @@ TEST_F(UpdateManagerTest, updatePackageCompletionReportsNoMatchingDevices)
     EXPECT_NO_THROW({ updateManager.updatePackageCompletion(); });
     EXPECT_EQ(updateManager.activation->activation(),
               software::Activation::Activations::Failed);
-#if defined(OEM_NVIDIA) && defined(NON_PLDM)
+#ifdef OEM_NVIDIA
     const bool reported = std::any_of(
         connection->loggingCalls.begin(), connection->loggingCalls.end(),
         [](const auto& call) {
