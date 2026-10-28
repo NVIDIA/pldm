@@ -39,6 +39,7 @@ dep_src_files += [
     '../../oem/nvidia/platform-mc/pcie_port_info.cpp',
     '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
     '../../oem/nvidia/platform-mc/entity_tree.cpp',
+    '../../oem/nvidia/platform-mc/inventory_manager.cpp',
     '../../fw-update/aggregate_update_manager.cpp',
     '../../fw-update/item_update_manager.cpp',
     '../../fw-update/systemd_interface.cpp',

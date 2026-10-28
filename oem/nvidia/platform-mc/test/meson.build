@@ -2,7 +2,7 @@
 # platform-mc/test, whose test_src dependency and test_cpp_args (-DOEM_NVIDIA)
 # already carry the OEM sources and include paths.
 
-oem_nvidia_platform_mc_tests = ['entity_tree_test']
+oem_nvidia_platform_mc_tests = ['entity_tree_test', 'inventory_manager_test']
 
 foreach t : oem_nvidia_platform_mc_tests
     test(
