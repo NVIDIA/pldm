@@ -115,6 +115,50 @@ foreach t : tests
     )
 endforeach
 
+# terminus_inventory_test builds terminus.cpp and switchBandwidthSensor.cpp
+# into its own source file with D-Bus access replaced by in-memory fakes, so
+# it leaves them out here. MOCK_DBUS_ASYNC_UTILS must apply to every source
+# of the binary.
+inventory_test_src_files = ['../manager.cpp']
+foreach src : dep_src_files
+    if src not in [
+        '../terminus.cpp',
+        '../../oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.cpp',
+    ]
+        inventory_test_src_files += src
+    endif
+endforeach
+
+test(
+    'terminus_inventory_test',
+    executable(
+        'terminus_inventory_test',
+        'terminus_inventory_test.cpp',
+        inventory_test_src_files,
+        implicit_include_directories: false,
+        include_directories: dep_src_headers,
+        cpp_args: test_cpp_args + [
+            '-DMOCK_DBUS_ASYNC_UTILS',
+            '-fno-access-control',
+        ],
+        dependencies: [
+            gtest,
+            gmock,
+            libpldm_dep,
+            libpldmutils,
+            nlohmann_json_dep,
+            phosphor_dbus_interfaces,
+            phosphor_logging_dep,
+            sdbusplus,
+            sdeventplus,
+            nvidia_tal,
+            openssl,
+        ],
+    ),
+    workdir: meson.current_source_dir(),
+    suite: non_valgrind_test_suites,
+)
+
 foreach t : private_tests
     test(
         t,
