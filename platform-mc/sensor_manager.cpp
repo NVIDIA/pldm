@@ -172,6 +172,11 @@ void SensorManager::doSensorPolling(tid_t tid)
     exec::start_detached(stdexec::on(
         stdexec::inline_scheduler{},
         doSensorPollingTask(tid) | stdexec::then([terminus](int rc) {
+            // Readings queued after the task's last per-cycle flush, such as
+            // round-robin readings, would otherwise wait until a terminus
+            // polls again.
+            pldm::shmem_utils::SharedMemoryManager::
+                updateAggregateTelemetryOnTAL();
             if (terminus)
             {
                 lg2::info(
@@ -382,7 +387,8 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
         // Flush all batched TAL writes from this cycle's priority-sensor pass.
         // Mirrors nsmd 3cb9d9e2: one aggregated write per cycle, immediately
         // after priority sensors. Round-robin updates queued below flush at
-        // the start of the next cycle's priority-sensor flush.
+        // the start of the next cycle's priority-sensor flush, or when this
+        // task exits (see doSensorPolling()).
         pldm::shmem_utils::SharedMemoryManager::updateAggregateTelemetryOnTAL();
 
         if (verbose)

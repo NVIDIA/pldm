@@ -25,6 +25,7 @@
 #endif
 
 #include "common/dBusAsyncUtils.hpp"
+#include "common/shared_mem_manager.hpp"
 #include "common/utils.hpp"
 #include "terminus.hpp"
 #include "terminus_manager.hpp"
@@ -2854,6 +2855,10 @@ void Terminus::setOffline()
     {
         stateEffecter->handleErrGetStateEffecterStates();
     }
+
+    // Write the NaN readings queued above now. Polling of this terminus
+    // stops or has already stopped, so its poll cycle will not flush them.
+    pldm::shmem_utils::SharedMemoryManager::updateAggregateTelemetryOnTAL();
 
     lg2::info("Terminus {TID} is offline", "TID", tid);
 }

@@ -72,6 +72,12 @@ class SharedMemoryManager
      */
     static void updateAggregateTelemetryOnTAL();
 
+    /** @brief Number of records queued since the last flush. */
+    static size_t pendingCount()
+    {
+        return telemetryData.size();
+    }
+
   private:
     static constexpr size_t kReserveCapacity = 64;
     static std::vector<tal::TelemetryData> telemetryData;

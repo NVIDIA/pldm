@@ -16,6 +16,7 @@
  */
 
 #include "common/instance_id.hpp"
+#include "common/shared_mem_manager.hpp"
 #include "mock_sensor_manager.hpp"
 #include "mock_terminus_manager.hpp"
 #include "platform-mc/pldmServiceReadyInterface.hpp"
@@ -23,6 +24,7 @@
 
 #include <sdeventplus/event.hpp>
 
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1766,6 +1768,96 @@ TEST_F(SensorManagerInterruptTest, doSensorPollingTaskStopAfterAwaitCoverage)
         ASSERT_TRUE(rc.has_value());
         EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
     }
+}
+
+TEST_F(SensorManagerInterruptTest, doSensorPollingFlushesTalBatchOnExit)
+{
+    using pldm::shmem_utils::SharedMemoryManager;
+
+    constexpr pldm::tid_t tid = 0x7E;
+    auto terminus = createPlatformTerminus(tid);
+    const std::vector<std::string> inventoryPaths{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis7e"};
+
+    // Two round-robin sensors. Their readings are queued after the cycle's
+    // priority flush; polling stops during the second read.
+    for (uint16_t sensorId : {0x17E, 0x17F})
+    {
+        auto pdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+        auto rawPdr = makeNumericSensorPdr(sensorId);
+        ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
+                                    rawPdr.data(), rawPdr.size(), pdr.get()));
+        std::string sensorName = "tal_flush_sensor_" + std::to_string(sensorId);
+        std::string inventoryPath = inventoryPaths.front();
+        auto sensor = std::make_shared<pldm::platform_mc::NumericSensor>(
+            tid, false, pdr, sensorName, inventoryPath, nullptr);
+        // A non-default inventory association makes updateReading() queue
+        // TAL data.
+        sensor->setInventoryPaths(inventoryPaths, false);
+        sensor->updateTime = 0;
+        sensor->setLastUpdatedTimeStamp(0);
+        terminus->numericSensors.emplace_back(sensor);
+        terminus->roundRobinSensors.push(sensor);
+    }
+    terminus->initSensorList = false;
+    // Keep both reads in one cycle, so the next cycle's flush cannot write
+    // the first reading.
+    sensorManager.pollingTime = 10000;
+
+    prepareInterrupt(tid, InterruptAction::stopPolling);
+    terminusManager.interruptCall = 2;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto response = makeGetSensorReadingResp(PLDM_SENSOR_DATA_SIZE_UINT8,
+                                                 88, PLDM_SENSOR_ENABLED);
+        ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+    }
+
+    // Drop records that earlier tests left in the process-global batch.
+    SharedMemoryManager::updateAggregateTelemetryOnTAL();
+    ASSERT_EQ(0u, SharedMemoryManager::pendingCount());
+
+    sensorManager.doSensorPolling(tid);
+
+    ASSERT_TRUE(terminus->sensorPollingTaskRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, terminus->sensorPollingTaskRc.value());
+    EXPECT_EQ(2, terminusManager.callCount);
+    // The first read was applied ((88 * 1.5 + 1) * 10) and queued for TAL
+    // after the cycle's flush; the task must flush it when it exits.
+    EXPECT_DOUBLE_EQ(1330.0, terminus->numericSensors.front()->getReading());
+    EXPECT_EQ(0u, SharedMemoryManager::pendingCount());
+}
+
+TEST_F(SensorManagerInterruptTest, setOfflineFlushesTalBatchWithoutPollingTask)
+{
+    using pldm::shmem_utils::SharedMemoryManager;
+
+    constexpr pldm::tid_t tid = 0x7F;
+    auto terminus = createPlatformTerminus(tid);
+    const std::vector<std::string> inventoryPaths{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis7f"};
+    auto pdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    auto rawPdr = makeNumericSensorPdr(0x180);
+    ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
+                                rawPdr.data(), rawPdr.size(), pdr.get()));
+    std::string sensorName{"tal_offline_sensor"};
+    std::string inventoryPath = inventoryPaths.front();
+    auto sensor = std::make_shared<pldm::platform_mc::NumericSensor>(
+        tid, false, pdr, sensorName, inventoryPath, nullptr);
+    sensor->setInventoryPaths(inventoryPaths, false);
+    terminus->numericSensors.emplace_back(sensor);
+
+    // No polling task runs for this terminus, so no task exit or poll cycle
+    // flushes the NaN reading that setOffline() queues.
+    ASSERT_TRUE(terminus->sensorPollingTaskRc.has_value());
+    SharedMemoryManager::updateAggregateTelemetryOnTAL();
+    ASSERT_EQ(0u, SharedMemoryManager::pendingCount());
+
+    sensorManager.setOffline(tid);
+
+    EXPECT_TRUE(terminus->stopPolling);
+    EXPECT_TRUE(std::isnan(sensor->getReading()));
+    EXPECT_EQ(0u, SharedMemoryManager::pendingCount());
 }
 
 TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
