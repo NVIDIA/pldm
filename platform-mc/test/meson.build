@@ -85,12 +85,6 @@ private_tests = ['oem_events_private_test', 'pcie_port_info_private_test']
 
 openssl = dependency('openssl', required: true)
 
-# terminus_test retries once via the wrapper: a rare cross-test flake
-# (late reply of an abandoned async D-Bus call on the shared default bus
-# corrupting a reused stack frame) can crash the binary at startup. See
-# run_with_retry.sh for details.
-retry_runner = find_program('run_with_retry.sh')
-
 foreach t : tests
     test_exe = executable(
         t.underscorify(),
@@ -112,23 +106,13 @@ foreach t : tests
             openssl,
         ],
     )
-    if t == 'terminus_test'
-        test(
-            t,
-            retry_runner,
-            args: [test_exe],
-            is_parallel: false,
-            workdir: meson.current_source_dir(),
-            suite: non_valgrind_test_suites,
-        )
-    else
-        test(
-            t,
-            test_exe,
-            workdir: meson.current_source_dir(),
-            suite: non_valgrind_test_suites,
-        )
-    endif
+    test(
+        t,
+        test_exe,
+        is_parallel: t != 'terminus_test',
+        workdir: meson.current_source_dir(),
+        suite: non_valgrind_test_suites,
+    )
 endforeach
 
 foreach t : private_tests

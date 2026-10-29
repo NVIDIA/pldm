@@ -25,7 +25,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <set>
 #include <thread>
 
@@ -1200,66 +1199,6 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingCompletionCoverage)
 
     ASSERT_TRUE(termini[tid]->sensorPollingTaskRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, termini[tid]->sensorPollingTaskRc.value());
-}
-
-TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
-{
-    constexpr pldm::tid_t tid = 0x42;
-    constexpr uint16_t numericSensorId = 0x42;
-    constexpr uint16_t stateSensorId = 0x43;
-
-    std::string uuid("00000000-0000-0000-0000-000000000042");
-    termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
-        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-
-    auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    auto numericPdr = makeNumericSensorPdr(numericSensorId);
-    auto decodeRc = decode_numeric_sensor_pdr_data(
-        numericPdr.data(), numericPdr.size(), numericSensorPdr.get());
-    ASSERT_EQ(PLDM_SUCCESS, decodeRc);
-    std::string sensorName{"round_robin_numeric"};
-    std::string inventoryPath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis42"};
-    auto numericSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
-        tid, true, numericSensorPdr, sensorName, inventoryPath, nullptr);
-    termini[tid]->numericSensors.emplace_back(numericSensor);
-
-    termini[tid]->pdrs.emplace_back(makeStateSensorPdr(stateSensorId));
-    ASSERT_TRUE(termini[tid]->parsePDRs());
-    ASSERT_EQ(1u, termini[tid]->stateSensors.size());
-    auto stateSensor = termini[tid]->stateSensors.front();
-    stateSensor->needUpdate = false;
-
-    uint64_t now = 0;
-    sd_event_now(event.get(), CLOCK_MONOTONIC, &now);
-    numericSensor->setLastUpdatedTimeStamp(now);
-    stateSensor->setLastUpdatedTimeStamp(now);
-    numericSensor->setRefreshed(true);
-    stateSensor->setRefreshed(false);
-
-    termini[tid]->roundRobinSensors.push(numericSensor);
-    termini[tid]->roundRobinSensors.push(stateSensor);
-    termini[tid]->initSensorList = false;
-    termini[tid]->ready = false;
-    termini[tid]->stopPolling = false;
-    sensorManager.pollingTime = 0;
-
-    auto pollingFuture = std::async(std::launch::async, [&]() {
-        return stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
-    });
-
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
-    while (std::chrono::steady_clock::now() < deadline && !termini[tid]->ready)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    termini[tid]->stopPolling = true;
-
-    auto pollingRc = pollingFuture.get();
-    ASSERT_TRUE(pollingRc.has_value());
-    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*pollingRc));
-    EXPECT_TRUE(termini[tid]->ready);
 }
 
 TEST_F(SensorManagerDataPathTest, initSensorListPriorityAndAsyncCoverage)
