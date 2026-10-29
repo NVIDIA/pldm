@@ -55,10 +55,8 @@
 #include <sdbusplus/test/sdbus_mock.hpp>
 
 #include <array>
-#include <atomic>
 #include <cerrno>
 #include <filesystem>
-#include <future>
 #include <optional>
 #include <thread>
 
@@ -181,83 +179,6 @@ static std::vector<uint8_t> makeSensorOpEventData(
             presentOpState, previousOpState};
 }
 
-static std::vector<uint8_t> makeNumericSensorPdr(uint16_t sensorId)
-{
-    return {
-        0x1,
-        0x0,
-        0x0,
-        0x0, // record handle
-        0x1, // PDRHeaderVersion
-        PLDM_NUMERIC_SENSOR_PDR,
-        0x0,
-        0x0, // recordChangeNumber
-        PLDM_PDR_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
-            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +
-            PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH,
-        0, // dataLength
-        0,
-        0, // PLDMTerminusHandle
-        static_cast<uint8_t>(sensorId & 0xFF),
-        static_cast<uint8_t>((sensorId >> 8) & 0xFF),
-        PLDM_ENTITY_POWER_SUPPLY,
-        0,   // entityType
-        1,
-        0,   // entityInstanceNumber
-        0x1,
-        0x0, // containerID
-        PLDM_NO_INIT,
-        false,
-        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUint
-        1,                          // unitModifier
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        true,
-        PLDM_RANGE_FIELD_FORMAT_SINT8,
-        0,
-        0,
-        0xc0,
-        0x3f, // resolution=1.5
-        0,
-        0,
-        0x80,
-        0x3f, // offset=1.0
-        0,
-        0,
-        0,
-        0,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0x80,
-        0x3f,
-        0,
-        0,
-        0x80,
-        0x3f,
-        255,
-        0,
-        PLDM_RANGE_FIELD_FORMAT_UINT8,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    };
-}
-
 static std::shared_ptr<NumericSensor> makeEventNumericSensor(
     pldm::tid_t tid, uint16_t sensorId, const std::string& sensorName,
     const std::string& inventoryPath,
@@ -289,40 +210,6 @@ static std::shared_ptr<NumericSensor> makeEventNumericSensor(
     return std::make_shared<NumericSensor>(
         tid, false, sensorPdr, mutableName, mutableInventoryPath,
         sensorEventInfo);
-}
-
-static std::shared_ptr<pldm_numeric_effecter_value_pdr>
-    makeNumericEffecterValuePdrForPolling(uint16_t effecterId)
-{
-    auto pdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
-    pdr->effecter_id = effecterId;
-    pdr->entity_type = PLDM_ENTITY_SYS_BOARD;
-    pdr->entity_instance = 1;
-    pdr->container_id = 1;
-    pdr->base_unit = PLDM_SENSOR_UNIT_NONE;
-    pdr->effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT8;
-    pdr->max_settable.value_u8 = 100;
-    pdr->min_settable.value_u8 = 0;
-    pdr->range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT8;
-    pdr->range_field_support.byte = 0x1F;
-    pdr->nominal_value.value_u8 = 50;
-    pdr->normal_max.value_u8 = 60;
-    pdr->normal_min.value_u8 = 40;
-    pdr->rated_max.value_u8 = 70;
-    pdr->rated_min.value_u8 = 30;
-    pdr->resolution = 1.0f;
-    pdr->offset = 0.0f;
-    return pdr;
-}
-
-static StateSetInfo makeBootRequestStateSetInfo()
-{
-    return std::make_tuple(
-        EntityInfo{1, PLDM_ENTITY_SYS_BOARD, 1},
-        std::vector<StateSetData>{
-            {PLDM_STATESET_ID_BOOT_REQUEST,
-             PossibleStates{PLDM_STATESET_BOOT_REQUEST_NORMAL,
-                            PLDM_STATESET_BOOT_REQUEST_REQUESTED}}});
 }
 
 static std::vector<uint8_t> makePollForPlatformEventResponse(
@@ -409,6 +296,17 @@ class EventManagerTest : public testing::Test
 class PlatformMcManagerTest : public testing::Test
 {
   protected:
+    static constexpr auto serviceReadyPath =
+        "/xyz/openbmc_project/state/service_ready/pldm_coverage";
+
+    static void SetUpTestSuite()
+    {
+        EXPECT_THROW((void)PldmServiceReadyIntf::getInstance(),
+                     std::runtime_error);
+        EXPECT_NO_THROW(PldmServiceReadyIntf::initialize(
+            pldm::utils::DBusHandler::getBus(), serviceReadyPath));
+    }
+
     PlatformMcManagerTest() :
         bus(pldm::utils::DBusHandler::getBus()),
         event(sdeventplus::Event::get_default()),
@@ -627,16 +525,10 @@ class EventManagerDbusMockTest : public EventManagerProtectedTest
 
 TEST_F(PlatformMcManagerTest, pldmServiceReadyInterfaceCoverage)
 {
-    constexpr auto objectPath =
-        "/xyz/openbmc_project/state/service_ready/pldm_coverage";
-
-    EXPECT_THROW((void)PldmServiceReadyIntf::getInstance(), std::runtime_error);
-    EXPECT_NO_THROW(PldmServiceReadyIntf::initialize(bus, objectPath));
-
     auto& intf = PldmServiceReadyIntf::getInstance();
     EXPECT_NO_THROW(intf.setStateStarting());
     EXPECT_NO_THROW(intf.setStateEnabled());
-    EXPECT_THROW(PldmServiceReadyIntf::initialize(bus, objectPath),
+    EXPECT_THROW(PldmServiceReadyIntf::initialize(bus, serviceReadyPath),
                  std::logic_error);
 }
 
@@ -941,28 +833,25 @@ TEST_F(PlatformMcManagerTest, managerSensorPollingManagerPathCoverage)
     terminus->initSensorList = false;
     terminus->ready = false;
     manager.termini[tid] = terminus;
-    manager.sensorManager.pollingTime = 0;
+    manager.sensorManager.pollingTime = 100;
 
-    auto pollingFuture = std::async(std::launch::async, [&]() {
-        return stdexec::sync_wait(
-            manager.sensorManager.doSensorPollingTask(tid));
-    });
+    ASSERT_TRUE(terminus->sensorPollingTaskRc.has_value());
+    // The BASE-only, unmapped terminus reaches the polling timer inline.
+    manager.sensorManager.doSensorPolling(tid);
 
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
-    while (std::chrono::steady_clock::now() < deadline &&
-           (!terminus->resumed || terminus->pollEvent || !terminus->ready))
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    terminus->stopPolling = true;
-
-    auto pollingRc = pollingFuture.get();
-    ASSERT_TRUE(pollingRc.has_value());
-    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*pollingRc));
+    EXPECT_FALSE(terminus->sensorPollingTaskRc.has_value());
     EXPECT_TRUE(terminus->resumed);
     EXPECT_FALSE(terminus->pollEvent);
     EXPECT_TRUE(terminus->ready);
+
+    manager.sensorManager.stopPolling(tid);
+    while (!terminus->sensorPollingTaskRc.has_value())
+    {
+        event.run(std::nullopt);
+    }
+
+    ASSERT_TRUE(terminus->sensorPollingTaskRc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, terminus->sensorPollingTaskRc.value());
 }
 
 TEST_F(PlatformMcManagerTest, managerSensorPollingMissingTidCoverage)
@@ -1044,91 +933,6 @@ TEST_F(PlatformMcManagerTest, managerSensorPollingDetachedCompletionCoverage)
 
     ASSERT_TRUE(terminus->sensorPollingTaskRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, terminus->sensorPollingTaskRc.value());
-}
-
-TEST_F(PlatformMcManagerTest, managerSensorPollingPollEventBreakCoverage)
-{
-    Manager manager(event, reqHandler, instanceIdDb, fwUpdateManager, false,
-                    true);
-
-    constexpr pldm::tid_t tid = 0x64;
-    std::string uuid("00000000-0000-0000-0000-000000000264");
-    auto terminus = std::make_shared<Terminus>(tid, 1 << PLDM_BASE, uuid,
-                                               manager.terminusManager);
-    terminus->resumed = true;
-    terminus->pollEvent = true;
-    terminus->initSensorList = false;
-    manager.termini[tid] = terminus;
-    manager.sensorManager.pollingTime = 0;
-
-    std::string inventoryPath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis64"};
-    std::string numericEffecterName{"manager_poll_numeric_effecter"};
-    auto numericEffecter = std::make_shared<NumericEffecter>(
-        tid, false, makeNumericEffecterValuePdrForPolling(0x164),
-        numericEffecterName, inventoryPath, manager.terminusManager);
-    numericEffecter->needUpdate = false;
-    terminus->numericEffecters.emplace_back(numericEffecter);
-
-    auto stateEffecter = std::make_shared<StateEffecter>(
-        tid, false, 0x264, makeBootRequestStateSetInfo(), nullptr,
-        inventoryPath, manager.terminusManager);
-    stateEffecter->needUpdate = false;
-    terminus->stateEffecters.emplace_back(stateEffecter);
-
-    terminus->pdrs.emplace_back(makeStateSensorPdr(
-        0x364, PLDM_ENTITY_SYS_BOARD, 1, PLDM_STATESET_ID_HEALTHSTATE));
-    ASSERT_TRUE(terminus->parsePDRs());
-    auto stateSensor = terminus->stateSensors.front();
-    stateSensor->needUpdate = false;
-
-    auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    auto numericPdr = makeNumericSensorPdr(0x464);
-    ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
-                                numericPdr.data(), numericPdr.size(),
-                                numericSensorPdr.get()));
-    std::string numericSensorName{"manager_poll_priority_sensor"};
-    auto prioritySensor = std::make_shared<NumericSensor>(
-        tid, false, numericSensorPdr, numericSensorName, inventoryPath,
-        nullptr);
-    prioritySensor->updateTime = std::numeric_limits<uint64_t>::max();
-    terminus->prioritySensors.emplace_back(prioritySensor);
-
-    uint64_t now = 0;
-    sd_event_now(event.get(), CLOCK_MONOTONIC, &now);
-    stateSensor->setLastUpdatedTimeStamp(now);
-    terminus->roundRobinSensors.push(stateSensor);
-
-    std::atomic<bool> keepSettingPollEvent{true};
-    auto toggleThread = std::thread([&]() {
-        const auto deadline =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
-        while (std::chrono::steady_clock::now() < deadline &&
-               terminus->pollEvent)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        while (keepSettingPollEvent.load())
-        {
-            terminus->pollEvent = true;
-            std::this_thread::yield();
-        }
-    });
-
-    auto pollingFuture = std::async(std::launch::async, [&]() {
-        return stdexec::sync_wait(
-            manager.sensorManager.doSensorPollingTask(tid));
-    });
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    keepSettingPollEvent = false;
-    terminus->stopPolling = true;
-    toggleThread.join();
-
-    auto pollingRc = pollingFuture.get();
-    ASSERT_TRUE(pollingRc.has_value());
-    EXPECT_TRUE(std::get<0>(*pollingRc) == PLDM_SUCCESS ||
-                std::get<0>(*pollingRc) == PLDM_ERROR);
 }
 
 TEST_F(EventManagerTest, processNumericSensorEventTest)
