@@ -22,7 +22,6 @@
 using namespace pldm::requester;
 using namespace std::chrono;
 using ::testing::AtLeast;
-using ::testing::Between;
 using ::testing::Exactly;
 using ::testing::Return;
 
@@ -35,6 +34,7 @@ using ::testing::Return;
 static bool g_forceUnpackFailure = false;
 static bool g_failTimerStart = false;
 static bool g_failTimerStop = false;
+static int g_lastTimerMode = SD_EVENT_OFF;
 static size_t g_mctpTransportRedfishEventCalls = 0;
 static bool g_throwMctpTransportRedfishEvent = false;
 // Severity passed on the last redfish event; starts true so a test proves the
@@ -116,7 +116,12 @@ extern "C" int sd_event_source_set_enabled(sd_event_source* source, int mode)
         return -EINVAL;
     }
 
-    return realFn(source, mode);
+    auto rc = realFn(source, mode);
+    if (rc >= 0)
+    {
+        g_lastTimerMode = mode;
+    }
+    return rc;
 }
 
 extern "C" uint8_t unpack_pldm_header(const struct pldm_msg_hdr* msg,
@@ -177,6 +182,7 @@ class RequestIntfTest : public testing::Test
         g_forceUnpackFailure = false;
         g_failTimerStart = false;
         g_failTimerStop = false;
+        g_lastTimerMode = SD_EVENT_OFF;
         g_mctpTransportRedfishEventCalls = 0;
         g_throwMctpTransportRedfishEvent = false;
         g_lastMctpTransportRedfishEventCritical = true;
@@ -205,6 +211,15 @@ class RequestIntfTest : public testing::Test
     mctp_eid_t eid = 0;
     PldmTransport* pldmTransport = nullptr;
     sdeventplus::Event event;
+};
+
+class ManualRetryRequest : public MockRequest
+{
+  public:
+    using MockRequest::MockRequest;
+    using RequestRetryTimer::callback;
+    using RequestRetryTimer::numRetries;
+    using RequestRetryTimer::timer;
 };
 
 class DummyRetryRequest : public RequestRetryTimer
@@ -241,37 +256,46 @@ TEST_F(RequestIntfTest, 0Retries100msTimeout)
 TEST_F(RequestIntfTest, 2Retries100msTimeout)
 {
     std::vector<uint8_t> requestMsg;
-    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 2,
-                        milliseconds(100), false);
+    ManualRetryRequest request(pldmTransport, eid, event, std::move(requestMsg),
+                               2, milliseconds(100), false);
     // send() is called a total of 3 times, the original plus two retries
     EXPECT_CALL(request, send()).Times(3).WillRepeatedly(Return(PLDM_SUCCESS));
     auto rc = request.start();
     EXPECT_EQ(rc, PLDM_SUCCESS);
-    waitEventExpiry(milliseconds(500));
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
+
+    request.callback();
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
+    request.callback();
+    EXPECT_TRUE(request.timer.isRunning());
+    // The next expiry observes the exhausted budget and disables the timer.
+    request.callback();
+    EXPECT_FALSE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_OFF);
 }
 
 TEST_F(RequestIntfTest, 9Retries100msTimeoutRequestStoppedAfter1sec)
 {
     std::vector<uint8_t> requestMsg;
-    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 9,
-                        milliseconds(100), false);
-    // send() will be called a total of 10 times, the original plus 9 retries.
-    // In a ideal scenario send() would have been called 10 times in 1 sec (when
-    // the timer is stopped) with a timeout of 100ms. Because there are delays
-    // in dispatch, the range is kept between 5 and 10. This recreates the
-    // situation where the Instance ID expires before the all the retries have
-    // been completed and the timer is stopped.
-    EXPECT_CALL(request, send())
-        .Times(Between(5, 10))
-        .WillRepeatedly(Return(PLDM_SUCCESS));
+    ManualRetryRequest request(pldmTransport, eid, event, std::move(requestMsg),
+                               9, milliseconds(100), false);
+    // Stop with retries remaining, as when the Instance ID expires early.
+    EXPECT_CALL(request, send()).Times(3).WillRepeatedly(Return(PLDM_SUCCESS));
     auto rc = request.start();
     EXPECT_EQ(rc, PLDM_SUCCESS);
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
 
-    auto requestStopCallback = [&](void) { request.stop(); };
-    sdbusplus::Timer timer(event.get(), requestStopCallback);
-    timer.start(duration_cast<microseconds>(seconds(1)));
-
-    waitEventExpiry(milliseconds(500));
+    request.callback();
+    request.callback();
+    EXPECT_EQ(request.numRetries, 7);
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
+    request.stop();
+    EXPECT_FALSE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_OFF);
 }
 
 TEST_F(RequestIntfTest, 0RetriesSendFails)
@@ -288,8 +312,8 @@ TEST_F(RequestIntfTest, 0RetriesSendFails)
 TEST_F(RequestIntfTest, 2RetriesSendFailsInitiallyThenSucceeds)
 {
     std::vector<uint8_t> requestMsg;
-    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 2,
-                        milliseconds(100), false);
+    ManualRetryRequest request(pldmTransport, eid, event, std::move(requestMsg),
+                               2, milliseconds(100), false);
     // First send fails, but since we have retries, timer starts anyway
     // Retries succeed
     EXPECT_CALL(request, send())
@@ -300,20 +324,17 @@ TEST_F(RequestIntfTest, 2RetriesSendFailsInitiallyThenSucceeds)
     // Even with initial send failure, start succeeds because retries are
     // configured
     EXPECT_EQ(rc, PLDM_SUCCESS);
-    waitEventExpiry(milliseconds(500));
-}
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
 
-TEST_F(RequestIntfTest, 1Retry100msTimeoutCallbackExhaustsRetries)
-{
-    std::vector<uint8_t> requestMsg;
-    MockRequest request(pldmTransport, eid, event, std::move(requestMsg), 1,
-                        milliseconds(100), false);
-    // send() called on start + 1 retry = 2 times, then callback with
-    // numRetries==0 calls stop()
-    EXPECT_CALL(request, send()).Times(2).WillRepeatedly(Return(PLDM_SUCCESS));
-    auto rc = request.start();
-    EXPECT_EQ(rc, PLDM_SUCCESS);
-    waitEventExpiry(milliseconds(500));
+    request.callback();
+    EXPECT_TRUE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_ON);
+    request.callback();
+    EXPECT_TRUE(request.timer.isRunning());
+    request.callback();
+    EXPECT_FALSE(request.timer.isRunning());
+    EXPECT_EQ(g_lastTimerMode, SD_EVENT_OFF);
 }
 
 TEST_F(RequestIntfTest, stopWithoutStart)
