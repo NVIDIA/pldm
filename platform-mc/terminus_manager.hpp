@@ -21,6 +21,8 @@
 #include "requester/handler.hpp"
 #include "terminus.hpp"
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <queue>
 #include <unordered_map>
 
@@ -166,6 +168,20 @@ class TerminusManager
      *  @param[in] mctpInfo - NetworkId, EID and UUID
      */
     exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo);
+
+    /** @brief Apply the configured instance, terminus name and CPU index for
+     *         an EID, if any, to a freshly created Terminus
+     *
+     *  @param[in] tid - Terminus ID of the terminus to configure
+     *  @param[in] eid - EID the configuration is keyed on
+     */
+    void applyTerminusConfig(tid_t tid, mctp_eid_t eid);
+
+    /** @brief Store one PLDMTermini entry of the static configuration file
+     *
+     *  @param[in] terminus - the JSON object describing one terminus
+     */
+    void storeStaticTerminusEntry(const nlohmann::json& terminus);
 
     /** @brief Refresh the cached types of a known terminus and act on a
      *         PLDM Type 2 change; keep the cache on GetPLDMTypes failure. */

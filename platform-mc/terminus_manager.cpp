@@ -236,6 +236,34 @@ void TerminusManager::unmapTid(const tid_t& tid)
     }
 }
 
+void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
+{
+    auto eid = terminus.value("EID", 0xFF);
+    auto terminusName = terminus.value("TerminusName", std::string(""));
+    auto inst = terminus.value("Instance", 0);
+    auto cpuIdxVal = terminus.value("CpuIndex", 0);
+    std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
+
+    if (eid == 0xFF || terminusName.empty() || inst < 0)
+    {
+        lg2::warning(
+            "Invalid terminus configuration entry, skipping. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+            "TERMINUS_NAME", terminusName, "EID", eid);
+        return;
+    }
+
+    lg2::info(
+        "Loading static PLDM terminus config: TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+        "TERMINUS_NAME", terminusName, "EID", eid);
+
+    // Store EID to terminus config mapping for runtime check
+    // This will be used when the actual MCTP endpoint is discovered
+    eidToTerminusConfigMap[eid] = std::make_tuple(inst, terminusName, cpuIndex);
+    lg2::info("Stored EID to terminus config for future discovery: EID={EID},"
+              "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
+              "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", terminusName);
+}
+
 void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
 {
     namespace fs = std::filesystem;
@@ -266,36 +294,7 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
 
         for (const auto& terminus : termini)
         {
-            auto eid = terminus.value("EID", 0xFF);
-            auto terminusName = terminus.value("TerminusName", std::string(""));
-            auto inst = terminus.value("Instance", 0);
-            auto cpuIdxVal = terminus.value("CpuIndex", 0);
-            std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
-
-            if (eid == 0xFF || terminusName.empty() || inst < 0)
-            {
-                lg2::warning(
-                    "Invalid terminus configuration entry, skipping. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-                    "TERMINUS_NAME", terminusName, "EID", eid);
-                continue;
-            }
-
-            lg2::info(
-                "Loading static PLDM terminus config: TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-                "TERMINUS_NAME", terminusName, "EID", eid);
-
-            // Store EID to terminus config mapping for runtime check
-            // This will be used when the actual MCTP endpoint is discovered
-            if (!terminusName.empty())
-            {
-                eidToTerminusConfigMap[eid] =
-                    std::make_tuple(inst, terminusName, cpuIndex);
-                lg2::info(
-                    "Stored EID to terminus config for future discovery: EID={EID},"
-                    "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
-                    "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
-                    terminusName);
-            }
+            storeStaticTerminusEntry(terminus);
         }
 
         lg2::info(
@@ -666,31 +665,34 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 
     termini[tid] = std::make_shared<Terminus>(tid, supportedTypes, uuid, *this);
 
+    applyTerminusConfig(tid, eid);
+
+    co_return PLDM_SUCCESS;
+}
+
+void TerminusManager::applyTerminusConfig(tid_t tid, mctp_eid_t eid)
+{
     // Runtime check: Match EID with configured EID and set terminus config
     auto eidConfigIt = eidToTerminusConfigMap.find(eid);
-    if (eidConfigIt != eidToTerminusConfigMap.end())
-    {
-        auto inst = std::get<0>(eidConfigIt->second);
-        termini[tid]->setInstance(inst);
-        const std::string& configuredTerminusName =
-            std::get<1>(eidConfigIt->second);
-        termini[tid]->setTerminusName(configuredTerminusName);
-        const auto& configuredCpuIndex = std::get<2>(eidConfigIt->second);
-        if (configuredCpuIndex.has_value())
-        {
-            termini[tid]->setCpuIndex(*configuredCpuIndex);
-        }
-        lg2::info(
-            "Matched EID with configuration and set terminus config: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-            "TID", tid, "EID", eid, "TERMINUS_NAME", configuredTerminusName);
-    }
-    else
+    if (eidConfigIt == eidToTerminusConfigMap.end())
     {
         lg2::info("No configured terminus name found for TID={TID}, EID={EID}",
                   "TID", tid, "EID", eid);
+        return;
     }
 
-    co_return PLDM_SUCCESS;
+    const auto& terminus = termini[tid];
+    const auto& [inst, configuredTerminusName, configuredCpuIndex] =
+        eidConfigIt->second;
+    terminus->setInstance(inst);
+    terminus->setTerminusName(configuredTerminusName);
+    if (configuredCpuIndex.has_value())
+    {
+        terminus->setCpuIndex(*configuredCpuIndex);
+    }
+    lg2::info(
+        "Matched EID with configuration and set terminus config: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+        "TID", tid, "EID", eid, "TERMINUS_NAME", configuredTerminusName);
 }
 
 exec::task<void> TerminusManager::refreshTerminusSupportedTypes(
