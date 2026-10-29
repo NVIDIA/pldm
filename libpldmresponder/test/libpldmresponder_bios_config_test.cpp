@@ -2105,6 +2105,7 @@ TEST_F(TestBIOSConfig, pendingAttributesSignalIgnoresUnrelatedPropertyCoverage)
     BIOSConfigDbusFixture dbusFixture({});
 
     MockdBusHandler dbusHandler;
+    EXPECT_CALL(dbusHandler, setDbusProperty(_, _)).Times(0);
     ON_CALL(dbusHandler, getDbusPropertyVariant(_, _, _))
         .WillByDefault(Throw(std::exception()));
     EXPECT_CALL(dbusHandler,
@@ -2118,19 +2119,33 @@ TEST_F(TestBIOSConfig, pendingAttributesSignalIgnoresUnrelatedPropertyCoverage)
     biosConfig.removeTables();
     biosConfig.buildTables();
 
-    auto attrValueTable = biosConfig.getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
-    ASSERT_TRUE(attrValueTable.has_value());
+    auto stringTable = biosConfig.getBIOSTable(PLDM_BIOS_STRING_TABLE);
+    auto attrTable = biosConfig.getBIOSTable(PLDM_BIOS_ATTR_TABLE);
+    auto beforeAttrValueTable =
+        biosConfig.getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
+    ASSERT_TRUE(stringTable.has_value());
+    ASSERT_TRUE(attrTable.has_value());
+    ASSERT_TRUE(beforeAttrValueTable.has_value());
     auto attrHandle = biosConfig.findAttrHandle("str_example1");
-    auto* beforeEntry = findAttrValueEntryByHandle(*attrValueTable, attrHandle);
+    auto* beforeEntry =
+        findAttrValueEntryByHandle(*beforeAttrValueTable, attrHandle);
     ASSERT_NE(beforeEntry, nullptr);
     auto beforeValue = table::attribute_value::decodeStringEntry(beforeEntry);
 
-    ASSERT_TRUE(dbusFixture.iface->set_property("BaseBIOSTable",
-                                                dbusFixture.baseTable));
+    auto changedBaseTable = biosConfig.baseBIOSTableMaps;
+    std::get<static_cast<uint8_t>(BIOSConfig::Index::currentValue)>(
+        changedBaseTable.at("str_example1")) =
+        std::string("unrelated-base-table");
+    ASSERT_NE(changedBaseTable, biosConfig.baseBIOSTableMaps);
+    ASSERT_TRUE(dbusFixture.setPropertyOnIoThread(
+        dbusFixture.iface, "BaseBIOSTable", changedBaseTable));
     drainDbusSignals();
 
-    attrValueTable = biosConfig.getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
+    EXPECT_EQ(biosConfig.getBIOSTable(PLDM_BIOS_STRING_TABLE), stringTable);
+    EXPECT_EQ(biosConfig.getBIOSTable(PLDM_BIOS_ATTR_TABLE), attrTable);
+    auto attrValueTable = biosConfig.getBIOSTable(PLDM_BIOS_ATTR_VAL_TABLE);
     ASSERT_TRUE(attrValueTable.has_value());
+    EXPECT_EQ(attrValueTable, beforeAttrValueTable);
     auto* afterEntry = findAttrValueEntryByHandle(*attrValueTable, attrHandle);
     ASSERT_NE(afterEntry, nullptr);
     EXPECT_EQ(table::attribute_value::decodeStringEntry(afterEntry),
