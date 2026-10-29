@@ -207,6 +207,7 @@ namespace
 {
 
 using namespace pldm::platform_mc;
+using pldm::platform_mc::oem_nvidia::InventoryManager;
 namespace dbusAsyncMock = pldm::utils::dbusAsyncMock;
 using std::chrono::milliseconds;
 using std::chrono::seconds;
@@ -730,12 +731,14 @@ TEST_F(TerminusInventoryTest, getInventoryParentStoresFirstEndpointCoverage)
               "/xyz/openbmc_project/inventory/system/chassis/parent1"}}},
         "xyz.openbmc_project.Inventory.Manager");
 
-    auto rc = stdexec::sync_wait(terminus.getInventoryParent(rootPath));
+    InventoryManager::ParentMap parents;
+    auto rc = stdexec::sync_wait(
+        InventoryManager::getInventoryParent(rootPath, parents));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
-    ASSERT_TRUE(terminus.inventoryParentMap.contains(rootPath));
+    ASSERT_TRUE(parents.contains(rootPath));
     EXPECT_EQ("/xyz/openbmc_project/inventory/system/chassis/parent0",
-              terminus.inventoryParentMap.at(rootPath));
+              parents.at(rootPath));
 }
 
 TEST_F(TerminusInventoryTest, getInventoryParentIgnoresEmptyEndpointsCoverage)
@@ -751,10 +754,12 @@ TEST_F(TerminusInventoryTest, getInventoryParentIgnoresEmptyEndpointsCoverage)
                            {{"endpoints", std::vector<std::string>{}}},
                            "xyz.openbmc_project.Inventory.Manager");
 
-    auto rc = stdexec::sync_wait(terminus.getInventoryParent(rootPath));
+    InventoryManager::ParentMap parents;
+    auto rc = stdexec::sync_wait(
+        InventoryManager::getInventoryParent(rootPath, parents));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
-    EXPECT_FALSE(terminus.inventoryParentMap.contains(rootPath));
+    EXPECT_FALSE(parents.contains(rootPath));
 }
 
 } // namespace

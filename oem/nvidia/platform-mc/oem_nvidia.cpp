@@ -621,21 +621,14 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
                     // gb200nvl-hmc), the PDR itself has distinct instances per
                     // Proc I/O Module.
                     std::optional<uint16_t> procModuleInstance;
-                    // Start from the memory controller's parent container
-                    auto parentContainerId = std::get<0>(entityInfo);
-                    while (auto ancestor =
-                               terminus.getContainerEntity(parentContainerId))
+                    if (const auto* module =
+                            oem_nvidia::InventoryManager::get()
+                                .entityTree(terminus.getTid())
+                                .ancestor(oem_nvidia::EntityId{entityInfo},
+                                          PLDM_ENTITY_PROC_IO_MODULE))
                     {
-                        auto entityType = std::get<1>(*ancestor) & 0x7FFF;
-                        if (entityType == PLDM_ENTITY_PROC_IO_MODULE)
-                        {
-                            auto pdrInstance = std::get<2>(*ancestor);
-                            procModuleInstance =
-                                terminus.getInstance().value_or(pdrInstance);
-                            break;
-                        }
-                        // Move up to the next ancestor
-                        parentContainerId = std::get<0>(*ancestor);
+                        procModuleInstance = terminus.getInstance().value_or(
+                            module->id.instance);
                     }
 
                     if (!procModuleInstance)
@@ -867,36 +860,10 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 
         auto entityInfo = effecter->getEntityInfo();
         const auto& containerId = std::get<0>(entityInfo);
-        std::vector<std::string> cpuPaths;
-        if (auto containerEntity = terminus.getContainerEntity(containerId))
-        {
-            uint16_t containerType = std::get<1>(*containerEntity) & 0x7FFF;
-            if (containerType == PLDM_ENTITY_PROC)
-            {
-                cpuPaths = terminus.findInventory(*containerEntity, true);
-            }
-            // Mirror the SYS_BUS sensor precedent: only take the
-            // PROC-sibling fallback when the shared container is a
-            // processor module.
-            else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
-            {
-                if (auto* contained =
-                        terminus.getContainedEntities(containerId))
-                {
-                    for (const auto& sibling : *contained)
-                    {
-                        if ((std::get<1>(sibling) & 0x7FFF) == PLDM_ENTITY_PROC)
-                        {
-                            cpuPaths = terminus.findInventory(sibling, true);
-                            if (!cpuPaths.empty())
-                            {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // The CPU that is the container, else the first CPU of the
+        // containing ProcessorModule, mirroring the SYS_BUS sensors.
+        auto cpuPaths = oem_nvidia::InventoryManager::get().processorInventory(
+            terminus.getTid(), containerId);
 
         if (!cpuPaths.empty())
         {

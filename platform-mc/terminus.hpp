@@ -29,7 +29,6 @@
 
 #include "common/em_device.hpp"
 #include "common/types.hpp"
-#include "entity.hpp"
 #include "numeric_effecter.hpp"
 #include "numeric_sensor.hpp"
 #include "state_effecter.hpp"
@@ -69,21 +68,6 @@ using PortInfoIntf = sdbusplus::server::object_t<
     sdbusplus::server::xyz::openbmc_project::inventory::decorator::PortInfo>;
 
 class TerminusManager;
-
-constexpr auto instanceInterface =
-    "xyz.openbmc_project.Inventory.Decorator.Instance";
-constexpr auto instanceProperty = "InstanceNumber";
-constexpr auto overallSystemInterface =
-    "xyz.openbmc_project.Inventory.Item.System";
-constexpr auto chassisInterface = "xyz.openbmc_project.Inventory.Item.Chassis";
-constexpr ContainerID overallSystemContainerId = 0;
-static const std::map<EntityType, std::string_view> entityInterfaces = {
-    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
-     "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
-    {PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC,
-     "xyz.openbmc_project.Inventory.Item.Cpu"},
-    {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_ADD_IN_CARD,
-     "xyz.openbmc_project.Inventory.Item.Board"}};
 
 /**
  * @brief TerminusResumptionStatus
@@ -235,60 +219,6 @@ class Terminus
         return tid;
     }
 
-    /** @brief Look for the inventory which this entity should associate
-     * with */
-    std::vector<std::string> findInventory(EntityInfo entityInfo,
-                                           bool findClosest = true);
-
-    /** @brief Find the EntityInfo from the Container ID, and pass it to
-     * findInventory(EntityInfo) */
-    std::vector<std::string> findInventory(ContainerID containerId,
-                                           bool findClosest = true);
-
-    /** @brief Derive a CPU/ProcessorModule entity instance from the entity
-     *         association PDRs when no EID-to-terminus static config instance
-     *         is available. Walks from the given container up to the owning
-     *         ProcessorModule (PLDM_ENTITY_PROC_IO_MODULE) whose instance
-     *         uniquely identifies CPU_0 vs CPU_1, even when a single terminus
-     *         reports both CPUs.
-     *
-     *  @param[in] containerId - container ID of the entity being resolved
-     *  @return the ProcessorModule instance number, or std::nullopt when no
-     *          ProcessorModule is found in the hierarchy
-     */
-    std::optional<uint16_t> getInstanceFromAssociationPdr(
-        ContainerID containerId);
-
-    /** @brief Whether a resolved association is a degraded placeholder for
-     *         an entity type that must resolve to dedicated inventory (the
-     *         paths are not inventory objects of the type's expected home);
-     *         metric-report (shmem) updates stay gated while this is true */
-    bool isFallbackAssociation(const std::vector<std::string>& inventoryPaths,
-                               EntityType entityType) const;
-
-    /** @brief Get the container EntityInfo for a given container ID */
-    std::optional<EntityInfo> getContainerEntity(ContainerID containerId) const
-    {
-        auto itr = entityAssociations.find(containerId);
-        if (itr != entityAssociations.end())
-        {
-            return itr->second.first;
-        }
-        return std::nullopt;
-    }
-
-    /** @brief Get the contained (child) entities for a given container ID */
-    const std::set<EntityInfo>* getContainedEntities(
-        ContainerID containerId) const
-    {
-        auto itr = entityAssociations.find(containerId);
-        if (itr != entityAssociations.end())
-        {
-            return &itr->second.second;
-        }
-        return nullptr;
-    }
-
     /** @brief A list of PDRs fetched from Terminus */
     std::vector<std::vector<uint8_t>> pdrs{};
 
@@ -337,9 +267,6 @@ class Terminus
     /** @brief A list of parsed OEM PDRs */
     std::vector<OemPdr> oemPdrs{};
 
-    /** @brief A map of EntityInfo to Entity information */
-    std::map<EntityInfo, Entity> entities;
-
     /** @brief A list of parsed state effecter PDRs */
     std::vector<std::tuple<EffecterID, StateSetInfo>> stateEffecterPdrs{};
 
@@ -386,10 +313,12 @@ class Terminus
         nullptr;
 #endif
 
+    /** @brief Feed an Entity Association PDR to the terminus's entity tree
+     *         in InventoryManager. */
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
-    exec::task<int> getInventoryParent(const std::string objPath);
-
+    /** @brief Re-scan the inventory objects that belong to the terminus;
+     *         see InventoryManager::scan(). */
     exec::task<int> scanInventories();
 
     exec::task<int> updateAssociations();
@@ -664,16 +593,7 @@ class Terminus
         sensorEventInfoOverwriteTbl{};
 #endif
 
-    std::string systemInventoryPath;
-
-    std::vector<std::tuple<dbus::ObjectPath, EntityType, EntityInstance>>
-        inventories;
-
-    std::map<dbus::ObjectPath, dbus::ObjectPath> inventoryParentMap;
-
     std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
-
-    EntityAssociations entityAssociations;
 
     TerminusManager& terminusManager;
 

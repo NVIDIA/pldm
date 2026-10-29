@@ -38,6 +38,24 @@ namespace pldm
 namespace platform_mc
 {
 
+namespace
+{
+
+/** @brief The platform's system inventory, the default parent of every
+ *         sensor and effecter. Non-const only because the sensor and
+ *         effecter constructors take a std::string&. */
+std::string& systemInventoryPath()
+{
+#ifdef OEM_NVIDIA
+    return oem_nvidia::InventoryManager::get().systemInventoryPath;
+#else
+    static std::string path = PLATFORM_CHASSIS_PATH;
+    return path;
+#endif
+}
+
+} // namespace
+
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
     initialized(false), pollEvent(false), pollDataTransferHandle(0),
@@ -45,8 +63,6 @@ Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
     initSensorList(true), tid(tid), supportedTypes(supportedTypes), uuid(uuid),
     terminusManager(terminusManager)
 {
-    // default system inventory object path
-    systemInventoryPath = PLATFORM_CHASSIS_PATH;
     maxBufferSize = EVENT_MESSAGE_BUFFER_SIZE_MAX;
     needRefresh = false;
 #ifdef OEM_NVIDIA
@@ -66,7 +82,9 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     bool interested = false;
     for (const auto& [intf, properties] : interfaces)
     {
-        for (const auto& [entitytype, entityIface] : entityInterfaces)
+#ifdef OEM_NVIDIA
+        for (const auto& [entitytype, entityIface] :
+             oem_nvidia::entityInterfaces)
         {
             if (intf == entityIface)
             {
@@ -74,11 +92,10 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
                 break;
             }
         }
-        if (intf == overallSystemInterface)
+        if (intf == oem_nvidia::overallSystemInterface)
         {
             interested = true;
         }
-#ifdef OEM_NVIDIA
         if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
         {
             interested = true;
@@ -1220,8 +1237,8 @@ void Terminus::clearParsedPdrCaches()
     sensorAuxiliaryNamesTbl.clear();
     effecterAuxiliaryNamesTbl.clear();
     oemPdrs.clear();
-    entities.clear();
 #ifdef OEM_NVIDIA
+    oem_nvidia::InventoryManager::get().unbindAll(tid);
     oemEnergyCountNumericSensorPdrs.clear();
 #endif
 }
@@ -1513,53 +1530,27 @@ std::shared_ptr<EffecterAuxiliaryNames>
         pdr->effecter_id, pdr->effecter_count, effecterAuxNames);
 }
 
-void Terminus::parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData)
+void Terminus::parseEntityAssociationPDR(
+    [[maybe_unused]] const std::vector<uint8_t>& pdrData)
 {
-    // Ensure the fixed part of the entity-association PDR (header + container +
-    // num_children, up to the first child) is actually present before the
-    // reinterpret_cast reads those fields.
-    constexpr size_t minLen =
-        sizeof(struct pldm_pdr_hdr) +
-        offsetof(struct pldm_pdr_entity_association, children);
-    if (pdrData.size() < minLen)
+#ifdef OEM_NVIDIA
+    using AddResult = oem_nvidia::EntityTree::AddResult;
+    static const std::map<AddResult, std::string_view> rejections = {
+        {AddResult::malformed, "not a well-formed Entity Association PDR"},
+        {AddResult::reservedContainer,
+         "defines the reserved SYSTEM containerId"},
+        {AddResult::containerConflict,
+         "binds an already known containerId to a different entity"},
+    };
+    auto rejection = rejections.find(
+        oem_nvidia::InventoryManager::get().addEntityAssociation(tid, pdrData));
+    if (rejection != rejections.end())
     {
-        lg2::error("Entity association PDR too short: TID:{TID}", "TID", tid);
-        return;
+        lg2::error(
+            "ERROR: TID:{TID} Entity Association PDR ({LEN} bytes) skipped: {WHY}",
+            "TID", tid, "LEN", pdrData.size(), "WHY", rejection->second);
     }
-    auto pdr = reinterpret_cast<const struct pldm_pdr_entity_association*>(
-        pdrData.data() + sizeof(struct pldm_pdr_hdr));
-    // num_children is wire-declared; cap the loop at how many child records
-    // actually fit in the received buffer so children[i] cannot read OOB.
-    const size_t maxChildren =
-        (pdrData.size() - minLen) / sizeof(pdr->children[0]);
-    ContainerID containerId{pdr->container_id};
-    EntityInfo container{pdr->container.entity_container_id,
-                         pdr->container.entity_type,
-                         pdr->container.entity_instance_num};
-    if (entityAssociations.contains(containerId))
-    {
-        if (entityAssociations[containerId].first != container)
-        {
-            lg2::error(
-                "ERROR: TID:{TID} ContainerId:{CONTAINER_ID} has different entity.",
-                "TID", tid, "CONTAINER_ID", containerId);
-            return;
-        }
-    }
-    else
-    {
-        entityAssociations.emplace(
-            containerId, std::make_pair(container, std::set<EntityInfo>{}));
-    }
-
-    auto& containedEntities{entityAssociations[containerId].second};
-    for (size_t i = 0; i < pdr->num_children && i < maxChildren; ++i)
-    {
-        EntityInfo entityInfo{pdr->children[i].entity_container_id,
-                              pdr->children[i].entity_type,
-                              pdr->children[i].entity_instance_num};
-        containedEntities.emplace(std::move(entityInfo));
-    }
+#endif
 }
 
 std::shared_ptr<pldm_numeric_sensor_value_pdr> Terminus::parseNumericSensorPDR(
@@ -1753,179 +1744,50 @@ OemPdr Terminus::parseOemPDR(const std::vector<uint8_t>& oemPdr)
                            std::move(data));
 }
 
-exec::task<int> Terminus::getInventoryParent(const std::string objPath)
-{
-    const std::string assocPath = objPath + "/parent_chassis";
-    const dbus::Interfaces assocIfaces = {"xyz.openbmc_project.Association"};
-
-    /* Use the mapper to find which service owns the association object.
-     * Hardcoding mapperService here is wrong — association objects are
-     * owned by entity-manager or inventory services, not the mapper. */
-    auto serviceMap = co_await utils::coGetServiceMap(assocPath, assocIfaces);
-    if (serviceMap.empty())
-    {
-        co_return PLDM_SUCCESS;
-    }
-
-    const auto& service = serviceMap.begin()->first;
-    auto parents = co_await utils::coGetDbusProperty<std::vector<std::string>>(
-        assocPath, "endpoints", "xyz.openbmc_project.Association", service);
-    if (parents.size())
-    {
-        inventoryParentMap[objPath] = parents[0];
-    }
-    co_return PLDM_SUCCESS;
-}
-
 exec::task<int> Terminus::scanInventories()
 {
-    std::vector<std::string> interestedInterfaces;
-    interestedInterfaces.emplace_back(overallSystemInterface);
-    for (const auto& [entitytype, entityIface] : entityInterfaces)
+    if (!terminusManager.toMctpInfo(tid).has_value())
     {
-        interestedInterfaces.emplace_back(entityIface);
+        lg2::error(
+            "scanInventories: TID {TID} has no MCTP mapping; device inventory cannot be matched, sensors/telemetry will be missing for this terminus",
+            "TID", tid);
     }
-
-    try
-    {
-        auto getSubTreeResponse = co_await utils::coGetSubTree(
-            "/xyz/openbmc_project/inventory", 0, interestedInterfaces);
-        // default system inventory object path
-        systemInventoryPath = PLATFORM_CHASSIS_PATH;
-
-        inventories.clear();
-        inventoryParentMap.clear();
-
-        if (!terminusManager.toMctpInfo(tid).has_value())
-        {
-            lg2::error(
-                "scanInventories: TID {TID} has no MCTP mapping; device inventory cannot be matched, sensors/telemetry will be missing for this terminus",
-                "TID", tid);
-        }
-
-        for (const auto& [objPath, mapperServiceMap] : getSubTreeResponse)
-        {
-            EntityType type = 0;
-            EntityInstance instanceNumber = 0xFFFF;
-            for (const auto& [serviceName, interfaces] : mapperServiceMap)
-            {
-                for (const auto& interface : interfaces)
-                {
-                    if (interface == overallSystemInterface)
-                    {
-                        if (std::find(interfaces.begin(), interfaces.end(),
-                                      chassisInterface) == interfaces.end())
-                        {
-                            // The system should also has Chassis interface,
-                            // continue if not.
-                            continue;
-                        }
-                        systemInventoryPath = objPath;
-                        continue;
-                    }
-                    if (interface == instanceInterface)
-                    {
-                        instanceNumber =
-                            co_await utils::coGetDbusProperty<uint64_t>(
-                                objPath.c_str(), instanceProperty,
-                                instanceInterface, serviceName);
-                        continue;
-                    }
-                    for (const auto& [entitytype, entityIface] :
-                         entityInterfaces)
-                    {
-                        if (interface == entityIface)
-                        {
-                            type = entitytype;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            auto rc = co_await checkDeviceInventory(objPath);
-            if (rc == PLDM_SUCCESS)
-            {
-                inventories.emplace_back(objPath, type, instanceNumber);
-                co_await getInventoryParent(objPath);
-                // Strip LOGICAL flag for comparison
-                uint16_t rawType = type & 0x7FFF;
-                if (rawType != PLDM_ENTITY_PROC &&
-                    rawType != PLDM_ENTITY_PROC_IO_MODULE)
-                {
-                    continue;
-                }
-                try
-                {
-                    auto mapperServiceMap = co_await utils::coGetServiceMap(
-                        objPath,
-                        {"xyz.openbmc_project.Association.Definitions"});
-
-                    if (mapperServiceMap.empty())
-                    {
-                        continue;
-                    }
-                    const auto assocs =
-                        co_await utils::coGetDbusProperty<std::vector<
-                            std::tuple<std::string, std::string, std::string>>>(
-                            objPath.c_str(), "Associations",
-                            "xyz.openbmc_project.Association.Definitions",
-                            mapperServiceMap.begin()->first);
-
-                    for (const auto& assoc : assocs)
-                    {
-                        std::string assocPath = std::get<2>(assoc);
-                        if (std::get<1>(assoc) != "all_processors" ||
-                            assocPath == objPath)
-                        {
-                            continue;
-                        }
-                        inventories.emplace_back(assocPath, type,
-                                                 instanceNumber);
-                        co_await getInventoryParent(assocPath);
-                    }
-                }
-                catch (const std::exception& e)
-                {
-                    lg2::error("failed to query chassis cpu: {P} Error: {ERR}",
-                               "P", objPath, "ERR", e);
-                }
-            }
-        }
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Failed to scan inventories Error: {ERROR}", "ERROR", e);
-        co_return PLDM_FAILED;
-    }
-    lg2::debug(
-        "scanInventories: completed for TID {TID}; {COUNT} device inventories matched",
-        "TID", tid, "COUNT", inventories.size());
+#ifdef OEM_NVIDIA
+    co_return co_await oem_nvidia::InventoryManager::get().scan(*this);
+#else
     co_return PLDM_SUCCESS;
+#endif
 }
 
 exec::task<int> Terminus::updateAssociations()
 {
-    entities.clear();
-
-    // Create entities
-    auto createEntity = [&](const EntityInfo& entityInfo) {
-        if (entities.find(entityInfo) == entities.end())
+#ifdef OEM_NVIDIA
+    auto& inventory = oem_nvidia::InventoryManager::get();
+    inventory.bindAll(tid);
+    auto findInventory = [&](const EntityInfo& entityInfo) {
+        return inventory.findInventory(tid, oem_nvidia::EntityId{entityInfo});
+    };
+    auto isFallbackAssociation =
+        [&](const std::vector<std::string>& paths, EntityType entityType) {
+            return inventory.isFallbackAssociation(tid, paths, entityType);
+        };
+    // Replace @a paths with a CPU redirection that found a CPU.
+    auto redirect = [](std::vector<std::string>& paths,
+                       std::vector<std::string> cpuPaths) {
+        if (!cpuPaths.empty())
         {
-            // find the inventory once to create entity
-            findInventory(entityInfo, false);
+            paths = std::move(cpuPaths);
         }
     };
-
-    for (const auto& [containerId, entityAssociation] : entityAssociations)
-    {
-        const auto& [containerEntity, containedEntities] = entityAssociation;
-        createEntity(containerEntity);
-        for (const auto& containedEntity : containedEntities)
-        {
-            createEntity(containedEntity);
-        }
-    }
+#else
+    // No entity topology: sensors and effecters stay associated with the
+    // system inventory they were created with.
+    auto findInventory = [](const EntityInfo&) {
+        return std::vector<std::string>{systemInventoryPath()};
+    };
+    auto isFallbackAssociation =
+        [](const std::vector<std::string>&, EntityType) { return false; };
+#endif
 
     for (const auto& ptr : numericSensors)
     {
@@ -1978,96 +1840,35 @@ exec::task<int> Terminus::updateAssociations()
         else
         {
             inventoryPaths = findInventory(entityInfo);
-            // PROC_IO_MODULE sensors belong under the CPU chassis; find the
-            // CPU child within the module container and use its inventory path.
-            if ((std::get<1>(entityInfo) & 0x7FFF) ==
-                PLDM_ENTITY_PROC_IO_MODULE)
+#ifdef OEM_NVIDIA
+            const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+            const auto containerId = std::get<0>(entityInfo);
+            // PROC_IO_MODULE sensors belong under the CPU chassis: the first
+            // CPU of the terminus's first ProcessorModule.
+            if (baseType == PLDM_ENTITY_PROC_IO_MODULE)
             {
-                for (const auto& [cid, assoc] : entityAssociations)
-                {
-                    const auto& [containerEntity, containedEntities] = assoc;
-                    if ((std::get<1>(containerEntity) & 0x7FFF) !=
-                        PLDM_ENTITY_PROC_IO_MODULE)
-                    {
-                        continue;
-                    }
-                    for (const auto& child : containedEntities)
-                    {
-                        if ((std::get<1>(child) & 0x7FFF) == PLDM_ENTITY_PROC)
-                        {
-                            auto cpuPaths = findInventory(child, true);
-                            if (!cpuPaths.empty())
-                            {
-                                inventoryPaths = cpuPaths;
-                            }
-                            break;
-                        }
-                    }
-                    break;
-                }
+                redirect(inventoryPaths,
+                         inventory.moduleProcessorInventory(tid));
             }
             // SYS_BUS numeric sensors (e.g. CLink/NVLink counters for
-            // bandwidth, CRC, replay) should be associated with the
-            // CPU in the containing ProcessorModule. SYS_BUS has no
-            // inventory interface so findInventory returns empty; walk
-            // up to ProcessorModule and find the CPU sibling.
-            else if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS)
+            // bandwidth, CRC, replay) should be associated with the CPU
+            // that contains the bus, or the first CPU of the containing
+            // ProcessorModule. SYS_BUS has no inventory interface of its
+            // own.
+            else if (baseType == PLDM_ENTITY_SYS_BUS)
             {
-                const auto& containerId = std::get<0>(entityInfo);
-                auto containerItr = entityAssociations.find(containerId);
-                if (containerItr != entityAssociations.end())
-                {
-                    const auto& [containerEntity, containedEntities] =
-                        containerItr->second;
-                    uint16_t containerType =
-                        std::get<1>(containerEntity) & 0x7FFF;
-                    if (containerType == PLDM_ENTITY_PROC)
-                    {
-                        auto cpuPaths = findInventory(containerEntity, true);
-                        if (!cpuPaths.empty())
-                        {
-                            inventoryPaths = cpuPaths;
-                        }
-                    }
-                    else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
-                    {
-                        for (const auto& child : containedEntities)
-                        {
-                            if ((std::get<1>(child) & 0x7FFF) ==
-                                PLDM_ENTITY_PROC)
-                            {
-                                auto cpuPaths = findInventory(child, true);
-                                if (!cpuPaths.empty())
-                                {
-                                    inventoryPaths = cpuPaths;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
+                redirect(inventoryPaths,
+                         inventory.processorInventory(tid, containerId));
             }
             // Workaround: count/metric sensors (baseUnit == COUNTS) are
             // global per CPU (e.g. PageRetirementCount, TjMaxDramIndex),
             // so associate with CPU regardless of entity type.
             else if (ptr->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
             {
-                const auto& containerId = std::get<0>(entityInfo);
-                auto containerItr = entityAssociations.find(containerId);
-                if (containerItr != entityAssociations.end())
-                {
-                    const auto& containerEntity = containerItr->second.first;
-                    if ((std::get<1>(containerEntity) & 0x7FFF) ==
-                        PLDM_ENTITY_PROC)
-                    {
-                        auto cpuPaths = findInventory(containerEntity, true);
-                        if (!cpuPaths.empty())
-                        {
-                            inventoryPaths = cpuPaths;
-                        }
-                    }
-                }
+                redirect(inventoryPaths, inventory.containerProcessorInventory(
+                                             tid, containerId));
             }
+#endif
         }
         // A resolution that degraded past the entity's dedicated inventory
         // (to the system chassis, or to an ancestor while the real parent is
@@ -2106,12 +1907,14 @@ exec::task<int> Terminus::updateAssociations()
         ptr->setPhysicalContext(type);
     }
 
+#ifdef OEM_NVIDIA
     auto hasStateSetId = [](const StateSetInfo& info, uint16_t id) {
         for (const auto& sd : std::get<1>(info))
             if (std::get<0>(sd) == id)
                 return true;
         return false;
     };
+#endif
 
     for (const auto& ptr : stateSensors)
     {
@@ -2127,44 +1930,17 @@ exec::task<int> Terminus::updateAssociations()
             inventoryPaths = findInventory(entityInfo);
         }
 
+#ifdef OEM_NVIDIA
+        const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+        const auto containerId = std::get<0>(entityInfo);
         // SYS_BUS state sensors (CLink/NVLink port state) need CPU
-        // associations. SYS_BUS has no inventory interface so
-        // findInventory returns empty; walk up to the container and
-        // locate the CPU entity.
-        if ((std::get<1>(entityInfo) & 0x7FFF) == PLDM_ENTITY_SYS_BUS &&
-            inventoryPaths.empty())
+        // associations. SYS_BUS has no inventory interface of its own; take
+        // the CPU that contains the bus, or the first CPU of the containing
+        // ProcessorModule.
+        if (baseType == PLDM_ENTITY_SYS_BUS && inventoryPaths.empty())
         {
-            const auto& containerId = std::get<0>(entityInfo);
-            auto containerItr = entityAssociations.find(containerId);
-            if (containerItr != entityAssociations.end())
-            {
-                const auto& [containerEntity, containedEntities] =
-                    containerItr->second;
-                uint16_t containerType = std::get<1>(containerEntity) & 0x7FFF;
-                if (containerType == PLDM_ENTITY_PROC)
-                {
-                    auto cpuPaths = findInventory(containerEntity, true);
-                    if (!cpuPaths.empty())
-                    {
-                        inventoryPaths = cpuPaths;
-                    }
-                }
-                else if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
-                {
-                    for (const auto& child : containedEntities)
-                    {
-                        if ((std::get<1>(child) & 0x7FFF) == PLDM_ENTITY_PROC)
-                        {
-                            auto cpuPaths = findInventory(child, true);
-                            if (!cpuPaths.empty())
-                            {
-                                inventoryPaths = cpuPaths;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
+            redirect(inventoryPaths,
+                     inventory.processorInventory(tid, containerId));
         }
 
         // Workaround: MEMORY_CONTROLLER state sensors (e.g.
@@ -2172,25 +1948,13 @@ exec::task<int> Terminus::updateAssociations()
         // instead of ProcessorModule when container is PLDM_ENTITY_PROC.
         // Skip for PERFORMANCE state sets (e.g. MemoryPerformance) which
         // get their own DIMM-level associations in the OEM phase.
-        if ((std::get<1>(entityInfo) & 0x7FFF) ==
-                PLDM_ENTITY_MEMORY_CONTROLLER &&
+        if (baseType == PLDM_ENTITY_MEMORY_CONTROLLER &&
             !hasStateSetId(ptr->sensorInfo, PLDM_STATESET_ID_PERFORMANCE))
         {
-            const auto& containerId = std::get<0>(entityInfo);
-            auto containerItr = entityAssociations.find(containerId);
-            if (containerItr != entityAssociations.end())
-            {
-                const auto& containerEntity = containerItr->second.first;
-                if ((std::get<1>(containerEntity) & 0x7FFF) == PLDM_ENTITY_PROC)
-                {
-                    auto cpuPaths = findInventory(containerEntity, true);
-                    if (!cpuPaths.empty())
-                    {
-                        inventoryPaths = cpuPaths;
-                    }
-                }
-            }
+            redirect(inventoryPaths,
+                     inventory.containerProcessorInventory(tid, containerId));
         }
+#endif
 
         // Same placeholder rule as numeric sensors above: keep
         // defaultInventoryAssociated set while the association is a
@@ -2229,295 +1993,6 @@ exec::task<int> Terminus::updateAssociations()
     co_await nvidia::nvidiaUpdateAssociations(*this);
 #endif
     co_return PLDM_SUCCESS;
-}
-std::optional<uint16_t> Terminus::getInstanceFromAssociationPdr(
-    ContainerID containerId)
-{
-    // The instance number distinguishing CPU_0 from CPU_1 lives in the owning
-    // ProcessorModule (PLDM_ENTITY_PROC_IO_MODULE) entity in the association
-    // PDRs, which is present regardless of any EID-to-terminus static config.
-    auto containerItr = entityAssociations.find(containerId);
-    if (containerItr == entityAssociations.end())
-    {
-        return std::nullopt;
-    }
-
-    const auto& containerEntity = containerItr->second.first;
-    uint16_t containerType = std::get<1>(containerEntity) & 0x7FFF;
-    if (containerType == PLDM_ENTITY_PROC_IO_MODULE)
-    {
-        // Entity sits directly under a ProcessorModule; use its instance.
-        return std::get<2>(containerEntity);
-    }
-    if (containerType == PLDM_ENTITY_PROC)
-    {
-        // Entity sits under a CPU; walk up one level to the ProcessorModule.
-        auto parentContainerId = std::get<0>(containerEntity);
-        auto parentItr = entityAssociations.find(parentContainerId);
-        if (parentItr != entityAssociations.end() &&
-            (std::get<1>(parentItr->second.first) & 0x7FFF) ==
-                PLDM_ENTITY_PROC_IO_MODULE)
-        {
-            return std::get<2>(parentItr->second.first);
-        }
-    }
-    return std::nullopt;
-}
-
-std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
-                                                 const bool findClosest)
-{
-    // Search from stored result first
-    auto itr = entities.find(entityInfo);
-    if (itr != entities.end())
-    {
-        auto& entity = itr->second;
-        if (findClosest)
-        {
-            return entity.getClosestInventories();
-        }
-        else
-        {
-            return entity.getInventories();
-        }
-    }
-
-    const auto& [containerId, entityType, instance] = entityInfo;
-    auto entityInstance = instance;
-    // Strip LOGICAL flag for comparison - PDRs may use either raw or LOGICAL
-    // types
-    uint16_t rawEntityType = entityType & 0x7FFF;
-    // Resolve the instance for CPU/ProcessorModule entities. Prefer the
-    // terminus instance from static config; when that is unavailable (legacy
-    // platforms without an EID-to-terminus config) derive it from the entity
-    // association hierarchy, where the owning ProcessorModule instance
-    // distinguishes CPU_0 from CPU_1 even if a single terminus reports both.
-    if (rawEntityType == PLDM_ENTITY_PROC ||
-        rawEntityType == PLDM_ENTITY_PROC_IO_MODULE)
-    {
-        if (getInstance())
-        {
-            entityInstance = *getInstance();
-        }
-        else if (auto moduleInstance =
-                     getInstanceFromAssociationPdr(containerId))
-        {
-            entityInstance = *moduleInstance;
-        }
-    }
-    auto ContainerInventoryPaths = findInventory(containerId);
-
-    // Search for possible inventory paths
-    std::vector<std::string> candidates;
-    for (const auto& [candidatePath, candidateType, candidateInstance] :
-         inventories)
-    {
-        // Strip LOGICAL flag from both for comparison - PDRs may use
-        // LOGICAL|type while inventory uses raw type
-        uint16_t rawCandidateType = candidateType & 0x7FFF;
-        if ((rawEntityType == rawCandidateType) &&
-            (entityInstance == candidateInstance))
-        {
-            candidates.push_back(candidatePath);
-        }
-    }
-
-    std::vector<std::string> inventoryPaths;
-    if (candidates.empty())
-    {
-        inventoryPaths.clear();
-    }
-    else if (rawEntityType == PLDM_ENTITY_PROC ||
-             rawEntityType == PLDM_ENTITY_PROC_IO_MODULE)
-    {
-        // For CPU and ProcessorModule entities, return ALL matching candidates
-        // These may have all_processors associations that link multiple paths
-        inventoryPaths = candidates;
-    }
-    else
-    {
-        // For other entities, find the one under parent path
-        for (const auto& candidate : candidates)
-        {
-            for (const auto& containerPath : ContainerInventoryPaths)
-            {
-                const auto& it = inventoryParentMap.find(candidate);
-                if (it != inventoryParentMap.end() &&
-                    it->second == containerPath)
-                {
-                    inventoryPaths.emplace_back(candidate);
-                }
-            }
-        }
-        // default path if no one under parent path
-        if (inventoryPaths.empty())
-        {
-            inventoryPaths.emplace_back(candidates[0]);
-        }
-    }
-
-    // Entity-type scope overrides for Redfish representation:
-    //  MEMORY_CONTROLLER (0x8F): associate with HGX_ProcessorModule_x
-    //  POWER_SUPPLY (0x78, VREGs): associate with HGX_CPU_x
-    auto effectiveContainerPaths = ContainerInventoryPaths;
-    if (inventoryPaths.empty())
-    {
-        auto containerItr = entityAssociations.find(containerId);
-        if (containerItr != entityAssociations.end())
-        {
-            if (rawEntityType == PLDM_ENTITY_MEMORY_CONTROLLER)
-            {
-                // Walk up: DRAM is under CPU, but belongs at ProcessorModule
-                const auto& containerEntity = containerItr->second.first;
-                uint16_t rawContainerType =
-                    std::get<1>(containerEntity) & 0x7FFF;
-                if (rawContainerType != PLDM_ENTITY_PROC_IO_MODULE)
-                {
-                    const auto& parentContainerId =
-                        std::get<0>(containerEntity);
-                    auto modulePaths = findInventory(parentContainerId, true);
-                    if (modulePaths.size() == 1 &&
-                        modulePaths.front() == systemInventoryPath &&
-                        !terminusName.empty())
-                    {
-                        for (const auto& inventory : inventories)
-                        {
-                            const auto& candidatePath = std::get<0>(inventory);
-                            auto candidateType = std::get<1>(inventory);
-                            uint16_t rawCandidateType = candidateType & 0x7FFF;
-                            if (rawCandidateType ==
-                                    PLDM_ENTITY_PROC_IO_MODULE &&
-                                std::filesystem::path(candidatePath)
-                                        .filename()
-                                        .string() == terminusName)
-                            {
-                                modulePaths.clear();
-                                modulePaths.emplace_back(candidatePath);
-                                break;
-                            }
-                        }
-                    }
-                    if (!modulePaths.empty())
-                    {
-                        effectiveContainerPaths = modulePaths;
-                    }
-                }
-            }
-            else if (rawEntityType == PLDM_ENTITY_POWER_SUPPLY)
-            {
-                // Sideways: VREG is under ProcessorModule, but powers the CPU.
-                // Find the sibling CPU entity in the same container.
-                const auto& siblings = containerItr->second.second;
-                for (const auto& sibling : siblings)
-                {
-                    if ((std::get<1>(sibling) & 0x7FFF) == PLDM_ENTITY_PROC)
-                    {
-                        auto cpuPaths = findInventory(sibling, true);
-                        if (!cpuPaths.empty())
-                        {
-                            effectiveContainerPaths = cpuPaths;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Store the result, and also create parent_chassis/all_chassis
-    // association
-    entities.emplace(entityInfo,
-                     Entity{inventoryPaths, effectiveContainerPaths});
-
-    if (!inventoryPaths.empty() || !findClosest)
-    {
-        return inventoryPaths;
-    }
-    return effectiveContainerPaths;
-}
-
-bool Terminus::isFallbackAssociation(
-    const std::vector<std::string>& inventoryPaths, EntityType entityType) const
-{
-    // Entity types that must resolve to dedicated inventory, mapped to the
-    // entity types of the inventory objects that can serve as their Redfish
-    // home. findInventory(findClosest=true) degrades to the closest ancestor
-    // (module, board, system chassis) while EM inventory is still settling;
-    // any resolution that is not one of the home types below is a
-    // placeholder and metric-report updates must stay gated so the first
-    // shmem insert cannot freeze a wrong metricProperty URI.
-    // Cross-reference: buildEntityTypeTag() names these same terminus-local
-    // sub-entities; entityInterfaces lists the inventory interfaces
-    // scanInventories() collects. Keep the three in sync.
-    // Types absent from this map (e.g. baseboard sensors, and — pending
-    // platform validation — ETHERNET/INFINIBAND/ADD_IN_CARD/OPERATING_SYS)
-    // may legitimately live on the system chassis and are never gated.
-    static const std::map<EntityType, std::vector<EntityType>> dedicatedHomes =
-        {
-            {PLDM_ENTITY_PROC, {PLDM_ENTITY_PROC}},
-            {PLDM_ENTITY_PROC_IO_MODULE,
-             {PLDM_ENTITY_PROC, PLDM_ENTITY_PROC_IO_MODULE}},
-            {PLDM_ENTITY_MEMORY_CONTROLLER,
-             {PLDM_ENTITY_PROC_IO_MODULE, PLDM_ENTITY_PROC}},
-            {PLDM_ENTITY_POWER_SUPPLY, {PLDM_ENTITY_PROC}},
-            {PLDM_ENTITY_SYS_BUS, {PLDM_ENTITY_PROC}},
-            {PLDM_ENTITY_PCI_EXPRESS_BUS, {PLDM_ENTITY_PROC}},
-        };
-
-    // Strip LOGICAL flag for comparison, matching findInventory
-    auto itr =
-        dedicatedHomes.find(static_cast<EntityType>(entityType & 0x7FFF));
-    if (itr == dedicatedHomes.end())
-    {
-        return false;
-    }
-    if (inventoryPaths.empty())
-    {
-        return true;
-    }
-    const auto& homeTypes = itr->second;
-    for (const auto& path : inventoryPaths)
-    {
-        bool isHome = false;
-        for (const auto& [invPath, invType, invInstance] : inventories)
-        {
-            if (invPath == path &&
-                std::find(homeTypes.begin(), homeTypes.end(),
-                          static_cast<EntityType>(invType & 0x7FFF)) !=
-                    homeTypes.end())
-            {
-                isHome = true;
-                break;
-            }
-        }
-        if (!isHome)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
-                                                 const bool findClosest)
-{
-    std::vector<std::string> inventoryPath;
-    inventoryPath.emplace_back(systemInventoryPath);
-    if (containerId == overallSystemContainerId)
-    {
-        return inventoryPath;
-    }
-
-    auto itr = entityAssociations.find(containerId);
-    if (itr == entityAssociations.end())
-    {
-        lg2::error(
-            "cannot find containerId:{CID}, returning systemInventoryPath",
-            "CID", containerId);
-        return inventoryPath;
-    }
-    const auto& [containerEntity, containedEntities] = itr->second;
-    return findInventory(containerEntity, findClosest);
 }
 
 std::string Terminus::buildEntityTypeTag(uint16_t entityType) const
@@ -2592,7 +2067,7 @@ void Terminus::addNumericSensor(
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            tid, true, pdr, sensorName, systemInventoryPath, sensorEventInfo);
+            tid, true, pdr, sensorName, systemInventoryPath(), sensorEventInfo);
         numericSensors.emplace_back(sensor);
         if (auxName)
         {
@@ -2623,7 +2098,7 @@ void Terminus::addOEMEnergyCountNumericSensor(
     try
     {
         auto sensor = std::make_shared<NumericSensor>(
-            tid, true, pdr, sensorName, systemInventoryPath,
+            tid, true, pdr, sensorName, systemInventoryPath(),
             POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM);
         numericSensors.emplace_back(sensor);
     }
@@ -2684,7 +2159,8 @@ void Terminus::addNumericEffecter(
     try
     {
         auto effecter = std::make_shared<NumericEffecter>(
-            tid, true, pdr, effecterName, systemInventoryPath, terminusManager);
+            tid, true, pdr, effecterName, systemInventoryPath(),
+            terminusManager);
         numericEffecters.emplace_back(effecter);
     }
     catch (const std::exception& e)
@@ -2755,7 +2231,7 @@ void Terminus::addStateSensor(SensorID sId, StateSetInfo sensorInfo)
     {
         auto sensor = std::make_shared<StateSensor>(
             tid, true, sId, std::move(sensorInfo), sensorNames,
-            systemInventoryPath, stateSensorEventInfo);
+            systemInventoryPath(), stateSensorEventInfo);
         stateSensors.emplace_back(sensor);
     }
     catch (const std::exception& e)
@@ -2818,7 +2294,7 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
     {
         auto effecter = std::make_shared<StateEffecter>(
             tid, true, eId, std::move(effecterInfo), effecterNames,
-            systemInventoryPath, terminusManager);
+            systemInventoryPath(), terminusManager);
         stateEffecters.emplace_back(effecter);
     }
     catch (const std::exception& e)
