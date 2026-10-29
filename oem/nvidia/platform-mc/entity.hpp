@@ -83,7 +83,9 @@ struct EntityId
  *
  * PDR identity plus this entity's own platform inventory. A disengaged
  * binding is unresolved; an engaged but empty binding means the platform
- * has no object for this entity (e.g. a SYS_BUS).
+ * has no object for this entity (e.g. a SYS_BUS). An entity with no object
+ * of its own may carry a scope: the inventory it and its descendants
+ * associate with instead of the closest ancestor's.
  */
 class Entity
 {
@@ -101,11 +103,25 @@ class Entity
     void bind(std::vector<dbus::ObjectPath> own)
     {
         inventoryPaths = std::move(own);
+        scopePaths.reset();
     }
 
     void unbind()
     {
         inventoryPaths.reset();
+        scopePaths.reset();
+    }
+
+    /** @brief Set the inventory that stands in for the closest ancestor's;
+     *         cleared by bind() and unbind(). */
+    void setScope(std::vector<dbus::ObjectPath> paths)
+    {
+        scopePaths = std::move(paths);
+    }
+
+    const std::optional<std::vector<dbus::ObjectPath>>& scope() const
+    {
+        return scopePaths;
     }
 
     /** @brief Inventory objects that represent this entity. */
@@ -117,6 +133,7 @@ class Entity
   private:
     static inline const std::vector<dbus::ObjectPath> none;
     std::optional<std::vector<dbus::ObjectPath>> inventoryPaths;
+    std::optional<std::vector<dbus::ObjectPath>> scopePaths;
 };
 
 } // namespace pldm::platform_mc::oem_nvidia
