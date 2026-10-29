@@ -7,6 +7,8 @@
 #include <coroutine>
 #include <cstddef>
 #include <cstdlib>
+#include <exception>
+#include <functional>
 #include <memory>
 #include <new>
 #include <string>
@@ -203,12 +205,27 @@ class FakeAsioConnection
     bool throwOnServiceMapCall = false;
     bool throwOnSubTreeCall = false;
 
+    // When set, property calls are recorded and their callbacks are queued
+    // instead of being invoked, so a test can reply after the caller has
+    // suspended.
+    bool deferPropertyReplies = false;
+    std::vector<std::vector<std::string>> propertyCalls;
+    std::vector<std::function<void(boost::system::error_code,
+                                   pldm::utils::PropertyValue)>>
+        pendingPropertyReplies;
+
     template <typename Callback, typename... Args>
-    void async_method_call(Callback&& cb, Args&&...)
+    void async_method_call(Callback&& cb, [[maybe_unused]] Args&&... args)
     {
         if constexpr (std::is_invocable_v<Callback, boost::system::error_code,
                                           pldm::utils::PropertyValue>)
         {
+            if (deferPropertyReplies)
+            {
+                propertyCalls.push_back({std::string(args)...});
+                pendingPropertyReplies.emplace_back(std::forward<Callback>(cb));
+                return;
+            }
             if (throwOnPropertyCall)
             {
                 throw std::runtime_error("property async call failure");
@@ -389,6 +406,9 @@ class DBusAsyncUtilsTest : public testing::Test
         conn.throwOnPropertyCall = false;
         conn.throwOnServiceMapCall = false;
         conn.throwOnSubTreeCall = false;
+        conn.deferPropertyReplies = false;
+        conn.propertyCalls.clear();
+        conn.pendingPropertyReplies.clear();
     }
 
     async_utils_test::FakeAsioConnection& connection()
@@ -445,6 +465,54 @@ void expectPropertyErrorPathExhaustiveBadAlloc(
         maxFailAt));
 
     conn.nextPropertyError.clear();
+}
+
+/** @brief Coroutine that co_awaits one awaitable and counts its resumes.
+ *         It parks after the first resume, so a second resume is counted
+ *         instead of running past the end of the frame.
+ */
+struct AwaitOnce
+{
+    struct promise_type
+    {
+        AwaitOnce get_return_object()
+        {
+            return AwaitOnce{
+                std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        std::suspend_never initial_suspend() noexcept
+        {
+            return {};
+        }
+        std::suspend_always final_suspend() noexcept
+        {
+            return {};
+        }
+        void return_void() noexcept {}
+        void unhandled_exception() noexcept
+        {
+            std::terminate();
+        }
+    };
+
+    explicit AwaitOnce(std::coroutine_handle<promise_type> h) : handle(h) {}
+    AwaitOnce(const AwaitOnce&) = delete;
+    AwaitOnce& operator=(const AwaitOnce&) = delete;
+    ~AwaitOnce()
+    {
+        handle.destroy();
+    }
+
+    std::coroutine_handle<promise_type> handle;
+};
+
+template <typename Awaitable, typename T>
+AwaitOnce awaitInto(Awaitable awaitable, T& result, int& resumes)
+{
+    result = co_await awaitable;
+    ++resumes;
+    co_await std::suspend_always{};
+    ++resumes;
 }
 
 TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyCoversSupportedTypes)
@@ -560,6 +628,65 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyReturnsDefaultsOnError)
         path, "ObjectPaths", iface);
     EXPECT_TRUE(objectPathsProp.await_suspend(std::noop_coroutine()));
     EXPECT_TRUE(objectPathsProp.await_resume().empty());
+}
+
+TEST_F(DBusAsyncUtilsTest, coGetDbusPropertySendsGetAndResumesOnceOnReply)
+{
+    constexpr auto path = "/xyz/openbmc_project/inventory/system/chassis/cov";
+    constexpr auto iface =
+        "xyz.openbmc_project.Configuration.I2CDeviceAssociation";
+    auto& conn = connection();
+    conn.deferPropertyReplies = true;
+
+    uint64_t bus = 0;
+    int resumes = 0;
+    auto awaiter =
+        awaitInto(pldm::utils::coGetDbusProperty<uint64_t>(path, "Bus", iface),
+                  bus, resumes);
+
+    // One Properties.Get to Entity Manager, the default service. The caller
+    // stays suspended until the reply arrives.
+    ASSERT_EQ(1U, conn.pendingPropertyReplies.size());
+    EXPECT_EQ((std::vector<std::string>{"xyz.openbmc_project.EntityManager",
+                                        path, "org.freedesktop.DBus.Properties",
+                                        "Get", iface, "Bus"}),
+              conn.propertyCalls.at(0));
+    EXPECT_EQ(0, resumes);
+
+    conn.pendingPropertyReplies.at(0)({}, uint64_t{73});
+    EXPECT_EQ(1, resumes);
+    EXPECT_EQ(73U, bus);
+}
+
+TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyResumesOnceWithDefaultOnErrorReply)
+{
+    constexpr auto path =
+        "/xyz/openbmc_project/inventory/system/chassis/cov/parent_chassis";
+    constexpr auto iface = "xyz.openbmc_project.Association";
+    constexpr auto service = "xyz.openbmc_project.Inventory.Manager";
+    auto& conn = connection();
+    conn.deferPropertyReplies = true;
+
+    std::vector<std::string> endpoints{"stale"};
+    int resumes = 0;
+    auto awaiter =
+        awaitInto(pldm::utils::coGetDbusProperty<std::vector<std::string>>(
+                      path, "endpoints", iface, service),
+                  endpoints, resumes);
+
+    ASSERT_EQ(1U, conn.pendingPropertyReplies.size());
+    EXPECT_EQ((std::vector<std::string>{service, path,
+                                        "org.freedesktop.DBus.Properties",
+                                        "Get", iface, "endpoints"}),
+              conn.propertyCalls.at(0));
+    EXPECT_EQ(0, resumes);
+
+    // A failed call resumes the caller with T{}; the value is not used.
+    auto& reply = conn.pendingPropertyReplies.at(0);
+    reply(boost::system::errc::make_error_code(boost::system::errc::io_error),
+          std::vector<std::string>{"ignored"});
+    EXPECT_EQ(1, resumes);
+    EXPECT_TRUE(endpoints.empty());
 }
 
 TEST_F(DBusAsyncUtilsTest,
