@@ -22,6 +22,23 @@ using pdr::EntityInstance;
 using pdr::EntityType;
 using pdr::entityTypeMask;
 
+PhysicalContextType toPhysicalContextType(const EntityType entityType)
+{
+    static const std::map<EntityType, PhysicalContextType> contexts = {
+        {PLDM_ENTITY_MEMORY_CONTROLLER, PhysicalContextType::Memory},
+        {PLDM_ENTITY_PROC, PhysicalContextType::CPU},
+        {PLDM_ENTITY_PROC_MODULE, PhysicalContextType::CPU},
+        {PLDM_ENTITY_PROC_IO_MODULE, PhysicalContextType::CPU},
+        {PLDM_ENTITY_DC_DC_CONVERTER, PhysicalContextType::VoltageRegulator},
+        {PLDM_ENTITY_POWER_CONVERTER, PhysicalContextType::VoltageRegulator},
+        {PLDM_ENTITY_POWER_SUPPLY, PhysicalContextType::VoltageRegulator},
+        {PLDM_ENTITY_NETWORK_CONTROLLER, PhysicalContextType::NetworkingDevice},
+    };
+    auto itr = contexts.find(entityType);
+    return itr == contexts.end() ? PhysicalContextType::SystemBoard
+                                 : itr->second;
+}
+
 const dbus::Interfaces& InventoryManager::interestingInterfaces()
 {
     static const dbus::Interfaces interfaces = [] {

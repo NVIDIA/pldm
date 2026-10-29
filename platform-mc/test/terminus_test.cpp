@@ -83,6 +83,7 @@ using pldm::platform_mc::oem_nvidia::EntityId;
 using pldm::platform_mc::oem_nvidia::entityInterfaces;
 using pldm::platform_mc::oem_nvidia::InventoryManager;
 using pldm::platform_mc::oem_nvidia::overallSystemInterface;
+using pldm::platform_mc::oem_nvidia::toPhysicalContextType;
 
 /** The platform's system inventory, shared by every terminus. */
 std::string& systemInventoryPath()
@@ -3792,19 +3793,19 @@ TEST_F(TerminusTest, privateFindInventoryAndPhysicalContextCoverage)
     EXPECT_TRUE(missingWithoutClosest.empty());
 
     EXPECT_EQ(PhysicalContextType::Memory,
-              terminus.toPhysicalContextType(PLDM_ENTITY_MEMORY_CONTROLLER));
+              toPhysicalContextType(PLDM_ENTITY_MEMORY_CONTROLLER));
     EXPECT_EQ(PhysicalContextType::CPU,
-              terminus.toPhysicalContextType(PLDM_ENTITY_PROC_MODULE));
+              toPhysicalContextType(PLDM_ENTITY_PROC_MODULE));
     EXPECT_EQ(PhysicalContextType::CPU,
-              terminus.toPhysicalContextType(PLDM_ENTITY_PROC_IO_MODULE));
+              toPhysicalContextType(PLDM_ENTITY_PROC_IO_MODULE));
     EXPECT_EQ(PhysicalContextType::VoltageRegulator,
-              terminus.toPhysicalContextType(PLDM_ENTITY_DC_DC_CONVERTER));
+              toPhysicalContextType(PLDM_ENTITY_DC_DC_CONVERTER));
     EXPECT_EQ(PhysicalContextType::VoltageRegulator,
-              terminus.toPhysicalContextType(PLDM_ENTITY_POWER_SUPPLY));
+              toPhysicalContextType(PLDM_ENTITY_POWER_SUPPLY));
     EXPECT_EQ(PhysicalContextType::NetworkingDevice,
-              terminus.toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
+              toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
     EXPECT_EQ(PhysicalContextType::SystemBoard,
-              terminus.toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
+              toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
 }
 
 TEST_F(TerminusTest, findInventoryProcModuleInstanceNoConfigCoverage)

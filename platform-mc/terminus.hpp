@@ -37,7 +37,6 @@
 #include <sdbusplus/server/object.hpp>
 #include <sdeventplus/event.hpp>
 #include <xyz/openbmc_project/Association/Definitions/server.hpp>
-#include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortInfo/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/PortState/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
@@ -51,10 +50,6 @@ namespace pldm
 namespace platform_mc
 {
 
-using PhysicalContextType = sdbusplus::xyz::openbmc_project::Inventory::
-    Decorator::server::Area::PhysicalContextType;
-using InventoryDecoratorAreaIntf = sdbusplus::server::object_t<
-    sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Area>;
 using OemRecordId = uint16_t;
 using VendorSpecificData = std::vector<uint8_t>;
 using OemPdr = std::tuple<VendorIANA, OemRecordId, VendorSpecificData>;
@@ -560,13 +555,6 @@ class Terminus
     void updateNumericSensorAssociations();
     void updateStateSensorAssociations();
     void updateEffecterAssociations();
-
-    /** @brief Convert EntityType to PhysicalContextType
-     *
-     *  @param[in] EntityType - entityType
-     *  @return PhysicalContextType
-     */
-    PhysicalContextType toPhysicalContextType(const EntityType entityType);
 
     std::optional<std::string> getAuxNameForNumericSensor(SensorID id);
 

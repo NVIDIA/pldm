@@ -12,6 +12,7 @@
 #include "entity_tree.hpp"
 
 #include <exec/task.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 
 #include <map>
 #include <optional>
@@ -42,6 +43,14 @@ static const std::map<pdr::EntityType, std::string_view> entityInterfaces = {
      "xyz.openbmc_project.Inventory.Item.Cpu"},
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_ADD_IN_CARD,
      "xyz.openbmc_project.Inventory.Item.Board"}};
+
+using PhysicalContextType = sdbusplus::xyz::openbmc_project::Inventory::
+    Decorator::server::Area::PhysicalContextType;
+
+/** @brief The Inventory.Decorator.Area PhysicalContext a sensor or effecter
+ *         on an entity of @a entityType reports; SystemBoard when the type
+ *         has no closer match. */
+PhysicalContextType toPhysicalContextType(pdr::EntityType entityType);
 
 /** Entity topology and device inventory of every terminus, and the binding
  *  between the two.

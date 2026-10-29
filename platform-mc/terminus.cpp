@@ -1942,8 +1942,10 @@ void Terminus::updateNumericSensorAssociations()
                        "until inventory resolves.",
                        "NAME", ptr->getSensorName());
         }
-        ptr->setPhysicalContext(
-            toPhysicalContextType(std::get<1>(ptr->getEntityInfo())));
+#ifdef OEM_NVIDIA
+        ptr->setPhysicalContext(oem_nvidia::toPhysicalContextType(
+            std::get<1>(ptr->getEntityInfo())));
+#endif
     }
 }
 
@@ -1984,7 +1986,10 @@ void Terminus::updateEffecterAssociations()
     {
         auto entityInfo = ptr->getEntityInfo();
         ptr->setInventoryPaths(resolveInventory(entityInfo));
-        ptr->setPhysicalContext(toPhysicalContextType(std::get<1>(entityInfo)));
+#ifdef OEM_NVIDIA
+        ptr->setPhysicalContext(
+            oem_nvidia::toPhysicalContextType(std::get<1>(entityInfo)));
+#endif
     }
     for (const auto& ptr : stateEffecters)
     {
@@ -2313,29 +2318,6 @@ void Terminus::addStateEffecter(EffecterID eId, StateSetInfo effecterInfo)
         lg2::error("Failed to create StateEffecter:{EFFECTERNAME}, {ERROR}.",
                    "EFFECTERNAME", effecterName, "ERROR", e);
     }
-}
-
-PhysicalContextType Terminus::toPhysicalContextType(const EntityType entityType)
-{
-    switch (entityType)
-    {
-        case PLDM_ENTITY_MEMORY_CONTROLLER:
-            return PhysicalContextType::Memory;
-        case PLDM_ENTITY_PROC:
-        case PLDM_ENTITY_PROC_MODULE:
-        case PLDM_ENTITY_PROC_IO_MODULE:
-            return PhysicalContextType::CPU;
-        case PLDM_ENTITY_DC_DC_CONVERTER:
-        case PLDM_ENTITY_POWER_CONVERTER:
-        case PLDM_ENTITY_POWER_SUPPLY:
-            return PhysicalContextType::VoltageRegulator;
-        case PLDM_ENTITY_NETWORK_CONTROLLER:
-            return PhysicalContextType::NetworkingDevice;
-        case PLDM_ENTITY_SYS_BOARD:
-        default:
-            break;
-    }
-    return PhysicalContextType::SystemBoard;
 }
 
 void Terminus::setOnline()
