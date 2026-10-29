@@ -22,9 +22,7 @@ using pdr::EntityInstance;
 using pdr::EntityType;
 using pdr::entityTypeMask;
 
-/** @brief The inventory interfaces scan() collects: the overall system plus
- *         every entityInterfaces entry. */
-static const dbus::Interfaces& interestingInterfaces()
+const dbus::Interfaces& InventoryManager::interestingInterfaces()
 {
     static const dbus::Interfaces interfaces = [] {
         dbus::Interfaces result{overallSystemInterface};

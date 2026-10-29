@@ -16,6 +16,7 @@
  */
 #include <exec/start_detached.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -83,16 +84,10 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     for (const auto& [intf, properties] : interfaces)
     {
 #ifdef OEM_NVIDIA
-        for (const auto& [entitytype, entityIface] :
-             oem_nvidia::entityInterfaces)
-        {
-            if (intf == entityIface)
-            {
-                interested = true;
-                break;
-            }
-        }
-        if (intf == oem_nvidia::overallSystemInterface)
+        const auto& inventoryInterfaces =
+            oem_nvidia::InventoryManager::interestingInterfaces();
+        if (std::find(inventoryInterfaces.begin(), inventoryInterfaces.end(),
+                      intf) != inventoryInterfaces.end())
         {
             interested = true;
         }
@@ -1759,219 +1754,219 @@ exec::task<int> Terminus::scanInventories()
 #endif
 }
 
-exec::task<int> Terminus::updateAssociations()
+#ifdef OEM_NVIDIA
+namespace
+{
+
+/** @brief Replace @a paths with a CPU redirection that found a CPU. */
+void redirect(std::vector<std::string>& paths,
+              std::vector<std::string> cpuPaths)
+{
+    if (!cpuPaths.empty())
+    {
+        paths = std::move(cpuPaths);
+    }
+}
+
+bool hasStateSetId(const StateSetInfo& info, uint16_t id)
+{
+    const auto& stateSets = std::get<1>(info);
+    return std::any_of(stateSets.begin(), stateSets.end(),
+                       [id](const auto& sd) { return std::get<0>(sd) == id; });
+}
+
+} // namespace
+#endif
+
+std::vector<std::string> Terminus::resolveInventory(
+    const EntityInfo& entityInfo)
+{
+#ifdef OEM_NVIDIA
+    return oem_nvidia::InventoryManager::get().findInventory(
+        tid, oem_nvidia::EntityId{entityInfo});
+#else
+    // No entity topology: the system inventory the sensor or effecter was
+    // created with.
+    (void)entityInfo;
+    return {systemInventoryPath()};
+#endif
+}
+
+bool Terminus::updateNumericSensorName(NumericSensor& sensor)
+{
+    auto name = getAuxNameForNumericSensor(sensor.sensorId);
+    if (!name)
+    {
+        if (!terminusManager.numericSensorsWithoutAuxName)
+        {
+            sensor.removeValueIntf();
+            return false;
+        }
+        return true;
+    }
+    // Prepend terminus name (+ entity type + cpu index) if available and name
+    // is not from Entity Manager
+    std::string updatedName = *name;
+    if (!terminusName.empty() &&
+        sensorAuxNameOverwriteTbl.find(sensor.sensorId) ==
+            sensorAuxNameOverwriteTbl.end())
+    {
+        auto entityType = std::get<1>(sensor.getEntityInfo());
+        // FixME: Backward compat — old firmware includes entity-type + CPU
+        // index in aux name (e.g. "CPU_0_X"). Detect and prepend only
+        // terminus name; remove when all firmware sends plain aux names.
+        auto entityTag = buildEntityTypeTag(entityType);
+        if (!entityTag.empty() && updatedName.starts_with(entityTag + "_"))
+        {
+            updatedName = std::format("{}_{}", terminusName, updatedName);
+        }
+        else
+        {
+            updatedName = std::format(
+                "{}_{}", buildSensorNamePrefix(entityType), updatedName);
+        }
+    }
+    sensor.updateSensorName(updatedName);
+    return true;
+}
+
+std::vector<std::string> Terminus::numericSensorInventory(NumericSensor& sensor)
+{
+    auto entityInfo = sensor.getEntityInfo();
+    auto paths = resolveInventory(entityInfo);
+#ifdef OEM_NVIDIA
+    auto& inventory = oem_nvidia::InventoryManager::get();
+    const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+    const auto containerId = std::get<0>(entityInfo);
+    // PROC_IO_MODULE sensors belong under the CPU chassis: the first CPU of
+    // the terminus's first ProcessorModule.
+    if (baseType == PLDM_ENTITY_PROC_IO_MODULE)
+    {
+        redirect(paths, inventory.moduleProcessorInventory(tid));
+    }
+    // SYS_BUS numeric sensors (e.g. CLink/NVLink counters for bandwidth, CRC,
+    // replay) should be associated with the CPU that contains the bus, or
+    // the first CPU of the containing ProcessorModule. SYS_BUS has no
+    // inventory interface of its own.
+    else if (baseType == PLDM_ENTITY_SYS_BUS)
+    {
+        redirect(paths, inventory.processorInventory(tid, containerId));
+    }
+    // Workaround: count/metric sensors (baseUnit == COUNTS) are global per
+    // CPU (e.g. PageRetirementCount, TjMaxDramIndex), so associate with CPU
+    // regardless of entity type.
+    else if (sensor.getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
+    {
+        redirect(paths,
+                 inventory.containerProcessorInventory(tid, containerId));
+    }
+#endif
+    return paths;
+}
+
+void Terminus::redirectStateSensorInventory(
+    [[maybe_unused]] StateSensor& sensor,
+    [[maybe_unused]] std::vector<std::string>& paths)
 {
 #ifdef OEM_NVIDIA
     auto& inventory = oem_nvidia::InventoryManager::get();
-    inventory.bindAll(tid);
-    auto findInventory = [&](const EntityInfo& entityInfo) {
-        return inventory.findInventory(tid, oem_nvidia::EntityId{entityInfo});
-    };
-    auto isFallbackAssociation =
-        [&](const std::vector<std::string>& paths, EntityType entityType) {
-            return inventory.isFallbackAssociation(tid, paths, entityType);
-        };
-    // Replace @a paths with a CPU redirection that found a CPU.
-    auto redirect = [](std::vector<std::string>& paths,
-                       std::vector<std::string> cpuPaths) {
-        if (!cpuPaths.empty())
-        {
-            paths = std::move(cpuPaths);
-        }
-    };
-#else
-    // No entity topology: sensors and effecters stay associated with the
-    // system inventory they were created with.
-    auto findInventory = [](const EntityInfo&) {
-        return std::vector<std::string>{systemInventoryPath()};
-    };
-    auto isFallbackAssociation =
-        [](const std::vector<std::string>&, EntityType) { return false; };
-#endif
+    auto entityInfo = sensor.getEntityInfo();
+    const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+    const auto containerId = std::get<0>(entityInfo);
+    // SYS_BUS state sensors (CLink/NVLink port state) need CPU associations.
+    // SYS_BUS has no inventory interface of its own; take the CPU that
+    // contains the bus, or the first CPU of the containing ProcessorModule.
+    if (baseType == PLDM_ENTITY_SYS_BUS && paths.empty())
+    {
+        redirect(paths, inventory.processorInventory(tid, containerId));
+    }
 
+    // Workaround: MEMORY_CONTROLLER state sensors (e.g.
+    // MemorySpareChannelPresence) are CPU-global; associate with CPU instead
+    // of ProcessorModule when container is PLDM_ENTITY_PROC. Skip for
+    // PERFORMANCE state sets (e.g. MemoryPerformance) which get their own
+    // DIMM-level associations in the OEM phase.
+    if (baseType == PLDM_ENTITY_MEMORY_CONTROLLER &&
+        !hasStateSetId(sensor.sensorInfo, PLDM_STATESET_ID_PERFORMANCE))
+    {
+        redirect(paths,
+                 inventory.containerProcessorInventory(tid, containerId));
+    }
+#endif
+}
+
+template <typename Sensor>
+bool Terminus::applyInventoryAssociation(
+    Sensor& sensor, const std::vector<std::string>& inventoryPaths,
+    [[maybe_unused]] bool hasInventoryOverride)
+{
+    // A resolution that degraded past the entity's dedicated inventory (to
+    // the system chassis, or to an ancestor while the real parent is still
+    // settling) is a placeholder, not a real parent: keep
+    // defaultInventoryAssociated set so the shared-memory push in
+    // updateReading() stays gated and the first MetricReport (shmem) insert
+    // cannot freeze a wrong metricProperty URI. Only the MetricReport entry
+    // is withheld — the sensor itself stays visible on D-Bus/Redfish under
+    // the fallback parent. refreshAssociations() re-resolves once the real
+    // inventory appears. An explicit per-sensor inventory override from EM
+    // configuration is authoritative and never treated as a fallback.
+#ifdef OEM_NVIDIA
+    bool fallback =
+        !hasInventoryOverride &&
+        oem_nvidia::InventoryManager::get().isFallbackAssociation(
+            tid, inventoryPaths, std::get<1>(sensor.getEntityInfo()));
+#else
+    bool fallback = false;
+#endif
+    sensor.setInventoryPaths(inventoryPaths, fallback);
+    return fallback;
+}
+
+void Terminus::updateNumericSensorAssociations()
+{
     for (const auto& ptr : numericSensors)
     {
-        auto name = getAuxNameForNumericSensor(ptr->sensorId);
-        if (name)
+        if (!updateNumericSensorName(*ptr))
         {
-            // Prepend terminus name (+ entity type + cpu index) if available
-            // and name is not from Entity Manager
-            std::string updatedName = *name;
-            if (!terminusName.empty() &&
-                sensorAuxNameOverwriteTbl.find(ptr->sensorId) ==
-                    sensorAuxNameOverwriteTbl.end())
-            {
-                auto entityInfo = ptr->getEntityInfo();
-                auto prefix = buildSensorNamePrefix(std::get<1>(entityInfo));
-                // FixME: Backward compat — old firmware includes
-                // entity-type + CPU index in aux name (e.g. "CPU_0_X").
-                // Detect and prepend only terminus name; remove when
-                // all firmware sends plain aux names.
-                auto entityTag = buildEntityTypeTag(std::get<1>(entityInfo));
-                if (!entityTag.empty() &&
-                    updatedName.starts_with(entityTag + "_"))
-                {
-                    updatedName =
-                        std::format("{}_{}", terminusName, updatedName);
-                }
-                else
-                {
-                    updatedName = std::format("{}_{}", prefix, updatedName);
-                }
-            }
-            ptr->updateSensorName(updatedName);
+            continue;
         }
-        else
-        {
-            if (!terminusManager.numericSensorsWithoutAuxName)
-            {
-                ptr->removeValueIntf();
-                continue;
-            }
-        }
-
-        auto entityInfo = ptr->getEntityInfo();
-        std::vector<ParentObjPath> inventoryPaths;
         auto inventoryPath = getInventoryPath(ptr->sensorId);
-        if (inventoryPath)
-        {
-            inventoryPaths.push_back(*inventoryPath);
-        }
-        else
-        {
-            inventoryPaths = findInventory(entityInfo);
-#ifdef OEM_NVIDIA
-            const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
-            const auto containerId = std::get<0>(entityInfo);
-            // PROC_IO_MODULE sensors belong under the CPU chassis: the first
-            // CPU of the terminus's first ProcessorModule.
-            if (baseType == PLDM_ENTITY_PROC_IO_MODULE)
-            {
-                redirect(inventoryPaths,
-                         inventory.moduleProcessorInventory(tid));
-            }
-            // SYS_BUS numeric sensors (e.g. CLink/NVLink counters for
-            // bandwidth, CRC, replay) should be associated with the CPU
-            // that contains the bus, or the first CPU of the containing
-            // ProcessorModule. SYS_BUS has no inventory interface of its
-            // own.
-            else if (baseType == PLDM_ENTITY_SYS_BUS)
-            {
-                redirect(inventoryPaths,
-                         inventory.processorInventory(tid, containerId));
-            }
-            // Workaround: count/metric sensors (baseUnit == COUNTS) are
-            // global per CPU (e.g. PageRetirementCount, TjMaxDramIndex),
-            // so associate with CPU regardless of entity type.
-            else if (ptr->getBaseUnit() == PLDM_SENSOR_UNIT_COUNTS)
-            {
-                redirect(inventoryPaths, inventory.containerProcessorInventory(
-                                             tid, containerId));
-            }
-#endif
-        }
-        // A resolution that degraded past the entity's dedicated inventory
-        // (to the system chassis, or to an ancestor while the real parent is
-        // still settling) is a placeholder, not a real parent: keep
-        // defaultInventoryAssociated set so the shared-memory push in
-        // NumericSensor::updateReading() stays gated and the first
-        // MetricReport (shmem) insert cannot freeze a wrong metricProperty
-        // URI. Only the MetricReport entry is withheld — the sensor itself
-        // stays visible on D-Bus/Redfish under the fallback parent.
-        // refreshAssociations() re-resolves once the real inventory appears.
-        // An explicit per-sensor inventory override from EM configuration is
-        // authoritative and never treated as a fallback.
-        bool fallbackAssociation =
-            !inventoryPath &&
-            isFallbackAssociation(inventoryPaths, std::get<1>(entityInfo));
-        if (fallbackAssociation)
+        auto inventoryPaths = inventoryPath
+                                  ? std::vector<std::string>{*inventoryPath}
+                                  : numericSensorInventory(*ptr);
+        if (applyInventoryAssociation(*ptr, inventoryPaths,
+                                      inventoryPath.has_value()))
         {
             lg2::debug("Sensor {NAME}: association degraded to a "
                        "non-dedicated parent; metric-report updates gated "
                        "until inventory resolves.",
                        "NAME", ptr->getSensorName());
         }
-        ptr->setInventoryPaths(inventoryPaths, fallbackAssociation);
-
-        auto type = toPhysicalContextType(std::get<1>(entityInfo));
-        ptr->setPhysicalContext(type);
+        ptr->setPhysicalContext(
+            toPhysicalContextType(std::get<1>(ptr->getEntityInfo())));
     }
+}
 
-    for (const auto& ptr : numericEffecters)
-    {
-        auto entityInfo = ptr->getEntityInfo();
-        auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath);
-
-        auto type = toPhysicalContextType(std::get<1>(entityInfo));
-        ptr->setPhysicalContext(type);
-    }
-
-#ifdef OEM_NVIDIA
-    auto hasStateSetId = [](const StateSetInfo& info, uint16_t id) {
-        for (const auto& sd : std::get<1>(info))
-            if (std::get<0>(sd) == id)
-                return true;
-        return false;
-    };
-#endif
-
+void Terminus::updateStateSensorAssociations()
+{
     for (const auto& ptr : stateSensors)
     {
-        auto entityInfo = ptr->getEntityInfo();
-        std::vector<ParentObjPath> inventoryPaths;
         auto inventoryPath = getInventoryPath(ptr->sensorId);
-        if (inventoryPath)
-        {
-            inventoryPaths.push_back(*inventoryPath);
-        }
-        else
-        {
-            inventoryPaths = findInventory(entityInfo);
-        }
-
-#ifdef OEM_NVIDIA
-        const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
-        const auto containerId = std::get<0>(entityInfo);
-        // SYS_BUS state sensors (CLink/NVLink port state) need CPU
-        // associations. SYS_BUS has no inventory interface of its own; take
-        // the CPU that contains the bus, or the first CPU of the containing
-        // ProcessorModule.
-        if (baseType == PLDM_ENTITY_SYS_BUS && inventoryPaths.empty())
-        {
-            redirect(inventoryPaths,
-                     inventory.processorInventory(tid, containerId));
-        }
-
-        // Workaround: MEMORY_CONTROLLER state sensors (e.g.
-        // MemorySpareChannelPresence) are CPU-global; associate with CPU
-        // instead of ProcessorModule when container is PLDM_ENTITY_PROC.
-        // Skip for PERFORMANCE state sets (e.g. MemoryPerformance) which
-        // get their own DIMM-level associations in the OEM phase.
-        if (baseType == PLDM_ENTITY_MEMORY_CONTROLLER &&
-            !hasStateSetId(ptr->sensorInfo, PLDM_STATESET_ID_PERFORMANCE))
-        {
-            redirect(inventoryPaths,
-                     inventory.containerProcessorInventory(tid, containerId));
-        }
-#endif
-
-        // Same placeholder rule as numeric sensors above: keep
-        // defaultInventoryAssociated set while the association is a
-        // degraded fallback so state-set shared-memory updates (e.g. port
-        // Status/State/Health MetricReport entries) stay gated until
-        // refreshAssociations() re-resolves against real inventory.
-        bool fallbackAssociation =
-            !inventoryPath &&
-            isFallbackAssociation(inventoryPaths, std::get<1>(entityInfo));
-        if (fallbackAssociation)
+        auto inventoryPaths = inventoryPath
+                                  ? std::vector<std::string>{*inventoryPath}
+                                  : resolveInventory(ptr->getEntityInfo());
+        redirectStateSensorInventory(*ptr, inventoryPaths);
+        // Same placeholder rule as numeric sensors: state-set shared-memory
+        // updates (e.g. port Status/State/Health MetricReport entries) stay
+        // gated while the association is a degraded fallback.
+        if (applyInventoryAssociation(*ptr, inventoryPaths,
+                                      inventoryPath.has_value()))
         {
             lg2::debug("State sensor {ID}: association degraded to a "
                        "non-dedicated parent; metric-report updates gated "
                        "until inventory resolves.",
                        "ID", ptr->sensorId);
         }
-        ptr->setInventoryPaths(inventoryPaths, fallbackAssociation);
         ptr->associateNumericSensor(numericSensors);
 
         auto sensorAuxiliaryNames = getSensorAuxiliaryNames(ptr->sensorId);
@@ -1981,14 +1976,30 @@ exec::task<int> Terminus::updateAssociations()
             ptr->updateSensorNames(auxNames);
         }
     }
+}
 
-    for (const auto& ptr : stateEffecters)
+void Terminus::updateEffecterAssociations()
+{
+    for (const auto& ptr : numericEffecters)
     {
         auto entityInfo = ptr->getEntityInfo();
-        auto inventoryPath = findInventory(entityInfo);
-        ptr->setInventoryPaths(inventoryPath);
+        ptr->setInventoryPaths(resolveInventory(entityInfo));
+        ptr->setPhysicalContext(toPhysicalContextType(std::get<1>(entityInfo)));
     }
+    for (const auto& ptr : stateEffecters)
+    {
+        ptr->setInventoryPaths(resolveInventory(ptr->getEntityInfo()));
+    }
+}
 
+exec::task<int> Terminus::updateAssociations()
+{
+#ifdef OEM_NVIDIA
+    oem_nvidia::InventoryManager::get().bindAll(tid);
+#endif
+    updateNumericSensorAssociations();
+    updateStateSensorAssociations();
+    updateEffecterAssociations();
 #ifdef OEM_NVIDIA
     co_await nvidia::nvidiaUpdateAssociations(*this);
 #endif
@@ -2002,7 +2013,7 @@ std::string Terminus::buildEntityTypeTag(uint16_t entityType) const
         {143, "MemCntl"}, {161, "SysBus"}, {166, "PCIeBus"},
     };
 
-    uint16_t baseEntityType = entityType & 0x7FFF;
+    uint16_t baseEntityType = entityType & entityTypeMask;
     auto it = entityTypeNameMap.find(baseEntityType);
     if (it == entityTypeNameMap.end())
     {

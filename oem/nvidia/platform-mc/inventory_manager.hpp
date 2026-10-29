@@ -115,6 +115,10 @@ class InventoryManager
      */
     exec::task<int> scan(Terminus& terminus);
 
+    /** @brief The inventory interfaces scan() collects: the overall system
+     *         plus every entityInterfaces entry. */
+    static const dbus::Interfaces& interestingInterfaces();
+
     /** @brief The platform's system inventory, the default parent of every
      *         sensor and effecter. */
     std::string systemInventoryPath = PLATFORM_CHASSIS_PATH;

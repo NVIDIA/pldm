@@ -530,6 +530,37 @@ class Terminus
 
     OemPdr parseOemPDR(const std::vector<uint8_t>& oemPdr);
 
+    /** @brief The inventory an entity associates with: its own, else the
+     *         closest ancestor's, else the system inventory. */
+    std::vector<std::string> resolveInventory(const EntityInfo& entityInfo);
+
+    /** @brief Apply the numeric sensor's aux name, prefixed with the
+     *         terminus name unless it comes from Entity Manager.
+     *  @return false if the sensor has no aux name and must be skipped */
+    bool updateNumericSensorName(NumericSensor& sensor);
+
+    /** @brief resolveInventory() for a numeric sensor, redirected to the CPU
+     *         for ProcessorModule, SYS_BUS and count sensors. */
+    std::vector<std::string> numericSensorInventory(NumericSensor& sensor);
+
+    /** @brief Redirect a SYS_BUS or MemoryController state sensor's
+     *         @a paths to the CPU it belongs to. */
+    void redirectStateSensorInventory(StateSensor& sensor,
+                                      std::vector<std::string>& paths);
+
+    /** @brief Set a sensor's inventory paths, gating metric-report updates
+     *         when they are a degraded placeholder. An Entity Manager
+     *         override (@a hasInventoryOverride) never is one.
+     *  @return true if the association is a fallback */
+    template <typename Sensor>
+    bool applyInventoryAssociation(
+        Sensor& sensor, const std::vector<std::string>& inventoryPaths,
+        bool hasInventoryOverride);
+
+    void updateNumericSensorAssociations();
+    void updateStateSensorAssociations();
+    void updateEffecterAssociations();
+
     /** @brief Convert EntityType to PhysicalContextType
      *
      *  @param[in] EntityType - entityType
