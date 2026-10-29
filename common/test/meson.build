@@ -169,5 +169,7 @@ test(
         ],
     ),
     workdir: meson.current_source_dir(),
+    # Avoid shared dump path collisions with pldm_utils_test.
+    is_parallel: false,
     suite: non_valgrind_test_suites,
 )

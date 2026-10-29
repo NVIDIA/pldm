@@ -21,49 +21,30 @@ struct FlightRecorderAccess : FlightRecorder
 {
     FlightRecorderAccess() = delete;
 
-    static auto& ref()
-    {
-        return static_cast<FlightRecorderAccess&>(
-            FlightRecorder::GetInstance());
-    }
-
-    void reset()
-    {
-        index = 0;
-        tapeRecorder.clear();
-    }
-
-    bool policyEnabled() const
-    {
-        return flightRecorderPolicy;
-    }
-
-    bool empty() const
-    {
-        return tapeRecorder.empty();
-    }
-
-    int currentIndex() const
-    {
-        return index;
-    }
+    // Base-member pointers allow access without downcasting the singleton.
+    static constexpr auto indexMember = &FlightRecorderAccess::index;
+    static constexpr auto tapeRecorderMember =
+        &FlightRecorderAccess::tapeRecorder;
+    static constexpr auto policyMember =
+        &FlightRecorderAccess::flightRecorderPolicy;
 };
 
 TEST(FlightRecorderDisabled, SaveRecordIsNoOpWhenPolicyDisabled)
 {
-    auto& recorder = FlightRecorderAccess::ref();
-    recorder.reset();
+    auto& recorder = FlightRecorder::GetInstance();
+    recorder.*FlightRecorderAccess::indexMember = 0;
+    (recorder.*FlightRecorderAccess::tapeRecorderMember).clear();
 
     recorder.saveRecord(FlightRecorderData{0x01, 0x02, 0x03}, true);
 
-    EXPECT_FALSE(recorder.policyEnabled());
-    EXPECT_TRUE(recorder.empty());
-    EXPECT_EQ(recorder.currentIndex(), 0);
+    EXPECT_FALSE(recorder.*FlightRecorderAccess::policyMember);
+    EXPECT_TRUE((recorder.*FlightRecorderAccess::tapeRecorderMember).empty());
+    EXPECT_EQ(recorder.*FlightRecorderAccess::indexMember, 0);
 }
 
 TEST(FlightRecorderDisabled, PlayRecorderDoesNotCreateDumpFile)
 {
-    auto& recorder = FlightRecorderAccess::ref();
+    auto& recorder = FlightRecorder::GetInstance();
     unlink(flightRecorderDumpPath);
 
     recorder.playRecorder();
