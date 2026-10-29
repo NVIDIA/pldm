@@ -36,6 +36,17 @@ using ::testing::_;
 using ::testing::Between;
 using ::testing::Return;
 
+static void initializeServiceReady(sdbusplus::bus_t& bus)
+{
+    static auto& serviceReady = [&bus]() -> PldmServiceReadyIntf& {
+        constexpr auto serviceReadyPath =
+            "/xyz/openbmc_project/state/service_ready/pldm_sensor_manager_coverage";
+        PldmServiceReadyIntf::initialize(bus, serviceReadyPath);
+        return PldmServiceReadyIntf::getInstance();
+    }();
+    serviceReady.setStateStarting();
+}
+
 class SensorManagerTest : public testing::Test
 {
   protected:
@@ -90,9 +101,7 @@ TEST_F(SensorManagerTest, sensorPollingTest)
 
 TEST_F(SensorManagerTest, sensorManagerControlPathCoverage)
 {
-    constexpr auto serviceReadyPath =
-        "/xyz/openbmc_project/state/service_ready/pldm_sensor_manager_coverage";
-    EXPECT_NO_THROW(PldmServiceReadyIntf::initialize(bus, serviceReadyPath));
+    ASSERT_NO_THROW(initializeServiceReady(bus));
 
     pldm::tid_t tid = 2;
     std::string uuid("00000000-0000-0000-0000-000000000002");
@@ -561,25 +570,6 @@ static std::vector<uint8_t> makeGetOemEnergyCountSensorReadingResp(
 }
 #endif
 
-class SensorManagerDataPathTest : public testing::Test
-{
-  protected:
-    SensorManagerDataPathTest() :
-        event(sdeventplus::Event::get_default()),
-        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
-                   milliseconds(100)),
-        terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr),
-        sensorManager(event, terminusManager, termini, nullptr)
-    {}
-
-    sdeventplus::Event event;
-    TestInstanceIdDb instanceIdDb;
-    pldm::requester::Handler<pldm::requester::Request> reqHandler;
-    pldm::platform_mc::MockTerminusManager terminusManager;
-    pldm::platform_mc::SensorManager sensorManager;
-    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-};
-
 enum class InterruptAction
 {
     none,
@@ -653,6 +643,25 @@ class InterruptingTerminusManager :
     pldm::tid_t targetTid = 0;
     int interruptCall = -1;
     int callCount = 0;
+};
+
+class SensorManagerDataPathTest : public testing::Test
+{
+  protected:
+    SensorManagerDataPathTest() :
+        event(sdeventplus::Event::get_default()),
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
+        terminusManager(event, reqHandler, instanceIdDb, termini, 0x8),
+        sensorManager(event, terminusManager, termini, nullptr)
+    {}
+
+    sdeventplus::Event event;
+    TestInstanceIdDb instanceIdDb;
+    pldm::requester::Handler<pldm::requester::Request> reqHandler;
+    InterruptingTerminusManager terminusManager;
+    pldm::platform_mc::SensorManager sensorManager;
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
 };
 
 class SensorManagerInterruptTest : public testing::Test
@@ -1199,6 +1208,74 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingCompletionCoverage)
 
     ASSERT_TRUE(termini[tid]->sensorPollingTaskRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, termini[tid]->sensorPollingTaskRc.value());
+}
+
+TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
+{
+    ASSERT_NO_THROW(initializeServiceReady(pldm::utils::DBusHandler::getBus()));
+
+    constexpr pldm::tid_t tid = 0x42;
+    constexpr uint16_t numericSensorId = 0x42;
+    constexpr uint16_t stateSensorId = 0x43;
+
+    std::string uuid("00000000-0000-0000-0000-000000000042");
+    termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+
+    pldm::MctpInfo mctpInfo(
+        tid, "f72d6f90-5675-11ed-9b6a-0242ac120142",
+        "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1, std::nullopt,
+        "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe", std::nullopt);
+    ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+
+    auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    auto numericPdr = makeNumericSensorPdr(numericSensorId);
+    ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
+                                numericPdr.data(), numericPdr.size(),
+                                numericSensorPdr.get()));
+    std::string sensorName{"round_robin_numeric"};
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis42"};
+    auto numericSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
+        tid, true, numericSensorPdr, sensorName, inventoryPath, nullptr);
+    termini[tid]->numericSensors.emplace_back(numericSensor);
+
+    termini[tid]->pdrs.emplace_back(makeStateSensorPdr(stateSensorId));
+    ASSERT_TRUE(termini[tid]->parsePDRs());
+    ASSERT_EQ(1u, termini[tid]->stateSensors.size());
+    auto stateSensor = termini[tid]->stateSensors.front();
+    stateSensor->needUpdate = false;
+
+    // Visit the refreshed numeric sensor without reading it, then stop during
+    // the due state-sensor read, before queue exhaustion can mark ready.
+    numericSensor->updateTime = std::numeric_limits<uint64_t>::max();
+    numericSensor->setRefreshed(true);
+    stateSensor->setLastUpdatedTimeStamp(0);
+    stateSensor->refreshLimitInUsec = 0;
+    stateSensor->setRefreshed(false);
+
+    termini[tid]->roundRobinSensors.push(numericSensor);
+    termini[tid]->roundRobinSensors.push(stateSensor);
+    termini[tid]->initSensorList = false;
+    termini[tid]->ready = false;
+    termini[tid]->stopPolling = false;
+    sensorManager.pollingTime = 0;
+
+    terminusManager.targetTid = tid;
+    terminusManager.action = InterruptAction::stopPolling;
+    terminusManager.interruptCall = 1;
+    std::vector<get_sensor_state_field> stateFields{
+        {PLDM_SENSOR_ENABLED, PLDM_STATESET_HEALTH_STATE_NORMAL,
+         PLDM_STATESET_HEALTH_STATE_NORMAL, PLDM_STATESET_HEALTH_STATE_NORMAL}};
+    auto response = makeGetStateSensorReadingsResp(stateFields);
+    ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
+
+    auto pollingRc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+    ASSERT_TRUE(pollingRc.has_value());
+    EXPECT_EQ(PLDM_ERROR, std::get<0>(*pollingRc));
+    EXPECT_EQ(1, terminusManager.callCount);
+    EXPECT_TRUE(termini[tid]->stopPolling);
+    EXPECT_TRUE(termini[tid]->ready);
 }
 
 TEST_F(SensorManagerDataPathTest, initSensorListPriorityAndAsyncCoverage)
