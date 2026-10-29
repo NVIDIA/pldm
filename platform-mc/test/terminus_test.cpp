@@ -83,7 +83,6 @@ using pldm::platform_mc::oem_nvidia::EntityId;
 using pldm::platform_mc::oem_nvidia::entityInterfaces;
 using pldm::platform_mc::oem_nvidia::InventoryManager;
 using pldm::platform_mc::oem_nvidia::overallSystemInterface;
-using pldm::platform_mc::oem_nvidia::toPhysicalContextType;
 
 /** The platform's system inventory, shared by every terminus. */
 std::string& systemInventoryPath()
@@ -118,12 +117,6 @@ void addAssociation(
         .add(containerId, EntityId{association.first}, children);
 }
 
-/** Drop the terminus's inventory bindings so the next lookup re-binds. */
-void unbindAll(Terminus& terminus)
-{
-    InventoryManager::get().unbindAll(terminus.getTid());
-}
-
 /** The inventory @a entityInfo associates with: its own, else the closest
  *  ancestor's, else the system inventory. */
 std::vector<std::string> findInventory(Terminus& terminus,
@@ -131,27 +124,6 @@ std::vector<std::string> findInventory(Terminus& terminus,
 {
     return InventoryManager::get().findInventory(terminus.getTid(),
                                                  EntityId{entityInfo});
-}
-
-/** The inventory the entity that defines @a containerId associates with;
- *  the system inventory for the system or an unknown container. */
-std::vector<std::string> containerInventory(Terminus& terminus,
-                                            ContainerID containerId)
-{
-    auto& inventory = InventoryManager::get();
-    return inventory.containerInventory(
-        inventory.terminusData[terminus.getTid()], containerId);
-}
-
-/** The inventory bound to @a entityInfo itself, without the ancestor walk. */
-std::vector<std::string> ownInventory(Terminus& terminus,
-                                      const EntityInfo& entityInfo)
-{
-    findInventory(terminus, entityInfo);
-    return InventoryManager::get()
-        .entityTree(terminus.getTid())
-        .emplace(EntityId{entityInfo})
-        .inventory();
 }
 
 } // namespace
@@ -3724,232 +3696,6 @@ TEST_F(TerminusTest, addStateSensorAndEffecterCoverage)
     ASSERT_TRUE(terminus.parsePDRs());
     ASSERT_EQ(1u, terminus.stateSensors.size());
     ASSERT_EQ(1u, terminus.stateEffecters.size());
-}
-
-TEST_F(TerminusTest, privateFindInventoryAndPhysicalContextCoverage)
-{
-    std::string uuid("00000000-0000-0000-0000-000000000155");
-    Terminus terminus(0x55, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    systemInventoryPath() =
-        "/xyz/openbmc_project/inventory/system/chassis/chassis55";
-    terminus.setInstance(7);
-
-    const std::string cpu0{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis55/cpu0"};
-    const std::string cpu1{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis55/cpu1"};
-    const std::string dimm0{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis55/dimm0"};
-    const std::string dimm1{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis55/dimm1"};
-
-    inventoriesOf(terminus).emplace_back(cpu0, PLDM_ENTITY_PROC, 7);
-    inventoriesOf(terminus).emplace_back(cpu1, PLDM_ENTITY_PROC, 7);
-    inventoriesOf(terminus).emplace_back(dimm0, PLDM_ENTITY_MEMORY_CONTROLLER,
-                                         2);
-    inventoriesOf(terminus).emplace_back(dimm1, PLDM_ENTITY_MEMORY_CONTROLLER,
-                                         2);
-    inventoryParentsOf(terminus)[dimm0] = cpu0;
-    inventoryParentsOf(terminus)[dimm1] = cpu1;
-
-    EntityInfo containerEntity{PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID,
-                               PLDM_ENTITY_PROC, 1};
-    addAssociation(terminus, 1,
-                   std::make_pair(containerEntity, std::set<EntityInfo>{}));
-
-    auto overallPaths =
-        containerInventory(terminus, PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID);
-    ASSERT_EQ(1u, overallPaths.size());
-    EXPECT_EQ(systemInventoryPath(), overallPaths.front());
-
-    auto unknownContainerPaths =
-        containerInventory(terminus, static_cast<ContainerID>(0x9FFF));
-    ASSERT_EQ(1u, unknownContainerPaths.size());
-    EXPECT_EQ(systemInventoryPath(), unknownContainerPaths.front());
-
-    EntityInfo cpuEntity{1, PLDM_ENTITY_PROC, 1};
-    auto cpuPaths = ownInventory(terminus, cpuEntity);
-    EXPECT_EQ(2u, cpuPaths.size());
-
-    unbindAll(terminus);
-    EntityInfo dimmEntity{1, PLDM_ENTITY_MEMORY_CONTROLLER, 2};
-    auto dimmPaths = ownInventory(terminus, dimmEntity);
-    EXPECT_EQ(2u, dimmPaths.size());
-
-    unbindAll(terminus);
-    inventoryParentsOf(terminus).clear();
-    auto dimmFallback = ownInventory(terminus, dimmEntity);
-    EXPECT_EQ(1u, dimmFallback.size());
-    EXPECT_EQ(dimm0, dimmFallback.front());
-
-    unbindAll(terminus);
-    EntityInfo missingEntity{1, PLDM_ENTITY_NETWORK_CONTROLLER, 99};
-    auto closest = findInventory(terminus, missingEntity);
-    EXPECT_EQ(2u, closest.size());
-
-    unbindAll(terminus);
-    auto missingWithoutClosest = ownInventory(terminus, missingEntity);
-    EXPECT_TRUE(missingWithoutClosest.empty());
-
-    EXPECT_EQ(PhysicalContextType::Memory,
-              toPhysicalContextType(PLDM_ENTITY_MEMORY_CONTROLLER));
-    EXPECT_EQ(PhysicalContextType::CPU,
-              toPhysicalContextType(PLDM_ENTITY_PROC_MODULE));
-    EXPECT_EQ(PhysicalContextType::CPU,
-              toPhysicalContextType(PLDM_ENTITY_PROC_IO_MODULE));
-    EXPECT_EQ(PhysicalContextType::VoltageRegulator,
-              toPhysicalContextType(PLDM_ENTITY_DC_DC_CONVERTER));
-    EXPECT_EQ(PhysicalContextType::VoltageRegulator,
-              toPhysicalContextType(PLDM_ENTITY_POWER_SUPPLY));
-    EXPECT_EQ(PhysicalContextType::NetworkingDevice,
-              toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
-    EXPECT_EQ(PhysicalContextType::SystemBoard,
-              toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
-}
-
-TEST_F(TerminusTest, findInventoryProcModuleInstanceNoConfigCoverage)
-{
-    // Regression: on legacy platforms with no EID-to-terminus config, a single
-    // terminus reports both CPUs. getInstance() is null and the CPU's own
-    // entity_instance_num is identical for both CPUs, so CPU_1's sensors
-    // previously resolved to HGX_CPU_0. The owning ProcessorModule instance
-    // from the entity association hierarchy must disambiguate them.
-    std::string uuid("00000000-0000-0000-0000-000000000156");
-    Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    systemInventoryPath() =
-        "/xyz/openbmc_project/inventory/system/chassis/chassis56";
-    // No setInstance(): legacy path, getInstance() stays nullopt.
-    ASSERT_FALSE(terminus.getInstance().has_value());
-
-    const std::string cpu0{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis56/HGX_CPU_0"};
-    const std::string cpu1{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis56/HGX_CPU_1"};
-    // Inventory instance numbers track the ProcessorModule index (0 and 1).
-    inventoriesOf(terminus).emplace_back(cpu0, PLDM_ENTITY_PROC, 0);
-    inventoriesOf(terminus).emplace_back(cpu1, PLDM_ENTITY_PROC, 1);
-
-    // Association hierarchy (one terminus, two modules):
-    //   container 10 -> ProcessorModule instance 0 (owns the CPU at cid 10)
-    //   container 20 -> ProcessorModule instance 1 (owns the CPU at cid 20)
-    addAssociation(terminus, 10,
-                   std::make_pair(EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0},
-                                  std::set<EntityInfo>{
-                                      EntityInfo{10, PLDM_ENTITY_PROC, 0}}));
-    addAssociation(terminus, 20,
-                   std::make_pair(EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 1},
-                                  std::set<EntityInfo>{
-                                      EntityInfo{20, PLDM_ENTITY_PROC, 0}}));
-
-    // Both CPUs carry the SAME ambiguous local instance (0); only the
-    // container (module) differs. Before the fix both matched HGX_CPU_0.
-    auto cpu0Paths =
-        ownInventory(terminus, EntityInfo{10, PLDM_ENTITY_PROC, 0});
-    ASSERT_EQ(1u, cpu0Paths.size());
-    EXPECT_EQ(cpu0, cpu0Paths.front());
-
-    unbindAll(terminus);
-    auto cpu1Paths =
-        ownInventory(terminus, EntityInfo{20, PLDM_ENTITY_PROC, 0});
-    ASSERT_EQ(1u, cpu1Paths.size());
-    EXPECT_EQ(cpu1, cpu1Paths.front());
-
-    // Walk-up case: entity nested under a CPU that is itself under module 1.
-    //   container 30 -> CPU whose own container is 20 (module-1 container).
-    unbindAll(terminus);
-    addAssociation(terminus, 30,
-                   std::make_pair(EntityInfo{20, PLDM_ENTITY_PROC, 0},
-                                  std::set<EntityInfo>{
-                                      EntityInfo{30, PLDM_ENTITY_PROC, 0}}));
-    auto nestedPaths =
-        ownInventory(terminus, EntityInfo{30, PLDM_ENTITY_PROC, 0});
-    ASSERT_EQ(1u, nestedPaths.size());
-    EXPECT_EQ(cpu1, nestedPaths.front());
-
-    // getInstanceFromAssociationPdr() returns nullopt (container is neither a
-    // ProcessorModule nor a CPU) and no config -> entity keeps its own
-    // instance (0 -> HGX_CPU_0).
-    unbindAll(terminus);
-    addAssociation(terminus, 40,
-                   std::make_pair(EntityInfo{0, PLDM_ENTITY_SYS_BOARD, 0},
-                                  std::set<EntityInfo>{}));
-    auto noModulePaths =
-        ownInventory(terminus, EntityInfo{40, PLDM_ENTITY_PROC, 0});
-    ASSERT_EQ(1u, noModulePaths.size());
-    EXPECT_EQ(cpu0, noModulePaths.front());
-
-    // With static config present, getInstance() takes priority over the
-    // association PDR (getInstanceFromAssociationPdr is not consulted).
-    unbindAll(terminus);
-    terminus.setInstance(1);
-    auto cfgPaths = ownInventory(terminus, EntityInfo{40, PLDM_ENTITY_PROC, 0});
-    ASSERT_EQ(1u, cfgPaths.size());
-    EXPECT_EQ(cpu1, cfgPaths.front());
-}
-
-TEST_F(TerminusTest, privateFindInventoryOverrideCoverage)
-{
-    std::string uuid("00000000-0000-0000-0000-000000000165");
-    Terminus terminus(0x65, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    systemInventoryPath() =
-        "/xyz/openbmc_project/inventory/system/chassis/chassis65";
-    terminus.setInstance(9);
-
-    const std::string processorModulePath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis65/"
-        "ProcessorModule_9"};
-    const std::string cpuPath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis65/CPU_9"};
-    inventoriesOf(terminus).emplace_back(processorModulePath,
-                                         PLDM_ENTITY_PROC_IO_MODULE, 9);
-    inventoriesOf(terminus).emplace_back(cpuPath, PLDM_ENTITY_PROC, 9);
-
-    EntityInfo procModuleEntity{PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID,
-                                PLDM_ENTITY_PROC_IO_MODULE, 1};
-    EntityInfo procEntity{11, PLDM_ENTITY_PROC, 1};
-    addAssociation(terminus, 10,
-                   std::make_pair(procEntity, std::set<EntityInfo>{}));
-    addAssociation(
-        terminus, 11,
-        std::make_pair(procModuleEntity, std::set<EntityInfo>{procEntity}));
-
-    auto memoryClosest = findInventory(
-        terminus, EntityInfo{10, PLDM_ENTITY_MEMORY_CONTROLLER, 1});
-    ASSERT_EQ(1u, memoryClosest.size());
-    EXPECT_EQ(processorModulePath, memoryClosest.front());
-
-    unbindAll(terminus);
-    addAssociation(terminus, 30,
-                   std::make_pair(procModuleEntity, std::set<EntityInfo>{}));
-    auto memoryUnderProcModule = findInventory(
-        terminus, EntityInfo{30, PLDM_ENTITY_MEMORY_CONTROLLER, 1});
-    ASSERT_EQ(1u, memoryUnderProcModule.size());
-    EXPECT_EQ(processorModulePath, memoryUnderProcModule.front());
-
-    unbindAll(terminus);
-    std::set<EntityInfo> processorModuleChildren{
-        EntityInfo{20, PLDM_ENTITY_POWER_SUPPLY, 1},
-        EntityInfo{20, PLDM_ENTITY_PROC, 1}};
-    addAssociation(terminus, 20,
-                   std::make_pair(procModuleEntity, processorModuleChildren));
-
-    auto powerSupplyClosest =
-        findInventory(terminus, EntityInfo{20, PLDM_ENTITY_POWER_SUPPLY, 1});
-    ASSERT_EQ(1u, powerSupplyClosest.size());
-    EXPECT_EQ(cpuPath, powerSupplyClosest.front());
-
-    unbindAll(terminus);
-    addAssociation(terminus, 21,
-                   std::make_pair(procModuleEntity,
-                                  std::set<EntityInfo>{EntityInfo{
-                                      21, PLDM_ENTITY_POWER_SUPPLY, 1}}));
-    auto powerSupplyWithoutCpu =
-        findInventory(terminus, EntityInfo{21, PLDM_ENTITY_POWER_SUPPLY, 1});
-    ASSERT_EQ(1u, powerSupplyWithoutCpu.size());
-    EXPECT_EQ(processorModulePath, powerSupplyWithoutCpu.front());
 }
 
 TEST_F(TerminusTest, privateGetterAndUpdateAssociationsCoverage)
@@ -7740,35 +7486,6 @@ TEST_F(TerminusTest, addStateSensorAndEffecterMultiCompositeCoverage)
     terminus.addStateEffecter(0xA63, bootInfo);
     ASSERT_EQ(1u, terminus.stateEffecters.size());
     EXPECT_EQ(2u, terminus.stateEffecters.back()->stateSets.size());
-}
-
-TEST_F(TerminusTest, cachedFindInventoryAndProcessorInstanceGuardCoverage)
-{
-    std::string uuid("00000000-0000-0000-0000-00000000016E");
-    Terminus terminus(0x6E, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    systemInventoryPath() =
-        "/xyz/openbmc_project/inventory/system/chassis/chassis6E";
-
-    EntityInfo cachedEntity{1, PLDM_ENTITY_SYS_BOARD, 1};
-    std::vector<std::string> cachedInventories{
-        systemInventoryPath() + "/board0"};
-    InventoryManager::get()
-        .entityTree(terminus.getTid())
-        .emplace(EntityId{cachedEntity})
-        .bind(cachedInventories);
-
-    auto cachedPaths = ownInventory(terminus, cachedEntity);
-    ASSERT_EQ(1u, cachedPaths.size());
-    EXPECT_EQ(cachedInventories.front(), cachedPaths.front());
-
-    unbindAll(terminus);
-    inventoriesOf(terminus).emplace_back(systemInventoryPath() + "/cpu3",
-                                         PLDM_ENTITY_PROC, 3);
-    auto missingStaticInstance = ownInventory(
-        terminus, EntityInfo{PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID,
-                             PLDM_ENTITY_PROC, 1});
-    EXPECT_TRUE(missingStaticInstance.empty());
 }
 
 TEST_F(TerminusTest, entityAssociationLookupMissCoverage)

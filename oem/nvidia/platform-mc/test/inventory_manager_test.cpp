@@ -15,6 +15,7 @@
 #include "oem/nvidia/platform-mc/entity_tree.hpp"
 
 #include <exec/task.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Area/server.hpp>
 
 #include <map>
 #include <optional>
@@ -349,4 +350,147 @@ TEST_F(InventoryManagerTest, closestInventoryWalk)
     inventory.bindAll(tid);
     EXPECT_EQ(Paths{systemPath},
               inventory.closestInventory(data, *tree().container(10)));
+}
+
+TEST_F(InventoryManagerTest, ownInventoryMatchesTypeInstanceAndParent)
+{
+    // CPU(0,1) defines container 1; the configured instance is 7.
+    inventory.setInstance(tid, 7);
+    addInventory("/inv/cpu0", PLDM_ENTITY_PROC, 7);
+    addInventory("/inv/cpu1", PLDM_ENTITY_PROC, 7);
+    addInventory("/inv/dimm0", PLDM_ENTITY_MEMORY_CONTROLLER, 2, "/inv/cpu0");
+    addInventory("/inv/dimm1", PLDM_ENTITY_MEMORY_CONTROLLER, 2, "/inv/cpu1");
+    tree().add(1, id(0, PLDM_ENTITY_PROC, 1), {});
+
+    auto& data = inventory.terminusData[tid];
+    EXPECT_EQ(Paths{systemPath},
+              inventory.containerInventory(
+                  data, PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID));
+    EXPECT_EQ(Paths{systemPath}, inventory.containerInventory(data, 0x9FFF));
+
+    // CPUs take the configured instance and keep every match.
+    EXPECT_EQ((Paths{"/inv/cpu0", "/inv/cpu1"}),
+              own(id(1, PLDM_ENTITY_PROC, 1)));
+
+    // Both DIMMs sit under one of the CPU's paths.
+    auto dimm = id(1, PLDM_ENTITY_MEMORY_CONTROLLER, 2);
+    inventory.unbindAll(tid);
+    EXPECT_EQ((Paths{"/inv/dimm0", "/inv/dimm1"}), own(dimm));
+
+    // Without parent_chassis, the first candidate.
+    inventory.unbindAll(tid);
+    data.inventoryParents.clear();
+    EXPECT_EQ(Paths{"/inv/dimm0"}, own(dimm));
+
+    // No inventory of its own: nothing, or the CPU's with the ancestor walk.
+    auto nic = id(1, PLDM_ENTITY_NETWORK_CONTROLLER, 99);
+    inventory.unbindAll(tid);
+    EXPECT_EQ((Paths{"/inv/cpu0", "/inv/cpu1"}),
+              inventory.findInventory(tid, nic));
+    inventory.unbindAll(tid);
+    EXPECT_TRUE(own(nic).empty());
+}
+
+TEST_F(InventoryManagerTest, processorInstanceFromTheModuleWithoutConfig)
+{
+    // On platforms with no EID-to-terminus config a single terminus reports
+    // both CPUs with the same local instance; the owning ProcessorModule's
+    // instance tells HGX_CPU_0 from HGX_CPU_1.
+    addInventory("/inv/HGX_CPU_0", PLDM_ENTITY_PROC, 0);
+    addInventory("/inv/HGX_CPU_1", PLDM_ENTITY_PROC, 1);
+    tree().add(10, id(0, PLDM_ENTITY_PROC_IO_MODULE, 0),
+               {id(10, PLDM_ENTITY_PROC, 0)});
+    tree().add(20, id(0, PLDM_ENTITY_PROC_IO_MODULE, 1),
+               {id(20, PLDM_ENTITY_PROC, 0)});
+
+    EXPECT_EQ(Paths{"/inv/HGX_CPU_0"}, own(id(10, PLDM_ENTITY_PROC, 0)));
+    EXPECT_EQ(Paths{"/inv/HGX_CPU_1"}, own(id(20, PLDM_ENTITY_PROC, 0)));
+
+    // Under a CPU that is under module 1.
+    tree().add(30, id(20, PLDM_ENTITY_PROC, 0), {id(30, PLDM_ENTITY_PROC, 0)});
+    inventory.unbindAll(tid);
+    EXPECT_EQ(Paths{"/inv/HGX_CPU_1"}, own(id(30, PLDM_ENTITY_PROC, 0)));
+
+    // Neither a module nor a CPU above: the entity's own instance.
+    tree().add(40, id(0, PLDM_ENTITY_SYS_BOARD, 0), {});
+    inventory.unbindAll(tid);
+    EXPECT_EQ(Paths{"/inv/HGX_CPU_0"}, own(id(40, PLDM_ENTITY_PROC, 0)));
+
+    // A configured instance takes priority over the hierarchy.
+    inventory.setInstance(tid, 1);
+    inventory.unbindAll(tid);
+    EXPECT_EQ(Paths{"/inv/HGX_CPU_1"}, own(id(40, PLDM_ENTITY_PROC, 0)));
+}
+
+TEST_F(InventoryManagerTest, memoryControllerAndPowerSupplyScopes)
+{
+    // PIOM(0,1) defines 11, 20, 21 and 30; CPU(11,1) defines 10.
+    inventory.setInstance(tid, 9);
+    addInventory("/inv/ProcessorModule_9", PLDM_ENTITY_PROC_IO_MODULE, 9);
+    addInventory("/inv/CPU_9", PLDM_ENTITY_PROC, 9);
+    auto module = id(0, PLDM_ENTITY_PROC_IO_MODULE, 1);
+    auto cpu = id(11, PLDM_ENTITY_PROC, 1);
+    tree().add(10, cpu, {});
+    tree().add(11, module, {cpu});
+
+    // DRAM under the CPU belongs to the module above it.
+    EXPECT_EQ(
+        Paths{"/inv/ProcessorModule_9"},
+        inventory.findInventory(tid, id(10, PLDM_ENTITY_MEMORY_CONTROLLER, 1)));
+
+    // DRAM directly under the module.
+    tree().add(30, module, {});
+    inventory.unbindAll(tid);
+    EXPECT_EQ(
+        Paths{"/inv/ProcessorModule_9"},
+        inventory.findInventory(tid, id(30, PLDM_ENTITY_MEMORY_CONTROLLER, 1)));
+
+    // A VREG next to a CPU powers that CPU.
+    tree().add(20, module,
+               {id(20, PLDM_ENTITY_POWER_SUPPLY, 1),
+                id(20, PLDM_ENTITY_PROC, 1)});
+    inventory.unbindAll(tid);
+    EXPECT_EQ(
+        Paths{"/inv/CPU_9"},
+        inventory.findInventory(tid, id(20, PLDM_ENTITY_POWER_SUPPLY, 1)));
+
+    // Without a CPU next to it, the module's.
+    tree().add(21, module, {id(21, PLDM_ENTITY_POWER_SUPPLY, 1)});
+    inventory.unbindAll(tid);
+    EXPECT_EQ(
+        Paths{"/inv/ProcessorModule_9"},
+        inventory.findInventory(tid, id(21, PLDM_ENTITY_POWER_SUPPLY, 1)));
+}
+
+TEST_F(InventoryManagerTest, boundEntitiesKeepTheirBinding)
+{
+    auto board = id(1, PLDM_ENTITY_SYS_BOARD, 1);
+    tree().emplace(board).bind({"/inv/board0"});
+    EXPECT_EQ(Paths{"/inv/board0"}, own(board));
+
+    // A CPU with no configured instance and no module keeps its PDR
+    // instance, which no inventory matches.
+    inventory.unbindAll(tid);
+    addInventory("/inv/cpu3", PLDM_ENTITY_PROC, 3);
+    EXPECT_TRUE(
+        own(id(PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID, PLDM_ENTITY_PROC, 1))
+            .empty());
+}
+
+TEST(InventoryManager, toPhysicalContextType)
+{
+    EXPECT_EQ(PhysicalContextType::Memory,
+              toPhysicalContextType(PLDM_ENTITY_MEMORY_CONTROLLER));
+    EXPECT_EQ(PhysicalContextType::CPU,
+              toPhysicalContextType(PLDM_ENTITY_PROC_MODULE));
+    EXPECT_EQ(PhysicalContextType::CPU,
+              toPhysicalContextType(PLDM_ENTITY_PROC_IO_MODULE));
+    EXPECT_EQ(PhysicalContextType::VoltageRegulator,
+              toPhysicalContextType(PLDM_ENTITY_DC_DC_CONVERTER));
+    EXPECT_EQ(PhysicalContextType::VoltageRegulator,
+              toPhysicalContextType(PLDM_ENTITY_POWER_SUPPLY));
+    EXPECT_EQ(PhysicalContextType::NetworkingDevice,
+              toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
+    EXPECT_EQ(PhysicalContextType::SystemBoard,
+              toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
 }
