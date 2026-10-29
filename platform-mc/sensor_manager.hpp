@@ -125,7 +125,7 @@ class SensorManager
         for (auto entry : termini)
         {
             auto terminus = entry.second;
-            if (terminus->initalized && !terminus->ready)
+            if (terminus->initialized && !terminus->ready)
             {
                 return;
             }

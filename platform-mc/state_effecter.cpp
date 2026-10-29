@@ -37,7 +37,7 @@ StateEffecter::StateEffecter(
         effecterNames,
     std::string& associationPath, TerminusManager& terminusManager) :
     tid(tid), effecterId(effecterId), effecterInfo(effecterInfo),
-    needUpdate(true), terminusManager(terminusManager)
+    needsUpdate(true), terminusManager(terminusManager)
 {
     path = "/xyz/openbmc_project/control/PLDM_Effecter_" +
            std::to_string(effecterId) + "_" + std::to_string(tid);
@@ -247,7 +247,7 @@ exec::task<int> StateEffecter::setStateEffecterStates(uint8_t cmpId,
         cmpEffCnt < PLDM_COMPOSITE_EFFECTER_MIN_COUNT)
     {
         lg2::error(
-            "Request Message Error: ComEffCnt size  {CMPEFFCNT} is invalid",
+            "Request Message Error: CmpEffCnt size {CMPEFFCNT} is invalid",
             "CMPEFFCNT", cmpEffCnt);
         co_return PLDM_ERROR_INVALID_DATA;
     }
@@ -256,7 +256,7 @@ exec::task<int> StateEffecter::setStateEffecterStates(uint8_t cmpId,
                                                      {PLDM_NO_CHANGE, 0});
     stateField[cmpId] = {PLDM_REQUEST_SET, value};
     rc = co_await setStateEffecterStates(stateField);
-    needUpdate = true;
+    needsUpdate = true;
 
     co_return rc;
 }
@@ -278,7 +278,7 @@ exec::task<int> StateEffecter::setStateEffecterStates(
         cmpEffCnt < PLDM_COMPOSITE_EFFECTER_MIN_COUNT)
     {
         lg2::error(
-            "Request Message Error: ComEffCnt size {CMPEFFCNT} is invalid",
+            "Request Message Error: CmpEffCnt size {CMPEFFCNT} is invalid",
             "CMPEFFCNT", cmpEffCnt);
         co_return PLDM_ERROR_INVALID_DATA;
     }

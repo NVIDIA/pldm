@@ -40,7 +40,7 @@ namespace platform_mc
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
                    TerminusManager& terminusManager) :
-    initalized(false), pollEvent(false), pollDataTransferHandle(0),
+    initialized(false), pollEvent(false), pollDataTransferHandle(0),
     ready(false), synchronyConfigurationSupported(0), resumed(true),
     initSensorList(true), tid(tid), supportedTypes(supportedTypes), uuid(uuid),
     terminusManager(terminusManager)
@@ -100,7 +100,7 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     }
     needRefresh = true;
 
-    if (!initalized)
+    if (!initialized)
     {
         // Inventory can be published while the terminus is still
         // initializing (init spans many co_awaits, and the match is
@@ -949,7 +949,7 @@ size_t Terminus::addNewPdrs(const std::vector<std::vector<uint8_t>>& newPdrs)
 
     // A repository change means this terminus restarted its device-side state
     // sequence. Effecters re-reported as already-present are skipped above and
-    // keep whatever needUpdate they settled on, so a tracked effecter that
+    // keep whatever needsUpdate they settled on, so a tracked effecter that
     // disarmed on a terminal state would never be read again. Re-arm them here,
     // ahead of the caller's applied-count early return.
     auto rearmed = rearmTrackedEffecters();
@@ -2157,7 +2157,7 @@ exec::task<int> Terminus::updateAssociations()
 #endif
     co_return PLDM_SUCCESS;
 }
-std::optional<uint16_t> Terminus::getInstanceFromAssoicationPdr(
+std::optional<uint16_t> Terminus::getInstanceFromAssociationPdr(
     ContainerID containerId)
 {
     // The instance number distinguishing CPU_0 from CPU_1 lives in the owning
@@ -2227,7 +2227,7 @@ std::vector<std::string> Terminus::findInventory(const EntityInfo entityInfo,
             entityInstance = *getInstance();
         }
         else if (auto moduleInstance =
-                     getInstanceFromAssoicationPdr(containerId))
+                     getInstanceFromAssociationPdr(containerId))
         {
             entityInstance = *moduleInstance;
         }
@@ -2430,7 +2430,7 @@ std::vector<std::string> Terminus::findInventory(const ContainerID containerId,
 {
     std::vector<std::string> inventoryPath;
     inventoryPath.emplace_back(systemInventoryPath);
-    if (containerId == overallSystemCotainerId)
+    if (containerId == overallSystemContainerId)
     {
         return inventoryPath;
     }
@@ -2787,13 +2787,13 @@ void Terminus::setOnline()
     for (auto& numericEffecter : numericEffecters)
     {
         numericEffecter->setAvailable(true);
-        numericEffecter->needUpdate = true;
+        numericEffecter->needsUpdate = true;
     }
 
     for (auto& stateEffecter : stateEffecters)
     {
         stateEffecter->setAvailable(true);
-        stateEffecter->needUpdate = true;
+        stateEffecter->needsUpdate = true;
     }
 
     lg2::info("Terminus {TID} is online", "TID", tid);
@@ -2805,11 +2805,11 @@ size_t Terminus::rearmTrackedEffecters()
     for (auto& numericEffecter : numericEffecters)
     {
         if (!numericEffecter || !numericEffecter->trackOperationalState ||
-            numericEffecter->needUpdate)
+            numericEffecter->needsUpdate)
         {
             continue;
         }
-        numericEffecter->needUpdate = true;
+        numericEffecter->needsUpdate = true;
         ++rearmed;
     }
 

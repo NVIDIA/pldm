@@ -483,7 +483,7 @@ TEST_F(NumericSensorTest, conversionFormula)
         0x0,                           // containerID=1
         PLDM_NO_INIT,                  // sensorInit
         false,                         // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUnit(2)=degrees C
         1,                             // unitModifier = 1
         0,                             // rateUnit
         0,                             // baseOEMUnitHandle
@@ -512,11 +512,11 @@ TEST_F(NumericSensorTest, conversionFormula)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -540,7 +540,7 @@ TEST_F(NumericSensorTest, conversionFormula)
 
     std::string sensorName{"test1"};
     std::string inventoryPath{
-        "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
+        "/xyz/openbmc_project/inventory/Item/Board/PLDM_device_1"};
     NumericSensor sensor(0x01, true, numericSensorPdr, sensorName,
                          inventoryPath, nullptr);
     double reading = 40.0;
@@ -707,7 +707,7 @@ TEST_F(NumericSensorTest, checkThreshold)
         0x0,                           // containerID=1
         PLDM_NO_INIT,                  // sensorInit
         false,                         // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUnit(2)=degrees C
         1,                             // unitModifier = 1
         0,                             // rateUnit
         0,                             // baseOEMUnitHandle
@@ -736,11 +736,11 @@ TEST_F(NumericSensorTest, checkThreshold)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -762,7 +762,7 @@ TEST_F(NumericSensorTest, checkThreshold)
     EXPECT_EQ(rc, PLDM_SUCCESS);
     std::string sensorName{"test1"};
     std::string inventoryPath{
-        "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
+        "/xyz/openbmc_project/inventory/Item/Board/PLDM_device_1"};
     pldm::platform_mc::NumericSensor sensor(0x01, true, numericSensorPdr,
                                             sensorName, inventoryPath, nullptr);
 
@@ -880,7 +880,7 @@ TEST_F(NumericSensorTest, MemoryPageRetirementSensor)
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
         false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_COUNTS,     // baseUint(67)=counts
+        PLDM_SENSOR_UNIT_COUNTS,     // baseUnit(67)=counts
         0,                           // unitModifier = 0
         0,                           // rateUnit
         0,                           // baseOEMUnitHandle
@@ -909,11 +909,11 @@ TEST_F(NumericSensorTest, MemoryPageRetirementSensor)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat

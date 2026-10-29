@@ -39,7 +39,7 @@ exec::task<int> PlatformManager::initTerminus(tid_t tid)
     // Re-initialize a single terminus. Used by the PDRRepositoryChgEvent
     // full-rebuild path so a rediscovery for one terminus does NOT re-create
     // objects for other termini that a concurrent rebuild left
-    // initalized=false (which races on D-Bus object creation -> FileExists).
+    // initialized=false (which races on D-Bus object creation -> FileExists).
     auto it = termini.find(tid);
     if (it == termini.end())
     {
@@ -79,7 +79,7 @@ exec::task<int> PlatformManager::initTerminusImpl(
             terminus->synchronyConfigurationSupported.byte = 0;
         }
 
-        if (!terminus->initalized)
+        if (!terminus->initialized)
         {
             rc = co_await getPDRs(terminus);
             if (!rc)
@@ -91,7 +91,7 @@ exec::task<int> PlatformManager::initTerminusImpl(
                 // update Sensor Objects with information from Platform
                 // Configuration PDIs
                 co_await terminus->updateAssociations();
-                terminus->initalized = true;
+                terminus->initialized = true;
                 terminus->applyPendingRefresh();
             }
         }
@@ -116,7 +116,7 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
         rc = co_await setEventReceiver(
             tid, PLDM_EVENT_MESSAGE_GLOBAL_ENABLE_ASYNC, localEid);
         if (rc != PLDM_SUCCESS &&
-            rc != terminus->resumptionStatus.eventReciever)
+            rc != terminus->resumptionStatus.eventReceiver)
         {
             auto tName = terminus->getTerminusName().value_or("Unknown");
             auto mctpInfo = terminusManager.toMctpInfo(tid);
@@ -136,7 +136,7 @@ exec::task<int> PlatformManager::initEventReceiver(tid_t tid)
             }
         }
 
-        terminus->resumptionStatus.eventReciever = rc;
+        terminus->resumptionStatus.eventReceiver = rc;
     }
     co_return rc;
 }

@@ -634,7 +634,7 @@ using AuxiliaryNames =
 using SensorAuxiliaryNames =
     std::tuple<pdr::SensorID, SensorCnt, AuxiliaryNames>;
 using EffecterAuxiliaryNames = SensorAuxiliaryNames;
-using EnitityAssociations =
+using EntityAssociations =
     std::map<pdr::ContainerID,
              std::pair<pdr::EntityInfo, std::set<pdr::EntityInfo>>>;
 using ParentObjPath = std::string;

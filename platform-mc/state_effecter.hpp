@@ -162,7 +162,7 @@ class StateEffecter
     StateSets stateSets;
 
     /** @brief flag to update the value once */
-    bool needUpdate;
+    bool needsUpdate;
 
   private:
     std::unique_ptr<AvailabilityIntf> availabilityIntf = nullptr;

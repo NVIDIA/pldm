@@ -78,7 +78,7 @@ NumericEffecter::NumericEffecter(
     tid(tid), effecterId(pdr->effecter_id),
     entityInfo(ContainerID(pdr->container_id), EntityType(pdr->entity_type),
                EntityInstance(pdr->entity_instance)),
-    effecterName(effecterName), needUpdate(true),
+    effecterName(effecterName), needsUpdate(true),
     terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
     std::string reverseAssociation = "all_controls";
@@ -244,11 +244,11 @@ double NumericEffecter::baseToUnit(double value)
 
 void NumericEffecter::disarmOperationalStateTracking()
 {
-    if (!trackOperationalState || !needUpdate)
+    if (!trackOperationalState || !needsUpdate)
     {
         return;
     }
-    needUpdate = false;
+    needsUpdate = false;
     lg2::info("{EFFECTERNAME}: OperationalState is no longer tracked.",
               "EFFECTERNAME", effecterName);
 }
@@ -417,7 +417,7 @@ exec::task<int> NumericEffecter::setNumericEffecterValue(double effecterValue)
     {
         // Re-arm the state tracking so the write is followed until it
         // settles; the reads clear this again on a terminal state.
-        needUpdate = true;
+        needsUpdate = true;
     }
 
     union_effecter_data_size effecterValueRaw;

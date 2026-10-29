@@ -287,7 +287,7 @@ class NumericEffecter
     std::unique_ptr<NumericEffecterBaseUnit> unitIntf = nullptr;
 
     /** @brief flag to update the value once */
-    bool needUpdate;
+    bool needsUpdate;
 
     /** @brief flag to keep re-reading the effecter until its operational
      * state settles */

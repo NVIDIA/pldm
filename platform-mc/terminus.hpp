@@ -74,7 +74,7 @@ constexpr auto instanceProperty = "InstanceNumber";
 constexpr auto overallSystemInterface =
     "xyz.openbmc_project.Inventory.Item.System";
 constexpr auto chassisInterface = "xyz.openbmc_project.Inventory.Item.Chassis";
-constexpr ContainerID overallSystemCotainerId = 0;
+constexpr ContainerID overallSystemContainerId = 0;
 static const std::map<EntityType, std::string_view> entityInterfaces = {
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
      "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
@@ -90,9 +90,9 @@ static const std::map<EntityType, std::string_view> entityInterfaces = {
  */
 struct TerminusResumptionStatus
 {
-    TerminusResumptionStatus() : eventReciever{PLDM_SUCCESS} {}
+    TerminusResumptionStatus() : eventReceiver{PLDM_SUCCESS} {}
 
-    uint8_t eventReciever;
+    uint8_t eventReceiver;
 };
 
 /**
@@ -240,7 +240,7 @@ class Terminus
 
     /** @brief Find the EntityInfo from the Container ID, and pass it to
      * findInventory(EntityInfo) */
-    std::vector<std::string> findInventory(ContainerID contianerId,
+    std::vector<std::string> findInventory(ContainerID containerId,
                                            bool findClosest = true);
 
     /** @brief Derive a CPU/ProcessorModule entity instance from the entity
@@ -254,7 +254,7 @@ class Terminus
      *  @return the ProcessorModule instance number, or std::nullopt when no
      *          ProcessorModule is found in the hierarchy
      */
-    std::optional<uint16_t> getInstanceFromAssoicationPdr(
+    std::optional<uint16_t> getInstanceFromAssociationPdr(
         ContainerID containerId);
 
     /** @brief Whether a resolved association is a degraded placeholder for
@@ -335,7 +335,7 @@ class Terminus
     /** @brief A list of parsed OEM PDRs */
     std::vector<OemPdr> oemPdrs{};
 
-    /** @brief A map of EntityInfo to Entity informaiton */
+    /** @brief A map of EntityInfo to Entity information */
     std::map<EntityInfo, Entity> entities;
 
     /** @brief A list of parsed state effecter PDRs */
@@ -348,7 +348,7 @@ class Terminus
      */
     std::shared_ptr<SensorAuxiliaryNames> getSensorAuxiliaryNames(SensorID id);
 
-    /** @brief Get inentory path by sensorID
+    /** @brief Get inventory path by sensorID
      *
      *  @param[in] id - sensor ID
      *  @return inventory path name
@@ -442,8 +442,8 @@ class Terminus
 #endif
 
     /** @brief The flag indicates whether the terminus has been initialized
-     * by terminusManaer */
-    bool initalized;
+     * by terminusManager */
+    bool initialized;
 
     /** @brief The flag indicates that the terminus FIFO contains a large
      * message that will require a multipart transfer via the
@@ -657,7 +657,7 @@ class Terminus
 
     std::unique_ptr<sdbusplus::bus::match_t> interfaceAddedMatch;
 
-    EnitityAssociations entityAssociations;
+    EntityAssociations entityAssociations;
 
     TerminusManager& terminusManager;
 

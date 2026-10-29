@@ -54,8 +54,8 @@ StateSensor::StateSensor(
     StateSetInfo sensorInfo, AuxiliaryNames* sensorNames,
     std::string& associationPath,
     std::shared_ptr<utils::SensorEventInfo> sensorEventInfo) :
-    tid(tid), sensorId(sensorId), sensorInfo(sensorInfo), needUpdate(true),
-    async(false), sensorEventInfo(sensorEventInfo)
+    tid(tid), sensorId(sensorId), sensorInfo(sensorInfo),
+    needsInitialUpdate(true), async(false), sensorEventInfo(sensorEventInfo)
 {
     path = "/xyz/openbmc_project/state/PLDM_Sensor_" +
            std::to_string(sensorId) + "_" + std::to_string(tid);

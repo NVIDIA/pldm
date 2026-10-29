@@ -316,22 +316,22 @@ TEST_F(TerminusManagerPrivateTest, knownTerminusRefreshesSupportedTypes)
     auto terminus = addKnownTerminus(baseTypes);
 
     // Type 2 gained: its PDRs are still to be fetched for the first time.
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->initSensorList = false;
     ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
     EXPECT_EQ(terminus, termini[0x22]);
     EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
-    EXPECT_FALSE(terminus->initalized);
+    EXPECT_FALSE(terminus->initialized);
     EXPECT_TRUE(terminus->initSensorList);
 
     // As after initTerminus() and the first polling round.
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->initSensorList = false;
 
     // GetPLDMTypes fails: the cached types and the terminus state are kept.
     ASSERT_NO_FATAL_FAILURE(rediscover(std::nullopt));
     EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
-    EXPECT_TRUE(terminus->initalized);
+    EXPECT_TRUE(terminus->initialized);
     EXPECT_FALSE(terminus->initSensorList);
 
     // The same types again, or a type other than Type 2 changing, leave the
@@ -341,7 +341,7 @@ TEST_F(TerminusManagerPrivateTest, knownTerminusRefreshesSupportedTypes)
         rediscover(static_cast<uint8_t>(platformTypes | (1 << PLDM_FRU))));
     EXPECT_EQ(terminus, termini[0x22]);
     EXPECT_TRUE(terminus->doesSupport(PLDM_FRU));
-    EXPECT_TRUE(terminus->initalized);
+    EXPECT_TRUE(terminus->initialized);
     EXPECT_FALSE(terminus->initSensorList);
     EXPECT_TRUE(terminus->resumed);
     EXPECT_FALSE(terminus->stopPolling);
@@ -351,7 +351,7 @@ TEST_F(TerminusManagerPrivateTest, knownTerminusFollowsPlatformSupport)
 {
     auto terminus = addKnownTerminus(platformTypes);
     // As after initTerminus() and the first polling round.
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->initSensorList = false;
 
     // Type 2 dropped: polling stops and the terminus goes offline, keeping
@@ -360,16 +360,16 @@ TEST_F(TerminusManagerPrivateTest, knownTerminusFollowsPlatformSupport)
     EXPECT_FALSE(terminus->doesSupport(PLDM_PLATFORM));
     EXPECT_TRUE(terminus->stopPolling);
     EXPECT_FALSE(terminus->resumed);
-    EXPECT_TRUE(terminus->initalized);
+    EXPECT_TRUE(terminus->initialized);
 
     // Type 2 back with objects: keep them without fetching PDRs again.
     terminus->numericSensors.push_back(nullptr);
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->initSensorList = false;
     ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
     EXPECT_EQ(terminus, termini[0x22]);
     EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
-    EXPECT_TRUE(terminus->initalized);
+    EXPECT_TRUE(terminus->initialized);
     EXPECT_TRUE(terminus->initSensorList);
     // No Manager here to restart polling/resume after discovery.
     EXPECT_FALSE(terminus->resumed);
@@ -381,12 +381,12 @@ TEST_F(TerminusManagerPrivateTest, knownTerminusFollowsPlatformSupport)
     EXPECT_FALSE(terminus->resumed);
 
     // Type 2 back without objects: initialize like a new terminus.
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->initSensorList = false;
     ASSERT_NO_FATAL_FAILURE(rediscover(platformTypes));
     EXPECT_EQ(terminus, termini[0x22]);
     EXPECT_TRUE(terminus->doesSupport(PLDM_PLATFORM));
-    EXPECT_FALSE(terminus->initalized);
+    EXPECT_FALSE(terminus->initialized);
     EXPECT_TRUE(terminus->initSensorList);
     EXPECT_TRUE(terminus->resumed);
 }

@@ -110,7 +110,7 @@ class PlatformManager
      *  @param[in] recordHndl - Record handle
      *  @param[in] dataTransferHndl - Data transfer handle
      *  @param[in] transferOpFlag - Transfer Operation Flag
-     *  @param[in] requstCnt - Request Count of data
+     *  @param[in] requestCnt - Request Count of data
      *  @param[in] recordChgNum - Record change number
      *  @param[out] nextRecordHndl - Next record handle
      *  @param[out] nextDataTransferHndl - Next data transfer handle
@@ -159,14 +159,14 @@ class PlatformManager
                                            uint16_t receiverMaxBufferSize,
                                            uint16_t& terminusBufferSize);
 
-    /** @brief  send eventMessageSupprted
+    /** @brief  send eventMessageSupported
      *  @param[in] tid - Destination TID
      *  @param[in] formatVersion - version of the event format
      *  @param[out] synchronyConfiguration - messaging style most recently
      * configured via the setEventReceiver command
      *  @param[out] synchronyConfigurationSupported - event messaging styles
      * supported by the terminus
-     *  @param[out] numerEventClassReturned - number of eventClass enumerated
+     *  @param[out] numEventClassReturned - number of eventClass enumerated
      * bytes
      *  @param[out] eventClass - vector of eventClass the device can generate
      *  @return coroutine return_value - PLDM completion code
@@ -174,7 +174,7 @@ class PlatformManager
     exec::task<int> eventMessageSupported(
         tid_t tid, uint8_t formatVersion, uint8_t& synchronyConfiguration,
         bitfield8_t& synchronyConfigurationSupported,
-        uint8_t& numerEventClassReturned, std::vector<uint8_t>& eventClass);
+        uint8_t& numEventClassReturned, std::vector<uint8_t>& eventClass);
 
     /** reference of TerminusManager for sending PLDM request to terminus*/
     TerminusManager& terminusManager;

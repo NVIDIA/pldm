@@ -1264,7 +1264,7 @@ exec::task<int> EventManager::processTelemetryRediscoveryEvent(tid_t tid)
         terminus->clearParsedPdrCaches();
 
         // Mark terminus as not initialized so it will be re-initialized
-        terminus->initalized = false;
+        terminus->initialized = false;
         terminus->resumed = false;
         terminus->initSensorList = true;
 
@@ -1283,7 +1283,7 @@ exec::task<int> EventManager::processTelemetryRediscoveryEvent(tid_t tid)
 
         // Re-initialize ONLY this terminus. Using the global initTerminus()
         // here races concurrent rebuilds of other termini: each rebuild marks
-        // its own terminus initalized=false, so a global re-init re-creates
+        // its own terminus initialized=false, so a global re-init re-creates
         // those objects too — twice when both rebuilds run — causing D-Bus
         // FileExists. Scoping the re-init to tid removes that cross-terminus
         // collision.
@@ -1366,7 +1366,7 @@ exec::task<int> EventManager::processPdrRepositoryChgEvent(
         // recordsDeleted, or an event before initial discovery completes need
         // the full clear + re-discovery teardown so stale objects are removed
         // and changed PDRs re-parsed consistently.
-        bool needFullRebuild = refreshAll || !terminus->initalized;
+        bool needFullRebuild = refreshAll || !terminus->initialized;
         std::vector<uint32_t> addedHandles;
         std::vector<uint32_t> modifiedHandles;
         for (const auto& [op, handles] : changeRecords)
@@ -1394,7 +1394,7 @@ exec::task<int> EventManager::processPdrRepositoryChgEvent(
             lg2::info(
                 "processPdrRepositoryChgEvent: tid={TID} requires full rebuild (refreshAll={REFRESH}, initialized={INIT})",
                 "TID", tid, "REFRESH", refreshAll, "INIT",
-                terminus->initalized);
+                terminus->initialized);
             co_return co_await processTelemetryRediscoveryEvent(tid);
         }
 

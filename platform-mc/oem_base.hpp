@@ -24,7 +24,7 @@ namespace platform_mc
 /**
  * @brief OemIntf
  *
- * This class is a base class of OEM intefaces
+ * This class is a base class of OEM interfaces
  */
 class OemIntf
 {

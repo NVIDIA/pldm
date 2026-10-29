@@ -547,7 +547,7 @@ exec::task<void> TerminusManager::refreshTerminusSupportedTypes(
         "TID", tid, "EID", eid, "TYPES", lg2::hex, supportedTypes);
     if (!terminus->hasEntities())
     {
-        terminus->initalized = false;
+        terminus->initialized = false;
         // Start like a new terminus; do not resume before initialization.
         terminus->resumed = true;
     }

@@ -1000,7 +1000,7 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
         false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUnit(2)=degrees C
         0,                           // unitModifier = 0
         0,                           // rateUnit
         0,                           // baseOEMUnitHandle
@@ -1029,11 +1029,11 @@ TEST_F(EventManagerTest, processNumericSensorEventTest)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -1437,7 +1437,7 @@ TEST_F(EventManagerPollingTest, handlePdrRepositoryChgEventGetPdrRequests)
     std::string uuid("00000000-0000-0000-0000-000000000065");
     auto terminus = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    terminus->initalized = true; // take the incremental GetPDR path
+    terminus->initialized = true; // take the incremental GetPDR path
     termini[tid] = terminus;
     pldm::MctpInfo mctpInfo(
         15, "f72d6f90-5675-11ed-9b6a-0242ac120165",
@@ -1504,7 +1504,7 @@ TEST_F(EventManagerPollingTest, processPdrRepositoryChgEventIncrementalPaths)
     auto terminus = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
     terminus->setTerminusName("ProcessChgTerminus_62");
-    terminus->initalized = true; // avoid the full-rebuild rediscovery path
+    terminus->initialized = true; // avoid the full-rebuild rediscovery path
     termini[tid] = terminus;
 
     // recordsAdded change record carrying no handles: nothing to fetch, so the

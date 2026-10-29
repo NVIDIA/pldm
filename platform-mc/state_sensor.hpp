@@ -164,7 +164,7 @@ class StateSensor
     StateSetInfo sensorInfo;
 
     /** @brief flag to update the value once */
-    bool needUpdate;
+    bool needsInitialUpdate;
 
     /** @brief indicate the sensor updated asynchronously */
     bool async;

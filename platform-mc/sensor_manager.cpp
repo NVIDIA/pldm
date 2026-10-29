@@ -251,13 +251,13 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 break;
             }
 
-            std::shared_ptr<NumericEffecter> effector =
+            std::shared_ptr<NumericEffecter> effecter =
                 terminus->numericEffecters[i];
 
-            // Get numeric effector if we haven't sync.
-            if (effector->needUpdate)
+            // Get numeric effecter if we haven't synced.
+            if (effecter->needsUpdate)
             {
-                co_await effector->getNumericEffecterValue();
+                co_await effecter->getNumericEffecterValue();
                 // Check if terminus still exists after co_await
                 if (termini.find(tid) == termini.end())
                 {
@@ -271,11 +271,11 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                     co_return PLDM_ERROR;
                 }
                 // State-tracked effecters stay armed and are re-read every
-                // round; getNumericEffecterValue clears needUpdate for them
+                // round; getNumericEffecterValue clears needsUpdate for them
                 // once a terminal operational state is observed.
-                if (!effector->trackOperationalState)
+                if (!effecter->trackOperationalState)
                 {
-                    effector->needUpdate = false;
+                    effecter->needsUpdate = false;
                 }
             }
         }
@@ -288,14 +288,14 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 break;
             }
 
-            std::shared_ptr<StateEffecter> effector =
+            std::shared_ptr<StateEffecter> effecter =
                 terminus->stateEffecters[i];
 
-            // Get state effector if it haven't been synced or it is
+            // Get state effecter if it hasn't been synced or it is
             // updatePending
-            if (effector->needUpdate || effector->isUpdatePending())
+            if (effecter->needsUpdate || effecter->isUpdatePending())
             {
-                co_await effector->getStateEffecterStates();
+                co_await effecter->getStateEffecterStates();
                 // Check if terminus still exists after co_await
                 if (termini.find(tid) == termini.end())
                 {
@@ -308,7 +308,7 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 {
                     co_return PLDM_ERROR;
                 }
-                effector->needUpdate = false;
+                effecter->needsUpdate = false;
             }
         }
 
@@ -322,8 +322,8 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
 
             std::shared_ptr<StateSensor> sensor = terminus->stateSensors[i];
 
-            // Get State sensor if we haven't sync.
-            if (sensor->needUpdate)
+            // Get State sensor if we haven't synced.
+            if (sensor->needsInitialUpdate)
             {
                 co_await getStateSensorReadings(sensor);
                 // Check if terminus still exists after co_await
@@ -338,7 +338,7 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 {
                     co_return PLDM_ERROR;
                 }
-                sensor->needUpdate = false;
+                sensor->needsInitialUpdate = false;
             }
         }
 
@@ -409,7 +409,7 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             {
                 if (!terminus->ready)
                 {
-                    // Either we were able to succesfully update all sensors in
+                    // Either we were able to successfully update all sensors in
                     // one iteration or there are no sensors in the queue. Mark
                     // ready in both cases.
                     terminus->ready = true;
@@ -853,7 +853,7 @@ void SensorManager::initSensorList(tid_t tid)
 
     auto terminus = termini[tid];
     // Initialize the sensors only after the terminus is set to initialized.
-    if (!terminus->initalized)
+    if (!terminus->initialized)
     {
         return;
     }

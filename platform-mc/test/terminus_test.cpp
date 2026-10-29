@@ -301,7 +301,7 @@ class TerminusTest : public testing::Test
             0x0,                         // containerID=1
             PLDM_NO_INIT,                // sensorInit
             false,                       // sensorAuxiliaryNamesPDR
-            PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
+            PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUnit(2)=degrees C
             0,                           // unitModifier = 0
             0,                           // rateUnit
             0,                           // baseOEMUnitHandle
@@ -330,11 +330,11 @@ class TerminusTest : public testing::Test
             0,
             0,
             0x80,
-            0x3f, // stateTransistionInterval=1.0
+            0x3f, // stateTransitionInterval=1.0
             0,
             0,
             0x80,
-            0x3f,                          // updateInverval=1.0
+            0x3f,                          // updateInterval=1.0
             255,                           // maxReadable
             0,                             // minReadable
             PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -1831,7 +1831,7 @@ TEST_F(TerminusTest, addNumericSensorTest)
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
         true,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUnit(2)=degrees C
         0,                           // unitModifier
         0,                           // rateUnit
         0,                           // baseOEMUnitHandle
@@ -1860,11 +1860,11 @@ TEST_F(TerminusTest, addNumericSensorTest)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -1916,7 +1916,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrTest)
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
         false,                       // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,  // baseUnit(2)=degrees C
         0,                           // unitModifier
         0,                           // rateUnit
         0,                           // baseOEMUnitHandle
@@ -1945,11 +1945,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrTest)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -2022,7 +2022,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
         0x0,                           // containerID=1
         PLDM_NO_INIT,                  // sensorInit
         false,                         // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,    // baseUnit(2)=degrees C
         0,                             // unitModifier
         0,                             // rateUnit
         0,                             // baseOEMUnitHandle
@@ -2051,11 +2051,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint8Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         0x64,                          // maxReadable = 100
         0x9c,                          // minReadable = -100
         PLDM_RANGE_FIELD_FORMAT_SINT8, // rangeFieldFormat
@@ -2128,7 +2128,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
         false,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUnit(2)=degrees C
         0,                            // unitModifier
         0,                            // rateUnit
         0,                            // baseOEMUnitHandle
@@ -2158,11 +2158,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint16Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                           // updateInverval=1.0
+        0x3f,                           // updateInterval=1.0
         0,
         0x10,                           // maxReadable = 4096
         0,
@@ -2247,7 +2247,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
         false,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUnit(2)=degrees C
         0,                            // unitModifier
         0,                            // rateUnit
         0,                            // baseOEMUnitHandle
@@ -2277,11 +2277,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint16Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                           // updateInverval=1.0
+        0x3f,                           // updateInterval=1.0
         0xe8,
         0x03,                           // maxReadable = 1000
         0x18,
@@ -2366,7 +2366,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
         false,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUnit(2)=degrees C
         0,                            // unitModifier
         0,                            // rateUnit
         0,                            // baseOEMUnitHandle
@@ -2398,11 +2398,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrUint32Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f, // updateInverval=1.0
+        0x3f, // updateInterval=1.0
         0,
         0x10,
         0,
@@ -2509,7 +2509,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
         false,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUnit(2)=degrees C
         0,                            // unitModifier
         0,                            // rateUnit
         0,                            // baseOEMUnitHandle
@@ -2541,11 +2541,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrSint32Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f, // updateInverval=1.0
+        0x3f, // updateInterval=1.0
         0xa0,
         0x86,
         0x01,
@@ -2652,7 +2652,7 @@ TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
         0x0,                          // containerID=1
         PLDM_NO_INIT,                 // sensorInit
         false,                        // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C,   // baseUnit(2)=degrees C
         0,                            // unitModifier
         0,                            // rateUnit
         0,                            // baseOEMUnitHandle
@@ -2684,11 +2684,11 @@ TEST_F(TerminusTest, parseNumericSensorPdrReal32Test)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f, // updateInverval=1.0
+        0x3f, // updateInterval=1.0
         0xa0,
         0x86,
         0x01,
@@ -2796,7 +2796,7 @@ TEST_F(TerminusTest, parseNumericSensorPDRInvalidSizeTest)
         0x0,                         // containerID=1
         PLDM_NO_INIT,                // sensorInit
         false,                       // sensorAuxiliaryNamesPDR
-        2,                           // baseUint(2)=degrees C
+        2,                           // baseUnit(2)=degrees C
         0,                           // unitModifier
         0,                           // rateUnit
         0,                           // baseOEMUnitHandle
@@ -3013,7 +3013,7 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     sealAndRewind(msg);
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
-    terminus.initalized = true;
+    terminus.initialized = true;
     EXPECT_GE(sd_bus_message_rewind(msg.get(), true), 0);
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
 
@@ -3063,7 +3063,7 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     auto numericEffecter = std::make_shared<NumericEffecter>(
         terminus.getTid(), false, numericEffecterPdr, effecterName,
         associationPath, terminusManager);
-    numericEffecter->needUpdate = false;
+    numericEffecter->needsUpdate = false;
 
     StateSetData healthStateData =
         std::make_tuple(static_cast<uint16_t>(PLDM_STATESET_ID_HEALTHSTATE),
@@ -3098,7 +3098,7 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     EXPECT_TRUE(std::isnan(numericSensor->getReading()));
 
     terminus.setOnline();
-    EXPECT_TRUE(numericEffecter->needUpdate);
+    EXPECT_TRUE(numericEffecter->needsUpdate);
 
     waitForRefreshAssociationsTask(terminus);
 }
@@ -3688,11 +3688,11 @@ TEST_F(TerminusTest, privateFindInventoryAndPhysicalContextCoverage)
     terminus.inventoryParentMap[dimm0] = cpu0;
     terminus.inventoryParentMap[dimm1] = cpu1;
 
-    EntityInfo containerEntity{overallSystemCotainerId, PLDM_ENTITY_PROC, 1};
+    EntityInfo containerEntity{overallSystemContainerId, PLDM_ENTITY_PROC, 1};
     terminus.entityAssociations.emplace(
         1, std::make_pair(containerEntity, std::set<EntityInfo>{}));
 
-    auto overallPaths = terminus.findInventory(overallSystemCotainerId, false);
+    auto overallPaths = terminus.findInventory(overallSystemContainerId, false);
     ASSERT_EQ(1u, overallPaths.size());
     EXPECT_EQ(terminus.systemInventoryPath, overallPaths.front());
 
@@ -3801,7 +3801,7 @@ TEST_F(TerminusTest, findInventoryProcModuleInstanceNoConfigCoverage)
     ASSERT_EQ(1u, nestedPaths.size());
     EXPECT_EQ(cpu1, nestedPaths.front());
 
-    // getInstanceFromAssoicationPdr() returns nullopt (container is neither a
+    // getInstanceFromAssociationPdr() returns nullopt (container is neither a
     // ProcessorModule nor a CPU) and no config -> entity keeps its own
     // instance (0 -> HGX_CPU_0).
     terminus.entities.clear();
@@ -3814,7 +3814,7 @@ TEST_F(TerminusTest, findInventoryProcModuleInstanceNoConfigCoverage)
     EXPECT_EQ(cpu0, noModulePaths.front());
 
     // With static config present, getInstance() takes priority over the
-    // association PDR (getInstanceFromAssoicationPdr is not consulted).
+    // association PDR (getInstanceFromAssociationPdr is not consulted).
     terminus.entities.clear();
     terminus.setInstance(1);
     auto cfgPaths =
@@ -3841,7 +3841,7 @@ TEST_F(TerminusTest, privateFindInventoryOverrideCoverage)
                                       PLDM_ENTITY_PROC_IO_MODULE, 9);
     terminus.inventories.emplace_back(cpuPath, PLDM_ENTITY_PROC, 9);
 
-    EntityInfo procModuleEntity{overallSystemCotainerId,
+    EntityInfo procModuleEntity{overallSystemContainerId,
                                 PLDM_ENTITY_PROC_IO_MODULE, 1};
     EntityInfo procEntity{11, PLDM_ENTITY_PROC, 1};
     terminus.entityAssociations.emplace(
@@ -3897,7 +3897,7 @@ TEST_F(TerminusTest, privateGetterAndUpdateAssociationsCoverage)
         "/xyz/openbmc_project/inventory/system/chassis/chassis56/board0"};
     terminus.inventories.emplace_back(boardPath, PLDM_ENTITY_SYS_BOARD, 1);
     terminus.inventoryParentMap[boardPath] = terminus.systemInventoryPath;
-    EntityInfo containerEntity{overallSystemCotainerId, PLDM_ENTITY_SYS_BOARD,
+    EntityInfo containerEntity{overallSystemContainerId, PLDM_ENTITY_SYS_BOARD,
                                1};
     terminus.entityAssociations.emplace(
         1, std::make_pair(containerEntity, std::set<EntityInfo>{}));
@@ -4047,11 +4047,11 @@ TEST_F(TerminusTest, updateAssociationsNumericSensorInventoryCoverage)
     terminus.inventoryParentMap[modulePath] = terminus.systemInventoryPath;
     terminus.inventoryParentMap[cpuPath] = modulePath;
 
-    EntityInfo boardEntity{overallSystemCotainerId, PLDM_ENTITY_SYS_BOARD, 1};
-    EntityInfo moduleEntity{overallSystemCotainerId, PLDM_ENTITY_PROC_IO_MODULE,
-                            1};
+    EntityInfo boardEntity{overallSystemContainerId, PLDM_ENTITY_SYS_BOARD, 1};
+    EntityInfo moduleEntity{overallSystemContainerId,
+                            PLDM_ENTITY_PROC_IO_MODULE, 1};
     EntityInfo procUnderModule{30, PLDM_ENTITY_PROC, 1};
-    EntityInfo procAtRoot{overallSystemCotainerId, PLDM_ENTITY_PROC, 1};
+    EntityInfo procAtRoot{overallSystemContainerId, PLDM_ENTITY_PROC, 1};
     terminus.entityAssociations.emplace(
         1, std::make_pair(boardEntity, std::set<EntityInfo>{procUnderModule}));
     terminus.entityAssociations.emplace(
@@ -4165,8 +4165,8 @@ TEST_F(TerminusTest, updateAssociationsNumericSensorFallbackCoverage)
     terminus.inventoryParentMap[boardPath] = terminus.systemInventoryPath;
     terminus.inventoryParentMap[modulePath] = terminus.systemInventoryPath;
 
-    EntityInfo moduleEntity{overallSystemCotainerId, PLDM_ENTITY_PROC_IO_MODULE,
-                            1};
+    EntityInfo moduleEntity{overallSystemContainerId,
+                            PLDM_ENTITY_PROC_IO_MODULE, 1};
     terminus.entityAssociations.emplace(
         30, std::make_pair(moduleEntity, std::set<EntityInfo>{EntityInfo{
                                              30, PLDM_ENTITY_SYS_BOARD, 1}}));
@@ -4430,8 +4430,8 @@ TEST_F(TerminusTest, updateAssociationsStateSensorInventoryCoverage)
     terminus.inventoryParentMap[dimm2Path] = boardPath;
     terminus.inventoryParentMap[dimm3Path] = boardPath;
 
-    EntityInfo boardEntity{overallSystemCotainerId, PLDM_ENTITY_SYS_BOARD, 1};
-    EntityInfo procEntity{overallSystemCotainerId, PLDM_ENTITY_PROC, 1};
+    EntityInfo boardEntity{overallSystemContainerId, PLDM_ENTITY_SYS_BOARD, 1};
+    EntityInfo procEntity{overallSystemContainerId, PLDM_ENTITY_PROC, 1};
     terminus.entityAssociations.emplace(
         1, std::make_pair(boardEntity, std::set<EntityInfo>{}));
     terminus.entityAssociations.emplace(
@@ -6703,9 +6703,9 @@ TEST_F(TerminusTest,
         false);
 
     terminus.entityAssociations.emplace(
-        1,
-        std::make_pair(EntityInfo{overallSystemCotainerId, PLDM_ENTITY_PROC, 1},
-                       std::set<EntityInfo>{}));
+        1, std::make_pair(
+               EntityInfo{overallSystemContainerId, PLDM_ENTITY_PROC, 1},
+               std::set<EntityInfo>{}));
     terminus.sensorEventInfoOverwriteTbl[0x841] =
         std::make_shared<pldm::utils::SensorEventInfo>(
             "CoverageMemory",
@@ -6757,7 +6757,7 @@ TEST_F(
     terminus.entityAssociations.emplace(
         20,
         std::make_pair(
-            EntityInfo{overallSystemCotainerId, PLDM_ENTITY_PROC_IO_MODULE, 4},
+            EntityInfo{overallSystemContainerId, PLDM_ENTITY_PROC_IO_MODULE, 4},
             std::set<EntityInfo>{EntityInfo{20, PLDM_ENTITY_SYS_BOARD, 1}}));
 
     auto updateRc =
@@ -6798,7 +6798,7 @@ TEST_F(
     terminus.entityAssociations.emplace(
         40,
         std::make_pair(
-            EntityInfo{overallSystemCotainerId, PLDM_ENTITY_PROC_IO_MODULE, 7},
+            EntityInfo{overallSystemContainerId, PLDM_ENTITY_PROC_IO_MODULE, 7},
             std::set<EntityInfo>{EntityInfo{40, PLDM_ENTITY_PROC, 1}}));
 
     auto updateRc =
@@ -7092,7 +7092,7 @@ TEST_F(TerminusTest, interfaceAddedEntityAndAssociationConflictCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000161");
     Terminus terminus(0x61, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::PropertyMap properties;
@@ -7687,7 +7687,7 @@ TEST_F(TerminusTest, cachedFindInventoryAndProcessorInstanceGuardCoverage)
     terminus.inventories.emplace_back(terminus.systemInventoryPath + "/cpu3",
                                       PLDM_ENTITY_PROC, 3);
     auto missingStaticInstance = terminus.findInventory(
-        EntityInfo{overallSystemCotainerId, PLDM_ENTITY_PROC, 1}, false);
+        EntityInfo{overallSystemContainerId, PLDM_ENTITY_PROC, 1}, false);
     EXPECT_TRUE(missingStaticInstance.empty());
 }
 
@@ -7745,7 +7745,7 @@ TEST_F(TerminusTest, interfaceAddedBreakAndEmptyOfflineCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000171");
     Terminus terminus(0x71, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::InterfaceMap interfaces;
@@ -7775,7 +7775,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000179");
     Terminus terminus(0x79, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::InterfaceMap interfaces;
@@ -7800,7 +7800,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceCompletedHandleCoverage)
     std::string uuid("00000000-0000-0000-0000-00000000017A");
     Terminus terminus(0x7A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
     terminus.refreshAssociationsTaskHandle.emplace();
     terminus.refreshAssociationsTaskHandle->second.emplace(PLDM_SUCCESS);
 
@@ -7827,7 +7827,7 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceInProgressHandleCoverage)
     std::string uuid("00000000-0000-0000-0000-00000000017B");
     Terminus terminus(0x7B, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
     terminus.refreshAssociationsTaskHandle.emplace();
 
     auto rawBus = sdbusplus::bus::new_default();
@@ -7853,7 +7853,7 @@ TEST_F(TerminusTest, interfaceAddedNsmAssociationCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000173");
     Terminus terminus(0x73, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::InterfaceMap interfaces;
@@ -7880,7 +7880,7 @@ TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
     std::string uuid("00000000-0000-0000-0000-00000000017E");
     Terminus terminus(0x7E, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     // A device-association config (I2C/USB) arriving after its inventory
     // box was scanned must trigger a refresh, like the NSM variant.
@@ -7903,7 +7903,7 @@ TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
     std::string i2cUuid("00000000-0000-0000-0000-00000000017F");
     Terminus i2cTerminus(0x7F, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, i2cUuid,
                          terminusManager);
-    i2cTerminus.initalized = true;
+    i2cTerminus.initialized = true;
 
     pldm::dbus::InterfaceMap i2cInterfaces;
     i2cInterfaces.emplace(
@@ -7928,7 +7928,7 @@ TEST_F(TerminusTest, interfaceAddedDuringInitLatchesRefreshCoverage)
     std::string uuid("00000000-0000-0000-0000-00000000017C");
     Terminus terminus(0x7C, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    EXPECT_FALSE(terminus.initalized);
+    EXPECT_FALSE(terminus.initialized);
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::InterfaceMap interfaces;
@@ -8038,7 +8038,7 @@ TEST_F(TerminusTest, refreshAssociationsGuardCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000164");
     Terminus terminus(0x64, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    terminus.initalized = true;
+    terminus.initialized = true;
 
     auto rawBus = sdbusplus::bus::new_default();
     pldm::dbus::InterfaceMap emptyInterfaces;
@@ -8366,7 +8366,7 @@ static std::vector<uint8_t> makeNumericSensorPdrBytes(uint16_t sensorId)
         0x0, // containerID
         PLDM_NO_INIT,
         false,
-        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUint
+        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUnit
         1,                          // unitModifier
         0,
         0,
@@ -8584,7 +8584,7 @@ TEST_F(TerminusTest, rearmPolledEffecterOnPdrReapply)
 
     // The device closed its write window: updateValue() observed a terminal
     // operational state and disarmed tracking.
-    tracked->needUpdate = false;
+    tracked->needsUpdate = false;
 
     // SatMC re-reports the same PDRs as ADDED on the next power cycle. Nothing
     // is applied, but the effecter must be re-armed so the new window is seen.
@@ -8594,7 +8594,7 @@ TEST_F(TerminusTest, rearmPolledEffecterOnPdrReapply)
         makePcieLinkMaskEffecterPdr(0x0845)};
     EXPECT_EQ(0u, terminus.addNewPdrs(reAdded));
     EXPECT_EQ(1u, terminus.numericEffecters.size());
-    EXPECT_TRUE(tracked->needUpdate);
+    EXPECT_TRUE(tracked->needsUpdate);
 }
 
 TEST_F(TerminusTest, rearmPolledEffecterOnPdrApplyNewRecord)
@@ -8611,7 +8611,7 @@ TEST_F(TerminusTest, rearmPolledEffecterOnPdrApplyNewRecord)
     ASSERT_EQ(1u, terminus.numericEffecters.size());
     auto tracked = terminus.numericEffecters[0];
     ASSERT_TRUE(tracked->trackOperationalState);
-    tracked->needUpdate = false;
+    tracked->needsUpdate = false;
 
     // A batch carrying a genuinely new, unrelated PDR still re-arms the tracked
     // effecter: the sweep is driven by "this terminus refreshed its
@@ -8621,7 +8621,7 @@ TEST_F(TerminusTest, rearmPolledEffecterOnPdrApplyNewRecord)
         makeStateSensorPdr(0x701, PLDM_ENTITY_SYS_BOARD,
                            PLDM_STATESET_ID_HEALTHSTATE, true)};
     EXPECT_EQ(2u, terminus.addNewPdrs(mixed));
-    EXPECT_TRUE(tracked->needUpdate);
+    EXPECT_TRUE(tracked->needsUpdate);
 }
 
 TEST_F(TerminusTest, rearmPolledEffecterLeavesOrdinaryEffectersAlone)
@@ -8643,18 +8643,18 @@ TEST_F(TerminusTest, rearmPolledEffecterLeavesOrdinaryEffectersAlone)
 
     for (auto& effecter : terminus.numericEffecters)
     {
-        effecter->needUpdate = false;
+        effecter->needsUpdate = false;
     }
-    terminus.stateEffecters[0]->needUpdate = false;
+    terminus.stateEffecters[0]->needsUpdate = false;
 
     // Only the tracked effecter is re-armed. Ordinary numeric effecters keep
     // their one-shot read semantics, and state effecters are out of scope.
     EXPECT_EQ(1u, terminus.rearmTrackedEffecters());
     for (auto& effecter : terminus.numericEffecters)
     {
-        EXPECT_EQ(effecter->trackOperationalState, effecter->needUpdate);
+        EXPECT_EQ(effecter->trackOperationalState, effecter->needsUpdate);
     }
-    EXPECT_FALSE(terminus.stateEffecters[0]->needUpdate);
+    EXPECT_FALSE(terminus.stateEffecters[0]->needsUpdate);
 
     // Idempotent: an already-armed effecter is not counted twice.
     EXPECT_EQ(0u, terminus.rearmTrackedEffecters());

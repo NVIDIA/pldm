@@ -126,7 +126,7 @@ TEST_F(SensorManagerTest, sensorManagerControlPathCoverage)
     sensorManager.setOffline(tid);
     EXPECT_TRUE(termini[tid]->stopPolling);
 
-    termini[tid]->initalized = true;
+    termini[tid]->initialized = true;
     termini[tid]->ready = false;
     sensorManager.checkAllTerminiReady();
     EXPECT_FALSE(termini[tid]->ready);
@@ -188,7 +188,7 @@ static std::vector<uint8_t> makeNumericSensorPdr(uint16_t sensorId)
         0x0,                        // containerID=1
         PLDM_NO_INIT,               // sensorInit
         false,                      // sensorAuxiliaryNamesPDR
-        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUint(2)=degrees C
+        PLDM_SENSOR_UNIT_DEGRESS_C, // baseUnit(2)=degrees C
         1,                          // unitModifier = 1
         0,                          // rateUnit
         0,                          // baseOEMUnitHandle
@@ -217,11 +217,11 @@ static std::vector<uint8_t> makeNumericSensorPdr(uint16_t sensorId)
         0,
         0,
         0x80,
-        0x3f, // stateTransistionInterval=1.0
+        0x3f, // stateTransitionInterval=1.0
         0,
         0,
         0x80,
-        0x3f,                          // updateInverval=1.0
+        0x3f,                          // updateInterval=1.0
         255,                           // maxReadable
         0,                             // minReadable
         PLDM_RANGE_FIELD_FORMAT_UINT8, // rangeFieldFormat
@@ -884,7 +884,7 @@ TEST_F(SensorManagerDataPathTest, sensorManagerDataPathCoverage)
     (void)priority;
 
     sensorManager.initSensorList(tid);
-    termini[tid]->initalized = true;
+    termini[tid]->initialized = true;
     termini[tid]->initSensorList = true;
     sensorManager.initSensorList(tid);
     EXPECT_FALSE(termini[tid]->initSensorList);
@@ -1247,7 +1247,7 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
     ASSERT_TRUE(termini[tid]->parsePDRs());
     ASSERT_EQ(1u, termini[tid]->stateSensors.size());
     auto stateSensor = termini[tid]->stateSensors.front();
-    stateSensor->needUpdate = false;
+    stateSensor->needsInitialUpdate = false;
 
     // Visit the refreshed numeric sensor without reading it, then stop during
     // the due state-sensor read, before queue exhaustion can mark ready.
@@ -1287,7 +1287,7 @@ TEST_F(SensorManagerDataPathTest, initSensorListPriorityAndAsyncCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000043");
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    termini[tid]->initalized = true;
+    termini[tid]->initialized = true;
 
     auto priorityPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
     auto priorityPdrData = makeNumericSensorPdr(0x44);
@@ -1345,7 +1345,7 @@ TEST_F(SensorManagerDataPathTest, initSensorListEmptyCoverage)
     std::string uuid("00000000-0000-0000-0000-00000000007B");
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    termini[tid]->initalized = true;
+    termini[tid]->initialized = true;
 
     sensorManager.initSensorList(tid);
 
@@ -1361,7 +1361,7 @@ TEST_F(SensorManagerDataPathTest,
     std::string uuid("00000000-0000-0000-0000-00000000007C");
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    termini[tid]->initalized = true;
+    termini[tid]->initialized = true;
     sensorManager.prioritySensorNameSpaces.clear();
 
     auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
@@ -1651,7 +1651,7 @@ TEST_F(SensorManagerInterruptTest, doSensorPollingTaskRemovalAfterAwaitCoverage)
         ASSERT_TRUE(terminus->parsePDRs());
         ASSERT_EQ(1u, terminus->stateSensors.size());
         auto stateSensor = terminus->stateSensors.front();
-        stateSensor->needUpdate = false;
+        stateSensor->needsInitialUpdate = false;
         stateSensor->setLastUpdatedTimeStamp(0);
         terminus->roundRobinSensors.push(stateSensor);
         terminus->initSensorList = false;
@@ -1887,10 +1887,10 @@ TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
         inventoryPath, terminusManager);
     terminus->stateEffecters.emplace_back(stateEffecter);
 
-    // Round 1: both numeric effecters are read; the loop clears needUpdate
+    // Round 1: both numeric effecters are read; the loop clears needsUpdate
     // only for the untracked one.
-    ASSERT_TRUE(trackedEffecter->needUpdate);
-    ASSERT_TRUE(untrackedEffecter->needUpdate);
+    ASSERT_TRUE(trackedEffecter->needsUpdate);
+    ASSERT_TRUE(untrackedEffecter->needsUpdate);
     prepareInterrupt(tid, InterruptAction::stopPolling);
     terminusManager.interruptCall = 3;
     auto response = makeGetNumericEffecterValueResp(
@@ -1903,8 +1903,8 @@ TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
     auto rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
-    EXPECT_TRUE(trackedEffecter->needUpdate);
-    EXPECT_FALSE(untrackedEffecter->needUpdate);
+    EXPECT_TRUE(trackedEffecter->needsUpdate);
+    EXPECT_FALSE(untrackedEffecter->needsUpdate);
 
     // Round 2: the tracked effecter reads a terminal state and disarms.
     terminus->stopPolling = false;
@@ -1918,7 +1918,7 @@ TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
     rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
-    EXPECT_FALSE(trackedEffecter->needUpdate);
+    EXPECT_FALSE(trackedEffecter->needsUpdate);
 
     // Round 3: with both numeric effecters idle, the single queued response
     // is decoded by the state effecter — had a numeric effecter still been
@@ -1933,15 +1933,15 @@ TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
     EXPECT_TRUE(stateEffecter->isUpdatePending());
-    EXPECT_FALSE(trackedEffecter->needUpdate);
+    EXPECT_FALSE(trackedEffecter->needsUpdate);
 
     // Round 4: a PDR repository refresh re-arms the tracked effecter only, and
     // the next round genuinely reads it again. Queuing a terminal state is the
-    // discriminator: needUpdate can only fall back to false if the effecter
+    // discriminator: needsUpdate can only fall back to false if the effecter
     // actually issued a GetNumericEffecterValue this round.
     EXPECT_EQ(1u, terminus->rearmTrackedEffecters());
-    EXPECT_TRUE(trackedEffecter->needUpdate);
-    EXPECT_FALSE(untrackedEffecter->needUpdate);
+    EXPECT_TRUE(trackedEffecter->needsUpdate);
+    EXPECT_FALSE(untrackedEffecter->needsUpdate);
 
     terminus->stopPolling = false;
     prepareInterrupt(tid, InterruptAction::stopPolling);
@@ -1954,8 +1954,8 @@ TEST_F(SensorManagerInterruptTest, numericEffecterStateTrackingPollCoverage)
     rc = stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
-    EXPECT_FALSE(trackedEffecter->needUpdate);
-    EXPECT_FALSE(untrackedEffecter->needUpdate);
+    EXPECT_FALSE(trackedEffecter->needsUpdate);
+    EXPECT_FALSE(untrackedEffecter->needsUpdate);
 }
 
 TEST_F(SensorManagerDataPathTest, initSensorListSkipsAsyncStateSensorsCoverage)
@@ -1965,7 +1965,7 @@ TEST_F(SensorManagerDataPathTest, initSensorListSkipsAsyncStateSensorsCoverage)
     auto terminus = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
     termini[tid] = terminus;
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->pdrs.emplace_back(makeStateSensorPdr(0x179));
     terminus->pdrs.emplace_back(makeStateSensorPdr(0x17A));
     ASSERT_TRUE(terminus->parsePDRs());
@@ -2270,7 +2270,7 @@ class SensorManagerRefreshTest : public testing::Test
         // stopPolling, so doSensorPollingTask() returns PLDM_ERROR.
         std::shared_ptr<pldm::platform_mc::StateSensor> stopSensor =
             makeStateSensor(stopSensorId);
-        stopSensor->needUpdate = false;
+        stopSensor->needsInitialUpdate = false;
         stopSensor->refreshLimitInUsec = 0;
         terminus->roundRobinSensors.push(stopSensor);
     }
@@ -2368,7 +2368,7 @@ TEST_F(SensorManagerRefreshTest, stateSensorAddedDuringReadIsPolled)
               terminusManager.idsFor(PLDM_GET_STATE_SENSOR_READINGS));
     // Set after the read returns, so it must land on the sensor that was
     // read, not on a slot of the old buffer.
-    EXPECT_FALSE(first->needUpdate);
+    EXPECT_FALSE(first->needsInitialUpdate);
 }
 
 TEST_F(SensorManagerRefreshTest, stateEffecterAddedDuringReadIsPolled)
@@ -2387,7 +2387,7 @@ TEST_F(SensorManagerRefreshTest, stateEffecterAddedDuringReadIsPolled)
 
     EXPECT_EQ((std::vector<uint16_t>{0x7B1, 0x7B2, 0x7B3}),
               terminusManager.idsFor(PLDM_GET_STATE_EFFECTER_STATES));
-    EXPECT_FALSE(first->needUpdate);
+    EXPECT_FALSE(first->needsUpdate);
 }
 
 TEST_F(SensorManagerRefreshTest, numericEffecterAddedDuringReadIsPolled)
@@ -2406,7 +2406,7 @@ TEST_F(SensorManagerRefreshTest, numericEffecterAddedDuringReadIsPolled)
 
     EXPECT_EQ((std::vector<uint16_t>{0x7E1, 0x7E2, 0x7E3}),
               terminusManager.idsFor(PLDM_GET_NUMERIC_EFFECTER_VALUE));
-    EXPECT_FALSE(first->needUpdate);
+    EXPECT_FALSE(first->needsUpdate);
 }
 
 TEST_F(SensorManagerRefreshTest, prioritySensorsClearedDuringReadAreNotPolled)
@@ -2440,7 +2440,7 @@ TEST_F(SensorManagerRefreshTest, roundRobinQueueEmptiedDuringReadEndsPass)
     for (const std::shared_ptr<pldm::platform_mc::StateSensor>& sensor :
          {first, second})
     {
-        sensor->needUpdate = false;
+        sensor->needsInitialUpdate = false;
         sensor->refreshLimitInUsec = 0;
         terminus->roundRobinSensors.push(sensor);
     }

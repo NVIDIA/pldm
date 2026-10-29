@@ -363,7 +363,7 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
         0x1,
         0x0,                                          // containerID=1
         0x0,
-        0x0,                                          // effecterSematicID
+        0x0,                                          // effecterSemanticID
         PLDM_NO_INIT,                                 // effecterInit
         false,                       // effecterAuxiliaryNames PDR
         PLDM_SENSOR_UNIT_WATTS,      // baseUnit
@@ -417,7 +417,7 @@ TEST_F(TestNumericEffecter, verifyNumericEffecterInventoryPath)
 
     std::string sensorName{"test1"};
     std::string inventoryPath{
-        "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_1"};
+        "/xyz/openbmc_project/inventory/Item/Board/PLDM_device_1"};
     NumericEffecter sensor(0x01, true, numericEffecterPdr, sensorName,
                            inventoryPath, terminusManager);
 
@@ -538,7 +538,7 @@ TEST_F(TestNumericEffecter, baseUnitAndConversionCoverage)
 
     std::string effecterName{"test_numeric_effecter"};
     std::string inventoryPath{
-        "/xyz/openbmc_project/inventroy/Item/Board/PLDM_device_2"};
+        "/xyz/openbmc_project/inventory/Item/Board/PLDM_device_2"};
     NumericEffecter effecter(0x02, true, terminus.numericEffecterPdrs[0],
                              effecterName, inventoryPath, terminusManager);
 
@@ -919,10 +919,10 @@ TEST_F(TestNumericEffecter, setNumericEffecterValueNonFiniteKeepsTrackingIdle)
 
     // The check runs before the re-arm, so a write that is never sent must
     // not start state tracking.
-    effecter.needUpdate = false;
+    effecter.needsUpdate = false;
     expectRejected(terminusManager, effecter,
                    std::numeric_limits<double>::quiet_NaN());
-    EXPECT_FALSE(effecter.needUpdate);
+    EXPECT_FALSE(effecter.needsUpdate);
 }
 
 TEST_F(TestNumericEffecter, requestAndPowerCapCoverage)
@@ -1285,7 +1285,7 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     NumericEffecter maskEffecter(tid, false, maskPdr, maskEffecterName,
                                  inventoryPath, terminusManager);
     EXPECT_TRUE(maskEffecter.trackOperationalState);
-    EXPECT_TRUE(maskEffecter.needUpdate);
+    EXPECT_TRUE(maskEffecter.needsUpdate);
 
     std::string plainEffecterName{"plain_counts_effecter"};
     auto plainPdr = makeNumericEffecterValuePdr(
@@ -1307,7 +1307,7 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
         auto rc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
         ASSERT_TRUE(rc.has_value());
         EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
-        EXPECT_TRUE(maskEffecter.needUpdate) << "operState " << operState;
+        EXPECT_TRUE(maskEffecter.needsUpdate) << "operState " << operState;
     }
 
     // Completion-code and decode errors bypass updateValue and keep the
@@ -1319,14 +1319,14 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     auto ccRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
     ASSERT_TRUE(ccRc.has_value());
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*ccRc));
-    EXPECT_TRUE(maskEffecter.needUpdate);
+    EXPECT_TRUE(maskEffecter.needsUpdate);
 
     response = makeCcOnlyResp(PLDM_GET_NUMERIC_EFFECTER_VALUE, PLDM_SUCCESS);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
     auto decodeRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
     ASSERT_TRUE(decodeRc.has_value());
     EXPECT_NE(PLDM_SUCCESS, std::get<0>(*decodeRc));
-    EXPECT_TRUE(maskEffecter.needUpdate);
+    EXPECT_TRUE(maskEffecter.needsUpdate);
 
     // unavailable is terminal: the device closed its write window.
     response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT64,
@@ -1335,11 +1335,11 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     auto unavailRc = stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
     ASSERT_TRUE(unavailRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*unavailRc));
-    EXPECT_FALSE(maskEffecter.needUpdate);
+    EXPECT_FALSE(maskEffecter.needsUpdate);
     EXPECT_EQ(StateType::UnavailableOffline, maskEffecter.state());
 
     // disabled is terminal too (feature knob off).
-    maskEffecter.needUpdate = true;
+    maskEffecter.needsUpdate = true;
     response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT64,
                                                EFFECTER_OPER_STATE_DISABLED);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
@@ -1347,7 +1347,7 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
         stdexec::sync_wait(maskEffecter.getNumericEffecterValue());
     ASSERT_TRUE(disabledRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*disabledRc));
-    EXPECT_FALSE(maskEffecter.needUpdate);
+    EXPECT_FALSE(maskEffecter.needsUpdate);
     EXPECT_EQ(StateType::Disabled, maskEffecter.state());
 
     // A write re-arms the tracking until the state settles...
@@ -1360,7 +1360,7 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     auto setRc = stdexec::sync_wait(maskEffecter.setNumericEffecterValue(1));
     ASSERT_TRUE(setRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
-    EXPECT_TRUE(maskEffecter.needUpdate);
+    EXPECT_TRUE(maskEffecter.needsUpdate);
 
     // ...and self-limits when the trailing read already sees the window
     // closed.
@@ -1372,21 +1372,21 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     setRc = stdexec::sync_wait(maskEffecter.setNumericEffecterValue(2));
     ASSERT_TRUE(setRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
-    EXPECT_FALSE(maskEffecter.needUpdate);
+    EXPECT_FALSE(maskEffecter.needsUpdate);
 
-    // Untracked effecters keep their one-shot needUpdate semantics: neither
+    // Untracked effecters keep their one-shot needsUpdate semantics: neither
     // a terminal reading nor a write may touch the flag.
-    plainEffecter.needUpdate = true;
+    plainEffecter.needsUpdate = true;
     response = makeGetNumericEffecterValueResp(PLDM_EFFECTER_DATA_SIZE_UINT8,
                                                EFFECTER_OPER_STATE_DISABLED);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
     auto plainRc = stdexec::sync_wait(plainEffecter.getNumericEffecterValue());
     ASSERT_TRUE(plainRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*plainRc));
-    EXPECT_TRUE(plainEffecter.needUpdate);
+    EXPECT_TRUE(plainEffecter.needsUpdate);
     EXPECT_EQ(StateType::Disabled, plainEffecter.state());
 
-    plainEffecter.needUpdate = false;
+    plainEffecter.needsUpdate = false;
     response = makeSetNumericEffecterValueResp(PLDM_SUCCESS);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(response));
     response = makeGetNumericEffecterValueResp(
@@ -1396,7 +1396,7 @@ TEST_F(TestNumericEffecter, pcieLinkMaskStateTrackingLifecycle)
     setRc = stdexec::sync_wait(plainEffecter.setNumericEffecterValue(3));
     ASSERT_TRUE(setRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*setRc));
-    EXPECT_FALSE(plainEffecter.needUpdate);
+    EXPECT_FALSE(plainEffecter.needsUpdate);
 }
 
 TEST_F(TestNumericEffecter, pcieLinkMaskTrackingDispatchNegativeCases)

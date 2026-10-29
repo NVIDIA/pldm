@@ -445,7 +445,7 @@ TEST_F(PlatformInlineCoverageTest, PlatformManagerPrivateBranchCoverage)
     std::string uuid("00000000-0000-0000-0000-000000000045");
     auto terminus = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    terminus->initalized = true;
+    terminus->initialized = true;
     terminus->maxBufferSize = 160;
     termini[tid] = terminus;
     const pldm::MctpInfo terminusInfo(0x55, uuid, "smbus", 1, std::nullopt,
@@ -474,7 +474,7 @@ TEST_F(PlatformInlineCoverageTest, PlatformManagerPrivateBranchCoverage)
         stdexec::sync_wait(platformManager.initEventReceiver(tid));
     ASSERT_TRUE(receiverRc.has_value());
     EXPECT_EQ(std::get<0>(*receiverRc), PLDM_SUCCESS);
-    EXPECT_EQ(terminus->resumptionStatus.eventReciever, PLDM_SUCCESS);
+    EXPECT_EQ(terminus->resumptionStatus.eventReceiver, PLDM_SUCCESS);
 
     auto errorResp = makeSetEventReceiverResp(0, PLDM_ERROR);
     ASSERT_EQ(PLDM_SUCCESS, terminusManager.enqueueResponse(errorResp));
@@ -512,7 +512,7 @@ TEST_F(PlatformInlineCoverageTest, FetchSinglePdrAndInitTerminusByTid)
     std::string uuid("00000000-0000-0000-0000-000000000060");
     auto terminus = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    terminus->initalized = true; // re-init skips getPDRs
+    terminus->initialized = true; // re-init skips getPDRs
     terminus->maxBufferSize = 160;
     termini[tid] = terminus;
     const pldm::MctpInfo terminusInfo(0x60, uuid, "smbus", 1, std::nullopt,

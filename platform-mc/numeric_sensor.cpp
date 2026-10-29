@@ -603,7 +603,7 @@ NumericSensor::NumericSensor(
             break;
     }
 
-    // resloution and offset not provided in pdr
+    // resolution and offset not provided in pdr
     resolution = 1;
     offset = 0;
     baseUnitModifier = pdr->unit_modifier;
