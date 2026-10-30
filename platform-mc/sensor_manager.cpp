@@ -245,12 +245,17 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
-        for (auto effector : terminus->numericEffecters)
+        // A PDR refresh can change these lists across co_await: walk by
+        // index and hold a copy of the current element.
+        for (std::size_t i = 0; i < terminus->numericEffecters.size(); ++i)
         {
             if (manager && terminus->pollEvent)
             {
                 break;
             }
+
+            std::shared_ptr<NumericEffecter> effector =
+                terminus->numericEffecters[i];
 
             // Get numeric effector if we haven't sync.
             if (effector->needUpdate)
@@ -278,12 +283,16 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
-        for (auto effector : terminus->stateEffecters)
+        // Walk by index (see numericEffecters above).
+        for (std::size_t i = 0; i < terminus->stateEffecters.size(); ++i)
         {
             if (manager && terminus->pollEvent)
             {
                 break;
             }
+
+            std::shared_ptr<StateEffecter> effector =
+                terminus->stateEffecters[i];
 
             // Get state effector if it haven't been synced or it is
             // updatePending
@@ -306,12 +315,15 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
             }
         }
 
-        for (auto sensor : terminus->stateSensors)
+        // Walk by index (see numericEffecters above).
+        for (std::size_t i = 0; i < terminus->stateSensors.size(); ++i)
         {
             if (manager && terminus->pollEvent)
             {
                 break;
             }
+
+            std::shared_ptr<StateSensor> sensor = terminus->stateSensors[i];
 
             // Get State sensor if we haven't sync.
             if (sensor->needUpdate)
@@ -339,12 +351,16 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
         }
 
         // poll priority Sensors
-        for (auto& sensor : terminus->prioritySensors)
+        // Walk by index (see numericEffecters above).
+        for (std::size_t i = 0; i < terminus->prioritySensors.size(); ++i)
         {
             if (manager && terminus->pollEvent)
             {
                 break;
             }
+
+            std::shared_ptr<NumericSensor> sensor =
+                terminus->prioritySensors[i];
 
             if (sensor->updateTime == std::numeric_limits<uint64_t>::max())
             {
@@ -409,6 +425,11 @@ exec::task<int> SensorManager::doSensorPollingTask(tid_t tid)
                 break;
             }
 
+            // A PDR refresh can empty the queue across co_await.
+            if (terminus->roundRobinSensors.empty())
+            {
+                break;
+            }
             auto sensor = terminus->roundRobinSensors.front();
             terminus->roundRobinSensors.pop();
             terminus->roundRobinSensors.push(sensor);

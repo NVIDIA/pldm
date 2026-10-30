@@ -23,6 +23,7 @@
 
 #include <sdeventplus/event.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -658,4 +659,311 @@ TEST_F(SensorManagerDataPathTest, doSensorPollingTaskRoundRobinCoverage)
     ASSERT_TRUE(pollingRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*pollingRc));
     EXPECT_TRUE(termini[tid]->ready);
+}
+
+static std::shared_ptr<pldm_numeric_effecter_value_pdr>
+    makeNumericEffecterValuePdrForPolling(uint16_t effecterId)
+{
+    auto pdr = std::make_shared<pldm_numeric_effecter_value_pdr>();
+    pdr->effecter_id = effecterId;
+    pdr->entity_type = PLDM_ENTITY_SYS_BOARD;
+    pdr->entity_instance = 1;
+    pdr->container_id = 1;
+    pdr->base_unit = PLDM_SENSOR_UNIT_NONE;
+    pdr->effecter_data_size = PLDM_EFFECTER_DATA_SIZE_UINT8;
+    pdr->max_settable.value_u8 = 100;
+    pdr->min_settable.value_u8 = 0;
+    pdr->range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT8;
+    pdr->range_field_support.byte = 0x1F;
+    pdr->nominal_value.value_u8 = 50;
+    pdr->normal_max.value_u8 = 60;
+    pdr->normal_min.value_u8 = 40;
+    pdr->rated_max.value_u8 = 70;
+    pdr->rated_min.value_u8 = 30;
+    pdr->resolution = 1.0f;
+    pdr->offset = 0.0f;
+    return pdr;
+}
+
+static StateSetInfo makeBootRequestStateSetInfo()
+{
+    return std::make_tuple(
+        EntityInfo{1, PLDM_ENTITY_SYS_BOARD, 1},
+        std::vector<StateSetData>{
+            {PLDM_STATESET_ID_BOOT_REQUEST,
+             PossibleStates{PLDM_STATESET_BOOT_REQUEST_NORMAL,
+                            PLDM_STATESET_BOOT_REQUEST_REQUESTED}}});
+}
+
+// Records the command and sensor/effecter ID of every request, then fails it so
+// polling moves on. onRequest runs while doSensorPollingTask() waits on the
+// request, which is where a PDR refresh can change the terminus lists.
+class RecordingTerminusManager : public pldm::platform_mc::MockTerminusManager
+{
+  public:
+    using pldm::platform_mc::MockTerminusManager::MockTerminusManager;
+
+    exec::task<int> SendRecvPldmMsgOverMctp(
+        mctp_eid_t /*eid*/, pldm::Request& request,
+        const pldm_msg** /*responseMsg*/, size_t* /*responseLen*/) override
+    {
+        const pldm_msg* msg = reinterpret_cast<const pldm_msg*>(request.data());
+        // Every polled request starts with a little-endian 16-bit ID.
+        uint16_t id = 0;
+        std::memcpy(&id, msg->payload, sizeof(id));
+        id = le16toh(id);
+        requests.emplace_back(msg->hdr.command, id);
+        if (onRequest)
+        {
+            onRequest(msg->hdr.command, id);
+        }
+        co_return PLDM_ERROR;
+    }
+
+    std::vector<uint16_t> idsFor(uint8_t command) const
+    {
+        std::vector<uint16_t> ids;
+        for (const auto& [cmd, id] : requests)
+        {
+            if (cmd == command)
+            {
+                ids.push_back(id);
+            }
+        }
+        return ids;
+    }
+
+    std::vector<std::pair<uint8_t, uint16_t>> requests;
+    std::function<void(uint8_t, uint16_t)> onRequest;
+};
+
+// Each test runs doSensorPollingTask() to completion with sync_wait. Every
+// request completes inline, so no coroutine is left suspended at teardown.
+class SensorManagerRefreshTest : public testing::Test
+{
+  protected:
+    static constexpr pldm::tid_t tid = 0x7D;
+    static constexpr uint16_t stopSensorId = 0x7FF;
+    static constexpr std::size_t maxRequests = 50;
+
+    SensorManagerRefreshTest() :
+        event(sdeventplus::Event::get_new()),
+        reqHandler(nullptr, event, instanceIdDb, false, seconds(1), 2,
+                   milliseconds(100)),
+        terminusManager(event, reqHandler, instanceIdDb, termini, 0x8, nullptr),
+        sensorManager(event, terminusManager, termini, nullptr)
+    {
+        std::string uuid("00000000-0000-0000-0000-00000000007d");
+        terminus = std::make_shared<pldm::platform_mc::Terminus>(
+            tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+        termini[tid] = terminus;
+        pldm::MctpInfo mctpInfo(
+            tid, "f72d6f90-5675-11ed-9b6a-0242ac12017d",
+            "xyz.openbmc_project.MCTP.Endpoint.MediaTypes.PCIe", 1,
+            std::nullopt, "xyz.openbmc_project.MCTP.Binding.BindingTypes.PCIe",
+            std::nullopt);
+        EXPECT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
+        terminus->initSensorList = false;
+        terminus->ready = true;
+
+        // One loop iteration caches the loop timestamp, and nothing runs the
+        // loop afterwards, so sd_event_now() returns the same time for the
+        // whole test: a polling round never runs out of time, and with a
+        // polling time below the 50 ms sleep buffer the task starts the next
+        // round without sleeping.
+        sd_event_run(event.get(), 0);
+        sensorManager.pollingTime = 40;
+
+        // Every test ends at this round-robin sensor: the request for it sets
+        // stopPolling, so doSensorPollingTask() returns PLDM_ERROR.
+        std::shared_ptr<pldm::platform_mc::StateSensor> stopSensor =
+            makeStateSensor(stopSensorId);
+        stopSensor->needUpdate = false;
+        stopSensor->refreshLimitInUsec = 0;
+        terminus->roundRobinSensors.push(stopSensor);
+    }
+
+    std::shared_ptr<pldm::platform_mc::StateSensor> makeStateSensor(
+        uint16_t sensorId)
+    {
+        return std::make_shared<pldm::platform_mc::StateSensor>(
+            tid, false, sensorId, makeBootRequestStateSetInfo(), nullptr,
+            inventoryPath, nullptr);
+    }
+
+    std::shared_ptr<pldm::platform_mc::StateEffecter> makeStateEffecter(
+        uint16_t effecterId)
+    {
+        return std::make_shared<pldm::platform_mc::StateEffecter>(
+            tid, false, effecterId, makeBootRequestStateSetInfo(), nullptr,
+            inventoryPath, terminusManager);
+    }
+
+    std::shared_ptr<pldm::platform_mc::NumericEffecter> makeNumericEffecter(
+        uint16_t effecterId)
+    {
+        std::string name = "refresh_effecter_" + std::to_string(effecterId);
+        return std::make_shared<pldm::platform_mc::NumericEffecter>(
+            tid, false, makeNumericEffecterValuePdrForPolling(effecterId), name,
+            inventoryPath, terminusManager);
+    }
+
+    std::shared_ptr<pldm::platform_mc::NumericSensor> makeNumericSensor(
+        uint16_t sensorId)
+    {
+        std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr =
+            std::make_shared<pldm_numeric_sensor_value_pdr>();
+        std::vector<uint8_t> raw = makeNumericSensorPdr(sensorId);
+        EXPECT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
+                                    raw.data(), raw.size(), pdr.get()));
+        std::string name = "refresh_numeric_" + std::to_string(sensorId);
+        return std::make_shared<pldm::platform_mc::NumericSensor>(
+            tid, false, pdr, name, inventoryPath, nullptr);
+    }
+
+    // Stop polling when the round reaches the stop sensor, and run onRequest
+    // for every other request. Also stop after maxRequests, so a polling task
+    // that never reaches the stop sensor fails the test instead of hanging.
+    void runPollingRound(std::function<void(uint8_t, uint16_t)> onRequest)
+    {
+        terminusManager.onRequest =
+            [this, onRequest](uint8_t command, uint16_t id) {
+                if ((command == PLDM_GET_STATE_SENSOR_READINGS &&
+                     id == stopSensorId) ||
+                    terminusManager.requests.size() >= maxRequests)
+                {
+                    terminus->stopPolling = true;
+                    return;
+                }
+                onRequest(command, id);
+            };
+        std::optional<std::tuple<int>> rc =
+            stdexec::sync_wait(sensorManager.doSensorPollingTask(tid));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(PLDM_ERROR, std::get<0>(*rc));
+        EXPECT_LT(terminusManager.requests.size(), maxRequests)
+            << "polling did not reach the stop sensor";
+    }
+
+    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
+    sdeventplus::Event event;
+    TestInstanceIdDb instanceIdDb;
+    pldm::requester::Handler<pldm::requester::Request> reqHandler;
+    RecordingTerminusManager terminusManager;
+    pldm::platform_mc::SensorManager sensorManager;
+    std::shared_ptr<pldm::platform_mc::Terminus> terminus;
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis7d"};
+};
+
+TEST_F(SensorManagerRefreshTest, stateSensorAddedDuringReadIsPolled)
+{
+    std::shared_ptr<pldm::platform_mc::StateSensor> first =
+        makeStateSensor(0x7A1);
+    terminus->stateSensors = {first, makeStateSensor(0x7A2)};
+    ASSERT_EQ(2u, terminus->stateSensors.capacity());
+
+    // An ADDED PDR appends a state sensor while 0x7A1 is being read. The
+    // vector is full, so the append reallocates it.
+    runPollingRound([this](uint8_t command, uint16_t id) {
+        if (command == PLDM_GET_STATE_SENSOR_READINGS && id == 0x7A1)
+        {
+            terminus->stateSensors.emplace_back(makeStateSensor(0x7A3));
+        }
+    });
+
+    EXPECT_EQ((std::vector<uint16_t>{0x7A1, 0x7A2, 0x7A3, stopSensorId}),
+              terminusManager.idsFor(PLDM_GET_STATE_SENSOR_READINGS));
+    // Set after the read returns, so it must land on the sensor that was
+    // read, not on a slot of the old buffer.
+    EXPECT_FALSE(first->needUpdate);
+}
+
+TEST_F(SensorManagerRefreshTest, stateEffecterAddedDuringReadIsPolled)
+{
+    std::shared_ptr<pldm::platform_mc::StateEffecter> first =
+        makeStateEffecter(0x7B1);
+    terminus->stateEffecters = {first, makeStateEffecter(0x7B2)};
+    ASSERT_EQ(2u, terminus->stateEffecters.capacity());
+
+    runPollingRound([this](uint8_t command, uint16_t id) {
+        if (command == PLDM_GET_STATE_EFFECTER_STATES && id == 0x7B1)
+        {
+            terminus->stateEffecters.emplace_back(makeStateEffecter(0x7B3));
+        }
+    });
+
+    EXPECT_EQ((std::vector<uint16_t>{0x7B1, 0x7B2, 0x7B3}),
+              terminusManager.idsFor(PLDM_GET_STATE_EFFECTER_STATES));
+    EXPECT_FALSE(first->needUpdate);
+}
+
+TEST_F(SensorManagerRefreshTest, numericEffecterAddedDuringReadIsPolled)
+{
+    std::shared_ptr<pldm::platform_mc::NumericEffecter> first =
+        makeNumericEffecter(0x7E1);
+    terminus->numericEffecters = {first, makeNumericEffecter(0x7E2)};
+    ASSERT_EQ(2u, terminus->numericEffecters.capacity());
+
+    runPollingRound([this](uint8_t command, uint16_t id) {
+        if (command == PLDM_GET_NUMERIC_EFFECTER_VALUE && id == 0x7E1)
+        {
+            terminus->numericEffecters.emplace_back(makeNumericEffecter(0x7E3));
+        }
+    });
+
+    EXPECT_EQ((std::vector<uint16_t>{0x7E1, 0x7E2, 0x7E3}),
+              terminusManager.idsFor(PLDM_GET_NUMERIC_EFFECTER_VALUE));
+    EXPECT_FALSE(first->needUpdate);
+}
+
+TEST_F(SensorManagerRefreshTest, prioritySensorsClearedDuringReadAreNotPolled)
+{
+    terminus->numericSensors = {makeNumericSensor(0x7C1),
+                                makeNumericSensor(0x7C2),
+                                makeNumericSensor(0x7C3)};
+    terminus->prioritySensors = terminus->numericSensors;
+
+    // A refresh clears the priority list and frees the sensors while 0x7C1 is
+    // being read. The removed sensors must not be read.
+    runPollingRound([this](uint8_t command, uint16_t id) {
+        if (command == PLDM_GET_SENSOR_READING && id == 0x7C1)
+        {
+            terminus->prioritySensors.clear();
+            terminus->numericSensors.clear();
+        }
+    });
+
+    EXPECT_EQ((std::vector<uint16_t>{0x7C1}),
+              terminusManager.idsFor(PLDM_GET_SENSOR_READING));
+}
+
+TEST_F(SensorManagerRefreshTest, roundRobinQueueEmptiedDuringReadEndsPass)
+{
+    std::shared_ptr<pldm::platform_mc::StateSensor> first =
+        makeStateSensor(0x7D1);
+    std::shared_ptr<pldm::platform_mc::StateSensor> second =
+        makeStateSensor(0x7D2);
+    terminus->roundRobinSensors = {};
+    for (const std::shared_ptr<pldm::platform_mc::StateSensor>& sensor :
+         {first, second})
+    {
+        sensor->needUpdate = false;
+        sensor->refreshLimitInUsec = 0;
+        terminus->roundRobinSensors.push(sensor);
+    }
+
+    // A refresh empties the round-robin queue while 0x7D1 is being read and
+    // adds a state sensor. The pass must stop at the empty queue; the next
+    // round reads the new sensor and ends polling.
+    runPollingRound([this](uint8_t command, uint16_t id) {
+        if (command == PLDM_GET_STATE_SENSOR_READINGS && id == 0x7D1)
+        {
+            terminus->roundRobinSensors = {};
+            terminus->stateSensors = {makeStateSensor(stopSensorId)};
+        }
+    });
+
+    EXPECT_EQ((std::vector<uint16_t>{0x7D1, stopSensorId}),
+              terminusManager.idsFor(PLDM_GET_STATE_SENSOR_READINGS));
 }
