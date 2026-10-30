@@ -590,7 +590,7 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSetsAndDefaults)
          namedMctpInfo(24, "HGX_CPU_1")}};
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
 
-    ASSERT_EQ(2, terminusManager.eidToTerminusConfigMap.size());
+    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
     const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
     EXPECT_EQ(0, std::get<0>(c0));
     EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
@@ -775,7 +775,7 @@ TEST_F(TerminusManagerPrivateTest,
          {"/cfg/HGX_GPU_0", namedMctpInfo(11, "HGX_GPU_0")}},
         dbus);
 
-    ASSERT_EQ(2, terminusManager.eidToTerminusConfigMap.size());
+    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
     const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
     EXPECT_EQ(0, std::get<0>(c0));
     EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
