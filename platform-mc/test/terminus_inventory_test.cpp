@@ -30,6 +30,8 @@
 #include "platform-mc/terminus_manager.hpp"
 #include "test/test_instance_id.hpp"
 
+#include <endian.h>
+
 #include <sdbusplus/exception.hpp>
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <sdeventplus/event.hpp>
@@ -39,6 +41,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -760,6 +763,199 @@ TEST_F(TerminusInventoryTest, getInventoryParentIgnoresEmptyEndpointsCoverage)
     ASSERT_TRUE(rc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
     EXPECT_FALSE(parents.contains(rootPath));
+}
+
+constexpr auto chassis0Path =
+    "/xyz/openbmc_project/inventory/system/chassis/Chassis_0";
+
+/** Entity Association PDR: the Network Controller (100, 1) contains Ethernet
+ *  port 1 of container 1000, as a CX9 reports it. */
+std::vector<uint8_t> networkControllerPdr()
+{
+    std::vector<uint8_t> pdr(
+        sizeof(pldm_pdr_hdr) + sizeof(pldm_pdr_entity_association), 0);
+    auto* hdr = reinterpret_cast<pldm_pdr_hdr*>(pdr.data());
+    hdr->type = PLDM_PDR_ENTITY_ASSOCIATION;
+    auto* body = reinterpret_cast<pldm_pdr_entity_association*>(
+        pdr.data() + sizeof(pldm_pdr_hdr));
+    body->container_id = htole16(1000);
+    body->association_type = PLDM_ENTITY_ASSOCIAION_PHYSICAL;
+    body->container.entity_type = htole16(PLDM_ENTITY_NETWORK_CONTROLLER);
+    body->container.entity_instance_num = htole16(1);
+    body->container.entity_container_id = htole16(100);
+    body->num_children = 1;
+    body->children[0].entity_type = htole16(PLDM_ENTITY_ETHERNET);
+    body->children[0].entity_instance_num = htole16(1);
+    body->children[0].entity_container_id = htole16(1000);
+    return pdr;
+}
+
+/** Termini that share the system inventory. Each defines container 1000 and
+ *  has a state sensor on container 1011, which no PDR defines, so the
+ *  sensor associates with the system inventory. */
+class SharedSystemPathTest : public TerminusInventoryTest
+{
+  protected:
+    SharedSystemPathTest()
+    {
+        InventoryManager::get().reset();
+    }
+
+    ~SharedSystemPathTest() override
+    {
+        termini.clear();
+        InventoryManager::get().reset();
+    }
+
+    std::shared_ptr<Terminus> addTerminus(pldm::tid_t tid)
+    {
+        std::string uuid("00000000-0000-0000-0000-000000000300");
+        auto terminus = std::make_shared<Terminus>(
+            tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+        termini[tid] = terminus;
+        terminus->parseEntityAssociationPDR(networkControllerPdr());
+        // Created on the system inventory, as addStateSensor() does.
+        std::string associationPath = systemInventoryPath();
+        StateSetInfo info{
+            EntityInfo{1011, PLDM_ENTITY_ETHERNET, 1},
+            {StateSetData{PLDM_STATESET_ID_HEALTHSTATE,
+                          PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL}}}};
+        terminus->stateSensors.emplace_back(std::make_shared<StateSensor>(
+            tid, false, 0x200, info, nullptr, associationPath, nullptr));
+        terminus->initialized = true;
+        return terminus;
+    }
+
+    static std::string& systemInventoryPath()
+    {
+        return InventoryManager::get().systemInventoryPath;
+    }
+
+    /** The inventory the terminus's state sensor associates with. */
+    static std::string endpoint(const Terminus& terminus)
+    {
+        const auto& stateSet = terminus.stateSensors.front()->stateSets.front();
+        const auto assocs =
+            stateSet->associationDefinitionsIntf->associations();
+        return assocs.size() == 1 ? std::get<2>(assocs.front()) : std::string{};
+    }
+
+    /** Chassis_0 becomes the overall system: a chassis with Item.System. */
+    void publishChassis0()
+    {
+        inventory.addInterface(chassis0Path, oem_nvidia::overallSystemInterface,
+                               {});
+        inventory.addInterface(chassis0Path, oem_nvidia::chassisInterface, {});
+    }
+
+    static int scan(Terminus& terminus)
+    {
+        auto rc = stdexec::sync_wait(terminus.scanInventories());
+        return rc ? std::get<0>(*rc) : PLDM_ERROR;
+    }
+};
+
+TEST_F(SharedSystemPathTest, systemPathFoundByAnotherTerminusRebindsSensors)
+{
+    auto a = addTerminus(0x31);
+    auto b = addTerminus(0x32);
+
+    // A binds before any scan has found the system, as the first terminus
+    // to initialise can.
+    stdexec::sync_wait(a->updateAssociations());
+    EXPECT_EQ(PLATFORM_CHASSIS_PATH, endpoint(*a));
+
+    // B's scan then finds Chassis_0.
+    publishChassis0();
+    size_t scans = 0;
+    dbusAsyncMock::getSubTree = [&scans](const std::string& path, int,
+                                         const pldm::dbus::Interfaces& ifaces) {
+        if (ifaces == InventoryManager::interestingInterfaces())
+        {
+            ++scans;
+        }
+        return pldm::utils::fakeInventory().getSubTree(path, ifaces);
+    };
+    EXPECT_EQ(PLDM_SUCCESS, scan(*b));
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
+
+    // A follows, with no scan or PDR parsing of its own.
+    EXPECT_EQ(chassis0Path, endpoint(*a));
+    EXPECT_EQ(1U, scans);
+}
+
+TEST_F(SharedSystemPathTest, systemPathChangeDefersBusyTermini)
+{
+    auto initialising = addTerminus(0x33);
+    initialising->initialized = false;
+    auto refreshing = addTerminus(0x37);
+    refreshing->refreshAssociationsTaskHandle.emplace();
+    auto scanning = addTerminus(0x34);
+
+    // Neither is re-bound now: each re-runs its refresh once done.
+    publishChassis0();
+    EXPECT_EQ(PLDM_SUCCESS, scan(*scanning));
+    for (const auto& busy : {initialising, refreshing})
+    {
+        EXPECT_TRUE(busy->needRefresh);
+        EXPECT_EQ(PLATFORM_CHASSIS_PATH, endpoint(*busy));
+    }
+
+    // Finding the same system again changes nothing for the others.
+    initialising->needRefresh = false;
+    EXPECT_EQ(PLDM_SUCCESS, scan(*scanning));
+    EXPECT_FALSE(initialising->needRefresh);
+}
+
+TEST_F(SharedSystemPathTest, failedScanKeepsTheSystemPath)
+{
+    auto terminus = addTerminus(0x35);
+    publishChassis0();
+    // The InstanceNumber of a CPU listed after Chassis_0 cannot be read.
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    inventory.addInterface(cpuPath, "xyz.openbmc_project.Inventory.Item.Cpu",
+                           {});
+    inventory.addInterface(cpuPath, oem_nvidia::instanceInterface,
+                           {{oem_nvidia::instanceProperty, uint64_t{0}}});
+    dbusAsyncMock::getProperty =
+        [](const std::string& path, const std::string& property,
+           const std::string& interface,
+           const std::string& service) -> pldm::utils::PropertyValue {
+        if (property == oem_nvidia::instanceProperty)
+        {
+            throw std::runtime_error("fake Get");
+        }
+        return pldm::utils::fakeInventory().getProperty(service, path,
+                                                        interface, property);
+    };
+
+    // The scan throws after it has found Chassis_0, and keeps it.
+    EXPECT_EQ(PLDM_FAILED, scan(*terminus));
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
+
+    // A scan that throws before it finds anything keeps it too.
+    dbusAsyncMock::getSubTree =
+        [](const std::string&, int,
+           const pldm::dbus::Interfaces&) -> pldm::utils::GetSubTreeResponse {
+        throw std::runtime_error("fake GetSubTree");
+    };
+    EXPECT_EQ(PLDM_FAILED, scan(*terminus));
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
+}
+
+TEST_F(SharedSystemPathTest, scanWithoutASystemKeepsTheSystemPath)
+{
+    auto terminus = addTerminus(0x36);
+    publishChassis0();
+    EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
+
+    // An empty subtree, as a failed GetSubTree returns, does not fall back
+    // to the default.
+    inventory.clear();
+    EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
 }
 
 } // namespace

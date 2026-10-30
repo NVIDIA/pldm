@@ -116,20 +116,34 @@ class InventoryManager
 
     /** @brief Re-scan the inventory objects of the terminus.
      *
-     *  Every System, ProcessorModule, Cpu and Board object is offered to
-     *  Terminus::checkDeviceInventory(), which loads the device's Entity
-     *  Manager configuration; the ones it accepts, with their all_processors
-     *  twins and parent_chassis, become the terminus's device inventory.
-     *  The result is published only once the scan completes.
+     *  The system inventory is taken from the subtree and published before
+     *  any object is looked up; a subtree without one keeps the last one
+     *  found. Every System, ProcessorModule, Cpu and Board object is then
+     *  offered to Terminus::checkDeviceInventory(), which loads the device's
+     *  Entity Manager configuration; the ones it accepts, with their
+     *  all_processors twins and parent_chassis, become the terminus's device
+     *  inventory. That is published only once the scan completes.
+     *
+     *  @param[in] terminus - the terminus to scan for
+     *  @param[out] systemPathChanged - whether the scan published a new
+     *              system inventory
      */
-    exec::task<int> scan(Terminus& terminus);
+    exec::task<int> scan(Terminus& terminus, bool& systemPathChanged);
 
     /** @brief The inventory interfaces scan() collects: the overall system
      *         plus every entityInterfaces entry. */
     static const dbus::Interfaces& interestingInterfaces();
 
+    /** @brief The system inventory in a GetSubTree result: the last object
+     *         that is both the overall system and a chassis, else
+     *         @a fallback. */
+    static std::string systemPathFrom(const utils::GetSubTreeResponse& subtree,
+                                      const std::string& fallback);
+
     /** @brief The platform's system inventory, the default parent of every
-     *         sensor and effecter. */
+     *         sensor and effecter. Shared by all termini: when a scan
+     *         publishes a new one, Terminus::scanInventories() re-binds the
+     *         other termini. */
     std::string systemInventoryPath = PLATFORM_CHASSIS_PATH;
     /** @} */
 
@@ -259,10 +273,9 @@ class InventoryManager
 
     static exec::task<int> getInventoryParent(const std::string objPath,
                                               ParentMap& parents);
-    static exec::task<void> collectInterface(
-        Inventory& inventory, const std::string& service,
-        const dbus::Interfaces& interfaces, const std::string& interface,
-        std::string& systemPath);
+    static exec::task<void> collectInterface(Inventory& inventory,
+                                             const std::string& service,
+                                             const std::string& interface);
     static exec::task<void> collectProcessors(
         const Inventory& inventory, std::vector<Inventory>& inventories,
         ParentMap& parents);

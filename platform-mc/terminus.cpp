@@ -1748,13 +1748,58 @@ exec::task<int> Terminus::scanInventories()
             "TID", tid);
     }
 #ifdef OEM_NVIDIA
-    co_return co_await oem_nvidia::InventoryManager::get().scan(*this);
+    bool systemPathChanged = false;
+    auto rc = co_await oem_nvidia::InventoryManager::get().scan(
+        *this, systemPathChanged);
+    if (systemPathChanged)
+    {
+        co_await rebindOtherTermini();
+    }
+    co_return rc;
 #else
     co_return PLDM_SUCCESS;
 #endif
 }
 
 #ifdef OEM_NVIDIA
+exec::task<void> Terminus::rebindOtherTermini()
+{
+    // Sensors and effecters copy the system inventory when they bind. Hold
+    // the termini: the map can change while a re-bind is suspended.
+    std::vector<std::shared_ptr<Terminus>> others;
+    for (const auto& [otherTid, other] : terminusManager.getTermini())
+    {
+        // A terminus without sensors or effecters has not bound anything.
+        if (other && other.get() != this && other->hasEntities())
+        {
+            others.push_back(other);
+        }
+    }
+    for (const auto& other : others)
+    {
+        // A terminus in its own init or refresh may have bound already, or
+        // be scanning with its EM tables half loaded; an update in between
+        // would drop sensors whose names come from those tables. Let it
+        // re-run once done instead.
+        const auto& refresh = other->refreshAssociationsTaskHandle;
+        if (!other->initialized || (refresh && !refresh->second))
+        {
+            other->needRefresh = true;
+            continue;
+        }
+        try
+        {
+            co_await other->updateAssociations();
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Failed to re-bind TID {TID} to the system "
+                       "inventory: {ERROR}",
+                       "TID", other->getTid(), "ERROR", e);
+        }
+    }
+}
+
 namespace
 {
 

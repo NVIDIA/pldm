@@ -477,6 +477,28 @@ TEST_F(InventoryManagerTest, boundEntitiesKeepTheirBinding)
             .empty());
 }
 
+TEST(InventoryManager, systemPathFrom)
+{
+    using pldm::utils::GetSubTreeResponse;
+    const std::string chassis0 =
+        "/xyz/openbmc_project/inventory/system/chassis/Chassis_0";
+    const std::string service = "xyz.openbmc_project.EntityManager";
+    const GetSubTreeResponse system{
+        {chassis0, {{service, {chassisInterface, overallSystemInterface}}}}};
+    const GetSubTreeResponse systemOnly{
+        {chassis0, {{service, {overallSystemInterface}}}}};
+
+    // Only an overall system that is also a chassis counts.
+    EXPECT_EQ(chassis0,
+              InventoryManager::systemPathFrom(system, PLATFORM_CHASSIS_PATH));
+    EXPECT_EQ(PLATFORM_CHASSIS_PATH, InventoryManager::systemPathFrom(
+                                         systemOnly, PLATFORM_CHASSIS_PATH));
+    EXPECT_EQ(PLATFORM_CHASSIS_PATH,
+              InventoryManager::systemPathFrom({}, PLATFORM_CHASSIS_PATH));
+    // scan() passes the last path found as the fallback.
+    EXPECT_EQ(chassis0, InventoryManager::systemPathFrom(systemOnly, chassis0));
+}
+
 TEST(InventoryManager, toPhysicalContextType)
 {
     EXPECT_EQ(PhysicalContextType::Memory,

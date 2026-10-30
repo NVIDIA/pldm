@@ -145,6 +145,12 @@ class TerminusManager
      */
     std::shared_ptr<Terminus> getTerminus(const UUID& uuid);
 
+    /** @brief The managed termini, by TID. */
+    const std::map<tid_t, std::shared_ptr<Terminus>>& getTermini() const
+    {
+        return termini;
+    }
+
     /** @brief resume Terminus's ID by send setTID command again
      *
      *  @param[in] tid - Terminus ID

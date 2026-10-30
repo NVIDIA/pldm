@@ -313,7 +313,8 @@ class Terminus
     void parseEntityAssociationPDR(const std::vector<uint8_t>& pdrData);
 
     /** @brief Re-scan the inventory objects that belong to the terminus;
-     *         see InventoryManager::scan(). */
+     *         see InventoryManager::scan(). When the scan publishes a new
+     *         system inventory, the other termini are re-bound to it. */
     exec::task<int> scanInventories();
 
     exec::task<int> updateAssociations();
@@ -555,6 +556,15 @@ class Terminus
     void updateNumericSensorAssociations();
     void updateStateSensorAssociations();
     void updateEffecterAssociations();
+
+#ifdef OEM_NVIDIA
+    /** @brief Re-run updateAssociations() on every other idle, initialised
+     *         terminus with sensors or effecters, after this terminus's scan
+     *         published a new system inventory; latch a refresh on those
+     *         still initialising or refreshing. It does not scan itself; a
+     *         latched refresh does, and finds the same system inventory. */
+    exec::task<void> rebindOtherTermini();
+#endif
 
     std::optional<std::string> getAuxNameForNumericSensor(SensorID id);
 

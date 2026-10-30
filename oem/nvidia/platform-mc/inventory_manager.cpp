@@ -141,22 +141,33 @@ exec::task<int> InventoryManager::getInventoryParent(const std::string objPath,
     co_return PLDM_SUCCESS;
 }
 
+std::string InventoryManager::systemPathFrom(
+    const utils::GetSubTreeResponse& subtree, const std::string& fallback)
+{
+    const std::string* systemPath = &fallback;
+    for (const auto& [path, services] : subtree)
+    {
+        for (const auto& [service, interfaces] : services)
+        {
+            auto has = [&interfaces](std::string_view interface) {
+                return std::find(interfaces.begin(), interfaces.end(),
+                                 interface) != interfaces.end();
+            };
+            // The system object must also be a chassis.
+            if (has(overallSystemInterface) && has(chassisInterface))
+            {
+                systemPath = &path;
+            }
+        }
+    }
+    return *systemPath;
+}
+
 exec::task<void> InventoryManager::collectInterface(
     Inventory& inventory, const std::string& service,
-    const dbus::Interfaces& interfaces, const std::string& interface,
-    std::string& systemPath)
+    const std::string& interface)
 {
     auto& [path, type, instance] = inventory;
-    if (interface == overallSystemInterface)
-    {
-        // The system object must also be a chassis.
-        if (std::find(interfaces.begin(), interfaces.end(), chassisInterface) !=
-            interfaces.end())
-        {
-            systemPath = path;
-        }
-        co_return;
-    }
     if (interface == instanceInterface)
     {
         instance = co_await utils::coGetDbusProperty<uint64_t>(
@@ -206,16 +217,29 @@ exec::task<void> InventoryManager::collectProcessors(
     }
 }
 
-exec::task<int> InventoryManager::scan(Terminus& terminus)
+exec::task<int> InventoryManager::scan(Terminus& terminus,
+                                       bool& systemPathChanged)
 {
     const auto tid = terminus.getTid();
-    std::string newSystemInventoryPath = PLATFORM_CHASSIS_PATH;
+    systemPathChanged = false;
     std::vector<Inventory> newInventories;
     ParentMap newInventoryParents;
     try
     {
         auto subtree = co_await utils::coGetSubTree(
             "/xyz/openbmc_project/inventory", 0, interestingInterfaces());
+        // Every terminus binds to the system inventory: publish it before
+        // the lookups below can throw, and never fall back to the default
+        // once one was found.
+        auto systemPath = systemPathFrom(subtree, systemInventoryPath);
+        if (systemPath != systemInventoryPath)
+        {
+            lg2::info("scanInventories: TID {TID} found system inventory "
+                      "{PATH}",
+                      "TID", tid, "PATH", systemPath);
+            systemInventoryPath = std::move(systemPath);
+            systemPathChanged = true;
+        }
         for (const auto& [path, services] : subtree)
         {
             Inventory inventory{path, 0, 0xFFFF};
@@ -223,9 +247,7 @@ exec::task<int> InventoryManager::scan(Terminus& terminus)
             {
                 for (const auto& interface : interfaces)
                 {
-                    co_await collectInterface(inventory, service, interfaces,
-                                              interface,
-                                              newSystemInventoryPath);
+                    co_await collectInterface(inventory, service, interface);
                 }
             }
             if (co_await terminus.checkDeviceInventory(path) != PLDM_SUCCESS)
@@ -249,7 +271,6 @@ exec::task<int> InventoryManager::scan(Terminus& terminus)
         co_return PLDM_FAILED;
     }
     // Publish the complete snapshot without suspending.
-    systemInventoryPath.swap(newSystemInventoryPath);
     auto& data = terminusData[tid];
     data.inventories.swap(newInventories);
     data.inventoryParents.swap(newInventoryParents);
