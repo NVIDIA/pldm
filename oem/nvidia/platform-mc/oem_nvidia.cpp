@@ -350,8 +350,8 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     if (vendorData.size() < expectedPDRSize)
     {
         lg2::error(
-            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
-            "PDRSIZE", vendorData.size());
+            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, shorter than the minimum length, size={PDRSIZE}, min={MINSIZE}",
+            "PDRSIZE", vendorData.size(), "MINSIZE", expectedPDRSize);
         return nullptr;
     }
 
@@ -387,8 +387,9 @@ std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
     if (vendorData.size() < expectedPDRSize)
     {
         lg2::error(
-            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, size={PDRSIZE}",
-            "PDRSIZE", vendorData.size());
+            "parseOEMEnergyCountNumericSensorPDR() Corrupted PDR, too short for sensor data size {DATASIZE}, size={PDRSIZE}, expected={EXPECTEDSIZE}",
+            "DATASIZE", parsedPdr->sensor_data_size, "PDRSIZE",
+            vendorData.size(), "EXPECTEDSIZE", expectedPDRSize);
         return nullptr;
     }
 

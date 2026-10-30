@@ -851,8 +851,22 @@ bool Terminus::parseOnePdrIntoCache(std::vector<uint8_t>& pdr)
                 nvidia::NvidiaOemPdrType::
                     NVIDIA_OEM_PDR_TYPE_SENSOR_ENERGYCOUNT)
         {
-            auto parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
-                std::get<2>(parsedPdr));
+            std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr>
+                parsedOEMPdr = nvidia::parseOEMEnergyCountNumericSensorPDR(
+                    std::get<2>(parsedPdr));
+            if (!parsedOEMPdr)
+            {
+                const std::optional<MctpInfo> mctpInfo =
+                    terminusManager.toMctpInfo(tid);
+                const std::string eid =
+                    mctpInfo ? std::to_string(std::get<0>(*mctpInfo))
+                             : "unknown";
+                const uint32_t recordHandle = le32toh(pdrHdr->record_handle);
+                lg2::error(
+                    "Skipping malformed OEM energy-count PDR: TID={TID}, EID={EID}, record handle={RECORDHANDLE}",
+                    "TID", tid, "EID", eid, "RECORDHANDLE", recordHandle);
+                return true;
+            }
             oemEnergyCountNumericSensorPdrs.emplace_back(
                 std::move(parsedOEMPdr));
         }
