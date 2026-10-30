@@ -30,6 +30,15 @@ initial_descriptor_type_name_length = {
     0x0003: ["PnP Vendor ID", 3],
     0x0004: ["ACPI Vendor ID", 4]}
 
+# DSP0267 Table 5/Table 7: a downstream device record's initial descriptor may
+# additionally be one of the two types below, marked "Downstream or
+# Individual Device Only" in Table 7. FD records are restricted to the five
+# types above.
+downstream_initial_descriptor_type_name_length = {
+    **initial_descriptor_type_name_length,
+    0x0005: ["IEEE Assigned Company ID", 3],
+    0x0006: ["SCSI Vendor ID", 8]}
+
 descriptor_type_name_length = {
     0x0000: ["PCI Vendor ID", 2],
     0x0001: ["IANA Enterprise ID", 4],
@@ -231,17 +240,22 @@ def get_applicable_components(device, components, component_bitmap_bit_length):
     return applicable_components
 
 
-def prepare_record_descriptors(descriptors):
+def prepare_record_descriptors(descriptors, downstream=False):
     '''
     This function processes the Descriptors and prepares the RecordDescriptors
     section of the the firmware device ID record.
 
         Parameters:
             descriptors: Descriptors entry
+            downstream: True when preparing a downstream device ID record,
+                        which per DSP0267 Table 7 may additionally open with
+                        an IEEE Assigned Company ID or SCSI Vendor ID
+                        descriptor
 
         Returns:
             RecordDescriptors, DescriptorCount
     '''
+    # pylint: disable=too-many-locals
     record_descriptors = bytearray()
     vendor_defined_desc_type = 65535
     vendor_desc_title_str_type_len = 1
@@ -252,8 +266,10 @@ def prepare_record_descriptors(descriptors):
 
         descriptor_type = descriptor["DescriptorType"]
         if descriptor_count == 0:
-            if initial_descriptor_type_name_length.get(descriptor_type) \
-                    is None:
+            if (downstream_initial_descriptor_type_name_length
+                    if downstream else
+                    initial_descriptor_type_name_length).get(
+                        descriptor_type) is None:
                 sys.exit("ERROR: Initial descriptor type not supported")
         else:
             if descriptor_type_name_length.get(descriptor_type) is None and \
@@ -458,8 +474,8 @@ def write_downstream_device_identification_area(
 
     This function writes the DownstreamDeviceIDRecordCount and the
     DownstreamDeviceIDRecords into the firmware update package by processing the
-    metadata JSON. Currently there is no support for optional
-    DownstreamDevicePackageData and DownstreamDeviceReferenceManifestData.
+    metadata JSON, including optional hex-encoded DownstreamDevicePackageData
+    and (for format revision 4+) DownstreamDeviceReferenceManifestData.
 
         Parameters:
             pldm_fw_up_pkg: PLDM FW update package
@@ -542,10 +558,14 @@ def write_downstream_device_identification_area(
         # DownstreamDeviceSelfContainedActivationMinVersionStringLength
         downstream_device_record_length += 1
 
-        # Optional DownstreamDevicePackageData not supported now,
-        # DownstreamDevicePackageDataLength is set to 0x0000
-        downstream_device_pkg_data_length = 0
-        downstream_device_record_length += 2
+        try:
+            downstream_device_pkg_data = bytes.fromhex(
+                downstream_device.get("DownstreamDevicePackageData", "")
+            )
+        except (ValueError, TypeError):
+            sys.exit("ERROR: DownstreamDevicePackageData must be a hex string")
+        downstream_device_pkg_data_length = len(downstream_device_pkg_data)
+        downstream_device_record_length += 2 + downstream_device_pkg_data_length
 
         # Optional DownstreamDeviceReferenceManifestData - read from JSON if provided
         downstream_device_reference_manifest_data = None
@@ -581,9 +601,11 @@ def write_downstream_device_identification_area(
         # RecordDescriptors
         descriptors = downstream_device["Descriptors"]
         record_descriptors, descriptor_count = prepare_record_descriptors(
-            descriptors
+            descriptors, downstream=True
         )
         downstream_device_record_length += len(record_descriptors)
+        if downstream_device_record_length > 0xFFFF:
+            sys.exit("ERROR: downstream device record exceeds 65535 bytes")
         if package_header_format_revision <= 3:
             format_string = (
                 "<HBIBBH"
@@ -651,6 +673,7 @@ def write_downstream_device_identification_area(
                 )
             )
         pldm_fw_up_pkg.write(record_descriptors)
+        pldm_fw_up_pkg.write(downstream_device_pkg_data)
         # Write DownstreamDeviceReferenceManifestData if provided (only for format version >= 4)
         if (
             package_header_format_revision >= 4

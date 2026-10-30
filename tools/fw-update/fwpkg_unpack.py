@@ -174,7 +174,7 @@ class Util:
 
 
 class PLDMUnpack:
-    # pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """
     PLDMUnpack class implements a PLDM parser and the unpack tool
     along with its required features.
@@ -238,6 +238,8 @@ class PLDMUnpack:
         self.header_map = {}
         self.device_id_record_count = 0
         self.fd_id_record_list = []
+        self.downstream_device_id_record_count = 0
+        self.dd_id_record_list = []
         self.component_img_info_list = []
         self.full_header = {
             "PackageHeaderInformation": {},
@@ -351,62 +353,8 @@ class PLDMUnpack:
                 "ComponentImageSetVersionString"] = self.fwpkg_fd.read(
                     id_record_map["ComponentImageSetVersionStringLength"]
                 ).split(b'\x00')[0].decode('utf-8')
-            descriptors = []
-            for j in range(id_record_map["DescriptorCount"]):
-                descriptor_map = {}
-                if j == 0:
-                    descriptor_map["InitialDescriptorType"] = int.from_bytes(
-                        self.fwpkg_fd.read(2),
-                        byteorder='little',
-                        signed=False)
-                    descriptor_map["InitialDescriptorLength"] = int.from_bytes(
-                        self.fwpkg_fd.read(2),
-                        byteorder='little',
-                        signed=False)
-                    value = self.fwpkg_fd.read(
-                        descriptor_map["InitialDescriptorLength"])
-                    descriptor_map["InitialDescriptorData"] = value
-
-                else:
-                    descriptor_map[
-                        "AdditionalDescriptorType"] = int.from_bytes(
-                            self.fwpkg_fd.read(2),
-                            byteorder='little',
-                            signed=False)
-                    descriptor_map[
-                        "AdditionalDescriptorLength"] = int.from_bytes(
-                            self.fwpkg_fd.read(2),
-                            byteorder='little',
-                            signed=False)
-                    if descriptor_map["AdditionalDescriptorType"] == 0xFFFF:
-                        descriptor_map[
-                            "VendorDefinedDescriptorTitleStringType"] = int.from_bytes(
-                                self.fwpkg_fd.read(1),
-                                byteorder='little',
-                                signed=False)
-                        descriptor_map[
-                            "VendorDefinedDescriptorTitleStringLength"] = int.from_bytes(
-                                self.fwpkg_fd.read(1),
-                                byteorder='little',
-                                signed=False)
-                        descriptor_map[
-                            "VendorDefinedDescriptorTitleString"] = self.fwpkg_fd.read(
-                                descriptor_map[
-                                    "VendorDefinedDescriptorTitleStringLength"]
-                            ).split(b'\x00')[0].decode('utf-8')
-                        vendor_def_data_len = (
-                            descriptor_map["AdditionalDescriptorLength"] -
-                            (2 + descriptor_map[
-                                "VendorDefinedDescriptorTitleStringLength"]))
-                        descriptor_map[
-                            "VendorDefinedDescriptorData"] = self.fwpkg_fd.read(
-                                vendor_def_data_len).hex()
-                    else:
-                        descriptor_map[
-                            "AdditionalDescriptorIdentifierData"] = self.fwpkg_fd.read(
-                                descriptor_map["AdditionalDescriptorLength"])
-                descriptors.append(descriptor_map)
-            id_record_map["RecordDescriptors"] = descriptors
+            id_record_map["RecordDescriptors"] = self.parse_record_descriptors(
+                id_record_map["DescriptorCount"])
             id_record_map["FirmwareDevicePackageData"] = self.fwpkg_fd.read(
                 id_record_map["FirmwareDevicePackageDataLength"]).decode(
                     'utf-8')
@@ -417,30 +365,141 @@ class PLDMUnpack:
         }
         return True
 
+    def parse_record_descriptors(self, descriptor_count):
+        """
+        Parse a RecordDescriptors field. Per DSP0267 v1.3.0 Table 7 this field
+        is encoded identically for FirmwareDeviceIDRecords and
+        DownstreamDeviceIDRecords, so this helper is shared by both parsers.
+        Parameter:
+            descriptor_count number of descriptors to parse
+        Returns:
+            list of parsed descriptor dicts
+        """
+        descriptors = []
+        for j in range(descriptor_count):
+            descriptor_map = {}
+            if j == 0:
+                descriptor_map["InitialDescriptorType"] = int.from_bytes(
+                    self.fwpkg_fd.read(2),
+                    byteorder='little',
+                    signed=False)
+                descriptor_map["InitialDescriptorLength"] = int.from_bytes(
+                    self.fwpkg_fd.read(2),
+                    byteorder='little',
+                    signed=False)
+                value = self.fwpkg_fd.read(
+                    descriptor_map["InitialDescriptorLength"])
+                descriptor_map["InitialDescriptorData"] = value
+
+            else:
+                descriptor_map[
+                    "AdditionalDescriptorType"] = int.from_bytes(
+                        self.fwpkg_fd.read(2),
+                        byteorder='little',
+                        signed=False)
+                descriptor_map[
+                    "AdditionalDescriptorLength"] = int.from_bytes(
+                        self.fwpkg_fd.read(2),
+                        byteorder='little',
+                        signed=False)
+                if descriptor_map["AdditionalDescriptorType"] == 0xFFFF:
+                    descriptor_map[
+                        "VendorDefinedDescriptorTitleStringType"] = int.from_bytes(
+                            self.fwpkg_fd.read(1),
+                            byteorder='little',
+                            signed=False)
+                    descriptor_map[
+                        "VendorDefinedDescriptorTitleStringLength"] = int.from_bytes(
+                            self.fwpkg_fd.read(1),
+                            byteorder='little',
+                            signed=False)
+                    descriptor_map[
+                        "VendorDefinedDescriptorTitleString"] = self.fwpkg_fd.read(
+                            descriptor_map[
+                                "VendorDefinedDescriptorTitleStringLength"]
+                        ).split(b'\x00')[0].decode('utf-8')
+                    vendor_def_data_len = (
+                        descriptor_map["AdditionalDescriptorLength"] -
+                        (2 + descriptor_map[
+                            "VendorDefinedDescriptorTitleStringLength"]))
+                    descriptor_map[
+                        "VendorDefinedDescriptorData"] = self.fwpkg_fd.read(
+                            vendor_def_data_len).hex()
+                else:
+                    descriptor_map[
+                        "AdditionalDescriptorIdentifierData"] = self.fwpkg_fd.read(
+                            descriptor_map["AdditionalDescriptorLength"])
+            descriptors.append(descriptor_map)
+        return descriptors
+
     def parse_downstream_device_identification_area(self):
         """
-        Parse PLDM DownstreamDeviceIdentificationArea data
+        Parse PLDM DownstreamDeviceIdentificationArea data into
+        self.dd_id_record_list, per DSP0267 v1.3.0 Table 5.
         Returns:
             True if parsing is successful
         """
-        downstream_device_id_record_count = int.from_bytes(self.fwpkg_fd.read(1),
-                                                           byteorder='little',
-                                                           signed=False)
+        # pylint: disable=line-too-long
+        self.downstream_device_id_record_count = int.from_bytes(
+            self.fwpkg_fd.read(1), byteorder='little', signed=False)
         if self.verbose:
             Util.cli_log(
-                f"Downstream device ID record count: {downstream_device_id_record_count}", True)
+                f"Downstream device ID record count: \
+                    {self.downstream_device_id_record_count}", True)
 
-        # For now, we only support count of 0 (no downstream devices)
-        # Future enhancement can add parsing of actual downstream device records
-        if downstream_device_id_record_count > 0:
-            log_msg = f"Warning: Found {downstream_device_id_record_count} \
-                downstream device records, but parsing is not yet implemented"
-            Util.cli_log(log_msg, False)
-            # Skip the downstream device records for now
-            # This would need to be implemented when downstream device support is added
+        for _ in range(self.downstream_device_id_record_count):
+            id_record_map = {}
+            id_record_map["RecordLength"] = int.from_bytes(
+                self.fwpkg_fd.read(2), byteorder='little', signed=False)
+            id_record_map["DescriptorCount"] = int.from_bytes(
+                self.fwpkg_fd.read(1), byteorder='little', signed=False)
+            id_record_map["DownstreamDeviceUpdateOptionFlags"] = int.from_bytes(
+                self.fwpkg_fd.read(4), byteorder='little', signed=False)
+            id_record_map[
+                "SelfContainedActivationMinVersionStringType"] = int.from_bytes(
+                    self.fwpkg_fd.read(1), byteorder='little', signed=False)
+            id_record_map[
+                "SelfContainedActivationMinVersionStringLength"] = int.from_bytes(
+                    self.fwpkg_fd.read(1), byteorder='little', signed=False)
+            id_record_map["DownstreamDevicePackageDataLength"] = int.from_bytes(
+                self.fwpkg_fd.read(2), byteorder='little', signed=False)
+            # ReferenceManifestLength is only present in format revision 4+ (version 1.3+)
+            if int(self.header_map["PackageHeaderFormatRevision"]) >= 4:
+                id_record_map["ReferenceManifestLength"] = int.from_bytes(
+                    self.fwpkg_fd.read(4), byteorder='little', signed=False)
+            applicable_component_size = math.ceil(
+                self.header_map["ComponentBitmapBitLength"] / 8)
+            id_record_map["ApplicableComponents"] = int.from_bytes(
+                self.fwpkg_fd.read(applicable_component_size),
+                byteorder='little',
+                signed=False)
+            # The SelfContainedActivationMinVersionString field is written
+            # unconditionally by the package creator tool (zero length when
+            # bit 0 of DownstreamDeviceUpdateOptionFlags is unset), so it can
+            # always be read using the length field above.
+            id_record_map[
+                "SelfContainedActivationMinVersionString"] = self.fwpkg_fd.read(
+                    id_record_map["SelfContainedActivationMinVersionStringLength"]
+                ).split(b'\x00')[0].decode('utf-8')
+            # The comparison stamp field only exists when bit 0 of
+            # DownstreamDeviceUpdateOptionFlags is set.
+            if id_record_map["DownstreamDeviceUpdateOptionFlags"] & 1:
+                id_record_map[
+                    "SelfContainedActivationMinVersionComparisonStamp"] = int.from_bytes(
+                        self.fwpkg_fd.read(4), byteorder='little', signed=False)
+            id_record_map["RecordDescriptors"] = self.parse_record_descriptors(
+                id_record_map["DescriptorCount"])
+            id_record_map["DownstreamDevicePackageData"] = self.fwpkg_fd.read(
+                id_record_map["DownstreamDevicePackageDataLength"]).hex()
+            if id_record_map.get("ReferenceManifestLength"):
+                id_record_map["DownstreamDeviceReferenceManifestData"] = \
+                    self.fwpkg_fd.read(
+                        id_record_map["ReferenceManifestLength"]).hex()
+            self.dd_id_record_list.append(id_record_map)
 
         self.full_header["DownstreamDeviceIdentificationArea"] = {
-            "DownstreamDeviceIDRecordCount": downstream_device_id_record_count
+            "DownstreamDeviceIDRecordCount": self.downstream_device_id_record_count,
+            "DownstreamDeviceIDRecords": self.dd_id_record_list
         }
         return True
 
@@ -527,6 +586,25 @@ class PLDMUnpack:
                         count = count + 1
                     applicable_comp = applicable_comp >> 1
                 return components[count - 1], rec['RecordDescriptors']
+        # A downstream device record carries no ComponentImageSetVersionString
+        # (DSP0267 Table 5), so name its image after the device instead: the
+        # vendor defined VendorPN when the record provides one, otherwise the
+        # record position.
+        for index, rec in enumerate(self.dd_id_record_list):
+            if mask & rec["ApplicableComponents"] != mask:
+                continue
+            name = ""
+            for desc in rec["RecordDescriptors"]:
+                if desc.get("VendorDefinedDescriptorTitleString") == "VendorPN":
+                    name = bytes.fromhex(
+                        desc["VendorDefinedDescriptorData"]).decode(
+                            'utf-8', errors='replace').strip('\x00')
+                    name = re.sub(r'[\\/]+', '_', name)
+                    name = re.sub(r'\.\.+', '_', name).lstrip('.')
+                    break
+            if name == "":
+                name = f"DownstreamDevice_{index}"
+            return name, rec['RecordDescriptors']
         return "", None
 
     def get_image_name(self, comp_info_index):
@@ -813,7 +891,8 @@ class PLDMUnpack:
         index = self.get_applicable_component_index(
             record["ApplicableComponents"])
         components = []
-        device_name = record["ComponentImageSetVersionString"]
+        # Downstream records have component versions but no image-set version.
+        device_name = record.get("ComponentImageSetVersionString", "")
         for i in index:
             component = {}
             img = self.component_img_info_list[i]
@@ -900,7 +979,7 @@ class PLDMUnpack:
                 desc["VendorDefinedDescriptorData"] = '0x' + str(desc_data)
                 if desc["VendorDefinedDescriptorTitleString"] == "APSKU":
                     # AP SKU on Retimer is just vendor id, not a real AP SKU ID. So skip
-                    if "FWImage" in components[-1] and \
+                    if components and "FWImage" in components[-1] and \
                         not "PCIeRetimer" in components[-1]["FWImage"]:
                         bin_ary = bytearray.fromhex(
                             desc_data[:-2])  # First byte is strap id
@@ -915,6 +994,51 @@ class PLDMUnpack:
                     records[i]["AdditionalDescriptorIdentifierData"])
             descriptors.append(desc)
         return descriptors
+
+    @staticmethod
+    def builder_descriptors(record_descriptors):
+        """
+        Convert parsed RecordDescriptors into the schema the package creator
+        tool consumes for its "Descriptors" field. Shared by the firmware
+        device and downstream device builder JSON generation, since both
+        parse the same DSP0267 Table 7 descriptor encoding.
+        Parameter:
+            record_descriptors descriptors as parsed by parse_record_descriptors()
+        Returns:
+            list of descriptor dicts in package creator format
+        """
+        desc_list = []
+        for descriptors in record_descriptors:
+            if descriptors.get("InitialDescriptorType") is not None:
+                data = descriptors.get("InitialDescriptorData")
+                data_len = len(data)
+                desc_data = {
+                    "DescriptorType": descriptors.get("InitialDescriptorType"),
+                    "DescriptorData": int.from_bytes(
+                        data,
+                        byteorder='big',
+                        signed=False).to_bytes(data_len, 'big').hex()
+                }
+            elif descriptors.get("AdditionalDescriptorType") == 65535:
+                desc_data = {
+                    "DescriptorType": descriptors.get("AdditionalDescriptorType"),
+                    "VendorDefinedDescriptorTitleString": descriptors.get(
+                        "VendorDefinedDescriptorTitleString"),
+                    "VendorDefinedDescriptorData": descriptors.get(
+                        "VendorDefinedDescriptorData")
+                }
+            else:
+                data = descriptors.get("AdditionalDescriptorIdentifierData")
+                data_len = len(data)
+                desc_data = {
+                    "DescriptorType": descriptors.get("AdditionalDescriptorType"),
+                    "DescriptorData": int.from_bytes(
+                        data,
+                        byteorder='big',
+                        signed=False).to_bytes(data_len, 'big').hex()
+                }
+            desc_list.append(desc_data)
+        return desc_list
 
     def get_builder_json(self):
         """
@@ -942,39 +1066,39 @@ class PLDMUnpack:
                     device_records["ApplicableComponents"]),
                 "Descriptors": []
             }
-            desc_list = []
-            for descriptors in device_records["RecordDescriptors"]:
-                if descriptors.get("InitialDescriptorType") is not None:
-                    data = descriptors.get("InitialDescriptorData")
-                    data_len = len(data)
-                    desc_data = {
-                        "DescriptorType": descriptors.get("InitialDescriptorType"),
-                        "DescriptorData": int.from_bytes(
-                            data,
-                            byteorder='big',
-                            signed=False).to_bytes(data_len, 'big').hex()
-                    }
-                elif descriptors.get("AdditionalDescriptorType") == 65535:
-                    desc_data = {
-                        "DescriptorType": descriptors.get("AdditionalDescriptorType"),
-                        "VendorDefinedDescriptorTitleString": descriptors.get(
-                            "VendorDefinedDescriptorTitleString"),
-                        "VendorDefinedDescriptorData": descriptors.get(
-                            "VendorDefinedDescriptorData")
-                    }
-                else:
-                    data = descriptors.get("AdditionalDescriptorIdentifierData")
-                    data_len = len(data)
-                    desc_data = {
-                        "DescriptorType": descriptors.get("AdditionalDescriptorType"),
-                        "DescriptorData": int.from_bytes(
-                            data,
-                            byteorder='big',
-                            signed=False).to_bytes(data_len, 'big').hex()
-                    }
-                desc_list.append(desc_data)
-            fw_id_rec["Descriptors"] = desc_list
+            fw_id_rec["Descriptors"] = self.builder_descriptors(
+                device_records["RecordDescriptors"])
             fw_id_area.append(fw_id_rec)
+        # DSP0267 Table 5 records, converted into the schema the package
+        # creator tool consumes, so that an unpacked package can be rebuilt
+        # without losing its downstream device ID records.
+        downstream_id_area = []
+        for device_records in self.full_header[
+                'DownstreamDeviceIdentificationArea'].get(
+                    'DownstreamDeviceIDRecords', []):
+            dd_rec = {
+                "DownstreamDeviceUpdateOptionFlags": Util.get_set_bit_indices(
+                    device_records["DownstreamDeviceUpdateOptionFlags"]),
+                "ApplicableComponents": Util.get_set_bit_indices(
+                    device_records["ApplicableComponents"]),
+                "Descriptors": self.builder_descriptors(
+                    device_records["RecordDescriptors"])
+            }
+            if device_records["DownstreamDevicePackageDataLength"]:
+                dd_rec["DownstreamDevicePackageData"] = \
+                    device_records["DownstreamDevicePackageData"]
+            if device_records["DownstreamDeviceUpdateOptionFlags"] & 1:
+                dd_rec["DownstreamDeviceSelfContainedActivationMinVersionString"] = \
+                    device_records.get(
+                        "SelfContainedActivationMinVersionString", "")
+                dd_rec[
+                    "DownstreamDeviceSelfContainedActivationMinVersionComparisonStamp"] = \
+                    device_records.get(
+                        "SelfContainedActivationMinVersionComparisonStamp", 0)
+            if "DownstreamDeviceReferenceManifestData" in device_records:
+                dd_rec["DownstreamDeviceReferenceManifestData"] = \
+                    device_records["DownstreamDeviceReferenceManifestData"]
+            downstream_id_area.append(dd_rec)
         comp_img_area = []
         for img_data in self.component_img_info_list:
             img_info = {
@@ -993,44 +1117,58 @@ class PLDMUnpack:
             comp_img_area.append(img_info)
         self.pkg_builder_json = {
             "PackageHeaderInformation": header_info,
-            "FirmwareDeviceIdentificationArea": fw_id_area,
-            "ComponentImageInformationArea": comp_img_area
+            "FirmwareDeviceIdentificationArea": fw_id_area
         }
+        # Only emitted when the package actually carries downstream device
+        # records, so builder JSON for existing FD-only packages is unchanged.
+        if downstream_id_area:
+            self.pkg_builder_json["DownstreamDeviceIdentificationArea"] = \
+                downstream_id_area
+        self.pkg_builder_json["ComponentImageInformationArea"] = comp_img_area
+
+    def decode_device_record_metadata(self, device_records):
+        """Decode component indices and descriptors for either device record type."""
+        device_records[
+            'ApplicableComponents'] = self.get_applicable_component_index(
+                device_records['ApplicableComponents'])
+        records = device_records["RecordDescriptors"]
+        descriptors = []
+        if len(records) == 0:
+            return
+        desc = records[0]
+        desc["InitialDescriptorType"] = Util.get_descriptor_type_name(
+            records[0]["InitialDescriptorType"])
+        desc["InitialDescriptorData"] = self.decode_descriptor_data(
+            desc["InitialDescriptorType"], desc["InitialDescriptorData"])
+        descriptors.append(desc)
+        for i in range(1, len(records)):
+            desc = records[i]
+            desc[
+                "AdditionalDescriptorType"] = Util.get_descriptor_type_name(
+                    records[i]["AdditionalDescriptorType"])
+            if desc["AdditionalDescriptorType"] == 'Vendor Defined':
+                desc["VendorDefinedDescriptorTitleString"] = records[i][
+                    "VendorDefinedDescriptorTitleString"]
+                desc_data = records[i]["VendorDefinedDescriptorData"]
+                desc["VendorDefinedDescriptorData"] = '0x' + str(desc_data)
+            else:
+                desc[
+                    "AdditionalDescriptorIdentifierData"] = self.decode_descriptor_data(
+                        desc["AdditionalDescriptorType"],
+                        desc["AdditionalDescriptorIdentifierData"])
+            descriptors.append(desc)
+        device_records["RecordDescriptors"] = descriptors
 
     def get_full_metadata_json(self):
         """ Decode byte value descriptors for full package metadata command """
         for device_records in self.full_header[
                 'FirmwareDeviceIdentificationArea']['FirmwareDeviceIDRecords']:
-            device_records[
-                'ApplicableComponents'] = self.get_applicable_component_index(
-                    device_records['ApplicableComponents'])
-            records = device_records["RecordDescriptors"]
-            descriptors = []
-            if len(records) == 0:
-                continue
-            desc = records[0]
-            desc["InitialDescriptorType"] = Util.get_descriptor_type_name(
-                records[0]["InitialDescriptorType"])
-            desc["InitialDescriptorData"] = self.decode_descriptor_data(
-                desc["InitialDescriptorType"], desc["InitialDescriptorData"])
-            descriptors.append(desc)
-            for i in range(1, len(records)):
-                desc = records[i]
-                desc[
-                    "AdditionalDescriptorType"] = Util.get_descriptor_type_name(
-                        records[i]["AdditionalDescriptorType"])
-                if desc["AdditionalDescriptorType"] == 'Vendor Defined':
-                    desc["VendorDefinedDescriptorTitleString"] = records[i][
-                        "VendorDefinedDescriptorTitleString"]
-                    desc_data = records[i]["VendorDefinedDescriptorData"]
-                    desc["VendorDefinedDescriptorData"] = '0x' + str(desc_data)
-                else:
-                    desc[
-                        "AdditionalDescriptorIdentifierData"] = self.decode_descriptor_data(
-                            desc["AdditionalDescriptorType"],
-                            desc["AdditionalDescriptorIdentifierData"])
-                descriptors.append(desc)
-            device_records["RecordDescriptors"] = descriptors
+            self.decode_device_record_metadata(device_records)
+
+        for device_records in self.full_header[
+                'DownstreamDeviceIdentificationArea'].get(
+                    'DownstreamDeviceIDRecords', []):
+            self.decode_device_record_metadata(device_records)
 
     def prepare_records_json(self):
         # pylint: disable=line-too-long
@@ -1080,6 +1218,29 @@ class PLDMUnpack:
             rec["ComponentImageSetVersionString"] = name
             recordlist.append(rec)
         package_json["FirmwareDeviceRecords"] = recordlist
+        if self.dd_id_record_list:
+            downstream_records = []
+            for index, record in enumerate(self.dd_id_record_list):
+                components, _ = self.get_applicable_components_names(record)
+                rec = {
+                    "DownstreamDeviceIndex": index,
+                    "DownstreamDeviceUpdateOptionFlags":
+                        Util.get_set_bit_indices(
+                            record["DownstreamDeviceUpdateOptionFlags"]),
+                    "ApplicableComponents": self.get_applicable_component_index(
+                        record["ApplicableComponents"]),
+                    "DeviceDescriptors": self.get_formatted_descriptors(
+                        record, components),
+                    "Components": components
+                }
+                for key in ("SelfContainedActivationMinVersionString",
+                            "SelfContainedActivationMinVersionComparisonStamp",
+                            "DownstreamDevicePackageData",
+                            "DownstreamDeviceReferenceManifestData"):
+                    if key in record:
+                        rec[key] = record[key]
+                downstream_records.append(rec)
+            package_json["DownstreamDeviceRecords"] = downstream_records
         json_string = json.dumps(package_json, indent=4)
         return True, json_string
 
@@ -1162,7 +1323,11 @@ def main():
                     print("Path for LogFile ", Util.LOGFILE_PATH)
                     sys.exit(1)
                 if tool_args.dump_builder_json:
-                    pldm_parser.get_builder_json()
+                    try:
+                        pldm_parser.get_builder_json()
+                    except ValueError as err:
+                        print(f"Status : Failed to dump builder JSON: {err}")
+                        sys.exit(1)
                     json_output = json.dumps(pldm_parser.pkg_builder_json,
                                             sort_keys=False,
                                             indent=4)

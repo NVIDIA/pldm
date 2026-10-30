@@ -1,0 +1,55 @@
+{
+    "PackageHeaderInformation": {
+        "PackageHeaderIdentifier": "7b291c996db64208801b02026e463c78",
+        "PackageHeaderFormatVersion": 4,
+        "PackageReleaseDateTime": "30/08/2026 00:00:00",
+        "PackageVersionString": "NvXcvr-046.150.0055"
+    },
+    "FirmwareDeviceIdentificationArea": [],
+    "DownstreamDeviceIdentificationArea": [
+        {
+            "DownstreamDeviceUpdateOptionFlags": [],
+            "ApplicableComponents": [
+                0
+            ],
+            "Descriptors": [
+                {
+                    "DescriptorType": 5,
+                    "DescriptorData": "2db048"
+                },
+                {
+                    "DescriptorType": 65535,
+                    "VendorDefinedDescriptorTitleString": "VendorPN",
+                    "VendorDefinedDescriptorData": "4d4d53345830302d4e53343030"
+                },
+                {
+                    "DescriptorType": 65535,
+                    "VendorDefinedDescriptorTitleString": "VendorRev",
+                    "VendorDefinedDescriptorData": "4137"
+                },
+                {
+                    "DescriptorType": 65535,
+                    "VendorDefinedDescriptorTitleString": "HWMajor",
+                    "VendorDefinedDescriptorData": "3635"
+                },
+                {
+                    "DescriptorType": 65535,
+                    "VendorDefinedDescriptorTitleString": "FWMajor",
+                    "VendorDefinedDescriptorData": "3436"
+                }
+            ]
+        }
+    ],
+    "ComponentImageInformationArea": [
+        {
+            "ComponentClassification": 65535,
+            "ComponentIdentifier": 0,
+            "ComponentOptions": [],
+            "RequestedComponentActivationMethod": [
+                1
+            ],
+            "ComponentVersionString": "046.150.0055",
+            "ComponentComparisonStamp": "0xffffffff"
+        }
+    ]
+}
