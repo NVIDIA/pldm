@@ -2501,6 +2501,67 @@ TEST_F(TerminusTest, nvidiaEnergyCountOemPdrCoverage)
     EXPECT_TRUE(std::isfinite(sensor->getReading()));
 }
 
+// Truncate an energy-count OEM PDR so vendor data keeps only keepBytes.
+static std::vector<uint8_t> makeTruncatedEnergyCountOemPdr(uint16_t sensorId,
+                                                           size_t keepBytes)
+{
+    auto pdr = makeNvidiaEnergyCountOemPdr(sensorId);
+    pdr.resize(offsetof(pldm_oem_pdr, vendor_specific_data) + keepBytes);
+    auto* oem = reinterpret_cast<pldm_oem_pdr*>(pdr.data());
+    oem->hdr.length = pdr.size() - sizeof(pldm_pdr_hdr);
+    oem->data_length = keepBytes - 1;
+    return pdr;
+}
+
+// Energy-count OEM PDRs the parser rejects: one shorter than the minimum
+// record size (0x92), and one long enough for the minimum but one byte short
+// of its declared UINT16 max/min readable fields (0x93).
+static std::vector<std::vector<uint8_t>> makeMalformedEnergyCountOemPdrs()
+{
+    return {makeTruncatedEnergyCountOemPdr(
+                0x92,
+                PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_MIN_LENGTH - 1),
+            makeTruncatedEnergyCountOemPdr(
+                0x93, PLDM_PDR_OEM_ENERGYCOUNT_NUMERIC_SENSOR_PDR_FIXED_LENGTH +
+                          2 * sizeof(uint16_t) - 1)};
+}
+
+TEST_F(TerminusTest, malformedEnergyCountOemPdrIsNotCachedOnDiscovery)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000000ED");
+    Terminus terminus(0x0D, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    terminus.pdrs = makeMalformedEnergyCountOemPdrs();
+    terminus.pdrs.emplace_back(makeNvidiaEnergyCountOemPdr(0x94));
+    ASSERT_TRUE(terminus.parsePDRs());
+
+    EXPECT_EQ(3u, terminus.pdrs.size());
+    ASSERT_EQ(1u, terminus.oemEnergyCountNumericSensorPdrs.size());
+    EXPECT_NE(nullptr, terminus.oemEnergyCountNumericSensorPdrs[0]);
+    ASSERT_EQ(1u, terminus.numericSensors.size());
+    EXPECT_EQ(0x94, terminus.numericSensors[0]->sensorId);
+}
+
+TEST_F(TerminusTest, malformedEnergyCountOemPdrIsNotCachedOnRefresh)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000000EC");
+    Terminus terminus(0x0C, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    // Incremental refresh keeps the raw records but creates a sensor only for
+    // the valid one.
+    auto newPdrs = makeMalformedEnergyCountOemPdrs();
+    newPdrs.emplace_back(makeNvidiaEnergyCountOemPdr(0x94));
+    terminus.addNewPdrs(newPdrs);
+
+    EXPECT_EQ(3u, terminus.pdrs.size());
+    ASSERT_EQ(1u, terminus.oemEnergyCountNumericSensorPdrs.size());
+    EXPECT_NE(nullptr, terminus.oemEnergyCountNumericSensorPdrs[0]);
+    ASSERT_EQ(1u, terminus.numericSensors.size());
+    EXPECT_EQ(0x94, terminus.numericSensors[0]->sensorId);
+}
+
 TEST_F(TerminusTest, parseNumericEffecterPdrCoverageMatrix)
 {
     std::string uuid("00000000-0000-0000-0000-0000000000EF");
