@@ -105,6 +105,28 @@ test(
     suite: non_valgrind_test_suites,
 )
 
+test(
+    'em_device_test',
+    executable(
+        'em_device_test',
+        'em_device_test.cpp',
+        implicit_include_directories: false,
+        dependencies: [
+            common_test_src,
+            gmock,
+            gtest,
+            libpldm_dep,
+            nlohmann_json_dep,
+            phosphor_dbus_interfaces,
+            phosphor_logging_dep,
+            libpldmutils,
+            sdbusplus,
+        ],
+    ),
+    workdir: meson.current_source_dir(),
+    suite: non_valgrind_test_suites,
+)
+
 # readHostEID_test: separate target that #includes utils.cpp with an
 # overridden HOST_EID_PATH so the function reads from a temp file we control.
 # It must NOT link libpldmutils or use common_test_src to avoid duplicate

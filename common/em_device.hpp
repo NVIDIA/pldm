@@ -1,5 +1,20 @@
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-FileCopyrightText: Copyright OpenBMC Authors
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 
 #include "common/utils.hpp"
@@ -8,6 +23,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -50,6 +66,9 @@ constexpr auto componentRoot =
 constexpr auto bmcRoot = "/xyz/openbmc_project/inventory/system/bmc/";
 constexpr auto pldmSuffix = "_PLDM";
 constexpr auto mctpSuffix = "_MCTP";
+/** @brief Largest EID a device can be configured with: 0xFF is the MCTP
+ *         broadcast EID (DSP0236 8.2). */
+constexpr uint64_t maxDeviceEid = 0xFE;
 
 struct Device
 {
@@ -96,14 +115,31 @@ inline std::string stringProp(const pldm::utils::PropertyMap& props,
     return {};
 }
 
-inline std::optional<uint64_t> numberProp(const pldm::utils::PropertyMap& props,
-                                          const std::string& key)
+/** @brief A non-negative integer from a decimal or 0x-prefixed string. */
+inline std::optional<uint64_t> parseNumber(std::string_view s)
 {
-    auto it = props.find(key);
-    if (it == props.end())
+    uint64_t out = 0;
+    int base = 10;
+    if (s.starts_with("0x") || s.starts_with("0X"))
+    {
+        s.remove_prefix(2);
+        base = 16;
+    }
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out, base);
+    if (ec != std::errc() || ptr != s.data() + s.size())
     {
         return std::nullopt;
     }
+    return out;
+}
+
+/** @brief A non-negative integer from a property value: an integer type, an
+ *         integral double, or a decimal or 0x-prefixed string. Anything
+ *         else, including bool, negative, fractional and non-finite values,
+ *         is rejected. */
+inline std::optional<uint64_t> numberValue(
+    const pldm::utils::PropertyValue& value)
+{
     return std::visit(
         [](const auto& v) -> std::optional<uint64_t> {
             using T = std::decay_t<decltype(v)>;
@@ -111,7 +147,18 @@ inline std::optional<uint64_t> numberProp(const pldm::utils::PropertyMap& props,
             {
                 return std::nullopt;
             }
-            else if constexpr (std::is_arithmetic_v<T>)
+            else if constexpr (std::is_floating_point_v<T>)
+            {
+                // 2^64 as a double; the largest uint64_t is not exact
+                constexpr double limit = 18446744073709551616.0;
+                if (!std::isfinite(v) || v < 0 || v >= limit ||
+                    v != std::trunc(v))
+                {
+                    return std::nullopt;
+                }
+                return static_cast<uint64_t>(v);
+            }
+            else if constexpr (std::is_integral_v<T>)
             {
                 if (v < 0)
                 {
@@ -121,28 +168,33 @@ inline std::optional<uint64_t> numberProp(const pldm::utils::PropertyMap& props,
             }
             else if constexpr (std::is_same_v<T, std::string>)
             {
-                uint64_t out = 0;
-                int base = 10;
-                std::string_view s(v);
-                if (s.starts_with("0x") || s.starts_with("0X"))
-                {
-                    s.remove_prefix(2);
-                    base = 16;
-                }
-                auto [ptr, ec] =
-                    std::from_chars(s.data(), s.data() + s.size(), out, base);
-                if (ec != std::errc() || ptr != s.data() + s.size())
-                {
-                    return std::nullopt;
-                }
-                return out;
+                return parseNumber(v);
             }
             else
             {
                 return std::nullopt;
             }
         },
-        it->second);
+        value);
+}
+
+/** @brief The integer property @p key of @p props, if present and in
+ *         [0, max]; see numberValue() for the accepted forms. */
+inline std::optional<uint64_t> numberProp(
+    const pldm::utils::PropertyMap& props, const std::string& key,
+    uint64_t max = std::numeric_limits<uint64_t>::max())
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return std::nullopt;
+    }
+    auto value = numberValue(it->second);
+    if (value && *value > max)
+    {
+        return std::nullopt;
+    }
+    return value;
 }
 
 inline std::optional<pldm::utils::PropertyMap> getAll(
@@ -155,8 +207,10 @@ inline std::optional<pldm::utils::PropertyMap> getAll(
         return bus.getDbusPropertiesVariant(service.c_str(), path.c_str(),
                                             intf.c_str());
     }
-    catch (const std::exception&)
+    catch (const std::exception& e)
     {
+        lg2::debug("GetAll {INTF} on {PATH} failed: {ERROR}", "INTF", intf,
+                   "PATH", path, "ERROR", e);
         return std::nullopt;
     }
 }
@@ -192,8 +246,49 @@ inline std::map<std::string, std::string> objectsWith(
  *  ParentChassis, CpuIndex and a Transport child interface) and by the entity
  *  file of its kind, a record of the same Type that carries InstanceNumber in
  *  place of Instance and no parent. The two are merged by Name; a value the
- *  first one lacks is taken from the second.
+ *  first one lacks is taken from the second, and a value both carry with a
+ *  different content is logged and kept from the first.
  */
+namespace detail
+{
+
+inline void warnConflict(const std::string& name, std::string_view field)
+{
+    lg2::warning(
+        "NvDevice records of {NAME} disagree on {FIELD}; keeping the first",
+        "NAME", name, "FIELD", field);
+}
+
+/** @brief Fill @p known from @p other when it is unset; warn when both are
+ *         set and differ. */
+inline void merge(std::string& known, std::string other,
+                  const std::string& name, std::string_view field)
+{
+    if (known.empty())
+    {
+        known = std::move(other);
+    }
+    else if (!other.empty() && other != known)
+    {
+        warnConflict(name, field);
+    }
+}
+
+inline void merge(std::optional<uint64_t>& known, std::optional<uint64_t> other,
+                  const std::string& name, std::string_view field)
+{
+    if (!known)
+    {
+        known = other;
+    }
+    else if (other && *other != *known)
+    {
+        warnConflict(name, field);
+    }
+}
+
+} // namespace detail
+
 inline std::vector<Device> devices(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
@@ -213,7 +308,13 @@ inline std::vector<Device> devices(
         }
         dev.kind = stringProp(*props, "Kind");
         dev.parentChassis = stringProp(*props, "ParentChassis");
-        dev.eid = numberProp(*props, "EID");
+        dev.eid = numberProp(*props, "EID", maxDeviceEid);
+        if (props->contains("EID") && !dev.eid)
+        {
+            lg2::warning(
+                "NvDevice {NAME} at {PATH} has an invalid EID; ignoring it",
+                "NAME", dev.name, "PATH", path);
+        }
         dev.instance = numberProp(*props, "Instance");
         if (!dev.instance)
         {
@@ -231,26 +332,12 @@ inline std::vector<Device> devices(
             out.push_back(std::move(dev));
             continue;
         }
-        if (known->kind.empty())
-        {
-            known->kind = std::move(dev.kind);
-        }
-        if (known->parentChassis.empty())
-        {
-            known->parentChassis = std::move(dev.parentChassis);
-        }
-        if (!known->eid)
-        {
-            known->eid = dev.eid;
-        }
-        if (!known->instance)
-        {
-            known->instance = dev.instance;
-        }
-        if (!known->cpuIndex)
-        {
-            known->cpuIndex = dev.cpuIndex;
-        }
+        detail::merge(known->kind, std::move(dev.kind), dev.name, "Kind");
+        detail::merge(known->parentChassis, std::move(dev.parentChassis),
+                      dev.name, "ParentChassis");
+        detail::merge(known->eid, dev.eid, dev.name, "EID");
+        detail::merge(known->instance, dev.instance, dev.name, "Instance");
+        detail::merge(known->cpuIndex, dev.cpuIndex, dev.name, "CpuIndex");
         if (known->transport.empty())
         {
             known->transport = std::move(dev.transport);
@@ -259,9 +346,11 @@ inline std::vector<Device> devices(
     return out;
 }
 
-inline std::optional<Device> deviceByName(const std::string& name)
+inline std::optional<Device> deviceByName(
+    const std::string& name,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
-    for (auto& dev : devices())
+    for (auto& dev : devices(bus))
     {
         if (dev.name == name)
         {
@@ -293,12 +382,13 @@ inline PlatformNames platformNames(
 
 /** @brief The id -> name map EM publishes for a nested object, as the
  *         child interface "<intf>.<key>" with one property per id. */
-inline std::map<uint16_t, std::string> idNameMap(const std::string& service,
-                                                 const std::string& path,
-                                                 const std::string& intf)
+inline std::map<uint16_t, std::string> idNameMap(
+    const std::string& service, const std::string& path,
+    const std::string& intf,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
     std::map<uint16_t, std::string> out;
-    auto props = getAll(service, path, intf);
+    auto props = getAll(service, path, intf, bus);
     if (!props)
     {
         return out;
@@ -322,19 +412,20 @@ inline std::map<uint16_t, std::string> idNameMap(const std::string& service,
 /** @brief The name -> id map EM publishes for a nested object, as the
  *         child interface "<intf>.<key>" with one property per name;
  *         returned keyed by id. */
-inline std::map<uint16_t, std::string> nameIdMap(const std::string& service,
-                                                 const std::string& path,
-                                                 const std::string& intf)
+inline std::map<uint16_t, std::string> nameIdMap(
+    const std::string& service, const std::string& path,
+    const std::string& intf,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
     std::map<uint16_t, std::string> out;
-    auto props = getAll(service, path, intf);
+    auto props = getAll(service, path, intf, bus);
     if (!props)
     {
         return out;
     }
     for (const auto& [name, value] : *props)
     {
-        auto id = numberProp(*props, name);
+        auto id = numberValue(value);
         if (!id || *id > std::numeric_limits<uint16_t>::max())
         {
             continue;
@@ -345,12 +436,14 @@ inline std::map<uint16_t, std::string> nameIdMap(const std::string& service,
 }
 
 /** @brief The PLDMDevice record of a device, if it has one. */
-inline std::optional<PldmDevice> pldmDevice(const std::string& deviceName)
+inline std::optional<PldmDevice> pldmDevice(
+    const std::string& deviceName,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
     const std::string recordName = deviceName + pldmSuffix;
-    for (const auto& [path, service] : objectsWith(pldmDeviceIntf))
+    for (const auto& [path, service] : objectsWith(pldmDeviceIntf, bus))
     {
-        auto props = getAll(service, path, pldmDeviceIntf);
+        auto props = getAll(service, path, pldmDeviceIntf, bus);
         if (!props || stringProp(*props, "Name") != recordName)
         {
             continue;
@@ -358,15 +451,15 @@ inline std::optional<PldmDevice> pldmDevice(const std::string& deviceName)
         PldmDevice out;
         const std::string base(pldmDeviceIntf);
         out.components =
-            nameIdMap(service, path, base + ".UpdateableComponents");
+            nameIdMap(service, path, base + ".UpdateableComponents", bus);
         for (auto& [id, name] :
-             nameIdMap(service, path, base + ".FWInventoryOnlyComponent"))
+             nameIdMap(service, path, base + ".FWInventoryOnlyComponent", bus))
         {
             out.inventoryOnly.insert(id);
             out.components.emplace(id, std::move(name));
         }
-        out.auxNames = nameIdMap(service, path, base + ".SensorAuxNames");
-        out.ports = idNameMap(service, path, base + ".Ports");
+        out.auxNames = nameIdMap(service, path, base + ".SensorAuxNames", bus);
+        out.ports = idNameMap(service, path, base + ".Ports", bus);
         out.networkAdapter = stringProp(*props, "NetworkAdapter");
         out.portMaxSpeed = numberProp(*props, "PortMaxSpeedMBps");
         out.firmwareName = stringProp(*props, "FirmwareName");
@@ -377,12 +470,13 @@ inline std::optional<PldmDevice> pldmDevice(const std::string& deviceName)
 
 /** @brief The MCTPEndpoint override record of a device, if any. */
 inline std::optional<pldm::utils::PropertyMap> endpointOverrides(
-    const std::string& deviceName)
+    const std::string& deviceName,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
     const std::string recordName = deviceName + mctpSuffix;
-    for (const auto& [path, service] : objectsWith(mctpEndpointIntf))
+    for (const auto& [path, service] : objectsWith(mctpEndpointIntf, bus))
     {
-        auto props = getAll(service, path, mctpEndpointIntf);
+        auto props = getAll(service, path, mctpEndpointIntf, bus);
         if (props && stringProp(*props, "Name") == recordName)
         {
             return props;
@@ -403,7 +497,9 @@ inline std::string baseName(const std::string& name, const std::string& prefix)
 /** @brief The static terminus config of a CPU device: the terminus name is
  *         the parent chassis without the platform name prefix, the entity
  *         instance is the device instance, and the CPU index of the sensor
- *         name prefix is CpuIndex of the device, default 0. */
+ *         name prefix is CpuIndex of the device, default 0. Both are
+ *         uint16_t on the terminus; a device whose values do not fit has
+ *         no config. */
 struct TerminusConfig
 {
     std::string name;
@@ -414,8 +510,9 @@ struct TerminusConfig
 inline std::optional<TerminusConfig> terminusConfig(
     const Device& dev, const PlatformNames& platform)
 {
-    if (dev.kind != "cpu" ||
-        dev.cpuIndex.value_or(0) > std::numeric_limits<uint16_t>::max())
+    constexpr uint64_t max = std::numeric_limits<uint16_t>::max();
+    if (dev.kind != "cpu" || dev.cpuIndex.value_or(0) > max ||
+        dev.instance.value_or(0) > max)
     {
         return std::nullopt;
     }
