@@ -238,13 +238,17 @@ void TerminusManager::unmapTid(const tid_t& tid)
 
 void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
 {
-    auto eid = terminus.value("EID", 0xFF);
+    constexpr int64_t maxUint16 = std::numeric_limits<uint16_t>::max();
+    constexpr int64_t maxEid = pldm::em_device::maxDeviceEid;
+    auto eid = terminus.value("EID", int64_t{0xFF});
     auto terminusName = terminus.value("TerminusName", std::string(""));
-    auto inst = terminus.value("Instance", 0);
-    auto cpuIdxVal = terminus.value("CpuIndex", 0);
+    auto inst = terminus.value("Instance", int64_t{0});
+    auto cpuIdxVal = terminus.value("CpuIndex", int64_t{0});
     std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
 
-    if (eid == 0xFF || terminusName.empty() || inst < 0)
+    // EID is a uint8_t below broadcast, Instance and CpuIndex are uint16_t
+    if (eid < 0 || eid > maxEid || terminusName.empty() || inst < 0 ||
+        inst > maxUint16 || cpuIdxVal < 0 || cpuIdxVal > maxUint16)
     {
         lg2::warning(
             "Invalid terminus configuration entry, skipping. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
@@ -258,7 +262,8 @@ void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
 
     // Store EID to terminus config mapping for runtime check
     // This will be used when the actual MCTP endpoint is discovered
-    eidToTerminusConfigMap[eid] = std::make_tuple(inst, terminusName, cpuIndex);
+    eidToTerminusConfigMap[static_cast<mctp_eid_t>(eid)] =
+        std::make_tuple(static_cast<int>(inst), terminusName, cpuIndex);
     lg2::info("Stored EID to terminus config for future discovery: EID={EID},"
               "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
               "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", terminusName);
@@ -309,40 +314,6 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
     }
 }
 
-namespace
-{
-
-/** @brief Read an optional non-negative integer property no larger than max.
- *
- *  @return the value, defaultValue when the property is absent, or -1 when
- *          it is present but not an integer in [0, max]
- */
-int64_t readUnsignedProperty(const pldm::utils::PropertyMap& props,
-                             const std::string& key, int64_t defaultValue,
-                             int64_t max)
-{
-    auto it = props.find(key);
-    if (it == props.end())
-    {
-        return defaultValue;
-    }
-    return std::visit(
-        [max](const auto& v) -> int64_t {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
-            {
-                if (std::cmp_greater_equal(v, 0) && std::cmp_less_equal(v, max))
-                {
-                    return static_cast<int64_t>(v);
-                }
-            }
-            return -1;
-        },
-        it->second);
-}
-
-} // namespace
-
 void TerminusManager::loadTerminusConfigFromEm(
     const Configurations& configurations,
     const pldm::utils::DBusHandlerInterface& dbusHandler)
@@ -350,39 +321,46 @@ void TerminusManager::loadTerminusConfigFromEm(
     constexpr std::array pldmRecordIntfs{
         "xyz.openbmc_project.Configuration.PLDMFirmwareDevice",
         "xyz.openbmc_project.Configuration.PLDMDevice"};
+    constexpr uint64_t maxUint16 = std::numeric_limits<uint16_t>::max();
 
-    std::map<std::string, mctp_eid_t> nameToEid;
+    // A device reachable over more than one medium has one endpoint per
+    // medium under the same name; all of them get the config.
+    std::map<std::string, std::vector<mctp_eid_t>> nameToEids;
     for (const auto& [path, mctpInfo] : configurations)
     {
         const auto& name = std::get<4>(mctpInfo);
         if (name.has_value() && !name->empty())
         {
-            nameToEid.insert_or_assign(*name, std::get<0>(mctpInfo));
+            nameToEids[*name].push_back(std::get<0>(mctpInfo));
         }
     }
-    if (nameToEid.empty())
+    if (nameToEids.empty())
     {
         return;
     }
 
-    auto applyConfig = [this](mctp_eid_t eid, int inst,
+    auto applyConfig = [this](const std::vector<mctp_eid_t>& eids, int inst,
                               const std::string& terminusName, uint16_t cpuIdx,
                               const std::string& source) {
-        std::tuple<int, std::string, std::optional<uint16_t>> config{
-            inst, terminusName, cpuIdx};
-        auto existing = eidToTerminusConfigMap.find(eid);
-        if (existing != eidToTerminusConfigMap.end() &&
-            existing->second != config)
+        for (auto eid : eids)
         {
-            lg2::warning(
-                "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-                "SOURCE", source, "EID", eid, "TERMINUS_NAME", terminusName);
+            std::tuple<int, std::string, std::optional<uint16_t>> config{
+                inst, terminusName, cpuIdx};
+            auto existing = eidToTerminusConfigMap.find(eid);
+            if (existing != eidToTerminusConfigMap.end() &&
+                existing->second != config)
+            {
+                lg2::warning(
+                    "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                    "SOURCE", source, "EID", eid, "TERMINUS_NAME",
+                    terminusName);
+            }
+            eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
+            lg2::info(
+                "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
+                "SOURCE", source, "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
+                terminusName, "CPU_INDEX", cpuIdx);
         }
-        eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
-        lg2::info(
-            "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
-            "SOURCE", source, "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
-            terminusName, "CPU_INDEX", cpuIdx);
     };
 
     // CPU devices of the platform topology: the terminus config follows from
@@ -390,9 +368,9 @@ void TerminusManager::loadTerminusConfigFromEm(
     const auto platform = pldm::em_device::platformNames(dbusHandler);
     for (const auto& dev : pldm::em_device::devices(dbusHandler))
     {
-        auto eidIt = nameToEid.find(dev.name);
+        auto eidIt = nameToEids.find(dev.name);
         auto config = pldm::em_device::terminusConfig(dev, platform);
-        if (eidIt == nameToEid.end() || !config || config->name.empty())
+        if (eidIt == nameToEids.end() || !config || config->name.empty())
         {
             continue;
         }
@@ -458,27 +436,31 @@ void TerminusManager::loadTerminusConfigFromEm(
         {
             continue;
         }
-        auto eidIt = nameToEid.find(*targetName);
-        if (eidIt == nameToEid.end())
+        auto eidIt = nameToEids.find(*targetName);
+        if (eidIt == nameToEids.end())
         {
             continue;
         }
-        const auto eid = eidIt->second;
 
-        auto inst = readUnsignedProperty(props, "TerminusInstance", 0,
-                                         std::numeric_limits<int>::max());
-        auto cpuIdx = readUnsignedProperty(
-            props, "CpuIndex", 0, std::numeric_limits<uint16_t>::max());
-        if (terminusName->empty() || inst < 0 || cpuIdx < 0)
+        // both are uint16_t on the terminus; absent means 0
+        auto inst = props.contains("TerminusInstance")
+                        ? pldm::em_device::numberProp(props, "TerminusInstance",
+                                                      maxUint16)
+                        : std::optional<uint64_t>{0};
+        auto cpuIdx =
+            props.contains("CpuIndex")
+                ? pldm::em_device::numberProp(props, "CpuIndex", maxUint16)
+                : std::optional<uint64_t>{0};
+        if (terminusName->empty() || !inst || !cpuIdx)
         {
             lg2::warning(
-                "Invalid terminus configuration in PLDM device record, skipping. PATH={PATH}, EID={EID}",
-                "PATH", objPath, "EID", eid);
+                "Invalid terminus configuration in PLDM device record, skipping. PATH={PATH}, TARGET={TARGET}",
+                "PATH", objPath, "TARGET", *targetName);
             continue;
         }
 
-        applyConfig(eid, static_cast<int>(inst), *terminusName,
-                    static_cast<uint16_t>(cpuIdx), "PLDM device record");
+        applyConfig(eidIt->second, static_cast<int>(*inst), *terminusName,
+                    static_cast<uint16_t>(*cpuIdx), "PLDM device record");
     }
 }
 

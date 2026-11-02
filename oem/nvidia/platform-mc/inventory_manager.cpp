@@ -34,7 +34,7 @@ PhysicalContextType toPhysicalContextType(const EntityType entityType)
         {PLDM_ENTITY_POWER_SUPPLY, PhysicalContextType::VoltageRegulator},
         {PLDM_ENTITY_NETWORK_CONTROLLER, PhysicalContextType::NetworkingDevice},
     };
-    auto itr = contexts.find(entityType);
+    auto itr = contexts.find(entityType & entityTypeMask);
     return itr == contexts.end() ? PhysicalContextType::SystemBoard
                                  : itr->second;
 }
@@ -113,6 +113,15 @@ void InventoryManager::unbindAll(tid_t tid)
     if (itr != terminusData.end())
     {
         itr->second.entities.unbindAll();
+    }
+}
+
+void InventoryManager::clearTopology(tid_t tid)
+{
+    auto itr = terminusData.find(tid);
+    if (itr != terminusData.end())
+    {
+        itr->second.entities.clear();
     }
 }
 

@@ -120,6 +120,40 @@ TEST_F(InventoryManagerTest, registrationIsPerTerminus)
     EXPECT_TRUE(tree().empty());
 }
 
+TEST_F(InventoryManagerTest, clearTopologyKeepsTheRegistration)
+{
+    inventory.setInstance(tid, 4);
+    inventory.setTerminusName(tid, "ProcessorModule_4");
+    addInventory("/inv/cpu4", PLDM_ENTITY_PROC, 4, "/inv/module4");
+    auto module = id(0, PLDM_ENTITY_PROC_IO_MODULE, 0);
+    auto cpu = id(10, PLDM_ENTITY_PROC, 0);
+    tree().add(10, module, {cpu});
+    ASSERT_EQ(Paths{"/inv/cpu4"}, own(cpu));
+    const tid_t otherTid = tid + 1;
+    inventory.entityTree(otherTid).add(10, module, {cpu});
+
+    inventory.clearTopology(tid);
+
+    EXPECT_TRUE(tree().empty());
+    EXPECT_EQ(4, inventory.instance(tid));
+    EXPECT_EQ("ProcessorModule_4", inventory.terminusData[tid].name);
+    EXPECT_EQ(1U, inventory.terminusData[tid].inventories.size());
+    EXPECT_EQ(1U, inventory.terminusData[tid].inventoryParents.size());
+    // Other termini keep their topology.
+    EXPECT_EQ(2U, inventory.entityTree(otherTid).size());
+
+    // Container 10 may now name another entity, and binds afresh.
+    EXPECT_EQ(EntityTree::AddResult::added,
+              tree().add(10, id(0, PLDM_ENTITY_SYS_BOARD, 0), {cpu}));
+    EXPECT_FALSE(tree().find(cpu)->isBound());
+    EXPECT_EQ(Paths{"/inv/cpu4"}, own(cpu));
+
+    // A terminus InventoryManager does not know stays unknown.
+    const tid_t unknownTid = tid + 2;
+    inventory.clearTopology(unknownTid);
+    EXPECT_FALSE(inventory.terminusData.contains(unknownTid));
+}
+
 TEST_F(InventoryManagerTest, addEntityAssociationFeedsTheTerminusTree)
 {
     // Table 95: header, containerID 10, physical, PIOM(0,0) with CPU(10,0).
@@ -515,4 +549,10 @@ TEST(InventoryManager, toPhysicalContextType)
               toPhysicalContextType(PLDM_ENTITY_NETWORK_CONTROLLER));
     EXPECT_EQ(PhysicalContextType::SystemBoard,
               toPhysicalContextType(PLDM_ENTITY_SYS_BOARD));
+    // A logical entity maps as its physical type.
+    EXPECT_EQ(PhysicalContextType::CPU,
+              toPhysicalContextType(PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC));
+    EXPECT_EQ(PhysicalContextType::Memory,
+              toPhysicalContextType(
+                  PLDM_ENTITY_LOGICAL | PLDM_ENTITY_MEMORY_CONTROLLER));
 }

@@ -473,13 +473,43 @@ TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigValidationCoverage)
     {"EID": 49, "Name": "CPU49", "TerminusName": "", "Instance": 0},
     {"EID": 255, "Name": "BadEid", "TerminusName": "ProcessorModule_bad_eid", "Instance": 1},
     {"EID": 50, "Name": "", "TerminusName": "", "Instance": 1},
-    {"EID": 51, "Name": "BadInstance", "TerminusName": "ProcessorModule_bad_inst", "Instance": -1}
+    {"EID": 51, "Name": "BadInstance", "TerminusName": "ProcessorModule_bad_inst", "Instance": -1},
+    {"EID": 53, "Name": "BigInstance", "TerminusName": "ProcessorModule_big_inst", "Instance": 65536},
+    {"EID": 54, "Name": "BigCpuIndex", "TerminusName": "ProcessorModule_big_cpu", "CpuIndex": 65536},
+    {"EID": 55, "Name": "NegCpuIndex", "TerminusName": "ProcessorModule_neg_cpu", "CpuIndex": -1},
+    {"EID": 264, "Name": "WideEid", "TerminusName": "ProcessorModule_wide_eid", "Instance": 0},
+    {"EID": -1, "Name": "NegEid", "TerminusName": "ProcessorModule_neg_eid", "Instance": 0}
   ]
 })";
     }
 
     terminusManager.loadStaticTerminusConfig(configPath.string());
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
+
+    fs::remove(configPath);
+}
+
+TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigAcceptsUint16Limits)
+{
+    namespace fs = std::filesystem;
+
+    const auto configPath =
+        fs::temp_directory_path() / "terminus_manager_private_limits.json";
+    {
+        std::ofstream out(configPath);
+        out << R"({
+  "PLDMTermini": [
+    {"EID": 254, "Name": "CPU254", "TerminusName": "ProcessorModule_max", "Instance": 65535, "CpuIndex": 65535}
+  ]
+})";
+    }
+
+    terminusManager.loadStaticTerminusConfig(configPath.string());
+    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
+    const auto& c = terminusManager.eidToTerminusConfigMap.at(254);
+    EXPECT_EQ(65535, std::get<0>(c));
+    EXPECT_EQ("ProcessorModule_max", std::get<1>(c));
+    EXPECT_EQ(std::optional<uint16_t>(65535), std::get<2>(c));
 
     fs::remove(configPath);
 }
@@ -636,8 +666,8 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
 
     MockdBusHandler dbus;
     const std::vector<std::string> paths{
-        "/r/noName", "/r/otherTarget", "/r/emptyName", "/r/badCpuIndex",
-        "/r/badInstance"};
+        "/r/noName",      "/r/otherTarget", "/r/emptyName",  "/r/badCpuIndex",
+        "/r/badInstance", "/r/bigInstance", "/r/bigCpuIndex"};
     EXPECT_CALL(dbus, getSubtree(_, _, _))
         .WillRepeatedly(::testing::Invoke(subtreeAnswer(paths)));
     EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/noName"), _))
@@ -655,17 +685,91 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
         .WillOnce(Return(pldm::utils::PropertyMap{
             {"MCTPTargetName", std::string("HGX_CPU_0")},
             {"TerminusName", std::string("ProcessorModule_0")},
-            {"CpuIndex", std::string("0")}}));
+            {"CpuIndex", std::string("zero")}}));
     EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/badInstance"), _))
         .WillOnce(Return(pldm::utils::PropertyMap{
             {"MCTPTargetName", std::string("HGX_CPU_0")},
             {"TerminusName", std::string("ProcessorModule_0")},
             {"TerminusInstance", int64_t{-1}}}));
+    // Instance and CpuIndex are uint16_t on the terminus
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/bigInstance"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"TerminusInstance", uint64_t{65536}}}));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/bigCpuIndex"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"CpuIndex", uint64_t{65536}}}));
 
     terminusManager.loadTerminusConfigFromEm(
         {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
 
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
+}
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAcceptsNumberForms)
+{
+    using ::testing::_;
+    using ::testing::Return;
+
+    // The record values are read like every other EM number: a hex string
+    // and an integral double are accepted.
+    MockdBusHandler dbus;
+    const std::string cpu0 =
+        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillRepeatedly(::testing::Invoke(subtreeAnswer({cpu0})));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"TerminusInstance", double{1.0}},
+            {"CpuIndex", std::string("0x2")}}));
+
+    terminusManager.loadTerminusConfigFromEm(
+        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
+
+    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
+    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
+    EXPECT_EQ(1, std::get<0>(c0));
+    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
+    EXPECT_EQ(std::optional<uint16_t>(2), std::get<2>(c0));
+}
+
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAllEidsOfAName)
+{
+    using ::testing::_;
+    using ::testing::Return;
+
+    // One device, two endpoints (one per medium) under the same name: the
+    // record applies to both EIDs.
+    MockdBusHandler dbus;
+    const std::string cpu0 =
+        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
+    EXPECT_CALL(dbus, getSubtree(_, _, _))
+        .WillRepeatedly(::testing::Invoke(subtreeAnswer({cpu0})));
+    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"TerminusInstance", uint64_t{65535}},
+            {"CpuIndex", uint64_t{65535}}}));
+
+    terminusManager.loadTerminusConfigFromEm(
+        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")},
+         {"/cfg/HGX_CPU_0_pcie", namedMctpInfo(34, "HGX_CPU_0")}},
+        dbus);
+
+    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
+    for (auto eid : {14, 34})
+    {
+        const auto& c = terminusManager.eidToTerminusConfigMap.at(eid);
+        EXPECT_EQ(65535, std::get<0>(c));
+        EXPECT_EQ("ProcessorModule_0", std::get<1>(c));
+        EXPECT_EQ(std::optional<uint16_t>(65535), std::get<2>(c));
+    }
 }
 
 TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoRecords)
@@ -769,17 +873,22 @@ TEST_F(TerminusManagerPrivateTest,
                 return it->second;
             }));
 
+    // HGX_CPU_0 is reachable over a second medium as EID 34
     terminusManager.loadTerminusConfigFromEm(
         {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")},
+         {"/cfg/HGX_CPU_0_pcie", namedMctpInfo(34, "HGX_CPU_0")},
          {"/cfg/HGX_CPU_1", namedMctpInfo(24, "HGX_CPU_1")},
          {"/cfg/HGX_GPU_0", namedMctpInfo(11, "HGX_GPU_0")}},
         dbus);
 
-    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
-    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
-    EXPECT_EQ(0, std::get<0>(c0));
-    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
-    EXPECT_EQ(std::optional<uint16_t>(0), std::get<2>(c0));
+    ASSERT_EQ(3U, terminusManager.eidToTerminusConfigMap.size());
+    for (auto eid : {14, 34})
+    {
+        const auto& c0 = terminusManager.eidToTerminusConfigMap.at(eid);
+        EXPECT_EQ(0, std::get<0>(c0));
+        EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
+        EXPECT_EQ(std::optional<uint16_t>(0), std::get<2>(c0));
+    }
     const auto& c1 = terminusManager.eidToTerminusConfigMap.at(24);
     EXPECT_EQ(1, std::get<0>(c1));
     EXPECT_EQ("ProcessorModule_1", std::get<1>(c1));

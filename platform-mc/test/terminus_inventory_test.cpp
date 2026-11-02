@@ -651,6 +651,74 @@ TEST_F(TerminusInventoryTest,
     EXPECT_EQ(rootPath, associations[0].path);
 }
 
+TEST_F(TerminusInventoryTest, loadDeviceRecordAddsPortsToSensorPortInfo)
+{
+    std::string uuid("00000000-0000-0000-0000-00000000021D");
+    Terminus terminus(0x2E, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov21D";
+    const std::string portProtocol =
+        "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortProtocol.NVLink";
+    const std::string switchPath =
+        "/xyz/openbmc_project/inventory/system/fabrics/Switch_0";
+    inventory.addInterface(
+        rootPath + "/port0", "xyz.openbmc_project.Configuration.SensorPortInfo",
+        {{"SensorId", uint64_t{0x5801}},
+         {"MaxSpeedMBps", uint64_t{16000}},
+         {"PortType", std::string("xyz.openbmc_project.Inventory.Decorator."
+                                  "PortInfo.PortType.DownstreamPort")},
+         {"PortProtocol", portProtocol},
+         {"Association",
+          std::vector<std::string>{"connected_to", "connecting", switchPath}}});
+
+    pldm::em_device::PldmDevice record;
+    record.ports = {{0x5801, "Port_0"}, {0x5802, "Port_1"}};
+    record.networkAdapter = "NIC_0";
+    const std::string portsPath = rootPath + "/NetworkAdapters/NIC_0/Ports/";
+
+    auto checkSensorPortInfo = [&](uint64_t recordSpeed, uint64_t infoSpeed) {
+        const auto& [type, protocol, maxSpeed, associations] =
+            terminus.sensorPortInfoOverwriteTbl.at(0x5801);
+        EXPECT_EQ(pldm::platform_mc::PortType::DownstreamPort, type);
+        EXPECT_EQ(portProtocol, protocol);
+        EXPECT_EQ(infoSpeed, maxSpeed);
+        ASSERT_EQ(2U, associations.size());
+        EXPECT_EQ("connected_to", associations[0].forward);
+        EXPECT_EQ("connecting", associations[0].reverse);
+        EXPECT_EQ(switchPath, associations[0].path);
+        EXPECT_EQ("associated_port", associations[1].forward);
+        EXPECT_EQ("associated_port", associations[1].reverse);
+        EXPECT_EQ(portsPath + "Port_0", associations[1].path);
+
+        // A port of the record alone gets the record's defaults.
+        const auto& [newType, newProtocol, newSpeed, newAssociations] =
+            terminus.sensorPortInfoOverwriteTbl.at(0x5802);
+        EXPECT_EQ(pldm::platform_mc::PortType::BidirectionalPort, newType);
+        EXPECT_EQ("", newProtocol);
+        EXPECT_EQ(recordSpeed, newSpeed);
+        ASSERT_EQ(1U, newAssociations.size());
+        EXPECT_EQ(portsPath + "Port_1", newAssociations[0].path);
+        EXPECT_EQ(2U, terminus.sensorPortInfoOverwriteTbl.size());
+    };
+
+    // Without a speed of its own, the record keeps the SensorPortInfo one.
+    auto rc = stdexec::sync_wait(terminus.getPortInfoFromEM(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    ASSERT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    terminus.loadDeviceRecord(record, rootPath);
+    checkSensorPortInfo(0, 16000);
+
+    // With one, its speed applies. getPortInfoFromEM() clears the table, so
+    // the record starts again from the SensorPortInfo entry alone.
+    record.portMaxSpeed = 400000;
+    rc = stdexec::sync_wait(terminus.getPortInfoFromEM(rootPath));
+    ASSERT_TRUE(rc.has_value());
+    ASSERT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    terminus.loadDeviceRecord(record, rootPath);
+    checkSensorPortInfo(400000, 400000);
+}
+
 TEST_F(TerminusInventoryTest,
        getInfoForNVSwitchFromEMEarlyReturnAndMalformedAssociationCoverage)
 {
@@ -790,9 +858,11 @@ std::vector<uint8_t> networkControllerPdr()
     return pdr;
 }
 
-/** Termini that share the system inventory. Each defines container 1000 and
- *  has a state sensor on container 1011, which no PDR defines, so the
- *  sensor associates with the system inventory. */
+/** Termini bound through the shared InventoryManager, which the fixture
+ *  resets. addTerminus() creates termini that share the system inventory:
+ *  each defines container 1000 and has a state sensor on container 1011,
+ *  which no PDR defines, so the sensor associates with the system
+ *  inventory. */
 class SharedSystemPathTest : public TerminusInventoryTest
 {
   protected:
@@ -956,6 +1026,56 @@ TEST_F(SharedSystemPathTest, scanWithoutASystemKeepsTheSystemPath)
     inventory.clear();
     EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
     EXPECT_EQ(chassis0Path, systemInventoryPath());
+}
+
+TEST_F(SharedSystemPathTest, stateSensorKeepsItsInventoryOverride)
+{
+    constexpr pldm::tid_t tid = 0x38;
+    std::string uuid("00000000-0000-0000-0000-000000000301");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    // CPU 1 defines container 10 and has inventory of its own.
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_1";
+    auto& manager = InventoryManager::get();
+    manager.entityTree(tid).add(
+        10, oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC, 1}});
+    // Typed as scan() records a Cpu object.
+    manager.terminusData[tid].inventories.emplace_back(
+        cpuPath, PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC, 1);
+
+    // Two MemoryController state sensors in it; Entity Manager gives the
+    // first an inventory of its own.
+    const std::string overridePath =
+        "/xyz/openbmc_project/inventory/system/memory/DIMM_0";
+    terminus->sensorAuxNameOverwriteTbl[0x210] = std::make_tuple(
+        pldm::platform_mc::AuxiliaryNames{{{"en", "DIMM_0"}}}, overridePath);
+    for (const uint16_t sensorId : {0x210, 0x211})
+    {
+        StateSetInfo info{
+            EntityInfo{10, PLDM_ENTITY_MEMORY_CONTROLLER, 1},
+            {StateSetData{PLDM_STATESET_ID_HEALTHSTATE,
+                          PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL}}}};
+        std::string associationPath = systemInventoryPath();
+        terminus->stateSensors.emplace_back(std::make_shared<StateSensor>(
+            tid, false, sensorId, info, nullptr, associationPath, nullptr));
+    }
+
+    stdexec::sync_wait(terminus->updateAssociations());
+
+    auto endpointOf = [&terminus](size_t index) {
+        const auto& stateSet =
+            terminus->stateSensors.at(index)->stateSets.front();
+        const auto assocs =
+            stateSet->associationDefinitionsIntf->associations();
+        return assocs.size() == 1 ? std::get<2>(assocs.front()) : std::string{};
+    };
+    // The override wins over the CPU redirection; without one, the sensor
+    // moves to the CPU.
+    EXPECT_EQ(overridePath, endpointOf(0));
+    EXPECT_EQ(cpuPath, endpointOf(1));
 }
 
 } // namespace

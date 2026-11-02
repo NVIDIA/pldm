@@ -177,7 +177,8 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             if (auto record = pldm::em_device::pldmDevice(deviceName))
             {
                 // Sensor records that still carry their own config (e.g.
-                // ThermalParameters) are read first; the record adds to them.
+                // ThermalParameters) are read first. The record's aux names
+                // replace theirs; its ports add to their port info.
                 co_await getSensorAuxNameFromEM(
                     0, 0, static_cast<uint8_t>(*dev->eid), objPath);
 #ifdef OEM_NVIDIA
@@ -329,18 +330,29 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
 #ifdef OEM_NVIDIA
     for (const auto& [sensorId, port] : record.ports)
     {
-        std::vector<dbus::PathAssociation> associations;
-        associations.push_back({});
-        auto& assoc = associations.back();
-        assoc.forward = "associated_port";
-        assoc.reverse = "associated_port";
-        assoc.path = objPath + "/NetworkAdapters/" + record.networkAdapter +
-                     "/Ports/" + port;
+        dbus::PathAssociation assoc{
+            "associated_port", "associated_port",
+            objPath + "/NetworkAdapters/" + record.networkAdapter + "/Ports/" +
+                port};
+        // A SensorPortInfo entry of the sensor keeps its type and protocol,
+        // and its speed unless the record has one; the record adds its port
+        // to the entry's associations.
+        auto it = sensorPortInfoOverwriteTbl.find(sensorId);
+        if (it != sensorPortInfoOverwriteTbl.end())
+        {
+            if (record.portMaxSpeed)
+            {
+                std::get<2>(it->second) = *record.portMaxSpeed;
+            }
+            std::get<3>(it->second).push_back(std::move(assoc));
+            continue;
+        }
         sensorPortInfoOverwriteTbl[sensorId] = std::make_tuple(
             PortInfoIntf::convertPortTypeFromString(
                 "xyz.openbmc_project.Inventory.Decorator.PortInfo.PortType."
                 "BidirectionalPort"),
-            std::string{}, record.portMaxSpeed.value_or(0), associations);
+            std::string{}, record.portMaxSpeed.value_or(0),
+            std::vector<dbus::PathAssociation>{std::move(assoc)});
     }
 #endif
     lg2::debug("loadDeviceRecord: {AUX} aux names, {PORTS} ports for {PATH}",
@@ -1233,7 +1245,7 @@ void Terminus::clearParsedPdrCaches()
     effecterAuxiliaryNamesTbl.clear();
     oemPdrs.clear();
 #ifdef OEM_NVIDIA
-    oem_nvidia::InventoryManager::get().unbindAll(tid);
+    oem_nvidia::InventoryManager::get().clearTopology(tid);
     oemEnergyCountNumericSensorPdrs.clear();
 #endif
 }
@@ -2002,7 +2014,11 @@ void Terminus::updateStateSensorAssociations()
         auto inventoryPaths = inventoryPath
                                   ? std::vector<std::string>{*inventoryPath}
                                   : resolveInventory(ptr->getEntityInfo());
-        redirectStateSensorInventory(*ptr, inventoryPaths);
+        // As for numeric sensors, an explicit override is not redirected.
+        if (!inventoryPath)
+        {
+            redirectStateSensorInventory(*ptr, inventoryPaths);
+        }
         // Same placeholder rule as numeric sensors: state-set shared-memory
         // updates (e.g. port Status/State/Health MetricReport entries) stay
         // gated while the association is a degraded fallback.

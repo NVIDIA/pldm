@@ -66,6 +66,7 @@
 #include <limits>
 #include <memory>
 #include <ranges>
+#include <set>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -8553,6 +8554,7 @@ TEST_F(TerminusTest, clearParsedPdrCachesEmptiesTypedCaches)
     Terminus terminus(0x56, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
     terminus.setTerminusName("ClearCachesTerminus");
+    terminus.setInstance(3);
 
     terminus.pdrs.emplace_back(makeSensorAuxNamePdr(0x900));
     terminus.pdrs.emplace_back(makeStateSensorPdr(
@@ -8587,10 +8589,45 @@ TEST_F(TerminusTest, clearParsedPdrCachesEmptiesTypedCaches)
     EXPECT_TRUE(terminus.sensorAuxiliaryNamesTbl.empty());
     EXPECT_TRUE(terminus.effecterAuxiliaryNamesTbl.empty());
     EXPECT_TRUE(terminus.oemPdrs.empty());
-    // The topology stays; only the inventory bindings are dropped.
-    ASSERT_NE(nullptr, entityTree.find(EntityId{chassis}));
-    EXPECT_FALSE(entityTree.find(EntityId{chassis})->isBound());
+    // The rebuilt repository brings its own topology; the registration with
+    // InventoryManager stays.
+    EXPECT_TRUE(entityTree.empty());
+    EXPECT_EQ(3, terminus.getInstance());
     EXPECT_TRUE(terminus.oemEnergyCountNumericSensorPdrs.empty());
+}
+
+TEST_F(TerminusTest, fullPdrRebuildRedefinesAContainer)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000561");
+    Terminus terminus(0x57, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const EntityId chassis{EntityInfo{0, PLDM_ENTITY_SYSTEM_CHASSIS, 1}};
+    const EntityId powerSupply{EntityInfo{1, PLDM_ENTITY_POWER_SUPPLY, 1}};
+    terminus.pdrs.emplace_back(makeEntityAssociationPdr());
+    ASSERT_TRUE(terminus.parsePDRs());
+    auto& entityTree = InventoryManager::get().entityTree(terminus.getTid());
+    ASSERT_NE(nullptr, entityTree.container(1));
+    ASSERT_EQ(chassis, entityTree.container(1)->id);
+
+    // The rebuilt repository has a board, with a CPU, as container 1.
+    auto boardPdr = makeEntityAssociationPdr();
+    auto* assoc = reinterpret_cast<pldm_pdr_entity_association*>(
+        boardPdr.data() + sizeof(pldm_pdr_hdr));
+    assoc->container.entity_type = PLDM_ENTITY_SYS_BOARD;
+    assoc->children[0].entity_type = PLDM_ENTITY_PROC;
+    const EntityId board{EntityInfo{0, PLDM_ENTITY_SYS_BOARD, 1}};
+    const EntityId cpu{EntityInfo{1, PLDM_ENTITY_PROC, 1}};
+
+    terminus.clearParsedPdrCaches();
+    terminus.pdrs = {boardPdr};
+    ASSERT_TRUE(terminus.parsePDRs());
+
+    ASSERT_NE(nullptr, entityTree.container(1));
+    EXPECT_EQ(board, entityTree.container(1)->id);
+    ASSERT_NE(nullptr, entityTree.children(1));
+    EXPECT_EQ(std::set<EntityId>{cpu}, *entityTree.children(1));
+    EXPECT_EQ(nullptr, entityTree.find(chassis));
+    EXPECT_EQ(nullptr, entityTree.find(powerSupply));
 }
 
 // Currently due to async nature of polling this can't be tested.

@@ -106,6 +106,10 @@ class InventoryManager
     EntityTree& entityTree(tid_t tid);
     /** @brief Drop the terminus's inventory bindings, keeping the topology. */
     void unbindAll(tid_t tid);
+    /** @brief Forget the terminus's topology and bindings, keeping its
+     *         instance, name and scanned inventory. For a full PDR rebuild,
+     *         whose Entity Association PDRs may redefine a containerID. */
+    void clearTopology(tid_t tid);
     /** @} */
 
     /** @name Device inventory
