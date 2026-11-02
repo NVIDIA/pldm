@@ -1768,7 +1768,10 @@ TEST_F(OtherDeviceUpdateManagerTest,
     pldm::utils::dbusAsyncMock::getSubTree =
         [&](const std::string&, int,
             const pldm::dbus::Interfaces&) -> pldm::utils::GetSubTreeResponse {
-        return {{objPath, {{service, {"xyz.openbmc_project.Common.UUID"}}}}};
+        return {{objPath,
+                 {{service,
+                   {"xyz.openbmc_project.Common.UUID",
+                    "xyz.openbmc_project.Inventory.Decorator.SKU"}}}}};
     };
     pldm::utils::dbusAsyncMock::getProperty =
         [&](const std::string& path, const std::string& property,
@@ -2088,7 +2091,10 @@ TEST_F(OtherDeviceUpdateManagerTest,
     pldm::utils::dbusAsyncMock::getSubTree =
         [&](const std::string&, int,
             const pldm::dbus::Interfaces&) -> pldm::utils::GetSubTreeResponse {
-        return {{objPath, {{service, {"xyz.openbmc_project.Common.UUID"}}}}};
+        return {{objPath,
+                 {{service,
+                   {"xyz.openbmc_project.Common.UUID",
+                    "xyz.openbmc_project.Inventory.Decorator.SKU"}}}}};
     };
     pldm::utils::dbusAsyncMock::getProperty =
         [&](const std::string& path, const std::string& property,

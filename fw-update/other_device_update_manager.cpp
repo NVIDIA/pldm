@@ -38,6 +38,7 @@
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
 #include <xyz/openbmc_project/Inventory/Decorator/SKU/server.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -704,8 +705,14 @@ exec::task<void> OtherDeviceUpdateManager::buildDeviceDescriptorMap()
             }
             std::transform(uuid.begin(), uuid.end(), uuid.begin(), ::toupper);
 
-            auto sku = co_await pldm::utils::coGetDbusProperty<std::string>(
-                objPathStr, skuProp, skuIface, serviceName);
+            std::string sku;
+            const auto& interfaces = serviceMap.begin()->second;
+            if (std::find(interfaces.begin(), interfaces.end(), skuIface) !=
+                interfaces.end())
+            {
+                sku = co_await pldm::utils::coGetDbusProperty<std::string>(
+                    objPathStr, skuProp, skuIface, serviceName);
+            }
             std::transform(sku.begin(), sku.end(), sku.begin(), ::toupper);
 
             auto filePath =
