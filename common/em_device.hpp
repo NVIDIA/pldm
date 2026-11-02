@@ -41,7 +41,8 @@ constexpr auto transportIntf =
 constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
 constexpr auto mctpEndpointIntf =
     "xyz.openbmc_project.Configuration.MCTPEndpoint";
-constexpr auto platformIntf = "xyz.openbmc_project.Configuration.Platform";
+constexpr auto devicePrefixIntf =
+    "xyz.openbmc_project.Configuration.DevicePrefix";
 constexpr auto inventoryRoot = "/xyz/openbmc_project/inventory";
 constexpr auto chassisRoot = "/xyz/openbmc_project/inventory/system/chassis/";
 constexpr auto componentRoot =
@@ -63,7 +64,6 @@ struct Device
 
 struct PlatformNames
 {
-    std::string bmcName;
     std::string namePrefix;
 };
 
@@ -271,19 +271,21 @@ inline std::optional<Device> deviceByName(const std::string& name)
     return std::nullopt;
 }
 
+/** @brief The device-name prefix of the platform, from the DevicePrefix
+ *         record of the platform topology ("HGX_" on an HMC); empty on a
+ *         platform whose devices carry no prefix and no record. */
 inline PlatformNames platformNames(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
     PlatformNames out;
-    for (const auto& [path, service] : objectsWith(platformIntf, bus))
+    for (const auto& [path, service] : objectsWith(devicePrefixIntf, bus))
     {
-        auto props = getAll(service, path, platformIntf, bus);
-        if (!props || stringProp(*props, "BmcName").empty())
+        auto props = getAll(service, path, devicePrefixIntf, bus);
+        if (!props)
         {
             continue;
         }
-        out.bmcName = stringProp(*props, "BmcName");
-        out.namePrefix = stringProp(*props, "NamePrefix");
+        out.namePrefix = stringProp(*props, "Prefix");
         break;
     }
     return out;
@@ -459,15 +461,13 @@ inline ComponentRule componentRule(const Device& dev,
     }
     rule.forward = "inventory";
     rule.backward = record.inventoryOnly.contains(id) ? "active" : "activation";
-    const std::string bmc =
-        dev.parentChassis.empty() ? platform.bmcName : dev.parentChassis;
     if (dev.kind == "cpu")
     {
         rule.endpoints = {componentRoot + dev.name};
     }
     else if (dev.kind == "irot")
     {
-        rule.endpoints = {bmcRoot + bmc};
+        rule.endpoints = {bmcRoot + dev.parentChassis};
     }
     else if (dev.kind == "cx9_io" && id == cxFirmware)
     {
@@ -505,9 +505,8 @@ inline std::optional<InventoryPaths> inventoryPaths(
     const Device& dev, const PlatformNames& platform)
 {
     const std::string chassis = chassisRoot + dev.name;
-    const std::string bmc =
-        bmcRoot +
-        (dev.parentChassis.empty() ? platform.bmcName : dev.parentChassis);
+    // the BMC's own RoT has the BMC as its parent
+    const std::string bmc = bmcRoot + dev.parentChassis;
     if (dev.kind == "gpu")
     {
         return InventoryPaths{chassisRoot + platform.namePrefix + "IRoT_" +

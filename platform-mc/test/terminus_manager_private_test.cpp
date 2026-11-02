@@ -692,7 +692,8 @@ namespace
 {
 
 constexpr auto nvDeviceIntf = "xyz.openbmc_project.Configuration.NvDevice";
-constexpr auto platformIntf = "xyz.openbmc_project.Configuration.Platform";
+constexpr auto devicePrefixIntf =
+    "xyz.openbmc_project.Configuration.DevicePrefix";
 
 pldm::utils::GetSubTreeResponse subtreeOf(const std::vector<std::string>& paths,
                                           const std::string& intf)
@@ -716,12 +717,12 @@ TEST_F(TerminusManagerPrivateTest,
     using ::testing::Invoke;
 
     // Topology item and entity-file record of the same CPU device, a GPU that
-    // gets no terminus config, and the platform record.
+    // gets no terminus config, and the DevicePrefix record of the platform.
     const std::string topo0 = "/inventory/platform/HGX_CPU_0";
     const std::string entity0 = "/inventory/board/HGX_IRoT_CPU_0";
     const std::string topo1 = "/inventory/platform/HGX_CPU_1";
     const std::string gpu = "/inventory/platform/HGX_GPU_0";
-    const std::string platform = "/inventory/platform/Nvidia";
+    const std::string prefix = "/inventory/platform/Nvidia/DevicePrefix";
     const std::map<std::string, pldm::utils::PropertyMap> props{
         {topo0 + "|" + nvDeviceIntf,
          {{"Name", std::string("HGX_CPU_0")},
@@ -747,17 +748,16 @@ TEST_F(TerminusManagerPrivateTest,
           {"Instance", uint64_t{0}},
           {"EID", uint64_t{11}},
           {"ParentChassis", std::string("HGX_ProcessorModule_0")}}},
-        {platform + "|" + platformIntf,
-         {{"Name", std::string("Nvidia VR-NVL144 HMC")},
-          {"NamePrefix", std::string("HGX_")},
-          {"BmcName", std::string("HGX_BMC_0")}}}};
+        {prefix + "|" + devicePrefixIntf,
+         {{"Name", std::string("DevicePrefix")},
+          {"Prefix", std::string("HGX_")}}}};
 
     MockdBusHandler dbus;
     EXPECT_CALL(dbus, getSubtree(_, _, _))
         .WillRepeatedly(Invoke(subtreeAnswer(
             {}, {{nvDeviceIntf,
                   subtreeOf({topo0, entity0, topo1, gpu}, nvDeviceIntf)},
-                 {platformIntf, subtreeOf({platform}, platformIntf)}})));
+                 {devicePrefixIntf, subtreeOf({prefix}, devicePrefixIntf)}})));
     EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
         .WillRepeatedly(
             Invoke([&props](const char*, const char* path, const char* intf) {
