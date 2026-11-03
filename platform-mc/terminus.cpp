@@ -193,6 +193,13 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
             if (mctpInfo && namesEndpoint(intf, properties, *mctpInfo))
             {
                 interested = true;
+                // The record may carry the terminus name, which must be in
+                // place before the sensors are named.
+                if (!initialized)
+                {
+                    terminusManager.reloadTerminusConfig(tid,
+                                                         utils::DBusHandler());
+                }
             }
         }
 #endif

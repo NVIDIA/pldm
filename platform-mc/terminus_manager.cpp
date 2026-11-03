@@ -30,6 +30,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <set>
 #include <utility>
 #include <variant>
 
@@ -268,6 +269,7 @@ void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
     // This will be used when the actual MCTP endpoint is discovered
     eidToTerminusConfigMap[static_cast<mctp_eid_t>(eid)] =
         std::make_tuple(static_cast<int>(inst), terminusName, cpuIndex);
+    fileConfiguredEids.insert(static_cast<mctp_eid_t>(eid));
     lg2::info("Stored EID to terminus config for future discovery: EID={EID},"
               "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
               "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", terminusName);
@@ -318,63 +320,52 @@ void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
     }
 }
 
-void TerminusManager::loadTerminusConfigFromEm(
-    const Configurations& configurations,
-    const pldm::utils::DBusHandlerInterface& dbusHandler)
+namespace
 {
-    constexpr std::array pldmRecordIntfs{
-        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice",
-        "xyz.openbmc_project.Configuration.PLDMDevice"};
-    constexpr uint64_t maxUint16 = std::numeric_limits<uint16_t>::max();
 
-    // A device reachable over more than one medium has one endpoint per
-    // medium under the same name; all of them get the config.
-    std::map<std::string, std::vector<mctp_eid_t>> nameToEids;
-    // The config is applied when a terminus is created; while every named
-    // endpoint already has one, there is nothing to read EM for.
-    bool pending = false;
-    for (const auto& [path, mctpInfo] : configurations)
+using NameToEids = std::map<std::string, std::vector<mctp_eid_t>>;
+
+/** @brief A terminus config read from EM, and where it came from. */
+struct ResolvedConfig
+{
+    TerminusConfigEntry config;
+    std::string source;
+};
+using ResolvedConfigs = std::map<mctp_eid_t, ResolvedConfig>;
+
+/** @brief Set @p config of @p source for @p eids, replacing what an earlier
+ *         source of the same EM read set. */
+void resolveConfig(ResolvedConfigs& resolved,
+                   const std::vector<mctp_eid_t>& eids,
+                   const TerminusConfigEntry& config, const std::string& source)
+{
+    for (auto eid : eids)
     {
-        const auto& name = std::get<4>(mctpInfo);
-        if (name.has_value() && !name->empty())
+        auto [it, inserted] =
+            resolved.try_emplace(eid, ResolvedConfig{config, source});
+        if (inserted)
         {
-            nameToEids[*name].push_back(std::get<0>(mctpInfo));
-            auto tid = toTid(mctpInfo);
-            pending = pending || !tid || !termini.contains(*tid);
+            continue;
         }
-    }
-    if (!pending)
-    {
-        return;
-    }
-
-    auto applyConfig = [this](const std::vector<mctp_eid_t>& eids, int inst,
-                              const std::string& terminusName, uint16_t cpuIdx,
-                              const std::string& source) {
-        for (auto eid : eids)
+        if (it->second.config != config)
         {
-            std::tuple<int, std::string, std::optional<uint16_t>> config{
-                inst, terminusName, cpuIdx};
-            auto existing = eidToTerminusConfigMap.find(eid);
-            if (existing != eidToTerminusConfigMap.end() &&
-                existing->second != config)
-            {
-                lg2::warning(
-                    "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-                    "SOURCE", source, "EID", eid, "TERMINUS_NAME",
-                    terminusName);
-            }
-            eidToTerminusConfigMap.insert_or_assign(eid, std::move(config));
             lg2::info(
-                "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
-                "SOURCE", source, "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
-                terminusName, "CPU_INDEX", cpuIdx);
+                "{SOURCE} replaces the terminus config from {OLD_SOURCE}, EID={EID}",
+                "SOURCE", source, "OLD_SOURCE", it->second.source, "EID", eid);
         }
-    };
+        it->second = ResolvedConfig{config, source};
+    }
+}
 
 #ifdef OEM_NVIDIA
-    // CPU devices of the platform topology: the terminus config follows from
-    // the device. A PLDM device record below overrides it.
+/** @brief The terminus configs the CPU devices of the platform topology
+ *         yield. An EID with an entry in the static configuration file is
+ *         left out: the file entry is explicit, this config is a guess. */
+void readNvDeviceConfigs(const NameToEids& nameToEids,
+                         const std::set<mctp_eid_t>& fileConfiguredEids,
+                         const pldm::utils::DBusHandlerInterface& dbusHandler,
+                         ResolvedConfigs& resolved)
+{
     const auto prefix = pldm::em_device::platformPrefix(dbusHandler);
     for (const auto& dev : pldm::em_device::devices(dbusHandler))
     {
@@ -384,10 +375,35 @@ void TerminusManager::loadTerminusConfigFromEm(
         {
             continue;
         }
-        applyConfig(eidIt->second, config->instance, config->name,
-                    config->cpuIndex, "NvDevice " + dev.name);
+        std::vector<mctp_eid_t> eids;
+        for (auto eid : eidIt->second)
+        {
+            if (fileConfiguredEids.contains(eid))
+            {
+                lg2::info(
+                    "The static configuration file entry of EID={EID} takes precedence over the terminus config of NvDevice {NAME}",
+                    "EID", eid, "NAME", dev.name);
+                continue;
+            }
+            eids.push_back(eid);
+        }
+        resolveConfig(resolved, eids,
+                      {config->instance, config->name, config->cpuIndex},
+                      "NvDevice " + dev.name);
     }
+}
 #endif
+
+/** @brief The terminus configs of the PLDM device records that name a
+ *         configured endpoint as their MCTPTargetName. */
+void readPldmDeviceRecords(const NameToEids& nameToEids,
+                           const pldm::utils::DBusHandlerInterface& dbusHandler,
+                           ResolvedConfigs& resolved)
+{
+    constexpr std::array pldmRecordIntfs{
+        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice",
+        "xyz.openbmc_project.Configuration.PLDMDevice"};
+    constexpr uint64_t maxUint16 = std::numeric_limits<uint16_t>::max();
 
     pldm::utils::GetSubTreeResponse subtree;
     try
@@ -398,7 +414,7 @@ void TerminusManager::loadTerminusConfigFromEm(
     }
     catch (const std::exception&)
     {
-        // No PLDM device records published; keep the file config.
+        // No PLDM device records published.
         return;
     }
 
@@ -470,9 +486,167 @@ void TerminusManager::loadTerminusConfigFromEm(
             continue;
         }
 
-        applyConfig(eidIt->second, static_cast<int>(*inst), *terminusName,
-                    static_cast<uint16_t>(*cpuIdx), "PLDM device record");
+        resolveConfig(resolved, eidIt->second,
+                      {static_cast<int>(*inst), *terminusName,
+                       static_cast<uint16_t>(*cpuIdx)},
+                      "PLDM device record");
     }
+}
+
+/** @brief Set the instance, terminus name and CPU index of @p config on
+ *         @p terminus. */
+void setTerminusConfig(Terminus& terminus, const TerminusConfigEntry& config)
+{
+    const auto& [inst, terminusName, cpuIndex] = config;
+    terminus.setInstance(inst);
+    terminus.setTerminusName(terminusName);
+    if (cpuIndex.has_value())
+    {
+        terminus.setCpuIndex(*cpuIndex);
+    }
+}
+
+/** @brief Whether @p terminus already has @p config. Without OEM_NVIDIA
+ *         the terminus keeps no instance, so it is not compared. */
+bool hasTerminusConfig(Terminus& terminus, const TerminusConfigEntry& config)
+{
+    const auto& [inst, terminusName, cpuIndex] = config;
+    if (terminus.getTerminusName().value_or("") != terminusName)
+    {
+        return false;
+    }
+    if (cpuIndex.has_value() && terminus.getCpuIndex() != cpuIndex)
+    {
+        return false;
+    }
+#ifdef OEM_NVIDIA
+    if (terminus.getInstance() != static_cast<uint16_t>(inst))
+    {
+        return false;
+    }
+#else
+    std::ignore = inst;
+#endif
+    return true;
+}
+
+} // namespace
+
+void TerminusManager::loadTerminusConfigFromEm(
+    const Configurations& configurations,
+    const pldm::utils::DBusHandlerInterface& dbusHandler)
+{
+    // A device reachable over more than one medium has one endpoint per
+    // medium under the same name; all of them get the config.
+    NameToEids nameToEids;
+    std::map<mctp_eid_t, std::vector<MctpInfo>> eidToEndpoints;
+    // While every named endpoint has an initialized terminus, a config read
+    // now could only be reported, not applied: there is nothing to read EM
+    // for.
+    bool pending = false;
+    for (const auto& [path, mctpInfo] : configurations)
+    {
+        const auto& name = std::get<4>(mctpInfo);
+        if (name.has_value() && !name->empty())
+        {
+            const auto eid = std::get<0>(mctpInfo);
+            nameToEids[*name].push_back(eid);
+            eidToEndpoints[eid].push_back(mctpInfo);
+            auto tid = toTid(mctpInfo);
+            auto terminus = tid ? termini.find(*tid) : termini.end();
+            pending = pending || terminus == termini.end() ||
+                      !terminus->second || !terminus->second->initialized;
+        }
+    }
+    if (!pending)
+    {
+        return;
+    }
+
+    // From the weakest source to the strongest: the NvDevice-derived config,
+    // then the PLDM device record.
+    ResolvedConfigs resolved;
+#ifdef OEM_NVIDIA
+    readNvDeviceConfigs(nameToEids, fileConfiguredEids, dbusHandler, resolved);
+#endif
+    readPldmDeviceRecords(nameToEids, dbusHandler, resolved);
+
+    for (const auto& [eid, entry] : resolved)
+    {
+        storeTerminusConfig(eid, entry.config, entry.source,
+                            eidToEndpoints[eid]);
+    }
+}
+
+void TerminusManager::storeTerminusConfig(
+    mctp_eid_t eid, const TerminusConfigEntry& config,
+    const std::string& source, const std::vector<MctpInfo>& endpoints)
+{
+    const auto& [inst, terminusName, cpuIdx] = config;
+    auto existing = eidToTerminusConfigMap.find(eid);
+    if (existing == eidToTerminusConfigMap.end() || existing->second != config)
+    {
+        if (existing != eidToTerminusConfigMap.end())
+        {
+            lg2::warning(
+                "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                "SOURCE", source, "EID", eid, "TERMINUS_NAME", terminusName);
+        }
+        eidToTerminusConfigMap.insert_or_assign(eid, config);
+        lg2::info(
+            "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",
+            "SOURCE", source, "EID", eid, "INSTANCE", inst, "TERMINUS_NAME",
+            terminusName, "CPU_INDEX", cpuIdx.value_or(0));
+    }
+
+    // A terminus created before the config arrived: applyTerminusConfig()
+    // has run for it already.
+    for (const auto& mctpInfo : endpoints)
+    {
+        auto tid = toTid(mctpInfo);
+        auto it = tid ? termini.find(*tid) : termini.end();
+        if (it == termini.end() || !it->second ||
+            hasTerminusConfig(*it->second, config))
+        {
+            continue;
+        }
+        if (!it->second->initialized)
+        {
+            setTerminusConfig(*it->second, config);
+            lg2::info(
+                "Applied the terminus config from {SOURCE} to the terminus being initialized: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+                "SOURCE", source, "TID", *tid, "EID", eid, "TERMINUS_NAME",
+                terminusName);
+            continue;
+        }
+        lg2::warning(
+            "The terminus config from {SOURCE} changed after the terminus was initialized; it takes effect at the next pldmd start: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
+            "SOURCE", source, "TID", *tid, "EID", eid, "TERMINUS_NAME",
+            terminusName);
+    }
+}
+
+void TerminusManager::reloadTerminusConfig(
+    tid_t tid, const pldm::utils::DBusHandlerInterface& dbusHandler)
+{
+    auto mctpInfo = toMctpInfo(tid);
+    if (!mctpInfo)
+    {
+        lg2::debug(
+            "No MCTP endpoint to reload the terminus config of TID={TID}",
+            "TID", tid);
+        return;
+    }
+    const auto& name = std::get<4>(*mctpInfo);
+    if (!name.has_value() || name->empty())
+    {
+        lg2::debug(
+            "The endpoint of TID={TID} has no name to reload the terminus config by",
+            "TID", tid);
+        return;
+    }
+    // The key only names the entry.
+    loadTerminusConfigFromEm({{"/reload/" + *name, *mctpInfo}}, dbusHandler);
 }
 
 void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)
@@ -674,15 +848,8 @@ void TerminusManager::applyTerminusConfig(tid_t tid, mctp_eid_t eid)
         return;
     }
 
-    const auto& terminus = termini[tid];
-    const auto& [inst, configuredTerminusName, configuredCpuIndex] =
-        eidConfigIt->second;
-    terminus->setInstance(inst);
-    terminus->setTerminusName(configuredTerminusName);
-    if (configuredCpuIndex.has_value())
-    {
-        terminus->setCpuIndex(*configuredCpuIndex);
-    }
+    setTerminusConfig(*termini[tid], eidConfigIt->second);
+    const auto& configuredTerminusName = std::get<1>(eidConfigIt->second);
     lg2::info(
         "Matched EID with configuration and set terminus config: TID={TID}, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
         "TID", tid, "EID", eid, "TERMINUS_NAME", configuredTerminusName);

@@ -24,6 +24,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <queue>
+#include <set>
 #include <unordered_map>
 
 namespace pldm
@@ -39,12 +40,25 @@ namespace platform_mc
 constexpr size_t tidPoolSize = std::numeric_limits<tid_t>::max() + 1;
 using RequesterHandler = requester::Handler<requester::Request>;
 
+/** @brief The config of a terminus: instance, terminus name and CPU index. */
+using TerminusConfigEntry =
+    std::tuple<int, std::string, std::optional<uint16_t>>;
+
 class Manager;
 /**
  * @brief TerminusManager
  *
  * TerminusManager class handle the task to discover and initialize PLDM
  * terminus.
+ *
+ * The config of a terminus (TerminusName, instance, CPU index) is keyed by
+ * EID and comes from, strongest first: an Entity Manager PLDM device
+ * record, an entry of the static configuration file
+ * (pldm_static_configuration.json), and, with OEM_NVIDIA, the CPU device of
+ * the platform topology (NvDevice). It is applied when the terminus is
+ * created, and to a terminus still being initialized when it arrives later.
+ * A config that changes after the terminus is initialized is only reported;
+ * it takes effect at the next pldmd start.
  */
 class TerminusManager
 {
@@ -76,13 +90,23 @@ class TerminusManager
      */
     void loadStaticTerminusConfig(const std::string& configPath);
 
-    /** @brief Load the static terminus config from the EM PLDM device
-     *         records. A record whose MCTPTargetName matches the name of a
-     *         configured endpoint supplies TerminusName, TerminusInstance
-     *         and CpuIndex for that endpoint's EID, replacing an entry
-     *         loaded from the JSON file. The config is used only when a
-     *         terminus is created, so EM is not read when every named
-     *         endpoint already has a terminus.
+    /** @brief Load the terminus config of the named endpoints from EM.
+     *
+     *  Sources, strongest first:
+     *  - a PLDM device record whose MCTPTargetName is the endpoint's name:
+     *    TerminusName, TerminusInstance and CpuIndex. It replaces an entry
+     *    loaded from the static configuration file, with a warning.
+     *  - an entry of the static configuration file for the EID.
+     *  - with OEM_NVIDIA, the CPU NvDevice of that name: ParentChassis
+     *    without the platform prefix, Instance and CpuIndex. It is a guess,
+     *    so it is skipped for an EID the file configures.
+     *
+     *  The config is applied to the terminus of the EID when it is created.
+     *  If the terminus exists already, a config that differs from its own
+     *  is applied while it is not initialized, and is reported with a
+     *  warning once it is: it then takes effect at the next pldmd start.
+     *  Hence EM is not read when every named endpoint already has an
+     *  initialized terminus.
      *
      *  @param[in] configurations - EM config path to MctpInfo, with the
      *                              endpoint name resolved
@@ -91,6 +115,19 @@ class TerminusManager
     void loadTerminusConfigFromEm(
         const Configurations& configurations,
         const pldm::utils::DBusHandlerInterface& dbusHandler);
+
+    /** @brief Read the terminus config of the terminus @p tid from EM
+     *         again, as loadTerminusConfigFromEm() does for its endpoint.
+     *         Used when a record naming the endpoint is added while the
+     *         terminus is being initialized. No-op for a terminus without
+     *         an MCTP endpoint or without an endpoint name.
+     *
+     *  @param[in] tid - Terminus ID
+     *  @param[in] dbusHandler - D-Bus handler used to read the EM records
+     */
+    void reloadTerminusConfig(
+        tid_t tid, const pldm::utils::DBusHandlerInterface& dbusHandler =
+                       pldm::utils::DBusHandler());
 
     /** @brief Send request PLDM message to tid. The function will
      *         return when received the response message from terminus.
@@ -191,6 +228,20 @@ class TerminusManager
      */
     void storeStaticTerminusEntry(const nlohmann::json& terminus);
 
+    /** @brief Store the terminus config @p config of @p source for @p eid,
+     *         and apply it to the terminus of @p endpoints if it exists:
+     *         while it is not initialized; a change after that is only
+     *         reported.
+     *
+     *  @param[in] eid - EID the configuration is keyed on
+     *  @param[in] config - instance, terminus name and CPU index
+     *  @param[in] source - where the config comes from, for the logs
+     *  @param[in] endpoints - the configured endpoints with that EID
+     */
+    void storeTerminusConfig(mctp_eid_t eid, const TerminusConfigEntry& config,
+                             const std::string& source,
+                             const std::vector<MctpInfo>& endpoints);
+
     /** @brief Refresh the cached types of a known terminus and act on a
      *         PLDM Type 2 change; keep the cache on GetPLDMTypes failure. */
     exec::task<void> refreshTerminusSupportedTypes(
@@ -281,9 +332,10 @@ class TerminusManager
     std::map<tid_t, MctpInfo> mctpInfoTable;
 
     /** @brief Mapping of EID to terminus config (instance, name, cpuIndex) */
-    std::unordered_map<mctp_eid_t,
-                       std::tuple<int, std::string, std::optional<uint16_t>>>
-        eidToTerminusConfigMap;
+    std::unordered_map<mctp_eid_t, TerminusConfigEntry> eidToTerminusConfigMap;
+
+    /** @brief EIDs configured by the static configuration file */
+    std::set<mctp_eid_t> fileConfiguredEids;
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};

@@ -978,6 +978,77 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryMatchesTheEndpointName)
     }
 }
 
+/** @brief An InterfacesAdded signal of @p intf with @p props at @p path,
+ *         ready to be read. */
+sdbusplus::message_t interfacesAdded(
+    sdbusplus::bus_t& bus, const std::string& path, const std::string& intf,
+    const pldm::dbus::PropertyMap& props)
+{
+    auto msg = bus.new_signal(
+        path.c_str(), "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
+    msg.append(sdbusplus::object_path(path),
+               pldm::dbus::InterfaceMap{{intf, props}});
+    EXPECT_GE(sd_bus_message_seal(msg.get(), 0, 0), 0);
+    EXPECT_GE(sd_bus_message_rewind(msg.get(), true), 0);
+    return msg;
+}
+
+TEST_F(TerminusInventoryTest, interfaceAddedOfItsRecordsConfiguresTheTerminus)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000233");
+    const pldm::tid_t tid = 0x33;
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+    const pldm::MctpInfo mctpInfo(0x56, uuid, "usb", 1, std::string("Dev_233"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, tid), tid);
+    auto bus = sdbusplus::bus::new_default();
+
+    // The terminus is being initialized when the records of its device
+    // arrive. A record of another device does not concern it.
+    const std::string nvDevice = platformPath + std::string("Dev_233");
+    inventory.addInterface(nvDevice, pldm::em_device::nvDeviceIntf,
+                           {{"Name", std::string("Dev_233")},
+                            {"Kind", std::string("cpu")},
+                            {"EID", uint64_t{0x56}},
+                            {"Instance", uint64_t{3}},
+                            {"ParentChassis", std::string("CPUModule_3")}});
+    auto msg = interfacesAdded(
+        bus, platformPath + std::string("Dev_999"),
+        pldm::em_device::nvDeviceIntf,
+        {{"Name", std::string("Dev_999")}, {"EID", uint64_t{0x57}}});
+    terminus->interfaceAdded(msg);
+    EXPECT_FALSE(terminus->getTerminusName().has_value());
+    EXPECT_FALSE(terminus->needRefresh);
+
+    // Its NvDevice: the config it yields applies.
+    msg = interfacesAdded(
+        bus, nvDevice, pldm::em_device::nvDeviceIntf,
+        {{"Name", std::string("Dev_233")}, {"EID", uint64_t{0x56}}});
+    terminus->interfaceAdded(msg);
+    EXPECT_EQ("CPUModule_3", terminus->getTerminusName().value_or(""));
+    EXPECT_EQ(std::optional<uint16_t>(3), terminus->getInstance());
+    EXPECT_EQ(std::optional<uint16_t>(0), terminus->getCpuIndex());
+    EXPECT_TRUE(terminus->needRefresh);
+
+    // Its PLDM device record, named after the device: the record's config
+    // replaces it.
+    const std::string record = nvDevice + "_PLDM";
+    inventory.addInterface(record, pldm::em_device::pldmDeviceIntf,
+                           {{"Name", std::string("Dev_233_PLDM")},
+                            {"MCTPTargetName", std::string("Dev_233")},
+                            {"TerminusName", std::string("Late_0")},
+                            {"TerminusInstance", uint64_t{2}},
+                            {"CpuIndex", uint64_t{1}}});
+    msg = interfacesAdded(bus, record, pldm::em_device::pldmDeviceIntf,
+                          {{"Name", std::string("Dev_233_PLDM")}});
+    terminus->interfaceAdded(msg);
+    EXPECT_EQ("Late_0", terminus->getTerminusName().value_or(""));
+    EXPECT_EQ(std::optional<uint16_t>(2), terminus->getInstance());
+    EXPECT_EQ(std::optional<uint16_t>(1), terminus->getCpuIndex());
+}
+
 TEST_F(TerminusInventoryTest,
        getInfoForNVSwitchFromEMEarlyReturnAndMalformedAssociationCoverage)
 {
