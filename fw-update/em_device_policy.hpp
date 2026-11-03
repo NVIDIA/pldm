@@ -1,0 +1,171 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include "common/em_device.hpp"
+#include "common/utils.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+/** @brief Firmware-update policy of the devices of the platform topology
+ *         (common/em_device.hpp): the MCTPEndpoint override record of a
+ *         device, and the associations and inventory paths that follow
+ *         from its kind.
+ */
+namespace pldm::fw_update::em_device_policy
+{
+
+using pldm::em_device::baseName;
+using pldm::em_device::bmcRoot;
+using pldm::em_device::chassisRoot;
+using pldm::em_device::componentRoot;
+using pldm::em_device::Device;
+using pldm::em_device::getAll;
+using pldm::em_device::objectsWith;
+using pldm::em_device::PldmDevice;
+using pldm::em_device::stringProp;
+
+constexpr auto mctpEndpointIntf =
+    "xyz.openbmc_project.Configuration.MCTPEndpoint";
+constexpr auto mctpSuffix = "_MCTP";
+
+/** @brief The MCTPEndpoint override record of a device, if any. */
+inline std::optional<pldm::utils::PropertyMap> endpointOverrides(
+    const std::string& deviceName,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
+{
+    const std::string recordName = deviceName + mctpSuffix;
+    for (const auto& [path, service] : objectsWith(mctpEndpointIntf, bus))
+    {
+        auto props = getAll(service, path, mctpEndpointIntf, bus);
+        if (props && stringProp(*props, "Name") == recordName)
+        {
+            return props;
+        }
+    }
+    return std::nullopt;
+}
+
+struct ComponentRule
+{
+    std::string forward;
+    std::string backward;
+    std::vector<std::string> endpoints;
+    /** @brief Chassis the component also belongs to, associated by the
+     *         "inventory_chassis" forward name; empty when there is none. */
+    std::string chassisEndpoint;
+    std::string manufacturer = "NVIDIA";
+    bool updateOnly = false;
+};
+
+/** @brief Association and policy of one firmware component, by device kind:
+ *         the BMC firmware components (16 behind an ERoT, 10 behind an
+ *         IRoT) are UpdateOnly; FWInventoryOnlyComponent entries are
+ *         associated as "active", updateable ones as "activation". */
+inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
+                                   const PldmDevice& record, uint16_t id)
+{
+    constexpr uint16_t bmcFwBehindErot = 16;
+    constexpr uint16_t bmcFwBehindIrot = 10;
+    constexpr uint16_t cxFirmware = 1;
+    constexpr uint16_t hpmCpld = 65283;
+
+    ComponentRule rule;
+    if (id == bmcFwBehindErot || id == bmcFwBehindIrot)
+    {
+        rule.updateOnly = true;
+        return rule;
+    }
+    rule.forward = "inventory";
+    rule.backward = record.inventoryOnly.contains(id) ? "active" : "activation";
+    if (dev.kind == "cpu")
+    {
+        rule.endpoints = {componentRoot + dev.name};
+    }
+    else if (dev.kind == "irot")
+    {
+        rule.endpoints = {bmcRoot + dev.parentChassis};
+    }
+    else if (dev.kind == "cx9_io" && id == cxFirmware)
+    {
+        // the firmware belongs to the NIC and to the chassis of the device
+        if (!record.networkAdapter.empty())
+        {
+            rule.endpoints.push_back(
+                chassisRoot + dev.name + "/NetworkAdapters/" +
+                record.networkAdapter);
+        }
+        rule.chassisEndpoint = chassisRoot + dev.name;
+    }
+    else if (dev.kind == "hmc_hpm_sma" && id == hpmCpld)
+    {
+        rule.endpoints = {componentRoot + prefix + "CPLD_" +
+                          std::to_string(dev.instance.value_or(0))};
+        rule.manufacturer = "Lattice";
+    }
+    else
+    {
+        rule.endpoints = {chassisRoot + dev.name};
+    }
+    return rule;
+}
+
+struct InventoryPaths
+{
+    std::string create;
+    std::string update;
+};
+
+/** @brief Where pldmd writes the device identity (UUID, SKUs): the RoT
+ *         chassis and the update target, by device kind. */
+inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
+                                                    const std::string& prefix)
+{
+    const std::string chassis = chassisRoot + dev.name;
+    // the BMC's own RoT has the BMC as its parent
+    const std::string bmc = bmcRoot + dev.parentChassis;
+    if (dev.kind == "gpu")
+    {
+        return InventoryPaths{
+            chassisRoot + prefix + "IRoT_" + baseName(dev.name, prefix),
+            chassis};
+    }
+    if (dev.kind == "bluefield_sma" || dev.kind == "cx_sma")
+    {
+        return InventoryPaths{chassisRoot + std::string("IRoT_") + dev.name,
+                              chassis};
+    }
+    if (dev.kind == "erot")
+    {
+        return InventoryPaths{chassis, bmc};
+    }
+    if (dev.kind == "irot")
+    {
+        return InventoryPaths{"", bmc};
+    }
+    if (dev.kind == "cx9_io")
+    {
+        return InventoryPaths{"", chassis};
+    }
+    return std::nullopt;
+}
+
+} // namespace pldm::fw_update::em_device_policy

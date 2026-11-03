@@ -25,6 +25,7 @@
 #include "config.hpp"
 #include "device_updater.hpp"
 #include "em_config.hpp"
+#include "em_device_policy.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
 #include "requester/handler.hpp"
@@ -895,7 +896,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             return;
         }
-        auto paths = pldm::em_device::inventoryPaths(
+        auto paths = em_device_policy::inventoryPaths(
             *dev, pldm::em_device::platformPrefix());
         if (paths)
         {

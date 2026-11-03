@@ -20,6 +20,7 @@
 
 #include "common/em_device.hpp"
 #include "common/utils.hpp"
+#include "em_device_policy.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -301,7 +302,7 @@ bool unpackDeviceComponents(const std::string& targetName,
     for (const auto& [compId, compName] : record->components)
     {
         auto rule =
-            pldm::em_device::componentRule(*dev, prefix, *record, compId);
+            em_device_policy::componentRule(*dev, prefix, *record, compId);
         Associations compAssocs;
         if (!rule.updateOnly)
         {

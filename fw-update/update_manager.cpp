@@ -22,6 +22,7 @@
 #include "common/utils.hpp"
 #include "config.hpp"
 #include "dbusutil.hpp"
+#include "em_device_policy.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
@@ -123,6 +124,36 @@ static bool configIgnoresPldm(const pldm::utils::PropertyMap& props)
         }
     }
     return false;
+}
+
+/** @brief Add the downstream EID pool of the bridge @p dev to @p eids.
+ *
+ *  em_device::devices() drops a pool bound outside [0, maxDeviceEid]. A
+ *  device with neither bound has no pool; one with a single bound, or with
+ *  the start past the end, is logged and its pool skipped.
+ */
+static void seedBridgePool(const pldm::em_device::Device& dev,
+                           std::set<mctp_eid_t>& eids)
+{
+    const auto& start = dev.poolStartEid;
+    const auto& end = dev.poolEndEid;
+    if (!start && !end)
+    {
+        return;
+    }
+    if (!start || !end || *start > *end)
+    {
+        warning(
+            "seedRefreshEidsFromStaticConfig: skipping the EID pool of {NAME}: PoolStartEID and PoolEndEID must both be in [0, {MAX}], start <= end",
+            "NAME", dev.name, "MAX", pldm::em_device::maxDeviceEid);
+        return;
+    }
+    // the bound keeps the counter within mctp_eid_t for any Device
+    const uint64_t last = std::min(*end, pldm::em_device::maxDeviceEid);
+    for (uint64_t e = *start; e <= last; ++e)
+    {
+        eids.insert(static_cast<mctp_eid_t>(e));
+    }
 }
 
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
@@ -237,7 +268,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
         }
         if (dev.eid)
         {
-            auto overrides = pldm::em_device::endpointOverrides(dev.name);
+            auto overrides = em_device_policy::endpointOverrides(dev.name);
             if (overrides && configIgnoresPldm(*overrides))
             {
                 info(
@@ -249,18 +280,9 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                 refreshEidSet.insert(static_cast<mctp_eid_t>(*dev.eid));
             }
         }
-        if (!includeBridgePools)
+        if (includeBridgePools)
         {
-            continue;
-        }
-        const auto& poolStart = dev.poolStartEid;
-        const auto& poolEnd = dev.poolEndEid;
-        if (poolStart && poolEnd && *poolStart <= *poolEnd)
-        {
-            for (uint64_t e = *poolStart; e <= *poolEnd; ++e)
-            {
-                refreshEidSet.insert(static_cast<mctp_eid_t>(e));
-            }
+            seedBridgePool(dev, refreshEidSet);
         }
     }
 }

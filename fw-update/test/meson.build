@@ -73,6 +73,7 @@ tests = [
     'device_updater_firmware_update_test',
     'device_updater_test',
     'em_config_internal_test',
+    'em_device_policy_test',
     'error_handling_test',
     'firmware_inventory_internal_thread_test',
     'firmware_inventory_manager_test',

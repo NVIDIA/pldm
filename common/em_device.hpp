@@ -45,9 +45,8 @@
  *  Configuration.PLDMDevice named "<device>_PLDM" whose
  *  UpdateableComponents, FWInventoryOnlyComponent and SensorAuxNames child
  *  interfaces map names to ids, and whose Ports child interface maps ids to
- *  names. Associations,
- *  inventory paths and other values that follow from the device kind are
- *  derived here.
+ *  names. The firmware-update policy that follows from the device kind
+ *  (associations, inventory paths) is in fw-update/em_device_policy.hpp.
  */
 namespace pldm::em_device
 {
@@ -56,8 +55,6 @@ constexpr auto nvDeviceIntf = "xyz.openbmc_project.Configuration.NvDevice";
 constexpr auto transportIntf =
     "xyz.openbmc_project.Configuration.NvDevice.Transport";
 constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
-constexpr auto mctpEndpointIntf =
-    "xyz.openbmc_project.Configuration.MCTPEndpoint";
 constexpr auto devicePrefixIntf =
     "xyz.openbmc_project.Configuration.DevicePrefix";
 constexpr auto inventoryRoot = "/xyz/openbmc_project/inventory";
@@ -66,7 +63,6 @@ constexpr auto componentRoot =
     "/xyz/openbmc_project/inventory/system/component/";
 constexpr auto bmcRoot = "/xyz/openbmc_project/inventory/system/bmc/";
 constexpr auto pldmSuffix = "_PLDM";
-constexpr auto mctpSuffix = "_MCTP";
 /** @brief Largest EID a device can be configured with: 0xFF is the MCTP
  *         broadcast EID (DSP0236 8.2). */
 constexpr uint64_t maxDeviceEid = 0xFE;
@@ -526,23 +522,6 @@ inline std::optional<PldmDevice> pldmDevice(
     return std::nullopt;
 }
 
-/** @brief The MCTPEndpoint override record of a device, if any. */
-inline std::optional<pldm::utils::PropertyMap> endpointOverrides(
-    const std::string& deviceName,
-    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
-{
-    const std::string recordName = deviceName + mctpSuffix;
-    for (const auto& [path, service] : objectsWith(mctpEndpointIntf, bus))
-    {
-        auto props = getAll(service, path, mctpEndpointIntf, bus);
-        if (props && stringProp(*props, "Name") == recordName)
-        {
-            return props;
-        }
-    }
-    return std::nullopt;
-}
-
 inline std::string baseName(const std::string& name, const std::string& prefix)
 {
     if (!prefix.empty() && name.starts_with(prefix))
@@ -580,110 +559,6 @@ inline std::optional<TerminusConfig> terminusConfig(const Device& dev,
     config.instance = static_cast<int>(dev.instance.value_or(0));
     config.cpuIndex = static_cast<uint16_t>(dev.cpuIndex.value_or(0));
     return config;
-}
-
-struct ComponentRule
-{
-    std::string forward;
-    std::string backward;
-    std::vector<std::string> endpoints;
-    /** @brief Chassis the component also belongs to, associated by the
-     *         "inventory_chassis" forward name; empty when there is none. */
-    std::string chassisEndpoint;
-    std::string manufacturer = "NVIDIA";
-    bool updateOnly = false;
-};
-
-/** @brief Association and policy of one firmware component, by device kind:
- *         the BMC firmware components (16 behind an ERoT, 10 behind an
- *         IRoT) are UpdateOnly; FWInventoryOnlyComponent entries are
- *         associated as "active", updateable ones as "activation". */
-inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
-                                   const PldmDevice& record, uint16_t id)
-{
-    constexpr uint16_t bmcFwBehindErot = 16;
-    constexpr uint16_t bmcFwBehindIrot = 10;
-    constexpr uint16_t cxFirmware = 1;
-    constexpr uint16_t hpmCpld = 65283;
-
-    ComponentRule rule;
-    if (id == bmcFwBehindErot || id == bmcFwBehindIrot)
-    {
-        rule.updateOnly = true;
-        return rule;
-    }
-    rule.forward = "inventory";
-    rule.backward = record.inventoryOnly.contains(id) ? "active" : "activation";
-    if (dev.kind == "cpu")
-    {
-        rule.endpoints = {componentRoot + dev.name};
-    }
-    else if (dev.kind == "irot")
-    {
-        rule.endpoints = {bmcRoot + dev.parentChassis};
-    }
-    else if (dev.kind == "cx9_io" && id == cxFirmware)
-    {
-        // the firmware belongs to the NIC and to the chassis of the device
-        if (!record.networkAdapter.empty())
-        {
-            rule.endpoints.push_back(
-                chassisRoot + dev.name + "/NetworkAdapters/" +
-                record.networkAdapter);
-        }
-        rule.chassisEndpoint = chassisRoot + dev.name;
-    }
-    else if (dev.kind == "hmc_hpm_sma" && id == hpmCpld)
-    {
-        rule.endpoints = {componentRoot + prefix + "CPLD_" +
-                          std::to_string(dev.instance.value_or(0))};
-        rule.manufacturer = "Lattice";
-    }
-    else
-    {
-        rule.endpoints = {chassisRoot + dev.name};
-    }
-    return rule;
-}
-
-struct InventoryPaths
-{
-    std::string create;
-    std::string update;
-};
-
-/** @brief Where pldmd writes the device identity (UUID, SKUs): the RoT
- *         chassis and the update target, by device kind. */
-inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
-                                                    const std::string& prefix)
-{
-    const std::string chassis = chassisRoot + dev.name;
-    // the BMC's own RoT has the BMC as its parent
-    const std::string bmc = bmcRoot + dev.parentChassis;
-    if (dev.kind == "gpu")
-    {
-        return InventoryPaths{
-            chassisRoot + prefix + "IRoT_" + baseName(dev.name, prefix),
-            chassis};
-    }
-    if (dev.kind == "bluefield_sma" || dev.kind == "cx_sma")
-    {
-        return InventoryPaths{chassisRoot + std::string("IRoT_") + dev.name,
-                              chassis};
-    }
-    if (dev.kind == "erot")
-    {
-        return InventoryPaths{chassis, bmc};
-    }
-    if (dev.kind == "irot")
-    {
-        return InventoryPaths{"", bmc};
-    }
-    if (dev.kind == "cx9_io")
-    {
-        return InventoryPaths{"", chassis};
-    }
-    return std::nullopt;
 }
 
 } // namespace pldm::em_device
