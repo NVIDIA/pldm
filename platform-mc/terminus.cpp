@@ -244,19 +244,19 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 
 exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 {
-    // A device described by the platform topology: the chassis object named
-    // after an NvDevice that is this terminus's endpoint (see
-    // isEndpointDevice()), with the sensor names and ports in the device's
-    // PLDMDevice record.
+    // A device described by the platform topology: the chassis object whose
+    // leaf is the NvDevice name as EM writes it into a path, for the device
+    // that is this terminus's endpoint (see isEndpointDevice()), with the
+    // sensor names and ports in the device's PLDMDevice record.
     if (objPath.starts_with(pldm::em_device::chassisRoot))
     {
-        const std::string deviceName =
+        const std::string leaf =
             objPath.substr(std::string(pldm::em_device::chassisRoot).size());
         const std::optional<MctpInfo> mctpInfo =
             terminusManager.toMctpInfo(tid);
-        auto dev = deviceName.find('/') == std::string::npos
-                       ? pldm::em_device::deviceByName(deviceName,
-                                                       utils::DBusHandler())
+        auto dev = leaf.find('/') == std::string::npos
+                       ? pldm::em_device::deviceByPathSegment(
+                             leaf, utils::DBusHandler())
                        : std::nullopt;
         if (dev && dev->eid)
         {
@@ -266,14 +266,15 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             {
                 co_return PLDM_FAILED;
             }
-            if (auto record = pldm::em_device::pldmDevice(deviceName,
+            if (auto record = pldm::em_device::pldmDevice(dev->name,
                                                           utils::DBusHandler()))
             {
                 // Sensor records that still carry their own config (e.g.
                 // ThermalParameters) are read first. The record's aux names
                 // replace theirs; its ports add to their port info.
                 co_await getSensorAuxNameFromEM(
-                    0, 0, static_cast<uint8_t>(*dev->eid), objPath);
+                    0, 0, static_cast<uint8_t>(*dev->eid), objPath,
+                    /*namesFromRecord=*/true);
 #ifdef OEM_NVIDIA
                 co_await getPortInfoFromEM(objPath);
 #endif
@@ -457,7 +458,8 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
 }
 
 exec::task<int> Terminus::getSensorAuxNameFromEM(
-    uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath)
+    uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath,
+    bool namesFromRecord)
 {
     static constexpr const char* sensorAuxInterface =
         "xyz.openbmc_project.Configuration.SensorAuxName";
@@ -471,6 +473,14 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
 
         if (getSubTreeResponse.size() == 0)
         {
+            if (namesFromRecord)
+            {
+                // the PLDMDevice record supplies the names
+                lg2::debug(
+                    "getSensorAuxNameFromEM: no SensorAuxName config under {PATH} (eid={EID})",
+                    "PATH", objPath, "EID", eid);
+                co_return PLDM_SUCCESS;
+            }
             lg2::error(
                 "getSensorAuxNameFromEM: unable to load SensorAuxName config from EM under {PATH} (eid={EID} bus={BUS} addr={ADDR}); sensor names fall back to PLDM defaults",
                 "PATH", objPath, "EID", eid, "BUS", bus, "ADDR", addr);

@@ -21,6 +21,8 @@
 
 #include <endian.h>
 
+#include <set>
+
 #include <gtest/gtest.h>
 
 using namespace pldm::pdr;
@@ -112,6 +114,23 @@ TEST(EntityIdTest, convertsFromEntityInfoAndPldmEntity)
     EXPECT_NE(fromInfo, fromWire); // bit 15 is part of the identity
     EXPECT_EQ(fromInfo.baseType(), fromWire.baseType());
     EXPECT_LT(fromWire, fromInfo);
+}
+
+TEST(EntityIdTest, ordersLikeTheLegacyTuple)
+{
+    // (containerId, type, instance): a sorted set visits a container's
+    // entities together, whatever their type, as the EntityInfo tuple did.
+    EntityId a{EntityInfo{1, PLDM_ENTITY_MEMORY_CONTROLLER, 9}};
+    EntityId b{EntityInfo{2, PLDM_ENTITY_PROC, 0}};
+    EntityId c{EntityInfo{2, PLDM_ENTITY_PROC, 1}};
+    EntityId d{EntityInfo{2, PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC, 0}};
+    EXPECT_LT(a, b);
+    EXPECT_LT(b, c);
+    EXPECT_LT(c, d);
+    EXPECT_EQ(b, (EntityId{EntityInfo{2, PLDM_ENTITY_PROC, 0}}));
+    std::set<EntityId> sorted{d, c, b, a};
+    EXPECT_EQ((std::vector<EntityId>{a, b, c, d}),
+              (std::vector<EntityId>{sorted.begin(), sorted.end()}));
 }
 
 TEST(EntityTest, bindAndUnbind)

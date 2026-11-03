@@ -359,9 +359,12 @@ class Terminus
     /** @brief get Sensor Aux Name from EM configuration PDI
      *
      *  @param[in] objPath - device inventory path
+     *  @param[in] namesFromRecord - a PLDMDevice record supplies the names,
+     *             so the absence of SensorAuxName configs is not an error
      */
     exec::task<int> getSensorAuxNameFromEM(
-        uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath);
+        uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath,
+        bool namesFromRecord = false);
 
 #ifdef OEM_NVIDIA
     /** @brief get sensor Port information from EM configuration PDI

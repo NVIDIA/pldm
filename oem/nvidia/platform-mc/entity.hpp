@@ -75,7 +75,14 @@ struct EntityId
         return {containerId, type, instance};
     }
 
-    constexpr auto operator<=>(const EntityId&) const = default;
+    /** @brief Ordered as the legacy tuple (containerId, type, instance),
+     *         so a sorted set of entities visits them container by
+     *         container as before. */
+    constexpr auto operator<=>(const EntityId& other) const
+    {
+        return toEntityInfo() <=> other.toEntityInfo();
+    }
+    constexpr bool operator==(const EntityId&) const = default;
 };
 
 /**

@@ -845,6 +845,37 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryLoadsTheDeviceRecord)
               associations[0].path);
 }
 
+TEST_F(TerminusInventoryTest, checkDeviceInventoryMatchesTheSanitisedLeaf)
+{
+    // EM writes "Dev-23.2" into the chassis path as "Dev_23_2"; the record
+    // is still found by the raw name.
+    std::string uuid("00000000-0000-0000-0000-000000000232");
+    Terminus terminus(0x32, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x53, uuid, "usb", 1, std::string("Dev-23.2"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string chassisPath = chassisOf("Dev_23_2");
+    addNvDevice(inventory, "Dev-23.2", 0x53);
+    addPldmRecord(inventory, "Dev-23.2");
+
+    auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    ASSERT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(100));
+    EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Temp_0"}}}),
+              std::get<0>(terminus.sensorAuxNameOverwriteTbl.at(100)));
+
+    // the raw name is not a path EM publishes
+    terminus.sensorAuxNameOverwriteTbl.clear();
+    rc = stdexec::sync_wait(
+        terminus.checkDeviceInventory(chassisOf("Dev-23.2")));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.empty());
+}
+
 TEST_F(TerminusInventoryTest, checkDeviceInventoryRejectsAnotherDevicesChassis)
 {
     std::string uuid("00000000-0000-0000-0000-000000000231");
