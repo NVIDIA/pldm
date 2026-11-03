@@ -896,7 +896,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             return;
         }
         auto paths = pldm::em_device::inventoryPaths(
-            *dev, pldm::em_device::platformNames());
+            *dev, pldm::em_device::platformPrefix());
         if (paths)
         {
             writeIdentityTo(eid, uuid, writeUuid, paths->create, paths->update);

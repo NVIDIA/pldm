@@ -79,12 +79,11 @@ struct Device
     std::optional<uint64_t> eid;
     std::optional<uint64_t> instance;
     std::optional<uint64_t> cpuIndex;
-    pldm::utils::PropertyMap transport;
-};
-
-struct PlatformNames
-{
-    std::string namePrefix;
+    // from the .Transport child interface
+    std::string medium;
+    // downstream EID pool of a bridge, each in [0, maxDeviceEid]
+    std::optional<uint64_t> poolStartEid;
+    std::optional<uint64_t> poolEndEid;
 };
 
 struct PldmDevice
@@ -288,6 +287,55 @@ inline void merge(std::optional<uint64_t>& known, std::optional<uint64_t> other,
     }
 }
 
+/** @brief The EID property @p key of @p props, if present and in
+ *         [0, maxDeviceEid]; a value out of that range is logged and
+ *         dropped. */
+inline std::optional<uint64_t> eidProp(
+    const pldm::utils::PropertyMap& props, const std::string& key,
+    const std::string& name, const std::string& path)
+{
+    auto eid = numberProp(props, key, maxDeviceEid);
+    if (!eid && props.contains(key))
+    {
+        lg2::warning(
+            "NvDevice {NAME} at {PATH} has an invalid {KEY}; ignoring it",
+            "NAME", name, "PATH", path, "KEY", key);
+    }
+    return eid;
+}
+
+/** @brief Fill the transport fields of @p dev from its .Transport child
+ *         interface, if it has one. */
+inline void readTransport(Device& dev, const std::string& service,
+                          const std::string& path,
+                          const pldm::utils::DBusHandlerInterface& bus)
+{
+    auto props = getAll(service, path, transportIntf, bus);
+    if (!props)
+    {
+        return;
+    }
+    dev.medium = stringProp(*props, "Medium");
+    dev.poolStartEid = eidProp(*props, "PoolStartEID", dev.name, path);
+    dev.poolEndEid = eidProp(*props, "PoolEndEID", dev.name, path);
+}
+
+/** @brief Fill the fields of @p known that it lacks from @p other, a second
+ *         record of the same device. */
+inline void mergeDevice(Device& known, Device&& other)
+{
+    const auto& name = other.name;
+    merge(known.kind, std::move(other.kind), name, "Kind");
+    merge(known.parentChassis, std::move(other.parentChassis), name,
+          "ParentChassis");
+    merge(known.eid, other.eid, name, "EID");
+    merge(known.instance, other.instance, name, "Instance");
+    merge(known.cpuIndex, other.cpuIndex, name, "CpuIndex");
+    merge(known.medium, std::move(other.medium), name, "Medium");
+    merge(known.poolStartEid, other.poolStartEid, name, "PoolStartEID");
+    merge(known.poolEndEid, other.poolEndEid, name, "PoolEndEID");
+}
+
 } // namespace detail
 
 inline std::vector<Device> devices(
@@ -309,23 +357,14 @@ inline std::vector<Device> devices(
         }
         dev.kind = stringProp(*props, "Kind");
         dev.parentChassis = stringProp(*props, "ParentChassis");
-        dev.eid = numberProp(*props, "EID", maxDeviceEid);
-        if (props->contains("EID") && !dev.eid)
-        {
-            lg2::warning(
-                "NvDevice {NAME} at {PATH} has an invalid EID; ignoring it",
-                "NAME", dev.name, "PATH", path);
-        }
+        dev.eid = detail::eidProp(*props, "EID", dev.name, path);
         dev.instance = numberProp(*props, "Instance");
         if (!dev.instance)
         {
             dev.instance = numberProp(*props, "InstanceNumber");
         }
         dev.cpuIndex = numberProp(*props, "CpuIndex");
-        if (auto tr = getAll(service, path, transportIntf, bus))
-        {
-            dev.transport = std::move(*tr);
-        }
+        detail::readTransport(dev, service, path, bus);
 
         auto known = std::ranges::find(out, dev.name, &Device::name);
         if (known == out.end())
@@ -333,16 +372,7 @@ inline std::vector<Device> devices(
             out.push_back(std::move(dev));
             continue;
         }
-        detail::merge(known->kind, std::move(dev.kind), dev.name, "Kind");
-        detail::merge(known->parentChassis, std::move(dev.parentChassis),
-                      dev.name, "ParentChassis");
-        detail::merge(known->eid, dev.eid, dev.name, "EID");
-        detail::merge(known->instance, dev.instance, dev.name, "Instance");
-        detail::merge(known->cpuIndex, dev.cpuIndex, dev.name, "CpuIndex");
-        if (known->transport.empty())
-        {
-            known->transport = std::move(dev.transport);
-        }
+        detail::mergeDevice(*known, std::move(dev));
     }
     return out;
 }
@@ -395,21 +425,17 @@ inline std::optional<Device> deviceByPathSegment(
 /** @brief The device-name prefix of the platform, from the DevicePrefix
  *         record of the platform topology ("HGX_" on an HMC); empty on a
  *         platform whose devices carry no prefix and no record. */
-inline PlatformNames platformNames(
+inline std::string platformPrefix(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
 {
-    PlatformNames out;
     for (const auto& [path, service] : objectsWith(devicePrefixIntf, bus))
     {
-        auto props = getAll(service, path, devicePrefixIntf, bus);
-        if (!props)
+        if (auto props = getAll(service, path, devicePrefixIntf, bus))
         {
-            continue;
+            return stringProp(*props, "Prefix");
         }
-        out.namePrefix = stringProp(*props, "Prefix");
-        break;
     }
-    return out;
+    return {};
 }
 
 /** @brief The id -> name map EM publishes for a nested object, as the
@@ -539,8 +565,8 @@ struct TerminusConfig
     uint16_t cpuIndex = 0;
 };
 
-inline std::optional<TerminusConfig> terminusConfig(
-    const Device& dev, const PlatformNames& platform)
+inline std::optional<TerminusConfig> terminusConfig(const Device& dev,
+                                                    const std::string& prefix)
 {
     constexpr uint64_t max = std::numeric_limits<uint16_t>::max();
     if (dev.kind != "cpu" || dev.cpuIndex.value_or(0) > max ||
@@ -549,9 +575,8 @@ inline std::optional<TerminusConfig> terminusConfig(
         return std::nullopt;
     }
     TerminusConfig config;
-    config.name =
-        baseName(dev.parentChassis.empty() ? dev.name : dev.parentChassis,
-                 platform.namePrefix);
+    config.name = baseName(
+        dev.parentChassis.empty() ? dev.name : dev.parentChassis, prefix);
     config.instance = static_cast<int>(dev.instance.value_or(0));
     config.cpuIndex = static_cast<uint16_t>(dev.cpuIndex.value_or(0));
     return config;
@@ -573,8 +598,7 @@ struct ComponentRule
  *         the BMC firmware components (16 behind an ERoT, 10 behind an
  *         IRoT) are UpdateOnly; FWInventoryOnlyComponent entries are
  *         associated as "active", updateable ones as "activation". */
-inline ComponentRule componentRule(const Device& dev,
-                                   const PlatformNames& platform,
+inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
                                    const PldmDevice& record, uint16_t id)
 {
     constexpr uint16_t bmcFwBehindErot = 16;
@@ -611,7 +635,7 @@ inline ComponentRule componentRule(const Device& dev,
     }
     else if (dev.kind == "hmc_hpm_sma" && id == hpmCpld)
     {
-        rule.endpoints = {componentRoot + platform.namePrefix + "CPLD_" +
+        rule.endpoints = {componentRoot + prefix + "CPLD_" +
                           std::to_string(dev.instance.value_or(0))};
         rule.manufacturer = "Lattice";
     }
@@ -630,17 +654,17 @@ struct InventoryPaths
 
 /** @brief Where pldmd writes the device identity (UUID, SKUs): the RoT
  *         chassis and the update target, by device kind. */
-inline std::optional<InventoryPaths> inventoryPaths(
-    const Device& dev, const PlatformNames& platform)
+inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
+                                                    const std::string& prefix)
 {
     const std::string chassis = chassisRoot + dev.name;
     // the BMC's own RoT has the BMC as its parent
     const std::string bmc = bmcRoot + dev.parentChassis;
     if (dev.kind == "gpu")
     {
-        return InventoryPaths{chassisRoot + platform.namePrefix + "IRoT_" +
-                                  baseName(dev.name, platform.namePrefix),
-                              chassis};
+        return InventoryPaths{
+            chassisRoot + prefix + "IRoT_" + baseName(dev.name, prefix),
+            chassis};
     }
     if (dev.kind == "bluefield_sma" || dev.kind == "cx_sma")
     {

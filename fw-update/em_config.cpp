@@ -297,11 +297,11 @@ bool unpackDeviceComponents(const std::string& targetName,
                 targetName);
         return false;
     }
-    const auto platform = pldm::em_device::platformNames();
+    const auto prefix = pldm::em_device::platformPrefix();
     for (const auto& [compId, compName] : record->components)
     {
         auto rule =
-            pldm::em_device::componentRule(*dev, platform, *record, compId);
+            pldm::em_device::componentRule(*dev, prefix, *record, compId);
         Associations compAssocs;
         if (!rule.updateOnly)
         {
@@ -606,9 +606,7 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
 
     for (const auto& dev : pldm::em_device::devices())
     {
-        const auto medium =
-            pldm::em_device::stringProp(dev.transport, "Medium");
-        if (!dev.eid || medium.empty() || medium == "bridge")
+        if (!dev.eid || dev.medium.empty() || dev.medium == "bridge")
         {
             continue;
         }

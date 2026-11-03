@@ -231,9 +231,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
     // IgnoreMessageTypes from their MCTPEndpoint override record.
     for (const auto& dev : pldm::em_device::devices())
     {
-        const auto medium =
-            pldm::em_device::stringProp(dev.transport, "Medium");
-        if (medium != "usb" && medium != "i2c" && medium != "spi")
+        if (dev.medium != "usb" && dev.medium != "i2c" && dev.medium != "spi")
         {
             continue;
         }
@@ -255,9 +253,8 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
         {
             continue;
         }
-        auto poolStart =
-            pldm::em_device::numberProp(dev.transport, "PoolStartEID");
-        auto poolEnd = pldm::em_device::numberProp(dev.transport, "PoolEndEID");
+        const auto& poolStart = dev.poolStartEid;
+        const auto& poolEnd = dev.poolEndEid;
         if (poolStart && poolEnd && *poolStart <= *poolEnd)
         {
             for (uint64_t e = *poolStart; e <= *poolEnd; ++e)

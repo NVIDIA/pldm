@@ -370,11 +370,11 @@ void TerminusManager::loadTerminusConfigFromEm(
 
     // CPU devices of the platform topology: the terminus config follows from
     // the device. A PLDM device record below overrides it.
-    const auto platform = pldm::em_device::platformNames(dbusHandler);
+    const auto prefix = pldm::em_device::platformPrefix(dbusHandler);
     for (const auto& dev : pldm::em_device::devices(dbusHandler))
     {
         auto eidIt = nameToEids.find(dev.name);
-        auto config = pldm::em_device::terminusConfig(dev, platform);
+        auto config = pldm::em_device::terminusConfig(dev, prefix);
         if (eidIt == nameToEids.end() || !config || config->name.empty())
         {
             continue;
