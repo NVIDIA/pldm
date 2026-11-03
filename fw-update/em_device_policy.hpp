@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include "common/utils.hpp"
 #include "oem/nvidia/common/em_device.hpp"
 
 #include <cstdint>
@@ -26,9 +25,8 @@
 #include <vector>
 
 /** @brief Firmware-update policy of the devices of the platform topology
- *         (oem/nvidia/common/em_device.hpp): the MCTPEndpoint override
- *         record of a device, and the associations and inventory paths
- *         that follow from its kind.
+ *         (oem/nvidia/common/em_device.hpp): the associations and
+ *         inventory paths that follow from the kind of a device.
  */
 namespace pldm::fw_update::em_device_policy
 {
@@ -38,31 +36,7 @@ using pldm::em_device::bmcRoot;
 using pldm::em_device::chassisRoot;
 using pldm::em_device::componentRoot;
 using pldm::em_device::Device;
-using pldm::em_device::getAll;
-using pldm::em_device::objectsWith;
 using pldm::em_device::PldmDevice;
-using pldm::em_device::stringProp;
-
-constexpr auto mctpEndpointIntf =
-    "xyz.openbmc_project.Configuration.MCTPEndpoint";
-constexpr auto mctpSuffix = "_MCTP";
-
-/** @brief The MCTPEndpoint override record of a device, if any. */
-inline std::optional<pldm::utils::PropertyMap> endpointOverrides(
-    const std::string& deviceName,
-    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
-{
-    const std::string recordName = deviceName + mctpSuffix;
-    for (const auto& [path, service] : objectsWith(mctpEndpointIntf, bus))
-    {
-        auto props = getAll(service, path, mctpEndpointIntf, bus);
-        if (props && stringProp(*props, "Name") == recordName)
-        {
-            return props;
-        }
-    }
-    return std::nullopt;
-}
 
 struct ComponentRule
 {

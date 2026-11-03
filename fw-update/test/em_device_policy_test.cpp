@@ -15,20 +15,14 @@
  * limitations under the License.
  */
 
-#include "common/test/mocked_utils.hpp"
 #include "fw-update/em_device_policy.hpp"
 
-#include <map>
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using namespace pldm::fw_update::em_device_policy;
-using pldm::utils::PropertyMap;
-using ::testing::_;
-using ::testing::Invoke;
 
 namespace
 {
@@ -205,54 +199,4 @@ TEST(EmDevicePolicyInventoryPaths, followTheKind)
 
     EXPECT_FALSE(inventoryPaths(device("HGX_CPU_0", "cpu"), "HGX_"));
     EXPECT_FALSE(inventoryPaths(device("HGX_X_0", ""), "HGX_"));
-}
-
-TEST(EmDevicePolicyEndpointOverrides, findsTheRecordNamedAfterTheDevice)
-{
-    const std::string other = "/inventory/platform/HGX_GPU_1_MCTP";
-    const std::string unreadable = "/inventory/platform/Broken";
-    const std::string mine = "/inventory/platform/HGX_GPU_0_MCTP";
-    const std::map<std::string, PropertyMap> props{
-        {other, {{"Name", std::string("HGX_GPU_1_MCTP")}}},
-        {mine,
-         {{"Name", std::string("HGX_GPU_0_MCTP")},
-          {"IgnoreMessageTypes", std::string("1")}}}};
-
-    MockdBusHandler dbus;
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Invoke([&](const std::string&, int,
-                                   const std::vector<std::string>& intfs) {
-            pldm::utils::GetSubTreeResponse subtree;
-            if (intfs == std::vector<std::string>{mctpEndpointIntf})
-            {
-                for (const auto& path : {other, unreadable, mine})
-                {
-                    subtree.emplace_back(
-                        path,
-                        std::vector<
-                            std::pair<std::string, std::vector<std::string>>>{
-                            {"xyz.openbmc_project.EntityManager",
-                             {mctpEndpointIntf}}});
-                }
-            }
-            return subtree;
-        }));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillRepeatedly(
-            Invoke([&](const char*, const char* path, const char* intf) {
-                auto it = props.find(path);
-                if (std::string(intf) != mctpEndpointIntf || it == props.end())
-                {
-                    throw std::runtime_error("no such interface");
-                }
-                return it->second;
-            }));
-
-    auto record = endpointOverrides("HGX_GPU_0", dbus);
-    ASSERT_TRUE(record);
-    EXPECT_EQ("1", stringProp(*record, "IgnoreMessageTypes"));
-    // the record name is the device name with the suffix, not a prefix of it
-    EXPECT_FALSE(endpointOverrides("HGX_GPU", dbus));
-    EXPECT_FALSE(endpointOverrides("HGX_GPU_0_MCTP", dbus));
-    EXPECT_FALSE(endpointOverrides("HGX_GPU_2", dbus));
 }

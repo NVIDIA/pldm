@@ -47,7 +47,6 @@
 #include <string_view>
 
 #ifdef OEM_NVIDIA
-#include "em_device_policy.hpp"
 #include "oem/nvidia/common/em_device.hpp"
 #endif
 
@@ -174,7 +173,9 @@ static void seedBridgePool(const pldm::em_device::Device& dev,
  *  (type 1) is skipped — its endpoint by declaration never answers PLDM, so
  *  querying it can only fail. The pool range is still seeded for such an
  *  entry: the pool EIDs are the bridged downstream devices, whose PLDM
- *  capability is independent of the bridge's own. std::set dedups against the
+ *  capability is independent of the bridge's own. A platform topology device
+ *  (NvDevice) whose EID such an entry declares is skipped too: it is the same
+ *  endpoint. std::set dedups against the
  *  live keys. This influences ONLY the refresh set — never device identity,
  *  inventory, or the MCTPTargetName join (those stay configured_by-resolved).
  *  D-Bus read failures are logged and skipped; never thrown.
@@ -188,6 +189,9 @@ static void seedBridgePool(const pldm::em_device::Device& dev,
 static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                                             bool includeBridgePools = true)
 {
+    // EIDs whose MCTP target record ignores PLDM; a topology device with one
+    // of these EIDs is the same endpoint and is skipped as well
+    [[maybe_unused]] std::set<mctp_eid_t> pldmIgnored;
     for (const char* intf : {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
                              "xyz.openbmc_project.Configuration.MCTPI2CTarget",
                              "xyz.openbmc_project.Configuration.MCTPSPIDevice"})
@@ -233,6 +237,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
             {
                 if (configIgnoresPldm(props))
                 {
+                    pldmIgnored.insert(*eid);
                     info(
                         "seedRefreshEidsFromStaticConfig: skipping EID {EID} at {PATH}: config ignores PLDM (MCTP message type 1)",
                         "EID", *eid, "PATH", objPath);
@@ -264,8 +269,9 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
     }
 
 #ifdef OEM_NVIDIA
-    // Devices described by the platform topology (NvDevice + Transport), with
-    // IgnoreMessageTypes from their MCTPEndpoint override record.
+    // Devices described by the platform topology (NvDevice + Transport). The
+    // MCTP target records above carry IgnoreMessageTypes; a device whose EID
+    // one of them declares as not speaking PLDM is skipped.
     for (const auto& dev : pldm::em_device::devices())
     {
         if (dev.medium != "usb" && dev.medium != "i2c" && dev.medium != "spi")
@@ -274,8 +280,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
         }
         if (dev.eid)
         {
-            auto overrides = em_device_policy::endpointOverrides(dev.name);
-            if (overrides && configIgnoresPldm(*overrides))
+            if (pldmIgnored.contains(static_cast<mctp_eid_t>(*dev.eid)))
             {
                 info(
                     "seedRefreshEidsFromStaticConfig: skipping EID {EID} of {NAME}: config ignores PLDM (MCTP message type 1)",
