@@ -24,6 +24,7 @@
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <span>
 #include <string>
@@ -573,6 +574,21 @@ bool isValidEID(eid mctpEid);
  */
 std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
                                            const std::string& key);
+
+/** @brief A non-negative integer from a decimal or 0x-prefixed string. */
+std::optional<uint64_t> parseNumber(std::string_view s);
+
+/** @brief A non-negative integer from a property value: an integer type, an
+ *         integral double, or a decimal or 0x-prefixed string. Anything
+ *         else, including bool, negative, fractional and non-finite values,
+ *         is rejected. */
+std::optional<uint64_t> numberValue(const PropertyValue& value);
+
+/** @brief The integer property @p key of @p props, if present and in
+ *         [0, max]; see numberValue() for the accepted forms. */
+std::optional<uint64_t> numberProp(
+    const PropertyMap& props, const std::string& key,
+    uint64_t max = std::numeric_limits<uint64_t>::max());
 
 /** @brief Convert a value in the JSON to a D-Bus property value
  *

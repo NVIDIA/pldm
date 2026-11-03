@@ -18,9 +18,7 @@
 
 #include "libpldm/firmware_update.h"
 
-#include "common/em_device.hpp"
 #include "common/utils.hpp"
-#include "em_device_policy.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -36,6 +34,11 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#ifdef OEM_NVIDIA
+#include "em_device_policy.hpp"
+#include "oem/nvidia/common/em_device.hpp"
+#endif
 
 PHOSPHOR_LOG2_USING;
 
@@ -279,6 +282,7 @@ void unpackComponents(
     }
 }
 
+#ifdef OEM_NVIDIA
 /** @brief Components of the PLDMDevice record of @p targetName (the
  *         NvDevice name), with associations and policy derived from the
  *         device kind. False when the device has no PLDMDevice record. */
@@ -322,6 +326,7 @@ bool unpackDeviceComponents(const std::string& targetName,
     }
     return true;
 }
+#endif
 
 } // namespace
 
@@ -411,11 +416,13 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
         return info;
     }
 
+#ifdef OEM_NVIDIA
     DeviceComponentInfo info;
     if (unpackDeviceComponents(targetName, info.emComponents, info.idNameMap))
     {
         return info;
     }
+#endif
     return std::nullopt;
 }
 
@@ -516,6 +523,7 @@ std::set<std::string> fetchConfiguredFirmwareTargets()
         }
     }
 
+#ifdef OEM_NVIDIA
     const std::string suffix(pldm::em_device::pldmSuffix);
     for (const auto& [objPath, service] :
          pldm::em_device::objectsWith(pldm::em_device::pldmDeviceIntf))
@@ -541,6 +549,7 @@ std::set<std::string> fetchConfiguredFirmwareTargets()
             targets.insert(targetName);
         }
     }
+#endif
     return targets;
 }
 
@@ -605,6 +614,7 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
         }
     }
 
+#ifdef OEM_NVIDIA
     for (const auto& dev : pldm::em_device::devices())
     {
         if (!dev.eid || dev.medium.empty() || dev.medium == "bridge")
@@ -613,6 +623,7 @@ std::map<pldm::eid, std::set<std::string>> fetchStaticEidTargetNames()
         }
         names[static_cast<pldm::eid>(*dev.eid)].insert(dev.name);
     }
+#endif
     return names;
 }
 

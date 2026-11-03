@@ -16,7 +16,6 @@
  */
 #include "terminus_manager.hpp"
 
-#include "common/em_device.hpp"
 #include "common/sleep.hpp"
 #include "manager.hpp"
 
@@ -33,6 +32,10 @@
 #include <map>
 #include <utility>
 #include <variant>
+
+#ifdef OEM_NVIDIA
+#include "oem/nvidia/common/em_device.hpp"
+#endif
 
 namespace pldm
 {
@@ -239,7 +242,8 @@ void TerminusManager::unmapTid(const tid_t& tid)
 void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
 {
     constexpr int64_t maxUint16 = std::numeric_limits<uint16_t>::max();
-    constexpr int64_t maxEid = pldm::em_device::maxDeviceEid;
+    // 0xFF is the MCTP broadcast EID (DSP0236 8.2)
+    constexpr int64_t maxEid = 0xFE;
     auto eid = terminus.value("EID", int64_t{0xFF});
     auto terminusName = terminus.value("TerminusName", std::string(""));
     auto inst = terminus.value("Instance", int64_t{0});
@@ -368,6 +372,7 @@ void TerminusManager::loadTerminusConfigFromEm(
         }
     };
 
+#ifdef OEM_NVIDIA
     // CPU devices of the platform topology: the terminus config follows from
     // the device. A PLDM device record below overrides it.
     const auto prefix = pldm::em_device::platformPrefix(dbusHandler);
@@ -382,6 +387,7 @@ void TerminusManager::loadTerminusConfigFromEm(
         applyConfig(eidIt->second, config->instance, config->name,
                     config->cpuIndex, "NvDevice " + dev.name);
     }
+#endif
 
     pldm::utils::GetSubTreeResponse subtree;
     try
@@ -448,13 +454,13 @@ void TerminusManager::loadTerminusConfigFromEm(
         }
 
         // both are uint16_t on the terminus; absent means 0
-        auto inst = props.contains("TerminusInstance")
-                        ? pldm::em_device::numberProp(props, "TerminusInstance",
-                                                      maxUint16)
-                        : std::optional<uint64_t>{0};
+        auto inst =
+            props.contains("TerminusInstance")
+                ? pldm::utils::numberProp(props, "TerminusInstance", maxUint16)
+                : std::optional<uint64_t>{0};
         auto cpuIdx =
             props.contains("CpuIndex")
-                ? pldm::em_device::numberProp(props, "CpuIndex", maxUint16)
+                ? pldm::utils::numberProp(props, "CpuIndex", maxUint16)
                 : std::optional<uint64_t>{0};
         if (terminusName->empty() || !inst || !cpuIdx)
         {

@@ -1,25 +1,29 @@
-test_src = declare_dependency(
-    sources: [
-        '../mctp_endpoint_discovery.cpp',
-        '../../common/utils.cpp',
-        '../../common/transport.cpp',
-        '../../common/mctp_error_handling.cpp',
-        '../../fw-update/activation.cpp',
-        '../../fw-update/fw_update_utility.cpp',
-        '../../fw-update/inventory_manager.cpp',
-        '../../fw-update/package_parser.cpp',
-        '../../fw-update/component_updater.cpp',
-        '../../fw-update/device_updater.cpp',
-        '../../fw-update/update_manager.cpp',
-        '../../fw-update/update.cpp',
-        '../../fw-update/config.cpp',
-        '../../fw-update/firmware_inventory.cpp',
-        '../../fw-update/other_device_update_manager.cpp',
-        '../../fw-update/package_signature.cpp',
-        '../../fw-update/oem-nvidia/debug_token.cpp',
-        '../../common/test/types_match_entry_coverage.cpp',
-    ],
-)
+requester_test_sources = [
+    '../mctp_endpoint_discovery.cpp',
+    '../../common/utils.cpp',
+    '../../common/transport.cpp',
+    '../../common/mctp_error_handling.cpp',
+    '../../fw-update/activation.cpp',
+    '../../fw-update/fw_update_utility.cpp',
+    '../../fw-update/inventory_manager.cpp',
+    '../../fw-update/package_parser.cpp',
+    '../../fw-update/component_updater.cpp',
+    '../../fw-update/device_updater.cpp',
+    '../../fw-update/update_manager.cpp',
+    '../../fw-update/update.cpp',
+    '../../fw-update/config.cpp',
+    '../../fw-update/firmware_inventory.cpp',
+    '../../fw-update/other_device_update_manager.cpp',
+    '../../fw-update/package_signature.cpp',
+    '../../fw-update/oem-nvidia/debug_token.cpp',
+    '../../common/test/types_match_entry_coverage.cpp',
+]
+
+if get_option('oem-nvidia').enabled()
+    requester_test_sources += ['../../oem/nvidia/common/em_device.cpp']
+endif
+
+test_src = declare_dependency(sources: requester_test_sources)
 
 tests = [
     # TEMP: disabled -- inline "just() | let_value(->exec::task<void>)" spawn

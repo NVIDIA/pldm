@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-#include "common/em_device.hpp"
 #include "common/test/mocked_utils.hpp"
+#include "oem/nvidia/common/em_device.hpp"
 
-#include <cmath>
 #include <limits>
 
 #include <gmock/gmock.h>
@@ -26,58 +25,9 @@
 
 using namespace pldm::em_device;
 using pldm::utils::PropertyMap;
-using pldm::utils::PropertyValue;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
-
-TEST(EmDeviceNumberValue, acceptsIntegersAndIntegralDoubles)
-{
-    EXPECT_EQ(numberValue(uint8_t{14}), 14U);
-    EXPECT_EQ(numberValue(uint64_t{0}), 0U);
-    EXPECT_EQ(numberValue(int64_t{7}), 7U);
-    EXPECT_EQ(numberValue(std::numeric_limits<uint64_t>::max()),
-              std::numeric_limits<uint64_t>::max());
-    EXPECT_EQ(numberValue(double{14.0}), 14U);
-    EXPECT_EQ(numberValue(double{0.0}), 0U);
-    // the largest double below 2^64
-    EXPECT_EQ(numberValue(double{18446744073709549568.0}),
-              18446744073709549568U);
-    EXPECT_EQ(numberValue(std::string("14")), 14U);
-    EXPECT_EQ(numberValue(std::string("0x0E")), 14U);
-    EXPECT_EQ(numberValue(std::string("0X0e")), 14U);
-}
-
-TEST(EmDeviceNumberValue, rejectsUnusableValues)
-{
-    EXPECT_FALSE(numberValue(true));
-    EXPECT_FALSE(numberValue(int16_t{-1}));
-    EXPECT_FALSE(numberValue(int64_t{-1}));
-    EXPECT_FALSE(numberValue(double{-1.0}));
-    EXPECT_FALSE(numberValue(double{1.5}));
-    EXPECT_FALSE(numberValue(std::numeric_limits<double>::infinity()));
-    EXPECT_FALSE(numberValue(std::numeric_limits<double>::quiet_NaN()));
-    EXPECT_FALSE(numberValue(double{1e20}));
-    // 2^64 is one past the largest uint64_t
-    EXPECT_FALSE(numberValue(double{18446744073709551616.0}));
-    EXPECT_FALSE(numberValue(std::string("")));
-    EXPECT_FALSE(numberValue(std::string("14x")));
-    EXPECT_FALSE(numberValue(std::string("-1")));
-    EXPECT_FALSE(numberValue(std::string("0x")));
-    EXPECT_FALSE(numberValue(std::vector<uint8_t>{14}));
-}
-
-TEST(EmDeviceNumberProp, appliesTheBound)
-{
-    const PropertyMap props{
-        {"A", uint64_t{14}}, {"B", uint64_t{255}}, {"C", uint64_t{254}}};
-    EXPECT_EQ(numberProp(props, "A"), 14U);
-    EXPECT_EQ(numberProp(props, "A", 14), 14U);
-    EXPECT_FALSE(numberProp(props, "A", 13));
-    EXPECT_FALSE(numberProp(props, "B", maxDeviceEid));
-    EXPECT_EQ(numberProp(props, "C", maxDeviceEid), 0xFEU);
-    EXPECT_FALSE(numberProp(props, "missing"));
-}
 
 namespace
 {

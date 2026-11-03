@@ -23,11 +23,11 @@
 #ifdef OEM_NVIDIA
 #include "libpldm/oem/nvidia/energy_count_numeric_sensor_oem.h"
 
+#include "oem/nvidia/common/em_device.hpp"
 #include "oem/nvidia/platform-mc/derived_sensor/switchBandwidthSensor.hpp"
 #include "oem/nvidia/platform-mc/inventory_manager.hpp"
 #endif
 
-#include "common/em_device.hpp"
 #include "common/types.hpp"
 #include "numeric_effecter.hpp"
 #include "numeric_sensor.hpp"
@@ -350,10 +350,12 @@ class Terminus
      */
     exec::task<int> checkDeviceInventory(const std::string& objPath);
 
+#ifdef OEM_NVIDIA
     /** @brief Fill the aux-name and port-info tables from a PLDMDevice
      *         record of the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
+#endif
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI

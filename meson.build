@@ -473,6 +473,11 @@ if get_option('fw-update-pkg-inotify').allowed()
     source_files += ['fw-update/watch.cpp']
 endif
 
+# fw-update reads the EM devices too, so this is not under pldm-type2
+if get_option('oem-nvidia').enabled()
+    source_files += ['oem/nvidia/common/em_device.cpp']
+endif
+
 if get_option('pldm-type2').enabled()
     source_files += [
         'platform-mc/terminus_manager.cpp',
@@ -563,6 +568,9 @@ if get_option('tests').enabled()
     subdir('requester/test')
     if get_option('libpldmresponder').enabled()
         subdir('host-bmc/test')
+    endif
+    if get_option('oem-nvidia').enabled()
+        subdir('oem/nvidia/common/test')
     endif
     if get_option('pldm-type2').enabled()
         subdir('platform-mc/test')

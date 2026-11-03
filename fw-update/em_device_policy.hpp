@@ -17,8 +17,8 @@
 
 #pragma once
 
-#include "common/em_device.hpp"
 #include "common/utils.hpp"
+#include "oem/nvidia/common/em_device.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -26,9 +26,9 @@
 #include <vector>
 
 /** @brief Firmware-update policy of the devices of the platform topology
- *         (common/em_device.hpp): the MCTPEndpoint override record of a
- *         device, and the associations and inventory paths that follow
- *         from its kind.
+ *         (oem/nvidia/common/em_device.hpp): the MCTPEndpoint override
+ *         record of a device, and the associations and inventory paths
+ *         that follow from its kind.
  */
 namespace pldm::fw_update::em_device_policy
 {

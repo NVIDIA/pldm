@@ -18,14 +18,12 @@
 
 #include "activation.hpp"
 #include "aggregate_update_manager.hpp"
-#include "common/em_device.hpp"
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
 #include "device_updater.hpp"
 #include "em_config.hpp"
-#include "em_device_policy.hpp"
 #include "firmware_inventory.hpp"
 #include "inventory_manager.hpp"
 #include "requester/handler.hpp"
@@ -44,6 +42,11 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#ifdef OEM_NVIDIA
+#include "em_device_policy.hpp"
+#include "oem/nvidia/common/em_device.hpp"
+#endif
 
 namespace pldm
 {
@@ -297,11 +300,13 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             // no configured_by target name is available).
             std::string targetName =
                 em_config::targetNameForEid(configurations, eid);
+#ifdef OEM_NVIDIA
             if (auto record = pldm::em_device::pldmDevice(targetName);
                 record && !record->firmwareName.empty())
             {
                 targetName = record->firmwareName;
             }
+#endif
             auto& componentIdNameMap = componentNameMap[eid];
             for (const auto& [compKey, compInfo] : componentInfoMap[eid])
             {
@@ -890,6 +895,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
             return;
         }
 
+#ifdef OEM_NVIDIA
         // Topology-described device: paths follow from the device kind.
         auto dev = pldm::em_device::deviceByName(targetName);
         if (!dev)
@@ -902,6 +908,7 @@ class Manager : public pldm::MctpDiscoveryHandlerIntf
         {
             writeIdentityTo(eid, uuid, writeUuid, paths->create, paths->update);
         }
+#endif
     }
 
     /** @brief Write UUID / EC-SKU onto the RoT chassis (@p createPath) and

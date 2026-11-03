@@ -17,12 +17,10 @@
 #include "update_manager.hpp"
 
 #include "activation.hpp"
-#include "common/em_device.hpp"
 #include "common/mmap_stream.hpp"
 #include "common/utils.hpp"
 #include "config.hpp"
 #include "dbusutil.hpp"
-#include "em_device_policy.hpp"
 #include "error_handling.hpp"
 #include "package_parser.hpp"
 #include "package_signature.hpp"
@@ -47,6 +45,11 @@
 #include <set>
 #include <string>
 #include <string_view>
+
+#ifdef OEM_NVIDIA
+#include "em_device_policy.hpp"
+#include "oem/nvidia/common/em_device.hpp"
+#endif
 
 PHOSPHOR_LOG2_USING;
 
@@ -126,6 +129,7 @@ static bool configIgnoresPldm(const pldm::utils::PropertyMap& props)
     return false;
 }
 
+#ifdef OEM_NVIDIA
 /** @brief Add the downstream EID pool of the bridge @p dev to @p eids.
  *
  *  em_device::devices() drops a pool bound outside [0, maxDeviceEid]. A
@@ -155,6 +159,7 @@ static void seedBridgePool(const pldm::em_device::Device& dev,
         eids.insert(static_cast<mctp_eid_t>(e));
     }
 }
+#endif
 
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
  *         set of statically-configured device EIDs.
@@ -258,6 +263,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
         }
     }
 
+#ifdef OEM_NVIDIA
     // Devices described by the platform topology (NvDevice + Transport), with
     // IgnoreMessageTypes from their MCTPEndpoint override record.
     for (const auto& dev : pldm::em_device::devices())
@@ -285,6 +291,7 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
             seedBridgePool(dev, refreshEidSet);
         }
     }
+#endif
 }
 
 /** @brief Report a firmware update failure once.

@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -246,6 +247,79 @@ std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
         return std::nullopt;
     }
     return static_cast<eid>(*raw);
+}
+
+std::optional<uint64_t> parseNumber(std::string_view s)
+{
+    uint64_t out = 0;
+    int base = 10;
+    if (s.starts_with("0x") || s.starts_with("0X"))
+    {
+        s.remove_prefix(2);
+        base = 16;
+    }
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out, base);
+    if (ec != std::errc() || ptr != s.data() + s.size())
+    {
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::optional<uint64_t> numberValue(const PropertyValue& value)
+{
+    return std::visit(
+        [](const auto& v) -> std::optional<uint64_t> {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, bool>)
+            {
+                return std::nullopt;
+            }
+            else if constexpr (std::is_floating_point_v<T>)
+            {
+                // 2^64 as a double; the largest uint64_t is not exact
+                constexpr double limit = 18446744073709551616.0;
+                if (!std::isfinite(v) || v < 0 || v >= limit ||
+                    v != std::trunc(v))
+                {
+                    return std::nullopt;
+                }
+                return static_cast<uint64_t>(v);
+            }
+            else if constexpr (std::is_integral_v<T>)
+            {
+                if (v < 0)
+                {
+                    return std::nullopt;
+                }
+                return static_cast<uint64_t>(v);
+            }
+            else if constexpr (std::is_same_v<T, std::string>)
+            {
+                return parseNumber(v);
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        },
+        value);
+}
+
+std::optional<uint64_t> numberProp(const PropertyMap& props,
+                                   const std::string& key, uint64_t max)
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return std::nullopt;
+    }
+    auto value = numberValue(it->second);
+    if (value && *value > max)
+    {
+        return std::nullopt;
+    }
+    return value;
 }
 
 uint8_t getNumPadBytes(uint32_t data)

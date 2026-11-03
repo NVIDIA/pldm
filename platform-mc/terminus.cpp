@@ -55,6 +55,7 @@ std::string& systemInventoryPath()
 #endif
 }
 
+#ifdef OEM_NVIDIA
 /** @brief Whether the NvDevice @p dev is the endpoint @p mctpInfo: the
  *         device has the endpoint's EID and, when the endpoint was given
  *         a name in its EM config, that name too. */
@@ -91,7 +92,7 @@ std::optional<uint64_t> eidValue(const dbus::PropertyMap& props)
     auto eid = std::visit(
         [](const auto& v) {
             using T = std::decay_t<decltype(v)>;
-            return pldm::em_device::numberValue(
+            return pldm::utils::numberValue(
                 utils::PropertyValue(std::in_place_type<T>, v));
         },
         it->second);
@@ -131,6 +132,7 @@ bool namesEndpoint(const std::string& intf, const dbus::PropertyMap& props,
            (stringValue(props, "MCTPTargetName") == *name ||
             stringValue(props, "Name") == *name + pldm::em_device::pldmSuffix);
 }
+#endif
 
 } // namespace
 
@@ -182,6 +184,7 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         {
             interested = true;
         }
+#ifdef OEM_NVIDIA
         // A device record matters only to the terminus it names.
         if (intf == pldm::em_device::pldmDeviceIntf ||
             intf == pldm::em_device::nvDeviceIntf)
@@ -192,6 +195,7 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
                 interested = true;
             }
         }
+#endif
         if (interested)
         {
             break;
@@ -244,6 +248,7 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 
 exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 {
+#ifdef OEM_NVIDIA
     // A device described by the platform topology: the chassis object whose
     // leaf is the NvDevice name as EM writes it into a path, for the device
     // that is this terminus's endpoint (see isEndpointDevice()), with the
@@ -275,18 +280,15 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                 co_await getSensorAuxNameFromEM(
                     0, 0, static_cast<uint8_t>(*dev->eid), objPath,
                     /*namesFromRecord=*/true);
-#ifdef OEM_NVIDIA
                 co_await getPortInfoFromEM(objPath);
-#endif
                 loadDeviceRecord(*record, objPath);
-#ifdef OEM_NVIDIA
                 co_await getInfoForNVSwitchFromEM(objPath);
                 co_await getSensorEventInfoFromEM(objPath);
-#endif
                 co_return PLDM_SUCCESS;
             }
         }
     }
+#endif
 
     try
     {
@@ -411,6 +413,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
     co_return PLDM_FAILED;
 }
 
+#ifdef OEM_NVIDIA
 void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                                 const std::string& objPath)
 {
@@ -421,7 +424,6 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
         sensorAuxNameOverwriteTbl[sensorId] =
             std::make_tuple(auxNameTbl, objPath);
     }
-#ifdef OEM_NVIDIA
     for (const auto& [sensorId, port] : record.ports)
     {
         // The ports of a device without a NIC are its own.
@@ -451,11 +453,11 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
             std::string{}, record.portMaxSpeed.value_or(0),
             std::vector<dbus::PathAssociation>{std::move(assoc)});
     }
-#endif
     lg2::debug("loadDeviceRecord: {AUX} aux names, {PORTS} ports for {PATH}",
                "AUX", record.auxNames.size(), "PORTS", record.ports.size(),
                "PATH", objPath);
 }
+#endif
 
 exec::task<int> Terminus::getSensorAuxNameFromEM(
     uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath,

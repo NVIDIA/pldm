@@ -22,6 +22,10 @@ fw_update_test_sources = [
     '../systemd_interface.cpp',
 ]
 
+if get_option('oem-nvidia').enabled()
+    fw_update_test_sources += ['../../oem/nvidia/common/em_device.cpp']
+endif
+
 fw_update_test_sources_no_config = []
 fw_update_test_sources_no_em_config = []
 fw_update_test_sources_no_firmware_inventory = []
@@ -73,7 +77,6 @@ tests = [
     'device_updater_firmware_update_test',
     'device_updater_test',
     'em_config_internal_test',
-    'em_device_policy_test',
     'error_handling_test',
     'firmware_inventory_internal_thread_test',
     'firmware_inventory_manager_test',
@@ -92,6 +95,10 @@ tests = [
     'update_manager_pkg_association_test',
     'update_manager_test',
 ]
+
+if get_option('oem-nvidia').enabled()
+    tests += ['em_device_policy_test']
+endif
 
 openssl = dependency('openssl', required: true)
 

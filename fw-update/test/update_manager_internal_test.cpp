@@ -308,6 +308,7 @@ TEST_F(UpdateManagerInternalTest, seedRefreshIgnoreTypesMatchesWholeTokens)
     EXPECT_EQ(eids, (std::set<mctp_eid_t>{40}));
 }
 
+#ifdef OEM_NVIDIA
 /** @brief Publish an NvDevice @p name at @p path, with @p eid if set, and
  *         its .Transport properties @p transport. */
 void publishDevice(const std::string& path, const std::string& name,
@@ -442,5 +443,6 @@ TEST_F(UpdateManagerInternalTest, seedBridgePoolBoundsAnUncheckedDevice)
     pldm::fw_update::seedBridgePool(dev, eids);
     EXPECT_EQ(eids, (std::set<mctp_eid_t>{0xFD, 0xFE}));
 }
+#endif
 
 } // namespace
