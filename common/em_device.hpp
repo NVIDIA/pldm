@@ -22,6 +22,7 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -353,6 +354,37 @@ inline std::optional<Device> deviceByName(
     for (auto& dev : devices(bus))
     {
         if (dev.name == name)
+        {
+            return dev;
+        }
+    }
+    return std::nullopt;
+}
+
+/** @brief @p name as entity-manager writes it into an object path: every
+ *         character outside [A-Za-z0-9_] becomes '_'
+ *         (dbus_regex::sanitizeForDBusMember). */
+inline std::string dbusPathSegment(std::string name)
+{
+    for (auto& c : name)
+    {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+        {
+            c = '_';
+        }
+    }
+    return name;
+}
+
+/** @brief The device whose name entity-manager publishes as the object
+ *         path segment @p segment, e.g. the leaf of its chassis path. */
+inline std::optional<Device> deviceByPathSegment(
+    const std::string& segment,
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler())
+{
+    for (auto& dev : devices(bus))
+    {
+        if (dbusPathSegment(dev.name) == segment)
         {
             return dev;
         }

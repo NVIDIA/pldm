@@ -170,6 +170,31 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
     EXPECT_FALSE(deviceByName("HGX_CPU_1", dbus));
 }
 
+TEST(EmDevicePathSegment, sanitisesLikeEntityManager)
+{
+    EXPECT_EQ("HGX_CPU_0", dbusPathSegment("HGX_CPU_0"));
+    EXPECT_EQ("HGX_CX_9_0", dbusPathSegment("HGX_CX-9_0"));
+    EXPECT_EQ("NVSwitch_0_1", dbusPathSegment("NVSwitch 0.1"));
+    EXPECT_EQ("", dbusPathSegment(""));
+}
+
+TEST_F(EmDeviceDevices, findsADeviceByItsPathSegment)
+{
+    const std::string cx = "/inventory/platform/HGX_CX_9_0";
+    publish({cx}, {{cx + "|" + nvDeviceIntf,
+                    {{"Name", std::string("HGX_CX-9_0")},
+                     {"Kind", std::string("cx9_io")},
+                     {"EID", uint64_t{30}}}}});
+
+    auto dev = deviceByPathSegment("HGX_CX_9_0", dbus);
+    ASSERT_TRUE(dev);
+    // the record keeps the raw name, which the PLDMDevice record refers to
+    EXPECT_EQ("HGX_CX-9_0", dev->name);
+    EXPECT_EQ(std::optional<uint64_t>(30), dev->eid);
+    EXPECT_FALSE(deviceByPathSegment("HGX_CX-9_0", dbus));
+    EXPECT_FALSE(deviceByName("HGX_CX_9_0", dbus));
+}
+
 TEST_F(EmDeviceDevices, keepsTheFirstValueOnConflict)
 {
     const std::string a = "/inventory/a/HGX_CPU_0";
