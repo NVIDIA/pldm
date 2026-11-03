@@ -497,8 +497,9 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
             record.networkAdapter.empty()
                 ? objPath
                 : objPath + "/NetworkAdapters/" + record.networkAdapter;
-        dbus::PathAssociation assoc{"associated_port", "associated_port",
-                                    portParent + "/Ports/" + port};
+        dbus::PathAssociation assoc{
+            "associated_port", "associated_port",
+            std::format("{}/Ports/{}", portParent, port)};
         // A SensorPortInfo entry of the sensor keeps its type and protocol,
         // and its speed unless the record has one; the record adds its port
         // to the entry's associations.

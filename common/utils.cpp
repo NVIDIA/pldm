@@ -271,11 +271,7 @@ std::optional<uint64_t> numberValue(const PropertyValue& value)
     return std::visit(
         [](const auto& v) -> std::optional<uint64_t> {
             using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, bool>)
-            {
-                return std::nullopt;
-            }
-            else if constexpr (std::is_floating_point_v<T>)
+            if constexpr (std::is_floating_point_v<T>)
             {
                 // 2^64 as a double; the largest uint64_t is not exact
                 constexpr double limit = 18446744073709551616.0;
@@ -286,7 +282,8 @@ std::optional<uint64_t> numberValue(const PropertyValue& value)
                 }
                 return static_cast<uint64_t>(v);
             }
-            else if constexpr (std::is_integral_v<T>)
+            else if constexpr (std::is_integral_v<T> &&
+                               !std::is_same_v<T, bool>)
             {
                 if (v < 0)
                 {
