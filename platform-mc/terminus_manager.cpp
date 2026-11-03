@@ -27,6 +27,7 @@
 #include <array>
 #include <cstdio>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -252,12 +253,35 @@ void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
     std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
 
     // EID is a uint8_t below broadcast, Instance and CpuIndex are uint16_t
-    if (eid < 0 || eid > maxEid || terminusName.empty() || inst < 0 ||
-        inst > maxUint16 || cpuIdxVal < 0 || cpuIdxVal > maxUint16)
+    auto outOfRange = [](int64_t value, int64_t max) {
+        return value < 0 || value > max;
+    };
+    std::string invalid;
+    if (!terminus.contains("EID"))
+    {
+        invalid = "no EID";
+    }
+    else if (outOfRange(eid, maxEid))
+    {
+        invalid = std::format("EID {}", eid);
+    }
+    else if (terminusName.empty())
+    {
+        invalid = "empty TerminusName";
+    }
+    else if (outOfRange(inst, maxUint16))
+    {
+        invalid = std::format("Instance {}", inst);
+    }
+    else if (outOfRange(cpuIdxVal, maxUint16))
+    {
+        invalid = std::format("CpuIndex {}", cpuIdxVal);
+    }
+    if (!invalid.empty())
     {
         lg2::warning(
-            "Invalid terminus configuration entry, skipping. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-            "TERMINUS_NAME", terminusName, "EID", eid);
+            "Invalid terminus configuration entry, skipping: {INVALID}. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
+            "INVALID", invalid, "TERMINUS_NAME", terminusName, "EID", eid);
         return;
     }
 
@@ -534,31 +558,35 @@ bool hasTerminusConfig(Terminus& terminus, const TerminusConfigEntry& config)
 
 void TerminusManager::loadTerminusConfigFromEm(
     const Configurations& configurations,
-    const pldm::utils::DBusHandlerInterface& dbusHandler)
+    const pldm::utils::DBusHandlerInterface& dbusHandler, bool force)
 {
     // A device reachable over more than one medium has one endpoint per
-    // medium under the same name; all of them get the config.
+    // medium under the same name; all of them get the config. Each named
+    // endpoint is read once, whether or not it ends up with a terminus:
+    // a record added later is read through reloadTerminusConfig().
     NameToEids nameToEids;
     std::map<mctp_eid_t, std::vector<MctpInfo>> eidToEndpoints;
-    // While every named endpoint has an initialized terminus, a config read
-    // now could only be reported, not applied: there is nothing to read EM
-    // for.
-    bool pending = false;
+    std::set<std::pair<std::string, mctp_eid_t>> reading;
     for (const auto& [path, mctpInfo] : configurations)
     {
         const auto& name = std::get<4>(mctpInfo);
-        if (name.has_value() && !name->empty())
+        if (!name.has_value() || name->empty())
         {
-            const auto eid = std::get<0>(mctpInfo);
-            nameToEids[*name].push_back(eid);
-            eidToEndpoints[eid].push_back(mctpInfo);
-            auto tid = toTid(mctpInfo);
-            auto terminus = tid ? termini.find(*tid) : termini.end();
-            pending = pending || terminus == termini.end() ||
-                      !terminus->second || !terminus->second->initialized;
+            continue;
         }
+        const auto eid = std::get<0>(mctpInfo);
+        std::pair<std::string, mctp_eid_t> endpoint{*name, eid};
+        if (!force && emConfigEndpointsRead.contains(endpoint))
+        {
+            continue;
+        }
+        if (reading.insert(std::move(endpoint)).second)
+        {
+            nameToEids[*name].push_back(eid);
+        }
+        eidToEndpoints[eid].push_back(mctpInfo);
     }
-    if (!pending)
+    if (nameToEids.empty())
     {
         return;
     }
@@ -576,6 +604,7 @@ void TerminusManager::loadTerminusConfigFromEm(
         storeTerminusConfig(eid, entry.config, entry.source,
                             eidToEndpoints[eid]);
     }
+    emConfigEndpointsRead.merge(reading);
 }
 
 void TerminusManager::storeTerminusConfig(
@@ -645,8 +674,19 @@ void TerminusManager::reloadTerminusConfig(
             "TID", tid);
         return;
     }
-    // The key only names the entry.
-    loadTerminusConfigFromEm({{"/reload/" + *name, *mctpInfo}}, dbusHandler);
+    auto terminus = termini.find(tid);
+    if (terminus != termini.end() && terminus->second &&
+        terminus->second->initialized)
+    {
+        lg2::debug(
+            "TID={TID} is initialized; its terminus config is not reloaded",
+            "TID", tid);
+        return;
+    }
+    // The key only names the entry. The endpoint was read before; the
+    // record that prompts the reload was not there then.
+    loadTerminusConfigFromEm({{"/reload/" + *name, *mctpInfo}}, dbusHandler,
+                             /*force=*/true);
 }
 
 void TerminusManager::discoverMctpTerminus(const MctpInfos& mctpInfos)

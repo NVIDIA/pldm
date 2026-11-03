@@ -78,6 +78,11 @@ struct PldmDevice
     // ids of the components listed as FWInventoryOnlyComponent
     std::set<uint16_t> inventoryOnly;
     std::map<uint16_t, std::string> auxNames;
+    // sensor id -> port name; the port is under the device's network
+    // adapter, or under the device's chassis (<chassis>/Ports/<port>)
+    // without one. Device-local ports only: NVSwitch fabric ports
+    // (.../fabrics/<fabric>/Switches/<sw>/Ports/<p>) are not described by
+    // a PLDMDevice record and keep their SensorPortInfo configs.
     std::map<uint16_t, std::string> ports;
     std::string networkAdapter;
     std::optional<uint64_t> portMaxSpeed;

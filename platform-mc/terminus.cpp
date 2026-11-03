@@ -56,18 +56,47 @@ std::string& systemInventoryPath()
 }
 
 #ifdef OEM_NVIDIA
-/** @brief Whether the NvDevice @p dev is the endpoint @p mctpInfo: the
- *         device has the endpoint's EID and, when the endpoint was given
- *         a name in its EM config, that name too. */
+/** @brief The configured name of the endpoint @p mctpInfo: the Name of the
+ *         MCTP target record its EM config points at; nullptr when it has
+ *         none. */
+const std::string* endpointName(const MctpInfo& mctpInfo)
+{
+    const auto& name = std::get<4>(mctpInfo);
+    return name && !name->empty() ? &*name : nullptr;
+}
+
+/** @brief Whether the device @p deviceName with the EID @p deviceEid is
+ *         the endpoint @p mctpInfo: it has the endpoint's EID, or the
+ *         endpoint's name.
+ *
+ *  Either is enough. The endpoint's name is the Name of its MCTP target
+ *  record, which need not be the device's name (a BlueField device behind
+ *  an MCTP record named BF4_0), and a device reachable over more than one
+ *  medium has one endpoint per medium under its name, but only one of
+ *  their EIDs is the device's.
+ */
+bool isEndpointDevice(const std::string& deviceName,
+                      std::optional<uint64_t> deviceEid,
+                      const MctpInfo& mctpInfo)
+{
+    const auto* name = endpointName(mctpInfo);
+    if (deviceEid && *deviceEid == std::get<0>(mctpInfo))
+    {
+        if (name && *name != deviceName)
+        {
+            lg2::debug(
+                "Device {DEVICE} matches the endpoint {NAME} by EID {EID} only",
+                "DEVICE", deviceName, "NAME", *name, "EID", *deviceEid);
+        }
+        return true;
+    }
+    return name && *name == deviceName;
+}
+
 bool isEndpointDevice(const pldm::em_device::Device& dev,
                       const MctpInfo& mctpInfo)
 {
-    const auto& name = std::get<4>(mctpInfo);
-    if (name && !name->empty() && *name != dev.name)
-    {
-        return false;
-    }
-    return dev.eid && *dev.eid == std::get<0>(mctpInfo);
+    return isEndpointDevice(dev.name, dev.eid, mctpInfo);
 }
 
 std::string stringValue(const dbus::PropertyMap& props, const std::string& key)
@@ -104,33 +133,42 @@ std::optional<uint64_t> eidValue(const dbus::PropertyMap& props)
 }
 
 /** @brief Whether the NvDevice or PLDMDevice record @p props of an
- *         InterfacesAdded signal is about the endpoint @p mctpInfo.
+ *         InterfacesAdded signal is about the endpoint @p mctpInfo, whose
+ *         NvDevice is @p deviceName (empty when not known yet).
  *
- *  An NvDevice is matched as by isEndpointDevice(): by the endpoint's name
- *  when it has one and by its EID, except that a record without a valid
- *  EID is matched by the name alone, as the EID may come with the
- *  device's other record. A PLDMDevice record has no EID: it is matched by the
- *  endpoint's name as its MCTPTargetName or as its Name without the
- *  "_PLDM" suffix.
+ *  An NvDevice is matched as by isEndpointDevice(): by its EID or by its
+ *  Name; as in em_device::devices(), an invalid EID counts as none. A
+ *  PLDMDevice record has no EID: it names its device by its Name without
+ *  the "_PLDM" suffix and the device's MCTP target by MCTPTargetName.
+ *  It is matched when either is the endpoint's name or @p deviceName. No
+ *  D-Bus is read: a record that arrives before the chassis scan has found
+ *  the device is read by the scan itself.
  */
 bool namesEndpoint(const std::string& intf, const dbus::PropertyMap& props,
-                   const MctpInfo& mctpInfo)
+                   const MctpInfo& mctpInfo, const std::string& deviceName)
 {
-    const auto& name = std::get<4>(mctpInfo);
-    const bool named = name && !name->empty();
     if (intf == pldm::em_device::nvDeviceIntf)
     {
-        if (named && stringValue(props, "Name") != *name)
-        {
-            return false;
-        }
-        // As in em_device::devices(), an invalid EID counts as none.
-        auto eid = eidValue(props);
-        return eid ? *eid == std::get<0>(mctpInfo) : named;
+        return isEndpointDevice(stringValue(props, "Name"), eidValue(props),
+                                mctpInfo);
     }
-    return named &&
-           (stringValue(props, "MCTPTargetName") == *name ||
-            stringValue(props, "Name") == *name + pldm::em_device::pldmSuffix);
+    const auto* name = endpointName(mctpInfo);
+    auto isOurs = [name, &deviceName](const std::string& value) {
+        return !value.empty() &&
+               ((name && value == *name) || value == deviceName);
+    };
+    if (isOurs(stringValue(props, "MCTPTargetName")))
+    {
+        return true;
+    }
+    std::string recordDevice = stringValue(props, "Name");
+    if (!recordDevice.ends_with(pldm::em_device::pldmSuffix))
+    {
+        return false;
+    }
+    recordDevice.resize(recordDevice.size() -
+                        std::string_view(pldm::em_device::pldmSuffix).size());
+    return isOurs(recordDevice);
 }
 #endif
 
@@ -190,7 +228,8 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
             intf == pldm::em_device::nvDeviceIntf)
         {
             auto mctpInfo = terminusManager.toMctpInfo(tid);
-            if (mctpInfo && namesEndpoint(intf, properties, *mctpInfo))
+            if (mctpInfo &&
+                namesEndpoint(intf, properties, *mctpInfo, deviceName))
             {
                 interested = true;
                 // The record may carry the terminus name, which must be in
@@ -258,8 +297,10 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 #ifdef OEM_NVIDIA
     // A device described by the platform topology: the chassis object whose
     // leaf is the NvDevice name as EM writes it into a path, for the device
-    // that is this terminus's endpoint (see isEndpointDevice()), with the
-    // sensor names and ports in the device's PLDMDevice record.
+    // that is this terminus's endpoint by EID or by name (see
+    // isEndpointDevice()), with the sensor names and ports in the device's
+    // PLDMDevice record. A device without a PLDMDevice record, or without a
+    // valid EID, is left to the association children below.
     if (objPath.starts_with(pldm::em_device::chassisRoot))
     {
         const std::string leaf =
@@ -270,7 +311,18 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
                        ? pldm::em_device::deviceByPathSegment(
                              leaf, utils::DBusHandler())
                        : std::nullopt;
-        if (dev && dev->eid)
+        // The device matched before is matched again below or no more.
+        if (dev && dev->name == deviceName)
+        {
+            deviceName.clear();
+        }
+        if (dev && !dev->eid)
+        {
+            lg2::warning(
+                "NvDevice {NAME} of {PATH} has no valid EID; matching it to TID {TID} by its association configs",
+                "NAME", dev->name, "PATH", objPath, "TID", tid);
+        }
+        else if (dev)
         {
             // The chassis of a device with an EID belongs to that device's
             // terminus only, whatever its association children say.
@@ -278,6 +330,9 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             {
                 co_return PLDM_FAILED;
             }
+            // For namesEndpoint(): the PLDMDevice record of the device
+            // concerns this terminus until a rescan refuses the device.
+            deviceName = dev->name;
             if (auto record = pldm::em_device::pldmDevice(dev->name,
                                                           utils::DBusHandler()))
             {
@@ -433,7 +488,11 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
     }
     for (const auto& [sensorId, port] : record.ports)
     {
-        // The ports of a device without a NIC are its own.
+        // The ports of a device without a NIC are its own, under
+        // <chassis>/Ports/<port>. This covers device-local ports only:
+        // NVSwitch fabric ports (.../fabrics/<fabric>/Switches/<sw>/Ports/<p>)
+        // are not described by a PLDMDevice record and keep their
+        // SensorPortInfo configs.
         const std::string portParent =
             record.networkAdapter.empty()
                 ? objPath

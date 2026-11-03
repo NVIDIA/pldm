@@ -25,7 +25,9 @@
 
 #include <queue>
 #include <set>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace pldm
 {
@@ -105,22 +107,30 @@ class TerminusManager
      *  If the terminus exists already, a config that differs from its own
      *  is applied while it is not initialized, and is reported with a
      *  warning once it is: it then takes effect at the next pldmd start.
-     *  Hence EM is not read when every named endpoint already has an
-     *  initialized terminus.
+     *
+     *  Each named endpoint (name and EID) is read once: EM is read only for
+     *  the endpoints of @p configurations not read before, and not at all
+     *  when there are none, also when an endpoint never gets a terminus.
+     *  A failed D-Bus query reads as no records, so it counts as a read
+     *  too. A record that arrives later is read by reloadTerminusConfig().
      *
      *  @param[in] configurations - EM config path to MctpInfo, with the
      *                              endpoint name resolved
      *  @param[in] dbusHandler - D-Bus handler used to read the EM records
+     *  @param[in] force - read every named endpoint, also one read before
      */
     void loadTerminusConfigFromEm(
         const Configurations& configurations,
-        const pldm::utils::DBusHandlerInterface& dbusHandler);
+        const pldm::utils::DBusHandlerInterface& dbusHandler,
+        bool force = false);
 
     /** @brief Read the terminus config of the terminus @p tid from EM
-     *         again, as loadTerminusConfigFromEm() does for its endpoint.
-     *         Used when a record naming the endpoint is added while the
-     *         terminus is being initialized. No-op for a terminus without
-     *         an MCTP endpoint or without an endpoint name.
+     *         again, as loadTerminusConfigFromEm() does for its endpoint,
+     *         also when the endpoint was read before. Used when a record
+     *         naming the endpoint is added while the terminus is being
+     *         initialized. No-op for a terminus without an MCTP endpoint or
+     *         without an endpoint name, and for an initialized terminus,
+     *         to which a new config could no longer apply.
      *
      *  @param[in] tid - Terminus ID
      *  @param[in] dbusHandler - D-Bus handler used to read the EM records
@@ -336,6 +346,10 @@ class TerminusManager
 
     /** @brief EIDs configured by the static configuration file */
     std::set<mctp_eid_t> fileConfiguredEids;
+
+    /** @brief Named endpoints (name, EID) whose terminus config
+     *         loadTerminusConfigFromEm() has read from EM */
+    std::set<std::pair<std::string, mctp_eid_t>> emConfigEndpointsRead;
 
     /** @brief A queue of MctpInfos to be discovered **/
     std::queue<MctpInfos> queuedMctpInfos{};

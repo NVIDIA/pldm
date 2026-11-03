@@ -355,6 +355,13 @@ class Terminus
      *         record of the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
+
+    /** @brief The NvDevice this terminus was matched to; empty until the
+     *         chassis scan (checkDeviceInventory()) found it, and again
+     *         once a scan of its chassis no longer matches it. A removed
+     *         NvDevice is not forgotten; a stale name only causes extra
+     *         refreshes when that device's records reappear. */
+    std::string deviceName;
 #endif
     bool checkNsmDeviceInventory(UUID nsmUuid);
 

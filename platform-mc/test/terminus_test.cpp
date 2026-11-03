@@ -7766,20 +7766,30 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
     ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
               terminus.getTid());
 
-    // An NvDevice with the endpoint's name and EID, in any number form; one
-    // without a valid EID by the name alone.
+    // An NvDevice with the endpoint's EID, in any number form, or with its
+    // name; either is enough. Its name may be another one: the endpoint's
+    // name is that of its MCTP target record. Its EID may be another one:
+    // the device has an endpoint per medium under its name.
     EXPECT_TRUE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x60})));
+    EXPECT_TRUE(interestedIn(nvDeviceIntf, byEid));
     EXPECT_TRUE(
-        interestedIn(nvDeviceIntf, nvDevice("Dev_180", std::string("0x60"))));
+        interestedIn(nvDeviceIntf, nvDevice("Dev_X", std::string("0x60"))));
+    EXPECT_TRUE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x61})));
     EXPECT_TRUE(interestedIn(nvDeviceIntf, byName));
     EXPECT_TRUE(interestedIn(nvDeviceIntf, nvDevice("Dev_180", true)));
     EXPECT_TRUE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x160})));
+    // Neither: another EID, or an invalid one, and another name.
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", uint64_t{0x61})));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", true)));
     EXPECT_FALSE(
-        interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x61})));
-    EXPECT_FALSE(interestedIn(nvDeviceIntf, byEid));
+        interestedIn(nvDeviceIntf, nvDevice("Dev_X", uint64_t{0x160})));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, {{"EID", uint64_t{0x61}}}));
     // A PLDMDevice record by MCTPTargetName or by its "<name>_PLDM" Name.
+    // The match by the device the chassis scan found is in
+    // terminus_inventory_test; this terminus has not scanned.
     EXPECT_TRUE(interestedIn(pldmDeviceIntf, byTarget));
     EXPECT_TRUE(interestedIn(pldmDeviceIntf, byRecordName));
     EXPECT_FALSE(interestedIn(pldmDeviceIntf, byName));
@@ -7787,8 +7797,8 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
                               {{"Name", std::string("Dev_181_PLDM")},
                                {"MCTPTargetName", std::string("Dev_181")}}));
 
-    // An endpoint without a name: an NvDevice by its EID only, and no
-    // PLDMDevice record, which carries no EID.
+    // An endpoint without a name: an NvDevice by its EID only, and a
+    // PLDMDevice record only by the device the chassis scan found.
     terminusManager.unmapTid(terminus.getTid());
     std::get<4>(mctpInfo) = std::nullopt;
     ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
@@ -7801,6 +7811,7 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
     EXPECT_FALSE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_X", uint64_t{0x160})));
     EXPECT_FALSE(interestedIn(nvDeviceIntf, byName));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, {{"Name", std::string("")}}));
     EXPECT_FALSE(interestedIn(pldmDeviceIntf, byTarget));
     EXPECT_FALSE(interestedIn(pldmDeviceIntf, byRecordName));
 
