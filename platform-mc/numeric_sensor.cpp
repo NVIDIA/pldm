@@ -720,12 +720,13 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
     std::string objPath = path;
     std::string ifaceName =
         useMetricInterface ? metricIntf->interface : valueIntf->interface;
-    // TODO: update retCode for errors once error code handling defined for pldm
-    int retCode = 0;
-
     // tal telemetry update for all Numeric Sensors.
     double convertVal =
         useMetricInterface ? metricIntf->value() : valueIntf->value();
+    // NaN means no reading: TAL then sets the SMBus stale bit
+    const pldm::shmem_utils::TalRC talRc =
+        std::isnan(convertVal) ? pldm::shmem_utils::TalRC::TelemetryUnavailable
+                               : pldm::shmem_utils::TalRC::TelemetryAvailable;
     std::vector<uint8_t> rawSmbpbiData(sizeof(double));
     std::memcpy(rawSmbpbiData.data(), &convertVal, sizeof(double));
 
@@ -740,7 +741,7 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
         {
             pldm::shmem_utils::SharedMemoryManager::cacheTALData(
                 objPath, ifaceName, propertyName, rawSmbpbiData, propValue,
-                endpoint, retCode);
+                endpoint, talRc);
         }
     }
 }

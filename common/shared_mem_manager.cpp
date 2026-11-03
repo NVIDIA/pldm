@@ -46,10 +46,11 @@ void SharedMemoryManager::cacheTALData(
     const std::string& objPath, const std::string& iface,
     const std::string& prop, const std::vector<uint8_t>& smbusData,
     const nv::sensor_aggregation::DbusVariantType& propValue,
-    const std::string& associatedEntity, int rc)
+    const std::string& associatedEntity, TalRC rc)
 {
     telemetryData.push_back(tal::TelemetryData{
-        objPath, iface, prop, smbusData, rc, propValue, associatedEntity, 0u});
+        objPath, iface, prop, smbusData, static_cast<int>(rc), propValue,
+        associatedEntity, 0u});
 }
 
 void SharedMemoryManager::updateAggregateTelemetryOnTAL()

@@ -28,6 +28,13 @@ namespace pldm
 namespace shmem_utils
 {
 
+/** @brief Whether a telemetry update passed to TAL holds a reading */
+enum class TalRC : int
+{
+    TelemetryAvailable = 0,
+    TelemetryUnavailable = 1,
+};
+
 /** @class SharedMemoryManager
  *
  *  Batches per-poll-cycle TAL telemetry writes so pldmd issues one
@@ -64,7 +71,8 @@ class SharedMemoryManager
         const std::string& objPath, const std::string& iface,
         const std::string& prop, const std::vector<uint8_t>& smbusData,
         const nv::sensor_aggregation::DbusVariantType& propValue,
-        const std::string& associatedEntity = {}, int rc = 0);
+        const std::string& associatedEntity = {},
+        TalRC rc = TalRC::TelemetryAvailable);
 
     /** @brief Stamp queued records with the current steady-clock ms,
      *         hand them off to TAL as a single batch, and clear the buffer.

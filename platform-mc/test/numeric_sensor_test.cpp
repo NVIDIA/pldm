@@ -19,6 +19,20 @@
 
 #include "../../test/test_valgrind_utils.hpp"
 #include "common/instance_id.hpp"
+
+// Include TAL first so that only SharedMemoryManager is built with private
+// redefined
+#include <tal.hpp>
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
+#include "common/shared_mem_manager.hpp"
+#undef private
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #include "platform-mc/numeric_sensor.hpp"
 #include "platform-mc/terminus.hpp"
 #include "platform-mc/terminus_manager.hpp"
@@ -1456,6 +1470,87 @@ TEST_F(NumericSensorTest, extraAssociationsFollowTheInventoryOnes)
     EXPECT_EQ(
         (std::vector<Association>{{"chassis", "all_sensors", chassisPath}}),
         sensor.associationDefinitionsIntf->associations());
+}
+
+// The TAL batch is shared across the process: start and end every test
+// with it empty, including after a failed ASSERT
+class NumericSensorTalTest : public NumericSensorTest
+{
+  protected:
+    using SharedMemoryManager = pldm::shmem_utils::SharedMemoryManager;
+
+    void SetUp() override
+    {
+        SharedMemoryManager::telemetryData.clear();
+    }
+
+    void TearDown() override
+    {
+        SharedMemoryManager::telemetryData.clear();
+    }
+
+    static void expectLastRecord(size_t count, pldm::shmem_utils::TalRC rc,
+                                 bool nan)
+    {
+        ASSERT_EQ(count, SharedMemoryManager::telemetryData.size());
+        const auto& record = SharedMemoryManager::telemetryData.back();
+        EXPECT_EQ(static_cast<int>(rc), record.rc);
+        EXPECT_EQ(nan, std::isnan(std::get<double>(record.value)));
+    }
+};
+
+TEST_F(NumericSensorTalTest, nanReadingIsPublishedAsNotAvailable)
+{
+    using enum pldm::shmem_utils::TalRC;
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis5c"};
+    auto pdr = makeNumericSensorValuePdr(
+        PLDM_SENSOR_DATA_SIZE_UINT16, PLDM_RANGE_FIELD_FORMAT_UINT16,
+        PLDM_SENSOR_UNIT_WATTS, 0, true);
+    std::string sensorName{"tal_return_code_sensor"};
+    NumericSensor sensor(0x5C, false, pdr, sensorName, inventoryPath, nullptr);
+    sensor.setInventoryPaths(
+        {"/xyz/openbmc_project/inventory/system/chassis/chassis5c/cpu0"},
+        false);
+
+    sensor.updateReading(true, true, 64.0);
+    expectLastRecord(1, TelemetryAvailable, false);
+
+    // Unavailable sensor
+    sensor.updateReading(false, false, 0);
+    expectLastRecord(2, TelemetryUnavailable, true);
+
+    // Failed read
+    sensor.handleErrGetSensorReading();
+    expectLastRecord(3, TelemetryUnavailable, true);
+
+    // NaN reported by a functional sensor: the code follows the value, not
+    // the available/functional flags
+    sensor.updateReading(true, true, std::numeric_limits<double>::quiet_NaN());
+    expectLastRecord(4, TelemetryUnavailable, true);
+}
+
+TEST_F(NumericSensorTalTest, metricNanReadingIsPublishedAsNotAvailable)
+{
+    using enum pldm::shmem_utils::TalRC;
+    std::string inventoryPath{
+        "/xyz/openbmc_project/inventory/system/chassis/chassis5c"};
+    auto pdr = makeNumericSensorValuePdr(
+        PLDM_SENSOR_DATA_SIZE_UINT16, PLDM_RANGE_FIELD_FORMAT_UINT16,
+        PLDM_SENSOR_UNIT_SECONDS, 0, false);
+    std::string sensorName{"tal_return_code_metric_sensor"};
+    NumericSensor sensor(0x5C, false, pdr, sensorName, inventoryPath, nullptr);
+    ASSERT_NE(nullptr, sensor.metricIntf);
+    sensor.setInventoryPaths(
+        {"/xyz/openbmc_project/inventory/system/chassis/chassis5c/cpu0"},
+        false);
+
+    sensor.updateReading(true, true, 13.0);
+    expectLastRecord(1, TelemetryAvailable, false);
+
+    // Failed read
+    sensor.handleErrGetSensorReading();
+    expectLastRecord(2, TelemetryUnavailable, true);
 }
 
 TEST_F(NumericSensorTest, numericSensorEmptyEndpointCoverage)
