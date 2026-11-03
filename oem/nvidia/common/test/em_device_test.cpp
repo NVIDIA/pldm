@@ -218,6 +218,96 @@ TEST_F(EmDeviceDevices, dropsAnEidOutOfRange)
     EXPECT_EQ(std::optional<uint64_t>(0xFE), out[2].eid);
 }
 
+TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
+{
+    const std::string negative = "/inventory/platform/HGX_CPU_0";
+    const std::string fraction = "/inventory/platform/HGX_CPU_1";
+    const std::string text = "/inventory/platform/HGX_CPU_2";
+    const std::string array = "/inventory/platform/HGX_CPU_3";
+    const std::string large = "/inventory/platform/HGX_CPU_4";
+    publish(
+        {negative, fraction, text, array, large},
+        {{negative + "|" + nvDeviceIntf,
+          {{"Name", std::string("HGX_CPU_0")},
+           {"Kind", std::string("cpu")},
+           {"EID", uint64_t{14}},
+           {"Instance", int64_t{-1}},
+           {"CpuIndex", int32_t{-2}}}},
+         // an invalid Instance falls back to InstanceNumber
+         {fraction + "|" + nvDeviceIntf,
+          {{"Name", std::string("HGX_CPU_1")},
+           {"Kind", std::string("cpu")},
+           {"EID", uint64_t{15}},
+           {"Instance", 1.5},
+           {"InstanceNumber", uint64_t{1}},
+           {"CpuIndex", 2.5}}},
+         {text + "|" + nvDeviceIntf,
+          {{"Name", std::string("HGX_CPU_2")},
+           {"Kind", std::string("cpu")},
+           {"EID", uint64_t{16}},
+           {"InstanceNumber", std::string("two")},
+           {"CpuIndex", std::string("99999999999999999999")}}},
+         {array + "|" + nvDeviceIntf,
+          {{"Name", std::string("HGX_CPU_3")},
+           {"Kind", std::string("cpu")},
+           {"EID", uint64_t{17}},
+           {"Instance", std::vector<uint64_t>{3}},
+           {"CpuIndex", std::string("0x3")}}},
+         // Instance and CpuIndex are not bounded like an EID
+         {large + "|" + nvDeviceIntf,
+          {{"Name", std::string("HGX_CPU_4")},
+           {"Kind", std::string("cpu")},
+           {"Instance", uint64_t{0x100}},
+           {"CpuIndex", uint64_t{0x10000}}}}});
+
+    auto out = devices(dbus);
+    ASSERT_EQ(5U, out.size());
+    // the record is kept with the rest of its fields
+    EXPECT_EQ("HGX_CPU_0", out[0].name);
+    EXPECT_EQ("cpu", out[0].kind);
+    EXPECT_EQ(std::optional<uint64_t>(14), out[0].eid);
+    EXPECT_FALSE(out[0].instance);
+    EXPECT_FALSE(out[0].cpuIndex);
+    EXPECT_EQ("HGX_CPU_1", out[1].name);
+    EXPECT_EQ(std::optional<uint64_t>(15), out[1].eid);
+    EXPECT_EQ(std::optional<uint64_t>(1), out[1].instance);
+    EXPECT_FALSE(out[1].cpuIndex);
+    // a non-numeric string and one past uint64_t
+    EXPECT_EQ("HGX_CPU_2", out[2].name);
+    EXPECT_EQ(std::optional<uint64_t>(16), out[2].eid);
+    EXPECT_FALSE(out[2].instance);
+    EXPECT_FALSE(out[2].cpuIndex);
+    // a value of a non-number type; a valid CpuIndex next to it is read
+    EXPECT_EQ("HGX_CPU_3", out[3].name);
+    EXPECT_EQ(std::optional<uint64_t>(17), out[3].eid);
+    EXPECT_FALSE(out[3].instance);
+    EXPECT_EQ(std::optional<uint64_t>(3), out[3].cpuIndex);
+    EXPECT_EQ("HGX_CPU_4", out[4].name);
+    EXPECT_EQ(std::optional<uint64_t>(0x100), out[4].instance);
+    EXPECT_EQ(std::optional<uint64_t>(0x10000), out[4].cpuIndex);
+}
+
+TEST_F(EmDeviceDevices, takesAValidValueFromTheSecondRecordAfterAnInvalidOne)
+{
+    const std::string a = "/inventory/a/HGX_CPU_0";
+    const std::string b = "/inventory/b/HGX_CPU_0";
+    publish({a, b}, {{a + "|" + nvDeviceIntf,
+                      {{"Name", std::string("HGX_CPU_0")},
+                       {"Instance", std::string("x")},
+                       {"CpuIndex", -1.0}}},
+                     {b + "|" + nvDeviceIntf,
+                      {{"Name", std::string("HGX_CPU_0")},
+                       {"InstanceNumber", uint64_t{4}},
+                       {"CpuIndex", uint64_t{1}}}}});
+
+    auto out = devices(dbus);
+    ASSERT_EQ(1U, out.size());
+    // the invalid values of the first record count as absent, not as a
+    // conflict that keeps the first
+    EXPECT_EQ(std::optional<uint64_t>(4), out[0].instance);
+    EXPECT_EQ(std::optional<uint64_t>(1), out[0].cpuIndex);
+}
+
 TEST_F(EmDeviceDevices, mergesTheTransportOfTheTwoRecords)
 {
     // the first record of each device is the one under /inventory/a

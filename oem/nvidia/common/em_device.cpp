@@ -22,9 +22,11 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <format>
 #include <limits>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -89,16 +91,27 @@ std::map<std::string, std::string> objectsWith(
 namespace
 {
 
-void warnConflict(const std::string& name, std::string_view field)
+/** @brief The record of a device being merged into the first record of the
+ *         same name. */
+struct MergeSource
 {
-    lg2::warning(
-        "NvDevice records of {NAME} disagree on {FIELD}; keeping the first",
-        "NAME", name, "FIELD", field);
+    const std::string& name;
+    const std::string& firstPath;
+    const std::string& path;
+};
+
+void warnConflict(const MergeSource& src, std::string_view field,
+                  const std::string& kept, const std::string& dropped)
+{
+    lg2::warning("NvDevice records of {NAME} disagree on {FIELD}: {KEPT} at "
+                 "{FIRST_PATH} and {DROPPED} at {PATH}; keeping the first",
+                 "NAME", src.name, "FIELD", field, "KEPT", kept, "FIRST_PATH",
+                 src.firstPath, "DROPPED", dropped, "PATH", src.path);
 }
 
 /** @brief Fill @p known from @p other when it is unset; warn when both are
  *         set and differ. */
-void merge(std::string& known, std::string other, const std::string& name,
+void merge(std::string& known, std::string other, const MergeSource& src,
            std::string_view field)
 {
     if (known.empty())
@@ -107,12 +120,12 @@ void merge(std::string& known, std::string other, const std::string& name,
     }
     else if (!other.empty() && other != known)
     {
-        warnConflict(name, field);
+        warnConflict(src, field, known, other);
     }
 }
 
 void merge(std::optional<uint64_t>& known, std::optional<uint64_t> other,
-           const std::string& name, std::string_view field)
+           const MergeSource& src, std::string_view field)
 {
     if (!known)
     {
@@ -120,25 +133,59 @@ void merge(std::optional<uint64_t>& known, std::optional<uint64_t> other,
     }
     else if (other && *other != *known)
     {
-        warnConflict(name, field);
+        warnConflict(src, field, std::to_string(*known),
+                     std::to_string(*other));
     }
 }
 
-/** @brief The EID property @p key of @p props, if present and in
- *         [0, maxDeviceEid]; a value out of that range is logged and
- *         dropped. */
-std::optional<uint64_t> eidProp(const pldm::utils::PropertyMap& props,
-                                const std::string& key, const std::string& name,
-                                const std::string& path)
+/** @brief @p value as text for a log: a number, a quoted string, or the
+ *         variant index of any other type. */
+std::string formatValue(const pldm::utils::PropertyValue& value)
 {
-    auto eid = pldm::utils::numberProp(props, key, maxDeviceEid);
-    if (!eid && props.contains(key))
+    return std::visit(
+        [&value](const auto& v) -> std::string {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, bool>)
+            {
+                return v ? "true" : "false";
+            }
+            else if constexpr (std::is_arithmetic_v<T>)
+            {
+                return std::format("{}", v);
+            }
+            else if constexpr (std::is_same_v<T, std::string>)
+            {
+                return std::format("\"{}\"", v);
+            }
+            else
+            {
+                return std::format("<variant index {}>", value.index());
+            }
+        },
+        value);
+}
+
+/** @brief The number property @p key of @p props, if present and in
+ *         [0, @p max]; a value that is not such a number is logged with the
+ *         device @p name and record @p path, and dropped. */
+std::optional<uint64_t> readNumber(
+    const pldm::utils::PropertyMap& props, const std::string& key, uint64_t max,
+    const std::string& name, const std::string& path)
+{
+    auto it = props.find(key);
+    if (it == props.end())
     {
-        lg2::warning(
-            "NvDevice {NAME} at {PATH} has an invalid {KEY}; ignoring it",
-            "NAME", name, "PATH", path, "KEY", key);
+        return std::nullopt;
     }
-    return eid;
+    auto value = pldm::utils::numberProp(props, key, max);
+    if (!value)
+    {
+        lg2::warning("NvDevice {NAME} at {PATH} has an invalid {KEY} {VALUE}; "
+                     "ignoring it",
+                     "NAME", name, "PATH", path, "KEY", key, "VALUE",
+                     formatValue(it->second));
+    }
+    return value;
 }
 
 /** @brief Fill the transport fields of @p dev from its .Transport child
@@ -153,24 +200,52 @@ void readTransport(Device& dev, const std::string& service,
         return;
     }
     dev.medium = stringProp(*props, "Medium");
-    dev.poolStartEid = eidProp(*props, "PoolStartEID", dev.name, path);
-    dev.poolEndEid = eidProp(*props, "PoolEndEID", dev.name, path);
+    dev.poolStartEid =
+        readNumber(*props, "PoolStartEID", maxDeviceEid, dev.name, path);
+    dev.poolEndEid =
+        readNumber(*props, "PoolEndEID", maxDeviceEid, dev.name, path);
+}
+
+/** @brief The device of the NvDevice record @p props at @p path; no name
+ *         when the record has none. */
+Device readDevice(const pldm::utils::PropertyMap& props,
+                  const std::string& service, const std::string& path,
+                  const pldm::utils::DBusHandlerInterface& bus)
+{
+    constexpr auto noMax = std::numeric_limits<uint64_t>::max();
+    Device dev;
+    dev.name = stringProp(props, "Name");
+    if (dev.name.empty())
+    {
+        return dev;
+    }
+    dev.kind = stringProp(props, "Kind");
+    dev.parentChassis = stringProp(props, "ParentChassis");
+    dev.eid = readNumber(props, "EID", maxDeviceEid, dev.name, path);
+    dev.instance = readNumber(props, "Instance", noMax, dev.name, path);
+    if (!dev.instance)
+    {
+        dev.instance =
+            readNumber(props, "InstanceNumber", noMax, dev.name, path);
+    }
+    dev.cpuIndex = readNumber(props, "CpuIndex", noMax, dev.name, path);
+    readTransport(dev, service, path, bus);
+    return dev;
 }
 
 /** @brief Fill the fields of @p known that it lacks from @p other, a second
  *         record of the same device. */
-void mergeDevice(Device& known, Device&& other)
+void mergeDevice(Device& known, Device&& other, const MergeSource& src)
 {
-    const auto& name = other.name;
-    merge(known.kind, std::move(other.kind), name, "Kind");
-    merge(known.parentChassis, std::move(other.parentChassis), name,
+    merge(known.kind, std::move(other.kind), src, "Kind");
+    merge(known.parentChassis, std::move(other.parentChassis), src,
           "ParentChassis");
-    merge(known.eid, other.eid, name, "EID");
-    merge(known.instance, other.instance, name, "Instance");
-    merge(known.cpuIndex, other.cpuIndex, name, "CpuIndex");
-    merge(known.medium, std::move(other.medium), name, "Medium");
-    merge(known.poolStartEid, other.poolStartEid, name, "PoolStartEID");
-    merge(known.poolEndEid, other.poolEndEid, name, "PoolEndEID");
+    merge(known.eid, other.eid, src, "EID");
+    merge(known.instance, other.instance, src, "Instance");
+    merge(known.cpuIndex, other.cpuIndex, src, "CpuIndex");
+    merge(known.medium, std::move(other.medium), src, "Medium");
+    merge(known.poolStartEid, other.poolStartEid, src, "PoolStartEID");
+    merge(known.poolEndEid, other.poolEndEid, src, "PoolEndEID");
 }
 
 } // namespace
@@ -178,6 +253,8 @@ void mergeDevice(Device& known, Device&& other)
 std::vector<Device> devices(const pldm::utils::DBusHandlerInterface& bus)
 {
     std::vector<Device> out;
+    // object path of the first record of each device, for the conflict log
+    std::map<std::string, std::string> firstPaths;
     for (const auto& [path, service] : objectsWith(nvDeviceIntf, bus))
     {
         auto props = getAll(service, path, nvDeviceIntf, bus);
@@ -185,30 +262,19 @@ std::vector<Device> devices(const pldm::utils::DBusHandlerInterface& bus)
         {
             continue;
         }
-        Device dev;
-        dev.name = stringProp(*props, "Name");
+        Device dev = readDevice(*props, service, path, bus);
         if (dev.name.empty())
         {
             continue;
         }
-        dev.kind = stringProp(*props, "Kind");
-        dev.parentChassis = stringProp(*props, "ParentChassis");
-        dev.eid = eidProp(*props, "EID", dev.name, path);
-        dev.instance = pldm::utils::numberProp(*props, "Instance");
-        if (!dev.instance)
-        {
-            dev.instance = pldm::utils::numberProp(*props, "InstanceNumber");
-        }
-        dev.cpuIndex = pldm::utils::numberProp(*props, "CpuIndex");
-        readTransport(dev, service, path, bus);
-
-        auto known = std::ranges::find(out, dev.name, &Device::name);
-        if (known == out.end())
+        auto [first, inserted] = firstPaths.try_emplace(dev.name, path);
+        if (inserted)
         {
             out.push_back(std::move(dev));
             continue;
         }
-        mergeDevice(*known, std::move(dev));
+        auto known = std::ranges::find(out, dev.name, &Device::name);
+        mergeDevice(*known, std::move(dev), {known->name, first->second, path});
     }
     return out;
 }

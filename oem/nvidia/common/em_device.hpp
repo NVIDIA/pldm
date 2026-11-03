@@ -109,7 +109,10 @@ std::map<std::string, std::string> objectsWith(
  *  file of its kind, a record of the same Type that carries InstanceNumber in
  *  place of Instance and no parent. The two are merged by Name; a value the
  *  first one lacks is taken from the second, and a value both carry with a
- *  different content is logged and kept from the first.
+ *  different content is logged with both values and record paths and kept
+ *  from the first. An EID, Instance, InstanceNumber, CpuIndex, PoolStartEID
+ *  or PoolEndEID that is not a non-negative integer in range is logged with
+ *  its value and record path and treated as absent.
  */
 std::vector<Device> devices(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
