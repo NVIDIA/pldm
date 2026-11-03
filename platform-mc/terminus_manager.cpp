@@ -326,15 +326,20 @@ void TerminusManager::loadTerminusConfigFromEm(
     // A device reachable over more than one medium has one endpoint per
     // medium under the same name; all of them get the config.
     std::map<std::string, std::vector<mctp_eid_t>> nameToEids;
+    // The config is applied when a terminus is created; while every named
+    // endpoint already has one, there is nothing to read EM for.
+    bool pending = false;
     for (const auto& [path, mctpInfo] : configurations)
     {
         const auto& name = std::get<4>(mctpInfo);
         if (name.has_value() && !name->empty())
         {
             nameToEids[*name].push_back(std::get<0>(mctpInfo));
+            auto tid = toTid(mctpInfo);
+            pending = pending || !tid || !termini.contains(*tid);
         }
     }
-    if (nameToEids.empty())
+    if (!pending)
     {
         return;
     }

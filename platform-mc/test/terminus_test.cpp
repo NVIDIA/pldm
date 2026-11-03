@@ -7722,6 +7722,93 @@ TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
     waitForRefreshAssociationsTask(i2cTerminus);
 }
 
+TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
+{
+    using pldm::em_device::nvDeviceIntf;
+    using pldm::em_device::pldmDeviceIntf;
+    using Props = pldm::dbus::PropertyMap;
+
+    std::string uuid("00000000-0000-0000-0000-000000000180");
+    Terminus terminus(0x80, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    // The terminus is not initialized, so a signal it is interested in only
+    // latches needRefresh.
+    auto rawBus = sdbusplus::bus::new_default();
+    auto interestedIn = [&](const std::string& intf, const Props& props) {
+        terminus.needRefresh = false;
+        const std::string path =
+            "/xyz/openbmc_project/inventory/system/platform/Dev_180";
+        pldm::dbus::InterfaceMap interfaces{{intf, props}};
+        auto msg = rawBus.new_method_call("org.test", path.c_str(),
+                                          "org.test.Interface", "Method");
+        msg.append(sdbusplus::object_path(path), interfaces);
+        sealAndRewind(msg);
+        terminus.interfaceAdded(msg);
+        EXPECT_FALSE(terminus.refreshAssociationsTaskHandle.has_value());
+        return terminus.needRefresh;
+    };
+    auto nvDevice = [](const std::string& name, pldm::dbus::Value eid) {
+        return Props{{"Name", name}, {"EID", std::move(eid)}};
+    };
+    const Props byEid = nvDevice("Dev_X", uint64_t{0x60});
+    const Props byName{{"Name", std::string("Dev_180")}};
+    const Props byTarget{{"Name", std::string("Record")},
+                         {"MCTPTargetName", std::string("Dev_180")}};
+    const Props byRecordName{{"Name", std::string("Dev_180_PLDM")}};
+
+    // A terminus without an MCTP endpoint is named by no record.
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, byEid));
+    EXPECT_FALSE(interestedIn(pldmDeviceIntf, byRecordName));
+
+    pldm::MctpInfo mctpInfo(0x60, uuid, "usb", 1, std::string("Dev_180"),
+                            "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    // An NvDevice with the endpoint's name and EID, in any number form; one
+    // without a valid EID by the name alone.
+    EXPECT_TRUE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x60})));
+    EXPECT_TRUE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_180", std::string("0x60"))));
+    EXPECT_TRUE(interestedIn(nvDeviceIntf, byName));
+    EXPECT_TRUE(interestedIn(nvDeviceIntf, nvDevice("Dev_180", true)));
+    EXPECT_TRUE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x160})));
+    EXPECT_FALSE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x61})));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, byEid));
+    // A PLDMDevice record by MCTPTargetName or by its "<name>_PLDM" Name.
+    EXPECT_TRUE(interestedIn(pldmDeviceIntf, byTarget));
+    EXPECT_TRUE(interestedIn(pldmDeviceIntf, byRecordName));
+    EXPECT_FALSE(interestedIn(pldmDeviceIntf, byName));
+    EXPECT_FALSE(interestedIn(pldmDeviceIntf,
+                              {{"Name", std::string("Dev_181_PLDM")},
+                               {"MCTPTargetName", std::string("Dev_181")}}));
+
+    // An endpoint without a name: an NvDevice by its EID only, and no
+    // PLDMDevice record, which carries no EID.
+    terminusManager.unmapTid(terminus.getTid());
+    std::get<4>(mctpInfo) = std::nullopt;
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+    EXPECT_TRUE(interestedIn(nvDeviceIntf, byEid));
+    EXPECT_TRUE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_X", std::string("0x60"))));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", int64_t{-1})));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", true)));
+    EXPECT_FALSE(
+        interestedIn(nvDeviceIntf, nvDevice("Dev_X", uint64_t{0x160})));
+    EXPECT_FALSE(interestedIn(nvDeviceIntf, byName));
+    EXPECT_FALSE(interestedIn(pldmDeviceIntf, byTarget));
+    EXPECT_FALSE(interestedIn(pldmDeviceIntf, byRecordName));
+
+    // The other interfaces still need no match.
+    EXPECT_TRUE(interestedIn(
+        "xyz.openbmc_project.Configuration.USBDeviceAssociation", {}));
+}
+
 TEST_F(TerminusTest, interfaceAddedDuringInitLatchesRefreshCoverage)
 {
     std::string uuid("00000000-0000-0000-0000-00000000017C");

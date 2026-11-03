@@ -177,7 +177,8 @@ FakeInventory& fakeInventory()
 }
 
 /** @brief Stands in for DBusHandler in the sources included below: GetAll
- *         is served from fakeInventory() and getBus() returns a mocked bus.
+ *         and GetSubTree are served from fakeInventory() and getBus()
+ *         returns a mocked bus.
  */
 class InventoryTestDBusHandler : public DBusHandler
 {
@@ -194,6 +195,13 @@ class InventoryTestDBusHandler : public DBusHandler
         const char* dbusInterface) const override
     {
         return fakeInventory().getAll(serviceName, objPath, dbusInterface);
+    }
+
+    GetSubTreeResponse getSubtree(
+        const std::string& path, int /*depth*/,
+        const std::vector<std::string>& ifaceList) const override
+    {
+        return fakeInventory().getSubTree(path, ifaceList);
     }
 };
 
@@ -717,6 +725,226 @@ TEST_F(TerminusInventoryTest, loadDeviceRecordAddsPortsToSensorPortInfo)
     ASSERT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
     terminus.loadDeviceRecord(record, rootPath);
     checkSensorPortInfo(400000, 400000);
+}
+
+TEST_F(TerminusInventoryTest, loadDeviceRecordPortsWithoutANetworkAdapter)
+{
+    std::string uuid("00000000-0000-0000-0000-00000000021E");
+    Terminus terminus(0x2F, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/cov21E";
+
+    pldm::em_device::PldmDevice record;
+    record.ports = {{0x5901, "Port_0"}};
+    terminus.loadDeviceRecord(record, rootPath);
+
+    // The ports of a device without a NIC are the device's own.
+    ASSERT_TRUE(terminus.sensorPortInfoOverwriteTbl.contains(0x5901));
+    const auto& associations =
+        std::get<3>(terminus.sensorPortInfoOverwriteTbl.at(0x5901));
+    ASSERT_EQ(1U, associations.size());
+    EXPECT_EQ(rootPath + "/Ports/Port_0", associations[0].path);
+}
+
+constexpr auto platformPath = "/xyz/openbmc_project/inventory/system/platform/";
+constexpr auto sensorAuxNameIntf =
+    "xyz.openbmc_project.Configuration.SensorAuxName";
+
+/** @brief The chassis object of the device @p name. */
+std::string chassisOf(const std::string& name)
+{
+    return pldm::em_device::chassisRoot + name;
+}
+
+/** @brief Publish the NvDevice @p name, with @p eid when given. */
+void addNvDevice(pldm::utils::FakeInventory& inventory, const std::string& name,
+                 std::optional<uint64_t> eid)
+{
+    pldm::utils::PropertyMap props{{"Name", name},
+                                   {"Kind", std::string("gpu")}};
+    if (eid)
+    {
+        props.emplace("EID", *eid);
+    }
+    inventory.addInterface(platformPath + name, pldm::em_device::nvDeviceIntf,
+                           props);
+}
+
+/** @brief Publish the PLDMDevice record of the device @p name: sensor 100 is
+ *         named "Temp_0" and sensor 101 is port "Port_0" of the NIC
+ *         "NIC_0". */
+void addPldmRecord(pldm::utils::FakeInventory& inventory,
+                   const std::string& name)
+{
+    const std::string path = platformPath + name + "_PLDM";
+    const std::string intf = pldm::em_device::pldmDeviceIntf;
+    inventory.addInterface(
+        path, intf,
+        {{"Name", name + "_PLDM"}, {"NetworkAdapter", std::string("NIC_0")}});
+    inventory.addInterface(path, intf + ".SensorAuxNames",
+                           {{"Temp_0", uint64_t{100}}});
+    inventory.addInterface(path, intf + ".Ports",
+                           {{"101", std::string("Port_0")}});
+}
+
+TEST_F(TerminusInventoryTest, checkDeviceInventoryLoadsTheDeviceRecord)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000230");
+    Terminus terminus(0x30, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x50, uuid, "usb", 1, std::string("Dev_230"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    const std::string chassisPath = chassisOf("Dev_230");
+    addNvDevice(inventory, "Dev_230", 0x50);
+    addPldmRecord(inventory, "Dev_230");
+    // SensorAuxName configs of the chassis are read first with the device's
+    // EID: the record replaces the name of sensor 100, sensor 102 keeps its
+    // own and the config of another EID is left out.
+    inventory.addInterface(chassisPath + "/aux_100", sensorAuxNameIntf,
+                           {{"SensorId", uint64_t{100}},
+                            {"AuxNames", std::vector<std::string>{"Old"}},
+                            {"ParentObjPath", chassisPath}});
+    inventory.addInterface(chassisPath + "/aux_102", sensorAuxNameIntf,
+                           {{"SensorId", uint64_t{102}},
+                            {"AuxNames", std::vector<std::string>{"Kept"}},
+                            {"ParentObjPath", chassisPath},
+                            {"EID", uint64_t{0x50}}});
+    inventory.addInterface(chassisPath + "/aux_103", sensorAuxNameIntf,
+                           {{"SensorId", uint64_t{103}},
+                            {"AuxNames", std::vector<std::string>{"OtherEid"}},
+                            {"ParentObjPath", chassisPath},
+                            {"EID", uint64_t{0x51}}});
+
+    auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+
+    const auto& auxNames = terminus.sensorAuxNameOverwriteTbl;
+    EXPECT_EQ(2U, auxNames.size());
+    ASSERT_TRUE(auxNames.contains(100));
+    EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Temp_0"}}}),
+              std::get<0>(auxNames.at(100)));
+    EXPECT_EQ(chassisPath, std::get<1>(auxNames.at(100)));
+    ASSERT_TRUE(auxNames.contains(102));
+    EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Kept"}}}),
+              std::get<0>(auxNames.at(102)));
+
+    const auto& ports = terminus.sensorPortInfoOverwriteTbl;
+    ASSERT_EQ(1U, ports.size());
+    ASSERT_TRUE(ports.contains(101));
+    const auto& [type, protocol, maxSpeed, associations] = ports.at(101);
+    EXPECT_EQ(pldm::platform_mc::PortType::BidirectionalPort, type);
+    ASSERT_EQ(1U, associations.size());
+    EXPECT_EQ("associated_port", associations[0].forward);
+    EXPECT_EQ("associated_port", associations[0].reverse);
+    EXPECT_EQ(chassisPath + "/NetworkAdapters/NIC_0/Ports/Port_0",
+              associations[0].path);
+}
+
+TEST_F(TerminusInventoryTest, checkDeviceInventoryRejectsAnotherDevicesChassis)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000231");
+    Terminus terminus(0x31, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+
+    // The chassis has no association child, which the association matcher
+    // alone would accept for any terminus.
+    const std::string chassisPath = chassisOf("Dev_231");
+    addNvDevice(inventory, "Dev_231", 0x52);
+    addPldmRecord(inventory, "Dev_231");
+
+    // A terminus without an MCTP endpoint is no device's.
+    auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.empty());
+    EXPECT_TRUE(terminus.sensorPortInfoOverwriteTbl.empty());
+
+    const pldm::MctpInfo mctpInfo(0x52, uuid, "usb", 1, std::nullopt,
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+    addNvDevice(inventory, "Dev_231", 0x53);
+
+    rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.empty());
+    EXPECT_TRUE(terminus.sensorPortInfoOverwriteTbl.empty());
+
+    // An association child naming this terminus does not win over the
+    // device's EID either.
+    inventory.addInterface(
+        chassisPath + "/usb_assoc",
+        "xyz.openbmc_project.Configuration.USBDeviceAssociation",
+        {{"EID", uint64_t{0x52}}});
+    rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
+
+    // A device without an EID does not decide: the association child does,
+    // and the record is not loaded.
+    addNvDevice(inventory, "Dev_231", std::nullopt);
+    rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    EXPECT_FALSE(terminus.sensorAuxNameOverwriteTbl.contains(100));
+    EXPECT_TRUE(terminus.sensorPortInfoOverwriteTbl.empty());
+}
+
+TEST_F(TerminusInventoryTest, checkDeviceInventoryMatchesTheEndpointName)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000232");
+    Terminus terminus(0x32, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string chassisPath = chassisOf("Dev_232");
+    addNvDevice(inventory, "Dev_232", 0x54);
+    addPldmRecord(inventory, "Dev_232");
+
+    // The endpoint must have the device's EID and, when it has a name, the
+    // device's name; one without a name is matched by the EID alone. The
+    // association child does not overrule the device: an endpoint of the
+    // device on another medium, with another EID, is not matched.
+    inventory.addInterface(
+        chassisPath + "/usb_assoc",
+        "xyz.openbmc_project.Configuration.USBDeviceAssociation",
+        {{"EID", uint64_t{0x55}}});
+    struct Case
+    {
+        std::optional<std::string> name;
+        uint8_t eid;
+        int rc;
+    };
+    const std::vector<Case> cases{{std::nullopt, 0x54, PLDM_SUCCESS},
+                                  {"", 0x54, PLDM_SUCCESS},
+                                  {"Dev_232", 0x54, PLDM_SUCCESS},
+                                  {"Dev_999", 0x54, PLDM_FAILED},
+                                  {"Dev_232", 0x55, PLDM_FAILED}};
+    for (const auto& [name, eid, expected] : cases)
+    {
+        SCOPED_TRACE(
+            name.value_or("<no name>") + " EID " + std::to_string(eid));
+        terminusManager.unmapTid(terminus.getTid());
+        const pldm::MctpInfo mctpInfo(eid, uuid, "usb", 1, name,
+                                      "mctp-over-usb", std::nullopt);
+        ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+                  terminus.getTid());
+        terminus.sensorAuxNameOverwriteTbl.clear();
+        terminus.sensorPortInfoOverwriteTbl.clear();
+
+        auto rc =
+            stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(expected, std::get<0>(*rc));
+        EXPECT_EQ(expected == PLDM_SUCCESS,
+                  terminus.sensorAuxNameOverwriteTbl.contains(100));
+        EXPECT_EQ(expected == PLDM_SUCCESS,
+                  terminus.sensorPortInfoOverwriteTbl.contains(101));
+    }
 }
 
 TEST_F(TerminusInventoryTest,

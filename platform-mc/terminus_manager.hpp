@@ -80,7 +80,9 @@ class TerminusManager
      *         records. A record whose MCTPTargetName matches the name of a
      *         configured endpoint supplies TerminusName, TerminusInstance
      *         and CpuIndex for that endpoint's EID, replacing an entry
-     *         loaded from the JSON file.
+     *         loaded from the JSON file. The config is used only when a
+     *         terminus is created, so EM is not read when every named
+     *         endpoint already has a terminus.
      *
      *  @param[in] configurations - EM config path to MctpInfo, with the
      *                              endpoint name resolved

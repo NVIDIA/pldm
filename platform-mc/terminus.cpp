@@ -55,6 +55,83 @@ std::string& systemInventoryPath()
 #endif
 }
 
+/** @brief Whether the NvDevice @p dev is the endpoint @p mctpInfo: the
+ *         device has the endpoint's EID and, when the endpoint was given
+ *         a name in its EM config, that name too. */
+bool isEndpointDevice(const pldm::em_device::Device& dev,
+                      const MctpInfo& mctpInfo)
+{
+    const auto& name = std::get<4>(mctpInfo);
+    if (name && !name->empty() && *name != dev.name)
+    {
+        return false;
+    }
+    return dev.eid && *dev.eid == std::get<0>(mctpInfo);
+}
+
+std::string stringValue(const dbus::PropertyMap& props, const std::string& key)
+{
+    auto it = props.find(key);
+    if (it == props.end())
+    {
+        return {};
+    }
+    const auto* value = std::get_if<std::string>(&it->second);
+    return value ? *value : std::string{};
+}
+
+/** @brief The EID property of an NvDevice record, if present and valid. */
+std::optional<uint64_t> eidValue(const dbus::PropertyMap& props)
+{
+    auto it = props.find("EID");
+    if (it == props.end())
+    {
+        return std::nullopt;
+    }
+    auto eid = std::visit(
+        [](const auto& v) {
+            using T = std::decay_t<decltype(v)>;
+            return pldm::em_device::numberValue(
+                utils::PropertyValue(std::in_place_type<T>, v));
+        },
+        it->second);
+    if (eid && *eid > pldm::em_device::maxDeviceEid)
+    {
+        return std::nullopt;
+    }
+    return eid;
+}
+
+/** @brief Whether the NvDevice or PLDMDevice record @p props of an
+ *         InterfacesAdded signal is about the endpoint @p mctpInfo.
+ *
+ *  An NvDevice is matched as by isEndpointDevice(): by the endpoint's name
+ *  when it has one and by its EID, except that a record without a valid
+ *  EID is matched by the name alone, as the EID may come with the
+ *  device's other record. A PLDMDevice record has no EID: it is matched by the
+ *  endpoint's name as its MCTPTargetName or as its Name without the
+ *  "_PLDM" suffix.
+ */
+bool namesEndpoint(const std::string& intf, const dbus::PropertyMap& props,
+                   const MctpInfo& mctpInfo)
+{
+    const auto& name = std::get<4>(mctpInfo);
+    const bool named = name && !name->empty();
+    if (intf == pldm::em_device::nvDeviceIntf)
+    {
+        if (named && stringValue(props, "Name") != *name)
+        {
+            return false;
+        }
+        // As in em_device::devices(), an invalid EID counts as none.
+        auto eid = eidValue(props);
+        return eid ? *eid == std::get<0>(mctpInfo) : named;
+    }
+    return named &&
+           (stringValue(props, "MCTPTargetName") == *name ||
+            stringValue(props, "Name") == *name + pldm::em_device::pldmSuffix);
+}
+
 } // namespace
 
 Terminus::Terminus(tid_t tid, uint64_t supportedTypes, UUID& uuid,
@@ -101,12 +178,19 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         // must trigger a re-scan just like the NSM variant above.
         if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
             intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation" ||
-            intf ==
-                "xyz.openbmc_project.Configuration.MctpEndpointAssociation" ||
-            intf == pldm::em_device::pldmDeviceIntf ||
-            intf == pldm::em_device::nvDeviceIntf)
+            intf == "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
         {
             interested = true;
+        }
+        // A device record matters only to the terminus it names.
+        if (intf == pldm::em_device::pldmDeviceIntf ||
+            intf == pldm::em_device::nvDeviceIntf)
+        {
+            auto mctpInfo = terminusManager.toMctpInfo(tid);
+            if (mctpInfo && namesEndpoint(intf, properties, *mctpInfo))
+            {
+                interested = true;
+            }
         }
         if (interested)
         {
@@ -161,8 +245,9 @@ bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
 exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
 {
     // A device described by the platform topology: the chassis object named
-    // after an NvDevice whose EID is this terminus, with the sensor names and
-    // ports in the device's PLDMDevice record.
+    // after an NvDevice that is this terminus's endpoint (see
+    // isEndpointDevice()), with the sensor names and ports in the device's
+    // PLDMDevice record.
     if (objPath.starts_with(pldm::em_device::chassisRoot))
     {
         const std::string deviceName =
@@ -170,11 +255,19 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
         const std::optional<MctpInfo> mctpInfo =
             terminusManager.toMctpInfo(tid);
         auto dev = deviceName.find('/') == std::string::npos
-                       ? pldm::em_device::deviceByName(deviceName)
+                       ? pldm::em_device::deviceByName(deviceName,
+                                                       utils::DBusHandler())
                        : std::nullopt;
-        if (mctpInfo && dev && dev->eid && *dev->eid == std::get<0>(*mctpInfo))
+        if (dev && dev->eid)
         {
-            if (auto record = pldm::em_device::pldmDevice(deviceName))
+            // The chassis of a device with an EID belongs to that device's
+            // terminus only, whatever its association children say.
+            if (!mctpInfo || !isEndpointDevice(*dev, *mctpInfo))
+            {
+                co_return PLDM_FAILED;
+            }
+            if (auto record = pldm::em_device::pldmDevice(deviceName,
+                                                          utils::DBusHandler()))
             {
                 // Sensor records that still carry their own config (e.g.
                 // ThermalParameters) are read first. The record's aux names
@@ -330,10 +423,13 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
 #ifdef OEM_NVIDIA
     for (const auto& [sensorId, port] : record.ports)
     {
-        dbus::PathAssociation assoc{
-            "associated_port", "associated_port",
-            objPath + "/NetworkAdapters/" + record.networkAdapter + "/Ports/" +
-                port};
+        // The ports of a device without a NIC are its own.
+        const std::string portParent =
+            record.networkAdapter.empty()
+                ? objPath
+                : objPath + "/NetworkAdapters/" + record.networkAdapter;
+        dbus::PathAssociation assoc{"associated_port", "associated_port",
+                                    portParent + "/Ports/" + port};
         // A SensorPortInfo entry of the sensor keeps its type and protocol,
         // and its speed unless the record has one; the record adds its port
         // to the entry's associations.
