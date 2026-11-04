@@ -1622,4 +1622,49 @@ TEST_F(SharedSystemPathTest, stateSensorKeepsItsInventoryOverride)
     EXPECT_EQ(cpuPath, endpointOf(1));
 }
 
+TEST_F(SharedSystemPathTest, sysBusStateSensorMovesToTheModulesCpu)
+{
+    constexpr pldm::tid_t tid = 0x39;
+    std::string uuid("00000000-0000-0000-0000-000000000302");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    // ProcessorModule 0 defines container 10: CPU 0 and a SYS_BUS (a CLink
+    // port) side by side. The module and the CPU have inventory; the bus has
+    // none, so it resolves to the module.
+    const std::string modulePath =
+        "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0";
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    auto& manager = InventoryManager::get();
+    manager.entityTree(tid).add(
+        10, oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0}},
+        {oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_PROC, 0}},
+         oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_SYS_BUS, 1}}});
+    auto& inventories = manager.terminusData[tid].inventories;
+    inventories.emplace_back(modulePath, PLDM_ENTITY_PROC_IO_MODULE, 0);
+    inventories.emplace_back(cpuPath, PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC,
+                             0);
+    ASSERT_EQ(std::vector<std::string>{modulePath},
+              manager.findInventory(tid, oem_nvidia::EntityId{EntityInfo{
+                                             10, PLDM_ENTITY_SYS_BUS, 1}}));
+
+    StateSetInfo info{
+        EntityInfo{10, PLDM_ENTITY_SYS_BUS, 1},
+        {StateSetData{PLDM_STATESET_ID_HEALTHSTATE,
+                      PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL}}}};
+    std::string associationPath = systemInventoryPath();
+    terminus->stateSensors.emplace_back(std::make_shared<StateSensor>(
+        tid, false, 0x220, info, nullptr, associationPath, nullptr));
+
+    stdexec::sync_wait(terminus->updateAssociations());
+
+    // The sensor moves from the module to the CPU, a dedicated home for a
+    // SYS_BUS, so its metric-report updates are not gated.
+    EXPECT_EQ(cpuPath, endpoint(*terminus));
+    EXPECT_FALSE(
+        terminus->stateSensors.front()->isDefaultInventoryAssociated());
+}
+
 } // namespace

@@ -2105,10 +2105,12 @@ void Terminus::redirectStateSensorInventory(
     auto entityInfo = sensor.getEntityInfo();
     const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
     const auto containerId = std::get<0>(entityInfo);
-    // SYS_BUS state sensors (CLink/NVLink port state) need CPU associations.
-    // SYS_BUS has no inventory interface of its own; take the CPU that
-    // contains the bus, or the first CPU of the containing ProcessorModule.
-    if (baseType == PLDM_ENTITY_SYS_BUS && paths.empty())
+    // SYS_BUS state sensors (CLink/NVLink port state) need CPU associations,
+    // as SYS_BUS numeric sensors do. SYS_BUS has no inventory interface of
+    // its own, so resolveInventory() gives an ancestor (the ProcessorModule,
+    // or the system); take the CPU that contains the bus, or the first CPU
+    // of the containing ProcessorModule. Without one the paths stay.
+    if (baseType == PLDM_ENTITY_SYS_BUS)
     {
         redirect(paths, inventory.processorInventory(tid, containerId));
     }
