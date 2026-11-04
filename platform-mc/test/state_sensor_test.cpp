@@ -880,9 +880,9 @@ TEST_F(StateSensorCoverage, stateSetCoverageMatrix)
         EXPECT_EQ("LinkDown", argDown);
         EXPECT_EQ("ResourceEvent.1.0.LinkDown", eventDown);
         EXPECT_EQ("Switch0", impactedDown);
-        // LinkDown is Critical (ResourceErrorsDetected + Alert)
-        EXPECT_EQ("ResourceEvent.1.0.ResourceErrorsDetected", msgDown);
-        EXPECT_EQ(Level::Alert, levelDown);
+        // LinkDown is expected on power-down: OK (StatusChangedOK + Info)
+        EXPECT_EQ("ResourceEvent.1.0.ResourceStatusChangedOK", msgDown);
+        EXPECT_EQ(Level::Informational, levelDown);
 
         sensor->updateReading(true, true, 0, 0xFF);
         auto [msgUnknown, argUnknown, levelUnknown, eventUnknown,
