@@ -352,7 +352,8 @@ class Terminus
 
 #ifdef OEM_NVIDIA
     /** @brief Fill the aux-name and port-info tables from a PLDMDevice
-     *         record of the device at @p objPath. */
+     *         record of the device at @p objPath, and take its sensor
+     *         roles. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
 
@@ -362,6 +363,13 @@ class Terminus
      *         NvDevice is not forgotten; a stale name only causes extra
      *         refreshes when that device's records reappear. */
     std::string deviceName;
+
+    /** @brief The SensorRoles of the PLDMDevice record of deviceName: role
+     *         (em_device::primaryTemperatureSensor, ...) -> sensor or
+     *         effecter name. Empty without a record, and cleared with
+     *         deviceName; a role it lacks falls back to the build option
+     *         of that role in nvidiaUpdateAssociations(). */
+    std::map<std::string, std::string> sensorRoles;
 #endif
     bool checkNsmDeviceInventory(UUID nsmUuid);
 

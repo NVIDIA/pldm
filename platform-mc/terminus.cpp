@@ -315,6 +315,7 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
         if (dev && dev->name == deviceName)
         {
             deviceName.clear();
+            sensorRoles.clear();
         }
         if (dev && !dev->eid)
         {
@@ -333,6 +334,9 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             // For namesEndpoint(): the PLDMDevice record of the device
             // concerns this terminus until a rescan refuses the device.
             deviceName = dev->name;
+            // The roles of the device matched before, if another, are not
+            // this device's; a record of this one replaces them below.
+            sensorRoles.clear();
             if (auto record = pldm::em_device::pldmDevice(dev->name,
                                                           utils::DBusHandler()))
             {
@@ -520,9 +524,11 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
             std::string{}, record.portMaxSpeed.value_or(0),
             std::vector<dbus::PathAssociation>{std::move(assoc)});
     }
-    lg2::debug("loadDeviceRecord: {AUX} aux names, {PORTS} ports for {PATH}",
-               "AUX", record.auxNames.size(), "PORTS", record.ports.size(),
-               "PATH", objPath);
+    sensorRoles = record.sensorRoles;
+    lg2::debug(
+        "loadDeviceRecord: {AUX} aux names, {PORTS} ports, {ROLES} sensor roles for {PATH}",
+        "AUX", record.auxNames.size(), "PORTS", record.ports.size(), "ROLES",
+        record.sensorRoles.size(), "PATH", objPath);
 }
 #endif
 

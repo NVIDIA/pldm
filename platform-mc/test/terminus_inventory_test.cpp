@@ -1107,6 +1107,104 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryDeviceWithoutAValidEid)
     EXPECT_EQ(PLDM_FAILED, std::get<0>(*rc));
 }
 
+/** @brief Publish @p roles as the SensorRoles of the PLDMDevice record of
+ *         the device @p name. */
+void addSensorRoles(pldm::utils::FakeInventory& inventory,
+                    const std::string& name,
+                    const pldm::utils::PropertyMap& roles)
+{
+    inventory.addInterface(
+        platformPath + name + "_PLDM",
+        std::string(pldm::em_device::pldmDeviceIntf) + ".SensorRoles", roles);
+}
+
+TEST_F(TerminusInventoryTest, checkDeviceInventoryTakesTheRecordsSensorRoles)
+{
+    using Roles = std::map<std::string, std::string>;
+    std::string uuid("00000000-0000-0000-0000-00000000023A");
+    Terminus terminus(0x3A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const pldm::MctpInfo mctpInfo(0x62, uuid, "usb", 1, std::string("Dev_23A"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+    const std::string chassisPath = chassisOf("Dev_23A");
+    auto publishDevice = [this](std::optional<pldm::utils::PropertyMap> roles) {
+        inventory.clear();
+        addNvDevice(inventory, "Dev_23A", 0x62);
+        addPldmRecord(inventory, "Dev_23A");
+        if (roles)
+        {
+            addSensorRoles(inventory, "Dev_23A", *roles);
+        }
+    };
+    auto check = [&terminus](const std::string& path, int expected) {
+        auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(path));
+        ASSERT_TRUE(rc.has_value());
+        EXPECT_EQ(expected, std::get<0>(*rc));
+    };
+
+    publishDevice(pldm::utils::PropertyMap{
+        {"primary_temperature_sensor", std::string("TempLimit_0")}});
+    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    EXPECT_EQ(
+        (Roles{{pldm::em_device::primaryTemperatureSensor, "TempLimit_0"}}),
+        terminus.sensorRoles);
+
+    // A rescan replaces them with the roles the record has then.
+    publishDevice(pldm::utils::PropertyMap{
+        {"primary_power_control", std::string("TDPPowerNonvolatile_0")}});
+    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_EQ((Roles{{pldm::em_device::primaryPowerControl,
+                      "TDPPowerNonvolatile_0"}}),
+              terminus.sensorRoles);
+
+    // A record without SensorRoles leaves none, so the build options apply.
+    publishDevice(std::nullopt);
+    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+
+    // So does a device without a record, accepted with no association child.
+    publishDevice(pldm::utils::PropertyMap{
+        {"primary_power_sensor", std::string("EnforcedEDPc_0")}});
+    check(chassisPath, PLDM_SUCCESS);
+    ASSERT_FALSE(terminus.sensorRoles.empty());
+    inventory.clear();
+    addNvDevice(inventory, "Dev_23A", 0x62);
+    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+
+    // The roles of a device go when the terminus matches another device:
+    // Dev_23B has the endpoint's EID and no record.
+    publishDevice(pldm::utils::PropertyMap{
+        {"primary_power_sensor", std::string("EnforcedEDPc_0")}});
+    check(chassisPath, PLDM_SUCCESS);
+    ASSERT_FALSE(terminus.sensorRoles.empty());
+    addNvDevice(inventory, "Dev_23B", 0x62);
+    check(chassisOf("Dev_23B"), PLDM_SUCCESS);
+    EXPECT_EQ("Dev_23B", terminus.deviceName);
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+
+    // They go with deviceName when a rescan no longer matches the device.
+    publishDevice(pldm::utils::PropertyMap{
+        {"primary_cpupower_sensor", std::string("CpuPower_0")}});
+    check(chassisPath, PLDM_SUCCESS);
+    ASSERT_EQ((Roles{{pldm::em_device::primaryCpupowerSensor, "CpuPower_0"}}),
+              terminus.sensorRoles);
+    addNvDevice(inventory, "Dev_23A", 0x63);
+    terminusManager.unmapTid(terminus.getTid());
+    const pldm::MctpInfo otherEndpoint(0x62, uuid, "usb", 1,
+                                       std::string("Dev_999"), "mctp-over-usb",
+                                       std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(otherEndpoint, terminus.getTid()),
+              terminus.getTid());
+    check(chassisPath, PLDM_FAILED);
+    EXPECT_TRUE(terminus.deviceName.empty());
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+}
+
 /** @brief An InterfacesAdded signal of @p intf with @p props at @p path,
  *         ready to be read. */
 sdbusplus::message_t interfacesAdded(

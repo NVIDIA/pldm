@@ -19,6 +19,7 @@
 #include "common/dBusAsyncUtils.hpp"
 #include "common/utils.hpp"
 #include "mirrorEffecter.hpp"
+#include "oem/nvidia/common/em_device.hpp"
 #include "oem/nvidia/platform-mc/remoteDebug.hpp"
 #include "pcoreDump.hpp"
 #include "platform-mc/state_sensor.hpp"
@@ -28,6 +29,7 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#include <string>
 #include <string_view>
 
 using namespace pldm::pdr;
@@ -543,6 +545,18 @@ static exec::task<int> associatePCoreDumpToCpu(Terminus& terminus)
     co_return PLDM_SUCCESS;
 }
 
+/** @brief The name, matched as a substring of the sensor or effecter name,
+ *         of the one that has @p role on @p terminus: the name the
+ *         SensorRoles of its PLDMDevice record give, else the build option
+ *         @p fallback (empty: no sensor has the role). */
+static std::string roleName(const Terminus& terminus, const std::string& role,
+                            std::string_view fallback)
+{
+    auto it = terminus.sensorRoles.find(role);
+    return it != terminus.sensorRoles.end() ? it->second
+                                            : std::string(fallback);
+}
+
 exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 {
     for (auto sensor : terminus.stateSensors)
@@ -675,7 +689,9 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
-    constexpr std::string_view cpuPrimaryTempSensor(CPU_PRIMARY_TEMP_SENSOR);
+    const std::string cpuPrimaryTempSensor =
+        roleName(terminus, pldm::em_device::primaryTemperatureSensor,
+                 CPU_PRIMARY_TEMP_SENSOR);
     for (auto sensor : terminus.numericSensors)
     {
         auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
@@ -714,7 +730,9 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // Add primary_power_sensor association for the CPU EnforcedEDPc
     // numeric sensor, pointing at the non-HGX CPU inventory path that the
     // generic layer has already associated via chassis/all_sensors.
-    constexpr std::string_view cpuPrimaryPowerSensor(CPU_PRIMARY_POWER_SENSOR);
+    const std::string cpuPrimaryPowerSensor =
+        roleName(terminus, pldm::em_device::primaryPowerSensor,
+                 CPU_PRIMARY_POWER_SENSOR);
     for (auto sensor : terminus.numericSensors)
     {
         if (cpuPrimaryPowerSensor.empty() ||
@@ -767,8 +785,9 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // pick the DataSourceUri for Redfish PowerWatts under
     // /Systems/.../Processors/CPU_x/EnvironmentMetrics, the same way
     // primary_temperature_sensor drives TemperatureCelsius.
-    constexpr std::string_view cpuPrimaryCpupowerSensor(
-        CPU_PRIMARY_CPUPOWER_SENSOR);
+    const std::string cpuPrimaryCpupowerSensor =
+        roleName(terminus, pldm::em_device::primaryCpupowerSensor,
+                 CPU_PRIMARY_CPUPOWER_SENSOR);
     for (auto sensor : terminus.numericSensors)
     {
         if (cpuPrimaryCpupowerSensor.empty() ||
@@ -803,8 +822,9 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
         }
     }
 
-    constexpr std::string_view cpuPrimaryPowerControl(
-        CPU_PRIMARY_POWER_CONTROL);
+    const std::string cpuPrimaryPowerControl =
+        roleName(terminus, pldm::em_device::primaryPowerControl,
+                 CPU_PRIMARY_POWER_CONTROL);
     for (auto effecter : terminus.numericEffecters)
     {
         if (cpuPrimaryPowerControl.empty() || !effecter->hasAssociationIntf())
