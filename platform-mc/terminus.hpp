@@ -377,9 +377,8 @@ class Terminus
 
     /** @brief The SensorRoles of the record loadSensorRoles() read: role
      *         (em_device::primaryTemperatureSensor, ...) -> sensor or
-     *         effecter name. Empty without a record; a role it lacks falls
-     *         back to the build option of that role in
-     *         nvidiaUpdateAssociations(). */
+     *         effecter name. Empty without a record; a role it lacks has no
+     *         sensor or effecter. */
     std::map<std::string, std::string> sensorRoles;
 #endif
     bool checkNsmDeviceInventory(UUID nsmUuid);

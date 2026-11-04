@@ -6632,38 +6632,29 @@ TEST_F(
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
 }
 
-TEST_F(TerminusTest, nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions)
+TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesTheRolesOfTheRecord)
 {
-    // Each role has a sensor or effecter the build option of the role names
-    // ("<option>_0") and one only Terminus::sensorRoles names ("Rec*_0").
-    // The role goes to the one sensorRoles names when it has the role, and
-    // to the one the build option names otherwise.
+    // Each role of the record names a sensor or effecter of the terminus.
+    // A role goes to the one it names only; a role the record lacks goes
+    // to none.
     std::string uuid("00000000-0000-0000-0000-0000000001d7");
     Terminus terminus(0xD7, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
     std::string chassis{
         "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0"};
-    const std::string prefix{"ProcessorModule_0_CPU_0_"};
     namespace em = pldm::em_device;
-
-    struct Role
+    const std::map<std::string, std::string> recordRoles{
+        {em::primaryTemperatureSensor, "ProcessorModule_0_CPU_0_TempLimit_0"},
+        {em::primaryPowerSensor, "ProcessorModule_0_CPU_0_EnforcedEDPc_0"},
+        {em::primaryCpupowerSensor, "ProcessorModule_0_Vreg_0_CpuPower_0"},
+        {em::primaryPowerControl,
+         "ProcessorModule_0_CPU_0_TDPPowerNonvolatile_0"}};
+    std::vector<std::string> sensorNames;
+    std::vector<std::string> effecterNames;
+    for (const auto& [role, name] : recordRoles)
     {
-        std::string role;
-        std::string option;
-        std::string recordName;
-    };
-    const std::vector<Role> roles{
-        {em::primaryTemperatureSensor, CPU_PRIMARY_TEMP_SENSOR, "RecTemp_0"},
-        {em::primaryPowerSensor, CPU_PRIMARY_POWER_SENSOR, "RecPower_0"},
-        {em::primaryCpupowerSensor, CPU_PRIMARY_CPUPOWER_SENSOR, "RecCpu_0"},
-        {em::primaryPowerControl, CPU_PRIMARY_POWER_CONTROL, "RecControl_0"}};
-    for (const auto& role : roles)
-    {
-        // The fallback needs the build option of every role.
-        if (role.option.empty())
-        {
-            GTEST_SKIP() << "no build option for " << role.role;
-        }
+        (role == em::primaryPowerControl ? effecterNames : sensorNames)
+            .push_back(name);
     }
 
     // role -> (name, chassis path) of each primary_* association, one
@@ -6676,30 +6667,24 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions)
             terminus.numericEffecters.clear();
             terminus.sensorRoles = sensorRoles;
             uint16_t id = 0x900;
-            for (const auto& role : roles)
+            for (auto name : sensorNames)
             {
-                for (const auto& name :
-                     {prefix + role.option + "_0", prefix + role.recordName})
-                {
-                    if (role.role != em::primaryPowerControl)
-                    {
-                        std::string sensorName = name;
-                        terminus.numericSensors.emplace_back(
-                            std::make_shared<NumericSensor>(
-                                terminus.getTid(), false,
-                                makeNumericSensorValuePdrStruct(id++),
-                                sensorName, chassis, nullptr));
-                        continue;
-                    }
-                    // a CPU power effecter: chassis/power_controls
-                    auto pdr = makeNumericEffecterValuePdrStruct(
-                        id++, PLDM_ENTITY_PROC);
-                    pdr->base_unit = PLDM_SENSOR_UNIT_WATTS;
-                    terminus.numericEffecters.emplace_back(
-                        std::make_shared<NumericEffecter>(
-                            terminus.getTid(), false, pdr, name, chassis,
-                            terminusManager));
-                }
+                terminus.numericSensors.emplace_back(
+                    std::make_shared<NumericSensor>(
+                        terminus.getTid(), false,
+                        makeNumericSensorValuePdrStruct(id++), name, chassis,
+                        nullptr));
+            }
+            for (const auto& name : effecterNames)
+            {
+                // a CPU power effecter: chassis/power_controls
+                auto pdr =
+                    makeNumericEffecterValuePdrStruct(id++, PLDM_ENTITY_PROC);
+                pdr->base_unit = PLDM_SENSOR_UNIT_WATTS;
+                terminus.numericEffecters.emplace_back(
+                    std::make_shared<NumericEffecter>(terminus.getTid(), false,
+                                                      pdr, name, chassis,
+                                                      terminusManager));
             }
 
             auto rc =
@@ -6733,36 +6718,21 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions)
             return holders;
         };
 
-    // No sensorRoles: the build options, as before.
     Holders expected;
-    for (const auto& role : roles)
+    for (const auto& [role, name] : recordRoles)
     {
-        expected[role.role] = {{prefix + role.option + "_0", chassis}};
-    }
-    EXPECT_EQ(expected, rolesAfterUpdate({}));
-
-    // Every role from sensorRoles.
-    std::map<std::string, std::string> recordRoles;
-    for (const auto& role : roles)
-    {
-        recordRoles[role.role] = role.recordName;
-        expected[role.role] = {{prefix + role.recordName, chassis}};
+        expected[role] = {{name, chassis}};
     }
     EXPECT_EQ(expected, rolesAfterUpdate(recordRoles));
 
-    // A role sensorRoles lacks falls back to its build option.
-    for (const auto& role : roles)
+    // A record with one role, and none.
+    for (const auto& [role, name] : recordRoles)
     {
-        recordRoles = {{role.role, role.recordName}};
-        for (const auto& other : roles)
-        {
-            expected[other.role] = {
-                {prefix + (other.role == role.role ? other.recordName
-                                                   : other.option + "_0"),
-                 chassis}};
-        }
-        EXPECT_EQ(expected, rolesAfterUpdate(recordRoles)) << role.role;
+        EXPECT_EQ((Holders{{role, {{name, chassis}}}}),
+                  rolesAfterUpdate({{role, name}}))
+            << role;
     }
+    EXPECT_EQ(Holders{}, rolesAfterUpdate({}));
 }
 
 TEST_F(TerminusTest, nvidiaEnergyCountPdrParserCoverageMatrix)

@@ -546,15 +546,13 @@ static exec::task<int> associatePCoreDumpToCpu(Terminus& terminus)
 }
 
 /** @brief The name, matched as a substring of the sensor or effecter name,
- *         of the one that has @p role on @p terminus: the name the
- *         SensorRoles of its PLDMDevice record give, else the build option
- *         @p fallback (empty: no sensor has the role). */
-static std::string roleName(const Terminus& terminus, const std::string& role,
-                            std::string_view fallback)
+ *         of the one that has @p role on @p terminus, as the SensorRoles of
+ *         its PLDMDevice record give it; empty (no sensor has the role)
+ *         when the record lacks the role. */
+static std::string roleName(const Terminus& terminus, const std::string& role)
 {
     auto it = terminus.sensorRoles.find(role);
-    return it != terminus.sensorRoles.end() ? it->second
-                                            : std::string(fallback);
+    return it != terminus.sensorRoles.end() ? it->second : std::string{};
 }
 
 exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
@@ -690,8 +688,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     }
 
     const std::string cpuPrimaryTempSensor =
-        roleName(terminus, pldm::em_device::primaryTemperatureSensor,
-                 CPU_PRIMARY_TEMP_SENSOR);
+        roleName(terminus, pldm::em_device::primaryTemperatureSensor);
     for (auto sensor : terminus.numericSensors)
     {
         auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
@@ -731,8 +728,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // numeric sensor, pointing at the non-HGX CPU inventory path that the
     // generic layer has already associated via chassis/all_sensors.
     const std::string cpuPrimaryPowerSensor =
-        roleName(terminus, pldm::em_device::primaryPowerSensor,
-                 CPU_PRIMARY_POWER_SENSOR);
+        roleName(terminus, pldm::em_device::primaryPowerSensor);
     for (auto sensor : terminus.numericSensors)
     {
         if (cpuPrimaryPowerSensor.empty() ||
@@ -778,7 +774,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     }
 
     // Add primary_cpupower_sensor association for the CPU power-reading
-    // numeric sensor (default: CpuPower). Mirror the chassis/all_sensors
+    // numeric sensor (e.g. CpuPower). Mirror the chassis/all_sensors
     // tuples already present on the matching sensor so the reverse
     // association resolves from every chassis that already lists the
     // sensor. bmcweb consumes chassisPath/primary_cpupower_sensor to
@@ -786,8 +782,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // /Systems/.../Processors/CPU_x/EnvironmentMetrics, the same way
     // primary_temperature_sensor drives TemperatureCelsius.
     const std::string cpuPrimaryCpupowerSensor =
-        roleName(terminus, pldm::em_device::primaryCpupowerSensor,
-                 CPU_PRIMARY_CPUPOWER_SENSOR);
+        roleName(terminus, pldm::em_device::primaryCpupowerSensor);
     for (auto sensor : terminus.numericSensors)
     {
         if (cpuPrimaryCpupowerSensor.empty() ||
@@ -823,8 +818,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     }
 
     const std::string cpuPrimaryPowerControl =
-        roleName(terminus, pldm::em_device::primaryPowerControl,
-                 CPU_PRIMARY_POWER_CONTROL);
+        roleName(terminus, pldm::em_device::primaryPowerControl);
     for (auto effecter : terminus.numericEffecters)
     {
         if (cpuPrimaryPowerControl.empty() || !effecter->hasAssociationIntf())
