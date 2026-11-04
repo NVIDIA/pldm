@@ -2,6 +2,7 @@
 
 #include "common/instance_id.hpp"
 #include "common/test/mocked_utils.hpp"
+#include "fw-update/manager.hpp"
 #include "requester/handler.hpp"
 #include "requester/request.hpp"
 #include "test/test_instance_id.hpp"
@@ -32,6 +33,7 @@
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
+#include "platform-mc/manager.hpp"
 
 using namespace std::chrono;
 using namespace pldm;
@@ -776,6 +778,30 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoRecords)
     std::get<4>(unnamed) = std::nullopt;
     terminusManager.loadTerminusConfigFromEm({{"/cfg/X", unnamed}}, dbus);
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
+}
+
+// MctpDiscovery hands each batch of configured endpoints to the platform-mc
+// Manager, which forwards it to TerminusManager::loadTerminusConfigFromEm()
+// with pldmd's D-Bus. The endpoint names no device of any platform, so the
+// read finds no records whatever the bus has; it still counts as read.
+TEST_F(TerminusManagerPrivateTest, managerHandleConfigurationsReadsTheirConfig)
+{
+    pldm::fw_update::Manager fwUpdateManager(nullptr, event, reqHandler,
+                                             instanceIdDb, "", false);
+    platform_mc::Manager manager(event, reqHandler, instanceIdDb,
+                                 fwUpdateManager);
+    auto& tm = manager.getTerminusManager();
+
+    MctpInfo unnamed = namedMctpInfo(0xF1, "");
+    std::get<4>(unnamed) = std::nullopt;
+    manager.handleConfigurations(
+        {{"/cfg/UT_NoDevice_0", namedMctpInfo(0xF0, "UT_NoDevice_0")},
+         {"/cfg/X", unnamed}});
+
+    // The named endpoint is read; the unnamed one is not read at all.
+    const std::set<std::pair<std::string, mctp_eid_t>> read{
+        {"UT_NoDevice_0", 0xF0}};
+    EXPECT_EQ(read, tm.emConfigEndpointsRead);
 }
 
 namespace
