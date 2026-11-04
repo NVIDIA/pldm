@@ -33,8 +33,9 @@
  *  ParentChassis, with a .Transport child interface). Its PLDM facts are a
  *  Configuration.PLDMDevice named "<device>_PLDM" whose
  *  UpdateableComponents, FWInventoryOnlyComponent and SensorAuxNames child
- *  interfaces map names to ids, and whose Ports child interface maps ids to
- *  names. The firmware-update policy that follows from the device kind
+ *  interfaces map names to ids, whose Ports child interface maps ids to
+ *  names, and whose SensorRoles child interface maps roles to sensor or
+ *  effecter names. The firmware-update policy that follows from the device kind
  *  (associations, inventory paths) is in fw-update/em_device_policy.hpp.
  */
 namespace pldm::em_device
@@ -55,6 +56,14 @@ constexpr auto pldmSuffix = "_PLDM";
 /** @brief Largest EID a device can be configured with: 0xFF is the MCTP
  *         broadcast EID (DSP0236 8.2). */
 constexpr uint64_t maxDeviceEid = 0xFE;
+
+/** @brief The roles a SensorRoles entry of a PLDMDevice record can give a
+ *         sensor or effecter; each is the chassis association of that
+ *         name. */
+constexpr auto primaryTemperatureSensor = "primary_temperature_sensor";
+constexpr auto primaryPowerControl = "primary_power_control";
+constexpr auto primaryPowerSensor = "primary_power_sensor";
+constexpr auto primaryCpupowerSensor = "primary_cpupower_sensor";
 
 struct Device
 {
@@ -88,6 +97,9 @@ struct PldmDevice
     std::optional<uint64_t> portMaxSpeed;
     // name the device's unconfigured firmware components are named after
     std::string firmwareName;
+    // role (primaryTemperatureSensor, ...) -> name of the sensor or
+    // effecter that has it
+    std::map<std::string, std::string> sensorRoles;
 };
 
 /** @brief The string property @p key of @p props; empty when it is absent
@@ -159,7 +171,11 @@ std::map<uint16_t, std::string> nameIdMap(
     const std::string& intf,
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
 
-/** @brief The PLDMDevice record of a device, if it has one. */
+/** @brief The PLDMDevice record of a device, if it has one.
+ *
+ *  A SensorRoles entry of a role this reader does not know is left out
+ *  with a debug log; one whose value is not a non-empty string is logged
+ *  with its value and left out. */
 std::optional<PldmDevice> pldmDevice(
     const std::string& deviceName,
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());

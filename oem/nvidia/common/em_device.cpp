@@ -20,6 +20,7 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <format>
@@ -377,6 +378,50 @@ std::map<uint16_t, std::string> nameIdMap(
     return out;
 }
 
+namespace
+{
+
+/** @brief The role -> name map of the SensorRoles child interface @p intf
+ *         of the PLDMDevice record @p recordName at @p path. */
+std::map<std::string, std::string> sensorRoleMap(
+    const std::string& service, const std::string& path,
+    const std::string& intf, const std::string& recordName,
+    const pldm::utils::DBusHandlerInterface& bus)
+{
+    static constexpr std::array<std::string_view, 4> knownRoles{
+        primaryTemperatureSensor, primaryPowerControl, primaryPowerSensor,
+        primaryCpupowerSensor};
+    std::map<std::string, std::string> out;
+    auto props = getAll(service, path, intf, bus);
+    if (!props)
+    {
+        return out;
+    }
+    for (const auto& [role, value] : *props)
+    {
+        if (std::ranges::find(knownRoles, role) == knownRoles.end())
+        {
+            lg2::debug("PLDMDevice {NAME} at {PATH} has an unknown sensor "
+                       "role {ROLE}; ignoring it",
+                       "NAME", recordName, "PATH", path, "ROLE", role);
+            continue;
+        }
+        const auto* name = std::get_if<std::string>(&value);
+        if (name == nullptr || name->empty())
+        {
+            lg2::warning("PLDMDevice {NAME} at {PATH} has an invalid {KEY} "
+                         "{VALUE}; ignoring it",
+                         "NAME", recordName, "PATH", path, "KEY",
+                         "SensorRoles." + role, "VALUE", formatValue(value));
+            continue;
+        }
+        out.emplace(role, *name);
+    }
+    return out;
+}
+
+} // namespace
+
 std::optional<PldmDevice> pldmDevice(
     const std::string& deviceName, const pldm::utils::DBusHandlerInterface& bus)
 {
@@ -400,6 +445,8 @@ std::optional<PldmDevice> pldmDevice(
         }
         out.auxNames = nameIdMap(service, path, base + ".SensorAuxNames", bus);
         out.ports = idNameMap(service, path, base + ".Ports", bus);
+        out.sensorRoles = sensorRoleMap(service, path, base + ".SensorRoles",
+                                        recordName, bus);
         out.networkAdapter = stringProp(*props, "NetworkAdapter");
         out.portMaxSpeed = pldm::utils::numberProp(*props, "PortMaxSpeedMBps");
         out.firmwareName = stringProp(*props, "FirmwareName");

@@ -19,6 +19,9 @@
 #include "oem/nvidia/common/em_device.hpp"
 
 #include <limits>
+#include <map>
+#include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -518,4 +521,92 @@ TEST(EmDevicePldmDevice, readsTheRecordThroughTheGivenBus)
               record->ports);
 
     EXPECT_FALSE(pldmDevice("HGX_CPU_1", dbus));
+}
+
+using EmDeviceSensorRoles = EmDeviceDevices;
+
+namespace
+{
+
+const std::string rolesRecord = "/inventory/platform/HGX_CPU_0_PLDM";
+
+/** @brief The properties of the PLDMDevice record of HGX_CPU_0, with the
+ *         SensorRoles child interface @p roles when given. */
+std::map<std::string, PropertyMap> recordWithRoles(
+    std::optional<PropertyMap> roles)
+{
+    const std::string base(pldmDeviceIntf);
+    std::map<std::string, PropertyMap> props{
+        {rolesRecord + "|" + base, {{"Name", std::string("HGX_CPU_0_PLDM")}}}};
+    if (roles)
+    {
+        props.emplace(rolesRecord + "|" + base + ".SensorRoles",
+                      std::move(*roles));
+    }
+    return props;
+}
+
+} // namespace
+
+TEST_F(EmDeviceSensorRoles, readsEveryRole)
+{
+    publish({},
+            recordWithRoles(PropertyMap{
+                {"primary_temperature_sensor", std::string("TempLimit_0")},
+                {"primary_power_control", std::string("TDPPowerNonvolatile_0")},
+                {"primary_power_sensor", std::string("EnforcedEDPc_0")},
+                {"primary_cpupower_sensor", std::string("CpuPower_0")}}),
+            {{pldmDeviceIntf, {rolesRecord}}});
+
+    auto record = pldmDevice("HGX_CPU_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_EQ((std::map<std::string, std::string>{
+                  {primaryTemperatureSensor, "TempLimit_0"},
+                  {primaryPowerControl, "TDPPowerNonvolatile_0"},
+                  {primaryPowerSensor, "EnforcedEDPc_0"},
+                  {primaryCpupowerSensor, "CpuPower_0"}}),
+              record->sensorRoles);
+}
+
+TEST_F(EmDeviceSensorRoles, hasNoRolesWithoutSensorRoles)
+{
+    publish({}, recordWithRoles(std::nullopt),
+            {{pldmDeviceIntf, {rolesRecord}}});
+
+    auto record = pldmDevice("HGX_CPU_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_TRUE(record->sensorRoles.empty());
+}
+
+TEST_F(EmDeviceSensorRoles, skipsARoleThatIsNotANonEmptyString)
+{
+    publish({},
+            recordWithRoles(PropertyMap{
+                {"primary_temperature_sensor", uint64_t{7}},
+                {"primary_power_control", std::string()},
+                {"primary_power_sensor", true},
+                {"primary_cpupower_sensor", std::string("CpuPower_0")}}),
+            {{pldmDeviceIntf, {rolesRecord}}});
+
+    auto record = pldmDevice("HGX_CPU_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_EQ((std::map<std::string, std::string>{
+                  {primaryCpupowerSensor, "CpuPower_0"}}),
+              record->sensorRoles);
+}
+
+TEST_F(EmDeviceSensorRoles, ignoresAnUnknownRole)
+{
+    publish({},
+            recordWithRoles(PropertyMap{
+                {"primary_fan_sensor", std::string("Fan_0")},
+                {"Primary_Temperature_Sensor", std::string("Temp_1")},
+                {"primary_temperature_sensor", std::string("TempLimit_0")}}),
+            {{pldmDeviceIntf, {rolesRecord}}});
+
+    auto record = pldmDevice("HGX_CPU_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_EQ((std::map<std::string, std::string>{
+                  {primaryTemperatureSensor, "TempLimit_0"}}),
+              record->sensorRoles);
 }
