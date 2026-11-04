@@ -1118,18 +1118,27 @@ void addSensorRoles(pldm::utils::FakeInventory& inventory,
         std::string(pldm::em_device::pldmDeviceIntf) + ".SensorRoles", roles);
 }
 
-TEST_F(TerminusInventoryTest, checkDeviceInventoryTakesTheRecordsSensorRoles)
+/** Terminus 0x3A, the endpoint (EID 0x62, name Dev_23A) of the device
+ *  Dev_23A, whose PLDMDevice record may carry SensorRoles. */
+class DeviceRecordSensorRolesTest : public TerminusInventoryTest
 {
+  protected:
     using Roles = std::map<std::string, std::string>;
-    std::string uuid("00000000-0000-0000-0000-00000000023A");
-    Terminus terminus(0x3A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    const pldm::MctpInfo mctpInfo(0x62, uuid, "usb", 1, std::string("Dev_23A"),
-                                  "mctp-over-usb", std::nullopt);
-    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
-              terminus.getTid());
-    const std::string chassisPath = chassisOf("Dev_23A");
-    auto publishDevice = [this](std::optional<pldm::utils::PropertyMap> roles) {
+
+    void SetUp() override
+    {
+        TerminusInventoryTest::SetUp();
+        const pldm::MctpInfo mctpInfo(0x62, uuid, "usb", 1,
+                                      std::string("Dev_23A"), "mctp-over-usb",
+                                      std::nullopt);
+        ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+                  terminus.getTid());
+    }
+
+    /** Publish Dev_23A and its record, with @p roles as its SensorRoles
+     *  when given. */
+    void publishDevice(std::optional<pldm::utils::PropertyMap> roles)
+    {
         inventory.clear();
         addNvDevice(inventory, "Dev_23A", 0x62);
         addPldmRecord(inventory, "Dev_23A");
@@ -1137,62 +1146,97 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryTakesTheRecordsSensorRoles)
         {
             addSensorRoles(inventory, "Dev_23A", *roles);
         }
-    };
-    auto check = [&terminus](const std::string& path, int expected) {
+    }
+
+    /** checkDeviceInventory() of @p path; PLDM_ERROR if it did not
+     *  complete. */
+    int check(const std::string& path)
+    {
         auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(path));
-        ASSERT_TRUE(rc.has_value());
-        EXPECT_EQ(expected, std::get<0>(*rc));
-    };
+        return rc ? std::get<0>(*rc) : PLDM_ERROR;
+    }
 
-    publishDevice(pldm::utils::PropertyMap{
-        {"primary_temperature_sensor", std::string("TempLimit_0")}});
-    check(chassisPath, PLDM_SUCCESS);
+    /** Match Dev_23A with a record whose SensorRoles are @p roles, read as
+     *  @p expected. Call through ASSERT_NO_FATAL_FAILURE. */
+    void matchWithRoles(const pldm::utils::PropertyMap& roles,
+                        const Roles& expected)
+    {
+        publishDevice(roles);
+        ASSERT_EQ(PLDM_SUCCESS, check(chassisPath));
+        ASSERT_EQ("Dev_23A", terminus.deviceName);
+        ASSERT_EQ(expected, terminus.sensorRoles);
+    }
+
+    std::string uuid{"00000000-0000-0000-0000-00000000023A"};
+    Terminus terminus{0x3A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager};
+    const std::string chassisPath = chassisOf("Dev_23A");
+    const pldm::utils::PropertyMap tempRole{
+        {"primary_temperature_sensor", std::string("TempLimit_0")}};
+    const Roles tempRoles{
+        {pldm::em_device::primaryTemperatureSensor, "TempLimit_0"}};
+};
+
+TEST_F(DeviceRecordSensorRolesTest, takesTheRolesOfTheRecord)
+{
+    publishDevice(tempRole);
+    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
     EXPECT_EQ("Dev_23A", terminus.deviceName);
-    EXPECT_EQ(
-        (Roles{{pldm::em_device::primaryTemperatureSensor, "TempLimit_0"}}),
-        terminus.sensorRoles);
+    EXPECT_EQ(tempRoles, terminus.sensorRoles);
+}
 
-    // A rescan replaces them with the roles the record has then.
+TEST_F(DeviceRecordSensorRolesTest, rescanReplacesThem)
+{
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
     publishDevice(pldm::utils::PropertyMap{
         {"primary_power_control", std::string("TDPPowerNonvolatile_0")}});
-    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
     EXPECT_EQ((Roles{{pldm::em_device::primaryPowerControl,
                       "TDPPowerNonvolatile_0"}}),
               terminus.sensorRoles);
+}
 
-    // A record without SensorRoles leaves none, so the build options apply.
+TEST_F(DeviceRecordSensorRolesTest, recordWithoutSensorRolesLeavesNone)
+{
+    // That nvidiaUpdateAssociations() then takes the build options is
+    // TerminusTest.nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions.
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
     publishDevice(std::nullopt);
-    check(chassisPath, PLDM_SUCCESS);
-    EXPECT_TRUE(terminus.sensorRoles.empty());
-
-    // So does a device without a record, accepted with no association child.
-    publishDevice(pldm::utils::PropertyMap{
-        {"primary_power_sensor", std::string("EnforcedEDPc_0")}});
-    check(chassisPath, PLDM_SUCCESS);
-    ASSERT_FALSE(terminus.sensorRoles.empty());
-    inventory.clear();
-    addNvDevice(inventory, "Dev_23A", 0x62);
-    check(chassisPath, PLDM_SUCCESS);
+    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
     EXPECT_EQ("Dev_23A", terminus.deviceName);
     EXPECT_TRUE(terminus.sensorRoles.empty());
+}
 
-    // The roles of a device go when the terminus matches another device:
+TEST_F(DeviceRecordSensorRolesTest, deviceWithoutARecordLeavesNone)
+{
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
+    // Accepted with no association child, and no record to read.
+    inventory.clear();
+    addNvDevice(inventory, "Dev_23A", 0x62);
+    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
+    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+}
+
+TEST_F(DeviceRecordSensorRolesTest, anotherDeviceOfTheEndpointClearsThem)
+{
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
     // Dev_23B has the endpoint's EID and no record.
-    publishDevice(pldm::utils::PropertyMap{
-        {"primary_power_sensor", std::string("EnforcedEDPc_0")}});
-    check(chassisPath, PLDM_SUCCESS);
-    ASSERT_FALSE(terminus.sensorRoles.empty());
     addNvDevice(inventory, "Dev_23B", 0x62);
-    check(chassisOf("Dev_23B"), PLDM_SUCCESS);
+    EXPECT_EQ(PLDM_SUCCESS, check(chassisOf("Dev_23B")));
     EXPECT_EQ("Dev_23B", terminus.deviceName);
     EXPECT_TRUE(terminus.sensorRoles.empty());
+}
 
-    // They go with deviceName when a rescan no longer matches the device.
-    publishDevice(pldm::utils::PropertyMap{
-        {"primary_cpupower_sensor", std::string("CpuPower_0")}});
-    check(chassisPath, PLDM_SUCCESS);
-    ASSERT_EQ((Roles{{pldm::em_device::primaryCpupowerSensor, "CpuPower_0"}}),
-              terminus.sensorRoles);
+TEST_F(DeviceRecordSensorRolesTest, deviceNoLongerMatchedClearsThem)
+{
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
+    // Neither the EID nor the name of the endpoint is the device's now.
     addNvDevice(inventory, "Dev_23A", 0x63);
     terminusManager.unmapTid(terminus.getTid());
     const pldm::MctpInfo otherEndpoint(0x62, uuid, "usb", 1,
@@ -1200,9 +1244,35 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryTakesTheRecordsSensorRoles)
                                        std::nullopt);
     ASSERT_EQ(terminusManager.mapTid(otherEndpoint, terminus.getTid()),
               terminus.getTid());
-    check(chassisPath, PLDM_FAILED);
+    EXPECT_EQ(PLDM_FAILED, check(chassisPath));
     EXPECT_TRUE(terminus.deviceName.empty());
     EXPECT_TRUE(terminus.sensorRoles.empty());
+}
+
+TEST_F(DeviceRecordSensorRolesTest, pathsOfNoDeviceOrAnotherKeepThem)
+{
+    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+
+    // A scan offers every inventory path: the chassis of another device,
+    // refused for its EID, a chassis of no device and a path outside the
+    // chassis, both accepted without association children. None of them
+    // concerns the device of the terminus.
+    addNvDevice(inventory, "Dev_23C", 0x70);
+    addPldmRecord(inventory, "Dev_23C");
+    addSensorRoles(inventory, "Dev_23C",
+                   {{"primary_cpupower_sensor", std::string("CpuPower_0")}});
+    const std::vector<std::pair<std::string, int>> paths{
+        {chassisOf("Dev_23C"), PLDM_FAILED},
+        {chassisOf("NoDevice_0"), PLDM_SUCCESS},
+        {"/xyz/openbmc_project/inventory/system/processors/CPU_0",
+         PLDM_SUCCESS}};
+    for (const auto& [path, expected] : paths)
+    {
+        SCOPED_TRACE(path);
+        EXPECT_EQ(expected, check(path));
+        EXPECT_EQ("Dev_23A", terminus.deviceName);
+        EXPECT_EQ(tempRoles, terminus.sensorRoles);
+    }
 }
 
 /** @brief An InterfacesAdded signal of @p intf with @p props at @p path,
@@ -1565,6 +1635,37 @@ class SharedSystemPathTest : public TerminusInventoryTest
         auto rc = stdexec::sync_wait(terminus.scanInventories());
         return rc ? std::get<0>(*rc) : PLDM_ERROR;
     }
+
+    static int update(Terminus& terminus)
+    {
+        auto rc = stdexec::sync_wait(terminus.updateAssociations());
+        return rc ? std::get<0>(*rc) : PLDM_ERROR;
+    }
+
+    /** A terminus @p tid with SYS_BUS state sensor 0x220 in container
+     *  @p busContainer, created on the system inventory as
+     *  addStateSensor() does. */
+    std::shared_ptr<Terminus> addSysBusTerminus(pldm::tid_t tid,
+                                                uint16_t busContainer)
+    {
+        std::string uuid("00000000-0000-0000-0000-000000000303");
+        auto terminus = std::make_shared<Terminus>(
+            tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+        termini[tid] = terminus;
+        StateSetInfo info{
+            EntityInfo{busContainer, PLDM_ENTITY_SYS_BUS, 1},
+            {StateSetData{PLDM_STATESET_ID_HEALTHSTATE,
+                          PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL}}}};
+        std::string associationPath = systemInventoryPath();
+        terminus->stateSensors.emplace_back(std::make_shared<StateSensor>(
+            tid, false, 0x220, info, nullptr, associationPath, nullptr));
+        return terminus;
+    }
+
+    static constexpr auto modulePath =
+        "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0";
+    static constexpr auto moduleCpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
 };
 
 TEST_F(SharedSystemPathTest, systemPathFoundByAnotherTerminusRebindsSensors)
@@ -1574,7 +1675,7 @@ TEST_F(SharedSystemPathTest, systemPathFoundByAnotherTerminusRebindsSensors)
 
     // A binds before any scan has found the system, as the first terminus
     // to initialise can.
-    stdexec::sync_wait(a->updateAssociations());
+    EXPECT_EQ(PLDM_SUCCESS, update(*a));
     EXPECT_EQ(PLATFORM_CHASSIS_PATH, endpoint(*a));
 
     // B's scan then finds Chassis_0.
@@ -1705,7 +1806,7 @@ TEST_F(SharedSystemPathTest, stateSensorKeepsItsInventoryOverride)
             tid, false, sensorId, info, nullptr, associationPath, nullptr));
     }
 
-    stdexec::sync_wait(terminus->updateAssociations());
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
 
     auto endpointOf = [&terminus](size_t index) {
         const auto& stateSet =
@@ -1756,11 +1857,96 @@ TEST_F(SharedSystemPathTest, sysBusStateSensorMovesToTheModulesCpu)
     terminus->stateSensors.emplace_back(std::make_shared<StateSensor>(
         tid, false, 0x220, info, nullptr, associationPath, nullptr));
 
-    stdexec::sync_wait(terminus->updateAssociations());
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
 
     // The sensor moves from the module to the CPU, a dedicated home for a
     // SYS_BUS, so its metric-report updates are not gated.
     EXPECT_EQ(cpuPath, endpoint(*terminus));
+    EXPECT_FALSE(
+        terminus->stateSensors.front()->isDefaultInventoryAssociated());
+}
+
+TEST_F(SharedSystemPathTest, sysBusStateSensorWithoutACpuStaysOnTheModule)
+{
+    // ProcessorModule 0 defines container 10 with a SYS_BUS and no CPU.
+    constexpr pldm::tid_t tid = 0x3B;
+    auto terminus = addSysBusTerminus(tid, 10);
+    auto& manager = InventoryManager::get();
+    manager.entityTree(tid).add(
+        10, oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0}},
+        {oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_SYS_BUS, 1}}});
+    manager.terminusData[tid].inventories.emplace_back(
+        modulePath, PLDM_ENTITY_PROC_IO_MODULE, 0);
+
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
+
+    // No CPU to move to: the sensor stays on the module, a fallback for a
+    // SYS_BUS, and its metric-report updates stay gated.
+    EXPECT_EQ(modulePath, endpoint(*terminus));
+    EXPECT_TRUE(terminus->stateSensors.front()->isDefaultInventoryAssociated());
+}
+
+TEST_F(SharedSystemPathTest, sysBusStateSensorKeepsItsInventoryOverride)
+{
+    // As in sysBusStateSensorMovesToTheModulesCpu, with an inventory from
+    // Entity Manager for the sensor.
+    constexpr pldm::tid_t tid = 0x3C;
+    auto terminus = addSysBusTerminus(tid, 10);
+    auto& manager = InventoryManager::get();
+    manager.entityTree(tid).add(
+        10, oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0}},
+        {oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_PROC, 0}},
+         oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_SYS_BUS, 1}}});
+    auto& inventories = manager.terminusData[tid].inventories;
+    inventories.emplace_back(modulePath, PLDM_ENTITY_PROC_IO_MODULE, 0);
+    inventories.emplace_back(moduleCpuPath,
+                             PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC, 0);
+    const std::string overridePath =
+        "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0/"
+        "Ports/CLink_0";
+    terminus->sensorAuxNameOverwriteTbl[0x220] = std::make_tuple(
+        pldm::platform_mc::AuxiliaryNames{{{"en", "CLink_0"}}}, overridePath);
+
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
+
+    // The override is not redirected to the CPU.
+    EXPECT_EQ(overridePath, endpoint(*terminus));
+}
+
+TEST_F(SharedSystemPathTest, sysBusStateSensorInACpuGoesToThatCpu)
+{
+    // ProcessorModules 0 and 1 define containers 10 and 11, each with a CPU.
+    // The CPU of module 1 defines container 21, which holds the SYS_BUS. The
+    // sensor goes to that CPU (CPU_1), not to the first CPU of the terminus
+    // (CPU_0).
+    constexpr pldm::tid_t tid = 0x3D;
+    auto terminus = addSysBusTerminus(tid, 21);
+    auto& tree = InventoryManager::get().entityTree(tid);
+    tree.add(10,
+             oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0}},
+             {oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_PROC, 0}}});
+    tree.add(11,
+             oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 1}},
+             {oem_nvidia::EntityId{EntityInfo{11, PLDM_ENTITY_PROC, 0}}});
+    tree.add(21, oem_nvidia::EntityId{EntityInfo{11, PLDM_ENTITY_PROC, 0}},
+             {oem_nvidia::EntityId{EntityInfo{21, PLDM_ENTITY_SYS_BUS, 1}}});
+    const std::string module1Path =
+        "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_1";
+    const std::string cpu1Path =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_1";
+    auto& inventories = InventoryManager::get().terminusData[tid].inventories;
+    inventories.emplace_back(modulePath, PLDM_ENTITY_PROC_IO_MODULE, 0);
+    inventories.emplace_back(module1Path, PLDM_ENTITY_PROC_IO_MODULE, 1);
+    inventories.emplace_back(moduleCpuPath,
+                             PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC, 0);
+    inventories.emplace_back(cpu1Path, PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC,
+                             1);
+    ASSERT_EQ(std::vector<std::string>{moduleCpuPath},
+              InventoryManager::get().moduleProcessorInventory(tid));
+
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
+
+    EXPECT_EQ(cpu1Path, endpoint(*terminus));
     EXPECT_FALSE(
         terminus->stateSensors.front()->isDefaultInventoryAssociated());
 }

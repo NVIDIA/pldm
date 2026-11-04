@@ -6632,12 +6632,12 @@ TEST_F(
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
 }
 
-TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesRolesFromTheRecord)
+TEST_F(TerminusTest, nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions)
 {
     // Each role has a sensor or effecter the build option of the role names
-    // ("<option>_0") and one only the record names ("Rec*_0"). The role
-    // goes to the one the record names when the record has the role, and to
-    // the one the build option names otherwise.
+    // ("<option>_0") and one only Terminus::sensorRoles names ("Rec*_0").
+    // The role goes to the one sensorRoles names when it has the role, and
+    // to the one the build option names otherwise.
     std::string uuid("00000000-0000-0000-0000-0000000001d7");
     Terminus terminus(0xD7, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
@@ -6659,12 +6659,17 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesRolesFromTheRecord)
         {em::primaryPowerControl, CPU_PRIMARY_POWER_CONTROL, "RecControl_0"}};
     for (const auto& role : roles)
     {
-        // the fallback is covered with the build options of the test build
-        ASSERT_FALSE(role.option.empty()) << role.role;
+        // The fallback needs the build option of every role.
+        if (role.option.empty())
+        {
+            GTEST_SKIP() << "no build option for " << role.role;
+        }
     }
 
-    // role -> the names of the sensors and effecters that have it
-    using Holders = std::map<std::string, std::set<std::string>>;
+    // role -> (name, chassis path) of each primary_* association, one
+    // entry per association so that a duplicate shows
+    using Holders =
+        std::map<std::string, std::vector<std::pair<std::string, std::string>>>;
     auto rolesAfterUpdate =
         [&](const std::map<std::string, std::string>& sensorRoles) {
             terminus.numericSensors.clear();
@@ -6700,6 +6705,10 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesRolesFromTheRecord)
             auto rc =
                 syncWaitWithDbusIo(nvidia::nvidiaUpdateAssociations(terminus));
             EXPECT_TRUE(rc.has_value());
+            if (rc)
+            {
+                EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+            }
 
             Holders holders;
             auto collect =
@@ -6708,7 +6717,7 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesRolesFromTheRecord)
                     {
                         if (fwd == "chassis" && rev.starts_with("primary_"))
                         {
-                            holders[rev].insert(name);
+                            holders[rev].emplace_back(name, path);
                         }
                     }
                 };
@@ -6724,32 +6733,33 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesRolesFromTheRecord)
             return holders;
         };
 
-    // No record roles: the build options, as before.
+    // No sensorRoles: the build options, as before.
     Holders expected;
     for (const auto& role : roles)
     {
-        expected[role.role] = {prefix + role.option + "_0"};
+        expected[role.role] = {{prefix + role.option + "_0", chassis}};
     }
     EXPECT_EQ(expected, rolesAfterUpdate({}));
 
-    // Every role from the record.
+    // Every role from sensorRoles.
     std::map<std::string, std::string> recordRoles;
     for (const auto& role : roles)
     {
         recordRoles[role.role] = role.recordName;
-        expected[role.role] = {prefix + role.recordName};
+        expected[role.role] = {{prefix + role.recordName, chassis}};
     }
     EXPECT_EQ(expected, rolesAfterUpdate(recordRoles));
 
-    // A role the record lacks falls back to its build option.
+    // A role sensorRoles lacks falls back to its build option.
     for (const auto& role : roles)
     {
         recordRoles = {{role.role, role.recordName}};
         for (const auto& other : roles)
         {
             expected[other.role] = {
-                prefix + (other.role == role.role ? other.recordName
-                                                  : other.option + "_0")};
+                {prefix + (other.role == role.role ? other.recordName
+                                                   : other.option + "_0"),
+                 chassis}};
         }
         EXPECT_EQ(expected, rolesAfterUpdate(recordRoles)) << role.role;
     }
