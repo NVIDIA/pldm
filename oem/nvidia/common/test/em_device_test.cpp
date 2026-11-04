@@ -22,6 +22,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -288,6 +289,52 @@ TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
     EXPECT_EQ("HGX_CPU_4", out[4].name);
     EXPECT_EQ(std::optional<uint64_t>(0x100), out[4].instance);
     EXPECT_EQ(std::optional<uint64_t>(0x10000), out[4].cpuIndex);
+}
+
+TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
+{
+    // Every array type a property can have is no number: the value is
+    // dropped and the rest of the record is read.
+    const std::string bytes = "/inventory/platform/HGX_FPGA_0";
+    const std::string strings = "/inventory/platform/HGX_FPGA_1";
+    publish({bytes, strings},
+            {{bytes + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_FPGA_0")},
+               {"Kind", std::string("fpga")},
+               {"EID", std::vector<uint8_t>{0x10}},
+               {"Instance", std::vector<std::string>{"1"}},
+               {"CpuIndex", uint64_t{4}}}},
+             {bytes + "|" + transportIntf,
+              {{"Medium", std::string("spi")},
+               {"PoolStartEID",
+                std::vector<std::tuple<std::string, std::string, std::string>>{
+                    {"a", "b", "c"}}},
+               {"PoolEndEID",
+                std::vector<sdbusplus::object_path>{
+                    sdbusplus::object_path("/x")}}}},
+             {strings + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_FPGA_1")},
+               {"EID", uint64_t{0x11}},
+               {"InstanceNumber", std::vector<uint8_t>{}}}}});
+
+    auto out = devices(dbus);
+    ASSERT_EQ(2U, out.size());
+    EXPECT_EQ("HGX_FPGA_0", out[0].name);
+    EXPECT_EQ("fpga", out[0].kind);
+    EXPECT_FALSE(out[0].eid);
+    EXPECT_FALSE(out[0].instance);
+    EXPECT_EQ(std::optional<uint64_t>(4), out[0].cpuIndex);
+    EXPECT_EQ("spi", out[0].medium);
+    EXPECT_FALSE(out[0].poolStartEid);
+    EXPECT_FALSE(out[0].poolEndEid);
+    EXPECT_EQ("HGX_FPGA_1", out[1].name);
+    EXPECT_EQ(std::optional<uint64_t>(0x11), out[1].eid);
+    EXPECT_FALSE(out[1].instance);
+
+    // A device whose EID is dropped is found by name, but has no EID.
+    auto dev = deviceByName("HGX_FPGA_0", dbus);
+    ASSERT_TRUE(dev);
+    EXPECT_FALSE(dev->eid);
 }
 
 TEST_F(EmDeviceDevices, takesAValidValueFromTheSecondRecordAfterAnInvalidOne)
