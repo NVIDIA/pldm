@@ -943,4 +943,185 @@ TEST_F(EmConfigInternalTest, staticEidTargetNamesKeyedByStaticEndpointId)
                          {14, {"HGX_CPU_0"}}}));
 }
 
+// Devices of the platform topology: an NvDevice with a .Transport child and
+// a PLDMDevice record "<device>_PLDM". The fake serves one subtree for every
+// interface, so each reader finds its own records by the interface it reads.
+constexpr auto nvDeviceIntf = "xyz.openbmc_project.Configuration.NvDevice";
+constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
+
+class EmConfigTopologyTest : public EmConfigInternalTest
+{
+  protected:
+    void addObject(const std::string& path)
+    {
+        subtree.emplace_back(
+            path, std::vector<std::pair<std::string, std::vector<std::string>>>{
+                      {"svc", {}}});
+        EmConfigTestDBusHandler::setSubtreeResponse(subtree);
+    }
+
+    void addDevice(const std::string& name, const std::string& kind,
+                   std::optional<uint64_t> eid, const std::string& medium)
+    {
+        const std::string path = "/em/topo/" + name;
+        addObject(path);
+        pldm::utils::PropertyMap props{{"Name", name}, {"Kind", kind}};
+        if (eid)
+        {
+            props.emplace("EID", *eid);
+        }
+        EmConfigTestDBusHandler::setProps(path, nvDeviceIntf, props);
+        if (!medium.empty())
+        {
+            EmConfigTestDBusHandler::setProps(
+                path, std::string(nvDeviceIntf) + ".Transport",
+                {{"Medium", medium}});
+        }
+    }
+
+    void addRecord(const std::string& recordName,
+                   const pldm::utils::PropertyMap& updateable,
+                   const pldm::utils::PropertyMap& inventoryOnly = {})
+    {
+        const std::string path = "/em/rec/" + recordName;
+        addObject(path);
+        EmConfigTestDBusHandler::setProps(path, pldmDeviceIntf,
+                                          {{"Name", recordName}});
+        const std::string base(pldmDeviceIntf);
+        EmConfigTestDBusHandler::setProps(path, base + ".UpdateableComponents",
+                                          updateable);
+        EmConfigTestDBusHandler::setProps(
+            path, base + ".FWInventoryOnlyComponent", inventoryOnly);
+    }
+
+    void addPrefix(const std::string& prefix)
+    {
+        addObject("/em/a/prefix");
+        EmConfigTestDBusHandler::setProps(
+            "/em/a/prefix", "xyz.openbmc_project.Configuration.DevicePrefix",
+            {{"Prefix", prefix}});
+    }
+
+    pldm::utils::GetSubTreeResponse subtree;
+};
+
+TEST_F(EmConfigTopologyTest, fetchComponentInfoUnpacksTheDeviceRecord)
+{
+    // A device without a PLDMFirmwareDevice entry takes its components from
+    // its PLDMDevice record, associated by the device kind.
+    addPrefix("HGX_");
+    addDevice("HGX_GPU_0", "gpu", 20, "usb");
+    addRecord("HGX_GPU_0_PLDM",
+              {{"HGX_FW_GPU_0", uint64_t{49152}},
+               {"HGX_FW_BMC_0", uint64_t{16}}},
+              {{"HGX_InfoROM_GPU_0", uint64_t{49168}}});
+    Configurations configurations;
+    configurations.emplace("/em/gpu", makeMctpInfo(20, "HGX_GPU_0"));
+
+    auto info = em_config::fetchComponentInfo(configurations, 20);
+    ASSERT_TRUE(info.has_value());
+    ASSERT_EQ(3U, info->emComponents.size());
+    EXPECT_EQ((ComponentIdNameMap{{49152, "HGX_FW_GPU_0"},
+                                  {16, "HGX_FW_BMC_0"},
+                                  {49168, "HGX_InfoROM_GPU_0"}}),
+              info->idNameMap);
+    EXPECT_TRUE(info->downstreamDevices.empty());
+
+    const std::string chassis =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_GPU_0";
+    EXPECT_EQ((ComponentObject{"HGX_FW_GPU_0",
+                               {{"inventory", "activation", chassis}},
+                               "NVIDIA",
+                               false}),
+              info->emComponents.at(49152));
+    EXPECT_EQ((ComponentObject{"HGX_InfoROM_GPU_0",
+                               {{"inventory", "active", chassis}},
+                               "NVIDIA",
+                               false}),
+              info->emComponents.at(49168));
+    // The BMC firmware behind an ERoT is updated, never inventoried.
+    EXPECT_EQ((ComponentObject{"HGX_FW_BMC_0", {}, "NVIDIA", true}),
+              info->emComponents.at(16));
+}
+
+TEST_F(EmConfigTopologyTest, fetchComponentInfoNeedsTheRecordAndTheDevice)
+{
+    // A record of a device the topology does not describe, a device whose
+    // record lists no component, and a device without a record have no
+    // component info.
+    addRecord("HGX_GPU_1_PLDM", {{"HGX_FW_GPU_1", uint64_t{49152}}});
+    addDevice("HGX_GPU_2", "gpu", 22, "usb");
+    addRecord("HGX_GPU_2_PLDM", {});
+    addDevice("HGX_GPU_3", "gpu", 23, "usb");
+    Configurations configurations;
+    configurations.emplace("/em/gpu1", makeMctpInfo(21, "HGX_GPU_1"));
+    configurations.emplace("/em/gpu2", makeMctpInfo(22, "HGX_GPU_2"));
+    configurations.emplace("/em/gpu3", makeMctpInfo(23, "HGX_GPU_3"));
+
+    EXPECT_FALSE(em_config::fetchComponentInfo(configurations, 21));
+    EXPECT_FALSE(em_config::fetchComponentInfo(configurations, 22));
+    EXPECT_FALSE(em_config::fetchComponentInfo(configurations, 23));
+}
+
+TEST_F(EmConfigTopologyTest, fetchComponentInfoPrefersThePldmFirmwareDevice)
+{
+    // A device with both a PLDMFirmwareDevice entry and a topology record
+    // takes its components from the entry only.
+    addDevice("HGX_GPU_0", "gpu", 20, "usb");
+    addRecord("HGX_GPU_0_PLDM", {{"HGX_FW_GPU_0", uint64_t{49152}}});
+    addObject(devPath);
+    EmConfigTestDBusHandler::setProps(
+        devPath, fwDeviceIntf, {{"MCTPTargetName", std::string("HGX_GPU_0")}});
+    EmConfigTestDBusHandler::setProps(
+        devPath, std::string(fwDeviceIntf) + ".Components0",
+        {{"Name", std::string("ENTRY_FW")},
+         {"ComponentIdentifier", uint16_t{1}},
+         {"AssociationForward", std::vector<std::string>{"inventory"}},
+         {"AssociationBackward", std::vector<std::string>{"activation"}},
+         {"AssociationEndpoint", std::vector<std::string>{"/inv/entry"}}});
+    Configurations configurations;
+    configurations.emplace("/em/gpu", makeMctpInfo(20, "HGX_GPU_0"));
+
+    auto info = em_config::fetchComponentInfo(configurations, 20);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ((ComponentIdNameMap{{1, "ENTRY_FW"}}), info->idNameMap);
+    EXPECT_EQ((ComponentObject{"ENTRY_FW",
+                               {{"inventory", "activation", "/inv/entry"}},
+                               "NVIDIA",
+                               false}),
+              info->emComponents.at(1));
+}
+
+TEST_F(EmConfigTopologyTest, configuredFirmwareTargetsListsRecordDevices)
+{
+    // A device with a record that has an updatable component is a target,
+    // update-only ones included; one whose components are all
+    // inventory-only is not, nor is a record without a device.
+    addDevice("HGX_GPU_0", "gpu", 20, "usb");
+    addRecord("HGX_GPU_0_PLDM", {{"HGX_FW_GPU_0", uint64_t{49152}}});
+    addDevice("HGX_GPU_1", "gpu", 21, "usb");
+    addRecord("HGX_GPU_1_PLDM", {}, {{"HGX_InfoROM_GPU_1", uint64_t{49168}}});
+    addDevice("HGX_ERoT_BMC_0", "erot", 22, "spi");
+    addRecord("HGX_ERoT_BMC_0_PLDM", {{"HGX_FW_BMC_0", uint64_t{16}}});
+    addRecord("HGX_GPU_4_PLDM", {{"HGX_FW_GPU_4", uint64_t{49152}}});
+
+    EXPECT_EQ((std::set<std::string>{"HGX_ERoT_BMC_0", "HGX_GPU_0"}),
+              em_config::fetchConfiguredFirmwareTargets());
+}
+
+TEST_F(EmConfigTopologyTest, staticEidTargetNamesListTopologyDevices)
+{
+    // A topology device is listed under its EID when it has a medium other
+    // than a bridge: the bridge's EID is the downstream pool's way in.
+    addDevice("HGX_GPU_0", "gpu", 20, "usb");
+    addDevice("HGX_ERoT_GPU_0", "erot", 20, "i2c");
+    addDevice("HGX_FPGA_0", "fpga", 21, "bridge");
+    addDevice("HGX_GPU_1", "gpu", 22, "");
+    addDevice("HGX_GPU_2", "gpu", std::nullopt, "usb");
+
+    EXPECT_EQ((std::map<pldm::eid, std::set<std::string>>{
+                  {20, {"HGX_GPU_0", "HGX_ERoT_GPU_0"}}}),
+              em_config::fetchStaticEidTargetNames());
+}
+
 } // namespace
