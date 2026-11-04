@@ -1664,4 +1664,85 @@ TEST_F(ManagerInternalTest,
     EXPECT_TRUE(manager.inventoryMgr.queuedMctpInfos.size() >= 1);
 }
 
+// The device identity goes onto the RoT chassis (UUID and EC-SKU) and the
+// update target (AP-SKU). No inventory object has these paths, so every Set
+// fails and each write stays pending for when its object appears.
+TEST_F(ManagerInternalTest, writeIdentityToSplitsTheIdentityByObject)
+{
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+
+    constexpr auto uuidIntf = "xyz.openbmc_project.Common.UUID";
+    constexpr auto skuIntf = "xyz.openbmc_project.Inventory.Decorator.SKU";
+    const std::string uuidKey = std::string(uuidIntf) + ".UUID";
+    const std::string skuKey = std::string(skuIntf) + ".SKU";
+    const std::string rot =
+        "/xyz/openbmc_project/inventory/system/chassis/UT_NoRoT_0";
+    const std::string target =
+        "/xyz/openbmc_project/inventory/system/chassis/UT_NoTarget_0";
+    const pldm::eid eid = 12;
+    const UUID uuid = "00112233445566778899AABBCCDDEEFF";
+    // The SKUs, next to descriptors that carry none: another descriptor
+    // type, a vendor-defined descriptor without a title, an EC-SKU that is
+    // not 4 bytes long and a 4-byte value of another title.
+    auto skus = [](uint8_t ec, uint8_t ap) {
+        return Descriptors{
+            {PLDM_FWUP_UUID, DescriptorData(16, 0xEE)},
+            {PLDM_FWUP_VENDOR_DEFINED, DescriptorData{0xEE, 0xEE, 0xEE, 0xEE}},
+            {PLDM_FWUP_VENDOR_DEFINED,
+             VendorDefinedDescriptorInfo{"ECSKU", {0x01, 0x02, 0x03, ec}}},
+            {PLDM_FWUP_VENDOR_DEFINED,
+             VendorDefinedDescriptorInfo{"ECSKU", {0xEE, 0xEE, 0xEE}}},
+            {PLDM_FWUP_VENDOR_DEFINED,
+             VendorDefinedDescriptorInfo{"APSKU", {0x0A, 0x0B, 0x0C, ap}}},
+            {PLDM_FWUP_VENDOR_DEFINED,
+             VendorDefinedDescriptorInfo{"OTHERSKU",
+                                         {0xEE, 0xEE, 0xEE, 0xEE}}}};
+    };
+    using Values = std::map<std::string, std::string>;
+    auto pending = [&manager](const std::string& path) {
+        Values values;
+        auto it = manager.pendingInventoryWrites.find(path);
+        if (it == manager.pendingInventoryWrites.end())
+        {
+            return values;
+        }
+        for (const auto& write : it->second)
+        {
+            values[write.interface + "." + write.property] = write.value;
+        }
+        return values;
+    };
+    manager.descriptorMap[eid] = skus(0x04, 0x0D);
+
+    manager.writeIdentityTo(eid, uuid, true, rot, target);
+    EXPECT_EQ((Values{{uuidKey, uuid}, {skuKey, "0x01020304"}}), pending(rot));
+    EXPECT_EQ((Values{{skuKey, "0x0A0B0C0D"}}), pending(target));
+    EXPECT_EQ("0x01020304", manager.lastWrittenSkus[eid].ecsku);
+    EXPECT_EQ("0x0A0B0C0D", manager.lastWrittenSkus[eid].apsku);
+    EXPECT_TRUE(manager.inventoryAddedMatches.contains(rot));
+    EXPECT_TRUE(manager.inventoryAddedMatches.contains(target));
+
+    // A refresh with a new EC-SKU updates the pending SKU write of the RoT
+    // chassis in place and keeps its pending UUID; the UUID is not written
+    // again, even when it differs. An unchanged AP-SKU is not written again.
+    manager.descriptorMap[eid] = skus(0x05, 0x0D);
+    manager.pendingInventoryWrites.erase(target);
+    manager.writeIdentityTo(eid, "FFEEDDCCBBAA99887766554433221100", false, rot,
+                            target);
+    EXPECT_EQ(2U, manager.pendingInventoryWrites.at(rot).size());
+    EXPECT_EQ((Values{{uuidKey, uuid}, {skuKey, "0x01020305"}}), pending(rot));
+    EXPECT_FALSE(manager.pendingInventoryWrites.contains(target));
+
+    // A device without a RoT chassis (an IRoT) gets the AP-SKU only.
+    const pldm::eid irotEid = 13;
+    manager.descriptorMap[irotEid] = skus(0x06, 0x0E);
+    manager.pendingInventoryWrites.clear();
+    manager.writeIdentityTo(irotEid, uuid, true, "", target);
+    EXPECT_EQ(1U, manager.pendingInventoryWrites.size());
+    EXPECT_EQ((Values{{skuKey, "0x0A0B0C0E"}}), pending(target));
+    EXPECT_TRUE(manager.lastWrittenSkus[irotEid].ecsku.empty());
+}
+
 // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
