@@ -1913,6 +1913,106 @@ TEST_F(SharedSystemPathTest, sysBusStateSensorKeepsItsInventoryOverride)
     EXPECT_EQ(overridePath, endpoint(*terminus));
 }
 
+TEST_F(SharedSystemPathTest, scanAddsTheProcessorsLinkedToACpu)
+{
+    // CPU_0 is found by the scan. Its Associations link CPU_1 (and itself)
+    // as all_processors, and a chassis by another reverse name. CPU_1 is
+    // taken with CPU_0's type and instance, and with its own parent; CPU_0
+    // is not taken twice and the chassis not at all.
+    constexpr pldm::tid_t tid = 0x3E;
+    std::string uuid("00000000-0000-0000-0000-000000000304");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    const std::string cpu0Path =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    const std::string cpu1Path =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_1";
+    const std::string otherChassis =
+        "/xyz/openbmc_project/inventory/system/chassis/Chassis_9";
+    constexpr auto assocDefIntf = "xyz.openbmc_project.Association.Definitions";
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    inventory.addInterface(cpu0Path, "xyz.openbmc_project.Inventory.Item.Cpu",
+                           {});
+    inventory.addInterface(cpu0Path, oem_nvidia::instanceInterface,
+                           {{oem_nvidia::instanceProperty, uint64_t{2}}});
+    inventory.addInterface(
+        cpu0Path, assocDefIntf,
+        {{"Associations", Associations{{"", "all_processors", cpu1Path},
+                                       {"", "all_processors", cpu0Path},
+                                       {"", "all_chassis", otherChassis}}}});
+    inventory.addInterface(
+        cpu1Path + "/parent_chassis", "xyz.openbmc_project.Association",
+        {{"endpoints", std::vector<std::string>{modulePath}}});
+    size_t associationReads = 0;
+    dbusAsyncMock::getProperty =
+        [&associationReads](
+            const std::string& path, const std::string& property,
+            const std::string& interface, const std::string& service) {
+            if (property == "Associations")
+            {
+                ++associationReads;
+            }
+            return pldm::utils::fakeInventory().getProperty(
+                service, path, interface, property);
+        };
+
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    // CPU_0's Associations are read once; CPU_1 is not scanned for links.
+    EXPECT_EQ(1U, associationReads);
+
+    const auto& data = InventoryManager::get().terminusData[tid];
+    const uint16_t cpuType = PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC;
+    const std::vector<InventoryManager::Inventory> expected{
+        {cpu0Path, cpuType, 2}, {cpu1Path, cpuType, 2}};
+    EXPECT_EQ(expected, data.inventories);
+    ASSERT_TRUE(data.inventoryParents.contains(cpu1Path));
+    EXPECT_EQ(modulePath, data.inventoryParents.at(cpu1Path));
+    EXPECT_FALSE(data.inventoryParents.contains(cpu0Path));
+}
+
+TEST_F(SharedSystemPathTest, scanKeepsACpuWhoseAssociationsCannotBeRead)
+{
+    // A failed read of a CPU's Associations loses its linked processors
+    // only: the CPU itself is still taken.
+    constexpr pldm::tid_t tid = 0x3F;
+    std::string uuid("00000000-0000-0000-0000-000000000305");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    inventory.addInterface(cpuPath, "xyz.openbmc_project.Inventory.Item.Cpu",
+                           {});
+    inventory.addInterface(cpuPath,
+                           "xyz.openbmc_project.Association.Definitions", {});
+    size_t associationReads = 0;
+    dbusAsyncMock::getProperty =
+        [&associationReads](
+            const std::string& path, const std::string& property,
+            const std::string& interface,
+            const std::string& service) -> pldm::utils::PropertyValue {
+        if (property == "Associations")
+        {
+            ++associationReads;
+            throw std::runtime_error("fake Get");
+        }
+        return pldm::utils::fakeInventory().getProperty(service, path,
+                                                        interface, property);
+    };
+
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_EQ(1U, associationReads);
+
+    const auto& inventories =
+        InventoryManager::get().terminusData[tid].inventories;
+    ASSERT_EQ(1U, inventories.size());
+    EXPECT_EQ(cpuPath, std::get<0>(inventories.front()));
+}
+
 TEST_F(SharedSystemPathTest, sysBusStateSensorInACpuGoesToThatCpu)
 {
     // ProcessorModules 0 and 1 define containers 10 and 11, each with a CPU.
