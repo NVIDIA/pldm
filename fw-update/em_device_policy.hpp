@@ -109,7 +109,9 @@ struct InventoryPaths
 };
 
 /** @brief Where pldmd writes the device identity (UUID, SKUs): the RoT
- *         chassis and the update target, by device kind. */
+ *         chassis and the update target, by device kind. A device without
+ *         a RoT chassis (create path empty) gets its AP-SKU only: an IRoT,
+ *         a CX9 IO board, and the GPU and HPM SMAs (gpu_sma, hmc_hpm_sma). */
 inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
                                                     const std::string& prefix)
 {
@@ -135,7 +137,8 @@ inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
     {
         return InventoryPaths{"", bmc};
     }
-    if (dev.kind == "cx9_io")
+    if (dev.kind == "cx9_io" || dev.kind == "gpu_sma" ||
+        dev.kind == "hmc_hpm_sma")
     {
         return InventoryPaths{"", chassis};
     }

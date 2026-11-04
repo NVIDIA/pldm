@@ -18,6 +18,7 @@
 #include "fw-update/em_device_policy.hpp"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -199,4 +200,25 @@ TEST(EmDevicePolicyInventoryPaths, followTheKind)
 
     EXPECT_FALSE(inventoryPaths(device("HGX_CPU_0", "cpu"), "HGX_"));
     EXPECT_FALSE(inventoryPaths(device("HGX_X_0", ""), "HGX_"));
+}
+
+// The GPU and HPM SMAs (kinds gpu_sma and hmc_hpm_sma) have no RoT chassis:
+// they get the AP-SKU on their own chassis and nothing else, as develop's
+// HGX_*_SMA_n_DevInv records (UpdateInventoryPath only) gave them.
+TEST(EmDevicePolicyInventoryPaths, gpuAndHpmSmasGetTheirOwnChassisOnly)
+{
+    for (const auto& [name, kind] :
+         {std::pair{"HGX_GPU_SMA_1", "gpu_sma"},
+          std::pair{"HGX_ProcessorModule_SMA_1", "hmc_hpm_sma"}})
+    {
+        auto sma = inventoryPaths(device(name, kind), "HGX_");
+        ASSERT_TRUE(sma) << kind;
+        EXPECT_EQ("", sma->create) << kind;
+        // the device's own chassis, not its parent's
+        EXPECT_EQ(chassis + name, sma->update) << kind;
+    }
+
+    // the HPM SMA of a BMC is another kind
+    EXPECT_FALSE(
+        inventoryPaths(device("ProcessorModule_SMA_0", "bmc_hpm_sma"), ""));
 }

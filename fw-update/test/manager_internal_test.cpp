@@ -22,6 +22,10 @@
 #include "common/instance_id.hpp"
 #include "common/types.hpp"
 #include "common/utils.hpp"
+
+#include <map>
+#include <utility>
+
 #ifdef DBusHandler
 #undef DBusHandler
 #endif
@@ -44,6 +48,8 @@ class ManagerTestDBusHandler : public DBusHandler
     {
         testBus() = nullptr;
         subtreeResponse().clear();
+        subtreeByIntf().clear();
+        propsByKey().clear();
         throwGetSubtree() = false;
     }
 
@@ -52,19 +58,58 @@ class ManagerTestDBusHandler : public DBusHandler
         subtreeResponse() = response;
     }
 
+    /** @brief The answer to a query whose first interface is @p intf;
+     *         other queries get the answer of setSubtreeResponse(response). */
+    static void setSubtreeResponse(const std::string& intf,
+                                   const GetSubTreeResponse& response)
+    {
+        subtreeByIntf()[intf] = response;
+    }
+
+    /** @brief The properties GetAll returns for @p intf on @p objPath; other
+     *         objects are read from the bus. */
+    static void setProps(const std::string& objPath, const std::string& intf,
+                         const PropertyMap& props)
+    {
+        propsByKey()[objPath + "|" + intf] = props;
+    }
+
     static void setThrowGetSubtree(bool value)
     {
         throwGetSubtree() = value;
     }
 
     GetSubTreeResponse getSubtree(
-        const std::string&, int, const std::vector<std::string>&) const override
+        const std::string&, int,
+        const std::vector<std::string>& intfs) const override
     {
         if (throwGetSubtree())
         {
             throw sdbusplus::exception::SdBusError(EIO, "mock getSubtree");
         }
+        if (!intfs.empty())
+        {
+            if (auto it = subtreeByIntf().find(intfs.front());
+                it != subtreeByIntf().end())
+            {
+                return it->second;
+            }
+        }
         return subtreeResponse();
+    }
+
+    PropertyMap getDbusPropertiesVariant(
+        const char* serviceName, const char* objPath,
+        const char* dbusInterface) const override
+    {
+        auto it = propsByKey().find(
+            std::string(objPath) + "|" + std::string(dbusInterface));
+        if (it == propsByKey().end())
+        {
+            return DBusHandler::getDbusPropertiesVariant(serviceName, objPath,
+                                                         dbusInterface);
+        }
+        return it->second;
     }
 
   private:
@@ -78,6 +123,18 @@ class ManagerTestDBusHandler : public DBusHandler
     {
         static GetSubTreeResponse response{};
         return response;
+    }
+
+    static std::map<std::string, GetSubTreeResponse>& subtreeByIntf()
+    {
+        static std::map<std::string, GetSubTreeResponse> response{};
+        return response;
+    }
+
+    static std::map<std::string, PropertyMap>& propsByKey()
+    {
+        static std::map<std::string, PropertyMap> props{};
+        return props;
     }
 
     static bool& throwGetSubtree()
@@ -1744,5 +1801,117 @@ TEST_F(ManagerInternalTest, writeIdentityToSplitsTheIdentityByObject)
     EXPECT_EQ((Values{{skuKey, "0x0A0B0C0E"}}), pending(target));
     EXPECT_TRUE(manager.lastWrittenSkus[irotEid].ecsku.empty());
 }
+
+#ifdef OEM_NVIDIA
+// The GPU and HPM SMAs (kinds gpu_sma and hmc_hpm_sma) have no
+// PLDMDeviceInventory record, only their NvDevice record in the platform
+// topology. Their identity write follows their kind: the AP-SKU onto their
+// own chassis, no UUID and no EC-SKU anywhere.
+TEST_F(ManagerInternalTest, writeDeviceInventoryIdentityGivesAnSmaItsApSku)
+{
+    using Handler = pldm::utils::ManagerTestDBusHandler;
+    constexpr auto service = "xyz.openbmc_project.Test.SmaTopology";
+    constexpr auto records = "/xyz/openbmc_project/inventory/system/board/UT";
+    constexpr auto devInvIntf =
+        "xyz.openbmc_project.Configuration.PLDMDeviceInventory";
+    const std::string chassis = pldm::em_device::chassisRoot;
+    struct Device
+    {
+        std::string name;
+        std::string kind;
+        pldm::eid eid;
+        VendorDefinedDescriptorData apskuData;
+        std::string apsku;
+    };
+    const std::vector<Device> smas{
+        {"HGX_GPU_SMA_0",
+         "gpu_sma",
+         10,
+         {0x18, 0x00, 0x00, 0x02},
+         "0x18000002"},
+        {"HGX_ProcessorModule_SMA_0",
+         "hmc_hpm_sma",
+         13,
+         {0x1A, 0x00, 0x00, 0x02},
+         "0x1A000002"}};
+    const std::vector<Device> others{
+        // no rule for this kind
+        {"HGX_CPU_0", "cpu", 14, {0x18, 0x00, 0x00, 0x04}, "0x18000004"},
+        // configured, but no NvDevice record
+        {"HGX_Unknown_0", "", 15, {0x18, 0x00, 0x00, 0x05}, "0x18000005"}};
+
+    auto entry = [service](const std::string& path, const char* intf) {
+        return std::pair{path, pldm::utils::MapperServiceMap{
+                                   {service, std::vector<std::string>{intf}}}};
+    };
+    // A PLDMDeviceInventory record of another device only.
+    const std::string devInv = std::string(records) + "/HGX_GPU_0_DevInv";
+    Handler::setSubtreeResponse(devInvIntf, {entry(devInv, devInvIntf)});
+    Handler::setProps(devInv, devInvIntf,
+                      {{"MCTPTargetName", std::string("HGX_GPU_0")}});
+    const std::string prefix = std::string(records) + "/DevicePrefix";
+    Handler::setSubtreeResponse(
+        pldm::em_device::devicePrefixIntf,
+        {entry(prefix, pldm::em_device::devicePrefixIntf)});
+    Handler::setProps(prefix, pldm::em_device::devicePrefixIntf,
+                      {{"Prefix", std::string("HGX_")}});
+    pldm::utils::GetSubTreeResponse nvDevices;
+    for (const auto& dev : {smas[0], smas[1], others[0]})
+    {
+        const std::string path = std::string(records) + "/" + dev.name;
+        nvDevices.push_back(entry(path, pldm::em_device::nvDeviceIntf));
+        Handler::setProps(
+            path, pldm::em_device::nvDeviceIntf,
+            {{"Name", dev.name},
+             {"Kind", dev.kind},
+             {"ParentChassis", std::string("HGX_ProcessorModule_0")}});
+        Handler::setProps(path, pldm::em_device::transportIntf, {});
+    }
+    Handler::setSubtreeResponse(pldm::em_device::nvDeviceIntf, nvDevices);
+
+    const std::filesystem::path configPath{
+        "./fw_update_jsons/fw_update_config_single_entry.json"};
+    Manager manager(nullptr, event, reqHandler, instanceIdDb, configPath, true);
+    for (const auto& devs : {smas, others})
+    {
+        for (const auto& dev : devs)
+        {
+            manager.configurations[std::string(records) + "/" + dev.name +
+                                   "_MCTP"] =
+                MctpInfo{dev.eid, "", "", 0, dev.name, "", std::nullopt};
+            manager.descriptorMap[dev.eid] = Descriptors{
+                {PLDM_FWUP_VENDOR_DEFINED,
+                 VendorDefinedDescriptorInfo{"ECSKU",
+                                             {0x01, 0x02, 0x03, 0x04}}},
+                {PLDM_FWUP_VENDOR_DEFINED,
+                 VendorDefinedDescriptorInfo{"APSKU", dev.apskuData}}};
+            manager.writeDeviceInventoryIdentity(
+                dev.eid, "00112233445566778899AABBCCDDEEFF", true);
+        }
+    }
+
+    // No object has the chassis paths, so the writes stay pending. Only
+    // the SMAs get a write, onto their own chassis.
+    const std::string skuIntf = "xyz.openbmc_project.Inventory.Decorator.SKU";
+    EXPECT_EQ(smas.size(), manager.pendingInventoryWrites.size());
+    for (const auto& sma : smas)
+    {
+        auto it = manager.pendingInventoryWrites.find(chassis + sma.name);
+        ASSERT_NE(manager.pendingInventoryWrites.end(), it) << sma.name;
+        ASSERT_EQ(1U, it->second.size()) << sma.name;
+        EXPECT_EQ(skuIntf, it->second[0].interface) << sma.name;
+        EXPECT_EQ("SKU", it->second[0].property) << sma.name;
+        EXPECT_EQ(sma.apsku, it->second[0].value) << sma.name;
+        ASSERT_TRUE(manager.lastWrittenSkus.contains(sma.eid)) << sma.name;
+        EXPECT_EQ("", manager.lastWrittenSkus.at(sma.eid).ecsku) << sma.name;
+        EXPECT_EQ(sma.apsku, manager.lastWrittenSkus.at(sma.eid).apsku)
+            << sma.name;
+    }
+    for (const auto& other : others)
+    {
+        EXPECT_FALSE(manager.lastWrittenSkus.contains(other.eid)) << other.name;
+    }
+}
+#endif
 
 // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
