@@ -336,6 +336,25 @@ TEST(EntityTreeTest, oneNodePerEntityAcrossPdrs)
     EXPECT_EQ(tree.container(10), tree.container(30));
 }
 
+TEST(EntityTreeTest, constLookupsSeeTheSameNodes)
+{
+    // The const overloads, used by const callers such as ancestor(), find
+    // the same node as the mutable ones and nullptr for an unknown key.
+    EntityTree tree;
+    auto module = id(PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID,
+                     PLDM_ENTITY_PROC_IO_MODULE, 1);
+    auto cpu = id(10, PLDM_ENTITY_PROC, 1);
+    tree.add(10, module, {cpu});
+    const EntityTree& constTree = tree;
+
+    ASSERT_NE(nullptr, constTree.find(cpu));
+    EXPECT_EQ(tree.find(cpu), constTree.find(cpu));
+    EXPECT_EQ(cpu, constTree.find(cpu)->id);
+    EXPECT_EQ(tree.find(module), constTree.container(10));
+    EXPECT_EQ(nullptr, constTree.find(id(10, PLDM_ENTITY_PROC, 2)));
+    EXPECT_EQ(nullptr, constTree.container(11));
+}
+
 TEST(EntityTreeTest, parentAndAncestorFollowPhysicalChain)
 {
     // system -> module(cid 10) -> cpu(cid 20) -> memctl(cid 30)
