@@ -1191,19 +1191,26 @@ class DeviceRecordSensorRolesTest : public TerminusInventoryTest
     void SetUp() override
     {
         TerminusInventoryTest::SetUp();
-        const pldm::MctpInfo mctpInfo(0x62, uuid, "usb", 1,
-                                      std::string("Dev_23A"), "mctp-over-usb",
-                                      std::nullopt);
+        mapEndpoint("Dev_23A");
+    }
+
+    /** Map the terminus to EID 0x62 under the endpoint name @p name. */
+    void mapEndpoint(std::optional<std::string> name)
+    {
+        terminusManager.unmapTid(terminus.getTid());
+        const pldm::MctpInfo mctpInfo(0x62, uuid, "usb", 1, std::move(name),
+                                      "mctp-over-usb", std::nullopt);
         ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
                   terminus.getTid());
     }
 
-    /** Publish Dev_23A and its record, with @p roles as its SensorRoles
-     *  when given. */
-    void publishDevice(std::optional<pldm::utils::PropertyMap> roles)
+    /** Publish Dev_23A with @p eid and its record, with @p roles as its
+     *  SensorRoles when given. */
+    void publishDevice(std::optional<pldm::utils::PropertyMap> roles,
+                       std::optional<uint64_t> eid = 0x62)
     {
         inventory.clear();
-        addNvDevice(inventory, "Dev_23A", 0x62);
+        addNvDevice(inventory, "Dev_23A", eid);
         addPldmRecord(inventory, "Dev_23A");
         if (roles)
         {
@@ -1211,131 +1218,146 @@ class DeviceRecordSensorRolesTest : public TerminusInventoryTest
         }
     }
 
-    /** checkDeviceInventory() of @p path; PLDM_ERROR if it did not
-     *  complete. */
-    int check(const std::string& path)
-    {
-        auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(path));
-        return rc ? std::get<0>(*rc) : PLDM_ERROR;
-    }
-
-    /** Match Dev_23A with a record whose SensorRoles are @p roles, read as
-     *  @p expected. Call through ASSERT_NO_FATAL_FAILURE. */
-    void matchWithRoles(const pldm::utils::PropertyMap& roles,
-                        const Roles& expected)
-    {
-        publishDevice(roles);
-        ASSERT_EQ(PLDM_SUCCESS, check(chassisPath));
-        ASSERT_EQ("Dev_23A", terminus.deviceName);
-        ASSERT_EQ(expected, terminus.sensorRoles);
-    }
-
     std::string uuid{"00000000-0000-0000-0000-00000000023A"};
     Terminus terminus{0x3A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager};
-    const std::string chassisPath = chassisOf("Dev_23A");
     const pldm::utils::PropertyMap tempRole{
-        {"primary_temperature_sensor", std::string("TempLimit_0")}};
-    const Roles tempRoles{
-        {pldm::em_device::primaryTemperatureSensor, "TempLimit_0"}};
+        {"primary_temperature_sensor",
+         std::string("ProcessorModule_0_CPU_0_TempLimit_0")}};
+    const Roles tempRoles{{pldm::em_device::primaryTemperatureSensor,
+                           "ProcessorModule_0_CPU_0_TempLimit_0"}};
 };
 
-TEST_F(DeviceRecordSensorRolesTest, takesTheRolesOfTheRecord)
+TEST_F(DeviceRecordSensorRolesTest, scanLoadsThemWithoutAChassisOfTheDevice)
 {
+    // As a CPU on VR-NVL: the device's inventory is component/<Name>, so
+    // the chassis scan never offers chassis/<Name>.
     publishDevice(tempRole);
-    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
-    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    inventory.addInterface(
+        pldm::em_device::componentRoot + std::string("Dev_23A"),
+        "xyz.openbmc_project.Inventory.Item.Chassis", {});
+    auto rc = stdexec::sync_wait(terminus.scanInventories());
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+    EXPECT_TRUE(terminus.deviceName.empty());
     EXPECT_EQ(tempRoles, terminus.sensorRoles);
 }
 
-TEST_F(DeviceRecordSensorRolesTest, rescanReplacesThem)
+TEST_F(DeviceRecordSensorRolesTest, deviceOfTheEndpointByNameBeforeEid)
 {
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+    // Another device whose record names its own temperature sensor.
+    auto publishOther =
+        [this](const std::string& name, std::optional<uint64_t> eid) {
+            addNvDevice(inventory, name, eid);
+            addPldmRecord(inventory, name);
+            addSensorRoles(inventory, name,
+                           {{"primary_temperature_sensor",
+                             std::string(name + "_TempLimit_0")}});
+        };
+    const Roles otherRoles{
+        {pldm::em_device::primaryTemperatureSensor, "Dev_23B_TempLimit_0"}};
 
-    publishDevice(pldm::utils::PropertyMap{
-        {"primary_power_control", std::string("TDPPowerNonvolatile_0")}});
-    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
-    EXPECT_EQ((Roles{{pldm::em_device::primaryPowerControl,
-                      "TDPPowerNonvolatile_0"}}),
+    // Dev_23A has the endpoint's name, Dev_23B its EID: Dev_23A, whatever
+    // its EID.
+    for (const auto eid :
+         {std::optional<uint64_t>(0x62), std::optional<uint64_t>(0x70),
+          std::optional<uint64_t>()})
+    {
+        SCOPED_TRACE(eid ? std::to_string(*eid) : "no EID");
+        publishDevice(tempRole, eid);
+        publishOther("Dev_23B", 0x62);
+        terminus.loadSensorRoles();
+        EXPECT_EQ(tempRoles, terminus.sensorRoles);
+    }
+
+    // No device has the endpoint's name (one named after its MCTP target
+    // record), or the endpoint has none: Dev_23B, by EID.
+    for (const auto& name :
+         {std::optional<std::string>("BF4_0"), std::optional<std::string>()})
+    {
+        SCOPED_TRACE(name.value_or("no name"));
+        ASSERT_NO_FATAL_FAILURE(mapEndpoint(name));
+        terminus.loadSensorRoles();
+        EXPECT_EQ(otherRoles, terminus.sensorRoles);
+    }
+
+    // Two devices with the endpoint's EID: neither.
+    publishOther("Dev_23C", 0x62);
+    for (const auto& name :
+         {std::optional<std::string>("BF4_0"), std::optional<std::string>()})
+    {
+        SCOPED_TRACE(name.value_or("no name"));
+        ASSERT_NO_FATAL_FAILURE(mapEndpoint(name));
+        terminus.sensorRoles = otherRoles;
+        terminus.loadSensorRoles();
+        EXPECT_TRUE(terminus.sensorRoles.empty());
+    }
+}
+
+TEST_F(DeviceRecordSensorRolesTest, eachLoadReplacesThem)
+{
+    publishDevice(tempRole);
+    terminus.loadSensorRoles();
+    ASSERT_EQ(tempRoles, terminus.sensorRoles);
+
+    // Other roles.
+    const std::string control = "ProcessorModule_0_CPU_0_TDPPowerNonvolatile_0";
+    publishDevice(pldm::utils::PropertyMap{{"primary_power_control", control}});
+    terminus.loadSensorRoles();
+    EXPECT_EQ((Roles{{pldm::em_device::primaryPowerControl, control}}),
               terminus.sensorRoles);
-}
 
-TEST_F(DeviceRecordSensorRolesTest, recordWithoutSensorRolesLeavesNone)
-{
-    // That nvidiaUpdateAssociations() then takes the build options is
-    // TerminusTest.nvidiaUpdateAssociationsPrefersSensorRolesToBuildOptions.
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
-
+    // A record without SensorRoles, and a device without a record.
     publishDevice(std::nullopt);
-    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
-    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    terminus.loadSensorRoles();
     EXPECT_TRUE(terminus.sensorRoles.empty());
-}
-
-TEST_F(DeviceRecordSensorRolesTest, deviceWithoutARecordLeavesNone)
-{
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
-
-    // Accepted with no association child, and no record to read.
     inventory.clear();
     addNvDevice(inventory, "Dev_23A", 0x62);
-    EXPECT_EQ(PLDM_SUCCESS, check(chassisPath));
-    EXPECT_EQ("Dev_23A", terminus.deviceName);
+    terminus.loadSensorRoles();
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+
+    // No device of the endpoint (Dev_23A has neither its name nor its
+    // EID now), and no endpoint.
+    publishDevice(tempRole, 0x70);
+    terminus.loadSensorRoles();
+    ASSERT_EQ(tempRoles, terminus.sensorRoles);
+    ASSERT_NO_FATAL_FAILURE(mapEndpoint(std::string("Dev_999")));
+    terminus.loadSensorRoles();
+    EXPECT_TRUE(terminus.sensorRoles.empty());
+    ASSERT_NO_FATAL_FAILURE(mapEndpoint(std::string("Dev_23A")));
+    terminus.loadSensorRoles();
+    ASSERT_EQ(tempRoles, terminus.sensorRoles);
+    terminusManager.unmapTid(terminus.getTid());
+    terminus.loadSensorRoles();
     EXPECT_TRUE(terminus.sensorRoles.empty());
 }
 
-TEST_F(DeviceRecordSensorRolesTest, anotherDeviceOfTheEndpointClearsThem)
+TEST_F(DeviceRecordSensorRolesTest, chassisScanLeavesThemAlone)
 {
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+    // The chassis of the device loads the names of its record, not its
+    // roles, whether it matches the device first, again, or no more.
+    publishDevice(tempRole);
+    const Roles sentinel{{"sentinel", "x"}};
+    terminus.sensorRoles = sentinel;
+    auto check = [this]() {
+        auto rc = stdexec::sync_wait(
+            terminus.checkDeviceInventory(chassisOf("Dev_23A")));
+        return rc ? std::get<0>(*rc) : PLDM_ERROR;
+    };
+    EXPECT_EQ(PLDM_SUCCESS, check());
+    EXPECT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(100));
+    EXPECT_EQ(sentinel, terminus.sensorRoles);
 
-    // Dev_23B has the endpoint's EID and no record.
-    addNvDevice(inventory, "Dev_23B", 0x62);
-    EXPECT_EQ(PLDM_SUCCESS, check(chassisOf("Dev_23B")));
-    EXPECT_EQ("Dev_23B", terminus.deviceName);
-    EXPECT_TRUE(terminus.sensorRoles.empty());
-}
-
-TEST_F(DeviceRecordSensorRolesTest, deviceNoLongerMatchedClearsThem)
-{
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
+    ASSERT_EQ("Dev_23A", terminus.deviceName);
+    EXPECT_EQ(PLDM_SUCCESS, check());
+    EXPECT_EQ(sentinel, terminus.sensorRoles);
 
     // Neither the EID nor the name of the endpoint is the device's now.
     addNvDevice(inventory, "Dev_23A", 0x63);
-    terminusManager.unmapTid(terminus.getTid());
-    const pldm::MctpInfo otherEndpoint(0x62, uuid, "usb", 1,
-                                       std::string("Dev_999"), "mctp-over-usb",
-                                       std::nullopt);
-    ASSERT_EQ(terminusManager.mapTid(otherEndpoint, terminus.getTid()),
-              terminus.getTid());
-    EXPECT_EQ(PLDM_FAILED, check(chassisPath));
+    ASSERT_NO_FATAL_FAILURE(mapEndpoint(std::string("Dev_999")));
+    EXPECT_EQ(PLDM_FAILED, check());
     EXPECT_TRUE(terminus.deviceName.empty());
-    EXPECT_TRUE(terminus.sensorRoles.empty());
-}
-
-TEST_F(DeviceRecordSensorRolesTest, pathsOfNoDeviceOrAnotherKeepThem)
-{
-    ASSERT_NO_FATAL_FAILURE(matchWithRoles(tempRole, tempRoles));
-
-    // A scan offers every inventory path: the chassis of another device,
-    // refused for its EID, a chassis of no device and a path outside the
-    // chassis, both accepted without association children. None of them
-    // concerns the device of the terminus.
-    addNvDevice(inventory, "Dev_23C", 0x70);
-    addPldmRecord(inventory, "Dev_23C");
-    addSensorRoles(inventory, "Dev_23C",
-                   {{"primary_cpupower_sensor", std::string("CpuPower_0")}});
-    const std::vector<std::pair<std::string, int>> paths{
-        {chassisOf("Dev_23C"), PLDM_FAILED},
-        {chassisOf("NoDevice_0"), PLDM_SUCCESS},
-        {"/xyz/openbmc_project/inventory/system/processors/CPU_0",
-         PLDM_SUCCESS}};
-    for (const auto& [path, expected] : paths)
-    {
-        SCOPED_TRACE(path);
-        EXPECT_EQ(expected, check(path));
-        EXPECT_EQ("Dev_23A", terminus.deviceName);
-        EXPECT_EQ(tempRoles, terminus.sensorRoles);
-    }
+    EXPECT_EQ(sentinel, terminus.sensorRoles);
 }
 
 /** @brief An InterfacesAdded signal of @p intf with @p props at @p path,

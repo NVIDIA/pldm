@@ -101,6 +101,51 @@ bool isEndpointDevice(const pldm::em_device::Device& dev,
     return isEndpointDevice(dev.name, dev.eid, mctpInfo);
 }
 
+using Devices = std::vector<pldm::em_device::Device>;
+
+/** @brief The device of the platform topology that is the endpoint
+ *         @p mctpInfo: the one with the endpoint's name, which is also
+ *         the device the terminus config comes from; else the one with
+ *         the endpoint's EID. None when more than one device has that EID,
+ *         logged once per pair of devices; the devices are read again on
+ *         every inventory scan. */
+std::optional<pldm::em_device::Device> endpointDevice(const MctpInfo& mctpInfo)
+{
+    Devices devs = pldm::em_device::devices(utils::DBusHandler());
+    if (const auto* name = endpointName(mctpInfo))
+    {
+        Devices::iterator it =
+            std::ranges::find(devs, *name, &pldm::em_device::Device::name);
+        if (it != devs.end())
+        {
+            return std::move(*it);
+        }
+    }
+    const EID eid = std::get<0>(mctpInfo);
+    auto byEid = [eid](const pldm::em_device::Device& dev) {
+        return dev.eid == eid;
+    };
+    Devices::iterator it = std::ranges::find_if(devs, byEid);
+    if (it == devs.end())
+    {
+        return std::nullopt;
+    }
+    Devices::iterator other =
+        std::ranges::find_if(std::next(it), devs.end(), byEid);
+    if (other != devs.end())
+    {
+        static std::set<std::pair<std::string, std::string>> logged;
+        if (logged.emplace(it->name, other->name).second)
+        {
+            lg2::warning("NvDevices {NAME} and {OTHER} both have EID {EID}; "
+                         "neither is taken as the device of the endpoint",
+                         "NAME", it->name, "OTHER", other->name, "EID", eid);
+        }
+        return std::nullopt;
+    }
+    return std::move(*it);
+}
+
 std::string stringValue(const dbus::PropertyMap& props, const std::string& key)
 {
     auto it = props.find(key);
@@ -313,7 +358,6 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
         if (dev && dev->name == deviceName)
         {
             deviceName.clear();
-            sensorRoles.clear();
         }
         if (dev && !dev->eid)
         {
@@ -332,9 +376,6 @@ exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
             // For namesEndpoint(): the PLDMDevice record of the device
             // concerns this terminus until a rescan refuses the device.
             deviceName = dev->name;
-            // The roles of the device matched before, if another, are not
-            // this device's; a record of this one replaces them below.
-            sensorRoles.clear();
             if (auto record = pldm::em_device::pldmDevice(dev->name,
                                                           utils::DBusHandler()))
             {
@@ -522,11 +563,29 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
             std::string{}, record.portMaxSpeed.value_or(0),
             std::vector<dbus::PathAssociation>{std::move(assoc)});
     }
-    sensorRoles = record.sensorRoles;
-    lg2::debug(
-        "loadDeviceRecord: {AUX} aux names, {PORTS} ports, {ROLES} sensor roles for {PATH}",
-        "AUX", record.auxNames.size(), "PORTS", record.ports.size(), "ROLES",
-        record.sensorRoles.size(), "PATH", objPath);
+    lg2::debug("loadDeviceRecord: {AUX} aux names, {PORTS} ports for {PATH}",
+               "AUX", record.auxNames.size(), "PORTS", record.ports.size(),
+               "PATH", objPath);
+}
+
+void Terminus::loadSensorRoles()
+{
+    sensorRoles.clear();
+    const std::optional<MctpInfo> mctpInfo = terminusManager.toMctpInfo(tid);
+    const std::optional<pldm::em_device::Device> dev =
+        mctpInfo ? endpointDevice(*mctpInfo) : std::nullopt;
+    if (!dev)
+    {
+        return;
+    }
+    if (std::optional<pldm::em_device::PldmDevice> record =
+            pldm::em_device::pldmDevice(dev->name, utils::DBusHandler()))
+    {
+        sensorRoles = std::move(record->sensorRoles);
+    }
+    lg2::debug("TID {TID}: {COUNT} sensor roles from the PLDMDevice record "
+               "of {NAME}",
+               "TID", tid, "COUNT", sensorRoles.size(), "NAME", dev->name);
 }
 #endif
 
@@ -1939,6 +1998,7 @@ exec::task<int> Terminus::scanInventories()
             "TID", tid);
     }
 #ifdef OEM_NVIDIA
+    loadSensorRoles();
     oem_nvidia::InventoryManager& inventory =
         oem_nvidia::InventoryManager::get();
     // Entity Manager can publish the platform topology after pldmd starts:

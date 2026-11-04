@@ -352,8 +352,7 @@ class Terminus
 
 #ifdef OEM_NVIDIA
     /** @brief Fill the aux-name and port-info tables from a PLDMDevice
-     *         record of the device at @p objPath, and take its sensor
-     *         roles. */
+     *         record of the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
 
@@ -364,11 +363,23 @@ class Terminus
      *         refreshes when that device's records reappear. */
     std::string deviceName;
 
-    /** @brief The SensorRoles of the PLDMDevice record of deviceName: role
+    /** @brief Read sensorRoles anew from the PLDMDevice record of the
+     *         NvDevice that is the endpoint of this terminus.
+     *
+     *  The device is the one with the endpoint's name, which the terminus
+     *  config also comes from, else the only one with the endpoint's EID.
+     *  Its record is read whatever inventory objects the chassis scan
+     *  offers: the inventory of a device need not be chassis/<Name> (a
+     *  CPU's is component/<Name>). Called at the start of every
+     *  scanInventories().
+     */
+    void loadSensorRoles();
+
+    /** @brief The SensorRoles of the record loadSensorRoles() read: role
      *         (em_device::primaryTemperatureSensor, ...) -> sensor or
-     *         effecter name. Empty without a record, and cleared with
-     *         deviceName; a role it lacks falls back to the build option
-     *         of that role in nvidiaUpdateAssociations(). */
+     *         effecter name. Empty without a record; a role it lacks falls
+     *         back to the build option of that role in
+     *         nvidiaUpdateAssociations(). */
     std::map<std::string, std::string> sensorRoles;
 #endif
     bool checkNsmDeviceInventory(UUID nsmUuid);
