@@ -231,7 +231,14 @@ class NumericSensor
      */
     double getThresholdUpperWarning()
     {
-        return thresholdWarningIntf->warningHigh();
+        if (thresholdWarningIntf)
+        {
+            return thresholdWarningIntf->warningHigh();
+        }
+        else
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
     };
 
     /** @brief Get Lower Warning threshold
@@ -240,7 +247,14 @@ class NumericSensor
      */
     double getThresholdLowerWarning()
     {
-        return thresholdWarningIntf->warningLow();
+        if (thresholdWarningIntf)
+        {
+            return thresholdWarningIntf->warningLow();
+        }
+        else
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
     };
 
     /** @brief Get base unit defined in table74 of DSP0248 v1.2.1
