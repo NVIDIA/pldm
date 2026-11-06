@@ -182,9 +182,8 @@ void nvidiaInitTerminus(Terminus& terminus)
 
     for (auto effecter : terminus.stateEffecters)
     {
-        auto& [entityInfo, stateSets] = effecter->effecterInfo;
-        if (stateSets.size() == 6 &&
-            std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+        if (oem_nvidia::OemRemoteDebugIntf::hasDebugStateSets(
+                std::get<1>(effecter->effecterInfo), effecter->stateSets))
         {
             remoteDebugStateEffecter = effecter;
             break;
@@ -234,9 +233,8 @@ void nvidiaInitTerminus(Terminus& terminus)
 
     for (auto sensor : terminus.stateSensors)
     {
-        auto& [entityInfo, stateSets] = sensor->sensorInfo;
-        if (stateSets.size() == 6 &&
-            std::get<0>(stateSets[0]) == PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+        if (oem_nvidia::OemRemoteDebugIntf::hasDebugStateSets(
+                std::get<1>(sensor->sensorInfo), sensor->stateSets))
         {
             remoteDebugStateSensor = sensor;
             break;

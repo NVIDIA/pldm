@@ -26,6 +26,10 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Control/Processor/RemoteDebug/server.hpp>
 
+#include <cstddef>
+#include <memory>
+#include <vector>
+
 namespace pldm
 {
 namespace platform_mc
@@ -127,6 +131,45 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
     };
 
   public:
+    /** Number of debug components in the remote debug composite effecter
+     *  and sensor, indexed by DebugCompId. */
+    static constexpr std::size_t debugCompCount = DBGEN_COMP_ID + 1;
+
+    /** @brief Check that an effecter or sensor has one debug state set per
+     *         debug component, so that the interface can index its state
+     *         sets by DebugCompId
+     *
+     *  The PDR declares the state sets, and the effecter or sensor builds
+     *  its state sets from them. A state effecter drops the state sets it
+     *  does not support, and a state sensor keeps a nullptr for them. So
+     *  check the built state sets, and check that none were dropped, so
+     *  that their indices match the device's composite indices.
+     *
+     *  @param[in] declared - state sets declared by the PDR
+     *  @param[in] built - state sets built by the effecter or sensor
+     *
+     *  @return true if the interface can use the state sets
+     */
+    static bool hasDebugStateSets(const std::vector<StateSetData>& declared,
+                                  const StateSets& built)
+    {
+        if (declared.size() != debugCompCount || built.size() != debugCompCount)
+        {
+            return false;
+        }
+
+        for (const std::shared_ptr<StateSet>& stateSet : built)
+        {
+            if (stateSet == nullptr ||
+                stateSet->getStateSetId() !=
+                    PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     OemRemoteDebugIntf(bus::bus& bus, const char* path,
                        std::shared_ptr<StateEffecter> stateEffecter,
                        std::shared_ptr<NumericEffecter> numericEffecter,
@@ -196,8 +239,11 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            if (stateSensor.stateSets[compId]->getValue() ==
-                PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            // stateField has one entry per effecter state set; reject
+            // components the effecter or the sensor has no state set for.
+            StateSet* sensorState = getStateSet(stateSensor.stateSets, compId);
+            if (compId >= stateField.size() || sensorState == nullptr ||
+                sensorState->getValue() == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     NotAllowed();
@@ -226,8 +272,11 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            if (stateSensor.stateSets[compId]->getValue() ==
-                PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            // stateField has one entry per effecter state set; reject
+            // components the effecter or the sensor has no state set for.
+            StateSet* sensorState = getStateSet(stateSensor.stateSets, compId);
+            if (compId >= stateField.size() || sensorState == nullptr ||
+                sensorState->getValue() == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     NotAllowed();
@@ -279,15 +328,39 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     DebugState getDebugState(uint8_t compositeId) const
     {
-        if (stateEffecter.stateSets[compositeId]->getOpState() ==
+        StateSet* effecterState =
+            getStateSet(stateEffecter.stateSets, compositeId);
+        StateSet* sensorState = getStateSet(stateSensor.stateSets, compositeId);
+        if (effecterState == nullptr || sensorState == nullptr)
+        {
+            return DebugState::Unknown;
+        }
+
+        if (effecterState->getOpState() ==
             EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING)
         {
             return DebugState::Pending;
         }
-        return toDebugState(stateSensor.stateSets[compositeId]->getValue());
+        return toDebugState(sensorState->getValue());
     }
 
   private:
+    /** @brief Get the state set of a debug component
+     *
+     *  @param[in] stateSets - state sets of the effecter or sensor
+     *  @param[in] compId - debug component ID
+     *
+     *  @return the state set, or nullptr if there is none at compId
+     */
+    static StateSet* getStateSet(const StateSets& stateSets, std::size_t compId)
+    {
+        if (compId >= stateSets.size())
+        {
+            return nullptr;
+        }
+        return stateSets[compId].get();
+    }
+
     StateEffecter& stateEffecter;
     NumericEffecter& numericEffecter;
     StateSensor& stateSensor;
