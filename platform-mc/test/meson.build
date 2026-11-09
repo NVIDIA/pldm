@@ -31,6 +31,7 @@ dep_src_files = [
     '../../fw-update/fw_update_utility.cpp',
     '../../fw-update/inventory_manager.cpp',
     '../../fw-update/firmware_inventory.cpp',
+    '../../fw-update/oem-nvidia/debug_token.cpp',
 ]
 
 dep_src_files += [
