@@ -145,7 +145,7 @@ class StateSetEthIBPortLinkState : public StateSet
         }
         else if (ValuePortStateIntf->linkStatus() == PortLinkStatus::LinkDown)
         {
-            // Expected on power-down: Informational (Redfish OK), as nvlink.hpp
+            // Expected on power-down: Warning
             if (sensorEventInfo)
             {
                 std::string eventId = "";
@@ -156,13 +156,14 @@ class StateSetEthIBPortLinkState : public StateSet
                 {
                     eventId = it->second;
                 }
-                return {
-                    std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("LinkDown"), Level::Informational, eventId,
-                    impactedComponent};
+                return {std::string(
+                            "ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                        std::string("LinkDown"), Level::Warning, eventId,
+                        impactedComponent};
             }
-            return {std::string("ResourceEvent.1.0.ResourceStatusChangedOK"),
-                    std::string("LinkDown"), Level::Informational, "", ""};
+            return {
+                std::string("ResourceEvent.1.0.ResourceStatusChangedWarning"),
+                std::string("LinkDown"), Level::Warning, "", ""};
         }
         else if (ValuePortStateIntf->linkState() == PortLinkStates::Error)
         {
