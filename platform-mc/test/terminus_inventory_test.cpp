@@ -845,6 +845,69 @@ TEST_F(TerminusInventoryTest, checkDeviceInventoryLoadsTheDeviceRecord)
               associations[0].path);
 }
 
+TEST_F(TerminusInventoryTest, checkDeviceInventoryLinksTheCx9PortsOfItsRecord)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000239");
+    Terminus terminus(0x39, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    // EID 61 is the EID of CX_0 on vr-nvl-bmc.
+    const pldm::MctpInfo mctpInfo(61, uuid, "usb", 1, std::string("CX_0"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
+              terminus.getTid());
+
+    // The CX_0_PLDM record as entity-manager publishes it on vr-nvl-bmc:
+    // vr-bmc-cx9_io.json filled in with the NetworkAdapterName, PortName0
+    // and PortName1 of CX_0. The Ports properties are named by sensor ID.
+    const std::string chassisPath = chassisOf("CX_0");
+    const std::string record = platformPath + std::string("CX_0_PLDM");
+    const std::string intf = pldm::em_device::pldmDeviceIntf;
+    addNvDevice(inventory, "CX_0", 61);
+    inventory.addInterface(record, intf,
+                           {{"Name", std::string("CX_0_PLDM")},
+                            {"NetworkAdapter", std::string("NIC_0")},
+                            {"PortMaxSpeedMBps", uint64_t{100000}}});
+    inventory.addInterface(
+        record, intf + ".SensorAuxNames",
+        {{"Port_0", uint64_t{200}}, {"Port_1", uint64_t{201}}});
+    inventory.addInterface(
+        record, intf + ".Ports",
+        {{"200", std::string("C3_1")}, {"201", std::string("C4_2")}});
+
+    auto rc = stdexec::sync_wait(terminus.checkDeviceInventory(chassisPath));
+    ASSERT_TRUE(rc.has_value());
+    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
+
+    // The record names the link-state sensors and gives them the ports
+    // nsmd creates under the NIC.
+    const auto& auxNames = terminus.sensorAuxNameOverwriteTbl;
+    EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Port_0"}}}),
+              std::get<0>(auxNames.at(200)));
+    EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Port_1"}}}),
+              std::get<0>(auxNames.at(201)));
+    const auto& ports = terminus.sensorPortInfoOverwriteTbl;
+    ASSERT_EQ(2U, ports.size());
+    for (const auto& [sensorId, port] :
+         std::map<uint16_t, std::string>{{200, "C3_1"}, {201, "C4_2"}})
+    {
+        SCOPED_TRACE(sensorId);
+        ASSERT_TRUE(ports.contains(sensorId));
+        const auto& [type, protocol, maxSpeed, associations] =
+            ports.at(sensorId);
+        EXPECT_EQ(pldm::platform_mc::PortType::BidirectionalPort, type);
+        EXPECT_EQ(100000U, maxSpeed);
+        ASSERT_EQ(1U, associations.size());
+        EXPECT_EQ("associated_port", associations[0].forward);
+        EXPECT_EQ("associated_port", associations[0].reverse);
+        // The full path, not one built from chassisPath, pins the layout
+        // of the port objects nsmd creates.
+        EXPECT_EQ(std::string("/xyz/openbmc_project/inventory/system/chassis/"
+                              "CX_0/NetworkAdapters/NIC_0/Ports/") +
+                      port,
+                  associations[0].path);
+    }
+}
+
 TEST_F(TerminusInventoryTest, checkDeviceInventoryMatchesTheSanitisedLeaf)
 {
     // EM writes "Dev-23.2" into the chassis path as "Dev_23_2"; the record
