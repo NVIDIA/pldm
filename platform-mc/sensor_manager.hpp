@@ -76,11 +76,10 @@ class SensorManager
     SensorManager& operator=(SensorManager&&) = delete;
     virtual ~SensorManager() = default;
 
-    explicit SensorManager(
-        sdeventplus::Event& event, TerminusManager& terminusManager,
-        std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
-        bool verbose = false,
-        const std::filesystem::path& configJson = PLDM_T2_CONFIG_JSON);
+    explicit SensorManager(sdeventplus::Event& event,
+                           TerminusManager& terminusManager,
+                           std::map<tid_t, std::shared_ptr<Terminus>>& termini,
+                           Manager* manager, bool verbose = false);
 
     /** @brief starting all termini sensor polling task
      */
@@ -162,7 +161,7 @@ class SensorManager
      *
      *  @return bool - true:is in priority
      */
-    bool isPriority(std::shared_ptr<NumericSensor> sensor);
+    bool isPriority(std::shared_ptr<NumericSensor> sensor) const;
 
     /** @brief initialize priority and round robin sensor list
      *
@@ -185,9 +184,6 @@ class SensorManager
 
     /** @brief verbose tracing flag */
     bool verbose;
-
-    /** @brief priority SensorNameSpace list */
-    std::vector<std::string> prioritySensorNameSpaces;
 
     /** @brief pointer to Manager */
     Manager* manager;

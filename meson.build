@@ -220,10 +220,6 @@ conf_data.set_quoted(
     join_paths(package_datadir, 'static_eid_table.json'),
 )
 conf_data.set_quoted(
-    'PLDM_T2_CONFIG_JSON',
-    join_paths(package_datadir, 'pldm_t2_config.json'),
-)
-conf_data.set_quoted(
     'PLDM_PACKAGE_VERIFICATION_KEY',
     get_option('pldm-package-verification-key'),
 )

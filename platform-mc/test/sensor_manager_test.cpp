@@ -26,8 +26,6 @@
 
 #include <cmath>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <set>
 #include <thread>
 
@@ -905,8 +903,7 @@ TEST_F(SensorManagerDataPathTest, sensorManagerDataPathCoverage)
     EXPECT_FALSE(termini[tid]->sensorPollingTaskRc.has_value());
 }
 
-TEST(SensorManagerStandaloneTest,
-     sensorManagerConfigAndUnsupportedTerminusCoverage)
+TEST(SensorManagerStandaloneTest, startPollingUnsupportedTerminusCoverage)
 {
     auto event = sdeventplus::Event::get_default();
     TestInstanceIdDb instanceIdDb;
@@ -915,135 +912,16 @@ TEST(SensorManagerStandaloneTest,
     std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
     pldm::platform_mc::MockTerminusManager terminusManager(
         event, reqHandler, instanceIdDb, termini, 0x8, nullptr);
+    pldm::platform_mc::SensorManager sensorManager(event, terminusManager,
+                                                   termini, nullptr);
 
-    const auto invalidConfig =
-        std::filesystem::path("pldm_sensor_manager_invalid_config.json");
-    const auto validConfig =
-        std::filesystem::path("pldm_sensor_manager_valid_config.json");
-
-    {
-        std::ofstream invalidFile(invalidConfig);
-        invalidFile << "{ invalid json";
-    }
-    {
-        std::ofstream validFile(validConfig);
-        validFile
-            << R"({"PrioritySensorNameSpaces":["/xyz/openbmc_project/sensors/voltage/"]})";
-    }
-
-    {
-        pldm::platform_mc::SensorManager invalidConfigManager(
-            event, terminusManager, termini, nullptr, false, invalidConfig);
-        EXPECT_FALSE(invalidConfigManager.prioritySensorNameSpaces.empty());
-    }
-
-    {
-        pldm::platform_mc::SensorManager validConfigManager(
-            event, terminusManager, termini, nullptr, false, validConfig);
-        ASSERT_EQ(1u, validConfigManager.prioritySensorNameSpaces.size());
-        EXPECT_EQ("/xyz/openbmc_project/sensors/voltage/",
-                  validConfigManager.prioritySensorNameSpaces.front());
-
-        constexpr pldm::tid_t tid = 0x41;
-        std::string uuid("00000000-0000-0000-0000-000000000041");
-        termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
-            tid, 1 << PLDM_BASE, uuid, terminusManager);
-        termini[tid]->stopPolling = true;
-        validConfigManager.startPolling(tid);
-        EXPECT_TRUE(termini[tid]->stopPolling);
-    }
-
-    std::filesystem::remove(invalidConfig);
-    std::filesystem::remove(validConfig);
-}
-
-TEST(SensorManagerStandaloneTest, sensorManagerDefaultNamespaceConfigCoverage)
-{
-    auto event = sdeventplus::Event::get_default();
-    TestInstanceIdDb instanceIdDb;
-    pldm::requester::Handler<pldm::requester::Request> reqHandler(
-        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
-    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-    pldm::platform_mc::MockTerminusManager terminusManager(
-        event, reqHandler, instanceIdDb, termini, 0x8, nullptr);
-
-    const auto emptyObjectConfig =
-        std::filesystem::path("pldm_sensor_manager_empty_object.json");
-    const auto emptyArrayConfig =
-        std::filesystem::path("pldm_sensor_manager_empty_array.json");
-
-    {
-        std::ofstream out(emptyObjectConfig);
-        out << "{}";
-    }
-    {
-        std::ofstream out(emptyArrayConfig);
-        out << R"({"PrioritySensorNameSpaces":[]})";
-    }
-
-    {
-        pldm::platform_mc::SensorManager emptyObjectManager(
-            event, terminusManager, termini, nullptr, false, emptyObjectConfig);
-        EXPECT_EQ(3u, emptyObjectManager.prioritySensorNameSpaces.size());
-    }
-
-    {
-        pldm::platform_mc::SensorManager emptyArrayManager(
-            event, terminusManager, termini, nullptr, false, emptyArrayConfig);
-        EXPECT_EQ(3u, emptyArrayManager.prioritySensorNameSpaces.size());
-    }
-
-    std::filesystem::remove(emptyObjectConfig);
-    std::filesystem::remove(emptyArrayConfig);
-}
-
-TEST(SensorManagerStandaloneTest, sensorManagerCustomPriorityNamespaceCoverage)
-{
-    auto event = sdeventplus::Event::get_default();
-    TestInstanceIdDb instanceIdDb;
-    pldm::requester::Handler<pldm::requester::Request> reqHandler(
-        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
-    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-    pldm::platform_mc::MockTerminusManager terminusManager(
-        event, reqHandler, instanceIdDb, termini, 0x8, nullptr);
-
-    const auto customConfig =
-        std::filesystem::path("pldm_sensor_manager_voltage_config.json");
-    {
-        std::ofstream out(customConfig);
-        out << R"({"PrioritySensorNameSpaces":["/xyz/openbmc_project/sensors/voltage/"]})";
-    }
-
-    pldm::platform_mc::SensorManager sensorManager(
-        event, terminusManager, termini, nullptr, false, customConfig);
-
-    auto voltagePdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    auto voltagePdrData = makeNumericSensorPdr(0x56);
-    ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
-                                voltagePdrData.data(), voltagePdrData.size(),
-                                voltagePdr.get()));
-    voltagePdr->base_unit = PLDM_SENSOR_UNIT_VOLTS;
-
-    std::string voltageName{"priority_voltage_sensor"};
-    std::string inventoryPath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis56"};
-    auto voltageSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
-        0x56, false, voltagePdr, voltageName, inventoryPath, nullptr);
-    EXPECT_TRUE(sensorManager.isPriority(voltageSensor));
-
-    auto temperaturePdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    auto temperaturePdrData = makeNumericSensorPdr(0x57);
-    ASSERT_EQ(PLDM_SUCCESS,
-              decode_numeric_sensor_pdr_data(temperaturePdrData.data(),
-                                             temperaturePdrData.size(),
-                                             temperaturePdr.get()));
-
-    std::string temperatureName{"non_priority_temperature_sensor"};
-    auto temperatureSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
-        0x57, false, temperaturePdr, temperatureName, inventoryPath, nullptr);
-    EXPECT_FALSE(sensorManager.isPriority(temperatureSensor));
-
-    std::filesystem::remove(customConfig);
+    constexpr pldm::tid_t tid = 0x41;
+    std::string uuid("00000000-0000-0000-0000-000000000041");
+    termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
+        tid, 1 << PLDM_BASE, uuid, terminusManager);
+    termini[tid]->stopPolling = true;
+    sensorManager.startPolling(tid);
+    EXPECT_TRUE(termini[tid]->stopPolling);
 }
 
 TEST(SensorManagerStandaloneTest, isPriorityFalseCoverage)
@@ -1072,6 +950,19 @@ TEST(SensorManagerStandaloneTest, isPriorityFalseCoverage)
         0x52, false, sensorPdr, sensorName, inventoryPath, nullptr);
 
     EXPECT_FALSE(sensorManager.isPriority(sensor));
+
+    // Only temperature, power and energy sensors are polled first.
+    auto voltagePdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    auto voltagePdrData = makeNumericSensorPdr(0x53);
+    ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
+                                voltagePdrData.data(), voltagePdrData.size(),
+                                voltagePdr.get()));
+    voltagePdr->base_unit = PLDM_SENSOR_UNIT_VOLTS;
+    std::string voltageName{"non_priority_voltage_sensor"};
+    auto voltageSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
+        0x52, false, voltagePdr, voltageName, inventoryPath, nullptr);
+
+    EXPECT_FALSE(sensorManager.isPriority(voltageSensor));
 }
 
 TEST(SensorManagerStandaloneTest, isPriorityTrueCoverage)
@@ -1155,35 +1046,6 @@ TEST(SensorManagerStandaloneTest, isPriorityEnergyCoverage)
         0x55, false, sensorPdr, sensorName, inventoryPath, nullptr);
 
     EXPECT_TRUE(sensorManager.isPriority(sensor));
-}
-
-TEST(SensorManagerStandaloneTest, isPriorityEmptyNamespacesCoverage)
-{
-    auto event = sdeventplus::Event::get_default();
-    TestInstanceIdDb instanceIdDb;
-    pldm::requester::Handler<pldm::requester::Request> reqHandler(
-        nullptr, event, instanceIdDb, false, seconds(1), 2, milliseconds(100));
-    std::map<pldm::tid_t, std::shared_ptr<pldm::platform_mc::Terminus>> termini;
-    pldm::platform_mc::MockTerminusManager terminusManager(
-        event, reqHandler, instanceIdDb, termini, 0x8, nullptr);
-    pldm::platform_mc::SensorManager sensorManager(event, terminusManager,
-                                                   termini, nullptr);
-
-    auto sensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
-    auto pdrData = makeNumericSensorPdr(0x58);
-    ASSERT_EQ(PLDM_SUCCESS,
-              decode_numeric_sensor_pdr_data(pdrData.data(), pdrData.size(),
-                                             sensorPdr.get()));
-
-    std::string sensorName{"priority_temperature_sensor"};
-    std::string inventoryPath{
-        "/xyz/openbmc_project/inventory/system/chassis/chassis58"};
-    auto sensor = std::make_shared<pldm::platform_mc::NumericSensor>(
-        0x58, false, sensorPdr, sensorName, inventoryPath, nullptr);
-
-    sensorManager.prioritySensorNameSpaces.clear();
-
-    EXPECT_FALSE(sensorManager.isPriority(sensor));
 }
 
 TEST_F(SensorManagerDataPathTest, doSensorPollingMissingTidCoverage)
@@ -1355,23 +1217,23 @@ TEST_F(SensorManagerDataPathTest, initSensorListEmptyCoverage)
 }
 
 TEST_F(SensorManagerDataPathTest,
-       initSensorListClearsExistingQueuesAndUsesEmptyNamespacesCoverage)
+       initSensorListClearsExistingQueuesWithoutPrioritySensorCoverage)
 {
     constexpr pldm::tid_t tid = 0x7C;
     std::string uuid("00000000-0000-0000-0000-00000000007C");
     termini[tid] = std::make_shared<pldm::platform_mc::Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
     termini[tid]->initialized = true;
-    sensorManager.prioritySensorNameSpaces.clear();
 
     auto numericSensorPdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
     auto numericPdrData = makeNumericSensorPdr(0x7C);
     ASSERT_EQ(PLDM_SUCCESS, decode_numeric_sensor_pdr_data(
                                 numericPdrData.data(), numericPdrData.size(),
                                 numericSensorPdr.get()));
+    numericSensorPdr->base_unit = PLDM_SENSOR_UNIT_HERTZ;
     std::string inventoryPath{
         "/xyz/openbmc_project/inventory/system/chassis/chassis7C"};
-    std::string numericName{"priority_sensor_without_namespace_match"};
+    std::string numericName{"non_priority_frequency_sensor"};
     auto numericSensor = std::make_shared<pldm::platform_mc::NumericSensor>(
         tid, false, numericSensorPdr, numericName, inventoryPath, nullptr);
 

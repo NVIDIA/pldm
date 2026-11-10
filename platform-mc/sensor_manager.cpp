@@ -24,12 +24,24 @@
 
 #include <exec/start_detached.hpp>
 
+#include <algorithm>
+#include <array>
+#include <string_view>
+
 namespace pldm
 {
 namespace platform_mc
 {
 
 using namespace std::chrono;
+
+/** @brief Name spaces of the sensors that are polled first */
+static constexpr std::array<std::string_view, 3> prioritySensorNameSpaces{
+    "/xyz/openbmc_project/sensors/temperature/",
+    "/xyz/openbmc_project/sensors/power/",
+    "/xyz/openbmc_project/sensors/energy/",
+};
+
 using SensorVariant =
     std::variant<std::shared_ptr<NumericSensor>, std::shared_ptr<StateSensor>>;
 
@@ -54,53 +66,17 @@ bool SensorPollingEnableIntf::enabled(bool value)
 SensorManager::SensorManager(
     sdeventplus::Event& event, TerminusManager& terminusManager,
     std::map<tid_t, std::shared_ptr<Terminus>>& termini, Manager* manager,
-    bool verbose, const std::filesystem::path& configJson) :
+    bool verbose) :
     event(event), terminusManager(terminusManager), termini(termini),
     pollingTime(kSensorPollingTimeMs), verbose(verbose), manager(manager)
 {
     enableIntf = std::make_unique<SensorPollingEnableIntf>(*this);
-
-    // default priority sensor name spaces
-    prioritySensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/temperature/");
-    prioritySensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/power/");
-    prioritySensorNameSpaces.emplace_back(
-        "/xyz/openbmc_project/sensors/energy/");
-
-    if (!std::filesystem::exists(configJson))
-    {
-        return;
-    }
-
-    std::ifstream jsonFile(configJson);
-    auto data = nlohmann::json::parse(jsonFile, nullptr, false);
-    if (data.is_discarded())
-    {
-        lg2::error("Parsing json file failed. FilePath={FILE_PATH}",
-                   "FILE_PATH", std::string(configJson));
-        return;
-    }
-
-    // load priority sensor name spaces
-    const std::vector<std::string> emptyStringArray{};
-    auto nameSpaces = data.value("PrioritySensorNameSpaces", emptyStringArray);
-    if (nameSpaces.size() > 0)
-    {
-        prioritySensorNameSpaces.clear();
-        for (const auto& nameSpace : nameSpaces)
-        {
-            prioritySensorNameSpaces.emplace_back(nameSpace);
-        }
-    }
 }
 
-bool SensorManager::isPriority(std::shared_ptr<NumericSensor> sensor)
+bool SensorManager::isPriority(std::shared_ptr<NumericSensor> sensor) const
 {
-    return (std::find(prioritySensorNameSpaces.begin(),
-                      prioritySensorNameSpaces.end(),
-                      sensor->getSensorNameSpace()) !=
-            prioritySensorNameSpaces.end());
+    return std::ranges::contains(prioritySensorNameSpaces,
+                                 sensor->getSensorNameSpace());
 }
 
 void SensorManager::startPolling(tid_t tid)
