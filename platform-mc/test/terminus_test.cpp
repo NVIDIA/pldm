@@ -66,6 +66,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -1429,14 +1430,17 @@ static std::vector<uint8_t> makeCompositeStatePdr(
     uint8_t pdrType, uint16_t id, const std::vector<uint16_t>& stateSetIds)
 {
     std::vector<uint8_t> pdr;
-    auto u8 = [&pdr](uint8_t value) { pdr.push_back(value); };
-    auto le16 = [&pdr](uint16_t value) {
+    const auto u8 = [&pdr](uint8_t value) { pdr.push_back(value); };
+    const auto le16 = [&pdr](uint16_t value) {
         pdr.push_back(value & 0xFF);
         pdr.push_back(value >> 8);
     };
+    const auto le32 = [&le16](uint32_t value) {
+        le16(value & 0xFFFF);
+        le16(value >> 16);
+    };
 
-    le16(1); // record handle
-    le16(0);
+    le32(1); // record handle
     u8(1);   // PDR header version
     u8(pdrType);
     le16(0); // record change number
@@ -1453,7 +1457,7 @@ static std::vector<uint8_t> makeCompositeStatePdr(
     u8(PLDM_NO_INIT);
     u8(0); // no auxiliary names or description PDR
     u8(static_cast<uint8_t>(stateSetIds.size()));
-    for (uint16_t stateSetId : stateSetIds)
+    for (const uint16_t stateSetId : stateSetIds)
     {
         le16(stateSetId);
         u8(1);    // possible states size
@@ -1465,7 +1469,7 @@ static std::vector<uint8_t> makeCompositeStatePdr(
 }
 
 /* Six debug state set IDs, as in a valid remote debug PDR. */
-static std::vector<uint16_t> debugStateSetIds()
+static inline std::vector<uint16_t> debugStateSetIds()
 {
     return std::vector<uint16_t>(
         oem_nvidia::OemRemoteDebugIntf::debugCompCount,
@@ -1473,7 +1477,7 @@ static std::vector<uint16_t> debugStateSetIds()
 }
 
 /* Six state set IDs with the debug state set only at entry 0. */
-static std::vector<uint16_t> debugThenOtherStateSetIds(uint16_t otherId)
+static inline std::vector<uint16_t> debugThenOtherStateSetIds(uint16_t otherId)
 {
     std::vector<uint16_t> ids(oem_nvidia::OemRemoteDebugIntf::debugCompCount,
                               otherId);
@@ -5299,18 +5303,22 @@ class RemoteDebugPdrTest : public TerminusTest
             "/xyz/openbmc_project/inventory/system/chassis/chassisD0";
     }
 
-    void parse(const std::vector<uint16_t>& effecterStateSetIds,
-               const std::vector<uint16_t>& sensorStateSetIds)
+    void addTimeoutEffecter()
     {
-        std::shared_ptr<pldm_numeric_effecter_value_pdr> timeoutPdr =
+        const std::shared_ptr<pldm_numeric_effecter_value_pdr> timeoutPdr =
             makeNumericEffecterValuePdrStruct(timeoutEffecterId);
         timeoutPdr->base_unit = PLDM_SENSOR_UNIT_MINUTES;
-        std::string timeoutName{"remote_debug_timeout_pdr"};
+        const std::string timeoutName{"remote_debug_timeout_pdr"};
         terminus.numericEffecters.emplace_back(
             std::make_shared<NumericEffecter>(
                 terminus.getTid(), false, timeoutPdr, timeoutName,
                 terminus.systemInventoryPath, terminusManager));
+    }
 
+    void parse(const std::vector<uint16_t>& effecterStateSetIds,
+               const std::vector<uint16_t>& sensorStateSetIds)
+    {
+        addTimeoutEffecter();
         terminus.pdrs.emplace_back(makeCompositeStatePdr(
             PLDM_STATE_EFFECTER_PDR, effecterId, effecterStateSetIds));
         terminus.pdrs.emplace_back(makeCompositeStatePdr(
@@ -5343,6 +5351,24 @@ TEST_F(RemoteDebugPdrTest, rejectsEffecterWithUnsupportedStateSets)
     // sets than debug components.
     const std::shared_ptr<StateEffecter>& effecter = terminus.stateEffecters[0];
     EXPECT_EQ(1u, effecter->stateSets.size());
+    EXPECT_TRUE(effecter->oemIntfs.empty());
+}
+
+TEST_F(RemoteDebugPdrTest, rejectsEffecterWithLeadingUnsupportedStateSet)
+{
+    // An unsupported state set, then the six debug state sets.
+    std::vector<uint16_t> effecterStateSetIds = debugStateSetIds();
+    effecterStateSetIds.insert(effecterStateSetIds.begin(),
+                               unsupportedStateSetId);
+    ASSERT_NO_FATAL_FAILURE(parse(effecterStateSetIds, debugStateSetIds()));
+
+    // The effecter drops the unsupported state set and builds six debug
+    // state sets, one composite index off from the device's.
+    const std::shared_ptr<StateEffecter>& effecter = terminus.stateEffecters[0];
+    const auto& [entityInfo, declaredStateSets] = effecter->effecterInfo;
+    EXPECT_EQ(7u, declaredStateSets.size());
+    EXPECT_EQ(oem_nvidia::OemRemoteDebugIntf::debugCompCount,
+              effecter->stateSets.size());
     EXPECT_TRUE(effecter->oemIntfs.empty());
 }
 
@@ -5389,6 +5415,35 @@ TEST_F(RemoteDebugPdrTest, rejectsSensorWithOtherStateSets)
     EXPECT_TRUE(terminus.stateEffecters[0]->oemIntfs.empty());
 }
 
+/* An effecter that declares six state sets, the first one the debug state
+ * set, but builds only one, comes before a valid one. Check that
+ * nvidiaInitTerminus() skips it and creates the interface on the valid one. */
+TEST_F(RemoteDebugPdrTest, skipsMalformedEffecterBeforeValidOne)
+{
+    constexpr uint16_t malformedEffecterId = 0x7A3;
+    addTimeoutEffecter();
+    terminus.pdrs.emplace_back(makeCompositeStatePdr(
+        PLDM_STATE_EFFECTER_PDR, malformedEffecterId,
+        debugThenOtherStateSetIds(unsupportedStateSetId)));
+    terminus.pdrs.emplace_back(makeCompositeStatePdr(
+        PLDM_STATE_EFFECTER_PDR, effecterId, debugStateSetIds()));
+    terminus.pdrs.emplace_back(makeCompositeStatePdr(
+        PLDM_STATE_SENSOR_PDR, sensorId, debugStateSetIds()));
+    ASSERT_TRUE(terminus.parsePDRs());
+    ASSERT_EQ(2u, terminus.stateEffecters.size());
+
+    const std::shared_ptr<StateEffecter>& malformedEffecter =
+        terminus.stateEffecters[0];
+    const std::shared_ptr<StateEffecter>& validEffecter =
+        terminus.stateEffecters[1];
+    ASSERT_EQ(malformedEffecterId, malformedEffecter->effecterId);
+    ASSERT_EQ(effecterId, validEffecter->effecterId);
+    EXPECT_TRUE(malformedEffecter->oemIntfs.empty());
+    ASSERT_EQ(1u, validEffecter->oemIntfs.size());
+    EXPECT_NE(nullptr, dynamic_cast<oem_nvidia::OemRemoteDebugIntf*>(
+                           validEffecter->oemIntfs[0].get()));
+}
+
 /* nvidiaInitTerminus() does not create the interface for such state sets.
  * Check that the interface itself does not index past the effecter's
  * state sets or dereference the sensor's null state sets. */
@@ -5401,23 +5456,22 @@ TEST_F(TerminusTest, remoteDebugIntfHandlesMissingStateSets)
     // A debug state set at entry 0 and unsupported state sets after it.
     StateSetInfo debugThenUnsupportedInfo =
         makeDebugStateSetInfo(PLDM_ENTITY_SYS_BOARD);
-    std::vector<StateSetData>& debugThenUnsupported =
-        std::get<1>(debugThenUnsupportedInfo);
-    for (std::size_t i = 1; i < debugThenUnsupported.size(); ++i)
+    auto& [entityInfo, debugThenUnsupported] = debugThenUnsupportedInfo;
+    for (auto& [stateSetId, possibleStates] :
+         debugThenUnsupported | std::views::drop(1))
     {
-        std::get<0>(debugThenUnsupported[i]) = unsupportedStateSetId;
+        stateSetId = unsupportedStateSetId;
     }
 
     // An effecter with only the first state set, and one with all debug
     // state sets.
-    std::shared_ptr<StateEffecter> shortEffecter =
-        std::make_shared<StateEffecter>(tid, false, 0x7B0,
-                                        debugThenUnsupportedInfo, nullptr,
-                                        associationPath, terminusManager);
+    const auto shortEffecter = std::make_shared<StateEffecter>(
+        tid, false, 0x7B0, debugThenUnsupportedInfo, nullptr, associationPath,
+        terminusManager);
     ASSERT_EQ(1u, shortEffecter->stateSets.size());
 
-    StateSetInfo debugInfo = makeDebugStateSetInfo(PLDM_ENTITY_SYS_BOARD);
-    std::shared_ptr<StateEffecter> debugEffecter =
+    const StateSetInfo debugInfo = makeDebugStateSetInfo(PLDM_ENTITY_SYS_BOARD);
+    const auto debugEffecter =
         std::make_shared<StateEffecter>(tid, false, 0x7B1, debugInfo, nullptr,
                                         associationPath, terminusManager);
     for (const std::shared_ptr<StateEffecter>& effecter :
@@ -5431,25 +5485,24 @@ TEST_F(TerminusTest, remoteDebugIntfHandlesMissingStateSets)
 
     // A sensor with null state sets after entry 0, and one with all debug
     // state sets.
-    std::shared_ptr<StateSensor> nullSensor = std::make_shared<StateSensor>(
+    const auto nullSensor = std::make_shared<StateSensor>(
         tid, false, 0x7B2, debugThenUnsupportedInfo, nullptr, associationPath,
         nullptr);
     ASSERT_EQ(nullptr, nullSensor->stateSets[1]);
 
-    std::shared_ptr<StateSensor> debugSensor = std::make_shared<StateSensor>(
+    const auto debugSensor = std::make_shared<StateSensor>(
         tid, false, 0x7B3, debugInfo, nullptr, associationPath, nullptr);
     for (const std::shared_ptr<StateSet>& stateSet : debugSensor->stateSets)
     {
         stateSet->setValue(PLDM_STATE_SET_DEBUG_STATE_ENABLED);
     }
 
-    std::shared_ptr<pldm_numeric_effecter_value_pdr> timeoutPdr =
+    const std::shared_ptr<pldm_numeric_effecter_value_pdr> timeoutPdr =
         makeNumericEffecterValuePdrStruct(0x7B4);
     timeoutPdr->base_unit = PLDM_SENSOR_UNIT_MINUTES;
-    std::string timeoutName{"remote_debug_timeout_missing"};
-    std::shared_ptr<NumericEffecter> timeoutEffecter =
-        std::make_shared<NumericEffecter>(tid, false, timeoutPdr, timeoutName,
-                                          associationPath, terminusManager);
+    const std::string timeoutName{"remote_debug_timeout_missing"};
+    const auto timeoutEffecter = std::make_shared<NumericEffecter>(
+        tid, false, timeoutPdr, timeoutName, associationPath, terminusManager);
 
     // The effecter has a state set only for the first debug component.
     oem_nvidia::OemRemoteDebugIntf shortEffecterStates(
@@ -5482,7 +5535,16 @@ TEST_F(TerminusTest, remoteDebugIntfHandlesMissingStateSets)
         nullSensorStates.disable({oem_nvidia::DebugPolicy::InvasiveDebug}),
         sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
 
-    // One missing component rejects the whole request.
+    // A missing state set reads as Unknown, even while the effecter has an
+    // update pending.
+    debugEffecter->stateSets[1]->setOpState(
+        EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING);
+    EXPECT_EQ(oem_nvidia::DebugState::Unknown, nullSensorStates.deviceDebug());
+
+    // One missing component rejects the whole request, even when the other
+    // component could be set.
+    nullSensor->stateSets[0]->setValue(PLDM_STATE_SET_DEBUG_STATE_ENABLED);
+    ASSERT_EQ(oem_nvidia::DebugState::Enabled, nullSensorStates.jtagDebug());
     EXPECT_THROW(nullSensorStates.enable(
                      {oem_nvidia::DebugPolicy::JtagDebug,
                       oem_nvidia::DebugPolicy::DeviceDebug}),
