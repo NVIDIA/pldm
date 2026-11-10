@@ -19,16 +19,12 @@
 #include "common/sleep.hpp"
 #include "manager.hpp"
 
-#include <nlohmann/json.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/exception.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
-#include <filesystem>
-#include <format>
-#include <fstream>
 #include <limits>
 #include <map>
 #include <set>
@@ -241,109 +237,6 @@ void TerminusManager::unmapTid(const tid_t& tid)
     }
 }
 
-void TerminusManager::storeStaticTerminusEntry(const nlohmann::json& terminus)
-{
-    constexpr int64_t maxUint16 = std::numeric_limits<uint16_t>::max();
-    // 0xFF is the MCTP broadcast EID (DSP0236 8.2)
-    constexpr int64_t maxEid = 0xFE;
-    auto eid = terminus.value("EID", int64_t{0xFF});
-    auto terminusName = terminus.value("TerminusName", std::string(""));
-    auto inst = terminus.value("Instance", int64_t{0});
-    auto cpuIdxVal = terminus.value("CpuIndex", int64_t{0});
-    std::optional<uint16_t> cpuIndex = static_cast<uint16_t>(cpuIdxVal);
-
-    // EID is a uint8_t below broadcast, Instance and CpuIndex are uint16_t
-    auto outOfRange = [](int64_t value, int64_t max) {
-        return value < 0 || value > max;
-    };
-    std::string invalid;
-    if (!terminus.contains("EID"))
-    {
-        invalid = "no EID";
-    }
-    else if (outOfRange(eid, maxEid))
-    {
-        invalid = std::format("EID {}", eid);
-    }
-    else if (terminusName.empty())
-    {
-        invalid = "empty TerminusName";
-    }
-    else if (outOfRange(inst, maxUint16))
-    {
-        invalid = std::format("Instance {}", inst);
-    }
-    else if (outOfRange(cpuIdxVal, maxUint16))
-    {
-        invalid = std::format("CpuIndex {}", cpuIdxVal);
-    }
-    if (!invalid.empty())
-    {
-        lg2::warning(
-            "Invalid terminus configuration entry, skipping: {INVALID}. TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-            "INVALID", invalid, "TERMINUS_NAME", terminusName, "EID", eid);
-        return;
-    }
-
-    lg2::info(
-        "Loading static PLDM terminus config: TERMINUS_NAME={TERMINUS_NAME}, EID={EID}",
-        "TERMINUS_NAME", terminusName, "EID", eid);
-
-    // Store EID to terminus config mapping for runtime check
-    // This will be used when the actual MCTP endpoint is discovered
-    eidToTerminusConfigMap[static_cast<mctp_eid_t>(eid)] =
-        std::make_tuple(static_cast<int>(inst), terminusName, cpuIndex);
-    fileConfiguredEids.insert(static_cast<mctp_eid_t>(eid));
-    lg2::info("Stored EID to terminus config for future discovery: EID={EID},"
-              "INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}",
-              "EID", eid, "INSTANCE", inst, "TERMINUS_NAME", terminusName);
-}
-
-void TerminusManager::loadStaticTerminusConfig(const std::string& configPath)
-{
-    namespace fs = std::filesystem;
-    using Json = nlohmann::json;
-
-    if (!fs::exists(configPath))
-    {
-        lg2::info(
-            "Static PLDM terminus configuration file does not exist, PATH={PATH}",
-            "PATH", configPath);
-        return;
-    }
-
-    try
-    {
-        std::ifstream jsonFile(configPath);
-        auto data = Json::parse(jsonFile, nullptr, false);
-        if (data.is_discarded())
-        {
-            lg2::error(
-                "Failed to parse static PLDM terminus configuration file, PATH={PATH}",
-                "PATH", configPath);
-            return;
-        }
-
-        const std::vector<Json> emptyJsonArray{};
-        auto termini = data.value("PLDMTermini", emptyJsonArray);
-
-        for (const auto& terminus : termini)
-        {
-            storeStaticTerminusEntry(terminus);
-        }
-
-        lg2::info(
-            "Loaded {COUNT} static PLDM terminus config mappings from configuration",
-            "COUNT", eidToTerminusConfigMap.size());
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error(
-            "Exception while loading static PLDM terminus configuration: {ERROR}",
-            "ERROR", e.what());
-    }
-}
-
 namespace
 {
 
@@ -382,11 +275,8 @@ void resolveConfig(ResolvedConfigs& resolved,
 }
 
 #ifdef OEM_NVIDIA
-/** @brief The terminus configs the CPU devices of the platform topology
- *         yield. An EID with an entry in the static configuration file is
- *         left out: the file entry is explicit, this config is a guess. */
+/** @brief The terminus configs of the CPU devices of the platform topology. */
 void readNvDeviceConfigs(const NameToEids& nameToEids,
-                         const std::set<mctp_eid_t>& fileConfiguredEids,
                          const pldm::utils::DBusHandlerInterface& dbusHandler,
                          ResolvedConfigs& resolved)
 {
@@ -399,19 +289,7 @@ void readNvDeviceConfigs(const NameToEids& nameToEids,
         {
             continue;
         }
-        std::vector<mctp_eid_t> eids;
-        for (auto eid : eidIt->second)
-        {
-            if (fileConfiguredEids.contains(eid))
-            {
-                lg2::info(
-                    "The static configuration file entry of EID={EID} takes precedence over the terminus config of NvDevice {NAME}",
-                    "EID", eid, "NAME", dev.name);
-                continue;
-            }
-            eids.push_back(eid);
-        }
-        resolveConfig(resolved, eids,
+        resolveConfig(resolved, eidIt->second,
                       {config->instance, config->name, config->cpuIndex},
                       "NvDevice " + dev.name);
     }
@@ -595,7 +473,7 @@ void TerminusManager::loadTerminusConfigFromEm(
     // then the PLDM device record.
     ResolvedConfigs resolved;
 #ifdef OEM_NVIDIA
-    readNvDeviceConfigs(nameToEids, fileConfiguredEids, dbusHandler, resolved);
+    readNvDeviceConfigs(nameToEids, dbusHandler, resolved);
 #endif
     readPldmDeviceRecords(nameToEids, dbusHandler, resolved);
 
@@ -615,12 +493,6 @@ void TerminusManager::storeTerminusConfig(
     auto existing = eidToTerminusConfigMap.find(eid);
     if (existing == eidToTerminusConfigMap.end() || existing->second != config)
     {
-        if (existing != eidToTerminusConfigMap.end())
-        {
-            lg2::warning(
-                "{SOURCE} overrides the static terminus config, EID={EID}, TERMINUS_NAME={TERMINUS_NAME}",
-                "SOURCE", source, "EID", eid, "TERMINUS_NAME", terminusName);
-        }
         eidToTerminusConfigMap.insert_or_assign(eid, config);
         lg2::info(
             "Loaded terminus config from {SOURCE}: EID={EID}, INSTANCE={INSTANCE}, TERMINUS_NAME={TERMINUS_NAME}, CPU_INDEX={CPU_INDEX}",

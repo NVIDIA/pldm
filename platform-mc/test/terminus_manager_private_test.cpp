@@ -7,15 +7,11 @@
 #include "requester/request.hpp"
 #include "test/test_instance_id.hpp"
 
-#include <unistd.h>
-
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 
 #include <array>
 #include <chrono>
-#include <filesystem>
-#include <fstream>
 #include <map>
 #include <optional>
 #include <string>
@@ -464,83 +460,6 @@ TEST_F(TerminusManagerPrivateTest, sendRecvPldmMsgErrorPathsCoverage)
     EXPECT_EQ(PLDM_ERROR, std::get<0>(*missingInfoRc));
 }
 
-TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigValidationCoverage)
-{
-    namespace fs = std::filesystem;
-
-    const auto configPath =
-        fs::temp_directory_path() / "terminus_manager_private_validation.json";
-    {
-        std::ofstream out(configPath);
-        out << R"({
-  "PLDMTermini": [
-    {"EID": 49, "Name": "CPU49", "TerminusName": "", "Instance": 0},
-    {"EID": 255, "Name": "BadEid", "TerminusName": "ProcessorModule_bad_eid", "Instance": 1},
-    {"EID": 50, "Name": "", "TerminusName": "", "Instance": 1},
-    {"EID": 51, "Name": "BadInstance", "TerminusName": "ProcessorModule_bad_inst", "Instance": -1},
-    {"EID": 53, "Name": "BigInstance", "TerminusName": "ProcessorModule_big_inst", "Instance": 65536},
-    {"EID": 54, "Name": "BigCpuIndex", "TerminusName": "ProcessorModule_big_cpu", "CpuIndex": 65536},
-    {"EID": 55, "Name": "NegCpuIndex", "TerminusName": "ProcessorModule_neg_cpu", "CpuIndex": -1},
-    {"EID": 264, "Name": "WideEid", "TerminusName": "ProcessorModule_wide_eid", "Instance": 0},
-    {"EID": -1, "Name": "NegEid", "TerminusName": "ProcessorModule_neg_eid", "Instance": 0}
-  ]
-})";
-    }
-
-    terminusManager.loadStaticTerminusConfig(configPath.string());
-    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
-    // an invalid entry does not keep a config from EM off its EID
-    EXPECT_TRUE(terminusManager.fileConfiguredEids.empty());
-
-    fs::remove(configPath);
-}
-
-TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigAcceptsUint16Limits)
-{
-    namespace fs = std::filesystem;
-
-    const auto configPath =
-        fs::temp_directory_path() / "terminus_manager_private_limits.json";
-    {
-        std::ofstream out(configPath);
-        out << R"({
-  "PLDMTermini": [
-    {"EID": 254, "Name": "CPU254", "TerminusName": "ProcessorModule_max", "Instance": 65535, "CpuIndex": 65535}
-  ]
-})";
-    }
-
-    terminusManager.loadStaticTerminusConfig(configPath.string());
-    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
-    const auto& c = terminusManager.eidToTerminusConfigMap.at(254);
-    EXPECT_EQ(65535, std::get<0>(c));
-    EXPECT_EQ("ProcessorModule_max", std::get<1>(c));
-    EXPECT_EQ(std::optional<uint16_t>(65535), std::get<2>(c));
-
-    fs::remove(configPath);
-}
-
-TEST_F(TerminusManagerPrivateTest, loadStaticTerminusConfigEmptyTerminusName)
-{
-    namespace fs = std::filesystem;
-
-    const auto configPath =
-        fs::temp_directory_path() / "terminus_manager_private_empty_name.json";
-    {
-        std::ofstream out(configPath);
-        out << R"({
-  "PLDMTermini": [
-    {"EID": 52, "Name": "CPU52", "TerminusName": "", "Instance": 7}
-  ]
-})";
-    }
-
-    terminusManager.loadStaticTerminusConfig(configPath.string());
-    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
-
-    fs::remove(configPath);
-}
-
 namespace
 {
 
@@ -971,141 +890,12 @@ TEST_F(TerminusManagerPrivateTest,
               terminusManager.eidToTerminusConfigMap.at(24));
 }
 
-namespace
-{
-
-/** @brief Load the static configuration file with the content @p json. */
-void loadConfigFile(platform_mc::TerminusManager& terminusManager,
-                    const std::string& json)
-{
-    namespace fs = std::filesystem;
-    const auto configPath =
-        fs::temp_directory_path() / ("terminus_manager_private_config_" +
-                                     std::to_string(getpid()) + ".json");
-    {
-        std::ofstream out(configPath);
-        out << json;
-    }
-    terminusManager.loadStaticTerminusConfig(configPath.string());
-    fs::remove(configPath);
-}
-
-} // namespace
-
 TEST_F(TerminusManagerPrivateTest,
-       loadTerminusConfigFromEmFileEntryWinsOverNvDevice)
-{
-    using ::testing::_;
-    using ::testing::Invoke;
-
-    // The file configures EID 14 and EID 15; the NvDevice config is a guess
-    // and applies only to an EID the file leaves out, also when the same
-    // device has an endpoint the file configures.
-    loadConfigFile(terminusManager, R"({
-  "PLDMTermini": [
-    {"EID": 14, "TerminusName": "FromFile_0", "Instance": 9, "CpuIndex": 4},
-    {"EID": 15, "TerminusName": "FromFile_1", "Instance": 8, "CpuIndex": 3}
-  ]
-})");
-    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
-
-    const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
-    const std::string cpu1 = "/inventory/platform/HGX_CPU_1";
-    MockdBusHandler dbus;
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Invoke(subtreeAnswer(
-            {}, {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillRepeatedly(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
-             {cpu1 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_1", 24, 1)}})));
-
-    const Configurations configurations{
-        {"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")},
-        {"/cfg/HGX_CPU_0_pcie", namedMctpInfo(34, "HGX_CPU_0")},
-        {"/cfg/HGX_CPU_1", namedMctpInfo(24, "HGX_CPU_1")}};
-    terminusManager.loadTerminusConfigFromEm(configurations, dbus);
-
-    ASSERT_EQ(4U, terminusManager.eidToTerminusConfigMap.size());
-    const auto fromFile0 = std::make_tuple(9, std::string("FromFile_0"),
-                                           std::optional<uint16_t>(4));
-    const auto fromFile1 = std::make_tuple(8, std::string("FromFile_1"),
-                                           std::optional<uint16_t>(3));
-    EXPECT_EQ(fromFile0, terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_EQ(fromFile1, terminusManager.eidToTerminusConfigMap.at(15));
-    EXPECT_EQ(std::make_tuple(0, std::string("ProcessorModule_0"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(34));
-    EXPECT_EQ(std::make_tuple(1, std::string("ProcessorModule_1"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(24));
-
-    // It is the file that blocks the NvDevice, not a stored config: a
-    // changed NvDevice, read again, replaces the config it gave before.
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillRepeatedly(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
-             {cpu1 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_1", 24, 2)}})));
-    terminusManager.loadTerminusConfigFromEm(configurations, dbus,
-                                             /*force=*/true);
-
-    EXPECT_EQ(fromFile0, terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_EQ(fromFile1, terminusManager.eidToTerminusConfigMap.at(15));
-    EXPECT_EQ(std::make_tuple(2, std::string("ProcessorModule_2"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(24));
-}
-
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmOverridesFile)
-{
-    using ::testing::_;
-    using ::testing::Invoke;
-
-    // A PLDM device record is explicit and wins over the file entry of its
-    // EID, and over the NvDevice of the same name the file entry blocks.
-    loadConfigFile(terminusManager, R"({
-  "PLDMTermini": [
-    {"EID": 14, "TerminusName": "FromFile_0", "Instance": 9, "CpuIndex": 4}
-  ]
-})");
-
-    const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
-    const std::string record0 = "/inventory/platform/HGX_CPU_0_PLDM";
-    MockdBusHandler dbus;
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Invoke(subtreeAnswer(
-            {record0}, {{nvDeviceIntf, subtreeOf({cpu0}, nvDeviceIntf)}})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillRepeatedly(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
-             {record0 + "|" + pldmFwDeviceIntf,
-              {{"MCTPTargetName", std::string("HGX_CPU_0")},
-               {"TerminusName", std::string("Record_0")}}}})));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
-
-    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
-    EXPECT_EQ(std::make_tuple(0, std::string("Record_0"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(14));
-}
-
-TEST_F(TerminusManagerPrivateTest,
-       loadTerminusConfigFromEmKeepsTheFileConfigWhenTheRecordReadFails)
+       loadTerminusConfigFromEmUsesTheNvDeviceConfigWhenTheRecordReadFails)
 {
     using ::testing::_;
     using ::testing::Invoke;
     using ::testing::StrEq;
-
-    loadConfigFile(terminusManager, R"({
-  "PLDMTermini": [
-    {"EID": 14, "TerminusName": "FromFile_0", "Instance": 9, "CpuIndex": 4}
-  ]
-})");
-    const auto fromFile = std::make_tuple(9, std::string("FromFile_0"),
-                                          std::optional<uint16_t>(4));
-    ASSERT_EQ(fromFile, terminusManager.eidToTerminusConfigMap.at(14));
 
     // The PLDM device record of the endpoint is listed but cannot be read;
     // the NvDevice of the same name is readable.
@@ -1126,8 +916,9 @@ TEST_F(TerminusManagerPrivateTest,
         {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
 
     ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
-    EXPECT_EQ(fromFile, terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_TRUE(terminusManager.fileConfiguredEids.contains(14));
+    EXPECT_EQ(std::make_tuple(0, std::string("ProcessorModule_0"),
+                              std::optional<uint16_t>(0)),
+              terminusManager.eidToTerminusConfigMap.at(14));
 }
 
 TEST_F(TerminusManagerPrivateTest,

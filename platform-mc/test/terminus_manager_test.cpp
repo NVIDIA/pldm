@@ -27,8 +27,6 @@
 #include <sdbusplus/timer.hpp>
 #include <sdeventplus/event.hpp>
 
-#include <filesystem>
-#include <fstream>
 #include <thread>
 
 #include <gmock/gmock.h>
@@ -399,36 +397,8 @@ TEST_F(TerminusManagerTest, negativeDiscoverMctpTerminusTest)
     EXPECT_EQ(0, termini.size());
 }
 
-TEST_F(TerminusManagerTest, staticConfigAndResumeCoverage)
+TEST_F(TerminusManagerTest, resumeTidCoverage)
 {
-    namespace fs = std::filesystem;
-    auto tmpRoot = fs::temp_directory_path() / "pldm_terminus_manager_tests";
-    fs::create_directories(tmpRoot);
-
-    const auto missingCfg = (tmpRoot / "missing.json").string();
-    EXPECT_NO_THROW(terminusManager.loadStaticTerminusConfig(missingCfg));
-
-    const auto invalidCfg = tmpRoot / "invalid.json";
-    {
-        std::ofstream out(invalidCfg);
-        out << "{ this is not valid json }";
-    }
-    EXPECT_NO_THROW(
-        terminusManager.loadStaticTerminusConfig(invalidCfg.string()));
-
-    const auto validCfg = tmpRoot / "valid.json";
-    {
-        std::ofstream out(validCfg);
-        out << R"({
-  "PLDMTermini": [
-    {"EID": 12, "Name": "CPU0", "TerminusName": "ProcessorModule_0", "Instance": 0},
-    {"EID": 255, "Name": "", "TerminusName": "", "Instance": -1}
-  ]
-})";
-    }
-    EXPECT_NO_THROW(
-        terminusManager.loadStaticTerminusConfig(validCfg.string()));
-
     auto resumeUnmappedRc =
         stdexec::sync_wait(mockTerminusManager.resumeTid(0x44));
     ASSERT_TRUE(resumeUnmappedRc.has_value());
@@ -448,9 +418,6 @@ TEST_F(TerminusManagerTest, staticConfigAndResumeCoverage)
         stdexec::sync_wait(mockTerminusManager.resumeTid(0x22));
     ASSERT_TRUE(resumeMappedRc.has_value());
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*resumeMappedRc));
-
-    fs::remove(validCfg);
-    fs::remove(invalidCfg);
 }
 
 TEST_F(TerminusManagerTest, discoverPlatformTerminusUidCoverage)

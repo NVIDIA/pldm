@@ -183,8 +183,8 @@ std::optional<PldmDevice> pldmDevice(
 /** @brief @p name without the platform name prefix @p prefix. */
 std::string baseName(const std::string& name, const std::string& prefix);
 
-/** @brief The static terminus config of a CPU device: the terminus name is
- *         the parent chassis without the platform name prefix, the entity
+/** @brief The terminus config of a CPU device: the terminus name is the
+ *         parent chassis without the platform name prefix, the entity
  *         instance is the device instance, and the CPU index of the sensor
  *         name prefix is CpuIndex of the device, default 0. Both are
  *         uint16_t on the terminus; a device whose values do not fit has
