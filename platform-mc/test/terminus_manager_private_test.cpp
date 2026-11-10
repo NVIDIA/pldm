@@ -566,8 +566,9 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
 
     MockdBusHandler dbus;
     const std::vector<std::string> paths{
-        "/r/noName",      "/r/otherTarget", "/r/emptyName",  "/r/badCpuIndex",
-        "/r/badInstance", "/r/bigInstance", "/r/bigCpuIndex"};
+        "/r/noName",      "/r/otherTarget",    "/r/emptyName",
+        "/r/badCpuIndex", "/r/badInstance",    "/r/bigInstance",
+        "/r/bigCpuIndex", "/r/doubleInstance", "/r/doubleCpuIndex"};
     EXPECT_CALL(dbus, getSubtree(_, _, _))
         .WillRepeatedly(::testing::Invoke(subtreeAnswer(paths)));
     EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/noName"), _))
@@ -602,40 +603,24 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
             {"MCTPTargetName", std::string("HGX_CPU_0")},
             {"TerminusName", std::string("ProcessorModule_0")},
             {"CpuIndex", uint64_t{65536}}}));
+    // entity-manager publishes these values as integers, never as doubles
+    EXPECT_CALL(dbus,
+                getDbusPropertiesVariant(_, StrEq("/r/doubleInstance"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"TerminusInstance", double{1.0}}}));
+    EXPECT_CALL(dbus,
+                getDbusPropertiesVariant(_, StrEq("/r/doubleCpuIndex"), _))
+        .WillOnce(Return(pldm::utils::PropertyMap{
+            {"MCTPTargetName", std::string("HGX_CPU_0")},
+            {"TerminusName", std::string("ProcessorModule_0")},
+            {"CpuIndex", double{1.0}}}));
 
     terminusManager.loadTerminusConfigFromEm(
         {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
 
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
-}
-
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAcceptsNumberForms)
-{
-    using ::testing::_;
-    using ::testing::Return;
-
-    // The record values are read like every other EM number: a hex string
-    // and an integral double are accepted.
-    MockdBusHandler dbus;
-    const std::string cpu0 =
-        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(::testing::Invoke(subtreeAnswer({cpu0})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"TerminusInstance", double{1.0}},
-            {"CpuIndex", std::string("0x2")}}));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
-
-    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
-    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
-    EXPECT_EQ(1, std::get<0>(c0));
-    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
-    EXPECT_EQ(std::optional<uint16_t>(2), std::get<2>(c0));
 }
 
 TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAllEidsOfAName)

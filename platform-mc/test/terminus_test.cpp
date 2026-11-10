@@ -7900,15 +7900,13 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
     ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
               terminus.getTid());
 
-    // An NvDevice with the endpoint's EID, in any number form, or with its
-    // name; either is enough. Its name may be another one: the endpoint's
-    // name is that of its MCTP target record. Its EID may be another one:
-    // the device has an endpoint per medium under its name.
+    // An NvDevice with the endpoint's EID or with its name; either is enough.
+    // Its name may be another one: the endpoint's name is that of its MCTP
+    // target record. Its EID may be another one: the device has an endpoint per
+    // medium under its name.
     EXPECT_TRUE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x60})));
     EXPECT_TRUE(interestedIn(nvDeviceIntf, byEid));
-    EXPECT_TRUE(
-        interestedIn(nvDeviceIntf, nvDevice("Dev_X", std::string("0x60"))));
     EXPECT_TRUE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_180", uint64_t{0x61})));
     EXPECT_TRUE(interestedIn(nvDeviceIntf, byName));
@@ -7938,7 +7936,8 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
     ASSERT_EQ(terminusManager.mapTid(mctpInfo, terminus.getTid()),
               terminus.getTid());
     EXPECT_TRUE(interestedIn(nvDeviceIntf, byEid));
-    EXPECT_TRUE(
+    // entity-manager publishes an EID as an integer, never as a string
+    EXPECT_FALSE(
         interestedIn(nvDeviceIntf, nvDevice("Dev_X", std::string("0x60"))));
     EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", int64_t{-1})));
     EXPECT_FALSE(interestedIn(nvDeviceIntf, nvDevice("Dev_X", true)));
@@ -7984,25 +7983,24 @@ TEST_F(TerminusTest, interfaceAddedNvDeviceEidOfEveryPropertyType)
         return terminus.needRefresh;
     };
 
-    // The EID is a number of whatever integer or floating type the record
-    // carries it as.
+    // The EID is a number of whatever integer type the record carries it
+    // as.
     EXPECT_TRUE(namedByEid(uint8_t{0x62}));
     EXPECT_TRUE(namedByEid(int16_t{0x62}));
     EXPECT_TRUE(namedByEid(uint16_t{0x62}));
     EXPECT_TRUE(namedByEid(int32_t{0x62}));
     EXPECT_TRUE(namedByEid(uint32_t{0x62}));
     EXPECT_TRUE(namedByEid(int64_t{0x62}));
-    EXPECT_TRUE(namedByEid(98.0));
     // Another EID, a negative or too large one whose low byte is the
-    // endpoint's EID (a value narrowed to a byte would match), a fraction,
-    // or a value of an array type names no endpoint.
+    // endpoint's EID (a value narrowed to a byte would match), a double, or
+    // a value of an array type names no endpoint.
     EXPECT_FALSE(namedByEid(uint8_t{0x63}));
     EXPECT_FALSE(namedByEid(int16_t{-158}));
     EXPECT_FALSE(namedByEid(uint16_t{0x162}));
     EXPECT_FALSE(namedByEid(int32_t{-0xFF9E}));
     EXPECT_FALSE(namedByEid(uint32_t{0x10062}));
     EXPECT_FALSE(namedByEid(int64_t{0x100000062}));
-    EXPECT_FALSE(namedByEid(98.5));
+    EXPECT_FALSE(namedByEid(98.0));
     EXPECT_FALSE(namedByEid(std::vector<uint8_t>{0x62}));
     EXPECT_FALSE(namedByEid(std::vector<uint64_t>{0x62}));
 }

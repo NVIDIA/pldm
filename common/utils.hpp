@@ -26,8 +26,11 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -575,17 +578,32 @@ bool isValidEID(eid mctpEid);
 std::optional<eid> readOptionalEidProperty(const PropertyMap& props,
                                            const std::string& key);
 
-/** @brief A non-negative integer from a decimal or 0x-prefixed string. */
-std::optional<uint64_t> parseNumber(std::string_view s);
-
-/** @brief A non-negative integer from a property value: an integer type, an
- *         integral double, or a decimal or 0x-prefixed string. Anything
- *         else, including bool, negative, fractional and non-finite values,
- *         is rejected. */
-std::optional<uint64_t> numberValue(const PropertyValue& value);
+/** @brief A non-negative integer from a property value of an integer type.
+ *
+ *  entity-manager publishes JSON integers as int64 or uint64, and turns
+ *  numeric strings ("46", "0x3D") into uint64 when it fills in templates, so
+ *  only integer types are accepted; bool, negative and non-integer values
+ *  are rejected. */
+template <typename Variant>
+std::optional<uint64_t> numberValue(const Variant& value)
+{
+    return std::visit(
+        [](const auto& v) -> std::optional<uint64_t> {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
+            {
+                if (std::in_range<uint64_t>(v))
+                {
+                    return static_cast<uint64_t>(v);
+                }
+            }
+            return std::nullopt;
+        },
+        value);
+}
 
 /** @brief The integer property @p key of @p props, if present and in
- *         [0, max]; see numberValue() for the accepted forms. */
+ *         [0, max]; see numberValue() for the accepted types. */
 std::optional<uint64_t> numberProp(
     const PropertyMap& props, const std::string& key,
     uint64_t max = std::numeric_limits<uint64_t>::max());

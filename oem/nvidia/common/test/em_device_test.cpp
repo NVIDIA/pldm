@@ -250,13 +250,13 @@ TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
            {"Kind", std::string("cpu")},
            {"EID", uint64_t{16}},
            {"InstanceNumber", std::string("two")},
-           {"CpuIndex", std::string("99999999999999999999")}}},
+           {"CpuIndex", std::string("2")}}},
          {array + "|" + nvDeviceIntf,
           {{"Name", std::string("HGX_CPU_3")},
            {"Kind", std::string("cpu")},
            {"EID", uint64_t{17}},
            {"Instance", std::vector<uint64_t>{3}},
-           {"CpuIndex", std::string("0x3")}}},
+           {"CpuIndex", uint64_t{3}}}},
          // Instance and CpuIndex are not bounded like an EID
          {large + "|" + nvDeviceIntf,
           {{"Name", std::string("HGX_CPU_4")},
@@ -276,7 +276,7 @@ TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
     EXPECT_EQ(std::optional<uint64_t>(15), out[1].eid);
     EXPECT_EQ(std::optional<uint64_t>(1), out[1].instance);
     EXPECT_FALSE(out[1].cpuIndex);
-    // a non-numeric string and one past uint64_t
+    // a string, even a numeric one, is dropped
     EXPECT_EQ("HGX_CPU_2", out[2].name);
     EXPECT_EQ(std::optional<uint64_t>(16), out[2].eid);
     EXPECT_FALSE(out[2].instance);
@@ -413,7 +413,7 @@ TEST_F(EmDeviceDevices, readsTheTransportAndBoundsThePool)
         {{bridge + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
          {bridge + "|" + transportIntf,
           {{"Medium", std::string("spi")},
-           {"PoolStartEID", std::string("0x00")},
+           {"PoolStartEID", uint64_t{0}},
            {"PoolEndEID", uint64_t{0xFE}}}},
          {wide + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_1")}}},
          {wide + "|" + transportIntf,

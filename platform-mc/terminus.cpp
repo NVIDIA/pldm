@@ -118,13 +118,7 @@ std::optional<uint64_t> eidValue(const dbus::PropertyMap& props)
     {
         return std::nullopt;
     }
-    auto eid = std::visit(
-        [](const auto& v) {
-            using T = std::decay_t<decltype(v)>;
-            return pldm::utils::numberValue(
-                utils::PropertyValue(std::in_place_type<T>, v));
-        },
-        it->second);
+    std::optional<uint64_t> eid = pldm::utils::numberValue(it->second);
     if (eid && *eid > pldm::em_device::maxDeviceEid)
     {
         return std::nullopt;
