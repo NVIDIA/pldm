@@ -2074,7 +2074,8 @@ std::vector<std::string> Terminus::numericSensorInventory(NumericSensor& sensor)
     auto paths = resolveInventory(entityInfo);
 #ifdef OEM_NVIDIA
     auto& inventory = oem_nvidia::InventoryManager::get();
-    const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+    const pdr::EntityType baseType =
+        pdr::baseEntityType(std::get<1>(entityInfo));
     const auto containerId = std::get<0>(entityInfo);
     // PROC_IO_MODULE sensors belong under the CPU chassis: the first CPU of
     // the terminus's first ProcessorModule.
@@ -2109,7 +2110,8 @@ void Terminus::redirectStateSensorInventory(
 #ifdef OEM_NVIDIA
     auto& inventory = oem_nvidia::InventoryManager::get();
     auto entityInfo = sensor.getEntityInfo();
-    const auto baseType = std::get<1>(entityInfo) & entityTypeMask;
+    const pdr::EntityType baseType =
+        pdr::baseEntityType(std::get<1>(entityInfo));
     const auto containerId = std::get<0>(entityInfo);
     // SYS_BUS state sensors (CLink/NVLink port state) need CPU associations,
     // as SYS_BUS numeric sensors do. SYS_BUS has no inventory interface of
@@ -2262,8 +2264,8 @@ std::string Terminus::buildEntityTypeTag(uint16_t entityType) const
         {143, "MemCntl"}, {161, "SysBus"}, {166, "PCIeBus"},
     };
 
-    uint16_t baseEntityType = entityType & entityTypeMask;
-    auto it = entityTypeNameMap.find(baseEntityType);
+    std::map<uint16_t, std::string_view>::const_iterator it =
+        entityTypeNameMap.find(pdr::baseEntityType(entityType));
     if (it == entityTypeNameMap.end())
     {
         return {};

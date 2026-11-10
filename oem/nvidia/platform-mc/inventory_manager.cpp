@@ -18,9 +18,9 @@
 namespace pldm::platform_mc::oem_nvidia
 {
 
+using pdr::baseEntityType;
 using pdr::EntityInstance;
 using pdr::EntityType;
-using pdr::entityTypeMask;
 
 PhysicalContextType toPhysicalContextType(const EntityType entityType)
 {
@@ -34,7 +34,8 @@ PhysicalContextType toPhysicalContextType(const EntityType entityType)
         {PLDM_ENTITY_POWER_SUPPLY, PhysicalContextType::VoltageRegulator},
         {PLDM_ENTITY_NETWORK_CONTROLLER, PhysicalContextType::NetworkingDevice},
     };
-    auto itr = contexts.find(entityType & entityTypeMask);
+    std::map<EntityType, PhysicalContextType>::const_iterator itr =
+        contexts.find(baseEntityType(entityType));
     return itr == contexts.end() ? PhysicalContextType::SystemBoard
                                  : itr->second;
 }
@@ -265,8 +266,7 @@ exec::task<int> InventoryManager::scan(Terminus& terminus,
             }
             newInventories.push_back(inventory);
             co_await getInventoryParent(path, newInventoryParents);
-            const auto baseType = static_cast<EntityType>(
-                std::get<1>(inventory) & entityTypeMask);
+            const EntityType baseType = baseEntityType(std::get<1>(inventory));
             if (isProcessorType(baseType))
             {
                 co_await collectProcessors(inventory, newInventories,
@@ -483,7 +483,7 @@ std::optional<std::vector<dbus::ObjectPath>> InventoryManager::moduleScope(
     // terminus.
     for (const auto& [path, type, instance] : data.inventories)
     {
-        if ((type & entityTypeMask) == PLDM_ENTITY_PROC_IO_MODULE &&
+        if (baseEntityType(type) == PLDM_ENTITY_PROC_IO_MODULE &&
             std::filesystem::path(path).filename().string() == data.name)
         {
             return std::vector<dbus::ObjectPath>{path};
@@ -568,7 +568,7 @@ std::vector<dbus::ObjectPath> InventoryManager::matchingInventory(
     {
         // Inventory may use raw type where PDRs use LOGICAL|type, or vice
         // versa; compare with bit 15 stripped.
-        if ((type & entityTypeMask) == baseType && inst == wantedInstance)
+        if (baseEntityType(type) == baseType && inst == wantedInstance)
         {
             candidates.push_back(path);
         }
@@ -639,8 +639,8 @@ bool InventoryManager::isFallbackAssociation(
         };
 
     // Strip LOGICAL flag for comparison, matching matchingInventory()
-    auto itr = dedicatedHomes.find(
-        static_cast<EntityType>(entityType & entityTypeMask));
+    std::map<EntityType, std::vector<EntityType>>::const_iterator itr =
+        dedicatedHomes.find(baseEntityType(entityType));
     if (itr == dedicatedHomes.end())
     {
         return false;
@@ -659,10 +659,8 @@ bool InventoryManager::isFallbackAssociation(
             inventories.begin(), inventories.end(), [&](const auto& inv) {
                 const auto& [invPath, invType, invInstance] = inv;
                 return invPath == path &&
-                       std::find(
-                           homeTypes.begin(), homeTypes.end(),
-                           static_cast<EntityType>(invType & entityTypeMask)) !=
-                           homeTypes.end();
+                       std::find(homeTypes.begin(), homeTypes.end(),
+                                 baseEntityType(invType)) != homeTypes.end();
             });
     };
     return !std::all_of(inventoryPaths.begin(), inventoryPaths.end(), isHome);

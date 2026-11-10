@@ -3728,6 +3728,17 @@ TEST(CheckIfLogicalBitSet, testCases)
     EXPECT_EQ(checkIfLogicalBitSet(0xFFFF), false);
 }
 
+TEST(BaseEntityType, stripsTheLogicalBit)
+{
+    using pldm::pdr::baseEntityType;
+    EXPECT_EQ(baseEntityType(PLDM_ENTITY_PROC), PLDM_ENTITY_PROC);
+    EXPECT_EQ(baseEntityType(PLDM_ENTITY_LOGICAL | PLDM_ENTITY_PROC),
+              PLDM_ENTITY_PROC);
+    EXPECT_EQ(baseEntityType(0xFFFF), 0x7FFF);
+    EXPECT_EQ(baseEntityType(PLDM_ENTITY_LOGICAL), 0);
+    EXPECT_EQ(baseEntityType(0), 0);
+}
+
 TEST(JsonEntryToDbusVal, testAllTypes)
 {
     auto result = jsonEntryToDbusVal("uint8_t", nlohmann::json(10));

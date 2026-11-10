@@ -104,7 +104,8 @@ NumericEffecter::NumericEffecter(
             }
             break;
         case PLDM_SENSOR_UNIT_BITS:
-            if ((pdr->entity_type & 0x7FFF) == PLDM_ENTITY_PCI_EXPRESS_BUS &&
+            if (pldm::pdr::baseEntityType(pdr->entity_type) ==
+                    PLDM_ENTITY_PCI_EXPRESS_BUS &&
                 effecterName.find("PCIeRPLinkCtrl") != std::string::npos)
             {
                 reverseAssociation = "pcie_link_controls";

@@ -61,12 +61,12 @@ struct EntityId
     /** @brief Entity type with the physical/logical bit stripped. */
     constexpr pdr::EntityType baseType() const
     {
-        return type & pdr::entityTypeMask;
+        return pdr::baseEntityType(type);
     }
 
     constexpr bool isLogical() const
     {
-        return (type & ~pdr::entityTypeMask) != 0;
+        return baseType() != type;
     }
 
     /** @brief Back to the legacy tuple for APIs that still take it. */

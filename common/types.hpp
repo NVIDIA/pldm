@@ -552,9 +552,6 @@ using TerminusHandle = uint16_t;
 using TerminusID = uint8_t;
 using SensorID = uint16_t;
 using EntityType = uint16_t;
-/** @brief Mask that strips the physical/logical bit (bit 15) from an entity
- *         type so both spellings compare equal. */
-constexpr EntityType entityTypeMask = 0x7FFF;
 using EntityInstance = uint16_t;
 using ContainerID = uint16_t;
 using StateSetId = uint16_t;
@@ -571,6 +568,14 @@ using SensorAuxiliaryNames = std::tuple<
     SensorID, SensorCount,
     std::vector<std::vector<std::pair<NameLanguageTag, SensorName>>>>;
 using AuxiliaryNames = std::vector<std::pair<NameLanguageTag, std::string>>;
+
+/** @brief Entity type @p type without the logical bit (bit 15), so the
+ *         physical and logical spellings of a type compare equal. */
+constexpr EntityType baseEntityType(EntityType type)
+{
+    constexpr EntityType typeBits = 0x7FFF;
+    return type & typeBits;
+}
 
 /** @struct EntityKey
  *

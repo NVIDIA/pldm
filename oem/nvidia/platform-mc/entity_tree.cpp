@@ -146,13 +146,13 @@ const Entity* EntityTree::parent(const Entity& entity) const
 const Entity* EntityTree::ancestor(const EntityId& id,
                                    pdr::EntityType baseType) const
 {
-    baseType &= pdr::entityTypeMask;
+    const pdr::EntityType wanted = pdr::baseEntityType(baseType);
     // Bound the walk by the number of containers so a malformed repository
     // with a containerID cycle cannot loop forever.
     const Entity* node = container(id.containerId);
     for (size_t hops = 0; node != nullptr && hops <= containers.size(); ++hops)
     {
-        if (node->id.baseType() == baseType)
+        if (node->id.baseType() == wanted)
         {
             return node;
         }
