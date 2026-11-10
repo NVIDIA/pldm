@@ -42,6 +42,18 @@ using Associations =
 using AssociationDefinitionsInft = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Association::server::Definitions>;
 
+/** @brief The associations a new state set publishes for @p assoc: none
+ *         while it has no endpoint, as before the system inventory is
+ *         found. */
+inline Associations toAssociations(const dbus::PathAssociation& assoc)
+{
+    if (assoc.path.empty())
+    {
+        return {};
+    }
+    return {{assoc.forward, assoc.reverse, assoc.path}};
+}
+
 class StateSet
 {
   protected:

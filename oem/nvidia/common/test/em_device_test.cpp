@@ -492,6 +492,57 @@ TEST_F(EmDevicePlatformPrefix, isEmptyWithoutARecord)
     EXPECT_EQ("", platformPrefix(dbus));
 }
 
+using EmDeviceTopChassis = EmDeviceDevices;
+
+TEST_F(EmDeviceTopChassis, isTheChassisOfTheFirstReadableRecord)
+{
+    const std::string unreadable = "/inventory/platform/A/TopChassis";
+    const std::string record = "/inventory/platform/B/TopChassis";
+    const std::string later = "/inventory/platform/C/TopChassis";
+    publish({},
+            {{record + "|" + topChassisIntf,
+              {{"Name", std::string("TopChassis")},
+               {"Chassis", std::string("HGX_Chassis_0")}}},
+             {later + "|" + topChassisIntf,
+              {{"Name", std::string("TopChassis")},
+               {"Chassis", std::string("Chassis_0")}}}},
+            {{topChassisIntf, {unreadable, record, later}}});
+    EXPECT_EQ("/xyz/openbmc_project/inventory/system/chassis/HGX_Chassis_0",
+              topChassisPath(dbus));
+}
+
+TEST_F(EmDeviceTopChassis, isSanitisedAsEntityManagerNamesItsPath)
+{
+    const std::string record = "/inventory/platform/A/TopChassis";
+    publish({},
+            {{record + "|" + topChassisIntf,
+              {{"Name", std::string("TopChassis")},
+               {"Chassis", std::string("HGX Chassis-0")}}}},
+            {{topChassisIntf, {record}}});
+    EXPECT_EQ("/xyz/openbmc_project/inventory/system/chassis/HGX_Chassis_0",
+              topChassisPath(dbus));
+}
+
+TEST_F(EmDeviceTopChassis, isEmptyWhenTheFirstReadableRecordHasNone)
+{
+    const std::string record = "/inventory/platform/A/TopChassis";
+    const std::string later = "/inventory/platform/B/TopChassis";
+    publish(
+        {},
+        {{record + "|" + topChassisIntf, {{"Name", std::string("TopChassis")}}},
+         {later + "|" + topChassisIntf,
+          {{"Name", std::string("TopChassis")},
+           {"Chassis", std::string("Chassis_0")}}}},
+        {{topChassisIntf, {record, later}}});
+    EXPECT_EQ("", topChassisPath(dbus));
+}
+
+TEST_F(EmDeviceTopChassis, isEmptyWithoutARecord)
+{
+    publish({}, {});
+    EXPECT_EQ("", topChassisPath(dbus));
+}
+
 TEST(EmDeviceTerminusConfig, boundsInstanceAndCpuIndex)
 {
     Device dev;

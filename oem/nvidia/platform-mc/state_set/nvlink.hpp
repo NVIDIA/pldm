@@ -95,9 +95,7 @@ class StateSetNvlink : public StateSet
         associationDefinitionsIntf =
             std::make_unique<AssociationDefinitionsInft>(bus, objPath.c_str());
         associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
+            toAssociations(stateAssociation));
         ValuePortIntf = std::make_unique<PortIntf>(bus, objPath.c_str());
         ValuePortInfoIntf =
             std::make_unique<PortInfoIntf>(bus, objPath.c_str());

@@ -189,6 +189,12 @@ class NumericEffecter
             Associations assocs{};
 
             auto associations = associationDefinitionsIntf->associations();
+            // No association yet (created with no endpoint, or cleared):
+            // start from the chassis association the effecter was made for.
+            if (associations.empty())
+            {
+                associations.emplace_back("chassis", reverseAssociation, "");
+            }
             for (auto& association : associations)
             {
                 auto& [forward, reverse, objectPath] = association;
@@ -325,6 +331,9 @@ class NumericEffecter
 
     /** @brief baseUnit of numeric effecter */
     uint8_t baseUnit;
+
+    /** @brief The reverse name of the effecter's chassis association */
+    std::string reverseAssociation = "all_controls";
 };
 } // namespace platform_mc
 } // namespace pldm

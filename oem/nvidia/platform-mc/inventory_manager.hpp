@@ -35,7 +35,6 @@ constexpr auto instanceInterface =
 constexpr auto instanceProperty = "InstanceNumber";
 constexpr auto overallSystemInterface =
     "xyz.openbmc_project.Inventory.Item.System";
-constexpr auto chassisInterface = "xyz.openbmc_project.Inventory.Item.Chassis";
 static const std::map<pdr::EntityType, std::string_view> entityInterfaces = {
     {PLDM_ENTITY_PHYSCIAL | PLDM_ENTITY_PROC_IO_MODULE,
      "xyz.openbmc_project.Inventory.Item.ProcessorModule"},
@@ -118,37 +117,36 @@ class InventoryManager
         std::tuple<dbus::ObjectPath, pdr::EntityType, pdr::EntityInstance>;
     using ParentMap = std::map<dbus::ObjectPath, dbus::ObjectPath>;
 
+    /** @brief Publish the system inventory a scan of @a tid read from the
+     *         platform topology. An empty @a path keeps the last one
+     *         published; while there is none, an error is logged.
+     *
+     *  @return whether a new system inventory was published
+     */
+    bool updateSystemInventory(tid_t tid, std::string path);
+
     /** @brief Re-scan the inventory objects of the terminus.
      *
-     *  The system inventory is taken from the subtree and published before
-     *  any object is looked up; a subtree without one keeps the last one
-     *  found. Every System, ProcessorModule, Cpu and Board object is then
-     *  offered to Terminus::checkDeviceInventory(), which loads the device's
-     *  Entity Manager configuration; the ones it accepts, with their
+     *  Every System, ProcessorModule, Cpu and Board object is offered to
+     *  Terminus::checkDeviceInventory(), which loads the device's Entity
+     *  Manager configuration; the ones it accepts, with their
      *  all_processors twins and parent_chassis, become the terminus's device
      *  inventory. That is published only once the scan completes.
      *
      *  @param[in] terminus - the terminus to scan for
-     *  @param[out] systemPathChanged - whether the scan published a new
-     *              system inventory
      */
-    exec::task<int> scan(Terminus& terminus, bool& systemPathChanged);
+    exec::task<int> scan(Terminus& terminus);
 
     /** @brief The inventory interfaces scan() collects: the overall system
      *         plus every entityInterfaces entry. */
     static const dbus::Interfaces& interestingInterfaces();
 
-    /** @brief The system inventory in a GetSubTree result: the last object
-     *         that is both the overall system and a chassis, else
-     *         @a fallback. */
-    static std::string systemPathFrom(const utils::GetSubTreeResponse& subtree,
-                                      const std::string& fallback);
-
     /** @brief The platform's system inventory, the default parent of every
-     *         sensor and effecter. Shared by all termini: when a scan
-     *         publishes a new one, Terminus::scanInventories() re-binds the
-     *         other termini. */
-    std::string systemInventoryPath = PLATFORM_CHASSIS_PATH;
+     *         sensor and effecter: the TopChassis of the platform topology,
+     *         empty until a scan finds it. Shared by all termini: when a
+     *         scan publishes a new one, Terminus::scanInventories() re-binds
+     *         the other termini. */
+    std::string systemInventoryPath;
     /** @} */
 
     /** @name Entity-to-inventory resolution
@@ -208,6 +206,10 @@ class InventoryManager
     };
 
     InventoryManager() = default;
+
+    /** @brief The system inventory as association endpoints: none until a
+     *         scan finds one. */
+    std::vector<dbus::ObjectPath> systemInventory() const;
 
     /** @brief Bind an entity and its ancestors to the inventory snapshot. */
     Entity& bindInventory(TerminusData& data, const EntityId& id);

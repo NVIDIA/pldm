@@ -47,6 +47,7 @@ constexpr auto transportIntf =
 constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
 constexpr auto devicePrefixIntf =
     "xyz.openbmc_project.Configuration.DevicePrefix";
+constexpr auto topChassisIntf = "xyz.openbmc_project.Configuration.TopChassis";
 constexpr auto inventoryRoot = "/xyz/openbmc_project/inventory";
 constexpr auto chassisRoot = "/xyz/openbmc_project/inventory/system/chassis/";
 constexpr auto componentRoot =
@@ -154,6 +155,12 @@ std::optional<Device> deviceByPathSegment(
  *         record of the platform topology ("HGX_" on an HMC); empty on a
  *         platform whose devices carry no prefix and no record. */
 std::string platformPrefix(
+    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
+
+/** @brief The inventory path of the platform's top chassis, from the
+ *         TopChassis record of the platform topology; empty without a
+ *         record or a Chassis in it. */
+std::string topChassisPath(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
 
 /** @brief The id -> name map EM publishes for a nested object, as the

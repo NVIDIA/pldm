@@ -1196,8 +1196,9 @@ TEST_F(StateSetNvlinkInternalTest,
     std::vector<pldm::dbus::PathAssociation> associations{association};
     stateSet.setAssociation(associations);
 
-    ASSERT_EQ(1u, stateSet.getAssociations().size());
-    EXPECT_TRUE(std::get<2>(stateSet.getAssociations().front()).empty());
+    // Neither the constructor nor setAssociation() publishes an empty
+    // endpoint.
+    EXPECT_TRUE(stateSet.getAssociations().empty());
     EXPECT_EQ(nullptr, stateSet.endpointIntf.get());
     EXPECT_EQ(nullptr, stateSet.endpointInstanceIntf.get());
     EXPECT_EQ(nullptr, stateSet.endpointAssociationDefinitionsIntf.get());

@@ -1369,6 +1369,53 @@ TEST_F(NumericSensorTest, numericSensorTelemetryAssociationCoverage)
     EXPECT_FALSE(std::isnan(metricSensor.getReading()));
 }
 
+TEST_F(NumericSensorTest, sensorWithoutAnEndpointIsAssociatedLater)
+{
+    using Association = std::tuple<std::string, std::string, std::string>;
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    std::string noPath;
+
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> valuePdr =
+        makeNumericSensorValuePdr(PLDM_SENSOR_DATA_SIZE_UINT16,
+                                  PLDM_RANGE_FIELD_FORMAT_UINT16,
+                                  PLDM_SENSOR_UNIT_WATTS, 0, true);
+    std::string valueName{"unassociated_value_sensor"};
+    NumericSensor valueSensor(0x5A, false, valuePdr, valueName, noPath,
+                              nullptr);
+    EXPECT_TRUE(valueSensor.associationDefinitionsIntf->associations().empty());
+    valueSensor.setInventoryPaths({cpuPath}, false);
+    EXPECT_EQ((std::vector<Association>{{"chassis", "all_sensors", cpuPath}}),
+              valueSensor.associationDefinitionsIntf->associations());
+
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> metricPdr =
+        makeNumericSensorValuePdr(PLDM_SENSOR_DATA_SIZE_UINT16,
+                                  PLDM_RANGE_FIELD_FORMAT_UINT16,
+                                  PLDM_SENSOR_UNIT_SECONDS, 0, false);
+    std::string metricName{"unassociated_metric_sensor"};
+    NumericSensor metricSensor(0x5B, false, metricPdr, metricName, noPath,
+                               nullptr);
+    EXPECT_TRUE(
+        metricSensor.associationDefinitionsIntf->associations().empty());
+    metricSensor.setInventoryPaths({cpuPath}, false);
+    EXPECT_EQ((std::vector<Association>{{"measuring", "measured_by", cpuPath}}),
+              metricSensor.associationDefinitionsIntf->associations());
+
+#ifdef OEM_NVIDIA
+    std::shared_ptr<pldm_oem_energycount_numeric_sensor_value_pdr> energyPdr =
+        makeOemEnergyCountSensorPdr(0x5C, PLDM_SENSOR_DATA_SIZE_UINT16,
+                                    PLDM_SENSOR_UNIT_WATTS);
+    std::string energyName{"unassociated_energy_sensor"};
+    NumericSensor energySensor(0x5C, false, energyPdr, energyName, noPath,
+                               POLLING_METHOD_INDICATOR_PLDM_TYPE_OEM);
+    EXPECT_TRUE(
+        energySensor.associationDefinitionsIntf->associations().empty());
+    energySensor.setInventoryPaths({cpuPath}, false);
+    EXPECT_EQ((std::vector<Association>{{"chassis", "all_sensors", cpuPath}}),
+              energySensor.associationDefinitionsIntf->associations());
+#endif
+}
+
 TEST_F(NumericSensorTest, numericSensorEmptyEndpointCoverage)
 {
     std::string inventoryPath{

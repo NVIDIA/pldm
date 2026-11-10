@@ -63,9 +63,7 @@ class StateSetPciePortLinkState : public StateSet
             std::make_unique<AssociationDefinitionsInft>(bus,
                                                          objectPath.c_str());
         associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
+            toAssociations(stateAssociation));
         ValuePortIntf = std::make_unique<PortIntf>(bus, objectPath.c_str());
         ValuePortInfoIntf =
             std::make_unique<PortInfoIntf>(bus, objectPath.c_str());

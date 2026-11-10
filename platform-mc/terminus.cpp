@@ -43,14 +43,16 @@ namespace
 {
 
 /** @brief The platform's system inventory, the default parent of every
- *         sensor and effecter. Non-const only because the sensor and
+ *         sensor and effecter; empty while none is known, which leaves
+ *         them unassociated. Non-const only because the sensor and
  *         effecter constructors take a std::string&. */
 std::string& systemInventoryPath()
 {
 #ifdef OEM_NVIDIA
     return oem_nvidia::InventoryManager::get().systemInventoryPath;
 #else
-    static std::string path = PLATFORM_CHASSIS_PATH;
+    // Only the OEM inventory scan finds the system inventory.
+    static std::string path;
     return path;
 #endif
 }
@@ -202,7 +204,9 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         {
             interested = true;
         }
-        if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
+        // The top chassis of the platform is the system inventory.
+        if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation" ||
+            intf == pldm::em_device::topChassisIntf)
         {
             interested = true;
         }
@@ -1935,9 +1939,13 @@ exec::task<int> Terminus::scanInventories()
             "TID", tid);
     }
 #ifdef OEM_NVIDIA
-    bool systemPathChanged = false;
-    auto rc = co_await oem_nvidia::InventoryManager::get().scan(
-        *this, systemPathChanged);
+    oem_nvidia::InventoryManager& inventory =
+        oem_nvidia::InventoryManager::get();
+    // Entity Manager can publish the platform topology after pldmd starts:
+    // read the top chassis on every scan.
+    const bool systemPathChanged = inventory.updateSystemInventory(
+        tid, pldm::em_device::topChassisPath(utils::DBusHandler()));
+    const int rc = co_await inventory.scan(*this);
     if (systemPathChanged)
     {
         co_await rebindOtherTermini();
@@ -2017,10 +2025,9 @@ std::vector<std::string> Terminus::resolveInventory(
     return oem_nvidia::InventoryManager::get().findInventory(
         tid, oem_nvidia::EntityId{entityInfo});
 #else
-    // No entity topology: the system inventory the sensor or effecter was
-    // created with.
+    // No entity topology and no system inventory: leave it unassociated.
     (void)entityInfo;
-    return {systemInventoryPath()};
+    return {};
 #endif
 }
 

@@ -330,6 +330,24 @@ std::string platformPrefix(const pldm::utils::DBusHandlerInterface& bus)
     return {};
 }
 
+std::string topChassisPath(const pldm::utils::DBusHandlerInterface& bus)
+{
+    for (const auto& [path, service] : objectsWith(topChassisIntf, bus))
+    {
+        if (std::optional<pldm::utils::PropertyMap> props =
+                getAll(service, path, topChassisIntf, bus))
+        {
+            const std::string chassis = stringProp(*props, "Chassis");
+            if (chassis.empty())
+            {
+                return {};
+            }
+            return chassisRoot + dbusPathSegment(chassis);
+        }
+    }
+    return {};
+}
+
 std::map<uint16_t, std::string> idNameMap(
     const std::string& service, const std::string& path,
     const std::string& intf, const pldm::utils::DBusHandlerInterface& bus)

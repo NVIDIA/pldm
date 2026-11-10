@@ -246,10 +246,6 @@ if get_option('fw-update-pkg-inotify').allowed()
     conf_data.set('FW_UPDATE_INOTIFY_ENABLED', 1)
 endif
 
-conf_data.set_quoted(
-    'PLATFORM_CHASSIS_PATH',
-    get_option('platform-chassis-object-path'),
-)
 if get_option('nvlink-c2c-fabric-object').enabled()
     add_project_arguments('-DNVLINK_C2C_FABRIC_OBJECT', language: ['c', 'cpp'])
 endif
@@ -278,10 +274,6 @@ if get_option('nvidia-disable-edpp-effecters').enabled()
 endif
 
 conf_data.set('DEFAULT_RR_REFRESH_LIMIT_IN_MS', get_option('rr-refresh-limit'))
-conf_data.set_quoted(
-    'PLATFORM_CHASSIS_PATH',
-    get_option('platform-chassis-object-path'),
-)
 # Firmware update targets JSON path
 conf_data.set_quoted(
     'FW_UPDATE_TARGETS_JSON',

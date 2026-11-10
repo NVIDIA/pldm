@@ -839,6 +839,17 @@ TEST_F(StateSetCoverageTest, stateSetCreatorNvlinkWrongEntityCoverage)
     EXPECT_EQ(nullptr, state);
 }
 
+TEST(StateSetAssociations, toAssociationsSkipsAnEmptyEndpoint)
+{
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    EXPECT_TRUE(
+        toAssociations(makeAssociation("chassis", "all_states", "")).empty());
+    EXPECT_EQ(
+        (Associations{{"chassis", "all_states", cpuPath}}),
+        toAssociations(makeAssociation("chassis", "all_states", cpuPath)));
+}
+
 TEST_F(StateSetCoverageTest, baseStateSetAssociationCoverage)
 {
     BaseStateSetCoverage stateSet(0x1555);
@@ -2310,6 +2321,7 @@ TEST_F(StateSetCoverageTest, nvlinkSetAssociationMatrixCoverage)
     StateSetNvlinkCoverage ctorEmptyState(
         PLDM_NVIDIA_OEM_STATE_SET_NVLINK, ctorEmptyPath, ctorEmptyAssociation,
         *stateSensor);
+    EXPECT_TRUE(ctorEmptyState.getAssociations().empty());
 
     std::vector<pldm::dbus::PathAssociation> emptyAssociations;
     stateSet.setAssociation(emptyAssociations);

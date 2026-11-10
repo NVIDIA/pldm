@@ -115,15 +115,11 @@ NumericSensor::NumericSensor(
     auto& bus = pldm::utils::DBusHandler::getBus();
     associationDefinitionsIntf =
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-    if (useMetricInterface)
+    // An empty path (no system inventory yet) is not a valid endpoint:
+    // leave the sensor unassociated until setInventoryPaths().
+    if (!associationPath.empty())
     {
-        associationDefinitionsIntf->associations(
-            {{"measuring", "measured_by", associationPath.c_str()}});
-    }
-    else
-    {
-        associationDefinitionsIntf->associations(
-            {{"chassis", "all_sensors", associationPath.c_str()}});
+        setInventoryPaths({associationPath}, defaultInventoryAssociated);
     }
 
     maxValue = std::numeric_limits<double>::quiet_NaN();
@@ -548,15 +544,11 @@ NumericSensor::NumericSensor(
     auto& bus = pldm::utils::DBusHandler::getBus();
     associationDefinitionsIntf =
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-    if (useMetricInterface)
+    // An empty path (no system inventory yet) is not a valid endpoint:
+    // leave the sensor unassociated until setInventoryPaths().
+    if (!associationPath.empty())
     {
-        associationDefinitionsIntf->associations(
-            {{"measuring", "measured_by", associationPath.c_str()}});
-    }
-    else
-    {
-        associationDefinitionsIntf->associations(
-            {{"chassis", "all_sensors", associationPath.c_str()}});
+        setInventoryPaths({associationPath}, defaultInventoryAssociated);
     }
 
     maxValue = std::numeric_limits<double>::quiet_NaN();

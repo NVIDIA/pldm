@@ -81,7 +81,6 @@ NumericEffecter::NumericEffecter(
     effecterName(effecterName), needsUpdate(true),
     terminusManager(terminusManager), baseUnit(pdr->base_unit)
 {
-    std::string reverseAssociation = "all_controls";
     auto& bus = pldm::utils::DBusHandler::getBus();
 
     path = "/xyz/openbmc_project/control/";
@@ -136,8 +135,13 @@ NumericEffecter::NumericEffecter(
 
     associationDefinitionsIntf =
         std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
-    associationDefinitionsIntf->associations(
-        {{"chassis", reverseAssociation.c_str(), associationPath.c_str()}});
+    // An empty path (no system inventory yet) is not a valid endpoint:
+    // leave the effecter unassociated until setInventoryPaths().
+    if (!associationPath.empty())
+    {
+        associationDefinitionsIntf->associations(
+            {{"chassis", reverseAssociation.c_str(), associationPath.c_str()}});
+    }
 
     double maxValue = std::numeric_limits<double>::quiet_NaN();
     double minValue = std::numeric_limits<double>::quiet_NaN();

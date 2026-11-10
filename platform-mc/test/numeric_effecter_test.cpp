@@ -1162,6 +1162,34 @@ TEST_F(TestNumericEffecter, numericEffecterResponseErrorCoverage)
     EXPECT_NE(PLDM_SUCCESS, std::get<0>(*getDecodeRc));
 }
 
+TEST_F(TestNumericEffecter, effecterWithoutAnEndpointIsAssociatedLater)
+{
+    using Association = std::tuple<std::string, std::string, std::string>;
+    const std::string cpuPath =
+        "/xyz/openbmc_project/inventory/system/processors/CPU_0";
+    std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr =
+        makeNumericEffecterValuePdr(0x0F21, PLDM_EFFECTER_DATA_SIZE_UINT16,
+                                    PLDM_SENSOR_UNIT_WATTS, PLDM_ENTITY_PROC);
+    std::string name{"unassociated_watts_effecter"};
+    std::string noPath;
+    NumericEffecter effecter(0x47, false, pdr, name, noPath, terminusManager);
+    EXPECT_TRUE(effecter.getAssociation().empty());
+
+    // The association the effecter was made for, now with an endpoint.
+    effecter.setInventoryPaths({cpuPath});
+    EXPECT_EQ(
+        (std::vector<Association>{{"chassis", "power_controls", cpuPath}}),
+        effecter.getAssociation());
+
+    // Cleared, then associated again: the same association comes back.
+    effecter.setInventoryPaths({});
+    EXPECT_TRUE(effecter.getAssociation().empty());
+    effecter.setInventoryPaths({cpuPath});
+    EXPECT_EQ(
+        (std::vector<Association>{{"chassis", "power_controls", cpuPath}}),
+        effecter.getAssociation());
+}
+
 TEST_F(TestNumericEffecter, numericEffecterNaNFieldBranchCoverage)
 {
     std::string inventoryPath{

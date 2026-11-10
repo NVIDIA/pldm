@@ -130,9 +130,7 @@ class NvlinkPortMirror
             mp.path = paths[i];
             mp.assocDefsIntf = std::make_unique<AssociationDefinitionsInft>(
                 bus, mp.path.c_str());
-            mp.assocDefsIntf->associations(
-                {{assoc.forward.c_str(), assoc.reverse.c_str(),
-                  assoc.path.c_str()}});
+            mp.assocDefsIntf->associations(toAssociations(assoc));
             mp.portIntf = std::make_unique<PortIntf>(bus, mp.path.c_str());
             mp.portInfoIntf =
                 std::make_unique<PortInfoIntf>(bus, mp.path.c_str());

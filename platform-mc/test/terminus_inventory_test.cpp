@@ -1676,21 +1676,29 @@ class SharedSystemPathTest : public TerminusInventoryTest
         return InventoryManager::get().systemInventoryPath;
     }
 
+    /** The associations of the terminus's state sensor. */
+    static Associations associations(const Terminus& terminus)
+    {
+        const std::shared_ptr<StateSet>& stateSet =
+            terminus.stateSensors.front()->stateSets.front();
+        return stateSet->associationDefinitionsIntf->associations();
+    }
+
     /** The inventory the terminus's state sensor associates with. */
     static std::string endpoint(const Terminus& terminus)
     {
-        const auto& stateSet = terminus.stateSensors.front()->stateSets.front();
-        const auto assocs =
-            stateSet->associationDefinitionsIntf->associations();
+        const Associations assocs = associations(terminus);
         return assocs.size() == 1 ? std::get<2>(assocs.front()) : std::string{};
     }
 
-    /** Chassis_0 becomes the overall system: a chassis with Item.System. */
+    /** The platform topology names Chassis_0 its top chassis. */
     void publishChassis0()
     {
-        inventory.addInterface(chassis0Path, oem_nvidia::overallSystemInterface,
-                               {});
-        inventory.addInterface(chassis0Path, oem_nvidia::chassisInterface, {});
+        inventory.addInterface(
+            platformPath + std::string("Topology/TopChassis"),
+            pldm::em_device::topChassisIntf,
+            {{"Name", std::string("TopChassis")},
+             {"Chassis", std::string("Chassis_0")}});
     }
 
     static int scan(Terminus& terminus)
@@ -1737,9 +1745,9 @@ TEST_F(SharedSystemPathTest, systemPathFoundByAnotherTerminusRebindsSensors)
     auto b = addTerminus(0x32);
 
     // A binds before any scan has found the system, as the first terminus
-    // to initialise can.
+    // to initialise can: its sensor stays unassociated.
     EXPECT_EQ(PLDM_SUCCESS, update(*a));
-    EXPECT_EQ(PLATFORM_CHASSIS_PATH, endpoint(*a));
+    EXPECT_TRUE(associations(*a).empty());
 
     // B's scan then finds Chassis_0.
     publishChassis0();
@@ -1774,7 +1782,7 @@ TEST_F(SharedSystemPathTest, systemPathChangeDefersBusyTermini)
     for (const auto& busy : {initialising, refreshing})
     {
         EXPECT_TRUE(busy->needRefresh);
-        EXPECT_EQ(PLATFORM_CHASSIS_PATH, endpoint(*busy));
+        EXPECT_TRUE(associations(*busy).empty());
     }
 
     // Finding the same system again changes nothing for the others.
@@ -1827,11 +1835,49 @@ TEST_F(SharedSystemPathTest, scanWithoutASystemKeepsTheSystemPath)
     EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
     EXPECT_EQ(chassis0Path, systemInventoryPath());
 
-    // An empty subtree, as a failed GetSubTree returns, does not fall back
-    // to the default.
+    // Without the record, as when GetSubTree fails, the path is kept.
     inventory.clear();
     EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
     EXPECT_EQ(chassis0Path, systemInventoryPath());
+}
+
+TEST_F(SharedSystemPathTest, scanWithoutATopChassisLeavesNoSystem)
+{
+    std::shared_ptr<Terminus> terminus = addTerminus(0x3B);
+    // Created before any system was found: no association.
+    EXPECT_TRUE(associations(*terminus).empty());
+
+    // An overall system that is a chassis, but no TopChassis record.
+    inventory.addInterface(chassis0Path, oem_nvidia::overallSystemInterface,
+                           {});
+    inventory.addInterface(chassis0Path,
+                           "xyz.openbmc_project.Inventory.Item.Chassis", {});
+
+    EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_TRUE(systemInventoryPath().empty());
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
+    EXPECT_TRUE(associations(*terminus).empty());
+}
+
+TEST_F(SharedSystemPathTest, topChassisAddedLaterRebindsTheTerminus)
+{
+    std::shared_ptr<Terminus> terminus = addTerminus(0x3C);
+    EXPECT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_EQ(PLDM_SUCCESS, update(*terminus));
+    EXPECT_TRUE(associations(*terminus).empty());
+
+    // Entity Manager publishes the topology record after the first scan.
+    publishChassis0();
+    sdbusplus::bus_t bus = sdbusplus::bus::new_default();
+    sdbusplus::message_t msg = interfacesAdded(
+        bus, platformPath + std::string("Topology/TopChassis"),
+        pldm::em_device::topChassisIntf,
+        {{"Name", std::string("TopChassis")},
+         {"Chassis", std::string("Chassis_0")}});
+    terminus->interfaceAdded(msg);
+
+    EXPECT_EQ(chassis0Path, systemInventoryPath());
+    EXPECT_EQ(chassis0Path, endpoint(*terminus));
 }
 
 TEST_F(SharedSystemPathTest, stateSensorKeepsItsInventoryOverride)

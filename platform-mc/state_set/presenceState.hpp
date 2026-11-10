@@ -45,9 +45,7 @@ class StateSetPresenceState : public StateSet
             std::make_unique<AssociationDefinitionsInft>(bus,
                                                          objectPath.c_str());
         associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
+            toAssociations(stateAssociation));
         ValueIntf =
             std::make_unique<PresenceStateIntf>(bus, objectPath.c_str());
         setDefaultValue();

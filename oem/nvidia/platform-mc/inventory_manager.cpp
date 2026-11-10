@@ -69,7 +69,35 @@ static bool isLinkedProcessor(const std::string& reverse,
 void InventoryManager::reset()
 {
     terminusData.clear();
-    systemInventoryPath = PLATFORM_CHASSIS_PATH;
+    systemInventoryPath.clear();
+}
+
+std::vector<dbus::ObjectPath> InventoryManager::systemInventory() const
+{
+    if (systemInventoryPath.empty())
+    {
+        return {};
+    }
+    return {systemInventoryPath};
+}
+
+bool InventoryManager::updateSystemInventory(tid_t tid, std::string path)
+{
+    if (!path.empty() && path != systemInventoryPath)
+    {
+        lg2::info("scanInventories: TID {TID} found system inventory {PATH}",
+                  "TID", tid, "PATH", path);
+        systemInventoryPath = std::move(path);
+        return true;
+    }
+    if (systemInventoryPath.empty())
+    {
+        lg2::error("scanInventories: TID {TID} found no TopChassis in the "
+                   "platform topology; sensors and effecters without a "
+                   "closer inventory stay unassociated",
+                   "TID", tid);
+    }
+    return false;
 }
 
 void InventoryManager::setInstance(tid_t tid, std::optional<uint16_t> instance)
@@ -151,28 +179,6 @@ exec::task<int> InventoryManager::getInventoryParent(const std::string objPath,
     co_return PLDM_SUCCESS;
 }
 
-std::string InventoryManager::systemPathFrom(
-    const utils::GetSubTreeResponse& subtree, const std::string& fallback)
-{
-    const std::string* systemPath = &fallback;
-    for (const auto& [path, services] : subtree)
-    {
-        for (const auto& [service, interfaces] : services)
-        {
-            auto has = [&interfaces](std::string_view interface) {
-                return std::find(interfaces.begin(), interfaces.end(),
-                                 interface) != interfaces.end();
-            };
-            // The system object must also be a chassis.
-            if (has(overallSystemInterface) && has(chassisInterface))
-            {
-                systemPath = &path;
-            }
-        }
-    }
-    return *systemPath;
-}
-
 exec::task<void> InventoryManager::collectInterface(
     Inventory& inventory, const std::string& service,
     const std::string& interface)
@@ -227,29 +233,15 @@ exec::task<void> InventoryManager::collectProcessors(
     }
 }
 
-exec::task<int> InventoryManager::scan(Terminus& terminus,
-                                       bool& systemPathChanged)
+exec::task<int> InventoryManager::scan(Terminus& terminus)
 {
     const auto tid = terminus.getTid();
-    systemPathChanged = false;
     std::vector<Inventory> newInventories;
     ParentMap newInventoryParents;
     try
     {
         auto subtree = co_await utils::coGetSubTree(
             "/xyz/openbmc_project/inventory", 0, interestingInterfaces());
-        // Every terminus binds to the system inventory: publish it before
-        // the lookups below can throw, and never fall back to the default
-        // once one was found.
-        auto systemPath = systemPathFrom(subtree, systemInventoryPath);
-        if (systemPath != systemInventoryPath)
-        {
-            lg2::info("scanInventories: TID {TID} found system inventory "
-                      "{PATH}",
-                      "TID", tid, "PATH", systemPath);
-            systemInventoryPath = std::move(systemPath);
-            systemPathChanged = true;
-        }
         for (const auto& [path, services] : subtree)
         {
             Inventory inventory{path, 0, 0xFFFF};
@@ -432,7 +424,7 @@ std::vector<dbus::ObjectPath> InventoryManager::containerInventory(
 {
     if (containerId == PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID)
     {
-        return {systemInventoryPath};
+        return systemInventory();
     }
     const auto* container = data.entities.container(containerId);
     if (!container)
@@ -440,7 +432,7 @@ std::vector<dbus::ObjectPath> InventoryManager::containerInventory(
         lg2::error(
             "cannot find containerId:{CID}, returning systemInventoryPath",
             "CID", containerId);
-        return {systemInventoryPath};
+        return systemInventory();
     }
     return closestInventory(data, *container);
 }
@@ -474,8 +466,7 @@ std::optional<std::vector<dbus::ObjectPath>> InventoryManager::moduleScope(
         return std::nullopt;
     }
     auto modulePaths = containerInventory(data, parent.id.containerId);
-    if (modulePaths.size() != 1 || modulePaths.front() != systemInventoryPath ||
-        data.name.empty())
+    if (modulePaths != systemInventory() || data.name.empty())
     {
         return modulePaths;
     }
@@ -522,7 +513,7 @@ std::vector<dbus::ObjectPath> InventoryManager::closestInventory(
             return *node->scope();
         }
     }
-    return {systemInventoryPath};
+    return systemInventory();
 }
 
 EntityInstance InventoryManager::resolvedInstance(const TerminusData& data,

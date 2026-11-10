@@ -49,9 +49,7 @@ class StateSetProcessorOsStates : public StateSet
             std::make_unique<AssociationDefinitionsInft>(bus,
                                                          objectPath.c_str());
         associationDefinitionsIntf->associations(
-            {{stateAssociation.forward.c_str(),
-              stateAssociation.reverse.c_str(),
-              stateAssociation.path.c_str()}});
+            toAssociations(stateAssociation));
         bootProgressIntf =
             std::make_unique<BootProgressIntf>(bus, objectPath.c_str());
         setDefaultValue();

@@ -275,6 +275,37 @@ TEST_F(InventoryManagerTest, memoryControllerBindsToTheModule)
               inventory.findInventory(tid, dram));
 }
 
+TEST_F(InventoryManagerTest, noSystemInventoryLeavesEntitiesUnassociated)
+{
+    inventory.reset();
+    EXPECT_TRUE(inventory.systemInventory().empty());
+    const EntityId module = id(0, PLDM_ENTITY_PROC_IO_MODULE, 0);
+    const EntityId cpu = id(10, PLDM_ENTITY_PROC, 0);
+    const EntityId dram = id(20, PLDM_ENTITY_MEMORY_CONTROLLER, 0);
+    tree().add(10, module, {cpu});
+    tree().add(20, cpu, {dram});
+    addInventory("/inv/ProcessorModule_7", PLDM_ENTITY_PROC_IO_MODULE, 7);
+    inventory.bindAll(tid);
+
+    // No inventory up the chain, the system container or an unknown
+    // container: nothing, not an empty path.
+    EXPECT_TRUE(inventory.findInventory(tid, dram).empty());
+    EXPECT_TRUE(
+        inventory
+            .findInventory(tid, id(PLDM_PLATFORM_ENTITY_SYSTEM_CONTAINER_ID,
+                                   PLDM_ENTITY_SYS_BOARD, 1))
+            .empty());
+    EXPECT_TRUE(
+        inventory.findInventory(tid, id(99, PLDM_ENTITY_SYS_BOARD, 1)).empty());
+
+    // DRAM without a module above its CPU still takes the ProcessorModule
+    // named after the terminus.
+    inventory.setTerminusName(tid, "ProcessorModule_7");
+    inventory.bindAll(tid);
+    EXPECT_EQ(Paths{"/inv/ProcessorModule_7"},
+              inventory.findInventory(tid, dram));
+}
+
 TEST_F(InventoryManagerTest, powerSupplyBindsToTheSiblingCpu)
 {
     auto module = id(0, PLDM_ENTITY_PROC_IO_MODULE, 0);
@@ -511,26 +542,28 @@ TEST_F(InventoryManagerTest, boundEntitiesKeepTheirBinding)
             .empty());
 }
 
-TEST(InventoryManager, systemPathFrom)
+TEST_F(InventoryManagerTest, updateSystemInventoryKeepsTheLastOneFound)
 {
-    using pldm::utils::GetSubTreeResponse;
     const std::string chassis0 =
         "/xyz/openbmc_project/inventory/system/chassis/Chassis_0";
-    const std::string service = "xyz.openbmc_project.EntityManager";
-    const GetSubTreeResponse system{
-        {chassis0, {{service, {chassisInterface, overallSystemInterface}}}}};
-    const GetSubTreeResponse systemOnly{
-        {chassis0, {{service, {overallSystemInterface}}}}};
+    inventory.reset();
 
-    // Only an overall system that is also a chassis counts.
-    EXPECT_EQ(chassis0,
-              InventoryManager::systemPathFrom(system, PLATFORM_CHASSIS_PATH));
-    EXPECT_EQ(PLATFORM_CHASSIS_PATH, InventoryManager::systemPathFrom(
-                                         systemOnly, PLATFORM_CHASSIS_PATH));
-    EXPECT_EQ(PLATFORM_CHASSIS_PATH,
-              InventoryManager::systemPathFrom({}, PLATFORM_CHASSIS_PATH));
-    // scan() passes the last path found as the fallback.
-    EXPECT_EQ(chassis0, InventoryManager::systemPathFrom(systemOnly, chassis0));
+    // None found yet: nothing to publish.
+    EXPECT_FALSE(inventory.updateSystemInventory(tid, ""));
+    EXPECT_TRUE(inventory.systemInventoryPath.empty());
+
+    EXPECT_TRUE(inventory.updateSystemInventory(tid, chassis0));
+    EXPECT_EQ(chassis0, inventory.systemInventoryPath);
+    // The same one again changes nothing.
+    EXPECT_FALSE(inventory.updateSystemInventory(tid, chassis0));
+    // A scan that reads none keeps it.
+    EXPECT_FALSE(inventory.updateSystemInventory(tid, ""));
+    EXPECT_EQ(chassis0, inventory.systemInventoryPath);
+    // Another top chassis replaces it.
+    const std::string hgxChassis0 =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_Chassis_0";
+    EXPECT_TRUE(inventory.updateSystemInventory(tid, hgxChassis0));
+    EXPECT_EQ(hgxChassis0, inventory.systemInventoryPath);
 }
 
 TEST(InventoryManager, toPhysicalContextType)

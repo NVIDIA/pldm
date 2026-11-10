@@ -5121,7 +5121,7 @@ class RemoteDebugPdrTest : public TerminusTest
         terminus(0xD0, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                  terminusManager)
     {
-        terminus.systemInventoryPath =
+        systemInventoryPath() =
             "/xyz/openbmc_project/inventory/system/chassis/chassisD0";
     }
 
@@ -5134,7 +5134,7 @@ class RemoteDebugPdrTest : public TerminusTest
         terminus.numericEffecters.emplace_back(
             std::make_shared<NumericEffecter>(
                 terminus.getTid(), false, timeoutPdr, timeoutName,
-                terminus.systemInventoryPath, terminusManager));
+                systemInventoryPath(), terminusManager));
     }
 
     void parse(const std::vector<uint16_t>& effecterStateSetIds,
