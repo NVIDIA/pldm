@@ -26,6 +26,7 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Control/Processor/RemoteDebug/server.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <vector>
@@ -158,16 +159,12 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
             return false;
         }
 
-        for (const std::shared_ptr<StateSet>& stateSet : built)
-        {
-            if (stateSet == nullptr ||
-                stateSet->getStateSetId() !=
-                    PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE)
-            {
-                return false;
-            }
-        }
-        return true;
+        return std::ranges::all_of(
+            built, [](const std::shared_ptr<StateSet>& stateSet) {
+                return stateSet != nullptr &&
+                       stateSet->getStateSetId() ==
+                           PLDM_NVIDIA_OEM_STATE_SET_DEBUG_STATE;
+            });
     }
 
     OemRemoteDebugIntf(bus::bus& bus, const char* path,
@@ -239,11 +236,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            // stateField has one entry per effecter state set; reject
-            // components the effecter or the sensor has no state set for.
-            StateSet* sensorState = getStateSet(stateSensor.stateSets, compId);
-            if (compId >= stateField.size() || sensorState == nullptr ||
-                sensorState->getValue() == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            if (!canSetDebugState(compId))
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     NotAllowed();
@@ -272,11 +265,7 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
                     InvalidArgument();
             }
 
-            // stateField has one entry per effecter state set; reject
-            // components the effecter or the sensor has no state set for.
-            StateSet* sensorState = getStateSet(stateSensor.stateSets, compId);
-            if (compId >= stateField.size() || sensorState == nullptr ||
-                sensorState->getValue() == PLDM_STATE_SET_DEBUG_STATE_OFFLINE)
+            if (!canSetDebugState(compId))
             {
                 throw sdbusplus::xyz::openbmc_project::Common::Error::
                     NotAllowed();
@@ -328,9 +317,10 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     DebugState getDebugState(uint8_t compositeId) const
     {
-        StateSet* effecterState =
+        StateSet* const effecterState =
             getStateSet(stateEffecter.stateSets, compositeId);
-        StateSet* sensorState = getStateSet(stateSensor.stateSets, compositeId);
+        StateSet* const sensorState =
+            getStateSet(stateSensor.stateSets, compositeId);
         if (effecterState == nullptr || sensorState == nullptr)
         {
             return DebugState::Unknown;
@@ -359,6 +349,27 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
             return nullptr;
         }
         return stateSets[compId].get();
+    }
+
+    /** @brief Check that Enable and Disable can set a debug component
+     *
+     *  Enable and Disable size their state fields by the effecter's state
+     *  sets, so an effecter state set for compId also keeps compId within
+     *  the state fields.
+     *
+     *  @param[in] compId - debug component ID
+     *
+     *  @return true if the effecter and the sensor have a state set for
+     *          compId and the sensor does not read Offline
+     */
+    bool canSetDebugState(uint8_t compId) const
+    {
+        StateSet* const effecterState =
+            getStateSet(stateEffecter.stateSets, compId);
+        StateSet* const sensorState =
+            getStateSet(stateSensor.stateSets, compId);
+        return effecterState != nullptr && sensorState != nullptr &&
+               sensorState->getValue() != PLDM_STATE_SET_DEBUG_STATE_OFFLINE;
     }
 
     StateEffecter& stateEffecter;
