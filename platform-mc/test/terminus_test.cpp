@@ -3757,7 +3757,8 @@ TEST_F(RemoteDebugPdrTest, rejectsEffecterWithLeadingUnsupportedStateSet)
     // The effecter drops the unsupported state set and builds six debug
     // state sets, one composite index off from the device's.
     const std::shared_ptr<StateEffecter>& effecter = terminus.stateEffecters[0];
-    const auto& [entityInfo, declaredStateSets] = effecter->effecterInfo;
+    const std::vector<StateSetData>& declaredStateSets =
+        std::get<std::vector<StateSetData>>(effecter->effecterInfo);
     EXPECT_EQ(7u, declaredStateSets.size());
     EXPECT_EQ(oem_nvidia::OemRemoteDebugIntf::debugCompCount,
               effecter->stateSets.size());
@@ -3848,11 +3849,12 @@ TEST_F(TerminusTest, remoteDebugIntfHandlesMissingStateSets)
     // A debug state set at entry 0 and unsupported state sets after it.
     StateSetInfo debugThenUnsupportedInfo =
         makeDebugStateSetInfo(PLDM_ENTITY_SYS_BOARD);
-    auto& [entityInfo, debugThenUnsupported] = debugThenUnsupportedInfo;
-    for (auto& [stateSetId, possibleStates] :
+    std::vector<StateSetData>& debugThenUnsupported =
+        std::get<std::vector<StateSetData>>(debugThenUnsupportedInfo);
+    for (StateSetData& stateSetData :
          debugThenUnsupported | std::views::drop(1))
     {
-        stateSetId = unsupportedStateSetId;
+        std::get<StateSetId>(stateSetData) = unsupportedStateSetId;
     }
 
     // An effecter with only the first state set, and one with all debug

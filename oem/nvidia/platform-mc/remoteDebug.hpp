@@ -317,9 +317,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
 
     DebugState getDebugState(uint8_t compositeId) const
     {
-        StateSet* const effecterState =
+        const std::shared_ptr<StateSet> effecterState =
             getStateSet(stateEffecter.stateSets, compositeId);
-        StateSet* const sensorState =
+        const std::shared_ptr<StateSet> sensorState =
             getStateSet(stateSensor.stateSets, compositeId);
         if (effecterState == nullptr || sensorState == nullptr)
         {
@@ -340,15 +340,17 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
      *  @param[in] stateSets - state sets of the effecter or sensor
      *  @param[in] compId - debug component ID
      *
-     *  @return the state set, or nullptr if there is none at compId
+     *  @return the state set, or nullptr if compId is out of range or its
+     *          entry is null
      */
-    static StateSet* getStateSet(const StateSets& stateSets, std::size_t compId)
+    static std::shared_ptr<StateSet> getStateSet(const StateSets& stateSets,
+                                                 std::size_t compId)
     {
         if (compId >= stateSets.size())
         {
             return nullptr;
         }
-        return stateSets[compId].get();
+        return stateSets[compId];
     }
 
     /** @brief Check that Enable and Disable can set a debug component
@@ -364,9 +366,9 @@ class OemRemoteDebugIntf : public OemIntf, public RemoteDebugIntf
      */
     bool canSetDebugState(uint8_t compId) const
     {
-        StateSet* const effecterState =
+        const std::shared_ptr<StateSet> effecterState =
             getStateSet(stateEffecter.stateSets, compId);
-        StateSet* const sensorState =
+        const std::shared_ptr<StateSet> sensorState =
             getStateSet(stateSensor.stateSets, compId);
         return effecterState != nullptr && sensorState != nullptr &&
                sensorState->getValue() != PLDM_STATE_SET_DEBUG_STATE_OFFLINE;
