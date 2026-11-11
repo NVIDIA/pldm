@@ -76,9 +76,6 @@ struct Device
     std::optional<uint64_t> cpuIndex;
     // from the .Transport child interface
     std::string medium;
-    // downstream EID pool of a bridge, each in [0, maxDeviceEid]
-    std::optional<uint64_t> poolStartEid;
-    std::optional<uint64_t> poolEndEid;
 };
 
 struct PldmDevice
@@ -128,9 +125,9 @@ std::map<std::string, std::string> objectsWith(
  *  place of Instance and no parent. The two are merged by Name; a value the
  *  first one lacks is taken from the second, and a value both carry with a
  *  different content is logged with both values and record paths and kept
- *  from the first. An EID, Instance, InstanceNumber, CpuIndex, PoolStartEID
- *  or PoolEndEID that is not a non-negative integer in range is logged with
- *  its value and record path and treated as absent.
+ *  from the first. An EID, Instance, InstanceNumber or CpuIndex that is
+ *  not a non-negative integer in range is logged with its value and record
+ *  path and treated as absent.
  */
 std::vector<Device> devices(
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());

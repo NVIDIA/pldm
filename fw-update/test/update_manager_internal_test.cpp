@@ -30,7 +30,6 @@
 
 #include <sdbusplus/exception.hpp>
 
-#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -201,7 +200,7 @@ TEST_F(UpdateManagerInternalTest, seedRefreshCollectsStaticAndBridgePoolEids)
         spiIntf, {{"/inv/spi0", {{"svc", {spiIntf}}}}});
     UpdateManagerTestDBusHandler::setProps(
         "/inv/spi0", spiIntf,
-        {{"BridgePoolStartEid", uint64_t{40}},
+        {{"BridgePoolStartEID", uint64_t{40}},
          {"BridgePoolEndEID", uint64_t{42}}});
 
     std::set<mctp_eid_t> eids;
@@ -223,7 +222,7 @@ TEST_F(UpdateManagerInternalTest, seedWithoutBridgePoolsCollectsStaticEidsOnly)
     UpdateManagerTestDBusHandler::setProps(
         "/inv/spi0", spiIntf,
         {{"StaticEndpointID", uint64_t{12}},
-         {"BridgePoolStartEid", uint64_t{40}},
+         {"BridgePoolStartEID", uint64_t{40}},
          {"BridgePoolEndEID", uint64_t{42}}});
 
     std::set<mctp_eid_t> eids;
@@ -245,14 +244,14 @@ TEST_F(UpdateManagerInternalTest, seedRefreshIgnoresInvalidEidsAndPools)
         i2cIntf, {{"/inv/i2c0", {{"svc", {i2cIntf}}}}});
     UpdateManagerTestDBusHandler::setProps(
         "/inv/i2c0", i2cIntf,
-        {{"BridgePoolStartEid", uint64_t{42}},
+        {{"BridgePoolStartEID", uint64_t{42}},
          {"BridgePoolEndEID", uint64_t{40}}});
 
     // Pool start without an end inserts nothing.
     UpdateManagerTestDBusHandler::setSubtreeResponse(
         spiIntf, {{"/inv/spi0", {{"svc", {spiIntf}}}}});
     UpdateManagerTestDBusHandler::setProps(
-        "/inv/spi0", spiIntf, {{"BridgePoolStartEid", uint64_t{10}}});
+        "/inv/spi0", spiIntf, {{"BridgePoolStartEID", uint64_t{10}}});
 
     std::set<mctp_eid_t> eids;
     pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
@@ -272,7 +271,7 @@ TEST_F(UpdateManagerInternalTest, seedRefreshSkipsEndpointsThatIgnorePldm)
         "/inv/hmc-bridge", usbIntf,
         {{"StaticEndpointID", uint64_t{8}},
          {"IgnoreMessageTypes", std::string("1,2,3,4,6,126,127")},
-         {"BridgePoolStartEid", uint64_t{20}},
+         {"BridgePoolStartEID", uint64_t{20}},
          {"BridgePoolEndEID", uint64_t{21}}});
     // An entry ignoring only non-PLDM types is still seeded.
     UpdateManagerTestDBusHandler::setProps(
@@ -308,6 +307,31 @@ TEST_F(UpdateManagerInternalTest, seedRefreshIgnoreTypesMatchesWholeTokens)
     EXPECT_EQ(eids, (std::set<mctp_eid_t>{40}));
 }
 
+TEST_F(UpdateManagerInternalTest, seedRefreshLeavesOutTheIgnoredPoolEids)
+{
+    // the IO board pool 61..65 with 62 and 64 declared as not populated
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        usbIntf, {{"/inv/usb0", {{"svc", {usbIntf}}}},
+                  {"/inv/usb1", {{"svc", {usbIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb0", usbIntf,
+        {{"StaticEndpointID", uint64_t{60}},
+         {"BridgePoolStartEID", uint64_t{61}},
+         {"BridgePoolEndEID", uint64_t{65}},
+         {"IgnoreEIDs", std::string("62, 64")}});
+    // a list with a token that is no EID keeps the valid ones
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb1", usbIntf,
+        {{"StaticEndpointID", uint64_t{70}},
+         {"BridgePoolStartEID", uint64_t{71}},
+         {"BridgePoolEndEID", uint64_t{73}},
+         {"IgnoreEIDs", std::string("x,72,300")}});
+
+    std::set<mctp_eid_t> eids;
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{60, 61, 63, 65, 70, 71, 73}));
+}
+
 #ifdef OEM_NVIDIA
 /** @brief Publish an NvDevice @p name at @p path, with @p eid if set, and
  *         its .Transport properties @p transport. */
@@ -330,44 +354,29 @@ void publishDevice(const std::string& path, const std::string& name,
                                            transport);
 }
 
-TEST_F(UpdateManagerInternalTest, seedRefreshCollectsTopologyBridgePools)
+TEST_F(UpdateManagerInternalTest, seedRefreshCollectsTopologyDeviceEids)
 {
     pldm::utils::GetSubTreeResponse subtree;
-    publishDevice("/inv/a", "A", 12,
-                  {{"Medium", std::string("spi")},
-                   {"PoolStartEID", uint64_t{40}},
-                   {"PoolEndEID", uint64_t{42}}},
+    publishDevice("/inv/a", "A", 12, {{"Medium", std::string("spi")}}, subtree);
+    publishDevice("/inv/b", "B", 13, {{"Medium", std::string("usb")}}, subtree);
+    publishDevice("/inv/c", "C", 14, {{"Medium", std::string("i2c")}}, subtree);
+    // a device behind a bridge (Medium "bridge") is not seeded
+    publishDevice("/inv/d", "D", 15, {{"Medium", std::string("bridge")}},
                   subtree);
-    // the last EID a device can have closes the pool
-    publishDevice("/inv/b", "B", std::nullopt,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{0xFD}},
-                   {"PoolEndEID", uint64_t{0xFE}}},
-                  subtree);
-    // a pool of one EID
-    publishDevice("/inv/c", "C", std::nullopt,
-                  {{"Medium", std::string("i2c")},
-                   {"PoolStartEID", uint64_t{50}},
-                   {"PoolEndEID", uint64_t{50}}},
-                  subtree);
-    // a device behind a bridge (Medium "bridge") is not seeded, nor is its
-    // pool
-    publishDevice("/inv/d", "D", 13,
-                  {{"Medium", std::string("bridge")},
-                   {"PoolStartEID", uint64_t{60}},
-                   {"PoolEndEID", uint64_t{61}}},
+    // a device without an EID has nothing to seed
+    publishDevice("/inv/e", "E", std::nullopt, {{"Medium", std::string("usb")}},
                   subtree);
     UpdateManagerTestDBusHandler::setSubtreeResponse(
         pldm::em_device::nvDeviceIntf, subtree);
 
     std::set<mctp_eid_t> eids;
     pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{12, 40, 41, 42, 50, 0xFD, 0xFE}));
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{12, 13, 14}));
 
-    // the pre-update validation scope leaves the pools out, not the devices
+    // the pre-update validation scope keeps the devices as well
     eids.clear();
     pldm::fw_update::seedRefreshEidsFromStaticConfig(eids, false);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{12}));
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{12, 13, 14}));
 }
 
 TEST_F(UpdateManagerInternalTest, seedRefreshSkipsTopologyDevicesIgnoringPldm)
@@ -383,12 +392,8 @@ TEST_F(UpdateManagerInternalTest, seedRefreshSkipsTopologyDevicesIgnoringPldm)
          {"IgnoreMessageTypes", std::string("2, 1")}});
 
     pldm::utils::GetSubTreeResponse subtree;
-    // the bridge: its own EID is not seeded, the devices of its pool are
-    publishDevice("/inv/e", "E", 8,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{20}},
-                   {"PoolEndEID", uint64_t{21}}},
-                  subtree);
+    // the bridge: its own EID is not seeded
+    publishDevice("/inv/e", "E", 8, {{"Medium", std::string("usb")}}, subtree);
     // a device whose EID no target record marks as ignoring PLDM is seeded
     publishDevice("/inv/f", "F", 30, {{"Medium", std::string("spi")}}, subtree);
     UpdateManagerTestDBusHandler::setSubtreeResponse(
@@ -396,77 +401,80 @@ TEST_F(UpdateManagerInternalTest, seedRefreshSkipsTopologyDevicesIgnoringPldm)
 
     std::set<mctp_eid_t> eids;
     pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{20, 21, 30}));
-
-    // without the bridge pools, the bridge's own EID is still skipped
-    eids.clear();
-    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids, false);
     EXPECT_EQ(eids, (std::set<mctp_eid_t>{30}));
 
     // skipped, never removed: the EID already in the set (a live descriptor
     // key) stays
     eids = {8};
     pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{8, 20, 21, 30}));
-}
-
-TEST_F(UpdateManagerInternalTest, seedRefreshSkipsBadTopologyBridgePools)
-{
-    pldm::utils::GetSubTreeResponse subtree;
-    // a pool with a single usable bound is skipped; devices() drops a bound
-    // outside [0, maxDeviceEid]
-    // - an end past the EID range
-    publishDevice("/inv/a", "A", std::nullopt,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{40}},
-                   {"PoolEndEID", std::numeric_limits<uint64_t>::max()}},
-                  subtree);
-    // - the broadcast EID as the end
-    publishDevice("/inv/b", "B", std::nullopt,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{70}},
-                   {"PoolEndEID", uint64_t{0xFF}}},
-                  subtree);
-    // - a start past the EID range
-    publishDevice("/inv/c", "C", std::nullopt,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{0x100}},
-                   {"PoolEndEID", uint64_t{80}}},
-                  subtree);
-    // - an end without a start
-    publishDevice(
-        "/inv/e", "E", std::nullopt,
-        {{"Medium", std::string("usb")}, {"PoolEndEID", uint64_t{100}}},
-        subtree);
-    // an inverted pool
-    publishDevice("/inv/d", "D", std::nullopt,
-                  {{"Medium", std::string("usb")},
-                   {"PoolStartEID", uint64_t{91}},
-                   {"PoolEndEID", uint64_t{90}}},
-                  subtree);
-    // a device with an EID and no pool is still seeded
-    publishDevice("/inv/f", "F", 30, {{"Medium", std::string("usb")}}, subtree);
-    UpdateManagerTestDBusHandler::setSubtreeResponse(
-        pldm::em_device::nvDeviceIntf, subtree);
-
-    std::set<mctp_eid_t> eids;
-    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30}));
-}
-
-TEST_F(UpdateManagerInternalTest, seedBridgePoolBoundsAnUncheckedDevice)
-{
-    // a Device not read through em_device::devices() can carry an end past
-    // the EID range; the pool stops at the last EID a device can have
-    pldm::em_device::Device dev;
-    dev.name = "A";
-    dev.poolStartEid = 0xFD;
-    dev.poolEndEid = std::numeric_limits<uint64_t>::max();
-
-    std::set<mctp_eid_t> eids;
-    pldm::fw_update::seedBridgePool(dev, eids);
-    EXPECT_EQ(eids, (std::set<mctp_eid_t>{0xFD, 0xFE}));
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{8, 30}));
 }
 #endif
+
+TEST_F(UpdateManagerInternalTest, seedRefreshKeepsOnlyEidsMctpdEnumeratedForPldm)
+{
+    constexpr auto endpointIntf = "xyz.openbmc_project.MCTP.Endpoint";
+    const auto endpoint = [](unsigned eid) {
+        return "/au/com/codeconstruct/mctp1/networks/1/endpoints/" +
+               std::to_string(eid);
+    };
+    pldm::utils::GetSubTreeResponse endpoints;
+    for (unsigned eid : {40U, 41U, 43U, 44U})
+    {
+        endpoints.push_back({endpoint(eid), {{"mctpd", {endpointIntf}}}});
+    }
+    UpdateManagerTestDBusHandler::setSubtreeResponse(endpointIntf, endpoints);
+    UpdateManagerTestDBusHandler::setProps(
+        endpoint(40), endpointIntf,
+        {{"SupportedMessageTypes", std::vector<uint8_t>{0, 1, 5}}});
+    // an NVMe-MI drive: enumerated, but PLDM is not among its types
+    UpdateManagerTestDBusHandler::setProps(
+        endpoint(41), endpointIntf,
+        {{"SupportedMessageTypes", std::vector<uint8_t>{2, 4, 5}}});
+    UpdateManagerTestDBusHandler::setProps(
+        endpoint(43), endpointIntf,
+        {{"SupportedMessageTypes", std::vector<uint8_t>{1}}});
+    // 44: the types cannot be read, so the endpoint is taken as capable
+
+    // a bridge with the pool 40..44
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        usbIntf, {{"/inv/usb0", {{"svc", {usbIntf}}}}});
+    UpdateManagerTestDBusHandler::setProps(
+        "/inv/usb0", usbIntf,
+        {{"StaticEndpointID", uint64_t{30}},
+         {"BridgePoolStartEID", uint64_t{40}},
+         {"BridgePoolEndEID", uint64_t{44}}});
+
+    // 42 is not enumerated and 41 is not PLDM capable; a static EID is kept
+    std::set<mctp_eid_t> eids;
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30, 40, 43, 44}));
+
+    // the pre-update validation scope seeds no pool
+    eids.clear();
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids, false);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30}));
+
+    // EIDs already in the set (live descriptor keys) stay
+    eids = {41};
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30, 40, 41, 43, 44}));
+
+#ifdef OEM_NVIDIA
+    // a topology device mctpd has not enumerated is left out of the refresh
+    // but not of the validation scope
+    pldm::utils::GetSubTreeResponse subtree;
+    publishDevice("/inv/a", "A", 51, {{"Medium", std::string("spi")}}, subtree);
+    publishDevice("/inv/b", "B", 43, {{"Medium", std::string("usb")}}, subtree);
+    UpdateManagerTestDBusHandler::setSubtreeResponse(
+        pldm::em_device::nvDeviceIntf, subtree);
+    eids.clear();
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30, 40, 43, 44}));
+    eids.clear();
+    pldm::fw_update::seedRefreshEidsFromStaticConfig(eids, false);
+    EXPECT_EQ(eids, (std::set<mctp_eid_t>{30, 43, 51}));
+#endif
+}
 
 } // namespace

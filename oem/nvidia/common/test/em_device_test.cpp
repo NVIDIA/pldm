@@ -18,11 +18,9 @@
 #include "common/test/mocked_utils.hpp"
 #include "oem/nvidia/common/em_device.hpp"
 
-#include <limits>
 #include <map>
 #include <optional>
 #include <string>
-#include <tuple>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -104,7 +102,7 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
                {"EID", uint64_t{14}},
                {"ParentChassis", std::string("HGX_ProcessorModule_0")}}},
              {topo + "|" + transportIntf,
-              {{"Medium", std::string("usb")}, {"PoolStartEID", uint64_t{40}}}},
+              {{"Medium", std::string("usb")}}},
              {entity + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_CPU_0")},
                {"Kind", std::string("cpu")},
@@ -112,9 +110,7 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
                {"CpuIndex", uint64_t{2}},
                {"EID", uint64_t{14}}}},
              {entity + "|" + transportIntf,
-              {{"Medium", std::string("i2c")},
-               {"PoolStartEID", uint64_t{50}},
-               {"PoolEndEID", uint64_t{42}}}}});
+              {{"Medium", std::string("i2c")}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(1U, out.size());
@@ -125,11 +121,8 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
     EXPECT_EQ(std::optional<uint64_t>(0), out[0].instance);
     // taken from the second record, the first lacks it
     EXPECT_EQ(std::optional<uint64_t>(2), out[0].cpuIndex);
-    // the transport of the first record wins field by field; the pool end
-    // only the second record has is taken from it
+    // the transport of the first record wins
     EXPECT_EQ("usb", out[0].medium);
-    EXPECT_EQ(std::optional<uint64_t>(40), out[0].poolStartEid);
-    EXPECT_EQ(std::optional<uint64_t>(42), out[0].poolEndEid);
 
     auto byName = deviceByName("HGX_CPU_0", dbus);
     ASSERT_TRUE(byName);
@@ -305,13 +298,7 @@ TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
                {"Instance", std::vector<std::string>{"1"}},
                {"CpuIndex", uint64_t{4}}}},
              {bytes + "|" + transportIntf,
-              {{"Medium", std::string("spi")},
-               {"PoolStartEID",
-                std::vector<std::tuple<std::string, std::string, std::string>>{
-                    {"a", "b", "c"}}},
-               {"PoolEndEID",
-                std::vector<sdbusplus::object_path>{
-                    sdbusplus::object_path("/x")}}}},
+              {{"Medium", std::string("spi")}}},
              {strings + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_FPGA_1")},
                {"EID", uint64_t{0x11}},
@@ -325,8 +312,6 @@ TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
     EXPECT_FALSE(out[0].instance);
     EXPECT_EQ(std::optional<uint64_t>(4), out[0].cpuIndex);
     EXPECT_EQ("spi", out[0].medium);
-    EXPECT_FALSE(out[0].poolStartEid);
-    EXPECT_FALSE(out[0].poolEndEid);
     EXPECT_EQ("HGX_FPGA_1", out[1].name);
     EXPECT_EQ(std::optional<uint64_t>(0x11), out[1].eid);
     EXPECT_FALSE(out[1].instance);
@@ -363,93 +348,47 @@ TEST_F(EmDeviceDevices, mergesTheTransportOfTheTwoRecords)
     // the first record of each device is the one under /inventory/a
     const std::string noTransport = "/inventory/a/HGX_GPU_0";
     const std::string gpuEntity = "/inventory/b/HGX_GPU_0";
-    const std::string badPool = "/inventory/a/HGX_FPGA_0";
+    const std::string fpga = "/inventory/a/HGX_FPGA_0";
     const std::string fpgaEntity = "/inventory/b/HGX_FPGA_0";
     publish(
-        {badPool, noTransport, fpgaEntity, gpuEntity},
+        {fpga, noTransport, fpgaEntity, gpuEntity},
         {{noTransport + "|" + nvDeviceIntf,
           {{"Name", std::string("HGX_GPU_0")}}},
          {gpuEntity + "|" + nvDeviceIntf, {{"Name", std::string("HGX_GPU_0")}}},
-         {gpuEntity + "|" + transportIntf,
-          {{"Medium", std::string("usb")},
-           {"PoolStartEID", uint64_t{20}},
-           {"PoolEndEID", uint64_t{21}}}},
-         {badPool + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
-         {badPool + "|" + transportIntf,
-          {{"Medium", std::string("spi")},
-           {"PoolStartEID", uint64_t{0xFF}},
-           {"PoolEndEID", uint64_t{50}}}},
+         {gpuEntity + "|" + transportIntf, {{"Medium", std::string("usb")}}},
+         {fpga + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
+         {fpga + "|" + transportIntf, {{"Medium", std::string("spi")}}},
          {fpgaEntity + "|" + nvDeviceIntf,
           {{"Name", std::string("HGX_FPGA_0")}}},
-         {fpgaEntity + "|" + transportIntf,
-          {{"Medium", std::string("i2c")},
-           {"PoolStartEID", uint64_t{40}},
-           {"PoolEndEID", uint64_t{60}}}}});
+         {fpgaEntity + "|" + transportIntf, {{"Medium", std::string("i2c")}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(2U, out.size());
-    // devices are listed in the path order of their first record
-    // a pool EID the first record has out of range counts as none
+    // devices are listed in the path order of their first record; the
+    // medium of the first record wins
     EXPECT_EQ("HGX_FPGA_0", out[0].name);
     EXPECT_EQ("spi", out[0].medium);
-    EXPECT_EQ(std::optional<uint64_t>(40), out[0].poolStartEid);
-    EXPECT_EQ(std::optional<uint64_t>(50), out[0].poolEndEid);
-    // a first record without a .Transport interface takes all of it from
-    // the second
+    // a first record without a .Transport interface takes it from the second
     EXPECT_EQ("HGX_GPU_0", out[1].name);
     EXPECT_EQ("usb", out[1].medium);
-    EXPECT_EQ(std::optional<uint64_t>(20), out[1].poolStartEid);
-    EXPECT_EQ(std::optional<uint64_t>(21), out[1].poolEndEid);
 }
 
-TEST_F(EmDeviceDevices, readsTheTransportAndBoundsThePool)
+TEST_F(EmDeviceDevices, readsTheTransportMedium)
 {
-    const std::string bridge = "/inventory/platform/HGX_FPGA_0";
-    const std::string wide = "/inventory/platform/HGX_FPGA_1";
-    const std::string unparsable = "/inventory/platform/HGX_FPGA_2";
+    const std::string spi = "/inventory/platform/HGX_FPGA_0";
     const std::string bare = "/inventory/platform/HGX_GPU_0";
-    publish(
-        {bridge, wide, unparsable, bare},
-        {{bridge + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
-         {bridge + "|" + transportIntf,
-          {{"Medium", std::string("spi")},
-           {"PoolStartEID", uint64_t{0}},
-           {"PoolEndEID", uint64_t{0xFE}}}},
-         {wide + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_1")}}},
-         {wide + "|" + transportIntf,
-          {{"Medium", std::string("usb")},
-           {"PoolStartEID", uint64_t{0xFF}},
-           {"PoolEndEID", std::numeric_limits<uint64_t>::max()}}},
-         {unparsable + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_FPGA_2")}}},
-         {unparsable + "|" + transportIntf,
-          {{"Medium", std::string("i2c")},
-           {"PoolStartEID", true},
-           {"PoolEndEID", std::string("x")}}},
-         // no .Transport child interface
-         {bare + "|" + nvDeviceIntf, {{"Name", std::string("HGX_GPU_0")}}}});
+    publish({spi, bare},
+            {{spi + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
+             {spi + "|" + transportIntf, {{"Medium", std::string("spi")}}},
+             // no .Transport child interface
+             {bare + "|" + nvDeviceIntf, {{"Name", std::string("HGX_GPU_0")}}}});
 
     auto out = devices(dbus);
-    ASSERT_EQ(4U, out.size());
+    ASSERT_EQ(2U, out.size());
     EXPECT_EQ("HGX_FPGA_0", out[0].name);
     EXPECT_EQ("spi", out[0].medium);
-    // both ends of the accepted range [0, maxDeviceEid]
-    EXPECT_EQ(std::optional<uint64_t>(0), out[0].poolStartEid);
-    EXPECT_EQ(std::optional<uint64_t>(0xFE), out[0].poolEndEid);
-    // 0xFF is the broadcast EID; a value past it is dropped too
-    EXPECT_EQ("HGX_FPGA_1", out[1].name);
-    EXPECT_EQ("usb", out[1].medium);
-    EXPECT_FALSE(out[1].poolStartEid);
-    EXPECT_FALSE(out[1].poolEndEid);
-    // a value that is not a number is dropped, the rest is still read
-    EXPECT_EQ("HGX_FPGA_2", out[2].name);
-    EXPECT_EQ("i2c", out[2].medium);
-    EXPECT_FALSE(out[2].poolStartEid);
-    EXPECT_FALSE(out[2].poolEndEid);
-    EXPECT_EQ("HGX_GPU_0", out[3].name);
-    EXPECT_EQ("", out[3].medium);
-    EXPECT_FALSE(out[3].poolStartEid);
-    EXPECT_FALSE(out[3].poolEndEid);
+    EXPECT_EQ("HGX_GPU_0", out[1].name);
+    EXPECT_EQ("", out[1].medium);
 }
 
 using EmDevicePlatformPrefix = EmDeviceDevices;

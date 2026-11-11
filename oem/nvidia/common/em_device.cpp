@@ -201,10 +201,6 @@ void readTransport(Device& dev, const std::string& service,
         return;
     }
     dev.medium = stringProp(*props, "Medium");
-    dev.poolStartEid =
-        readNumber(*props, "PoolStartEID", maxDeviceEid, dev.name, path);
-    dev.poolEndEid =
-        readNumber(*props, "PoolEndEID", maxDeviceEid, dev.name, path);
 }
 
 /** @brief The device of the NvDevice record @p props at @p path; no name
@@ -245,8 +241,6 @@ void mergeDevice(Device& known, Device&& other, const MergeSource& src)
     merge(known.instance, other.instance, src, "Instance");
     merge(known.cpuIndex, other.cpuIndex, src, "CpuIndex");
     merge(known.medium, std::move(other.medium), src, "Medium");
-    merge(known.poolStartEid, other.poolStartEid, src, "PoolStartEID");
-    merge(known.poolEndEid, other.poolEndEid, src, "PoolEndEID");
 }
 
 } // namespace

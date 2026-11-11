@@ -37,10 +37,12 @@
 #include <algorithm>
 #include <bitset>
 #include <cassert>
+#include <charconv>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <map>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <string>
@@ -128,37 +130,101 @@ static bool configIgnoresPldm(const pldm::utils::PropertyMap& props)
     return false;
 }
 
-#ifdef OEM_NVIDIA
-/** @brief Add the downstream EID pool of the bridge @p dev to @p eids.
- *
- *  em_device::devices() drops a pool bound outside [0, maxDeviceEid]. A
- *  device with neither bound has no pool; one with a single bound, or with
- *  the start past the end, is logged and its pool skipped.
- */
-static void seedBridgePool(const pldm::em_device::Device& dev,
-                           std::set<mctp_eid_t>& eids)
+/** @brief The EIDs of the comma separated list @p list, such as the
+ *         IgnoreEIDs "62,64". A token that is not an EID is dropped. */
+static std::set<mctp_eid_t> parseEidList(std::string_view list)
 {
-    const auto& start = dev.poolStartEid;
-    const auto& end = dev.poolEndEid;
-    if (!start && !end)
+    std::set<mctp_eid_t> eids;
+    for (const auto& part : std::views::split(list, ','))
     {
-        return;
+        std::string_view token(part.begin(), part.end());
+        while (!token.empty() && token.front() == ' ')
+        {
+            token.remove_prefix(1);
+        }
+        while (!token.empty() && token.back() == ' ')
+        {
+            token.remove_suffix(1);
+        }
+        mctp_eid_t eid = 0;
+        const auto* last = token.data() + token.size();
+        auto [end, ec] = std::from_chars(token.data(), last, eid);
+        if (ec == std::errc{} && end == last)
+        {
+            eids.insert(eid);
+        }
     }
-    if (!start || !end || *start > *end)
+    return eids;
+}
+
+/** @brief The EIDs mctpd has enumerated that speak PLDM (MCTP message type
+ *         1), or std::nullopt when that cannot be told: mctpd is not
+ *         reachable or has enumerated no endpoint at all. An endpoint whose
+ *         SupportedMessageTypes cannot be read is taken as PLDM capable. */
+static std::optional<std::set<mctp_eid_t>> pldmCapableMctpEids()
+{
+    constexpr auto endpointIntf = "xyz.openbmc_project.MCTP.Endpoint";
+    pldm::utils::GetSubTreeResponse subtree;
+    try
+    {
+        subtree = pldm::utils::DBusHandler().getSubtree(
+            "/au/com/codeconstruct/mctp1", 0, {endpointIntf});
+    }
+    catch (const std::exception& e)
     {
         warning(
-            "seedRefreshEidsFromStaticConfig: skipping the EID pool of {NAME}: PoolStartEID and PoolEndEID must both be in [0, {MAX}], start <= end",
-            "NAME", dev.name, "MAX", pldm::em_device::maxDeviceEid);
-        return;
+            "seedRefreshEidsFromStaticConfig: listing the mctpd endpoints failed, error - {ERROR}; not filtering by mctpd",
+            "ERROR", e);
+        return std::nullopt;
     }
-    // the bound keeps the counter within mctp_eid_t for any Device
-    const uint64_t last = std::min(*end, pldm::em_device::maxDeviceEid);
-    for (uint64_t e = *start; e <= last; ++e)
+    if (subtree.empty())
     {
-        eids.insert(static_cast<mctp_eid_t>(e));
+        return std::nullopt;
     }
+
+    std::set<mctp_eid_t> eids;
+    for (const auto& [objPath, serviceMap] : subtree)
+    {
+        // .../networks/<n>/endpoints/<eid>
+        const auto slash = objPath.rfind('/');
+        mctp_eid_t eid = 0;
+        const auto* first = objPath.data() + slash + 1;
+        const auto* last = objPath.data() + objPath.size();
+        auto [end, ec] = std::from_chars(first, last, eid);
+        if (slash == std::string::npos || ec != std::errc{} || end != last)
+        {
+            continue;
+        }
+        bool speaksPldm = true;
+        if (!serviceMap.empty())
+        {
+            try
+            {
+                auto props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                    serviceMap.begin()->first.c_str(), objPath.c_str(),
+                    endpointIntf);
+                if (auto it = props.find("SupportedMessageTypes");
+                    it != props.end())
+                {
+                    if (const auto* types =
+                            std::get_if<std::vector<uint8_t>>(&it->second))
+                    {
+                        speaksPldm = std::ranges::find(*types, 1) != types->end();
+                    }
+                }
+            }
+            catch (const std::exception&)
+            {
+                // taken as PLDM capable
+            }
+        }
+        if (speaksPldm)
+        {
+            eids.insert(eid);
+        }
+    }
+    return eids;
 }
-#endif
 
 /** @brief Seed the pre-FW-update descriptor-refresh EID set with the complete
  *         set of statically-configured device EIDs.
@@ -168,23 +234,32 @@ static void seedBridgePool(const pldm::em_device::Device& dev,
  *  discovered at update time. To guarantee the COMPLETE device set is refreshed
  *  before an update, union every statically-assigned EID from the MCTP
  * transport config: each entry's StaticEndpointID, plus the full
- *  [BridgePoolStartEid, BridgePoolEndEID] range on bridge entries (covering the
+ *  [BridgePoolStartEID, BridgePoolEndEID] range on bridge entries (covering the
  *  bridged downstream devices). An entry whose IgnoreMessageTypes lists PLDM
  *  (type 1) is skipped — its endpoint by declaration never answers PLDM, so
  *  querying it can only fail. The pool range is still seeded for such an
  *  entry: the pool EIDs are the bridged downstream devices, whose PLDM
- *  capability is independent of the bridge's own. A platform topology device
- *  (NvDevice) whose EID such an entry declares is skipped too: it is the same
- *  endpoint. std::set dedups against the
+ *  capability is independent of the bridge's own. An EID the entry lists in
+ *  IgnoreEIDs is left out of the pool, as mctpreactor never creates it. A
+ *  platform topology device (NvDevice) whose EID such an entry declares is
+ *  skipped too: it is the same endpoint. std::set dedups against the
  *  live keys. This influences ONLY the refresh set — never device identity,
  *  inventory, or the MCTPTargetName join (those stay configured_by-resolved).
  *  D-Bus read failures are logged and skipped; never thrown.
  *
+ *  The refresh seeds a pool EID, or the EID of a topology device, only when
+ *  mctpd has enumerated it with PLDM among its supported message types: a
+ *  pool is an address range, so an EID mctpd has not enumerated is an
+ *  unpopulated slot, and one that does not speak PLDM (an NVMe-MI drive) can
+ *  only fail the query. When mctpd cannot be read nothing is filtered.
+ *
  *  @param[in,out] refreshEidSet - the dedup-ed refresh-EID set to seed
  *  @param[in] includeBridgePools - also seed each bridge's downstream EID
- *             pool. The pre-update validation scope passes false: a pool is
- *             an address range, not a device list, so an unpopulated slot
- *             would otherwise read as an unreachable device.
+ *             pool, filtered by mctpd. The pre-update validation scope
+ *             passes false: a pool is an address range, not a device list, so
+ *             an unpopulated slot would otherwise read as an unreachable
+ *             device, and a configured device that is gone from MCTP still
+ *             has to answer there.
  */
 static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                                             bool includeBridgePools = true)
@@ -192,6 +267,9 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
     // EIDs whose MCTP target record ignores PLDM; a topology device with one
     // of these EIDs is the same endpoint and is skipped as well
     [[maybe_unused]] std::set<mctp_eid_t> pldmIgnored;
+    const auto pldmCapable = includeBridgePools
+                                 ? pldmCapableMctpEids()
+                                 : std::optional<std::set<mctp_eid_t>>{};
     for (const char* intf : {"xyz.openbmc_project.Configuration.MCTPUSBDevice",
                              "xyz.openbmc_project.Configuration.MCTPI2CTarget",
                              "xyz.openbmc_project.Configuration.MCTPSPIDevice"})
@@ -254,15 +332,28 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                 continue;
             }
             auto poolStart = pldm::utils::readOptionalEidProperty(
-                props, "BridgePoolStartEid");
+                props, "BridgePoolStartEID");
             auto poolEnd =
                 pldm::utils::readOptionalEidProperty(props, "BridgePoolEndEID");
             if (poolStart && poolEnd && *poolStart <= *poolEnd)
             {
+                std::set<mctp_eid_t> ignored;
+                if (auto it = props.find("IgnoreEIDs"); it != props.end())
+                {
+                    if (const auto* list = std::get_if<std::string>(&it->second))
+                    {
+                        ignored = parseEidList(*list);
+                    }
+                }
                 for (uint16_t e = *poolStart;
                      e <= static_cast<uint16_t>(*poolEnd); ++e)
                 {
-                    refreshEidSet.insert(static_cast<mctp_eid_t>(e));
+                    const auto eid = static_cast<mctp_eid_t>(e);
+                    if (!ignored.contains(eid) &&
+                        (!pldmCapable || pldmCapable->contains(eid)))
+                    {
+                        refreshEidSet.insert(eid);
+                    }
                 }
             }
         }
@@ -286,14 +377,17 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                     "seedRefreshEidsFromStaticConfig: skipping EID {EID} of {NAME}: config ignores PLDM (MCTP message type 1)",
                     "EID", *dev.eid, "NAME", dev.name);
             }
+            else if (pldmCapable &&
+                     !pldmCapable->contains(static_cast<mctp_eid_t>(*dev.eid)))
+            {
+                info(
+                    "seedRefreshEidsFromStaticConfig: skipping EID {EID} of {NAME}: mctpd has no PLDM capable endpoint with it",
+                    "EID", *dev.eid, "NAME", dev.name);
+            }
             else
             {
                 refreshEidSet.insert(static_cast<mctp_eid_t>(*dev.eid));
             }
-        }
-        if (includeBridgePools)
-        {
-            seedBridgePool(dev, refreshEidSet);
         }
     }
 #endif
