@@ -188,10 +188,9 @@ TEST(EmDevicePolicyInventoryPaths, followTheKind)
     EXPECT_EQ(chassis + "HGX_ERoT_BMC_0", erot->create);
     EXPECT_EQ(bmc + "HGX_BMC_0", erot->update);
 
-    auto irot = inventoryPaths(device("HGX_IRoT_BMC_0", "irot"), "HGX_");
-    ASSERT_TRUE(irot);
-    EXPECT_EQ("", irot->create);
-    EXPECT_EQ(bmc + "HGX_BMC_0", irot->update);
+    // nsmd owns the SKU of an IRoT: pldmd writes nothing for it
+    EXPECT_FALSE(inventoryPaths(device("HGX_IRoT_BMC_0", "irot"), "HGX_"));
+    EXPECT_FALSE(inventoryPaths(device("IRoT_BMC_0", "irot"), ""));
 
     auto cx = inventoryPaths(device("HGX_CX9_0", "cx9_io"), "HGX_");
     ASSERT_TRUE(cx);

@@ -110,8 +110,12 @@ struct InventoryPaths
 
 /** @brief Where pldmd writes the device identity (UUID, SKUs): the RoT
  *         chassis and the update target, by device kind. A device without
- *         a RoT chassis (create path empty) gets its AP-SKU only: an IRoT,
- *         a CX9 IO board, and the GPU and HPM SMAs (gpu_sma, hmc_hpm_sma). */
+ *         a RoT chassis (create path empty) gets its AP-SKU only: a CX9 IO
+ *         board, and the GPU and HPM SMAs (gpu_sma, hmc_hpm_sma). An IRoT
+ *         gets nothing: nsmd reports and updates its AP-SKU (the shared
+ *         bmc_irot profile), and a second writer on the BMC would hide the
+ *         writable SKU, because bmcweb reads the SKU on the update target
+ *         first and only follows the association to nsmd when it is empty. */
 inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
                                                     const std::string& prefix)
 {
@@ -135,7 +139,8 @@ inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
     }
     if (dev.kind == "irot")
     {
-        return InventoryPaths{"", bmc};
+        // nsmd owns the SKU of an IRoT
+        return std::nullopt;
     }
     if (dev.kind == "cx9_io" || dev.kind == "gpu_sma" ||
         dev.kind == "hmc_hpm_sma")
