@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <format>
+#include <iterator>
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/platform-mc/oem_nvidia.hpp"
@@ -93,12 +94,6 @@ bool isEndpointDevice(const std::string& deviceName,
         return true;
     }
     return name && *name == deviceName;
-}
-
-bool isEndpointDevice(const pldm::em_device::Device& dev,
-                      const MctpInfo& mctpInfo)
-{
-    return isEndpointDevice(dev.name, dev.eid, mctpInfo);
 }
 
 using Devices = std::vector<pldm::em_device::Device>;
@@ -250,23 +245,13 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
             interested = true;
         }
         // The top chassis of the platform is the system inventory.
-        if (intf == "xyz.openbmc_project.Configuration.NsmDeviceAssociation" ||
-            intf == pldm::em_device::topChassisIntf)
+        if (intf == pldm::em_device::topChassisIntf)
         {
             interested = true;
         }
-#endif
-        // Device-association configs bind an inventory object to a terminus
-        // (checkDeviceInventory); one arriving after its box was scanned
-        // must trigger a re-scan just like the NSM variant above.
-        if (intf == "xyz.openbmc_project.Configuration.I2CDeviceAssociation" ||
-            intf == "xyz.openbmc_project.Configuration.USBDeviceAssociation" ||
-            intf == "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
-        {
-            interested = true;
-        }
-#ifdef OEM_NVIDIA
-        // A device record matters only to the terminus it names.
+        // A device record matters only to the terminus it names. Its
+        // NvDevice decides which inventory objects the terminus binds to
+        // (findDeviceInventory()).
         if (intf == pldm::em_device::pldmDeviceIntf ||
             intf == pldm::em_device::nvDeviceIntf)
         {
@@ -304,12 +289,9 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
         // registered before scanInventories snapshots the subtree).
         // needRefresh is already latched above, so this return only defers
         // the refresh — applyPendingRefresh() serves it right after init
-        // completes; the signal is not dropped. This keeps the original
-        // init-time deferral for NsmDeviceAssociation (the race fix that
-        // latched needRefresh during init) and extends it to every
-        // interested interface: a dropped signal leaves fallback-gated
-        // sensors without metric-report updates until an unrelated future
-        // inventory event.
+        // completes; the signal is not dropped. A dropped signal would
+        // leave fallback-gated sensors without metric-report updates until
+        // an unrelated future inventory event.
         lg2::info("Tid={TID} interested inventory interface arrived on "
                   "{PATH} during init; refresh deferred until Terminus is "
                   "initialized",
@@ -320,203 +302,85 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
     refreshAssociations();
 }
 
-bool Terminus::checkNsmDeviceInventory(UUID nsmUuid)
-{
-    if (nsmUuid.substr(0, 36) == uuid.substr(0, 36))
-    {
-        return true;
-    }
-    else
-    {
-        lg2::debug(
-            "checkNsmDeviceInventory: NSM UUID {NSMUUID} does not map to terminus MCTP UUID {UUID} (TID {TID})",
-            "NSMUUID", nsmUuid, "UUID", uuid, "TID", tid);
-        return false;
-    }
-}
-
-exec::task<int> Terminus::checkDeviceInventory(const std::string& objPath)
-{
 #ifdef OEM_NVIDIA
-    // A device described by the platform topology: the chassis object whose
-    // leaf is the NvDevice name as EM writes it into a path, for the device
-    // that is this terminus's endpoint by EID or by name (see
-    // isEndpointDevice()), with the sensor names and ports in the device's
-    // PLDMDevice record. A device without a PLDMDevice record, or without a
-    // valid EID, is left to the association children below.
-    if (objPath.starts_with(pldm::em_device::chassisRoot))
+std::optional<Terminus::DeviceInventory> Terminus::findDeviceInventory(
+    const std::vector<std::string>& paths)
+{
+    const std::optional<MctpInfo> mctpInfo = terminusManager.toMctpInfo(tid);
+    std::optional<pldm::em_device::Device> dev =
+        mctpInfo ? endpointDevice(*mctpInfo) : std::nullopt;
+    if (!dev)
     {
-        const std::string leaf =
-            objPath.substr(std::string(pldm::em_device::chassisRoot).size());
-        const std::optional<MctpInfo> mctpInfo =
-            terminusManager.toMctpInfo(tid);
-        auto dev = leaf.find('/') == std::string::npos
-                       ? pldm::em_device::deviceByPathSegment(
-                             leaf, utils::DBusHandler())
-                       : std::nullopt;
-        // The device matched before is matched again below or no more.
-        if (dev && dev->name == deviceName)
-        {
-            deviceName.clear();
-        }
-        if (dev && !dev->eid)
+        deviceName.clear();
+        if (!deviceInventoryWarned)
         {
             lg2::warning(
-                "NvDevice {NAME} of {PATH} has no valid EID; matching it to TID {TID} by its association configs",
-                "NAME", dev->name, "PATH", objPath, "TID", tid);
+                "TID {TID} (EID {EID}, endpoint {NAME}) has no NvDevice; it "
+                "binds to no device inventory",
+                "TID", tid, "EID", mctpInfo ? std::get<0>(*mctpInfo) : 0,
+                "NAME", mctpInfo ? std::get<4>(*mctpInfo).value_or("") : "");
+            deviceInventoryWarned = true;
         }
-        else if (dev)
-        {
-            // The chassis of a device with an EID belongs to that device's
-            // terminus only, whatever its association children say.
-            if (!mctpInfo || !isEndpointDevice(*dev, *mctpInfo))
-            {
-                co_return PLDM_FAILED;
-            }
-            // For namesEndpoint(): the PLDMDevice record of the device
-            // concerns this terminus until a rescan refuses the device.
-            deviceName = dev->name;
-            if (auto record = pldm::em_device::pldmDevice(dev->name,
-                                                          utils::DBusHandler()))
-            {
-                // Sensor records that still carry their own config (e.g.
-                // ThermalParameters) are read first. The record's aux names
-                // replace theirs; its ports add to their port info.
-                co_await getSensorAuxNameFromEM(
-                    0, 0, static_cast<uint8_t>(*dev->eid), objPath,
-                    /*namesFromRecord=*/true);
-                co_await getPortInfoFromEM(objPath);
-                loadDeviceRecord(*record, objPath);
-                co_await getInfoForNVSwitchFromEM(objPath);
-                co_await getSensorEventInfoFromEM(objPath);
-                co_return PLDM_SUCCESS;
-            }
-        }
+        return std::nullopt;
     }
-#endif
-
-    try
+    deviceName = dev->name;
+    auto withPaths = [&paths](auto isObject) {
+        std::vector<std::string> found;
+        std::ranges::copy_if(paths, std::back_inserter(found), isObject);
+        return found;
+    };
+    std::vector<std::string> own = withPaths([&dev](const std::string& path) {
+        return pldm::em_device::isSystemObjectNamed(path, dev->name);
+    });
+    if (own.empty())
     {
-        auto getSubTreeResponse = co_await utils::coGetSubTree(
-            objPath, 0,
-            {"xyz.openbmc_project.Configuration.I2CDeviceAssociation",
-             "xyz.openbmc_project.Configuration.USBDeviceAssociation",
-             "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
-             "xyz.openbmc_project.Configuration.NsmDeviceAssociation"});
-
-        if (getSubTreeResponse.size() == 0)
-        {
-            co_return PLDM_SUCCESS;
-        }
-
-        const std::optional<MctpInfo> mctpInfo =
-            terminusManager.toMctpInfo(tid);
-
-        if (!mctpInfo.has_value())
-        {
-            co_return PLDM_FAILED;
-        }
-
-        const EID terminusEid = std::get<0>(mctpInfo.value());
-        bool found = false;
-
-        for (const auto& [objectPath, serviceMap] : getSubTreeResponse)
-        {
-            for (const auto& [serviceName, interfaces] : serviceMap)
-            {
-                for (const auto& interface : interfaces)
-                {
-                    uint64_t bus = 0;
-                    uint64_t addr = 0;
-                    uint64_t inventoryEid = 0;
-                    if (interface ==
-                        "xyz.openbmc_project.Configuration.I2CDeviceAssociation")
-                    {
-                        bus = co_await utils::coGetDbusProperty<uint64_t>(
-                            objectPath.c_str(), "Bus",
-                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
-                            serviceName);
-                        addr = co_await utils::coGetDbusProperty<uint64_t>(
-                            objectPath.c_str(), "Address",
-                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
-                            serviceName);
-                        inventoryEid = co_await utils::coGetDbusProperty<
-                            uint64_t>(
-                            objectPath.c_str(), "EID",
-                            "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
-                            serviceName);
-                        if (terminusEid == inventoryEid)
-                        {
-                            found = true;
-                        }
-                    }
-                    else if (
-                        interface ==
-                        "xyz.openbmc_project.Configuration.USBDeviceAssociation")
-                    {
-                        inventoryEid = co_await utils::coGetDbusProperty<
-                            uint64_t>(
-                            objectPath.c_str(), "EID",
-                            "xyz.openbmc_project.Configuration.USBDeviceAssociation");
-                        if (terminusEid == inventoryEid)
-                        {
-                            found = true;
-                        }
-                    }
-                    else if (
-                        interface ==
-                        "xyz.openbmc_project.Configuration.MctpEndpointAssociation")
-                    {
-                        inventoryEid = co_await utils::coGetDbusProperty<
-                            uint64_t>(
-                            objectPath.c_str(), "EID",
-                            "xyz.openbmc_project.Configuration.MctpEndpointAssociation",
-                            serviceName);
-                        if (terminusEid == inventoryEid)
-                        {
-                            found = true;
-                        }
-                    }
-                    else if (
-                        interface ==
-                        "xyz.openbmc_project.Configuration.NsmDeviceAssociation")
-                    {
-                        auto nsmUuid = co_await utils::coGetDbusProperty<
-                            std::string>(
-                            objectPath.c_str(), "UUID",
-                            "xyz.openbmc_project.Configuration.NsmDeviceAssociation",
-                            serviceName);
-                        found = checkNsmDeviceInventory(nsmUuid);
-                    }
-
-                    if (found)
-                    {
-                        lg2::debug(
-                            "checkDeviceInventory: matched device inventory for TID {TID} at {PATH} (eid={EID} bus={BUS} addr={ADDR}); loading EM config",
-                            "TID", tid, "PATH", objPath, "EID", inventoryEid,
-                            "BUS", bus, "ADDR", addr);
-                        co_await getSensorAuxNameFromEM(bus, addr, inventoryEid,
-                                                        objPath);
-#ifdef OEM_NVIDIA
-                        co_await getPortInfoFromEM(objPath);
-                        co_await getInfoForNVSwitchFromEM(objPath);
-                        co_await getSensorEventInfoFromEM(objPath);
-#endif
-                        co_return PLDM_SUCCESS;
-                    }
-                }
-            }
-        }
+        own = withPaths([&dev](const std::string& path) {
+            return pldm::em_device::isParentChassisObject(path,
+                                                          dev->parentChassis);
+        });
     }
-    catch (const std::exception& e)
+    if (own.empty())
     {
-        lg2::error(
-            "no interested Configuration PDIs found, Error: {ERROR} path:{PATH}",
-            "ERROR", e, "PATH", objPath);
+        if (!deviceInventoryWarned)
+        {
+            lg2::warning("TID {TID}: no inventory object is named after its "
+                         "NvDevice {NAME} or is its ParentChassis '{PARENT}'; "
+                         "it binds to no device inventory",
+                         "TID", tid, "NAME", dev->name, "PARENT",
+                         dev->parentChassis);
+            deviceInventoryWarned = true;
+        }
+        return std::nullopt;
     }
-
-    co_return PLDM_FAILED;
+    deviceInventoryWarned = false;
+    return DeviceInventory{std::move(*dev), std::move(own)};
 }
+
+exec::task<void> Terminus::loadDeviceConfigs(const pldm::em_device::Device& dev,
+                                             const std::string& objPath)
+{
+    const std::optional<MctpInfo> mctpInfo = terminusManager.toMctpInfo(tid);
+    const EID eid = dev.eid ? static_cast<EID>(*dev.eid)
+                            : (mctpInfo ? std::get<0>(*mctpInfo) : EID{0});
+    const std::optional<pldm::em_device::PldmDevice> record =
+        pldm::em_device::pldmDevice(dev.name, utils::DBusHandler());
+    lg2::debug("TID {TID} binds to {PATH}, the inventory of NvDevice {NAME}; "
+               "loading its EM config",
+               "TID", tid, "PATH", objPath, "NAME", dev.name);
+    // Sensor records that still carry their own config (e.g.
+    // ThermalParameters) are read first. The record's aux names replace
+    // theirs; its ports add to their port info.
+    co_await getSensorAuxNameFromEM(eid, objPath,
+                                    /*namesFromRecord=*/record.has_value());
+    co_await getPortInfoFromEM(objPath);
+    if (record)
+    {
+        loadDeviceRecord(*record, objPath);
+    }
+    co_await getInfoForNVSwitchFromEM(objPath);
+    co_await getSensorEventInfoFromEM(objPath);
+}
+#endif
 
 #ifdef OEM_NVIDIA
 void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
@@ -587,11 +451,9 @@ void Terminus::loadSensorRoles()
                "of {NAME}",
                "TID", tid, "COUNT", sensorRoles.size(), "NAME", dev->name);
 }
-#endif
 
-exec::task<int> Terminus::getSensorAuxNameFromEM(
-    uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath,
-    bool namesFromRecord)
+exec::task<void> Terminus::getSensorAuxNameFromEM(
+    EID eid, const std::string& objPath, bool namesFromRecord)
 {
     static constexpr const char* sensorAuxInterface =
         "xyz.openbmc_project.Configuration.SensorAuxName";
@@ -611,12 +473,12 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
                 lg2::debug(
                     "getSensorAuxNameFromEM: no SensorAuxName config under {PATH} (eid={EID})",
                     "PATH", objPath, "EID", eid);
-                co_return PLDM_SUCCESS;
+                co_return;
             }
             lg2::error(
-                "getSensorAuxNameFromEM: unable to load SensorAuxName config from EM under {PATH} (eid={EID} bus={BUS} addr={ADDR}); sensor names fall back to PLDM defaults",
-                "PATH", objPath, "EID", eid, "BUS", bus, "ADDR", addr);
-            co_return PLDM_SUCCESS;
+                "getSensorAuxNameFromEM: unable to load SensorAuxName config from EM under {PATH} (eid={EID}); sensor names fall back to PLDM defaults",
+                "PATH", objPath, "EID", eid);
+            co_return;
         }
 
         for (const auto& [path, mapperServiceMap] : getSubTreeResponse)
@@ -658,27 +520,7 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
             const auto auxNames =
                 std::get<std::vector<std::string>>(properties.at("AuxNames"));
 
-            // Check Bus/Address property if they exist
-            if (properties.contains("Bus"))
-            {
-                const auto mctpI2cBus =
-                    std::get<uint64_t>(properties.at("Bus"));
-                if (mctpI2cBus != 0 && mctpI2cBus != bus)
-                {
-                    continue;
-                }
-            }
-
-            if (properties.contains("Address"))
-            {
-                const auto mctpI2cAddr =
-                    std::get<uint64_t>(properties.at("Address"));
-                if (mctpI2cAddr != 0 && mctpI2cAddr != addr)
-                {
-                    continue;
-                }
-            }
-
+            // A config of another device under the same object.
             if (properties.contains("EID"))
             {
                 const auto mctpEid = std::get<uint64_t>(properties.at("EID"));
@@ -712,10 +554,9 @@ exec::task<int> Terminus::getSensorAuxNameFromEM(
         lg2::info("no Configuration.SensorAuxName Error: {ERROR} path:{PATH}",
                   "ERROR", e, "PATH", objPath);
     }
-    co_return PLDM_SUCCESS;
+    co_return;
 }
 
-#ifdef OEM_NVIDIA
 exec::task<int> Terminus::getPortInfoFromEM(const std::string& objPath)
 {
     try

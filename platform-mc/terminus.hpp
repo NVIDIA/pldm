@@ -344,26 +344,50 @@ class Terminus
      * /xyz/openbmc_project/inventory */
     void interfaceAdded(sdbusplus::message::message& m);
 
-    /** @brief check if device inventory belong to the terminus
-     *
-     *  @param[in] objPath - device inventory path
-     *  @return true  - the device inventory might belong to the terminus
-     *          false - the device inventory doesn't belong to the terminus
-     */
-    exec::task<int> checkDeviceInventory(const std::string& objPath);
-
 #ifdef OEM_NVIDIA
+    /** @brief The NvDevice of this terminus and the inventory objects it
+     *         binds to. */
+    struct DeviceInventory
+    {
+        pldm::em_device::Device device;
+        std::vector<std::string> paths;
+    };
+
+    /** @brief Find the NvDevice of this terminus (the device of its
+     *         endpoint, by name, else by EID) and the inventory objects
+     *         among @p paths that belong to it: the objects named after the
+     *         NvDevice, in any category of the system inventory, else the
+     *         object of its ParentChassis
+     *         (em_device::isParentChassisObject()).
+     *
+     *  Sets deviceName to the NvDevice, empty without one. None, so no
+     *  device inventory, without an NvDevice or without an object of it
+     *  among @p paths; this is logged once until the terminus binds again.
+     */
+    std::optional<DeviceInventory> findDeviceInventory(
+        const std::vector<std::string>& paths);
+
+    /** @brief Load the Entity Manager config of the device @p dev at its
+     *         inventory object @p objPath: the SensorAuxName configs of the
+     *         device's EID under @p objPath, the SensorPortInfo, NVSwitch and
+     *         sensor event configs under @p objPath, and the device's
+     *         PLDMDevice record. */
+    exec::task<void> loadDeviceConfigs(const pldm::em_device::Device& dev,
+                                       const std::string& objPath);
+
     /** @brief Fill the aux-name and port-info tables from a PLDMDevice
      *         record of the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
 
-    /** @brief The NvDevice this terminus was matched to; empty until the
-     *         chassis scan (checkDeviceInventory()) found it, and again
-     *         once a scan of its chassis no longer matches it. A removed
-     *         NvDevice is not forgotten; a stale name only causes extra
-     *         refreshes when that device's records reappear. */
+    /** @brief The NvDevice of this terminus; empty until an inventory scan
+     *         (findDeviceInventory()) found it, and again once a scan no longer
+     *         finds one. */
     std::string deviceName;
+
+    /** @brief Whether the last scan found no device inventory for this
+     *         terminus and logged it, so that it is logged once. */
+    bool deviceInventoryWarned = false;
 
     /** @brief Read sensorRoles anew from the PLDMDevice record of the
      *         NvDevice that is the endpoint of this terminus.
@@ -391,20 +415,18 @@ class Terminus
      *         sensor or effecter of this terminus had when
      *         nvidiaUpdateAssociations() ran, so that each is logged once. */
     std::set<std::pair<std::string, std::string>> unmatchedSensorRoles;
-#endif
-    bool checkNsmDeviceInventory(UUID nsmUuid);
 
     /** @brief get Sensor Aux Name from EM configuration PDI
      *
+     *  @param[in] eid - EID of the device; a config with another non-zero
+     *             EID belongs to another device under the same object
      *  @param[in] objPath - device inventory path
      *  @param[in] namesFromRecord - a PLDMDevice record supplies the names,
      *             so the absence of SensorAuxName configs is not an error
      */
-    exec::task<int> getSensorAuxNameFromEM(
-        uint8_t bus, uint8_t addr, uint8_t eid, const std::string& objPath,
-        bool namesFromRecord = false);
+    exec::task<void> getSensorAuxNameFromEM(EID eid, const std::string& objPath,
+                                            bool namesFromRecord = false);
 
-#ifdef OEM_NVIDIA
     /** @brief get sensor Port information from EM configuration PDI
      *
      *  @param[in] objPath - device inventory path

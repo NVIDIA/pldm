@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <ranges>
 
 namespace pldm::platform_mc::oem_nvidia
 {
@@ -242,8 +243,22 @@ exec::task<int> InventoryManager::scan(Terminus& terminus)
     {
         auto subtree = co_await utils::coGetSubTree(
             "/xyz/openbmc_project/inventory", 0, interestingInterfaces());
+        const std::vector<std::string> paths =
+            subtree | std::views::keys | std::ranges::to<std::vector>();
+        const std::optional<Terminus::DeviceInventory> device =
+            terminus.findDeviceInventory(paths);
+        if (device)
+        {
+            // The configs of the device hang off its first object.
+            co_await terminus.loadDeviceConfigs(device->device,
+                                                device->paths.front());
+        }
         for (const auto& [path, services] : subtree)
         {
+            if (!device || !std::ranges::contains(device->paths, path))
+            {
+                continue;
+            }
             Inventory inventory{path, 0, 0xFFFF};
             for (const auto& [service, interfaces] : services)
             {
@@ -251,10 +266,6 @@ exec::task<int> InventoryManager::scan(Terminus& terminus)
                 {
                     co_await collectInterface(inventory, service, interface);
                 }
-            }
-            if (co_await terminus.checkDeviceInventory(path) != PLDM_SUCCESS)
-            {
-                continue;
             }
             newInventories.push_back(inventory);
             co_await getInventoryParent(path, newInventoryParents);

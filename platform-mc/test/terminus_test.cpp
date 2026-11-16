@@ -1542,18 +1542,6 @@ static inline std::vector<uint16_t> debugThenOtherStateSetIds(uint16_t otherId)
     return ids;
 }
 
-TEST_F(TerminusTest, checkDeviceInventoryReturnsSuccessWithoutAssociations)
-{
-    std::string uuid("00000000-0000-0000-0000-000000000210");
-    Terminus terminus(0x21, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-
-    auto rc = syncWaitWithDbusIo(terminus.checkDeviceInventory(
-        "/xyz/openbmc_project/inventory/system/chassis/cov210"));
-    ASSERT_TRUE(rc.has_value());
-    EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*rc));
-}
-
 TEST_F(TerminusTest, getPortInfoFromEMReturnsFailedWithoutEntriesCoverage)
 {
     std::string uuid("00000000-0000-0000-0000-000000000219");
@@ -3031,11 +3019,6 @@ TEST_F(TerminusTest, interfaceAddedAndOnlineOfflineCoverage)
     std::string uuid("00000000-0000-0000-0000-0000000000BB");
     Terminus terminus(0x0B, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-
-    // Cover checkNsmDeviceInventory true/false branches.
-    EXPECT_TRUE(terminus.checkNsmDeviceInventory(uuid));
-    EXPECT_FALSE(terminus.checkNsmDeviceInventory(
-        "00000000-0000-0000-0000-0000000000CC"));
 
     // Cover interfaceAdded fast path and refresh trigger path.
     pldm::dbus::PropertyMap properties;
@@ -7108,17 +7091,6 @@ TEST_F(TerminusTest, interfaceAddedEntityAndAssociationConflictCoverage)
     EXPECT_NO_THROW(terminus.interfaceAdded(msg));
     EXPECT_TRUE(terminus.refreshAssociationsTaskHandle.has_value());
 
-    interfaces.clear();
-    interfaces.emplace("xyz.openbmc_project.Configuration.NsmDeviceAssociation",
-                       properties);
-    auto nsmMsg =
-        rawBus.new_method_call("org.test", "/xyz/openbmc_project/inventory/nsm",
-                               "org.test.Interface", "Method");
-    nsmMsg.append(sdbusplus::object_path("/xyz/openbmc_project/inventory/nsm"),
-                  interfaces);
-    sealAndRewind(nsmMsg);
-    EXPECT_NO_THROW(terminus.interfaceAdded(nsmMsg));
-
     auto entityAssociationPdr = makeEntityAssociationPdr();
     terminus.parseEntityAssociationPDR(entityAssociationPdr);
     auto conflictingPdr = makeEntityAssociationPdr();
@@ -7821,82 +7793,6 @@ TEST_F(TerminusTest, interfaceAddedEntityInterfaceInProgressHandleCoverage)
     EXPECT_FALSE(terminus.refreshAssociationsTaskHandle->second.has_value());
 }
 
-TEST_F(TerminusTest, interfaceAddedNsmAssociationCoverage)
-{
-#ifdef OEM_NVIDIA
-    std::string uuid("00000000-0000-0000-0000-000000000173");
-    Terminus terminus(0x73, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    terminus.initialized = true;
-
-    auto rawBus = sdbusplus::bus::new_default();
-    pldm::dbus::InterfaceMap interfaces;
-    interfaces.emplace("xyz.openbmc_project.Configuration.NsmDeviceAssociation",
-                       pldm::dbus::PropertyMap{});
-    auto msg = rawBus.new_method_call(
-        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis73",
-        "org.test.Interface", "Method");
-    msg.append(sdbusplus::object_path(
-                   "/xyz/openbmc_project/inventory/system/chassis/chassis73"),
-               interfaces);
-    sealAndRewind(msg);
-
-    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
-    EXPECT_FALSE(terminus.needRefresh);
-    EXPECT_TRUE(terminus.refreshAssociationsTaskHandle.has_value());
-
-    waitForRefreshAssociationsTask(terminus);
-#endif
-}
-
-TEST_F(TerminusTest, interfaceAddedDeviceAssociationCoverage)
-{
-    std::string uuid("00000000-0000-0000-0000-00000000017E");
-    Terminus terminus(0x7E, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
-                      terminusManager);
-    terminus.initialized = true;
-
-    // A device-association config (I2C/USB) arriving after its inventory
-    // box was scanned must trigger a refresh, like the NSM variant.
-    auto rawBus = sdbusplus::bus::new_default();
-    pldm::dbus::InterfaceMap interfaces;
-    interfaces.emplace("xyz.openbmc_project.Configuration.USBDeviceAssociation",
-                       pldm::dbus::PropertyMap{});
-    auto msg = rawBus.new_method_call(
-        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7E",
-        "org.test.Interface", "Method");
-    msg.append(sdbusplus::object_path(
-                   "/xyz/openbmc_project/inventory/system/chassis/chassis7E"),
-               interfaces);
-    sealAndRewind(msg);
-
-    EXPECT_NO_THROW(terminus.interfaceAdded(msg));
-    EXPECT_TRUE(terminus.refreshAssociationsTaskHandle.has_value());
-    waitForRefreshAssociationsTask(terminus);
-
-    std::string i2cUuid("00000000-0000-0000-0000-00000000017F");
-    Terminus i2cTerminus(0x7F, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, i2cUuid,
-                         terminusManager);
-    i2cTerminus.initialized = true;
-
-    pldm::dbus::InterfaceMap i2cInterfaces;
-    i2cInterfaces.emplace(
-        "xyz.openbmc_project.Configuration.I2CDeviceAssociation",
-        pldm::dbus::PropertyMap{});
-    auto i2cMsg = rawBus.new_method_call(
-        "org.test", "/xyz/openbmc_project/inventory/system/chassis/chassis7F",
-        "org.test.Interface", "Method");
-    i2cMsg.append(
-        sdbusplus::object_path(
-            "/xyz/openbmc_project/inventory/system/chassis/chassis7F"),
-        i2cInterfaces);
-    sealAndRewind(i2cMsg);
-
-    EXPECT_NO_THROW(i2cTerminus.interfaceAdded(i2cMsg));
-    EXPECT_TRUE(i2cTerminus.refreshAssociationsTaskHandle.has_value());
-    waitForRefreshAssociationsTask(i2cTerminus);
-}
-
 TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
 {
     using pldm::em_device::nvDeviceIntf;
@@ -7989,9 +7885,8 @@ TEST_F(TerminusTest, interfaceAddedDeviceRecordOnlyOfItsTerminus)
     EXPECT_FALSE(interestedIn(pldmDeviceIntf, byTarget));
     EXPECT_FALSE(interestedIn(pldmDeviceIntf, byRecordName));
 
-    // The other interfaces still need no match.
-    EXPECT_TRUE(interestedIn(
-        "xyz.openbmc_project.Configuration.USBDeviceAssociation", {}));
+    // The inventory interfaces still need no match.
+    EXPECT_TRUE(interestedIn("xyz.openbmc_project.Inventory.Item.Board", {}));
 }
 
 TEST_F(TerminusTest, interfaceAddedNvDeviceEidOfEveryPropertyType)

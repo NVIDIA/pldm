@@ -297,17 +297,31 @@ std::string dbusPathSegment(std::string name)
     return name;
 }
 
-std::optional<Device> deviceByPathSegment(
-    const std::string& segment, const pldm::utils::DBusHandlerInterface& bus)
+bool isSystemObjectNamed(std::string_view path, const std::string& name)
 {
-    for (auto& dev : devices(bus))
+    const std::string_view root = systemRoot;
+    if (name.empty() || !path.starts_with(root))
     {
-        if (dbusPathSegment(dev.name) == segment)
-        {
-            return dev;
-        }
+        return false;
     }
-    return std::nullopt;
+    const std::string_view rest = path.substr(root.size());
+    const size_t slash = rest.find('/');
+    return slash != std::string_view::npos && slash != 0 &&
+           rest.substr(slash + 1) == dbusPathSegment(name);
+}
+
+bool isParentChassisObject(std::string_view path, const std::string& parent)
+{
+    const size_t slash = parent.rfind('/');
+    if (slash == std::string::npos)
+    {
+        return isSystemObjectNamed(path, parent);
+    }
+    const std::string leaf = parent.substr(slash + 1);
+    return !leaf.empty() &&
+           path ==
+               std::format("{}{}{}", systemRoot, parent.substr(0, slash + 1),
+                           dbusPathSegment(leaf));
 }
 
 std::string platformPrefix(const pldm::utils::DBusHandlerInterface& bus)

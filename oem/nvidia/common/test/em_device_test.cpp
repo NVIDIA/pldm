@@ -133,21 +133,55 @@ TEST(EmDevicePathSegment, sanitisesLikeEntityManager)
     EXPECT_EQ("", dbusPathSegment(""));
 }
 
-TEST_F(EmDeviceDevices, findsADeviceByItsPathSegment)
+TEST(EmDeviceInventoryObject, isNamedInAnyCategoryOfTheSystem)
 {
-    const std::string cx = "/inventory/platform/HGX_CX_9_0";
-    publish({cx}, {{cx + "|" + nvDeviceIntf,
-                    {{"Name", std::string("HGX_CX-9_0")},
-                     {"Kind", std::string("cx9_io")},
-                     {"EID", uint64_t{30}}}}});
+    const std::string name = "HGX_CX-9_0";
+    for (const char* path :
+         {"/xyz/openbmc_project/inventory/system/chassis/HGX_CX_9_0",
+          "/xyz/openbmc_project/inventory/system/board/HGX_CX_9_0",
+          "/xyz/openbmc_project/inventory/system/component/HGX_CX_9_0"})
+    {
+        EXPECT_TRUE(isSystemObjectNamed(path, name)) << path;
+    }
+    for (const char* path :
+         {// the raw name is not a path segment EM publishes
+          "/xyz/openbmc_project/inventory/system/chassis/HGX_CX-9_0",
+          // no category, a deeper object, outside the system inventory
+          "/xyz/openbmc_project/inventory/system/HGX_CX_9_0",
+          "/xyz/openbmc_project/inventory/system/chassis/X/HGX_CX_9_0",
+          "/xyz/openbmc_project/inventory/HGX_CX_9_0/HGX_CX_9_0",
+          "/xyz/openbmc_project/inventory/system/chassis/HGX_CX_9_01"})
+    {
+        EXPECT_FALSE(isSystemObjectNamed(path, name)) << path;
+    }
+    EXPECT_FALSE(isSystemObjectNamed(
+        "/xyz/openbmc_project/inventory/system/chassis/", ""));
+}
 
-    auto dev = deviceByPathSegment("HGX_CX_9_0", dbus);
-    ASSERT_TRUE(dev);
-    // the record keeps the raw name, which the PLDMDevice record refers to
-    EXPECT_EQ("HGX_CX-9_0", dev->name);
-    EXPECT_EQ(std::optional<uint64_t>(30), dev->eid);
-    EXPECT_FALSE(deviceByPathSegment("HGX_CX-9_0", dbus));
-    EXPECT_FALSE(deviceByName("HGX_CX_9_0", dbus));
+TEST(EmDeviceInventoryObject, isTheParentChassisWithOrWithoutTypePrefix)
+{
+    const std::string module =
+        "/xyz/openbmc_project/inventory/system/board/HGX_ProcessorModule_0";
+    // type-prefixed: that object of the system inventory only
+    EXPECT_TRUE(isParentChassisObject(module, "board/HGX_ProcessorModule_0"));
+    EXPECT_FALSE(isParentChassisObject(
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_ProcessorModule_0",
+        "board/HGX_ProcessorModule_0"));
+    EXPECT_FALSE(isParentChassisObject(module, "board/"));
+    // its leaf as EM writes it into a path
+    EXPECT_TRUE(isParentChassisObject(
+        "/xyz/openbmc_project/inventory/system/board/HGX_Module_0",
+        "board/HGX-Module.0"));
+    EXPECT_FALSE(isParentChassisObject(
+        "/xyz/openbmc_project/inventory/system/board/HGX-Module.0",
+        "board/HGX-Module.0"));
+    // plain: an object of that name in any category
+    EXPECT_TRUE(isParentChassisObject(module, "HGX_ProcessorModule_0"));
+    EXPECT_TRUE(isParentChassisObject(
+        "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0",
+        "ProcessorModule_0"));
+    EXPECT_FALSE(isParentChassisObject(module, "ProcessorModule_0"));
+    EXPECT_FALSE(isParentChassisObject(module, ""));
 }
 
 TEST_F(EmDeviceDevices, keepsTheFirstValueOnConflict)

@@ -633,8 +633,7 @@ TEST_F(DBusAsyncUtilsTest, coGetDbusPropertyReturnsDefaultsOnError)
 TEST_F(DBusAsyncUtilsTest, coGetDbusPropertySendsGetAndResumesOnceOnReply)
 {
     constexpr auto path = "/xyz/openbmc_project/inventory/system/chassis/cov";
-    constexpr auto iface =
-        "xyz.openbmc_project.Configuration.I2CDeviceAssociation";
+    constexpr auto iface = "xyz.openbmc_project.Configuration.SensorAuxName";
     auto& conn = connection();
     conn.deferPropertyReplies = true;
 

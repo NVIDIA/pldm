@@ -24,6 +24,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 /** @brief Entity-manager configs where a device is described by the platform
@@ -49,6 +50,7 @@ constexpr auto devicePrefixIntf =
     "xyz.openbmc_project.Configuration.DevicePrefix";
 constexpr auto topChassisIntf = "xyz.openbmc_project.Configuration.TopChassis";
 constexpr auto inventoryRoot = "/xyz/openbmc_project/inventory";
+constexpr auto systemRoot = "/xyz/openbmc_project/inventory/system/";
 constexpr auto chassisRoot = "/xyz/openbmc_project/inventory/system/chassis/";
 constexpr auto componentRoot =
     "/xyz/openbmc_project/inventory/system/component/";
@@ -144,11 +146,17 @@ std::optional<Device> deviceByName(
  *         (dbus_regex::sanitizeForDBusMember). */
 std::string dbusPathSegment(std::string name);
 
-/** @brief The device whose name entity-manager publishes as the object
- *         path segment @p segment, e.g. the leaf of its chassis path. */
-std::optional<Device> deviceByPathSegment(
-    const std::string& segment,
-    const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
+/** @brief Whether @p path is an object of the system inventory, in any
+ *         category (chassis/, board/, component/, ...), named @p name as
+ *         entity-manager writes it into a path (dbusPathSegment()). */
+bool isSystemObjectNamed(std::string_view path, const std::string& name);
+
+/** @brief Whether @p path is the object of the ParentChassis @p parent of
+ *         a device. A value with a type prefix ("board/HGX_ProcessorModule_0")
+ *         is relative to the system inventory; a plain name
+ *         ("ProcessorModule_0") is an object of that name in any category
+ *         (isSystemObjectNamed()). An empty @p parent is no object. */
+bool isParentChassisObject(std::string_view path, const std::string& parent);
 
 /** @brief The device-name prefix of the platform, from the DevicePrefix
  *         record of the platform topology ("HGX_" on an HMC); empty on a

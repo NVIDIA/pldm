@@ -127,11 +127,12 @@ class InventoryManager
 
     /** @brief Re-scan the inventory objects of the terminus.
      *
-     *  Every System, ProcessorModule, Cpu and Board object is offered to
-     *  Terminus::checkDeviceInventory(), which loads the device's Entity
-     *  Manager configuration; the ones it accepts, with their
+     *  Of the System, ProcessorModule, Cpu and Board objects, the ones of
+     *  the terminus's NvDevice (Terminus::findDeviceInventory()), with their
      *  all_processors twins and parent_chassis, become the terminus's device
-     *  inventory. That is published only once the scan completes.
+     *  inventory; the device's Entity Manager configuration is loaded from
+     *  the first (Terminus::loadDeviceConfigs()). That is published only
+     *  once the scan completes.
      *
      *  @param[in] terminus - the terminus to scan for
      */
