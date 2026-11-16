@@ -275,9 +275,9 @@ void Terminus::interfaceAdded(sdbusplus::message::message& m)
                 namesEndpoint(intf, properties, *mctpInfo, deviceName))
             {
                 interested = true;
-                // The record may carry the terminus name, which must be in
+                // The NvDevice gives the terminus name, which must be in
                 // place before the sensors are named.
-                if (!initialized)
+                if (intf == pldm::em_device::nvDeviceIntf && !initialized)
                 {
                     terminusManager.reloadTerminusConfig(tid,
                                                          utils::DBusHandler());

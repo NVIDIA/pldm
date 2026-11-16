@@ -23,13 +23,11 @@
 #include <sdbusplus/exception.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
 #include <limits>
 #include <map>
 #include <set>
 #include <utility>
-#include <variant>
 
 #ifdef OEM_NVIDIA
 #include "oem/nvidia/common/em_device.hpp"
@@ -250,30 +248,6 @@ struct ResolvedConfig
 };
 using ResolvedConfigs = std::map<mctp_eid_t, ResolvedConfig>;
 
-/** @brief Set @p config of @p source for @p eids, replacing what an earlier
- *         source of the same EM read set. */
-void resolveConfig(ResolvedConfigs& resolved,
-                   const std::vector<mctp_eid_t>& eids,
-                   const TerminusConfigEntry& config, const std::string& source)
-{
-    for (auto eid : eids)
-    {
-        auto [it, inserted] =
-            resolved.try_emplace(eid, ResolvedConfig{config, source});
-        if (inserted)
-        {
-            continue;
-        }
-        if (it->second.config != config)
-        {
-            lg2::info(
-                "{SOURCE} replaces the terminus config from {OLD_SOURCE}, EID={EID}",
-                "SOURCE", source, "OLD_SOURCE", it->second.source, "EID", eid);
-        }
-        it->second = ResolvedConfig{config, source};
-    }
-}
-
 #ifdef OEM_NVIDIA
 /** @brief The terminus configs of the CPU devices of the platform topology. */
 void readNvDeviceConfigs(const NameToEids& nameToEids,
@@ -296,111 +270,16 @@ void readNvDeviceConfigs(const NameToEids& nameToEids,
         {
             continue;
         }
-        resolveConfig(resolved, eidIt->second,
-                      {config->instance, config->name, config->cpuIndex},
-                      "NvDevice " + dev.name);
+        for (const mctp_eid_t eid : eidIt->second)
+        {
+            resolved.insert_or_assign(
+                eid, ResolvedConfig{{config->instance, config->name,
+                                     config->cpuIndex},
+                                    "NvDevice " + dev.name});
+        }
     }
 }
 #endif
-
-/** @brief The terminus configs of the PLDM device records that name a
- *         configured endpoint as their MCTPTargetName. */
-void readPldmDeviceRecords(const NameToEids& nameToEids,
-                           const pldm::utils::DBusHandlerInterface& dbusHandler,
-                           ResolvedConfigs& resolved)
-{
-    constexpr std::array pldmRecordIntfs{
-        "xyz.openbmc_project.Configuration.PLDMFirmwareDevice",
-        "xyz.openbmc_project.Configuration.PLDMDevice"};
-    constexpr uint64_t maxUint16 = std::numeric_limits<uint16_t>::max();
-
-    pldm::utils::GetSubTreeResponse subtree;
-    try
-    {
-        subtree = dbusHandler.getSubtree(
-            "/xyz/openbmc_project/inventory", 0,
-            {pldmRecordIntfs.begin(), pldmRecordIntfs.end()});
-    }
-    catch (const std::exception&)
-    {
-        // No PLDM device records published.
-        return;
-    }
-
-    for (const auto& [objPath, serviceMap] : subtree)
-    {
-        if (serviceMap.empty())
-        {
-            continue;
-        }
-        const auto& [service, intfs] = *serviceMap.begin();
-        auto intf =
-            std::find_first_of(intfs.begin(), intfs.end(),
-                               pldmRecordIntfs.begin(), pldmRecordIntfs.end());
-        if (intf == intfs.end())
-        {
-            continue;
-        }
-
-        pldm::utils::PropertyMap props;
-        try
-        {
-            props = dbusHandler.getDbusPropertiesVariant(
-                service.c_str(), objPath.c_str(), intf->c_str());
-        }
-        catch (const std::exception& e)
-        {
-            lg2::warning(
-                "Failed to read PLDM device record, PATH={PATH}, ERROR={ERROR}",
-                "PATH", objPath, "ERROR", e);
-            continue;
-        }
-
-        const auto* terminusName =
-            props.contains("TerminusName")
-                ? std::get_if<std::string>(&props.at("TerminusName"))
-                : nullptr;
-        if (terminusName == nullptr)
-        {
-            continue;
-        }
-        const auto* targetName =
-            props.contains("MCTPTargetName")
-                ? std::get_if<std::string>(&props.at("MCTPTargetName"))
-                : nullptr;
-        if (targetName == nullptr)
-        {
-            continue;
-        }
-        auto eidIt = nameToEids.find(*targetName);
-        if (eidIt == nameToEids.end())
-        {
-            continue;
-        }
-
-        // both are uint16_t on the terminus; absent means 0
-        auto inst =
-            props.contains("TerminusInstance")
-                ? pldm::utils::numberProp(props, "TerminusInstance", maxUint16)
-                : std::optional<uint64_t>{0};
-        auto cpuIdx =
-            props.contains("CpuIndex")
-                ? pldm::utils::numberProp(props, "CpuIndex", maxUint16)
-                : std::optional<uint64_t>{0};
-        if (terminusName->empty() || !inst || !cpuIdx)
-        {
-            lg2::warning(
-                "Invalid terminus configuration in PLDM device record, skipping. PATH={PATH}, TARGET={TARGET}",
-                "PATH", objPath, "TARGET", *targetName);
-            continue;
-        }
-
-        resolveConfig(resolved, eidIt->second,
-                      {static_cast<int>(*inst), *terminusName,
-                       static_cast<uint16_t>(*cpuIdx)},
-                      "PLDM device record");
-    }
-}
 
 /** @brief Set the instance, terminus name and CPU index of @p config on
  *         @p terminus. */
@@ -448,7 +327,7 @@ void TerminusManager::loadTerminusConfigFromEm(
     // A device reachable over more than one medium has one endpoint per
     // medium under the same name; all of them get the config. Each named
     // endpoint is read once, whether or not it ends up with a terminus:
-    // a record added later is read through reloadTerminusConfig().
+    // an NvDevice added later is read through reloadTerminusConfig().
     NameToEids nameToEids;
     std::map<mctp_eid_t, std::vector<MctpInfo>> eidToEndpoints;
     std::set<std::pair<std::string, mctp_eid_t>> reading;
@@ -476,13 +355,13 @@ void TerminusManager::loadTerminusConfigFromEm(
         return;
     }
 
-    // From the weakest source to the strongest: the NvDevice-derived config,
-    // then the PLDM device record.
+    // Only the CPU NvDevices give a terminus config.
     ResolvedConfigs resolved;
 #ifdef OEM_NVIDIA
     readNvDeviceConfigs(nameToEids, dbusHandler, resolved);
+#else
+    std::ignore = dbusHandler;
 #endif
-    readPldmDeviceRecords(nameToEids, dbusHandler, resolved);
 
     for (const auto& [eid, entry] : resolved)
     {
@@ -563,7 +442,7 @@ void TerminusManager::reloadTerminusConfig(
         return;
     }
     // The key only names the entry. The endpoint was read before; the
-    // record that prompts the reload was not there then.
+    // NvDevice that prompts the reload was not there then.
     loadTerminusConfigFromEm({{"/reload/" + *name, *mctpInfo}}, dbusHandler,
                              /*force=*/true);
 }

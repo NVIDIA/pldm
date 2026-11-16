@@ -463,10 +463,6 @@ TEST_F(TerminusManagerPrivateTest, sendRecvPldmMsgErrorPathsCoverage)
 namespace
 {
 
-constexpr auto pldmFwDeviceIntf =
-    "xyz.openbmc_project.Configuration.PLDMFirmwareDevice";
-constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
-
 MctpInfo namedMctpInfo(eid endpointEid, const std::string& name)
 {
     return MctpInfo(endpointEid, "12345678-0000-0000-0000-0000000000ee",
@@ -475,40 +471,23 @@ MctpInfo namedMctpInfo(eid endpointEid, const std::string& name)
                     std::nullopt);
 }
 
-pldm::utils::GetSubTreeResponse pldmRecordSubtree(
-    const std::vector<std::string>& paths, const std::string& recordIntf)
-{
-    pldm::utils::GetSubTreeResponse subtree;
-    for (const auto& path : paths)
-    {
-        subtree.emplace_back(
-            path, std::vector<std::pair<std::string, std::vector<std::string>>>{
-                      {"xyz.openbmc_project.EntityManager", {recordIntf}}});
-    }
-    return subtree;
-}
-
-/** @brief getSubtree answer: @p paths, implementing @p recordIntf, for the
- *         PLDM device record interfaces, the given subtree for any other
- *         interface asked for. */
+/** @brief getSubtree answer: the subtree of @p subtrees for the interface
+ *         asked for, none for any other. */
 auto subtreeAnswer(
-    const std::vector<std::string>& paths,
-    std::map<std::string, pldm::utils::GetSubTreeResponse> others = {},
-    const std::string& recordIntf = pldmFwDeviceIntf)
+    std::map<std::string, pldm::utils::GetSubTreeResponse> subtrees)
 {
-    return [paths, others = std::move(others), recordIntf](
+    return [subtrees = std::move(subtrees)](
                const std::string&, int, const std::vector<std::string>& intfs) {
-        if (!intfs.empty() && intfs.front() == pldmFwDeviceIntf)
+        if (intfs.empty())
         {
-            return pldmRecordSubtree(paths, recordIntf);
+            return pldm::utils::GetSubTreeResponse{};
         }
-        if (!intfs.empty())
+        if (const std::map<std::string,
+                           pldm::utils::GetSubTreeResponse>::const_iterator it =
+                subtrees.find(intfs.front());
+            it != subtrees.end())
         {
-            auto it = others.find(intfs.front());
-            if (it != others.end())
-            {
-                return it->second;
-            }
+            return it->second;
         }
         return pldm::utils::GetSubTreeResponse{};
     };
@@ -516,162 +495,21 @@ auto subtreeAnswer(
 
 } // namespace
 
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSetsAndDefaults)
-{
-    using ::testing::_;
-    using ::testing::Return;
-    using ::testing::StrEq;
-
-    MockdBusHandler dbus;
-    const std::string cpu0 =
-        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
-    const std::string cpu1 =
-        "/xyz/openbmc_project/inventory/system/board/P/CPU1";
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(::testing::Invoke(subtreeAnswer({cpu0, cpu1})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(cpu0), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(cpu1), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_1")},
-            {"TerminusName", std::string("ProcessorModule_1")},
-            {"TerminusInstance", uint64_t{1}},
-            {"CpuIndex", uint64_t{2}}}));
-
-    const Configurations configurations{
-        {"/xyz/openbmc_project/inventory/system/board/P/HGX_CPU_0",
-         namedMctpInfo(14, "HGX_CPU_0")},
-        {"/xyz/openbmc_project/inventory/system/board/P/HGX_CPU_1",
-         namedMctpInfo(24, "HGX_CPU_1")}};
-    terminusManager.loadTerminusConfigFromEm(configurations, dbus);
-
-    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
-    const auto& c0 = terminusManager.eidToTerminusConfigMap.at(14);
-    EXPECT_EQ(0, std::get<0>(c0));
-    EXPECT_EQ("ProcessorModule_0", std::get<1>(c0));
-    EXPECT_EQ(std::optional<uint16_t>(0), std::get<2>(c0));
-    const auto& c1 = terminusManager.eidToTerminusConfigMap.at(24);
-    EXPECT_EQ(1, std::get<0>(c1));
-    EXPECT_EQ("ProcessorModule_1", std::get<1>(c1));
-    EXPECT_EQ(std::optional<uint16_t>(2), std::get<2>(c1));
-}
-
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmSkipsUnusable)
-{
-    using ::testing::_;
-    using ::testing::Return;
-    using ::testing::StrEq;
-
-    MockdBusHandler dbus;
-    const std::vector<std::string> paths{
-        "/r/noName",      "/r/otherTarget",    "/r/emptyName",
-        "/r/badCpuIndex", "/r/badInstance",    "/r/bigInstance",
-        "/r/bigCpuIndex", "/r/doubleInstance", "/r/doubleCpuIndex"};
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(::testing::Invoke(subtreeAnswer(paths)));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/noName"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/otherTarget"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_GPU_0")},
-            {"TerminusName", std::string("GPU")}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/emptyName"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("")}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/badCpuIndex"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"CpuIndex", std::string("zero")}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/badInstance"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"TerminusInstance", int64_t{-1}}}));
-    // Instance and CpuIndex are uint16_t on the terminus
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/bigInstance"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"TerminusInstance", uint64_t{65536}}}));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq("/r/bigCpuIndex"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"CpuIndex", uint64_t{65536}}}));
-    // entity-manager publishes these values as integers, never as doubles
-    EXPECT_CALL(dbus,
-                getDbusPropertiesVariant(_, StrEq("/r/doubleInstance"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"TerminusInstance", double{1.0}}}));
-    EXPECT_CALL(dbus,
-                getDbusPropertiesVariant(_, StrEq("/r/doubleCpuIndex"), _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"CpuIndex", double{1.0}}}));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
-
-    EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
-}
-
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAllEidsOfAName)
-{
-    using ::testing::_;
-    using ::testing::Return;
-
-    // One device, two endpoints (one per medium) under the same name: the
-    // record applies to both EIDs.
-    MockdBusHandler dbus;
-    const std::string cpu0 =
-        "/xyz/openbmc_project/inventory/system/board/P/CPU0";
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(::testing::Invoke(subtreeAnswer({cpu0})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillOnce(Return(pldm::utils::PropertyMap{
-            {"MCTPTargetName", std::string("HGX_CPU_0")},
-            {"TerminusName", std::string("ProcessorModule_0")},
-            {"TerminusInstance", uint64_t{65535}},
-            {"CpuIndex", uint64_t{65535}}}));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")},
-         {"/cfg/HGX_CPU_0_pcie", namedMctpInfo(34, "HGX_CPU_0")}},
-        dbus);
-
-    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
-    for (auto eid : {14, 34})
-    {
-        const auto& c = terminusManager.eidToTerminusConfigMap.at(eid);
-        EXPECT_EQ(65535, std::get<0>(c));
-        EXPECT_EQ("ProcessorModule_0", std::get<1>(c));
-        EXPECT_EQ(std::optional<uint16_t>(65535), std::get<2>(c));
-    }
-}
-
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoRecords)
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoDevices)
 {
     using ::testing::_;
     using ::testing::Throw;
 
     MockdBusHandler dbus;
     EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Throw(std::runtime_error("no PLDM device records")));
+        .WillRepeatedly(Throw(std::runtime_error("no devices")));
     const Configurations configurations{
         {"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}};
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
     ::testing::Mock::VerifyAndClearExpectations(&dbus);
 
-    // A failed GetSubTree reads as no records, so the endpoint counts as
+    // A failed GetSubTree reads as no devices, so the endpoint counts as
     // read: the next batch does not query D-Bus again for it.
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(0);
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
@@ -687,7 +525,7 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmNoRecords)
 // MctpDiscovery hands each batch of configured endpoints to the platform-mc
 // Manager, which forwards it to TerminusManager::loadTerminusConfigFromEm()
 // with pldmd's D-Bus. The endpoint names no device of any platform, so the
-// read finds no records whatever the bus has; it still counts as read.
+// read finds no config whatever the bus has; it still counts as read.
 TEST_F(TerminusManagerPrivateTest, managerHandleConfigurationsReadsTheirConfig)
 {
     pldm::fw_update::Manager fwUpdateManager(nullptr, event, reqHandler,
@@ -791,9 +629,9 @@ TEST_F(TerminusManagerPrivateTest,
     MockdBusHandler dbus;
     EXPECT_CALL(dbus, getSubtree(_, _, _))
         .WillRepeatedly(Invoke(subtreeAnswer(
-            {}, {{nvDeviceIntf,
-                  subtreeOf({topo0, entity0, topo1, gpu}, nvDeviceIntf)},
-                 {devicePrefixIntf, subtreeOf({prefix}, devicePrefixIntf)}})));
+            {{nvDeviceIntf,
+              subtreeOf({topo0, entity0, topo1, gpu}, nvDeviceIntf)},
+             {devicePrefixIntf, subtreeOf({prefix}, devicePrefixIntf)}})));
     EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
         .WillRepeatedly(Invoke(propertiesAnswer(props)));
 
@@ -835,78 +673,6 @@ pldm::utils::PropertyMap cpuDevice(const std::string& name, uint64_t eid,
 } // namespace
 
 TEST_F(TerminusManagerPrivateTest,
-       loadTerminusConfigFromEmPldmDeviceRecordOverridesNvDevice)
-{
-    using ::testing::_;
-    using ::testing::Invoke;
-
-    // Both CPUs are NvDevices; only HGX_CPU_0 has a PLDM device record, under
-    // the PLDMDevice interface.
-    const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
-    const std::string cpu1 = "/inventory/platform/HGX_CPU_1";
-    const std::string record0 = "/inventory/platform/HGX_CPU_0_PLDM";
-    MockdBusHandler dbus;
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Invoke(subtreeAnswer(
-            {record0}, {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}},
-            pldmDeviceIntf)));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillRepeatedly(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
-             {cpu1 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_1", 24, 1)},
-             {record0 + "|" + pldmDeviceIntf,
-              {{"Name", std::string("HGX_CPU_0_PLDM")},
-               {"MCTPTargetName", std::string("HGX_CPU_0")},
-               {"TerminusName", std::string("Record_0")},
-               {"TerminusInstance", uint64_t{7}},
-               {"CpuIndex", uint64_t{5}}}}})));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")},
-         {"/cfg/HGX_CPU_1", namedMctpInfo(24, "HGX_CPU_1")}},
-        dbus);
-
-    ASSERT_EQ(2U, terminusManager.eidToTerminusConfigMap.size());
-    EXPECT_EQ(std::make_tuple(7, std::string("Record_0"),
-                              std::optional<uint16_t>(5)),
-              terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_EQ(std::make_tuple(1, std::string("ProcessorModule_1"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(24));
-}
-
-TEST_F(TerminusManagerPrivateTest,
-       loadTerminusConfigFromEmUsesTheNvDeviceConfigWhenTheRecordReadFails)
-{
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::StrEq;
-
-    // The PLDM device record of the endpoint is listed but cannot be read;
-    // the NvDevice of the same name is readable.
-    const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
-    const std::string record0 = "/inventory/platform/HGX_CPU_0_PLDM";
-    MockdBusHandler dbus;
-    EXPECT_CALL(dbus, getSubtree(_, _, _))
-        .WillRepeatedly(Invoke(subtreeAnswer(
-            {record0}, {{nvDeviceIntf, subtreeOf({cpu0}, nvDeviceIntf)}})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(cpu0), _))
-        .WillRepeatedly(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)}})));
-    EXPECT_CALL(dbus, getDbusPropertiesVariant(_, StrEq(record0), _))
-        .Times(::testing::AtLeast(1))
-        .WillRepeatedly(::testing::Throw(std::runtime_error("GetAll failed")));
-
-    terminusManager.loadTerminusConfigFromEm(
-        {{"/cfg/HGX_CPU_0", namedMctpInfo(14, "HGX_CPU_0")}}, dbus);
-
-    ASSERT_EQ(1U, terminusManager.eidToTerminusConfigMap.size());
-    EXPECT_EQ(std::make_tuple(0, std::string("ProcessorModule_0"),
-                              std::optional<uint16_t>(0)),
-              terminusManager.eidToTerminusConfigMap.at(14));
-}
-
-TEST_F(TerminusManagerPrivateTest,
        loadTerminusConfigFromEmReadsEachEndpointOnce)
 {
     using ::testing::_;
@@ -921,7 +687,7 @@ TEST_F(TerminusManagerPrivateTest,
     ::testing::NiceMock<MockdBusHandler> dbus;
     ON_CALL(dbus, getSubtree(_, _, _))
         .WillByDefault(Invoke(subtreeAnswer(
-            {}, {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}})));
+            {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}})));
     ON_CALL(dbus, getDbusPropertiesVariant(_, _, _))
         .WillByDefault(Invoke(
             [&props](const char* service, const char* path, const char* intf) {
@@ -994,7 +760,7 @@ platform_mc::TerminusConfigEntry configOf(platform_mc::Terminus& terminus)
 
 } // namespace
 
-TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateRecords)
+TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateConfigs)
 {
     using ::testing::_;
     using ::testing::Invoke;
@@ -1003,14 +769,13 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateRecords)
     // initialized, HGX_CPU_1 is initialized with another config.
     const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
     const std::string cpu1 = "/inventory/platform/HGX_CPU_1";
-    const std::string record0 = "/inventory/platform/HGX_CPU_0_PLDM";
     const std::map<std::string, std::pair<tid_t, bool>> endpoints{
         {"HGX_CPU_0", {14, false}}, {"HGX_CPU_1", {24, true}}};
     Configurations configurations;
     for (const auto& [name, terminus] : endpoints)
     {
         const auto& [tid, initialized] = terminus;
-        auto mctpInfo = namedMctpInfo(tid, name);
+        MctpInfo mctpInfo = namedMctpInfo(tid, name);
         configurations.emplace("/cfg/" + name, mctpInfo);
         ASSERT_TRUE(terminusManager.mapTid(mctpInfo, tid).has_value());
         UUID uuid(std::get<1>(mctpInfo));
@@ -1022,49 +787,39 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateRecords)
     termini[24]->setInstance(5);
     termini[24]->setCpuIndex(6);
 
-    // Both are CPU NvDevices; the PLDM device record of HGX_CPU_0 is not
-    // published yet.
-    std::vector<std::string> records;
+    // Both are CPU NvDevices.
+    std::map<std::string, pldm::utils::PropertyMap> props{
+        {cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
+        {cpu1 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_1", 24, 1)}};
     ::testing::NiceMock<MockdBusHandler> dbus;
     ON_CALL(dbus, getSubtree(_, _, _))
-        .WillByDefault(Invoke(
-            [&records, cpu0, cpu1](const std::string& path, int depth,
-                                   const std::vector<std::string>& intfs) {
-                return subtreeAnswer(
-                    records,
-                    {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}})(
-                    path, depth, intfs);
-            }));
+        .WillByDefault(Invoke(subtreeAnswer(
+            {{nvDeviceIntf, subtreeOf({cpu0, cpu1}, nvDeviceIntf)}})));
     ON_CALL(dbus, getDbusPropertiesVariant(_, _, _))
-        .WillByDefault(Invoke(propertiesAnswer(
-            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)},
-             {cpu1 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_1", 24, 1)},
-             {record0 + "|" + pldmFwDeviceIntf,
-              {{"MCTPTargetName", std::string("HGX_CPU_0")},
-               {"TerminusName", std::string("Record_0")},
-               {"TerminusInstance", uint64_t{7}},
-               {"CpuIndex", uint64_t{3}}}}})));
+        .WillByDefault(Invoke(
+            [&props](const char* service, const char* path, const char* intf) {
+                return propertiesAnswer(props)(service, path, intf);
+            }));
 
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
 
     // The terminus being initialized gets the NvDevice config. An
     // initialized terminus keeps its config until pldmd restarts; the new
     // one is stored for then.
-    const auto fromNvDevice0 = std::make_tuple(
-        0, std::string("ProcessorModule_0"), std::optional<uint16_t>(0));
+    const platform_mc::TerminusConfigEntry fromNvDevice0{0, "ProcessorModule_0",
+                                                         0};
     EXPECT_EQ(fromNvDevice0, terminusManager.eidToTerminusConfigMap.at(14));
     EXPECT_EQ(fromNvDevice0, configOf(*termini[14]));
-    EXPECT_EQ(std::make_tuple(1, std::string("ProcessorModule_1"),
-                              std::optional<uint16_t>(0)),
+    EXPECT_EQ(platform_mc::TerminusConfigEntry(1, "ProcessorModule_1", 0),
               terminusManager.eidToTerminusConfigMap.at(24));
-    const auto old1 =
-        std::make_tuple(5, std::string("Old_1"), std::optional<uint16_t>(6));
+    const platform_mc::TerminusConfigEntry old1{5, "Old_1", 6};
     EXPECT_EQ(old1, configOf(*termini[24]));
 
-    // The record arrives. The next batch has no new endpoint and does not
-    // read EM; the InterfacesAdded signal of the record reloads the config
-    // of the terminus it names, which is still being initialized.
-    records = {record0};
+    // The NvDevice of HGX_CPU_0 is published again with another module. The
+    // next batch has no new endpoint and does not read EM; the
+    // InterfacesAdded signal of the NvDevice reloads the config of the
+    // terminus it names, which is still being initialized.
+    props[cpu0 + "|" + nvDeviceIntf] = cpuDevice("HGX_CPU_0", 14, 2);
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(0);
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
     EXPECT_EQ(fromNvDevice0, configOf(*termini[14]));
@@ -1072,10 +827,9 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateRecords)
 
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(::testing::AtLeast(1));
     terminusManager.reloadTerminusConfig(14, dbus);
-    const auto record =
-        std::make_tuple(7, std::string("Record_0"), std::optional<uint16_t>(3));
-    EXPECT_EQ(record, terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_EQ(record, configOf(*termini[14]));
+    const platform_mc::TerminusConfigEntry late0{2, "ProcessorModule_2", 0};
+    EXPECT_EQ(late0, terminusManager.eidToTerminusConfigMap.at(14));
+    EXPECT_EQ(late0, configOf(*termini[14]));
     ::testing::Mock::VerifyAndClearExpectations(&dbus);
 
     // The initialized terminus is not reloaded.
@@ -1084,22 +838,27 @@ TEST_F(TerminusManagerPrivateTest, loadTerminusConfigFromEmAppliesLateRecords)
     EXPECT_EQ(old1, configOf(*termini[24]));
 }
 
-TEST_F(TerminusManagerPrivateTest, reloadTerminusConfigReadsTheEndpointRecord)
+TEST_F(TerminusManagerPrivateTest, reloadTerminusConfigReadsTheEndpointDevice)
 {
     using ::testing::_;
     using ::testing::Invoke;
 
-    const std::string record0 = "/inventory/platform/HGX_CPU_0_PLDM";
+    const std::string cpu0 = "/inventory/platform/HGX_CPU_0";
+    bool published = false;
     ::testing::NiceMock<MockdBusHandler> dbus;
     ON_CALL(dbus, getSubtree(_, _, _))
-        .WillByDefault(Invoke(subtreeAnswer({record0})));
+        .WillByDefault(
+            Invoke([&published, cpu0](const std::string& path, int depth,
+                                      const std::vector<std::string>& intfs) {
+                const std::vector<std::string> devices =
+                    published ? std::vector{cpu0} : std::vector<std::string>{};
+                return subtreeAnswer(
+                    {{nvDeviceIntf,
+                      subtreeOf(devices, nvDeviceIntf)}})(path, depth, intfs);
+            }));
     ON_CALL(dbus, getDbusPropertiesVariant(_, _, _))
         .WillByDefault(Invoke(propertiesAnswer(
-            {{record0 + "|" + pldmFwDeviceIntf,
-              {{"MCTPTargetName", std::string("HGX_CPU_0")},
-               {"TerminusName", std::string("Record_0")},
-               {"TerminusInstance", uint64_t{7}},
-               {"CpuIndex", uint64_t{3}}}}})));
+            {{cpu0 + "|" + nvDeviceIntf, cpuDevice("HGX_CPU_0", 14, 0)}})));
 
     // Nothing to read EM for: a TID without an endpoint, and an endpoint
     // without a name.
@@ -1112,23 +871,14 @@ TEST_F(TerminusManagerPrivateTest, reloadTerminusConfigReadsTheEndpointRecord)
     EXPECT_TRUE(terminusManager.eidToTerminusConfigMap.empty());
     ::testing::Mock::VerifyAndClearExpectations(&dbus);
 
-    // The terminus of HGX_CPU_0 is being initialized: the record applies,
+    // The terminus of HGX_CPU_0 is being initialized: its NvDevice applies,
     // also when the endpoint was read before, by the batch that created the
     // terminus and that met none.
-    const auto mctpInfo = namedMctpInfo(14, "HGX_CPU_0");
+    const MctpInfo mctpInfo = namedMctpInfo(14, "HGX_CPU_0");
     ASSERT_TRUE(terminusManager.mapTid(mctpInfo, 14).has_value());
     UUID uuid(std::get<1>(mctpInfo));
     termini[14] = std::make_shared<platform_mc::Terminus>(
         14, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
-    bool published = false;
-    ON_CALL(dbus, getSubtree(_, _, _))
-        .WillByDefault(Invoke(
-            [&published, record0](const std::string& path, int depth,
-                                  const std::vector<std::string>& intfs) {
-                return subtreeAnswer(
-                    published ? std::vector{record0}
-                              : std::vector<std::string>{})(path, depth, intfs);
-            }));
     const Configurations configurations{{"/cfg/HGX_CPU_0", mctpInfo}};
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(::testing::AtLeast(1));
     terminusManager.loadTerminusConfigFromEm(configurations, dbus);
@@ -1143,17 +893,16 @@ TEST_F(TerminusManagerPrivateTest, reloadTerminusConfigReadsTheEndpointRecord)
 
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(::testing::AtLeast(1));
     terminusManager.reloadTerminusConfig(14, dbus);
-    const auto record =
-        std::make_tuple(7, std::string("Record_0"), std::optional<uint16_t>(3));
-    EXPECT_EQ(record, terminusManager.eidToTerminusConfigMap.at(14));
-    EXPECT_EQ(record, configOf(*termini[14]));
+    const platform_mc::TerminusConfigEntry device{0, "ProcessorModule_0", 0};
+    EXPECT_EQ(device, terminusManager.eidToTerminusConfigMap.at(14));
+    EXPECT_EQ(device, configOf(*termini[14]));
     ::testing::Mock::VerifyAndClearExpectations(&dbus);
 
     // Once it is initialized, a reload leaves it and EM alone.
     termini[14]->initialized = true;
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(0);
     terminusManager.reloadTerminusConfig(14, dbus);
-    EXPECT_EQ(record, configOf(*termini[14]));
+    EXPECT_EQ(device, configOf(*termini[14]));
     ::testing::Mock::VerifyAndClearExpectations(&dbus);
 
     // A TID mapped to a second endpoint of the same device, whose terminus
@@ -1163,7 +912,7 @@ TEST_F(TerminusManagerPrivateTest, reloadTerminusConfigReadsTheEndpointRecord)
     ASSERT_FALSE(termini.contains(34));
     EXPECT_CALL(dbus, getSubtree(_, _, _)).Times(::testing::AtLeast(1));
     terminusManager.reloadTerminusConfig(34, dbus);
-    EXPECT_EQ(record, terminusManager.eidToTerminusConfigMap.at(34));
+    EXPECT_EQ(device, terminusManager.eidToTerminusConfigMap.at(34));
 }
 
 TEST_F(TerminusManagerPrivateTest, discoverMctpTerminusCompletedHandleCoverage)

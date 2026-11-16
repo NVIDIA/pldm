@@ -1375,7 +1375,7 @@ sdbusplus::message_t interfacesAdded(
     return msg;
 }
 
-TEST_F(TerminusInventoryTest, interfaceAddedOfItsRecordsConfiguresTheTerminus)
+TEST_F(TerminusInventoryTest, interfaceAddedOfItsNvDeviceConfiguresTheTerminus)
 {
     std::string uuid("00000000-0000-0000-0000-000000000233");
     const pldm::tid_t tid = 0x33;
@@ -1414,8 +1414,18 @@ TEST_F(TerminusInventoryTest, interfaceAddedOfItsRecordsConfiguresTheTerminus)
     EXPECT_EQ(std::optional<uint16_t>(0), terminus->getCpuIndex());
     EXPECT_TRUE(terminus->needRefresh);
 
-    // Its PLDM device record, named after the device: the record's config
-    // replaces it.
+    // Its PLDM device record, named after the device, concerns the terminus
+    // but gives no terminus config and does not reload it: the terminus
+    // keeps its config, even though its NvDevice has changed meanwhile.
+    const pldm::utils::PropertyMap movedDevice{
+        {"Name", std::string("Dev_233")},
+        {"Kind", std::string("cpu")},
+        {"EID", uint64_t{0x56}},
+        {"Instance", uint64_t{4}},
+        {"ParentChassis", std::string("CPUModule_4")}};
+    inventory.addInterface(nvDevice, pldm::em_device::nvDeviceIntf,
+                           movedDevice);
+    terminus->needRefresh = false;
     const std::string record = nvDevice + "_PLDM";
     inventory.addInterface(record, pldm::em_device::pldmDeviceIntf,
                            {{"Name", std::string("Dev_233_PLDM")},
@@ -1426,9 +1436,18 @@ TEST_F(TerminusInventoryTest, interfaceAddedOfItsRecordsConfiguresTheTerminus)
     msg = interfacesAdded(bus, record, pldm::em_device::pldmDeviceIntf,
                           {{"Name", std::string("Dev_233_PLDM")}});
     terminus->interfaceAdded(msg);
-    EXPECT_EQ("Late_0", terminus->getTerminusName().value_or(""));
-    EXPECT_EQ(std::optional<uint16_t>(2), terminus->getInstance());
-    EXPECT_EQ(std::optional<uint16_t>(1), terminus->getCpuIndex());
+    EXPECT_TRUE(terminus->needRefresh);
+    EXPECT_EQ("CPUModule_3", terminus->getTerminusName().value_or(""));
+    EXPECT_EQ(std::optional<uint16_t>(3), terminus->getInstance());
+    EXPECT_EQ(std::optional<uint16_t>(0), terminus->getCpuIndex());
+
+    // The NvDevice signal does reload it.
+    msg = interfacesAdded(
+        bus, nvDevice, pldm::em_device::nvDeviceIntf,
+        {{"Name", std::string("Dev_233")}, {"EID", uint64_t{0x56}}});
+    terminus->interfaceAdded(msg);
+    EXPECT_EQ("CPUModule_4", terminus->getTerminusName().value_or(""));
+    EXPECT_EQ(std::optional<uint16_t>(4), terminus->getInstance());
 }
 
 TEST_F(TerminusInventoryTest, interfaceAddedMatchesARecordOfTheScannedDevice)

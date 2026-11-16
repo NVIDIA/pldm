@@ -51,9 +51,8 @@ class Manager;
  * TerminusManager class handle the task to discover and initialize PLDM
  * terminus.
  *
- * The config of a terminus (TerminusName, instance, CPU index) is keyed by
- * EID and comes from, strongest first: an Entity Manager PLDM device
- * record and, with OEM_NVIDIA, the CPU device of the platform topology
+ * The config of a terminus (name, instance, CPU index) is keyed by EID and,
+ * with OEM_NVIDIA, comes from the CPU device of the platform topology
  * (NvDevice). It is applied when the terminus is created, and to a terminus
  * still being initialized when it arrives later. A config that changes after
  * the terminus is initialized is only reported; it takes effect at the next
@@ -85,13 +84,11 @@ class TerminusManager
 
     /** @brief Load the terminus config of the named endpoints from EM.
      *
-     *  Sources, strongest first:
-     *  - a PLDM device record whose MCTPTargetName is the endpoint's name:
-     *    TerminusName, TerminusInstance and CpuIndex.
-     *  - with OEM_NVIDIA, the CPU NvDevice of that name: the leaf of its
-     *    ParentChassis without the platform prefix, its Instance, and its
-     *    position among the CPUs of that module by Instance, then by Name,
-     *    as the CPU index (pldm::em_device::terminusConfig()).
+     *  The config comes from the CPU NvDevice of the endpoint's name, with
+     *  OEM_NVIDIA only: the leaf of its ParentChassis without the platform
+     *  prefix, its Instance, and its position among the CPUs of that
+     *  module by Instance, then by Name, as the CPU index
+     *  (pldm::em_device::terminusConfig()).
      *
      *  The config is applied to the terminus of the EID when it is created.
      *  If the terminus exists already, a config that differs from its own
@@ -101,8 +98,9 @@ class TerminusManager
      *  Each named endpoint (name and EID) is read once: EM is read only for
      *  the endpoints of @p configurations not read before, and not at all
      *  when there are none, also when an endpoint never gets a terminus.
-     *  A failed D-Bus query reads as no records, so it counts as a read
-     *  too. A record that arrives later is read by reloadTerminusConfig().
+     *  A failed D-Bus query reads as no devices, so it counts as a read
+     *  too. An NvDevice that arrives later is read by
+     *  reloadTerminusConfig().
      *
      *  @param[in] configurations - EM config path to MctpInfo, with the
      *                              endpoint name resolved
@@ -116,8 +114,8 @@ class TerminusManager
 
     /** @brief Read the terminus config of the terminus @p tid from EM
      *         again, as loadTerminusConfigFromEm() does for its endpoint,
-     *         also when the endpoint was read before. Used when a record
-     *         naming the endpoint is added while the terminus is being
+     *         also when the endpoint was read before. Used when the NvDevice
+     *         of the endpoint is added while the terminus is being
      *         initialized. No-op for a terminus without an MCTP endpoint or
      *         without an endpoint name, and for an initialized terminus,
      *         to which a new config could no longer apply.

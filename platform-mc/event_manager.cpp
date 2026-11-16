@@ -253,7 +253,7 @@ int EventManager::handlePlatformEvent(
         }
 
         std::string terminusName = resolvedName.value_or(DEFAULT_TERMINUS_NAME);
-        // Stage per CPU; termini without a configured CpuIndex hold one CPU.
+        // Stage per CPU; termini without a CPU index hold one CPU.
         uint16_t cpuIndex = 0;
         if (auto it = termini.find(tid); it != termini.end() && it->second)
         {
