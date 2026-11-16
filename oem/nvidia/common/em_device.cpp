@@ -486,8 +486,12 @@ std::optional<TerminusConfig> terminusConfig(const Device& dev,
         return std::nullopt;
     }
     TerminusConfig config;
+    // ParentChassis may carry a type prefix ("board/HGX_ProcessorModule_0");
+    // the terminus name is its leaf, minus the platform prefix.
+    const auto& parent = dev.parentChassis;
     config.name = baseName(
-        dev.parentChassis.empty() ? dev.name : dev.parentChassis, prefix);
+        parent.empty() ? dev.name : parent.substr(parent.rfind('/') + 1),
+        prefix);
     config.instance = static_cast<int>(dev.instance.value_or(0));
     config.cpuIndex = static_cast<uint16_t>(dev.cpuIndex.value_or(0));
     return config;

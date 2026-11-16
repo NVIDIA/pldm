@@ -36,7 +36,20 @@ using pldm::em_device::bmcRoot;
 using pldm::em_device::chassisRoot;
 using pldm::em_device::componentRoot;
 using pldm::em_device::Device;
+using pldm::em_device::inventoryRoot;
 using pldm::em_device::PldmDevice;
+
+/** @brief Inventory object of the parent chassis of a RoT. EM gives the
+ *         parent either as a plain BMC object name ("BMC_0") or relative to
+ *         the system inventory ("bmc/BMC_0"). */
+inline std::string parentChassisPath(const std::string& parent)
+{
+    if (parent.contains('/'))
+    {
+        return std::string(inventoryRoot) + "/system/" + parent;
+    }
+    return bmcRoot + parent;
+}
 
 struct ComponentRule
 {
@@ -76,7 +89,7 @@ inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
     }
     else if (dev.kind == "irot")
     {
-        rule.endpoints = {bmcRoot + dev.parentChassis};
+        rule.endpoints = {parentChassisPath(dev.parentChassis)};
     }
     else if (dev.kind == "cx9_io" && id == cxFirmware)
     {
@@ -121,7 +134,7 @@ inline std::optional<InventoryPaths> inventoryPaths(const Device& dev,
 {
     const std::string chassis = chassisRoot + dev.name;
     // the BMC's own RoT has the BMC as its parent
-    const std::string bmc = bmcRoot + dev.parentChassis;
+    const std::string bmc = parentChassisPath(dev.parentChassis);
     if (dev.kind == "gpu")
     {
         return InventoryPaths{
